@@ -536,7 +536,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (14, "06eea5787a14077068f2005217329366f2f14f516e0a4be308e2c6af68d6e9a7")
+PROMPT = (15, "01ebfa14a4276abd123382c05915ab9e8277a10e0b6db4885cfee07b151f59b4")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -577,6 +577,11 @@ reset). It also writes that work as a patch beside the setup report, so it comes
 report. It commits and switches branches, so no allow rule covers it: it runs only on a failed
 pull, and the tool asks first."""
 
+GIT_REWRITE_QUERY = "git config --get-regexp 'url\\..*insteadof'"
+GIT_PROXY_QUERY = "git config --get-urlmatch http.proxy https://github.com"
+"""The two read-only git queries the git stop's hint gives the person (since v15): the URL rewrites git
+applies, and the proxy git's own setting names for github.com. The agent runs neither on its normal path."""
+
 FRICTION_LOG_TEMPLATE = (
     f"{INSTALL_SH} --log '<step>' '<kind>' '<what happened>' '<what would have avoided it, or ->'"
 )
@@ -615,8 +620,11 @@ def _report_step() -> int:
 def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None:
     """The prompt says which version it is in its first line and again in step 1, where it requires the
     installer's number to be exactly its own: a copy that is older than the installer must not be used, and
-    one that is newer than the checkout cannot work. Either way the person copies the prompt again from the
-    README on the main branch, where the two always match."""
+    one that is newer than the checkout cannot work. An older copy is copied again from the README on the
+    main branch, where the two always match; for a newer one the installer says which of two causes it is
+    (B13 round 5 F17): a copy from another branch or a fork, copied again, or a checkout that follows a fork
+    or another branch, pointed at main. The prompt passes on what the installer says (B13 round 6 G15,
+    G67)."""
     block = _one_prompt_block()
     assert block.startswith("Set up agentsync on this Mac (setup prompt v"), (
         "the version tag is in the first line"
@@ -634,11 +642,24 @@ def test_readme_prompt_names_its_version_and_the_installer_compat_line() -> None
     assert int(required) == version, "the installer's number is the prompt's own"
     assert "or higher" not in block, "a newer installer means this copy is old: it is not a pass any more"
     assert 'If --version does not end with "setup-prompt-compat ' in step1, "the compat check reads --version"
+    flat = " ".join(step1.split())
+    # B13 round 6 G15, G67: the stop always said "copy the prompt again" and called every such copy older,
+    # while the installer's error for a newer copy whose checkout follows a fork or another branch says to
+    # point the checkout at main (a fresh copy stops the same way). The installer knows which cause it is, so
+    # the prompt passes its words on, and copies again only when --version alone failed, with the checkout as
+    # the next thing to look at.
     assert (
         f'If --version does not end with "setup-prompt-compat {version}", or the command says the pasted '
-        f"prompt is not the installer's, stop: this prompt is v{version}, and an older copy must not be "
-        "used. Tell me to copy the prompt again from README.md on the main branch of the Source above."
-    ) in step1
+        f"prompt is not the installer's, stop and run no other step: this prompt is v{version}, and a copy "
+        "that does not match the installer must not be used. If the command's error says what to tell me, "
+        "tell me that, in its words. Otherwise (--version printed another number and no such error), tell me "
+        "to copy the prompt again from README.md on the main branch of the Source above, and that if that "
+        "copy stops here too, this Mac's checkout (~/src/agent-context-sync) does not follow main of the "
+        "Source: point it there, or move it aside so step 1 clones it, then paste the prompt again."
+    ) in flat
+    assert "an older copy must not be used" not in flat
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "Tell the person to %s." in script, "the error the prompt defers to says what to tell the person"
     assert f"--log-start 'prompt v{version}, <agent>'" in step1, "the copy tells the installer its version"
     assert f"go to step {_report_step()}" in step1.split("--version does not end", 1)[1], (
         "a failed folder listing ends at the report"
@@ -688,14 +709,21 @@ def test_readme_prompt_compat_matches_the_installer() -> None:
 
 def test_readme_step1_is_one_command() -> None:
     """Step 1 is one line the agent runs as given (one approval at most): preflight, code, the friction log's
-    attempt header and the folder list. The only other command it names is the one it tells the person to run
-    when the Command Line Tools are missing, and the preamble names only the per-line --log template (no
-    separate header command: v5b review L5)."""
+    attempt header and the folder list. The other commands it names are the ones it tells the person to run:
+    the Command Line Tools install, and the two read-only git queries of the git stop's hint (since v15 in
+    code marks, B13 round 6 G24), and the preamble names only the per-line --log template (no separate header
+    command: v5b review L5)."""
     step1 = _prompt_steps()[1]
     assert step1.startswith(
         "Preflight, code and folders, in one command (replace <agent> with your tool and model id):"
     )
-    assert _commands(step1) == [STEP1_COMMAND, "xcode-select --install", KEEP_LOCAL_WORK]
+    assert _commands(step1) == [
+        STEP1_COMMAND,
+        "xcode-select --install",
+        KEEP_LOCAL_WORK,
+        GIT_REWRITE_QUERY,
+        GIT_PROXY_QUERY,
+    ]
     assert 'tell me: "Install the Xcode Command Line Tools with `xcode-select --install`' in step1
     assert "If --list-folders printed no folder paths (only a NEXT: line)" in step1
     assert "ask which to sync" in step1, "the folder question is step 1's, after the list"
@@ -715,16 +743,23 @@ def test_readme_step1_is_one_command() -> None:
     # tell the sources apart: the hint names each, with the command that shows it, and says which one wins.
     # `--get-urlmatch ... https://github.com` also prints a proxy scoped to that URL ([http "https://github.com"]),
     # which `--get http.proxy` misses (measured, round 5 review).
+    # B13 round 6 G73: a URL rewrite (url.<base>.insteadOf = https://github.com/) also puts another host in
+    # git's error ("Could not resolve host: <it>", git 2.54), and both proxy commands print nothing for it;
+    # `--get-regexp 'url\..*insteadof'` prints it (git keeps key names in lower case). "Which wins" stays on
+    # the proxy setting: a rewrite is another mechanism. G24: each command sits in code marks, as the Xcode
+    # one does, so the person sees where it ends; `env | grep -i proxy` also shows a lower-case all_proxy.
     assert (
         'If git failed any other way, show me its error and tell me: "Once git can reach GitHub from a '
         "terminal (a corporate proxy may need HTTPS_PROXY set there; if git's error names a host other than "
-        "github.com, that host is a proxy git was told to use, either by git's own setting, which git config "
-        "--get-urlmatch http.proxy https://github.com prints and which wins, or by the terminal's "
-        "HTTPS_PROXY, https_proxy or ALL_PROXY, which env | grep -i proxy shows; any of them may point at a "
-        "network this Mac is not on), start "
+        "github.com, git was told to use that host, either as a URL rewrite, which "
+        f"`{GIT_REWRITE_QUERY}` prints, or as a proxy, set by git's own setting, which `{GIT_PROXY_QUERY}` "
+        "prints and which wins over the terminal's, or by the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY "
+        "or all_proxy, which `env | grep -i proxy` shows; any of them may point at a network this Mac is not "
+        "on), start "
         f"a new session from that terminal and paste this prompt again\", and go to step {report}'s report."
     ) in flat
     assert "check that setting" not in flat
+    assert "that host is a proxy git was told to use" not in flat
     # B13 round 4 Q25: "if the error names a proxy, the one in git's own settings ... comes before" made an
     # always-true fact conditional, and "the one" read as the proxy the error named. An unreachable proxy in
     # git's settings fails as "Failed to connect to <its host> port <N>", which never says "proxy" (measured,
@@ -784,9 +819,17 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "arrives with the next pull. That file is kept from session to session: leave an earlier session's "
         "text as it is, write yours after it under a heading of your own that names this prompt's version "
         "and the current date and time, and rewrite only your own part. Write that heading even when this "
-        'session asks for no change, unless step 3 skips its "## Not used" section: that section goes under '
-        "it. In that file, name a folder"
+        'session asks for no change, since step 3\'s "## Not used" section goes under it; a session that '
+        'asks for no change and adds no "## Not used" section (step 3 says when) writes no heading. In that '
+        "file, name a folder"
     ) in block
+    # B13 round 6 G26: "unless step 3 skips its "## Not used" section: that section goes under it" read as if
+    # the skipped section still went under the heading; the reason now comes first, and the exception stays a
+    # no-change session's (one that writes a fix request still heads it). G5: the exception named step 3's
+    # skip, which the folder wait and the version stop never reach with a checkout present; it now names the
+    # section, and step 3 says none of its three no-report cases has one.
+    assert "unless step 3 skips" not in block
+    assert 'Three cases have no report and no "## Not used" section:' in block
     # B13 round 5 F26: with no exception, a session whose checkout is missing created fix-request.md only to
     # hold a heading, and once the folder existed step 3's skip could never apply. With no checkout there is
     # nothing to head; the exception names step 3's skip, so the condition is written once, there.
@@ -834,7 +877,7 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "~/agent-context/setup/fix-request.md (one per session: if this session already added one, rewrite "
         "that one): one line for each part of agentsync this session never used"
     ) in step3
-    assert step3.index("## Not used") < step3.index("Then the report, always")
+    assert step3.index("## Not used") < step3.index("Then the report, even after a failure")
     for verb in (
         "sync",
         "curate",
@@ -1253,9 +1296,22 @@ def test_readme_step2_is_the_one_install_command() -> None:
         "It is safe to re-run: if your tool stopped it early, run the same command again. If another sync is"
         " running when it reinstalls, it says so and waits for that sync to end, up to"
         f' {int(wait) // 60} minutes, printing "still running" lines, and then goes on even if that sync'
-        " has not ended; that is expected, not a deviation: do not log it."
+        ' has not ended; its first sync then says "another sync is still running" and waits for that sync'
+        ' again, up to 10 more minutes, and is skipped ("skipped, lock busy") if it is still running then.'
+        " Both waits and that skip are expected, not deviations: do not log them."
     )
     assert said in " ".join(step2.split())
+    # B13 round 6 G37: after the reinstall's wait runs out the first sync waits for the same lock, as an
+    # interactive sync does, and is skipped (75) if it is still held then. Only agentsync's WARNING lines said
+    # so, and the prompt named neither, so its friction rule had the agent log them. The installer now says it
+    # in its own line, the one the prompt quotes, and the cap is agentsync's own.
+    wait_line = "another sync is still running; waiting for it to end, at most 10 minutes"
+    assert f'say "$SYNC_LABEL: {wait_line}"' in script
+    assert 'say "$SYNC_LABEL: skipped, $(rc_meaning 75)"' in script
+    assert "75) printf 'lock busy: another agentsync cycle is running' ;;" in script
+    from agentsync import cycle  # noqa: PLC0415
+
+    assert cycle.INTERACTIVE_LOCK_WAIT_S == 10 * 60
     assert "agentsync: reinstalling after the background sync ends" in script
     assert 'say "$1, still running, $((SECONDS - t0))s"' in script, "the ticker's words"
     assert "reinstalling without waiting longer" in script, "and it goes on when the wait runs out"
@@ -1409,7 +1465,7 @@ def test_readme_step3_syncs_again_while_the_tool_says_so_before_the_report() -> 
         'Repeat until the NEXT: line itself says "session done".',
         'Once this loop\'s NEXT: line has said "session done", make one report enough',
         'add a "## Not used" section',
-        "Then the report, always",
+        "Then the report, even after a failure",
     ]
     assert [step3.index(part) for part in order] == sorted(step3.index(part) for part in order)
     assert _commands(said) == [SYNC_NO_DOWNLOAD], "the one command it runs, and it names no other"
@@ -1438,7 +1494,12 @@ def test_readme_report_step_after_any_failure() -> None:
     report = _report_step()
     text = steps[report]
     assert text.startswith("Sync loop and report.")
-    assert "Then the report, always, even after a failure; this is the last command you run:" in text
+    # B13 round 6 G25: "always" was followed at once by three cases with no report.
+    assert (
+        "Then the report, even after a failure (except in the three cases below); this is the last command "
+        "you run:" in " ".join(text.split())
+    )
+    assert "Then the report, always" not in text
     # B13 round 2 R31: five places say "go to step 3's report", and step 3 used "the report" for its last
     # command alone, with the "## Not used" section before it. The term is defined once, where step 3 uses
     # it, as both parts in order; the section is skipped where its folder does not exist yet (an Xcode stop
@@ -1457,7 +1518,7 @@ def test_readme_report_step_after_any_failure() -> None:
         "skip this part if ~/src/agent-context-sync does not exist. Then the"
     )
     assert "~/agent-context/setup does not exist" not in flat
-    assert flat.index("skip this part if") < flat.index("Then the report, always")
+    assert flat.index("skip this part if") < flat.index("Then the report, even after a failure")
     block = " ".join(_one_prompt_block().split())
     assert block.count(f"go to step {report}'s report") >= 4, "the jump sites the definition names"
     # Two stops have no report (v10): step 1's folder question on a new Mac is a wait, not a failure, and a
@@ -1468,7 +1529,8 @@ def test_readme_report_step_after_any_failure() -> None:
     # after a parenthesis that ruled out a report when the checkout is missing, so the two contradicted each
     # other at a failed clone. The missing checkout is the third case, stated once, in the list.
     assert (
-        "--report-only` Three cases have no report: while you wait for my folder answer in step 1; when "
+        '--report-only` Three cases have no report and no "## Not used" section: while you wait for my '
+        "folder answer in step 1; when "
         "step 1 stops because this prompt is not the installer's (either check: the --version line does not "
         "end with this prompt's number, or the command says so); and when ~/src/agent-context-sync does not "
         "exist (tell me instead that setup stopped before the code was downloaded). Every other stop still "
@@ -1477,13 +1539,18 @@ def test_readme_report_step_after_any_failure() -> None:
     assert "Two cases have no report" not in flat
     assert flat.count("~/src/agent-context-sync does not exist") == 2, "the one condition, once per part"
     assert (
-        "or the command says the pasted prompt is not the installer's, stop: this prompt is "
-        f"v{PROMPT[0]}" in steps[1]
+        "or the command says the pasted prompt is not the installer's, stop and run no other step: this "
+        f"prompt is v{PROMPT[0]}" in " ".join(steps[1].split())
     )
     assert _prompt_steps()[1].count("stop and wait for my answer") == 1
     assert "Do not send or upload anything" in text
     assert "outcome" in text and "run type" in text, "the report computes them (J3, J14)"
-    assert "its last lines are an issue link and a NEXT: line" in text
+    # B13 round 6 G47/G65 (lane RB, prompt words in v15): a report that holds a "Private only:" line gets no
+    # issue link line, and its NEXT names bring-back.md alone.
+    assert (
+        "its last lines are an issue link (none when the report says it is for a private copy only) and a "
+        "NEXT: line" in " ".join(text.split())
+    )
     assert len(steps) == 3 and report == len(steps), "the report ends the last step"
     elsewhere = _preamble() + " ".join(t for n, t in steps.items() if n != report)
     targets = set(re.findall(r"go to step (\d+)'s report", elsewhere))
@@ -2028,11 +2095,11 @@ def _copilot_rule_matches(rule: str, command: str) -> bool:
 
 
 def _agent_commands() -> list[str]:
-    """Every command the block has the agent run on its normal path (``xcode-select --install`` is
-    the person's to run; :data:`KEEP_LOCAL_WORK` runs only after a failed pull, and asks first)."""
-    commands = [
-        c for c in _commands(_one_prompt_block()) if c not in ("xcode-select --install", KEEP_LOCAL_WORK)
-    ]
+    """Every command the block has the agent run on its normal path (``xcode-select --install`` and the git
+    stop's two queries are the person's to run; :data:`KEEP_LOCAL_WORK` runs only after a failed pull, and
+    asks first)."""
+    persons = ("xcode-select --install", KEEP_LOCAL_WORK, GIT_REWRITE_QUERY, GIT_PROXY_QUERY)
+    commands = [c for c in _commands(_one_prompt_block()) if c not in persons]
     assert commands == [
         FRICTION_LOG_TEMPLATE,
         STEP1_COMMAND,

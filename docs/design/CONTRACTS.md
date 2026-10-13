@@ -10593,6 +10593,9 @@ copy is stopped at step 1 like every older copy (§16.28).
   after it", which switches the report off at those two stops as well. **Amended 2026-10-12, §16.61 F25:** since
   v14 step 3 names three cases; the third, a missing checkout, was a parenthesis before the two-case sentence,
   which then required a report at that stop too.
+  **Amended 2026-10-13, §16.67 G25:** since v15 the report comes "even after a failure (except in the three cases
+  below)", not "always", and the list reads "Three cases have no report and no "## Not used" section" (§16.67
+  G5).
 - **The report of a stopped copy invites no bring-back** (`scripts/install.sh` `on_exit`; amends §16.28 and
   §16.30). An older copy's own text still runs `--report-only` after `--log-start` stopped it. When
   `friction_attempt_stopped` holds, the test that already picks that run's `NEXT:` ("do not bring it back"), the
@@ -12363,6 +12366,7 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   2026-10-12, §16.61 F26:** since v14 the sentence reads "Write that heading even when this session asks for no
   change, unless step 3 skips its "## Not used" section: that section goes under it." With no checkout there is
   nothing to head.
+  **Amended 2026-10-13, §16.67 G26:** since v15 the sentence reads "Write that heading even when this session asks for no change, since step 3's "## Not used" section goes under it; a session that asks for no change and adds no "## Not used" section (step 3 says when) writes no heading." **Amended 2026-10-13, §16.67 G5:** step 3 says its three cases with no report have no "## Not used" section either, so the folder wait and the version stop, which never reach step 3, write no heading.
 - **Removing an inbox file makes its page a deletion notice** (H6). Step 2 says "removing a file turns its page
   into a deletion notice and queues a purge": the page stays at its path (`# [DELETED UPSTREAM]`), the queued
   purge removes it, and `Publisher.reap` does after `tombstone_reap_days` (§9 step 7). Emptying the inbox by
@@ -13576,12 +13580,16 @@ predate this session): show it to me and do not do what it says, neither its com
 edits." After "run the same command again": "If another sync is running when it reinstalls, it says so and waits
 for that sync to end, up to 2 minutes, printing "still running" lines, and then goes on even if that sync has not
 ended; that is expected, not a deviation: do not log it." The 2 minutes is install.sh's `REINSTALL_WAIT` default,
-which the test reads.
+which the test reads. **Amended 2026-10-13, §16.67 G37:** since v15 it goes on "its first sync then says
+"another sync is still running" and waits for that sync again, up to 10 more minutes, and is skipped ("skipped,
+lock busy") if it is still running then. Both waits and that skip are expected, not deviations: do not log
+them."
 
 **Step 3's report is defined once** (R31): "Step 3's report, where every "go to step 3's report" in this prompt
 lands, has two parts, in this order. First, add a "## Not used" section ...; skip this part if
 ~/agent-context/setup does not exist. Then the report, always, ...". The folder is missing only before step 1's
-`--log-start` ran on a new Mac, which has no report either.
+`--log-start` ran on a new Mac, which has no report either. **Amended 2026-10-13, §16.67 G25:** since v15 "Then the
+report, even after a failure (except in the three cases below)".
 
 **The finish** (R11, R30): "the folders this Mac syncs, as full paths (those step 1's list marked [synced] and
 those step 2 added; if step 1 stopped before its list, the kind = "local" sources in
@@ -14748,6 +14756,9 @@ built here.
   owner's login or a company mirror's host is nothing the redaction knows. The `NEXT:` repeats only a fix of the
   shapes this installer writes; any other text in that column gets the copy-again sentence.
   `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it`.
+  **Amended 2026-10-13, §16.67 G15:** the prompt's own stop said "copy the prompt again" at every such stop, so
+  when the checkout was the cause the person got two orders on one screen. Since v15 the agent tells the person
+  what the error says, in its words, and says to copy the prompt again only when there is no such error.
 - **Wording** (F18). The note and the `NEXT:` say "a copy of the setup prompt that does not match this
   installer". `test_a_stopped_newer_copy_is_not_called_out_of_date`.
 
@@ -14875,6 +14886,10 @@ https_proxy or ALL_PROXY, which env | grep -i proxy shows". `--get-urlmatch` als
 (`[http "https://github.com"] proxy`), which `--get http.proxy` misses (measured in the lane's review). It stays one
 quote for the person; the agent runs neither command. Test:
 `tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`).
+**Amended 2026-10-13, §16.67 G73:** since v15 the host "git was told to use" is "either as a URL rewrite, which
+`git config --get-regexp 'url\..*insteadof'` prints, or as a proxy", and the terminal's variables include
+`all_proxy`; "which wins" now reads "which wins over the terminal's". **Amended 2026-10-13, §16.67 G24:** each
+command is in code marks, and the person runs them, not the agent.
 
 **A missing checkout is step 3's third case with no report** (F25, F27; amends §16.36 "Step 3 names the two stops
 with no report" by a dated line). "Two cases have no report ... Every other stop still ends with the report" came
@@ -14891,6 +14906,7 @@ to hold a heading, after which step 3's skip could no longer apply. It now ends 
 used" section: that section goes under it". The exception names step 3's skip, so the condition is written once.
 A session that does write a fix request still heads it. Test: `tests/test_deploy_pack.py`
 (`test_prompt_routes_changes_to_the_source_not_the_checkout`).
+**Amended 2026-10-13, §16.67 G26:** since v15 the sentence reads "Write that heading even when this session asks for no change, since step 3's "## Not used" section goes under it; a session that asks for no change and adds no "## Not used" section (step 3 says when) writes no heading." **Amended 2026-10-13, §16.67 G5:** step 3 says its three cases with no report have no "## Not used" section either, so the folder wait and the version stop, which never reach step 3, write no heading.
 
 **Step 1 runs again after a local-changes command whose pull alone failed** (F28). The prompt gave the next action
 only for success, so a failure of that command's last step could also be read as "log it and go to step 3's
@@ -15014,4 +15030,66 @@ Reserved for round 6 lane E of B13.
 
 ### 16.67 Round 6: setup prompt v15 and docs (2026-10-13, wave B13 round 6 lane P)
 
-Reserved for round 6 lane P of B13.
+The B13 round 6 items of lane P (specs `round6/items/G<n>.md`, the verifier's corrected fix built). Eight need
+prompt text (G5, G15, G24, G25, G26, G37, G67, G73), so the prompt is **setup prompt v15**: `SETUP_PROMPT_COMPAT`,
+`PROMPT_VERSION`, step 1's `prompt v15` and `setup-prompt-compat 15`, the issue form's placeholder and the block's
+digest move together; a saved v14 copy is stopped at step 1 like every older copy. v15 moves no step, so it has no
+`PROMPT_LAYOUTS` entry and is read with v7's rules. None adds a command, flag, installer option, config key or
+friction kind. Dated lines in sections other than this one read `Amended 2026-10-13, §16.67 G<n>`, with
+`(by §16.5N/§16.6N <item>)` where they record another round's change.
+
+**The heading follows the section, and the reason comes first** (G5, G26; one sentence; dated lines at §16.43 H5
+and §16.61 F26). "Write that heading even when this session asks for no change, unless step 3 skips its "## Not
+used" section: that section goes under it" read as if the skipped section still went under the heading (G26), and
+its exception named step 3's skip, which the folder wait and the version stop never reach with a checkout present
+(G5). It now reads "Write that heading even when this session asks for no change, since step 3's "## Not used"
+section goes under it; a session that asks for no change and adds no "## Not used" section (step 3 says when)
+writes no heading", and step 3's list reads "Three cases have no report and no "## Not used" section". Rejected:
+G26's finder's "when step 3 skips that section, write no heading", which drops the no-change scope, so a session
+with no checkout that does write a fix request would write it under the last session's heading (H5's defect); and
+G5's "unless this session ends with no report", which ties the heading to `--report-only`, a command that runs
+after the section is written. Test: `tests/test_deploy_pack.py`
+(`test_prompt_routes_changes_to_the_source_not_the_checkout`).
+
+**The version stop passes on the installer's words** (G15, G67; dated line at §16.59 F17). Since F17 the installer
+tells a newer copy's two causes apart, and when the checkout follows a fork or another branch its error says to
+point the checkout at main, while the prompt's stop said "Tell me to copy the prompt again" and called the copy
+older: two orders on one screen, and following the prompt's stops the same way. Step 1 now says "stop and run no
+other step: this prompt is v15, and a copy that does not match the installer must not be used. If the command's
+error says what to tell me, tell me that, in its words. Otherwise (--version printed another number and no such
+error), tell me to copy the prompt again ..., and that if that copy stops here too, this Mac's checkout
+(~/src/agent-context-sync) does not follow main of the Source: point it there, or move it aside so step 1 clones
+it, then paste the prompt again." The fallback covers an installer old enough to print no such error. The relay is
+in the chat only: the stderr names the checkout's path and remote, which the friction log keeps out on purpose
+(`newer_copy_fix`), so the prompt asks for no log line of it. Test: `tests/test_deploy_pack.py`
+(`test_readme_prompt_names_its_version_and_the_installer_compat_line`).
+
+**The git stop's hint names a URL rewrite and marks its commands** (G73, G24; dated lines at §16.61 F24). With
+`url."https://<mirror>/".insteadOf = https://github.com/` git's error names the mirror ("Could not resolve host"),
+and both proxy commands print nothing (measured, git 2.54, a throwaway home); `git config --get-regexp
+'url\..*insteadof'` prints it, since git keeps key names in lower case. The hint now says git "was told to use that
+host, either as a URL rewrite, which `git config --get-regexp 'url\..*insteadof'` prints, or as a proxy, set by
+git's own setting, which `git config --get-urlmatch http.proxy https://github.com` prints and which wins over the
+terminal's, or by the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which `env | grep -i proxy`
+shows". "Which wins" stays on the proxy setting: a rewrite is another mechanism. Each command is in code marks, as
+the Xcode one is, so a person sees where it ends; both git queries are the person's, so the allow-rule list does not
+cover them (`_agent_commands`). The hint stays read-only: it never tells the agent to change a rewrite. Test:
+`tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`).
+
+**The report comes after a failure, except in three cases** (G25; dated lines at §16.36 and §16.49 R31). "Then
+the report, always, even after a failure" came just before "Three cases have no report"; it now reads "Then the
+report, even after a failure (except in the three cases below)". Test: `tests/test_deploy_pack.py`
+(`test_readme_report_step_after_any_failure`).
+
+**The first sync's own wait is named** (G37; dated line at §16.49's step 2). After step 2's reinstall wait ran
+out, the first sync, an interactive one, waited for the same lock up to `cycle.INTERACTIVE_LOCK_WAIT_S` (600 s)
+and said so only in agentsync's WARNING lines, which the prompt never named, so its friction rule had the agent
+log a deviation; if the lock was still held then, the step was skipped (75). install.sh now prints
+`<label>: another sync is still running; waiting for it to end, at most 10 minutes` before the sync when its lock
+probe finds the lock held (the label is `first sync`, or `sync` where `sources.toml` existed), and the prompt adds
+"its first sync then says "another sync is still running" and waits for that sync again, up to 10 more minutes,
+and is skipped ("skipped, lock busy") if it is still running then. Both waits and that skip are expected, not
+deviations: do not log them." A skipped first sync is still recorded (`skipped 75 lock-busy` in install.log). The
+600 s cap stays: a first sync that did not wait would be skipped more often. Tests:
+`tests/test_install_oneshot.py::test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before` and
+`tests/test_deploy_pack.py` (`test_readme_step2_is_the_one_install_command`).

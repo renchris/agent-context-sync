@@ -3123,20 +3123,20 @@ V12_HAPPY = V11_HAPPY.replace("Prompt: v11", "Prompt: v12")
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 to v14 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v15 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
-    versions = (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, None, 99)
+    versions = (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, None, 99)
     read_as = [setup_report.prompt_layout(v).version for v in versions]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
     assert (
-        setup_report.PROMPT_VERSION == 14 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 15 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
-    for version in (8, 9, 10, 11, 12, 13, 14):  # none moved a step: each gets every rule written for v7
+    for version in (8, 9, 10, 11, 12, 13, 14, 15):  # none moved a step: each gets every rule written for v7
         assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
-    for version in (7, 8, 9, 10, 11, 12, 13, 14):
+    for version in (7, 8, 9, 10, 11, 12, 13, 14, 15):
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
@@ -3224,11 +3224,11 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
     other way round. The installer's version and its reason come from that line, never from the number of
-    the build that writes the report: here the installer was v8 or v15, whatever this build is. Only the
+    the build that writes the report: here the installer was v8 or v16, whatever this build is. Only the
     installer's fixed words are shown."""
     what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    assert setup_report.PROMPT_VERSION < 15
+    assert setup_report.PROMPT_VERSION < 16
     for header, installer, shown, why in (
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
@@ -3241,8 +3241,8 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ),
         (
             "v9",
-            15,
-            "v9 (older than the installer's v15: the pasted copy was not the current README)",
+            16,
+            "v9 (older than the installer's v16: the pasted copy was not the current README)",
             "the pasted copy is not the current one",
         ),
     ):
