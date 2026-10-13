@@ -15674,7 +15674,17 @@ Reserved for round 7 lane B of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 7
 
 ### 16.69 Round 7: setup report (2026-10-13, wave B13 round 7 lane RA)
 
-Reserved for round 7 lane RA of B13.
+The setup report's items of B13 round 7 (`docs/plans/bring-back-ocr.md`, "B13 round 7"). Each is built with a test
+that fails without it, or names the measured reason it was not built.
+
+**The Loop line names the docs repo's AGENTS.md and STATE.md in words** (H3, H36). `_eval_by_name` named the docs
+repo's `_eval` folder "the docs repo's _eval folder" but cut its `AGENTS.md` to a bare `AGENTS.md` (rules 4, 6 and 8)
+and its `_sync/STATE.md` to a bare `_sync/STATE.md` (the empty- and unlisted-folder waits), while `loop._baseline`
+prints the path because a bare `AGENTS.md` is the agent's own project's when it runs from another folder. They now
+read "the docs repo's AGENTS.md" and "the docs repo's _sync/STATE.md" (`_AGENTS_SHOWN`, `_STATE_SHOWN`); no path is
+added, so K16b holds and `_NEXT_PATH_RE` (paths from `~` or `/`) leaves the words alone. Tests:
+`tests/test_setup_report.py::test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces`,
+`tests/test_loop.py::test_the_empty_folder_wait_points_where_a_plain_sync_names_its_folders`.
 
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 

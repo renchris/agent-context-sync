@@ -6385,6 +6385,12 @@ def _stopped_wait(found: str | None, waits: Sequence[str]) -> str:
 _EVAL_SHOWN = "the docs repo's _eval folder"
 """How the Loop line names the draft baseline's folder: with no path (K16b) but findable, since the
 Configuration part's ``- docs repo:`` line gives the path."""
+_AGENTS_SHOWN = "the docs repo's AGENTS.md"
+"""How the Loop line names the docs repo's ``AGENTS.md``: a bare ``AGENTS.md`` would be the agent's own
+project's when it runs from another folder, the reason the loop prints its path (B13 round 7 H3)."""
+_STATE_SHOWN = "the docs repo's _sync/STATE.md"
+"""How the Loop line names the docs repo's ``_sync/STATE.md``: a bare ``_sync/STATE.md`` says nothing of what
+it is relative to (B13 round 7 H36)."""
 
 
 def _eval_by_name(line: str, config: Config) -> str:
@@ -6394,15 +6400,16 @@ def _eval_by_name(line: str, config: Config) -> str:
     and for :data:`_NEXT_PATH_RE` a path ends at its first space: of ``~/Client Alpha/kb docs/_eval`` it left
     ``Client Alpha/kb docs/_eval`` in the line.  So the folder is replaced here as the loop wrote it
     (``loop._shown``), before the paths without spaces are shortened.  The wait for empty cloud folders
-    names the config file by its path, and rules 4, 6 and 8 name the docs repo's ``AGENTS.md`` by its path:
-    each is replaced by its file name the same way. The waits for empty and unlisted folders name the docs
-    repo's ``_sync/STATE.md`` by its path, shown as ``_sync/STATE.md`` (B13 round 6 G42)."""
+    names the config file by its path, replaced by its file name the same way. Rules 4, 6 and 8 name the
+    docs repo's ``AGENTS.md`` by its path, shown as :data:`_AGENTS_SHOWN` ("the docs repo's AGENTS.md", B13
+    round 7 H3), and the waits for empty and unlisted folders name the docs repo's ``_sync/STATE.md`` by its
+    path, shown as :data:`_STATE_SHOWN` ("the docs repo's _sync/STATE.md", B13 round 6 G42, round 7 H36)."""
     from agentsync import loop  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     docs = expand(config.docs_repo)
     line = line.replace(loop._shown(docs / loop._EVAL_DIR), _EVAL_SHOWN)
-    line = line.replace(loop._shown(docs / loop._AGENTS_MD), loop._AGENTS_MD)
-    line = line.replace(loop._shown(docs / loop._STATE_MD), loop._STATE_MD.as_posix())  # B13 round 6 G42
+    line = line.replace(loop._shown(docs / loop._AGENTS_MD), _AGENTS_SHOWN)
+    line = line.replace(loop._shown(docs / loop._STATE_MD), _STATE_SHOWN)  # B13 round 6 G42, round 7 H36
     return line.replace(loop._shown(config.config_path), config.config_path.name)
 
 
@@ -6413,11 +6420,12 @@ def _loop_line(r: _Run) -> str:
     order (when the one it stopped on is not the loop's first, a fixed clause before the others says which
     of them the command prints before it), then the loop's ``note:`` lines about files still to be read
     again, when it has any (a second one is of the sources the last sync did not get to): a report that
-    shows ``note: sync again:`` there was written before the one-time re-read finished. The three paths the
-    config puts into these lines, the docs repo's ``_eval``, its ``AGENTS.md`` and the config file, are
-    shown without their path (the docs repo's ``_eval`` folder, ``AGENTS.md`` and the config file by their
-    names) whatever the path (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's
-    doctor line, only once its waits are on this line. Sets ``r.loop_stage`` for the issue link;
+    shows ``note: sync again:`` there was written before the one-time re-read finished. The four paths the
+    config puts into these lines, the docs repo's ``_eval``, its ``AGENTS.md``, its ``_sync/STATE.md`` and
+    the config file, are shown without their path (the docs repo's ``_eval`` folder, the docs repo's
+    ``AGENTS.md`` and ``_sync/STATE.md``, and the config file by its name) whatever the path
+    (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's doctor line, only once its waits
+    are on this line. Sets ``r.loop_stage`` for the issue link;
     :func:`build_report` runs it once, before ``took``."""
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)

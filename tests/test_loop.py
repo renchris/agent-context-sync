@@ -351,7 +351,8 @@ def test_the_empty_folder_wait_points_where_a_plain_sync_names_its_folders(
     kept = [ln for ln in state_md.read_text(encoding="utf-8").splitlines() if ln.startswith("alarm: ")]
     assert any(all(f"'{n}'" in ln for n in names[:5]) for ln in kept), kept
     shown = setup_report._eval_by_name(wait, config)
-    assert "also kept in _sync/STATE.md, names " in shown and str(config.docs_repo) not in shown
+    assert "also kept in the docs repo's _sync/STATE.md, names " in shown, shown  # B13 round 7 H36
+    assert str(config.docs_repo) not in shown
 
 
 def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
