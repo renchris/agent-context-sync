@@ -6,7 +6,7 @@ import enum
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 from agentsync.errors import BudgetExhaustedError
 
@@ -419,6 +419,15 @@ class SourceReport:
     # refused with no byte read (no converter for the name, a rule that needs no bytes, a withheld online-only
     # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32)
     refused_unread: int = 0
+
+
+class CarriedLines(NamedTuple):
+    """A source's alarm and error lines from the last run that selected it (``run_id``), which STATE.md shows
+    under that source after a run that did not (B13 round 7 H73)."""
+
+    run_id: int
+    alarms: tuple[str, ...]
+    errors: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

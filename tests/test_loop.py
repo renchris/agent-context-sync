@@ -1678,3 +1678,64 @@ def test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_point
             (folder / rel).chmod(0o755)
     assert "could not be listed" in wait and "STATE.md" in wait
     assert any(all(f"'{rel}'" in ln for rel in _LONG[:5]) and "(+1 more" in ln for ln in _kept_alarms(config))
+
+
+def test_state_md_keeps_another_sources_alarm_after_a_one_source_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 7 H73: STATE.md is rewritten by every cycle, and a ``reconcile --source`` or
+    ``accept-deletions`` of one source dropped the other's alarm, while that source's wait still said
+    STATE.md keeps it. A source a run does not select keeps the lines of the last run that did, tagged with
+    that run; a run of the source replaces them, and a source taken out of sources.toml loses them."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    other = tmp_path / "plain"
+    _write(other / "memo.txt", "A memo from Fabrikam.\n")
+    config = _setup(tmp_path, local_source_table("work", root) + local_source_table("plainsrc", other))
+    cfg = str(config.config_path)
+    state_md = config.docs_repo / "_sync" / "STATE.md"
+
+    def work_lines() -> list[str]:
+        text = state_md.read_text(encoding="utf-8")
+        block = text.split("\n## work\n", 1)[1].split("\n## ", 1)[0]
+        return [ln for ln in block.splitlines() if ln.startswith(("alarm", "error"))]
+
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    (first,) = work_lines()
+    assert first.startswith("alarm: ") and "'Empty A'" in first
+    found = re.search(r"^run: (\d+) ", state_md.read_text(encoding="utf-8"), re.M)
+    assert found is not None
+    run = int(found.group(1))
+    for argv in (["reconcile", "--source", "plainsrc"], ["accept-deletions", "plainsrc"]):
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_OK
+        assert work_lines() == [first.replace("alarm: ", f"alarm (run {run}): ", 1)], argv
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert "STATE.md keeps the alarm line for work" in wait
+    assert cli.main(["reconcile", "--source", "work", "--config", cfg]) == cli.EXIT_OK
+    assert work_lines() == [first], "a run of the source shows its own lines, untagged"
+    # a cycle that fails before it reaches a source keeps that source's stored lines (no wipe)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(cycle_module, "build_arms", _raises)
+        cli.main(["sync", "--config", cfg])
+    assert work_lines() == [first.replace("alarm: ", f"alarm (run {run + 3}): ", 1)]
+    assert cli.main(["reconcile", "--source", "plainsrc", "--config", cfg]) == cli.EXIT_OK
+    assert work_lines() == [first.replace("alarm: ", f"alarm (run {run + 3}): ", 1)]
+    # a source no longer configured (its stored lines, as a run of an older config left them) is dropped
+    with Manifest(config.state_paths.db) as manifest:
+        stored = json.loads(manifest.get_meta("state_md_lines") or "{}")
+        manifest.set_meta("state_md_lines", json.dumps({**stored, "gone": [1, ["an old alarm"], []]}))
+    capsys.readouterr()
+    assert cli.main(["reconcile", "--source", "plainsrc", "--config", cfg]) == cli.EXIT_OK
+    with Manifest(config.state_paths.db) as manifest:
+        assert set(json.loads(manifest.get_meta("state_md_lines") or "{}")) == {"work", "plainsrc"}
+    assert "an old alarm" not in state_md.read_text(encoding="utf-8")
+    # an unreadable store carries nothing and fails no cycle
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_meta("state_md_lines", "{not json")
+    assert cli.main(["reconcile", "--source", "plainsrc", "--config", cfg]) == cli.EXIT_OK
+    assert work_lines() == []
+
+
+def _raises(*_args: object, **_kwargs: object) -> object:
+    raise RuntimeError("a cycle-level failure before any source")

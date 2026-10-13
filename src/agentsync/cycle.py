@@ -34,6 +34,7 @@ import re
 import secrets
 import shutil
 import socket
+import sqlite3
 import stat
 import struct
 import tempfile
@@ -123,6 +124,7 @@ from agentsync.manifest import (
 from agentsync.model import (
     ByteBudget,
     CanonicalHash,
+    CarriedLines,
     ChangeOp,
     ConversionResult,
     ConversionStatus,
@@ -2500,10 +2502,51 @@ class _Cycle:
         counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
-            self.publisher.write_state(report, self._statuses(self.config.sources))
+            self.publisher.write_state(
+                report, self._statuses(self.config.sources), carried=self._carried_state(report)
+            )
             self._append_state(self._state_extras())
         except (OSError, AgentSyncError) as exc:
             log.warning("STATE.md not written: %s", exc)
+
+    def _carried_state(self, report: CycleReport) -> dict[str, CarriedLines]:
+        """The alarm and error lines STATE.md shows for each configured source this run did not reach, from
+        the last run that did (B13 round 7 H73): STATE.md is rewritten by every cycle, so a ``reconcile
+        --source`` or ``accept-deletions`` of one source dropped another's alarm, which the waits say STATE.md
+        keeps. Each source this run reached has its lines from this run stored first, as raw text with the
+        run id, in the manifest meta :data:`_STATE_LINES_META`; a selected source a failed cycle never reached
+        keeps its stored lines, and a source no longer configured is dropped. An unreadable store carries
+        nothing and never fails the cycle."""
+        selected = {src.id for src in self.selected}
+        reports = {r.source_id: r for r in report.sources}
+        try:
+            raw = self.manifest.get_meta(_STATE_LINES_META)
+            loaded = json.loads(raw) if raw else {}
+        except (ValueError, sqlite3.Error) as exc:
+            log.info("STATE.md: the carried alarm lines could not be read: %s", exc)
+            loaded = {}
+        stored: dict[str, CarriedLines] = {}
+        for sid, raw_entry in loaded.items() if isinstance(loaded, dict) else ():
+            if (entry := _carried_entry(raw_entry)) is not None:
+                stored[sid] = entry
+        kept: dict[str, CarriedLines] = {}
+        ran = {sid for sid in selected if sid in self.accs}  # a cycle that failed first never reached some
+        for src in self.config.sources:
+            if src.id in ran:
+                r = reports.get(src.id)
+                kept[src.id] = CarriedLines(
+                    report.run_id, tuple(r.alarms) if r else (), tuple(r.errors) if r else ()
+                )
+            elif src.id in stored:
+                kept[src.id] = stored[src.id]
+        try:
+            self.manifest.set_meta(
+                _STATE_LINES_META,
+                json.dumps({sid: [c.run_id, list(c.alarms), list(c.errors)] for sid, c in kept.items()}),
+            )
+        except sqlite3.Error as exc:
+            log.info("STATE.md: the alarm lines to carry could not be stored: %s", exc)
+        return {sid: c for sid, c in kept.items() if sid not in ran and (c.alarms or c.errors)}
 
     def _run_tally(self) -> Counter[str]:
         """What this run adds to its ``runs.counts_json`` beside the change counts (CONTRACTS.md 16.28):
@@ -4965,6 +5008,22 @@ INTERACTIVE_LOCK_WAIT_S = 600.0
 """How long a mode-None (interactive) run waits for another cycle's lock before LockHeldError (exit 75)."""
 _LOCK_RETRY_S = 0.5
 _LOCK_PROGRESS_S = 30.0
+_STATE_LINES_META = "state_md_lines"
+"""Manifest meta: ``{source id: [run id, [alarm, ...], [error, ...]]}``, each configured source's lines from
+the last run that selected it, which STATE.md shows under a source a later run did not select (B13 round 7
+H73)."""
+
+
+def _carried_entry(entry: object) -> CarriedLines | None:
+    """One stored :data:`_STATE_LINES_META` entry, or None when it is not the shape this build writes."""
+    if not (isinstance(entry, list) and len(entry) == 3 and isinstance(entry[0], int)):
+        return None
+    alarms, errors = entry[1], entry[2]
+    if not all(isinstance(v, list) and all(isinstance(x, str) for x in v) for v in (alarms, errors)):
+        return None
+    return CarriedLines(entry[0], tuple(alarms), tuple(errors))
+
+
 QUIET_LOCK_WAIT_ENV = "AGENTSYNC_QUIET_LOCK_WAIT"
 """Set to 1 by scripts/install.sh for its first sync only, which prints its own wait line and a ticker: the
 lock wait then logs its first WARNING and sends the 30 s beats to DEBUG, and the CLI drops its skip WARNING,

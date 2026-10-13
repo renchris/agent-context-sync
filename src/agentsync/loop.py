@@ -163,7 +163,8 @@ def _shown(path: Path) -> str:
 
 def _named(config: Config, ids: Sequence[str], what: str) -> str:
     """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the docs repo's STATE.md keeps the
-    ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there.
+    ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there
+    (a run that does not select the source keeps that source's last one, tagged with its run: round 7 H73).
     STATE.md comes first, since it holds the line wherever the wait prints: install.sh's closing step and
     ``status`` print no alarm line, only a plain sync does (B13 round 7 H35). The alarm names five and itself
     points at ``sync -v`` for the rest, so the wait never does (round 7 H12). Two or more ids have one alarm

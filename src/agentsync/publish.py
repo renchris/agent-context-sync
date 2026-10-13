@@ -45,6 +45,7 @@ from agentsync.frontmatter import (
 )
 from agentsync.manifest import ItemRow, Manifest, OutputRow, TombstoneRow, redacted_path
 from agentsync.model import (
+    CarriedLines,
     ChangeOp,
     ConversionResult,
     ConversionStatus,
@@ -2007,8 +2008,18 @@ class Publisher:
             return "UNKNOWN (never succeeded)"
         return "STALE" if (now - last).total_seconds() > limit else "fresh"
 
-    def write_state(self, report: CycleReport, statuses: Sequence[SourceStatus]) -> None:
+    def write_state(
+        self,
+        report: CycleReport,
+        statuses: Sequence[SourceStatus],
+        *,
+        carried: Mapping[str, CarriedLines] | None = None,
+    ) -> None:
         """Write the gitignored ``_sync/STATE.md`` (read-side contract fields of design 4.6), every cycle.
+
+        ``carried``: for a source this run did not select, the alarm and error lines of the last run that did,
+        shown as ``alarm (run N):`` and ``error (run N):`` after any line this run has about it (B13 round 7
+        H73: a one-source run dropped the other sources' alarms, which the waits say STATE.md keeps).
 
         It opens with ``## Next``: :func:`loop.next_lines` (KISS K08b), worked out from disk after this
         cycle's commit and checkpoint, the lines ``sync`` prints after a cycle except two: a blocking lint
@@ -2104,6 +2115,9 @@ class Publisher:
                     lines.append(f"skipped_reason: {_quoted(r.skipped_reason)}")
                 lines += [f"alarm: {_quoted(a, _ALARM_MAX)}" for a in r.alarms]
                 lines += [f"error: {_quoted(e)}" for e in r.errors]
+            if (c := (carried or {}).get(st.source_id)) is not None:
+                lines += [f"alarm (run {c.run_id}): {_quoted(a, _ALARM_MAX)}" for a in c.alarms]
+                lines += [f"error (run {c.run_id}): {_quoted(e)}" for e in c.errors]
         if report.lint_findings:
             lines += ["", "## Lint findings", ""]
             for f in sorted(report.lint_findings, key=lambda f: (not f.blocking, f.code, f.path)):

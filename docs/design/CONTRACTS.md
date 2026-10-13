@@ -996,6 +996,11 @@ class SourceReport:
     refused: int = 0  # 2026-10-13 (§16.63 G35): of ``converted``, files refused after their bytes were read
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
 
+class CarriedLines(NamedTuple):  # 2026-10-13 (§16.68 H73): an unselected source's lines in STATE.md
+    run_id: int  # the last run that selected the source
+    alarms: tuple[str, ...]
+    errors: tuple[str, ...]
+
 @dataclass(frozen=True, slots=True)
 class CycleReport:
     """Everything one ``run_cycle`` did; the CLI prints it and STATE.md is rendered from it."""
@@ -2823,7 +2828,13 @@ class Publisher:
         """Regenerate ``_sync/QUARANTINE.tsv`` (source_id, path, reason) from quarantined/refused rows,
         sorted."""
 
-    def write_state(self, report: CycleReport, statuses: Sequence[SourceStatus]) -> None:
+    def write_state(
+        self,
+        report: CycleReport,
+        statuses: Sequence[SourceStatus],
+        *,
+        carried: Mapping[str, CarriedLines] | None = None,  # 2026-10-13 (§16.68 H73)
+    ) -> None:
         """Write the gitignored ``_sync/STATE.md`` (read-side contract fields of design 4.6), every cycle."""
 
     def write_state_snapshot(self, statuses: Sequence[SourceStatus]) -> None:
