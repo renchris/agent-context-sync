@@ -43,7 +43,7 @@ import json
 import logging
 import re
 import shlex
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -118,6 +118,9 @@ class NextStep:
     rule: int = 10  # which rule set ``step`` (1-10), for tests and the setup report
     # the doctor checks the waits explain (the setup report's "yours", §16.39 N16); lines() never prints them
     checks: tuple[str, ...] = ()
+    # per source, how many of the waits explain its ``heartbeat.<id>`` check, so doctor says "the line" for
+    # one and "each line" for more (B13 round 6 G44); one empty-folder block can print three
+    wait_counts: Mapping[str, int] = field(default_factory=dict)
 
     def lines(self) -> list[str]:
         """``NEXT: <step>``, then one ``WAITING ON YOU: …`` line per wait, then one ``note: …`` per note."""
@@ -541,9 +544,15 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     waits: list[str] = []
     notes: list[str] = []
     checks: list[str] = []  # doctor's check for each wait that explains one (NextStep.checks)
+    about: dict[str, int] = {}  # ... and per source, the waits that explain its heartbeat (wait_counts)
 
     def done(step: str, rule: int) -> NextStep:
-        return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks))
+        return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks), dict(about))
+
+    def explains(*sources: str) -> None:
+        """The wait just appended explains each source's heartbeat check."""
+        for sid in sources:
+            about[sid] = about.get(sid, 0) + 1
 
     # a kept upstream deletion is no wait: no run clears it while its file is listed; once the file is gone it
     # is a queued purge again, and the wait returns. A kept label escalation is no wait either: its file is
@@ -657,6 +666,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"macOS prompt (it can sit behind other windows), then run `{BIN} sync`"
         )
         checks.extend(f"heartbeat.{s}" for s in sorted(held))
+        explains(*held)
     for src, below, clear, collides, missed in empty:
         checks.append(f"heartbeat.{src.id}")  # below is never empty: one wait or more follow
         # An empty cloud folder is unknown, never empty, on every pass. The line naming exclude-empty counts
@@ -693,6 +703,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 + _named(config, src.id, "the folder(s)")
                 + (f"; {size}" if size and not gone and not collides else "")
             )
+            explains(src.id)
         if collides:
             waits.append(
                 f"{len(collides)} empty cloud folder(s) in {src.id} have a [ in the name, so an exclude of "
@@ -702,6 +713,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 + _named(config, src.id, "them")
                 + (f"; {size}" if size and not gone else "")
             )
+            explains(src.id)
         if gone:
             waits.append(
                 f"{len(gone)} empty cloud folder(s) in {src.id} held {sum(gone)} file(s) the mirror still "
@@ -712,6 +724,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 + _named(config, src.id, "the folders")
                 + (f"; in all, {size}" if size else "")
             )
+            explains(src.id)
     # A source whose last walk missed mirrored files gets its own line: excluding the folder retires their
     # pages at once (the gone line's warning), so that line never offers the exclude as a plain choice.
     if bare := sorted(s for s, missed in unlisted if not missed):
@@ -720,6 +733,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"or sentinel; another sync does not clear it): {_named(config, ', '.join(bare), 'it')}; grant "
             "Files and Folders access, or add it to that source's exclude in sources.toml"
         )
+        explains(*bare)
     for sid, missed in sorted((s, m) for s, m in unlisted if m):
         waits.append(
             f"a folder in {sid} could not be listed (no access, or a missing folder or sentinel; another "
@@ -728,6 +742,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             "the folder to that source's exclude retires the pages under it at once, with no deletion check "
             "and no purge queued"
         )
+        explains(sid)
     checks.extend(f"heartbeat.{s}" for s, _ in sorted(unlisted))
     for sid in sorted(root_unlisted):  # a root cannot be excluded: never offer it
         waits.append(
@@ -737,6 +752,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f'state = "paused" in [[source]] id = "{sid}" in {_shown(config.config_path)}'
         )
         checks.append(f"heartbeat.{sid}")
+        explains(sid)
     if blocked:
         waits.append(
             f"the network refuses Microsoft Graph for {', '.join(sorted(blocked))} (proxy, TLS inspection or "

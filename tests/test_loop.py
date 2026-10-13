@@ -372,10 +372,12 @@ def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
         assert not r.ok and r.detail.startswith("enumeration incomplete for 3"), r
         return r
 
+    # B13 round 6 G44: one wait about work, so "the line", as the sync's alarm says it
     assert heartbeat().fix == (
-        "each WAITING ON YOU line about work says what stops the listing and what to do: another sync "
+        "the WAITING ON YOU line about work says what stops the listing and what to do: another sync "
         "does not clear it"
     )
+    assert loop.next_step(config, count_queue=False).wait_counts == {"work": 1}
     path = config.config_path
     path.write_text(path.read_text(encoding="utf-8") + 'exclude = ["/Empty/"]\n', encoding="utf-8")
     config = load_config(path)
@@ -384,6 +386,35 @@ def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     r = heartbeat()
     assert r.note is None and r.fix == "~/.local/bin/agentsync sync; another full walk lists it"
+
+
+def test_status_says_each_wait_line_when_one_source_has_more_than_one(tmp_path: Path) -> None:
+    """B13 round 6 G44: the heartbeat fix says "the WAITING ON YOU line" only when status knows exactly one
+    wait explains it. One source's empty-folder block can print up to three, here the clear line and the
+    gone line, so the count is of the waits, never of the checks (one per source)."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    for name in ("first.txt", "second.txt"):
+        _write(root / "Reports" / "2026" / name, "The quarter closed on time.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    shutil.rmtree(root / "Reports" / "2026")
+    (root / "Reports" / "2026").mkdir()
+    for _ in range(3):
+        run_cycle(config, mode=None)
+    step = loop.next_step(config, count_queue=False)
+    assert len(step.waits) == 2 and step.checks == ("heartbeat.work",) and step.wait_counts == {"work": 2}
+    (r,) = [c for c in cli._build_status(config).checks if c.name == "heartbeat.work"]
+    assert r.fix == (
+        "each WAITING ON YOU line about work says what stops the listing and what to do: another sync "
+        "does not clear it"
+    )
+    # without the loop's count (the setup report's doctor), "each" stays: it may show none
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    (r,) = [c for c in doctor._check_heartbeat(config) if c.name == "heartbeat.work"]
+    assert r.fix is not None and r.fix.startswith("each WAITING ON YOU line about work ")
 
 
 def test_status_next_is_the_loops_with_and_without_a_fail(

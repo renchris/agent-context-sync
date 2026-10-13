@@ -37,7 +37,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1067,12 +1067,20 @@ def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
 
 
 def _status_checks(
-    config: Config, *, offline: bool = False, loop_checks: Sequence[str] | None = None
+    config: Config,
+    *,
+    offline: bool = False,
+    loop_checks: Sequence[str] | None = None,
+    loop_waits: Mapping[str, int] | None = None,
 ) -> list[doctor.CheckResult]:
     """Every check of ``status``. ``offline`` (setup-report): no Graph probe and no TCC canary (it can raise
-    a privacy prompt). ``loop_checks``: the loop's ``NextStep.checks``, for the heartbeat check."""
+    a privacy prompt). ``loop_checks`` and ``loop_waits``: the loop's ``NextStep.checks`` and
+    ``NextStep.wait_counts``, for the heartbeat check."""
     checks = doctor.run_checks(
-        config, tcc_canary=not offline and _tcc_canary_due(config), loop_checks=loop_checks
+        config,
+        tcc_canary=not offline and _tcc_canary_due(config),
+        loop_checks=loop_checks,
+        loop_waits=loop_waits,
     )
     return checks + _extra_checks(config, offline=offline)
 
@@ -1098,7 +1106,11 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         step: loop.NextStep | None = loop.next_step(config, count_queue=False)
     except Exception:  # the NEXT read below names the error; the checks keep their default wording
         step = None
-    checks = _status_checks(config, loop_checks=None if step is None else step.checks)
+    checks = _status_checks(
+        config,
+        loop_checks=None if step is None else step.checks,
+        loop_waits=None if step is None else step.wait_counts,
+    )
     fixes = [_fail_step(r) for r in checks if not r.ok and r.severity is doctor.Severity.ERROR]
     next_lines: list[str] = []
     if not hint_off:

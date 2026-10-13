@@ -14482,7 +14482,10 @@ a command. doctor's heartbeat fix keeps `each WAITING ON YOU line about <id>`, w
 **Amended 2026-10-13, §16.63 G42:** the waits now name this alarm as where the folders are named, so the alarm
 names the wait for the step and no longer sends the reader back for the folders: `the WAITING ON YOU line about
 <id> at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` prints it too` (`each ...
-prints them too` for two or more). Its comment counts up to three waits per source (§16.63 G57).
+prints them too` for two or more). Its comment counts up to three waits per source (§16.63 G57). **Amended
+2026-10-13, §16.63 G44:** doctor's heartbeat fix says `the WAITING ON YOU line about <id>` when status knows exactly
+one wait explains it (`loop.NextStep.wait_counts`, counted per wait, not per check), and keeps `each ...`
+otherwise, including the setup report's doctor, which has no count.
 
 **F2: the tcc ok line names no LaunchAgent that is not there (`agentsync.ops.doctor`).** When `agents_wanted` is
 false (no plist, no pending agent step) the line reads `cloud roots were listed with this terminal's privacy

@@ -1653,7 +1653,12 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     ]
 
 
-def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = None) -> list[CheckResult]:
+def _check_heartbeat(
+    config: Config,
+    *,
+    loop_checks: Collection[str] | None = None,
+    loop_waits: Mapping[str, int] | None = None,
+) -> list[CheckResult]:
     """Per live source: auth state, last success within 3 x cadence, enumeration completing.
 
     ``loop_checks`` (``loop.NextStep.checks``, which status passes) are the checks a WAITING ON YOU line
@@ -1710,7 +1715,10 @@ def _check_heartbeat(config: Config, *, loop_checks: Collection[str] | None = No
             if yours and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
                 out.append(CheckResult(name, False, detail, Severity.WARN, note=_LISTING_YOURS_NOTE))
             else:
-                out.append(_bad(name, detail, Severity.WARN, fix=_incomplete_fix(src, yours=yours)))
+                waits = None if loop_waits is None else loop_waits.get(src.id)
+                out.append(
+                    _bad(name, detail, Severity.WARN, fix=_incomplete_fix(src, yours=yours, waits=waits))
+                )
         else:
             detail = f"last success {last} ({age}s ago, {entry.get('pass_kind')})"
             # Below the threshold the line stays ok (one incomplete pass is normal for an inbox while a file
@@ -1749,7 +1757,7 @@ def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
         return False
 
 
-def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
+def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int | None = None) -> str:
     """The fix for a source whose listing stays incomplete. ``yours`` (default: a local source): a WAITING ON
     YOU line explains it. A local folder's walk is always a full pass, so the same folder stops it again: each
     such line about the source says which case it is and what to do (they count the empty cloud folders and
@@ -1758,13 +1766,17 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
     incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names any
     other cause. A local source with no such line either changed since its last walk (its stopping folders are
     excluded now) or had no full walk yet: the next full walk lists it.
+    ``waits``: how many WAITING ON YOU lines explain it, when status knows (``loop.NextStep.wait_counts``):
+    "the line" only for exactly one, as the sync's alarm says it (B13 round 6 G44); unknown (the setup
+    report, which may show none) and more than one keep "each", true for any count.
     No nested parentheses: the setup report's fix parser strips one level."""
     if yours is None:
         yours = src.kind is SourceKind.LOCAL
     if yours:
+        which = "the WAITING ON YOU line" if waits == 1 else "each WAITING ON YOU line"
         return (
-            f"each WAITING ON YOU line about {src.id} says what stops the listing and what to do: another "
-            "sync does not clear it"
+            f"{which} about {src.id} says what stops the listing and what to do: another sync does not "
+            "clear it"
         )
     if src.kind is SourceKind.LOCAL:
         return f"{BIN} sync; another full walk lists it"
@@ -1929,7 +1941,11 @@ def _tcc_canary_skipped(config: Config) -> list[CheckResult]:
 
 
 def run_checks(
-    config: Config, *, tcc_canary: bool = True, loop_checks: Collection[str] | None = None
+    config: Config,
+    *,
+    tcc_canary: bool = True,
+    loop_checks: Collection[str] | None = None,
+    loop_waits: Mapping[str, int] | None = None,
 ) -> list[CheckResult]:
     """Run every check, in a fixed order, never raising for a single failed check.
 
@@ -1946,13 +1962,14 @@ def run_checks(
     (WARN when ad hoc), and per TCC-protected source a timed metadata-only canary run *as the launcher*.
     ``tcc_canary=False`` (KISS K08a: ``status`` decides when it is due) replaces the canary with one
     ``tcc.canary`` info line. ``loop_checks`` (``loop.NextStep.checks``; ``None``: not read) go to the
-    heartbeat check, which points an incomplete listing at WAITING ON YOU only when the loop has that wait.
+    heartbeat check, which points an incomplete listing at WAITING ON YOU only when the loop has that wait,
+    with ``loop_waits`` (``loop.NextStep.wait_counts``) saying how many lines.
     """
     results: list[CheckResult] = []
     for group, check in _CHECKS:
         run = _tcc_canary_skipped if group == "tcc" and not tcc_canary else check
         if group == "heartbeat" and loop_checks is not None:
-            run = functools.partial(_check_heartbeat, loop_checks=loop_checks)
+            run = functools.partial(_check_heartbeat, loop_checks=loop_checks, loop_waits=loop_waits)
         try:
             results.extend(run(config))
         except Exception as exc:
