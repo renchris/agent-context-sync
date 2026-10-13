@@ -179,8 +179,19 @@ PROMPT_STEPS = {
     3: "IT request and report",
     4: "finish",
 }
-"""The issue form's Outcome step names: setup prompt v6's four steps, kept unchanged in v7 (KISS K16b) so
-older reports keep their option; each layout's ``form_step`` maps its steps onto them."""
+"""Setup prompt v6's four step names, the issue form's first Outcome step options, kept in v7 (KISS K16b) so
+older reports keep their option; each layout's ``form_step`` maps its steps onto them where the form has no
+option of the layout's own (:attr:`Outcome.form_label`)."""
+FORM_OUTCOME_OPTIONS = (
+    "Fully one command",
+    "Worked with help",
+    *(f"Failed at step {n} ({name})" for n, name in PROMPT_STEPS.items() if n < 4),
+    "Failed at step 3 (sync loop and report)",
+    f"Failed at step 4 ({PROMPT_STEPS[4]})",
+)
+"""The issue form's Outcome options, in its order (.github/ISSUE_TEMPLATE/setup-report.yml): v6's, and v7's
+step 3 by its own name (B13 round 7 H11), so a v7 and later link's field names the step the person had; the v6
+name stays an option, so old links stay valid, and triage of step 3 adds both."""
 FOLDER_QUESTION_STEP = 1
 """The step that asks the one question fully one command allows (which folders to sync). Prompt v6 does not
 log it (its ``question`` kind is "something other than which folders to sync"; since v11 the kind also covers
@@ -1645,12 +1656,18 @@ class Outcome:
 
     @property
     def form_label(self) -> str | None:
-        """The issue form's Outcome option (None when there is none to prefill); a v5 attempt's step is
-        mapped to the current prompt's step that does the same work (v5's step 4, the IT request, is 3)."""
+        """The issue form's Outcome option (None when there is none to prefill): the attempt's own step name
+        when the form has it as an option (v7's step 3, "sync loop and report", B13 round 7 H11), else the
+        step mapped to v6's that does the same work (v5's step 4, the IT request, is 3)."""
         if self.kind == "fully one command":
             return "Fully one command"
         if self.kind == "worked with help":
             return "Worked with help"
+        own = prompt_layout(self.version).steps.get(self.step) if self.step is not None else None
+        if self.kind in ("failed", "stopped") and own is not None:
+            label = f"Failed at step {self.step} ({own})"
+            if label in FORM_OUTCOME_OPTIONS:
+                return label
         if self.kind in ("failed", "stopped") and self.step is not None:  # the form has no "stopped"
             step = prompt_layout(self.version).form_step.get(self.step, self.step)
             step = max(1, min(step, max(PROMPT_STEPS)))
@@ -1660,8 +1677,9 @@ class Outcome:
     @property
     def title_label(self) -> str | None:
         """The issue title's words: a failed step named as the attempt's own prompt names it (v14's step 3 is
-        "sync loop and report"), where :attr:`form_label` keeps v6's option names so every link's prefilled
-        field stays a valid option (KISS K16b; B13 round 6 G12). A stopped attempt's title says "Stopped",
+        "sync loop and report"), where :attr:`form_label` keeps v6's option names for a step the form has no
+        option of its own for, so every link's prefilled field stays a valid option (KISS K16b; B13 round 6
+        G12, round 7 H11). A stopped attempt's title says "Stopped",
         as its Summary does, while the form, which has no such option, still gets the Failed one (B13 round 7
         H42). Otherwise :attr:`form_label`."""
         steps = prompt_layout(self.version).steps

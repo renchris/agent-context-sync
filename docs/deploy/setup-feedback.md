@@ -143,7 +143,7 @@ each value URL-encoded; `title` is the issue title, "Setup report: " and the out
 
 | Field id | Type | Value |
 |---|---|---|
-| `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `finish`) |
+| `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `sync loop and report`, `finish`); setup prompt v7 and later name step 3 `sync loop and report`, v6 `IT request and report`, so a count of step 3 failures adds both |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
 | `prompt_version` | input | the prompt version, `v16` (an attempt an older copy started reports that copy's: `v15`, `v14`, `v13`, `v12`, `v11`, `v10`, `v9`, `v8`, `v7`, `v6`, `v5`) |
 | `agent` | input | the attempt header's `Agent:` value (for an attempt with no header, the agent its step 1 error line names, below) |

@@ -15298,6 +15298,9 @@ it as `title_outcome` for the title only. A v7 to v14 attempt failed at step 3 g
 at step 3 (sync loop and report) · …`, while the `outcome` field keeps v6's option `Failed at step 3 (IT request and
 report)` (KISS K16b), so old and new links stay valid options and triage counts stay in one bucket. v6 titles are
 unchanged. Test: `test_prompt_layout_is_picked_by_explicit_version`.
+Amended 2026-10-13, §16.69 H11: the form has a `Failed at step 3 (sync loop and report)` option, and `form_label`
+gives it to a v7 and later attempt failed at step 3, as the title does; `Failed at step 3 (IT request and report)`
+stays for v6 and v5 links, so triage of step 3 now adds both options (`FORM_OUTCOME_OPTIONS`).
 Amended 2026-10-13, §16.69 H42: a `stopped` attempt's title reads `Stopped at step 1 (<the step's name in its own
 layout>)`, as its Summary does; its `outcome` field stays `Failed at step 1 (preflight)`.
 
@@ -15843,6 +15846,18 @@ engine. The finder's wording was not built: "the newest run with an OCR engine" 
 "nothing is left to read again" drops "on this Mac" and the dying-cycle fact (the verifier's measurement). Tests:
 `tests/test_setup_report.py::test_an_all_zero_re_read_table_is_one_line`,
 `tests/test_setup_report.py::test_ocr_part_counts_images_documents_rereads_and_time`.
+
+**The issue form's step 3 option is the attempt's own** (H11; dated line at §16.64 G12). G12 named a v7 to v15
+step 3 failure "sync loop and report" in the title and kept v6's "IT request and report" in the `outcome` field, a
+step those people never had, and the field is the one a maintainer filters on. The form,
+`.github/ISSUE_TEMPLATE/setup-report.yml`, adds `Failed at step 3 (sync loop and report)` after v6's step 3 option, which stays so v6 and older
+links stay valid, and its description says to count both for step 3. `FORM_OUTCOME_OPTIONS` names the options in
+the form's order; `Outcome.form_label` returns the attempt's own step name when the form has it as an option and
+maps through `form_step` to v6's otherwise (v5, and v7's step 2 `install`, which keeps `install and start`). The cost
+is the one G12 avoided, two buckets for step 3, now stated in the form and in setup-feedback.md. Tests:
+`tests/test_setup_report.py::test_prompt_layout_is_picked_by_explicit_version`,
+`tests/test_deploy_pack.py::test_setup_report_form_outcomes_match_the_readme_prompt` (every layout's failed step is
+an option) and `test_setup_report_form_has_a_run_type` (the options are `FORM_OUTCOME_OPTIONS`).
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`

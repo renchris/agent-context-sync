@@ -2515,7 +2515,17 @@ def test_setup_report_form_outcomes_match_the_readme_prompt() -> None:
     failed = [re.fullmatch(r"Failed at step (\d+) \(([^)]+)\)", o) for o in options[2:]]
     assert all(failed), options
     titles = {int(m.group(1)): m.group(2) for m in failed if m}
-    assert titles == setup_report.PROMPT_STEPS, "the form's options are the v6 steps the module names"
+    options_of = getattr(setup_report, "FORM_OUTCOME_OPTIONS", None)
+    if options_of is None:  # an agentsync before B13 round 7 H11: v6's four, by PROMPT_STEPS
+        assert titles == setup_report.PROMPT_STEPS, "the form's options are the v6 steps the module names"
+    else:  # v6's options stay, and each layout's failed step gives one of them
+        assert options == list(options_of), "the form's options are the ones the module names"
+        kept = {(int(m.group(1)), m.group(2)) for m in failed if m}
+        assert set(setup_report.PROMPT_STEPS.items()) <= kept, "v6's options stay, so old links stay valid"
+        for layout in setup_report.PROMPT_LAYOUTS.values():
+            for n in layout.steps:
+                label = setup_report.Outcome("failed", n, (), layout.version).form_label
+                assert label in options, (layout.version, n, label)
     steps = _prompt_steps()
     layout = setup_report.prompt_layout(_prompt_version())
     assert _prompt_version() == setup_report.PROMPT_VERSION, "the module's prompt is the README's"
@@ -2525,7 +2535,9 @@ def test_setup_report_form_outcomes_match_the_readme_prompt() -> None:
     assert list(layout.steps) == list(steps)
     for n, text in steps.items():
         assert text.lower().startswith(layout.steps[n].lower()), (n, layout.steps[n], text)
-        assert layout.form_step[n] in titles, f"README step {n} maps to no form option"
+        assert setup_report.Outcome("failed", n, ()).form_label in options, (
+            f"README step {n} maps to no option"
+        )
 
 
 def test_setup_report_form_has_a_run_type() -> None:
@@ -2562,7 +2574,10 @@ def test_setup_report_prefills_the_forms_ids_and_labels() -> None:
     if run_types is not None:
         assert sorted(run_types.values()) == sorted(RUN_TYPES)
     steps = getattr(setup_report, "PROMPT_STEPS", None)
-    if steps is not None:
+    options = getattr(setup_report, "FORM_OUTCOME_OPTIONS", None)
+    if options is not None:  # since B13 round 7 H11
+        assert list(options) == _field("outcome")["attributes"]["options"]
+    elif steps is not None:
         labels = [f"Failed at step {n} ({title})" for n, title in sorted(steps.items())]
         assert labels == _field("outcome")["attributes"]["options"][2:]
 

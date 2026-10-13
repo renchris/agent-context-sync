@@ -3270,11 +3270,19 @@ def test_prompt_layout_is_picked_by_explicit_version() -> None:
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
+    # B13 round 7 H11: the field names the step the person had, now an option of the form; v6 keeps its own
     for version in (7, 8, 9, 10, 11, 12, 13, 14, 15, 16):
         label = setup_report.Outcome("failed", 3, (), version).form_label
-        assert label == "Failed at step 3 (IT request and report)", "the form's options are unchanged"
+        assert label == "Failed at step 3 (sync loop and report)", version
+        assert label in setup_report.FORM_OUTCOME_OPTIONS
     assert setup_report.Outcome("failed", 3, ()).form_label == label, "the default is this build's prompt"
-    # B13 round 6 G12: the title names the attempt's own step; the field keeps v6's option
+    v6_label = setup_report.Outcome("failed", 3, (), 6).form_label
+    assert (
+        v6_label == "Failed at step 3 (IT request and report)"
+        and v6_label in setup_report.FORM_OUTCOME_OPTIONS
+    )
+    assert setup_report.Outcome("failed", 4, (), 5).form_label == "Failed at step 3 (IT request and report)"
+    # B13 round 6 G12: the title names the attempt's own step, and since round 7 H11 so does the field
     for version in (7, 14, None):
         failed = setup_report.Outcome("failed", 3, (), version)
         assert failed.title_label == "Failed at step 3 (sync loop and report)"
@@ -3287,7 +3295,7 @@ def test_prompt_layout_is_picked_by_explicit_version() -> None:
         )
         query = parse_qs(urlsplit(link).query)
         assert query["title"] == ["Setup report: Failed at step 3 (sync loop and report) · Sandbox · v14"]
-        assert query[setup_report.ISSUE_FIELDS["outcome"]] == ["Failed at step 3 (IT request and report)"]
+        assert query[setup_report.ISSUE_FIELDS["outcome"]] == ["Failed at step 3 (sync loop and report)"]
     for step, name in setup_report.PROMPT_STEPS.items():
         assert setup_report.Outcome("failed", step, (), 6).title_label == f"Failed at step {step} ({name})"
     assert setup_report.Outcome("fully one command", None, (), 14).title_label == "Fully one command"
