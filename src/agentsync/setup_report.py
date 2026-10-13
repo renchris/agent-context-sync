@@ -2593,8 +2593,6 @@ def _build_redactor(r: _Run) -> Redactor:
         tenant = r.config.graph.tenant
         if tenant and "." in tenant:
             orgs.append(tenant.split(".", 1)[0])
-            if not tenant.lower().endswith(".onmicrosoft.com"):  # a custom domain: whole, so a word-named
-                red.add("org", tenant, ignore_case=True)  # organisation's domain never prints (F42)
         for src in r.config.sources:
             if src.site:
                 host, _, site_path = src.site.partition(":")
@@ -2606,6 +2604,11 @@ def _build_redactor(r: _Run) -> Redactor:
     red.set_app_heads(heads)
     for org in orgs:
         red.add("org", org, fuzzy=True)
+    tenant = r.config.graph.tenant if r.config is not None else ""
+    if tenant and "." in tenant and not tenant.lower().endswith(".onmicrosoft.com"):
+        # a custom domain: whole, so a word-named organisation's domain never prints (F42); after the
+        # organisations, so OneDrive's stays <org-1> (B13 round 6 G49)
+        red.add("org", tenant, ignore_case=True)
     for _sid, provider, comps in cloud_sources:
         shared = provider.startswith("OneDrive-SharedLibraries-") and bool(comps)
         if shared:

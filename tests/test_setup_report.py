@@ -8077,3 +8077,18 @@ def test_a_configured_generic_folder_leaves_the_report_public(fake_mac: dict[str
     text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
     assert "OneDrive-<org-1>/<folder-" in text and "/Documents" not in text, "still redacted"
     assert "Private only:" not in text and "Send it: the link on the last line opens" in text
+
+
+def test_a_custom_domain_tenant_leaves_onedrives_organisation_org_1(fake_mac: dict[str, Path]) -> None:
+    """B13 round 6 G49: a custom-domain graph.tenant was registered whole before the organisations, so it took
+    <org-1>, OneDrive's organisation became <org-2> and <org-1> appeared nowhere. It is registered after
+    them; the domain still never prints."""
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + '\n[graph]\ntenant = "contoso.com"\n', encoding="utf-8")
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    assert "OneDrive-<org-1>" in section(text, "Environment")
+    assert "<org-2>" not in text and "contoso.com" not in text.lower()
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    assert red.redact("see contoso.com, CONTOSO.COM and https://contoso.com/x") == (
+        "see <org-2>, <org-2> and https://<org-2>/x"
+    ), "the domain is still whole and matched in any case"

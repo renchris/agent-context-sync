@@ -15324,6 +15324,12 @@ private, Downloads only the shell's). An organisation is unaffected; `Status` st
 `test_a_configured_generic_folder_leaves_the_report_public`,
 `test_the_shell_report_leaves_a_report_with_a_generic_folder_public`.
 
+**G49: OneDrive's organisation stays <org-1> beside a custom-domain tenant.** Amends §16.58 F42: the custom-domain
+`graph.tenant` is registered whole after the organisations, not before them, so the first CloudStorage entry's
+organisation keeps `<org-1>` (the comment's "OneDrive's first" rule) and the domain, when a line names it, takes the
+next number; it still never prints, in any case or inside a URL. Test:
+`test_a_custom_domain_tenant_leaves_onedrives_organisation_org_1`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.
