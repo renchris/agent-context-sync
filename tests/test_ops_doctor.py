@@ -1660,21 +1660,19 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
 def test_heartbeat_incomplete_fix_by_source_kind(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Bring-back S11: an inbox is incomplete while a file is being written, so sync again is its fix; a
-    Graph source's is the full pass of reconcile. A local folder points at the loop's WAITING ON YOU line,
-    the one place that names the empty cloud folders and weighs what excluding them would retire: no folder
-    name here, and no walk of the source. Under install.sh the line is a note, since install.sh prints the
-    loop's line."""
+    """Bring-back S11: an inbox is incomplete while a file is being written, so sync again is its fix, and a
+    Graph source's too (B13 round 6 G54: the loop says the same, and a plain sync clears the count). A local
+    folder points at the loop's WAITING ON YOU line, the one place that names the empty cloud folders and
+    weighs what excluding them would retire: no folder name here, and no walk of the source. Under install.sh
+    the line is a note, since install.sh prints the loop's line."""
     local = sample_config.sources[0]
     fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=SourceKind.INBOX))
     assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
     assert_fix_parses(fix)
-    # B13 round 5 F69: a plain sync of a Graph source runs a delta pass, which never lists it in full.
+    # B13 round 6 G54: since F69 a delta resets the count, and the three FULL passes the warn needs come only
+    # where a plain sync is FULL too, so a Graph source keeps sync -v, as the loop and CONTRACTS say.
     fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=SourceKind.GRAPH_DRIVE))
-    assert fix == (
-        "~/.local/bin/agentsync reconcile --source team-drive (a full pass that lists all of team-drive "
-        "clears this)"
-    )
+    assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
     assert_fix_parses(fix)
     root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
     (root / "Bids").mkdir(parents=True)

@@ -1768,10 +1768,10 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None) -> str:
         )
     if src.kind is SourceKind.LOCAL:
         return f"{BIN} sync; another full walk lists it"
-    if src.kind.is_graph:
-        # A plain sync of a Graph source runs a delta pass, which never lists it in full: the command that
-        # does is reconcile (B13 round 5 F69).
-        return f"{BIN} reconcile --source {src.id} (a full pass that lists all of {src.id} clears this)"
+    # A Graph source keeps sync -v too (B13 round 6 G54): since F69 a delta resets the count, so the warn
+    # takes three incomplete FULL passes in a row, and those come only with no cursor kept or a drive not
+    # baselined, where a plain sync is itself FULL; otherwise a plain sync runs a delta, which clears the
+    # count. reconcile is only an explicit FULL, and the loop says sync again for the same source.
     return f"{BIN} sync -v (a full pass that lists all of {src.id} clears this)"
 
 

@@ -1001,9 +1001,9 @@ def test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok(
         "enumeration incomplete for 3 consecutive passes (files missing from the listing are kept while "
         "deletions Graph reports still apply)"
     )
-    fix = f"~/.local/bin/agentsync reconcile --source {DRIVE} (a full pass that lists all of {DRIVE} clears "
-    fix += "this)"
-    assert line.fix == fix
+    # B13 round 6 G54: the fix is sync -v, as the loop's; a plain sync of a drive is FULL in the cases
+    # that reach three, and a delta otherwise resets the count.
+    assert line.fix == f"~/.local/bin/agentsync sync -v (a full pass that lists all of {DRIVE} clears this)"
 
 
 @pytest.mark.parametrize("why", ["moved-out-of-scope", "moved:ARCHIVE-FOLDER", "excluded"])

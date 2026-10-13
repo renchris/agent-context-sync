@@ -14497,6 +14497,13 @@ flag and the classifier are unchanged; a FULL pass that stops short still counts
 reports still apply` for a Graph one (`doctor._held`); a Graph source's fix is `~/.local/bin/agentsync reconcile --source
 <id> (a full pass that lists all of <id> clears this)`. Tests:
 `test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok`, `test_heartbeat_incomplete_fix_by_source_kind`.
+**Amended 2026-10-13, §16.63 G54:** the Graph fix is `~/.local/bin/agentsync sync -v (a full pass that lists all of
+<id> clears this)` again, as the loop and the doctor paragraph of §16.22 say. Since this change a delta resets the
+count, so the warn needs three incomplete FULL passes in a row; those happen only when no cursor is kept or the
+drive is not baselined, and then a plain sync is itself FULL. Otherwise a plain sync runs a delta, which clears the
+count. reconcile was only an equivalent, explicit FULL. **Amended 2026-10-13, §16.63 G53:** the heartbeat entry's
+`enumeration_complete` keeps the pass's own flag; only `consecutive_incomplete` reads a Graph delta as listed
+(`write_heartbeat(..., counts_as_listed=)`).
 
 **F34: one parenthesis per subject on the sync line (`agentsync.cli`, `agentsync.setup_report`).** With the Q28
 clause (`read again R (F of them read for the first time, also counted above)`) the unreadable split follows as
