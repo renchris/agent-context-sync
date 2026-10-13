@@ -15210,6 +15210,13 @@ both to `~`, so after redaction `(A, stored as A)` becomes `(A)` (`_SAME_STORED_
 redacted copy gets it). A note whose forms still differ after redaction stays. cli.py is unchanged: on the terminal
 the difference is the information. Test: `test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once`.
 
+**G51: an Attempt: line alone is not a header.** parse_friction's F23 rule (§16.58) reads a stated step 1 error as
+another session's after a header (a Prompt:, Agent:, Outcome: or Run: line), whatever the gap; an `Attempt:` line
+alone is not one, as install.sh's awk has it. The `cur["started"]` clause that said otherwise never fired (started
+is set only by an Attempt: line, which clears the stated words the rule needs) and is gone; behaviour is unchanged,
+so the test pins it rather than failing without the change. Test:
+`test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.
