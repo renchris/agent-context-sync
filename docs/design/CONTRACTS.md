@@ -15351,6 +15351,9 @@ tokens), so a tenant named like any of them (`Status`, `Probe`) printed bare in 
   `Agent`) goes into `_word_named`, so the Redaction section says `Private only:` (F92), and its name never prints.
   `~/agent-context` then reads `~/agent-<org-N>` in that private report; that is the cost F42's verifier ranked
   below a leak.
+  Amended 2026-10-13, §16.69 H74: agentsync's own path names after a slash (`agent-context`, `agent-context-sync`,
+  case-sensitive, to a path boundary) are held whole, as the repository locator is, so `~/agent-context` stays;
+  the organisation is replaced everywhere else and the report stays private only.
 Known difference: a word that is only an install.sh code token (a local variable's name) is replaced everywhere in
 both reports, but only the shell report adds `Private only:`, because its `report_word` reads every code token. Narrowing that vocabulary to
 printed text would also change the joined-name rule (F93), which the verifier warned against; it over-warns and
@@ -15758,6 +15761,19 @@ Nothing is sent automatically.`, the shell report's words. No reader needs the l
 `report_issue_link` and `stopped_report_note` handle a report without one, and `setup-report --out` and install.sh
 already print none for it. The README prompt already says "none when the report says it is for a private copy only".
 Test: `tests/test_setup_report.py::test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately`.
+
+**agentsync's own paths stay whole beside an organisation named like them** (H74; dated line at §16.64 G45). An
+organisation `Context` or `Agent` is a report word, fuzzy and matched everywhere, so it cut `~/agent-context/setup/`
+to `~/agent-<org-1>/setup/` and `~/src/agent-context-sync` to `~/src/<org-1>-context-sync`, and anyone who knows the
+tool reads the name back; the shell report (a case-sensitive pair) kept them whole. `Redactor._compile` adds a held
+alternative, `keep_path`, after the repository locator: `(?<=/)agent-context(?:-sync(?:\.git)?)?` with no word
+character, hyphen or dotted suffix after it, case-sensitive, so an organisation spelled `Agent-Context` or a folder
+`agent-context-partners` is still replaced, and a registered value that begins with those words and is longer
+(`agent-context Contoso`) is tried first through a negative lookahead (`_HELD_PATH_NORMS`), so it is replaced too.
+The path is the same on every Mac, so holding it reveals nothing;
+`_word_named` is unchanged and the report stays `Private only:`. install.sh's case-sensitive pair is not changed
+(lane RB's file; only a lowercase `context` organisation would cut it there). Test:
+`tests/test_setup_report.py::test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole`.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`

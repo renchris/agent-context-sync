@@ -8210,6 +8210,40 @@ def test_a_report_word_organisation_never_prints_and_a_generic_one_keeps_the_rep
     assert private == (org == "Status"), org
 
 
+@pytest.mark.parametrize("org", ["Context", "Agent"])
+def test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole(
+    fake_mac: dict[str, Path], org: str
+) -> None:
+    """B13 round 7 H74: an organisation named Context or Agent is a report word matched everywhere (G45), so
+    it cut agentsync's own paths to ``~/agent-<org-1>/setup/`` and ``~/src/<org-1>-context-sync``, from which
+    a reader recovers the name; the shell report kept them whole. Those fixed path names are held now, as the
+    repository locator is; the organisation is replaced everywhere else, and the report stays private only."""
+    (fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{org}").mkdir()
+    (fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{org}" / f"Agent-{org} Team").mkdir()
+    write_friction(
+        fake_mac,
+        V7_HAPPY.replace(
+            "2026-09-29T10:01:10Z | end",
+            f"2026-09-29T10:00:00Z | step 2 | deviation | the {org} tenant asked for MFA in "
+            f"OneDrive-{org}/Agent-{org} Team; ran ~/src/agent-context-sync/scripts/install.sh | -\n"
+            "2026-09-29T10:01:10Z | end",
+        ),
+    )
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    assert "~/agent-context/setup/" in text and "~/src/agent-context-sync/scripts/install.sh" in text
+    assert "agent-<org-" not in text and "<org-1>-context" not in text and "<org-2>-context" not in text
+    for named in (f"the {org} tenant", f"OneDrive-{org}", f"Agent-{org} Team"):
+        assert named not in text, named
+    # a value that begins with the held words is still replaced (a reviewer's finding)
+    red = setup_report.Redactor()
+    red.add("org", org, fuzzy=True)
+    for value in ("agent-context Contoso", "agent-context (Contoso)", "agent-context-sync Contoso"):
+        red.add("folder", value, fuzzy=True)
+        shown = red.redact(f"~/OneDrive-x/{value}/notes; ~/agent-context/setup/; ~/src/agent-context-sync/x")
+        assert "Contoso" not in shown and "~/agent-context/setup/; ~/src/agent-context-sync/x" in shown, shown
+    assert "Private only:" in text
+
+
 def test_a_configured_generic_folder_leaves_the_report_public(fake_mac: dict[str, Path]) -> None:
     """B13 round 6 G48: a configured Documents, Desktop or Pictures folder is a report word, so it made the
     report private only, while the shell report kept the public option; every OneDrive has those folders, so

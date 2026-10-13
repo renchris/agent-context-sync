@@ -500,7 +500,12 @@ _CONTEXT_HEADS = frozenset({"Box", "Dropbox", "Egnyte", "GoogleDrive", "OneDrive
 """The CloudStorage app names a context-mode organisation is matched after (``OneDrive-<org>``) when the Mac
 names no other (B13 round 6 G45, G75): with those of this Mac's entries and sources
 (:meth:`Redactor.set_app_heads`), never after any word and a hyphen, which put the organisation inside the
-report's own words (``~/agent-<org-1>``)."""
+report's own words (``~/agent-<org-1>``). agentsync's own path names (``~/agent-context``,
+``~/src/agent-context-sync``) are held whole for an organisation matched everywhere too (B13 round 7 H74)."""
+
+_HELD_PATH_NORMS = frozenset({"agentcontext", "agentcontextsync", "agentcontextsyncgit"})
+"""agentsync's own path names as :func:`_norm` gives them: a value that is one of them is the held path
+itself, and any longer value that begins with them is matched before the path is held (B13 round 7 H74)."""
 
 _REPORT_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
 _URL_RE = re.compile(r"\b[A-Za-z]+://\S*|\bgithub\.com[:/]\S*")
@@ -988,6 +993,15 @@ class Redactor:
             # public owner ("Jane Doe", "doejane/..."), the name forms cut every copy of the issue link and
             # the source URL to github.com/<name>/... Only this owner's: a fork's owner stays a name (R20).
             alts = [rf"(?P<keep>(?i:(?:git@)?github\.com[:/]{re.escape(_REPO_SLUG)}(?:\.git)?)(?![\w-]))"]
+            # agentsync's own fixed path names, the same text on every Mac, are held whole too: an
+            # organisation "Context" or "Agent" (matched everywhere) cut ~/agent-context to ~/agent-<org-1>,
+            # from which a reader recovers the name (B13 round 7 H74). Case-sensitive, after a slash, to a
+            # path boundary, so an organisation spelled "Agent-Context" or a folder "agent-context-partners"
+            # is still replaced; the report stays private only wherever the organisation prints otherwise.
+            # Its place is kept here and it is put in once the values are known: a longer value that begins
+            # with those words ("agent-context Contoso") is not held, or it would print
+            held_at = len(alts)
+            longer: list[str] = []
             # A placeholder's shape is tried before all of these (prepended below), so a second pass over
             # redacted text (the Summary's item lines; a friction log that copied an earlier report) leaves a
             # placeholder whole: a value spelled like its word ("Host" in "<host>", "Folder 1" in
@@ -1043,6 +1057,11 @@ class Redactor:
                 if not edge[-1].isalnum() and not edge.startswith("/"):
                     trail = ""
                 literals.append(f"(?i:{lead}{body}{trail})" if mode != "exact" else f"{lead}{body}{trail}")
+                if _norm(form).startswith("agentcontext") and _norm(form) not in _HELD_PATH_NORMS:
+                    longer.append(literals[-1])
+            unless = f"(?!{'|'.join(longer)})" if longer else ""
+            held = rf"(?P<keep_path>(?<=/){unless}agent-context(?:-sync(?:\.git)?)?(?![\w-]|\.\w))"
+            alts.insert(held_at, held)
             if literals:  # the forms of one value make one pattern now (_word_pattern): once each
                 alts.append("(?P<lit>" + "|".join(dict.fromkeys(literals)) + ")")
             alts.append(f"(?P<tmp>{_TMP_RE})")
@@ -1061,7 +1080,7 @@ class Redactor:
     def _replace(self, m: re.Match[str]) -> str:
         text = m.group(0)
         groups = m.groupdict()
-        if groups.get("keep") is not None or groups.get("hold") is not None:
+        if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
         if groups.get("email") is not None:
             placeholder = self._pattern("email", text)
