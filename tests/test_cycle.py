@@ -2358,6 +2358,10 @@ def test_an_image_read_by_ocr_keeps_its_page_once_it_is_online_only_whatever_que
 
 
 LABEL_RULE = '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n'
+WITHHELD_MSG = (
+    "withheld by label rule: the label of a binary .msg, or of a .msg not on this Mac, cannot be read"
+)
+"""A withheld .msg stub's ``reason:``; its row keeps ``no converter for .msg`` (B13 round 6 G29)."""
 
 
 def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a_stub(
@@ -2377,7 +2381,10 @@ def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a
     assert report.exit_code == 0 and not [rel for rel in fetched if rel.endswith((".png", ".jpg"))]
     for rel, suffix in ((SITE_PLAN, ".png"), ("projects/Contoso Badge Scan.jpg", ".jpg")):
         fm, body = _image_page(labelled, rel)
-        assert (fm["status"], fm["reason"]) == ("refused", f"no converter for {suffix}")
+        assert (fm["status"], fm["reason"]) == (
+            "refused",
+            f"withheld by label rule: the label of a {suffix} file cannot be read",
+        )
         assert "Loading dock" not in body and "Visitor" not in body
         # With an engine, the rule is why: the page says so and names the PDF route (B13 round 2 R33).
         assert f"a [policy] label rule is set and the label of a {suffix} file cannot be read" in body
@@ -2417,7 +2424,7 @@ def test_a_msg_is_read_and_under_a_label_rule_its_page_becomes_a_stub(
     assert run(labelled).exit_code == 0 and late in fetched, "fetched: one that holds MIME text is read"
     for rel in (KICKOFF_MSG, late):
         fm, body = _mirror_page(labelled, rel)
-        assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+        assert (fm["status"], fm["reason"]) == ("refused", WITHHELD_MSG)
         assert "Renewal is in March." not in body and "The price is agreed." not in body
         # The page says why: the rule, not a missing converter; the stored reason is unchanged (R33). It is
         # a binary .msg whose label cannot be read, or one not on this Mac: msg-mime reads a MIME one's
@@ -2472,7 +2479,7 @@ def test_binary_msg_stubs_under_a_label_rule_settle_and_never_stop_another_files
     assert fm["status"] == "current" and "The rollout starts Monday." in body
     for rel in stubs:
         fm, body = _mirror_page(labelled, rel)
-        assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+        assert (fm["status"], fm["reason"]) == ("refused", WITHHELD_MSG)
         assert "Save the message as .eml to have it converted" in body and "Not for the page." not in body
         # B13 round 5 F36: msg-mime's refusal settles the rows, and the page names no converter.
         assert fm["converter"] == "none@0" and "options_hash" not in fm
@@ -2514,7 +2521,7 @@ def test_a_binary_msg_stub_from_an_older_rendering_is_rendered_again_once_under_
     fm, body = _mirror_page(labelled, rel)
     assert body.startswith(UNTRUSTED_BANNER) and "Not for the page." not in body
     assert fm["summary"].startswith("refused: withheld by label rule: the label of a binary (Outlook-format)")
-    assert (fm["status"], fm["reason"], fm["converter"]) == ("refused", "no converter for .msg", "none@0")
+    assert (fm["status"], fm["reason"], fm["converter"]) == ("refused", WITHHELD_MSG, "none@0")
     with Manifest(labelled.state_paths.db) as m:
         assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish_mod.STUB_RENDER)
         row = next(r for r in m.iter_items(SID) if r.rel_path == rel)
@@ -2525,6 +2532,50 @@ def test_a_binary_msg_stub_from_an_older_rendering_is_rendered_again_once_under_
     with Manifest(labelled.state_paths.db) as m:  # a later rendering finds the page as this one left it
         m.set_meta(cycle_mod._STUB_RENDER_META, "2")
     assert run(labelled).commit_sha is None and fetched == []
+
+
+def _quarantine_reason(config: Config, rel: str) -> str:
+    """The reason ``_sync/QUARANTINE.tsv`` gives for ``rel``."""
+    text = (config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    [reason] = [line.split("\t")[2] for line in text.splitlines() if line.split("\t")[1:2] == [rel]]
+    return reason
+
+
+@pytest.mark.parametrize(
+    ("rel", "rule", "expected"),
+    [
+        (KICKOFF_MSG, LABEL_RULE, WITHHELD_MSG),
+        (KICKOFF_MSG, "", "no converter for .msg"),
+        (SITE_PLAN, LABEL_RULE, "no converter for .png"),
+    ],
+    ids=["a binary msg under a rule", "a msg nothing reads", "an image on a Mac without OCR"],
+)
+def test_a_withheld_stub_says_so_in_its_reason_and_in_quarantine_tsv(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rel: str,
+    rule: str,
+    expected: str,
+) -> None:
+    """B13 round 6 G29: a .msg or an image withheld by a label rule said "no converter for .msg" in its
+    page's ``reason:`` and in ``_sync/QUARANTINE.tsv``, which the page points to, though its summary and body
+    said the rule withheld it. Both say so now; the stored reason is unchanged. A file nothing converts, and
+    an image where no OCR could read it, still say "no converter"."""
+    if rel.endswith(".msg"):
+        (local_source_dir / rel).write_bytes(msg_bytes(plain="Not for the page.\n"))
+    else:
+        picture(local_source_dir / rel, "Loading dock")
+    if not rule:  # no converter claims .msg: the stub is a missing converter's, not the rule's
+        monkeypatch.setattr(msg_mod.MsgConverter, "extensions", ())
+        monkeypatch.setattr(msg_mod.MsgMimeConverter, "extensions", ())
+    config = config_with(tmp_path, local_source_dir, rule)
+    assert run(config).exit_code == 0
+    fm, _body = _mirror_page(config, rel)
+    assert (fm["status"], fm["reason"], _quarantine_reason(config, rel)) == ("refused", expected, expected)
+    row = _file_rows(config)[rel]
+    assert (row.state, row.state_reason) == (RowState.REFUSED, f"no converter for {Path(rel).suffix}")
+    assert run(config).commit_sha is None, "settled: nothing is written again"
 
 
 def _msg_page_then_a_rule(tmp_path: Path, local_source_dir: Path) -> tuple[Config, str]:
@@ -2554,7 +2605,7 @@ def test_under_a_new_label_rule_a_msg_the_os_will_not_hydrate_is_withheld_at_onc
     monkeypatch.setattr(al, "materialise", refused)
     assert run(labelled).exit_code == 0
     fm, body = _mirror_page(labelled, rel)
-    assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+    assert (fm["status"], fm["reason"]) == ("refused", WITHHELD_MSG)
     assert "Renewal is in March." not in body and "Save the message as .eml" in body
     assert run(labelled).commit_sha is None, "settled: the same stub is not published again"
 
@@ -2569,7 +2620,7 @@ def test_under_a_new_label_rule_an_online_only_msg_is_withheld_with_no_download(
     fetched = _fetches(monkeypatch)
     assert run(labelled).exit_code == 0 and rel not in fetched
     fm, body = _mirror_page(labelled, rel)
-    assert (fm["status"], fm["reason"]) == ("refused", "no converter for .msg")
+    assert (fm["status"], fm["reason"]) == ("refused", WITHHELD_MSG)
     assert "Renewal is in March." not in body
     # ``materialise PATH`` asks for the download: the file is fetched (a binary one stays withheld)
     assert run(labelled, materialise_paths=[local_source_dir / rel]).exit_code == 0 and rel in fetched
@@ -3416,7 +3467,10 @@ def test_under_a_label_rule_a_refused_image_is_not_read_and_without_the_rule_it_
     assert SITE_PLAN not in fetched and not any(
         SITE_PLAN.endswith(Path(r[0]).name) for r in reads(engine.helper)
     )
-    assert _image_page(labelled, SITE_PLAN)[0]["reason"] == "no converter for .png"
+    # B13 round 6 G29: with an engine the rule is why, and the page's reason says so
+    assert _image_page(labelled, SITE_PLAN)[0]["reason"] == (
+        "withheld by label rule: the label of a .png file cannot be read"
+    )
     opened = config_with(tmp_path, local_source_dir)
     assert run(opened).exit_code == 0 and fetched.count(SITE_PLAN) == 1
     fm, body = _image_page(opened, SITE_PLAN)

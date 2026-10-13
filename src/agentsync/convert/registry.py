@@ -51,7 +51,8 @@ def label_withheld_suffixes() -> frozenset[str]:
     """The suffixes whose files get no converter while a ``[policy]`` label rule is on, because their label
     cannot be read: a binary ``.msg`` (``msg-mime`` reads one that holds MIME text) and every image
     (``ImageConverter.extensions``). Their stub keeps the stored reason ``no converter for <suffix>``; the
-    page and the setup report word it as the label rule's (B13 round 3 R33)."""
+    page (its ``reason:`` too), ``_sync/QUARANTINE.tsv`` and the setup report word it as the label rule's
+    (B13 round 3 R33, round 6 G29)."""
     from agentsync.convert.image import ImageConverter  # noqa: PLC0415 - lazy, as in Registry.default
     from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
 

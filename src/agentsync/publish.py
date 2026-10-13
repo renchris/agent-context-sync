@@ -299,13 +299,14 @@ _CHANGELOG_MAX_PATHS = 2000
 _INDEX_MAX_LINES = 200
 _INDEX_MAX_BYTES = 25_000
 _REASON_MAX = 300
-STUB_RENDER = 3
+STUB_RENDER = 4
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
 2: the banner before the heading, a withheld file's summary, no ``refused: refused:`` (B13 round 4 Q9, Q27,
 Q75). 3: a withheld .msg says it is a binary one, whose label cannot be read, and a withheld stub names no
-converter (B13 round 5 F33, F36)."""
+converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is withheld by the label rule
+(B13 round 6 G29)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
@@ -512,6 +513,14 @@ def _counts_text(changes: Iterable[MirrorChange]) -> str:
 
 def _is_multi_unit(unit: RenderedUnit) -> bool:
     return unit.kind is not UnitKind.WHOLE or unit.of > 1 or bool(unit.file_stem)
+
+
+def _withheld_reason(suffix: str) -> str:
+    """The reason a stub withheld by a label rule shows in its ``reason:`` and in ``_sync/QUARANTINE.tsv``.
+    The stored reason stays ``no converter for <suffix>``: re-reads, stub identity and the setup report's
+    class key on it (B13 round 6 G29). Never ``refused: ``, which would read as a label's refusal."""
+    kind = "binary .msg, or of a .msg not on this Mac," if suffix == ".msg" else f"{suffix} file"
+    return f"withheld by label rule: the label of a {kind} cannot be read"
 
 
 def _tombstone_body(row: TombstoneRow, title: str, *, archived: bool = False) -> str:
@@ -1056,6 +1065,16 @@ class Publisher:
             options_hash=result.options_hash or None,
         )
 
+    def _withheld(self, reason: str | None, suffix: str) -> bool:
+        """True when ``reason`` is the ``no converter`` refusal of a file a label rule withholds: a ``.msg``,
+        or an image while OCR could read it (on a Mac without OCR, nothing converts an image anyway)."""
+        return (
+            self._policy.labels_active
+            and reason == NO_CONVERTER_PREFIX + suffix
+            and suffix in label_withheld_suffixes()
+            and (suffix == ".msg" or self.images_readable)
+        )
+
     def _plan_stub(self, source: SourceConfig, item: ItemRow, result: ConversionResult) -> PlannedPage:
         status = result.status
         refusal = policy.is_refusal_reason(result.reason)
@@ -1082,14 +1101,10 @@ class Publisher:
         # A binary .msg or an image gets no conversion while a label rule is on, because its label cannot be
         # read (a .msg that holds MIME text is read as an .eml, B13 round 4 Q78): the stored reason stays "no
         # converter for <suffix>" (re-reads and stub identity key on it, and no label escalation fires), and
-        # only the words say why (B13 round 3 R33).
+        # only the words say why (B13 round 3 R33): the summary, the body and the page's reason: (B13 round 6
+        # G29), never the stored reason.
         withheld = (
-            status is ConversionStatus.REFUSED
-            and not refusal
-            and self._policy.labels_active
-            and result.reason == NO_CONVERTER_PREFIX + suffix
-            and suffix in label_withheld_suffixes()
-            and (suffix == ".msg" or self.images_readable)
+            status is ConversionStatus.REFUSED and not refusal and self._withheld(result.reason, suffix)
         )
         summary_text = shown
         if withheld:
@@ -1160,7 +1175,7 @@ class Publisher:
                 and not withheld
                 else None
             ),
-            reason=reason,
+            reason=_withheld_reason(suffix) if withheld else reason,
             source_title=title,
             summary=f"{page_status.value}: {summary_text}",
             tokens_estimate=math.ceil(len(body) / 4),
@@ -1918,6 +1933,9 @@ class Publisher:
                 if item.is_dir:
                     continue
                 reason = item.state_reason or item.state.value
+                suffix = Path(item.name).suffix.lower()
+                if item.state is RowState.REFUSED and self._withheld(item.state_reason, suffix):
+                    reason = _withheld_reason(suffix)  # as the stub's reason: says (B13 round 6 G29)
                 shown = self._shown_path(source.id, item.stable_id, item.rel_path)
                 rows.add((source.id, _tsv_field(shown), _tsv_field(reason)))
         text = "\n".join([_QUARANTINE_HEADER, *("\t".join(r) for r in sorted(rows))]) + "\n"
