@@ -8494,6 +8494,8 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
 - The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
   (`note=listed-25 synced=2`, and `result=failed note=denied synced=2` for a list that ends on a click). The
   note itself is unchanged, and so is a line written without a config.
+  Amended 2026-10-13, §16.69 H17 (with H28): when a config is there and could not be read, every
+  `list-folders` line ends `synced=unreadable` instead (a separate flag; `$synced` stays a number).
 - Nothing new reaches a report unredacted. The first line holds counts. A marked line holds a path the
   report already redacts: every folder name under `~/Library/CloudStorage` at the depths the list shows is a
   placeholder (§16.14), whatever comes before it on the line. A synced folder the list does not reach is a
@@ -8576,6 +8578,10 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None: ...
   hand, because its list run came from an installer without the counts. A list that ended on a click
   (`result=failed`) decides only when it logged `synced=N`, which is when it printed the line; otherwise the
   next run decides. An install run's `kept` decides only in an attempt with no such list.
+  Amended 2026-10-13, §16.69 H17 (with H28): a finished list with `synced=unreadable` still gives 0 (the
+  question was asked), but when the first install run then kept N > 0, `unread_synced` gives N: the expected
+  turns read `no folder question (N folders already synced; step 1's list could not read them, so it was asked:
+  see Items)`, the outcome is "worked with help" and an installer-side Item names it.
 - **Expected turns.** When `synced_before` is 1 or more, the folder question is not a turn the attempt is
   expected to have. `human turns` no longer adds 1 for it (prompts since v6 do not log that question, so the
   line added it), and the `expected turns` line starts `no folder question (2 folders already synced: step 1
@@ -15795,6 +15801,26 @@ the reinstall), and a header-less step 1 error may be xcode-select's, before any
 of the finder's "its pull did not update it"). The run metadata's agentsync line names the build's prompt
 (`agentsync: <version>, setup prompt vN (python …)`), so any report shows the comparison. The issue form's version and
 the title keep the attempt's. Test: `tests/test_setup_report.py::test_a_prompt_newer_than_the_reports_agentsync_says_so`.
+
+**A folder list that could not read the config is no expected turn** (H17 and H28, one defect from two finders,
+built once; dated lines at §16.29). On a Mac that already synced 2 folders, step 1's list could not read the config
+(the installed agentsync lacked a name install.sh's snippet imported, H7) and logged `note=listed-6` like a new
+Mac's; the person was asked again, and the report said "fully one command" with the question as an expected turn.
+install.sh's `list_folders` now sets a separate flag when `[ -f "$CONFIG" ]` and the marks could not be read (no
+tool Python, a snippet failure, a timeout, bad output) and appends `${unread:+ synced=unreadable}` to every step
+note, never through `$synced`, which `[ "${synced:-0}" -gt 0 ]` needs as a number. `synced_before` is unchanged
+(`_count` reads `unreadable` as None, so the 2026-10-07 rule still counts the question as asked, human turns 1).
+`unread_synced(runs)` gives the first install run's `kept=N` (that run's alone: a later run's can hold folders added
+after the question) when the deciding list logged `synced=unreadable` and N > 0: `compute_outcome` adds the why `the folder question: step 1's list could not read the N folders this Mac
+already syncs` ("worked with help", so the headline never says "fully one command" over the Item), the expected
+turns say no question was due, and the Items list opens with `- install.sh · step 1 · the folder list could not
+read the N folders this Mac already syncs[ (install.out has its warning)]; the folder question was a turn
+agentsync caused`, beside the retried runs rather than as a friction event, whatever the outcome (the expected
+turns point to it). A config with nothing synced (`kept=0`)
+or no install run keeps today's wording; logs from before the flag are unchanged. The warning's wording is lane
+RB's (H7). Tests: `tests/test_setup_report.py::test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked`,
+`tests/test_install_oneshot.py::test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
+`tests/test_install_oneshot.py::test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`

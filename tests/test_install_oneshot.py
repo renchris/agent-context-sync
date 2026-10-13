@@ -2944,7 +2944,8 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 3 and cp.stdout.splitlines() == [only], "a config nobody can read: a new Mac"
     assert cp.stderr.startswith(f"warning: could not read which folders {cfg} already syncs ")
-    assert re.search(r" result=failed note=(not-signed-in|no-folders)$", install_log(env)[-2])
+    unread = r" result=failed note=(not-signed-in|no-folders) synced=unreadable$"  # B13 round 7 H17, H28
+    assert re.search(unread, install_log(env)[-2]), install_log(env)[-2]
 
 
 def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied(
@@ -3007,7 +3008,9 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
     assert cp.stderr == (
         f"warning: could not read which folders {cfg} already syncs ({why}), so none is marked below\n"
     )
-    assert install_log(env)[-2].endswith(" result=done note=listed-1"), "no synced= count: it was not read"
+    # no count, since it was not read, but the log says it could not be, apart from a new Mac's list: the
+    # report then knows the folder question was agentsync's doing (B13 round 7 H17, H28)
+    assert install_log(env)[-2].endswith(" result=done note=listed-1 synced=unreadable"), install_log(env)[-2]
 
 
 def _older_tool_python(env: dict[str, str], *missing: str) -> Path:

@@ -222,7 +222,7 @@
 # it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
 # exit status, done / skipped / failed: uv, agentsync, launcher, helpers, config, status, first-sync, agent,
 # wait; or list-folders alone, whose line ends with synced=N when it read the config: the folders already
-# synced, 0 included; the config line ends with kept=N added=M when agentsync could count them: the folders
+# synced, 0 included, or synced=unreadable when a config is there and it could not be read; the config line ends with kept=N added=M when agentsync could count them: the folders
 # synced before the step and the ones it added), then the report step's line, then one "end" line (exit
 # status, total seconds, the report included). The report is written while a provisional end line is the log's
 # last line, so it reads a
@@ -2484,7 +2484,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks synced="" unlisted=""
+	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks synced="" unlisted="" unread=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -2546,6 +2546,7 @@ list_folders() {
 		case "$synced/$unlisted" in
 		/* | */ | *[!0-9/]*)
 			synced=""
+			unread=1 # logged as synced=unreadable, never in $synced, which stays a number
 			warn "could not read which folders $CONFIG already syncs ($why), so none is marked below"
 			;;
 		esac
@@ -2570,11 +2571,11 @@ list_folders() {
 	if [ -n "$denied" ]; then
 		rc=4
 		NEXT_MSG="$term was denied access to files managed by $denied: allow it in System Settings > Privacy & Security > Files and Folders (turn on $denied under $term; a click, not a command), then re-run: $RERUN"
-		step_end failed "$rc" "denied${synced:+ synced=$synced}"
+		step_end failed "$rc" "denied${synced:+ synced=$synced}${unread:+ synced=unreadable}"
 	elif [ -n "$asking" ]; then
 		rc=4
 		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN"
-		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}"
+		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}${unread:+ synced=unreadable}"
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
 		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
 		if [ "$providers" -eq 0 ]; then
@@ -2588,14 +2589,14 @@ list_folders() {
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN"
-		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}"
+		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}${unread:+ synced=unreadable}"
 	elif [ "$total" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
-		step_end failed "$rc" "no-folders${synced:+ synced=$synced}"
+		step_end failed "$rc" "no-folders${synced:+ synced=$synced}${unread:+ synced=unreadable}"
 	else
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"
-		step_end "done" 0 "listed-$total${synced:+ synced=$synced}"
+		step_end "done" 0 "listed-$total${synced:+ synced=$synced}${unread:+ synced=unreadable}"
 	fi
 	return "$rc"
 }

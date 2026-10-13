@@ -3811,6 +3811,49 @@ def test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked(
     assert [run.list_only for run in runs] == [True, True, False]
     assert setup_report.synced_before(runs) == 0, "denied, then listed with no mark after the click: asked"
 
+    # B13 round 7 H17, H28: a list that could not read the config says so; when step 2 then kept folders,
+    # the question was asked (human turns 1) but was no expected turn: agentsync caused it
+    unread = "done note=listed-25 synced=unreadable"
+    runs = setup_report.read_install_runs(set_up_log(fake_mac, kept, listed="", list_step=unread))
+    assert (setup_report.synced_before(runs), setup_report.unread_synced(runs)) == (0, 2)
+    write_friction(fake_mac, V11_HAPPY)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; the folder question: step 1's list "
+        "could not read the 2 folders this Mac already syncs)"
+    ), summary
+    assert _line(summary, "- human turns: ").startswith("- human turns: 1 (1 question")
+    assert _line(summary, "- expected turns: ").startswith(
+        "- expected turns: no folder question (2 folders already synced; step 1's list could not read them, "
+        "so it was asked: see Items) · "
+    )
+    items = summary.split("Items that were not one command (attempt 1):\n\n", 1)[1]
+    assert items.startswith(
+        "- install.sh · step 1 · the folder list could not read the 2 folders this Mac already syncs; the "
+        "folder question was a turn agentsync caused\n"
+    ), items
+    # the Items line whatever the outcome, since the expected turns point there (a reviewer's finding)
+    failing = ("", "skipped note=exists kept=2 added=0")
+    log = set_up_log(fake_mac, failing, listed="", list_step=unread)
+    log.write_text(log.read_text(encoding="utf-8").replace("end rc=0", "end rc=1"), encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert not summary.strip().startswith("- **outcome: worked with help**"), summary
+    assert "- install.sh · step 1 · the folder list could not read the 2 folders" in summary, summary
+    # only the first install run's count: a later run's can hold folders added after the question
+    first = ("", "done note=created")
+    runs = setup_report.read_install_runs(set_up_log(fake_mac, first, failing, listed="", list_step=unread))
+    assert setup_report.unread_synced(runs) is None
+    # a config that synced nothing: the question was due, as before
+    first = ("", "done note=created kept=0 added=1")
+    runs = setup_report.read_install_runs(set_up_log(fake_mac, first, listed="", list_step=unread))
+    assert (setup_report.synced_before(runs), setup_report.unread_synced(runs)) == (0, None)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert summary.strip().startswith("- **outcome: fully one command** "), summary
+    assert _line(summary, "- expected turns: ").startswith(f"- expected turns: {ASKED} · ")
+
 
 def test_loop_stage_and_next_text() -> None:
     stage = setup_report.loop_stage

@@ -1587,6 +1587,28 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None:
     return None
 
 
+def unread_synced(runs: Sequence[InstallRun]) -> int | None:
+    """N when the list that decides :func:`synced_before` finished with ``synced=unreadable`` (a config was
+    there and could not be read) and the attempt's first install run then logged it kept N > 0 folders: this
+    Mac already synced them, so the folder question was a turn agentsync caused (B13 round 7 H17, H28). None
+    otherwise, and :func:`synced_before` still counts the question as asked: a config that synced nothing, or
+    a stop at step 1, leaves it expected."""
+    for run in runs:
+        if run.list_only:
+            listed = run.step("list-folders") or {}
+            if _count(listed, "synced") is not None:
+                return None
+            if listed.get("result") == "done":
+                if listed.get("synced") != "unreadable":
+                    return None
+                # the first install run's count alone: a later run's can hold folders added after the question
+                first = next((x for x in runs if not x.list_only), None)
+                return (_count(first.step("config"), "kept") if first is not None else None) or None
+        elif _count(run.step("config"), "kept") is not None:
+            return None
+    return None
+
+
 def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]:
     """The install.sh runs that started during attempt ``index`` (from its begin time to the next attempt's);
     every run when there is no friction log, or when the latest attempt has no time at all."""
@@ -1802,6 +1824,12 @@ def compute_outcome(
             approvals = len(attempt.of_kind("approval"))
             if approvals:
                 why.append(f"{approvals} approval(s)")
+            unread = unread_synced(runs)
+            if unread:  # asked again, since the list could not mark them (B13 round 7 H17, H28)
+                why.append(
+                    f"the folder question: step 1's list could not read the {_plural(unread, 'folder')} this "
+                    "Mac already syncs"
+                )
         if doctor_fails:
             why.append(f"{len(doctor_fails)} unexpected doctor FAIL(s): {', '.join(doctor_fails)}")
         if not why:
@@ -6105,6 +6133,7 @@ def _expected_turns_line(
     stopped: bool = False,
     unstarted: bool = False,
     no_run: bool = False,
+    unread: int | None = None,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -6112,7 +6141,8 @@ def _expected_turns_line(
     installer ``stopped`` before the folder list (:func:`_stopped_before_the_list`) has none at all, and
     nor has one ``unstarted``: a header-less attempt with no install.sh run, whose step 1 command stopped
     before ``install.sh --log-start``, nor one with ``no_run``: an attempt with no install.sh run of its own,
-    so no folder list was printed (B13 round 3 R15)."""
+    so no folder list was printed (B13 round 3 R15). With ``unread`` (:func:`unread_synced`) the Mac already
+    synced folders the list could not read: no folder question was due, and the one asked is an Item."""
     layout = att.layout
     if unstarted:
         return (
@@ -6139,6 +6169,11 @@ def _expected_turns_line(
             parts = [
                 f"no folder question ({_plural(synced, 'folder')} already synced: step {step} asks at most "
                 "whether to add one; not logged)"
+            ]
+        elif unread:
+            parts = [
+                f"no folder question ({_plural(unread, 'folder')} already synced; step {step}'s list could "
+                "not read them, so it was asked: see Items)"
             ]
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
@@ -6775,6 +6810,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 stopped=copy_stopped,
                 unstarted=unstarted,
                 no_run=no_run and not unstarted,
+                unread=unread_synced(runs),
             )
         )
         out.append(_agent_friction_line(att, stop))
@@ -6862,7 +6898,18 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             key=lambda e: (TURN_KINDS.index(e.kind), e.line),
         )
     retried = retried_runs(att, runs) if outcome.kind == "worked with help" else []  # one of its reasons
-    if att is not None and (items or retried):
+    # an installer-side item, as retried runs are: v6+ never logs the folder question (B13 round 7 H17, H28)
+    # whatever the outcome: the expected turns line points here (a reviewer's finding)
+    unread = unread_synced(runs) if att is not None else None
+    if att is not None and (items or retried or unread):
+        if unread:
+            warned = any("could not read which folders" in ln for ln in r.facts.out_counted)
+            out.append(
+                f"- install.sh · step {att.layout.folder_question_step} · the folder list could not read the "
+                f"{_plural(unread, 'folder')} this Mac already syncs"
+                + (" (install.out has its warning)" if warned else "")
+                + "; the folder question was a turn agentsync caused"
+            )
         out += [_retry_line(run, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]
         if len(retried) > INSTALL_RUNS_SHOWN:
             out.append(f"- install.sh · {len(retried) - INSTALL_RUNS_SHOWN} more such run(s) (see Installer)")
