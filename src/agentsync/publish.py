@@ -1066,15 +1066,38 @@ class Publisher:
             options_hash=result.options_hash or None,
         )
 
-    def _withheld(self, reason: str | None, suffix: str) -> bool:
-        """True when ``reason`` is the ``no converter`` refusal of a file a label rule withholds: a ``.msg``,
-        or an image while OCR could read it (on a Mac without OCR, nothing converts an image anyway)."""
+    def _withheld_eligible(self, reason: str | None, suffix: str) -> bool:
+        """True when ``reason`` is the ``no converter`` refusal of a file a label rule may withhold."""
         return (
             self._policy.labels_active
             and reason == NO_CONVERTER_PREFIX + suffix
             and suffix in label_withheld_suffixes()
-            and (suffix == ".msg" or self.images_readable)
         )
+
+    def _withheld(self, reason: str | None, suffix: str) -> bool:
+        """True when ``reason`` is the ``no converter`` refusal of a file a label rule withholds: a ``.msg``,
+        or an image while OCR could read it (on a Mac without OCR, nothing converts an image anyway)."""
+        return self._withheld_eligible(reason, suffix) and (suffix == ".msg" or self.images_readable)
+
+    def _stub_reason(self, source_id: str, stable_id: str) -> str | None:
+        """The ``reason:`` of the stub published for one item, or None when it has none on disk.
+
+        ``_sync/QUARANTINE.tsv`` copies it for a row a label rule may withhold: whether an image's stub
+        says ``withheld by label rule`` was decided by the run that planned it (``images_readable``), and
+        the TSV, rewritten every run, followed each run's OCR state instead, so a run whose engine missed
+        its ``--version`` made a TSV-only commit that contradicted the page (B13 round 7 H52)."""
+        for out in self._manifest.outputs_for(source_id, stable_id):
+            text = self._read_text(out.output_path)
+            if text is None:
+                continue
+            try:
+                data, _ = parse_frontmatter(text)
+            except FrontmatterError:
+                continue
+            reason = data.get("reason")
+            if isinstance(reason, str) and reason:
+                return reason
+        return None
 
     def _plan_stub(self, source: SourceConfig, item: ItemRow, result: ConversionResult) -> PlannedPage:
         status = result.status
@@ -1954,8 +1977,9 @@ class Publisher:
                     continue
                 reason = item.state_reason or item.state.value
                 suffix = Path(item.name).suffix.lower()
-                if item.state is RowState.REFUSED and self._withheld(item.state_reason, suffix):
-                    reason = _withheld_reason(suffix)  # as the stub's reason: says (B13 round 6 G29)
+                if item.state is RowState.REFUSED and self._withheld_eligible(item.state_reason, suffix):
+                    on_page = self._stub_reason(source.id, item.stable_id)
+                    reason = on_page if on_page in (reason, _withheld_reason(suffix)) else reason
                 shown = self._shown_path(source.id, item.stable_id, item.rel_path)
                 rows.add((source.id, _tsv_field(shown), _tsv_field(reason)))
         text = "\n".join([_QUARANTINE_HEADER, *("\t".join(r) for r in sorted(rows))]) + "\n"

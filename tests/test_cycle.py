@@ -2675,6 +2675,41 @@ def test_a_withheld_stub_says_so_in_its_reason_and_in_quarantine_tsv(
     assert run(config).commit_sha is None, "settled: nothing is written again"
 
 
+@pytest.mark.parametrize(
+    ("engines", "expected"),
+    [
+        ([True, True, False, False, True], publish_mod._withheld_reason(".png")),
+        ([False, True, True], "no converter for .png"),
+    ],
+    ids=["the engine drops out and comes back", "the engine arrives after the stub"],
+)
+def test_quarantine_tsv_keeps_the_wording_of_the_published_stub_whatever_this_runs_ocr(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    engines: list[bool],
+    expected: str,
+) -> None:
+    """B13 round 7 H52: whether an image's stub says ``withheld by label rule`` is decided by the run that
+    planned it (an OCR engine ready or not), but ``_sync/QUARANTINE.tsv``, rewritten every run, took each
+    run's OCR state. A run whose engine missed its ``--version`` made a TSV-only commit that contradicted the
+    page, and the reverse order left the two disagreeing for good. The TSV copies the page's reason now."""
+    engine = fake_engine(tmp_path / "ocr-bin")
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    for n, ready in enumerate(engines):
+        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d, e=engine if ready else None: e)
+        report = run(config)
+        assert report.exit_code == 0
+        assert (report.commit_sha is not None) == (n == 0), f"run {n + 1}: only the first run commits"
+        fm, _body = _image_page(config, SITE_PLAN)
+        assert (fm["status"], fm["reason"], _quarantine_reason(config, SITE_PLAN)) == (
+            "refused",
+            expected,
+            expected,
+        ), f"run {n + 1}"
+
+
 def _msg_page_then_a_rule(tmp_path: Path, local_source_dir: Path) -> tuple[Config, str]:
     """A .msg published as a page with no label rule, and the config that adds one."""
     (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
