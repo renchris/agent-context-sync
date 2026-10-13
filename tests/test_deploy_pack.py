@@ -2858,7 +2858,7 @@ _RETIRED_TEST_NAMES = {
     "test_an_empty_git_proxy_takes_no_line_after_it": "§16.40 says it was merged into another test",
     "test_an_inbox_file_the_walk_withheld_is_in_the_count_until_a_sync_lists_it": "§16.45 R101's dated line",
     "test_under_a_label_rule_a_msg_is_the_no_converter_stub": "§16.54 Q78's dated line",
-    "test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed": "§16.66 G63 renames it",
+    "test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed": "§16.60 F78's dated line",
 }
 """Test names CONTRACTS.md cites as history: a dated line beside each says the test is gone or replaced."""
 
@@ -3499,3 +3499,30 @@ def test_g8_says_the_two_reports_number_a_deduplicated_id_apart() -> None:
         "report, but the number can differ" in g8
     )
     assert "the Python report numbers only the ids no folder pair covers (`<source-1>`" in g8
+
+
+def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
+    """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
+    but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is
+    unchanged and F78 named a renamed test; the round 5 test reads only §16.60's F items. For every
+    heading in §16.62 to §16.67 of the form "(G<n>[, G<m>]; amends §A X[, §B Y])" (and G59 at Q77, whose
+    own heading names F77), the paragraph of section A that holds item X holds a dated line naming that
+    G item: `Amended 2026-10-1N, §<home> G<n>` or a later round's `§16.7N H<n> (by §<home> G<n>)`."""
+    sections = dict(_contracts_numbered_sections())
+    claims = [("16.66", "G59", "16.54", "Q77")]
+    for home in ("16.62", "16.63", "16.64", "16.65", "16.66", "16.67"):
+        for para in re.split(r"\n\s*\n", sections[home]):
+            flat = " ".join(para.split())
+            for items, targets in re.findall(r"\((G\d+(?:, G\d+)*); amends ([^)]*)\)", flat):
+                section = ""
+                for number, item in re.findall(r"(?:§(\d+\.\d+) )?([FGQR]\d+)", targets):
+                    section = number or section
+                    claims.extend((home, g, section, item) for g in items.split(", "))
+    assert len(claims) >= 7, "the scan found §16.66's amends (few, so it is broken)"
+    for home, g, section, item in claims:
+        at = re.escape(f"§{home} {g}")
+        marker = re.compile(rf"Amended 2026-10-1\d, (?:{at}\b|§16\.\d+ [A-Z]\d+ \(by {at}\))")
+        paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", sections[section])]
+        assert any(marker.search(p) and re.search(rf"\b{item}\b", p) for p in paragraphs), (
+            f"§{section} {item} has no dated line for §{home} {g}"
+        )

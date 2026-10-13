@@ -13868,6 +13868,11 @@ redacted stub keep the heading above the banner. The banner is still in the body
 rendered again by repair or unarchive, keeps the heading above the banner. Test:
 `test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once`. That was round 5's state: since
 §16.66 G76 and G77 a redacted stub and an old tombstone are rendered again once too, so none keeps it.
+**Amended 2026-10-13, §16.73 H54 (by §16.66 G77):** the F68 line's "only stubs get the one-time re-render" no
+longer holds: an intact tombstone of a source in sources.toml (a retired one's too) is rendered again once, banner
+first (`Cycle._rerender_tombstones`), keeping its title, `source_path` and redaction. Only a tombstone of a source
+deleted from sources.toml keeps the heading-first layout until it is reaped. Test:
+`test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_with_its_own_title`.
 
 **Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
 `refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
@@ -13892,6 +13897,9 @@ written after the last row, so an interrupted run tries again. Bump `STUB_RENDER
 reason and output row even when a converter now claims the name (msg-mime claims `.msg` under a rule), and a
 credential or path stub from its own page, as any other; only a redacted item is skipped.
 Test: `test_a_label_stub_from_an_older_rendering_is_rendered_again_once`.
+**Amended 2026-10-13, §16.73 H54 (by §16.66 G76):** a redacted item is no longer skipped: the publisher redacts its
+re-plan from the stored redaction, as it did the first page, and its title, `source_path` and `redacted-<hash>`
+page name stay. Test: `test_a_redacted_stub_from_an_older_rendering_is_rendered_again_once_and_stays_redacted`.
 
 **Q44: policy prose about a password is no credential (`agentsync.lints`).** `generic-password` passes over,
 after `:` only, a letters-only value followed by a lowercase word or a number (`_PROSE`: "minimum 12 characters,
@@ -14242,6 +14250,9 @@ no-converter rule). Pinned by
 `tests/test_convert_formats.py::test_a_template_with_no_slides_says_what_its_layouts_and_master_hold`.
 **Amended 2026-10-13, §16.67 G61 (by §16.60 F77):** fixed text is de-duplicated a shape at a time, and the title is
 the first fixed line that can be a title (never a table row), else the first layout name.
+**Amended 2026-10-13, §16.73 H54 (by §16.66 G59):** "the deck emitter's version is unchanged" no longer holds:
+`pptx._EMITTER_VERSION` is 1.0.1, so cached bytes get the new rendering on a new conversion, while
+`PptxConverter.outdated` is unchanged and reads no deck again by itself.
 
 **Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and §16.47 R33).**
 `policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
@@ -14948,6 +14959,9 @@ row's earlier in the same run). Pinned by
 `tests/test_cycle.py::test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once` (also with
 the secret-scan rules moved in the same run). So only a redacted stub, and a tombstone until it is reaped, keeps a heading above
 the banner; §16.61's F88 line, written beside this, still names credential and path stubs.
+**Amended 2026-10-13, §16.73 H54 (by §16.66 G76):** "only a redacted item is skipped" no longer holds: a redacted
+stub is rendered again once too, its re-plan redacted from the stored redaction, and since §16.66 G77 an old
+tombstone as well, so no stub or tombstone agentsync can rebuild keeps a heading above the banner.
 
 **A `.msg` that reading means a download for is withheld by its name (F73; amends §16.54 Q78).** Under a label rule
 `Cycle._no_converter` refuses a `.msg` by its name, as before Q78, when it is online-only or a Graph item, unless
@@ -14980,6 +14994,9 @@ gives one block of lines per shape; `_template_lines` de-duplicates whole blocks
 so a second table keeps its delimiter row and every row, and two text boxes stay two paragraphs. The title is the
 first fixed line that can be a title (never a table row), else the first layout name. Pinned by
 `tests/test_convert_formats.py::test_a_templates_fixed_text_keeps_every_table_whole_and_its_shapes_apart`.
+**Amended 2026-10-13, §16.73 H54 (by §16.66 G59):** F77 left `pptx._EMITTER_VERSION` at 1.0.0, so bytes round 4
+cached kept round 4's body; it is 1.0.1, so cached bytes get the new rendering on a new conversion, while
+`PptxConverter.outdated` is unchanged.
 
 **The speech seed routes as git does (F78, F79).** `_git_config` asks git for `NEMO_URL`, the url curl fetches, so
 a proxy scoped to `https://github.com/FluidInference` counts and a host-wide one still does. An empty `http.proxy`
@@ -14989,7 +15006,10 @@ drops every proxy variable for it. The tests' git stub runs the real git with `G
 `tests/test_speech.py::test_an_empty_proxy_in_gits_config_turns_the_proxy_off_for_the_seed_as_for_git`,
 `test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed` and
 `test_a_proxy_in_the_machines_system_gitconfig_never_reaches_the_tests_git`. (**Amended 2026-10-13, §16.67 G61:** F78 amends
-§16.54 Q52, whose dated line says so.)
+§16.54 Q52, whose dated line says so.) **Amended 2026-10-13, §16.73 H54 (by §16.66 G63):** F78's second test is
+renamed `test_a_proxy_git_scopes_to_fluidinference_on_github_routes_the_seed`, and
+`test_a_proxy_git_scopes_to_fluidaudios_own_repository_routes_the_clone_and_not_the_seed` pins a scope on
+FluidAudio's own repository, which routes the clone and not the seed.
 
 **A MIME message with an encrypted Office attachment only lists it (F98).** Test only: an `.eml`, and a `.msg` that
 holds MIME text with and without a label rule, carrying a protected `.docx` is converted with the attachment
@@ -15003,6 +15023,9 @@ with no `last_commit` ("the commit before this tombstone") would then point at t
 **Amended 2026-10-13, §16.71 H77:** §16.66 G77 built that rewrite, so no intact tombstone keeps the heading-first
 layout. The recovery-line reason is answered there: a tombstone row with no `last_commit` first takes the newest
 commit on its path whose page is not a tombstone, and the line of one with none in history names no position.
+**Amended 2026-10-13, §16.73 H54 (by §16.66 G77):** an intact tombstone of a source in sources.toml is now rendered
+again once, banner first, from its own front matter, so only one of a source deleted from sources.toml keeps the
+heading-first layout until it is reaped.
 
 ### 16.61 Round 5: setup prompt v14 and docs (2026-10-12, wave B13 round 5 lane P)
 
@@ -15075,6 +15098,9 @@ Each is pinned in `tests/test_deploy_pack.py` against the code it describes:
   (**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** credential and path stubs are rendered again once since F94.
   Only a redacted stub and an old tombstone kept the heading then; since §16.66 G76 and G77 they are rendered again
   once too.)
+  (**Amended 2026-10-13, §16.73 H54 (by §16.66 G77):** F88's "Not built" re-render of old tombstones is built:
+  `Cycle._rerender_tombstones` renders an intact tombstone of a source in sources.toml again once, banner first,
+  from its own front matter.)
   (**Amended 2026-10-13, §16.67 G69 (by §16.60 F73):** a `.msg` that reading means a download for (online-only, a
   Graph item, a refused hydration) is not fetched but withheld by its name; setup-feedback.md's Quarantine row and
   the report's legend say so since §16.66 G62, the same defect, built there.)
@@ -16177,3 +16203,14 @@ versions, and says the shell report has no such clause. Test:
 "as in the Python report"; the Python report spends no number on an id its folder pair covers, so there it is
 `<source-1>`. Both give the id a `<source-N>` of its own; only the shell report numbers it by its table's place. Test:
 `test_g8_says_the_two_reports_number_a_deduplicated_id_apart`.
+
+**Round 6's amends claims have dated lines at their targets** (H54; dated lines at §16.51 Q9 and Q75, §16.54 Q77,
+§16.60 F68, F77, F78 and F94, and §16.61 F88). §16.66 said G59 amends F77, G63 F78, G76 §16.51 Q75 and §16.60 F94,
+and G77 §16.61 F88 and §16.51 Q9, but wrote no dated line at any of them, so Q77 still said the deck emitter's
+version is unchanged, F78 cited a renamed test, F94 and Q75 said a redacted item is skipped, and Q9's F68 line and
+F88 said old tombstones keep their layout. Each now has a line in this round's form (`Amended 2026-10-13, §16.73 H54
+(by §16.66 G<n>)`); F68 gets one as well, as it says the same as Q9's F68 line. `_RETIRED_TEST_NAMES` points the
+retired F78 test name at F78's dated line. Test: `test_a_round_6_item_that_amends_another_has_a_dated_line_there`,
+which reads every "(G<n>; amends §A X, ...)" heading of §16.62 to §16.67, F, G, Q and R targets and several per
+heading, and requires a dated line naming the G item in the paragraph of the target item; it found all six
+targets and Q77 missing.
