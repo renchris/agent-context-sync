@@ -15796,3 +15796,12 @@ operator entries as the ones still erased. data-governance.md's labels item says
 while the file is published, runs if the policy refuses the file again, and that `agentsync purge path=<its path>
 --source <its source> --reason label-escalation` erases it anyway; the purge-queue item names its kept entry as an
 `upstream-deleted` one. Test: `test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_published`.
+
+**The `<org-N>` row gives the generic-word rule, and the generic-folder exception is stated** (H60). The row said
+any one-word organisation the report prints is replaced only in the folder names; since §16.64 G45, G46 and G75
+that holds for the reviewed generic words of `setup_report._CONTEXT_ORG_WORDS` only, and any other report word
+(`Status`) is replaced everywhere and makes the report Private only. The paragraph under the table now says that a
+configured folder or library named as every cloud drive's (`_GENERIC_FOLDERS`, §16.64 G48) leaves either report
+public. The doc gives examples, not the lists: a third copy would have no test keeping it equal. Test:
+`test_the_placeholder_table_states_the_org_word_and_generic_folder_rules_of_round_6`, which checks each example
+against the lists.
