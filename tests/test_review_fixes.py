@@ -608,8 +608,9 @@ def test_a_policy_rescreen_is_counted_apart_on_the_sync_line(
     cli._print_report(report)
     line = capsys.readouterr().out.splitlines()[-1]
     assert line == (
-        "converted 2, deferred 0 online-only; re-screened 2 for a rule change (also counted above, 1 of them "
-        "unchanged)"
+        # B13 round 6 G35: the page the rule withheld was read, then refused: it stays in N and is named
+        "converted 2, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 1 refused); "
+        "re-screened 2 for a rule change (also counted above, 1 of them unchanged)"
     )
     assert re.search(r"converted [0-9]+, deferred [0-9]+ online-only", line), "install.sh's SYNC_SUMMARY_RE"
     match = setup_report._CONVERTED_LINE_RE.search(line)

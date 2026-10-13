@@ -410,8 +410,10 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     ``, read again R`` when R files were read again for what their converter has gained (a re-read for a
     capability of the same bytes is never in N; a no-converter stub's re-read is the first read of its bytes,
     so it is in N as well, and `` (F of them read for the first time, also counted above)`` says how many:
-    B13 round 4 Q28), then `` (of the converted: U unreadable, F failed)`` when U of the N are UNREADABLE
-    stubs (F: conversions that failed; §16.45 R2), as ``; of the converted: ...`` after the Q28 clause, so
+    B13 round 4 Q28), then `` (of the converted: U unreadable, F failed, R refused)`` when some of the N
+    are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files refused after their bytes were
+    read (R: a label rule, a .msg whose label cannot be read, an inbox duplicate; B13 round 6 G35, which
+    also prints the split for F or R alone), as ``; of the converted: ...`` after the Q28 clause, so
     two parentheses never stand side by side (B13 round 5 F34), then ``; re-screened S for a rule change
     (also counted above, K of them unchanged)``: a [policy] or secret-rule re-screen runs the converter on the
     same bytes, so it is in N, and counted again in S (F35). With
@@ -467,10 +469,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         again += f" ({report.read_first} of them read for the first time, also counted above)"
     unreadable = sum(s.unreadable for s in report.sources)
     failed = sum(s.conversion_failed for s in report.sources)
+    refused = sum(s.refused for s in report.sources)
     # last, so install.sh's and setup-report's "converted N, deferred M online-only" patterns still match
     of_them = ""
-    if unreadable:
-        split = f"of the converted: {unreadable} unreadable, {failed} failed"
+    if unreadable or failed or refused:
+        # refused after failed, so an older reader's "U unreadable, F failed" still matches
+        split = f"of the converted: {unreadable} unreadable, {failed} failed, {refused} refused"
         of_them = f"; {split}" if report.read_again and report.read_first else f" ({split})"
     # No bare "converted", "deferred" or "read again" in it: install.sh's awk adds the number after each.
     rescreened = (

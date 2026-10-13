@@ -2970,6 +2970,13 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 1, deferred 0 online-only, read again 1 (1 of them read for the first time, also in "
             "the converted count) (install.out)",
         ),
+        (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
+            "refused)",
+            "converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 refused) "
+            "(install.log; the unreadable/failed split: install.out)",
+        ),
         (  # a first-read count of another sync (its read-again count differs) is not this one's
             "note=converted-1-deferred-0-reread-3",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
@@ -3001,7 +3008,7 @@ def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -
         match = setup_report._CONVERTED_LINE_RE.search(line)
         assert match is not None and match.group("c", "d") == ("3", "0"), line
         split = setup_report._SPLIT_RE.search(match.group("tail"))
-        assert split is not None and split.groups() == ("1", "0"), line
+        assert split is not None and split.groups() == ("1", "0", None), line
     match = setup_report._CONVERTED_LINE_RE.search("converted 1, deferred 0 online-only, read again 4")
     assert match is not None and match.group("c", "d", "r", "tail") == ("1", "0", "4", "")
     assert setup_report._SPLIT_RE.search(match.group("tail")) is None

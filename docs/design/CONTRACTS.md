@@ -990,6 +990,7 @@ class SourceReport:
     absent_removed: int = 0  # 2026-10-11 (B13, §16.39 H23): of them, files removed this pass as deleted upstream
     unreadable: int = 0  # 2026-10-12 (§16.56 F86)
     conversion_failed: int = 0  # 2026-10-12 (§16.56 F86)
+    refused: int = 0  # 2026-10-13 (§16.63 G35): of ``converted``, files refused after their bytes were read
 
 @dataclass(frozen=True, slots=True)
 class CycleReport:

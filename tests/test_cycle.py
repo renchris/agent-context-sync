@@ -3111,8 +3111,30 @@ def test_an_unreadable_conversion_is_counted_apart_from_a_failed_one(
     cli._print_report(report)
     last = capsys.readouterr().out.splitlines()[-1]
     assert last == (
-        f"converted {rep.converted}, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)"
+        f"converted {rep.converted}, deferred 0 online-only (of the converted: 1 unreadable, 0 failed, "
+        "0 refused)"
     ), last
+
+
+def test_a_file_refused_after_its_read_is_named_in_the_sync_lines_split(
+    tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 6 G35: a file whose bytes were read and then refused (here a binary ``.msg`` under a label
+    rule, whose label cannot be read) is in ``converted``, as before, and the sync's last line now says how
+    many of the converted were refused, so N no longer reads as N pages with new content."""
+    renewal = msg_bytes(plain="The price is agreed.\n")
+    (local_source_dir / "projects" / "Contoso renewal.msg").write_bytes(renewal)
+    report = run(config_with(tmp_path, local_source_dir, LABEL_RULE))
+    assert report.exit_code == 0
+    rep = source_report(report)
+    assert (rep.unreadable, rep.conversion_failed, rep.refused) == (0, 0, 1), rep
+    capsys.readouterr()
+    from agentsync import cli  # noqa: PLC0415
+
+    cli._print_report(report)
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last.startswith(f"converted {rep.converted}, deferred 0 online-only")
+    assert "(of the converted: 0 unreadable, 0 failed, 1 refused)" in last, last
 
 
 def test_the_limit_marks_are_the_converters_own_wording() -> None:

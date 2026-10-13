@@ -1451,6 +1451,7 @@ class _SourceAcc:
     converted: int = 0
     unreadable: int = 0
     conversion_failed: int = 0
+    refused: int = 0
     breaker_tripped: bool = False
     live_rows: int = 0
     staged_cursor: bool = False
@@ -1482,6 +1483,7 @@ class _SourceAcc:
             absent_removed=self.absent_removed,
             unreadable=self.unreadable,
             conversion_failed=self.conversion_failed,
+            refused=self.refused,
         )
 
 
@@ -4396,6 +4398,8 @@ class _Cycle:
                 acc.unreadable += 1
             elif result.status is ConversionStatus.FAILED:
                 acc.conversion_failed += 1
+            elif result.status is ConversionStatus.REFUSED:  # still in N: S counts re-screens of it (G35)
+                acc.refused += 1
             self._tally_converted(result, prior)
             if rescreen:
                 self._tally["rescreened"] += 1

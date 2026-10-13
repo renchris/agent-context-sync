@@ -650,7 +650,8 @@ _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its c
 # unreadable, X failed" since B13 round 5 F34, side by side in two brackets before it, which an older
 # agentsync's install.out still holds (round 5 F8, F32)
 _FIRST_READ_RE = re.compile(r"\b(\d+) of them read for the first time, also counted above\b")
-_SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b")
+# and since B13 round 6 G35 ", R refused" after it
+_SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b(?:, (\d+) refused\b)?")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -2055,8 +2056,9 @@ class _Facts:
     out_counted: list[str] = dataclasses.field(default_factory=list)
     # the last "converted N, deferred M online-only[, read again R]" in install.out (R 0 when absent)
     first_sync: tuple[int, int, int] | None = None
-    # that line's "(of the converted: U unreadable, F failed)" as (N, U, F); None: the line has none
-    first_sync_unreadable: tuple[int, int, int] | None = None
+    # that line's "(of the converted: U unreadable, F failed, R refused)" as (N, U, F, R), R 0 when an older
+    # line has none; None: the line has no split
+    first_sync_unreadable: tuple[int, int, int, int] | None = None
     # its "F of them read for the first time, also counted above" as (N, R, F); None: the line has none
     first_sync_first_read: tuple[int, int, int] | None = None
     # (run id, started, files read again) of each run the OCR part read, newest first; None: not read
@@ -3050,7 +3052,8 @@ def _installer_output(r: _Run) -> list[str]:
         r.facts.first_sync = (converted, int(last.group("d")), again)
         split = _SPLIT_RE.search(last.group("tail"))
         if split is not None:
-            r.facts.first_sync_unreadable = (converted, int(split.group(1)), int(split.group(2)))
+            u, f, refused = (int(g or 0) for g in split.groups())
+            r.facts.first_sync_unreadable = (converted, u, f, refused)
         read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
         if read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
@@ -6090,8 +6093,9 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             clauses.append(f"{first[2]} of them read for the first time, also in the converted count")
             named.append("the first-read count")
         split = r.facts.first_sync_unreadable
-        if split is not None and split[0] == converted and split[1]:
-            clauses.append(f"of the converted: {split[1]} unreadable, {split[2]} failed")
+        if split is not None and split[0] == converted and any(split[1:]):
+            refused = f", {split[3]} refused" if split[3] else ""  # B13 round 6 G35
+            clauses.append(f"of the converted: {split[1]} unreadable, {split[2]} failed{refused}")
             named.append("the unreadable/failed split")
         if clauses:
             reread += f" ({'; '.join(clauses)})"

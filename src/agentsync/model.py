@@ -413,6 +413,9 @@ class SourceReport:
     absent_removed: int = 0  # of the deletion candidates: files removed this pass as deleted upstream
     unreadable: int = 0  # of ``converted``: UNREADABLE stubs (encrypted, not the type its name says, ...)
     conversion_failed: int = 0  # of ``converted``: conversions that failed (the FAILED stub)
+    # of ``converted``: REFUSED after a read (a label rule, a .msg whose label cannot be read, an inbox
+    # duplicate; B13 round 6 G35)
+    refused: int = 0
 
 
 @dataclass(frozen=True, slots=True)

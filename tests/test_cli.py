@@ -295,13 +295,25 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     line = capsys.readouterr().out.splitlines()[-1]
     assert line == (
         "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "
-        "above); of the converted: 1 unreadable, 0 failed"
+        "above); of the converted: 1 unreadable, 0 failed, 0 refused"
     )
     assert ") (" not in line and line.split().count("converted") == 1
     cli._print_report(dataclasses.replace(report, sources=(unread,), read_again=0))
     assert capsys.readouterr().out.splitlines()[-1] == (
-        "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed)"
+        "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed, 0 refused)"
     )
+    # B13 round 6 G35: failed conversions alone print the split too (it was built only for unreadable
+    # ones), and files refused after their read are named in it, after "failed" for an older parser.
+    failed = SourceReport("work", SourceKind.LOCAL, PassKind.FULL, True, converted=4, conversion_failed=1)
+    cli._print_report(dataclasses.replace(report, sources=(failed,), read_again=0))
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "converted 4, deferred 0 online-only (of the converted: 0 unreadable, 1 failed, 0 refused)"
+    )
+    refused = SourceReport("work", SourceKind.LOCAL, PassKind.FULL, True, converted=4, refused=3)
+    cli._print_report(dataclasses.replace(report, sources=(refused,), read_again=0))
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line == "converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 refused)"
+    assert line.split().count("converted") == 1
 
 
 def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(
