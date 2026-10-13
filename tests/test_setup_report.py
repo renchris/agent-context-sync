@@ -7818,3 +7818,33 @@ def test_the_friction_section_names_the_summarys_f_ids_only_when_it_cites_one(
     text, summary = summary_of(fake_mac)
     assert re.search(r"\bF\d+\b", summary) is not None, summary
     assert "Each line is shown with its line number: the F<n> ids in the Summary are these numbers." in text
+
+
+def test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once() -> None:
+    """B13 round 6 G41: add-source notes `(<typed>, stored as <path>)` when the two differ, as /tmp and
+    /private/tmp do; both are the home folder, so the report read `(~/agent-context/inbox, stored as
+    ~/agent-context/inbox)`. A note whose forms differ after redaction keeps its parenthesis."""
+    red = setup_report.Redactor()
+    red.add("home", "/tmp/contoso-rehearsal/home3")
+    red.add("home", "/private/tmp/contoso-rehearsal/home3")
+    red.add("org", "Contoso", fuzzy=True)
+    raw = "/tmp/contoso-rehearsal/home3"
+    stored = "/private/tmp/contoso-rehearsal/home3"
+    lines = [
+        f"added inbox source 'inbox' ({raw}/agent-context/inbox, stored as {stored}/agent-context/inbox): "
+        "drop files you save by hand here",
+        f"added source 'plans' to {stored}/agent-context/sources.toml ({raw}/Library/CloudStorage/"
+        f"OneDrive-Contoso/Plans, stored as {stored}/Library/CloudStorage/OneDrive-Contoso/Plans):",
+        f"added source 'plans' to {stored}/agent-context/sources.toml ({raw}/OneDrive/Plans, stored as "
+        f"{stored}/Library/CloudStorage/OneDrive-Contoso/Plans):",
+    ]
+    out = setup_report._redact_lines(red, lines).splitlines()
+    assert out[0] == "added inbox source 'inbox' (~/agent-context/inbox): drop files you save by hand here"
+    assert out[1] == (
+        "added source 'plans' to ~/agent-context/sources.toml "
+        "(~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
+    )
+    assert out[2] == (
+        "added source 'plans' to ~/agent-context/sources.toml (~/OneDrive/Plans, stored as "
+        "~/Library/CloudStorage/OneDrive-<org-1>/Plans):"
+    ), "two forms that still differ keep the note"

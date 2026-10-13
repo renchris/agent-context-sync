@@ -6730,6 +6730,11 @@ _SHIPPED_EXCLUDES = frozenset((*DEFAULT_EXCLUDES, *INBOX_IGNORES, *OS_JUNK_EXCLU
 """The globs agentsync itself ships (``config``): the only entries of an exclude line shown as written."""
 
 
+_SAME_STORED_RE = re.compile(r"\((.+?), stored as \1\)")
+"""add-source's ``(<typed>, stored as <path>)`` note whose two forms redacted to the same text (``/tmp/...``
+and ``/private/tmp/...`` are both ``~``): it reads as a contradiction, so it is shown as ``(<typed>)`` (B13
+round 6 G41). A note whose forms still differ (``~/OneDrive/...`` stored as ``~/Library/CloudStorage/...``)
+stays."""
 _SOURCE_LOCAL_RE = re.compile(
     r"""(--source-local[ =])(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
 )
@@ -6825,6 +6830,8 @@ def _redact_lines(red: Redactor, lines: list[str]) -> str:
 
     def one(line: str) -> str:
         line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
+        if ", stored as " in line:
+            line = _SAME_STORED_RE.sub(r"(\1)", line)
         if _DOCTOR_TAG_RE.match(line):
             line = re.sub(r" {2,}— ", " — ", line, count=1)
         return _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line else line

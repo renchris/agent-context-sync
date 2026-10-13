@@ -15204,6 +15204,12 @@ was replaced, even in a line that was cut short later, because the report also w
 of its own, and those are not replacements." The kind list is still built from `_LEGEND` and `_UNNUMBERED`. Test:
 `test_the_redaction_count_is_the_placeholders_the_report_shows`.
 
+**G41: a stored-as note that redacts to one form is shown once.** add-source's `(<typed>, stored as <path>)` note
+(cli.py, F49) is printed when the two paths differ, as `/tmp/...` and `/private/tmp/...` do; the report redacts
+both to `~`, so after redaction `(A, stored as A)` becomes `(A)` (`_SAME_STORED_RE`, in `_redact_lines`, so every
+redacted copy gets it). A note whose forms still differ after redaction stays. cli.py is unchanged: on the terminal
+the difference is the information. Test: `test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.
