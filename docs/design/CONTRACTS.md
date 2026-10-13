@@ -15484,6 +15484,9 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   Non-ASCII names do not match `id_key` (it strips no accents) and keep `<source-N>`, which hides nothing.
   `test_the_shell_report_redacts_a_configured_source_id`, `test_the_shell_report_keeps_a_deduplicated_ids_own_number`
   (tests/test_report_redaction.py).
+  **Amended 2026-10-13, §16.73 H69:** `reports-2` keeps a `<source-N>` of its own, as in the Python report, but the
+  number can differ: the shell report numbers an id by its table's place (`<source-2>`), and the Python report
+  numbers only the ids no folder pair covers (`<source-1>`; measured with `Redactor`).
 - **A second Prompt: line opens an attempt in the shell readers too** (G81). `parse_friction` opens an attempt
   at a `Prompt:` line when the open one already has one, for any log version; `FRICTION_AWK`'s `track()` only set
   its header flag, so `friction_attempt_begin` dated the attempt from the first header (and the shell report's
@@ -15842,3 +15845,8 @@ which cause the installer's fix column found, in its own words; setup-feedback.m
 log's fix column alone. It now quotes the three forms `_prompt_copy_note` prints, with `vM` and `vN` for the
 versions, and says the shell report has no such clause. Test:
 `test_the_newer_copy_paragraph_quotes_the_summarys_cause`, which builds each form with the code.
+
+**G8's numbering claim is split by report** (H69; dated line at §16.65 G8). G8 said `reports-2` keeps `<source-2>`
+"as in the Python report"; the Python report spends no number on an id its folder pair covers, so there it is
+`<source-1>`. Both give the id a `<source-N>` of its own; only the shell report numbers it by its table's place. Test:
+`test_g8_says_the_two_reports_number_a_deduplicated_id_apart`.

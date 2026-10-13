@@ -3258,3 +3258,22 @@ def test_the_newer_copy_paragraph_quotes_the_summarys_cause() -> None:
         quoted = f"`prompt: vM{note}`" if ":" in note.split("vN", 1)[1] else f"the bare `{note.strip()}`"
         assert quoted in page, quoted
     assert "The shell report (`install.sh --report-only` without agentsync) has no such clause" in page
+
+
+def test_g8_says_the_two_reports_number_a_deduplicated_id_apart() -> None:
+    """B13 round 7 H69: §16.65 G8 said `reports-2` keeps `<source-2>` "as in the Python report", while the
+    Python report spends no number on the id its folder pair covers, so `reports-2` is its `<source-1>`; the
+    shell report numbers by table place (`test_the_shell_report_keeps_a_deduplicated_ids_own_number`)."""
+    from agentsync.setup_report import Redactor  # noqa: PLC0415
+
+    red = Redactor()
+    red.add("folder", "Reports", fuzzy=True)
+    red.add("source", "reports")
+    red.add("source", "reports-2")
+    assert red.redact("reports and reports-2") == "<folder-1> and <source-1>"
+    g8 = " ".join(_contracts_section("### 16.65 ", "### 16.66 ").split())
+    assert (
+        "**Amended 2026-10-13, §16.73 H69:** `reports-2` keeps a `<source-N>` of its own, as in the Python "
+        "report, but the number can differ" in g8
+    )
+    assert "the Python report numbers only the ids no folder pair covers (`<source-1>`" in g8
