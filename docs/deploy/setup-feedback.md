@@ -98,6 +98,10 @@ words) is yours to remove. The CLI always redacts.
   fence does not break. Keep the agent's additions to `~~~` too.
   The shell fallback report ends its Redaction part on the same one-line `Send it:` advice as the agentsync
   report, then the link.
+  Its Summary has an `- outcome:` line: computed, with the prompt version and the agent, and a link that fills
+  those fields, only for an attempt whose one event is a step 1 error that states them and that ran no
+  `install.sh`; otherwise it says no outcome is computed, the link is bare, and the four fields are yours to
+  fill in from the friction log.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
   prints the issue link for it, neither report has one, and `--report-only`'s NEXT names only
   bring-back.md. Send that one privately.

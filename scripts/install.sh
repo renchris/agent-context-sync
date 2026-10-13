@@ -523,7 +523,7 @@ FRICTION_AWK='
 			a = tolower(a); gsub("[\"\047*]", " ", a); gsub("[ \t]+", " ", a); sub("^ ", "", a); sub(" $", "", a)
 			return a
 		}
-		function stated(line,    w, a, c) { # sets SV and SA from "prompt vN, <agent>:" at the start of the what-text
+		function stated(line,    w, a, c) { # sets SV, SA and SR (the agent as written) from "prompt vN, <agent>:" at the start of the what-text
 			w = line; sub("^[^|]*[|][^|]*[|][^|]*[|][ \t]*", "", w)
 			while (match(w, "^([\"\047 \t]|\342\200[\230\231])")) w = substr(w, RLENGTH + 1)
 			if (tolower(substr(w, 1, 8)) != "prompt v" || !match(substr(w, 9), "^[0-9][0-9]?[0-9]?")) return 0
@@ -535,7 +535,7 @@ FRICTION_AWK='
 			# _STEP1_STATED_RE reads at most 100 characters of agent: UTF-8 ones, so continuation bytes do not count
 			c = a; gsub("[\200-\277]", "", c)
 			if (length(c) > 100) return 0
-			SA = agent_key(a); return 1
+			SR = a; gsub("[ \t]+", " ", SR); SA = agent_key(a); return 1
 		}
 		function restate(line) { HD = 0; PS = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
 		function track(line,    a, new) {
@@ -1719,6 +1719,56 @@ friction_attempt_begin() {
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20) }
 		END { print b }' "$f" 2>/dev/null || true
 }
+# The one outcome the shell report computes (B13 round 7 H24): "<N><TAB><agent as written>" when the friction
+# log's latest attempt (friction_attempt_begin's) holds one timed line besides its end line, that line is a
+# step 1 error that states "prompt vN, <agent>:", and it is not the line --log-start writes for a copy it
+# stopped. Nothing otherwise. The agentsync report calls that attempt "failed at step 1" when it has no
+# install run (compute_outcome) and takes the version and the agent from the same words; anything wider is
+# left to it, so the two cannot drift.
+friction_step1_stated() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 0
+	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
+		function fresh() { n = 0; one = ""; ended = "" }
+		{ q = track($0) }
+		NH { NH = 0; fresh(); next }
+		/^Attempt:/ { fresh(); next }
+		q { fresh() }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
+		$0 !~ (stamp " [|]") { next }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
+		{ n++; one = $0 }
+		END { if (n == 1 && one ~ s1 && !index(one, mark) && stated(one)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
+}
+# Whether the friction log's latest attempt has no install run of its own, by the test fallback_install_line
+# makes: a --report-only run, and no install log, no install run in it, or a last one that started before the
+# attempt began.
+attempt_ran_no_install() {
+	local last at begin
+	[ "$REPORT_ONLY" -eq 1 ] || return 1
+	[ -f "$SETUP_LOG" ] || return 0
+	last="$(last_install_run)"
+	[ -n "$last" ] || return 0
+	at="${last%% *}"
+	begin="$(utc_stamp "$(friction_attempt_begin)")"
+	[ -n "$begin" ] && [ -n "$(utc_stamp "$at")" ] && [[ "$at" < "$begin" ]]
+}
+# The Summary's outcome line. Computed in the one case above, in the agentsync report's words; in every other
+# case the line says that it is not, so "copy the four values from the Summary" (setup-feedback.md) finds a
+# reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
+# redaction, for the link.
+OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v"
+fallback_outcome_line() {
+	local stated=""
+	! attempt_ran_no_install || stated="$(friction_step1_stated)"
+	if [ -n "$stated" ]; then
+		say "$OUTCOME_LINE_HEAD${stated%%$'\t'*} (from the step 1 error line) · agent: ${stated#*$'\t'}"
+	else
+		say "- outcome: not computed (this shell fallback computes none for this attempt; the issue form's fields are left for you, from the friction log below)"
+	fi
+}
 # The Summary's install.sh line. A --report-only run only writes the report, so its own exit 0 says nothing of
 # the setup: it gives the last install run's instead, dated, so an earlier run's is not read as this
 # attempt's (B13 round 4 Q23). A run that started before the friction log's latest attempt began is said to be
@@ -1760,6 +1810,7 @@ fallback_body() {
 	say ""
 	say "- written by: scripts/install.sh shell fallback ($why), $(utc_now)"
 	fallback_install_line "$rc"
+	fallback_outcome_line
 	# The mode, and whether this home holds each job's plist: "not simulated" alone read as "installed" on a setup
 	# that installed none (B13 round 4 Q6). Background runs has each job's loaded state.
 	if [ "$SIMULATE" -eq 1 ]; then
@@ -1951,7 +2002,7 @@ fallback_body() {
 PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a private copy only
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
 # value can replace a word of it ("the login name" with a folder named "name").
-fallback_redaction() {
+fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them]
 	say "## Redaction"
 	say ""
 	say "Shell fallback redaction: the home path (~), this account's temporary folder (\$TMPDIR: <tmp>), the login name"
@@ -1991,10 +2042,46 @@ fallback_redaction() {
 		PRIVATE_ONLY=1 # the report then ends with no issue link (the caller's subshell reads it)
 		break
 	done <<<"$pairs"
-	# One line that starts at column 0, in the agentsync report's words for a link that fills no field.
+	# One line that starts at column 0, in the agentsync report's words: for a link that fills no field, or
+	# for the fields it fills (H24).
 	[ -n "$PRIVATE_ONLY" ] || {
+		v='a blank "Setup report" issue form'
+		[ -z "${1:-}" ] || v="a new \"Setup report\" issue with the $1 fields filled in (nothing else)"
 		say ""
-		say 'Send it: the link on the last line opens a blank "Setup report" issue form; paste this report into its Setup report field, or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent automatically.'
+		say "Send it: the link on the last line opens $v; paste this report into its Setup report field, or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent automatically."
+	}
+}
+# VALUE percent-encoded as urllib.parse.quote does it (every byte but A-Z a-z 0-9 _ . - ~ /), byte by byte.
+url_quote() {
+	printf '%s' "$1" | LC_ALL=C od -An -v -tx1 | LC_ALL=C tr -s ' ' '\n' | LC_ALL=C awk '
+		BEGIN { for (i = 0; i < 256; i++) ch[sprintf("%02x", i)] = sprintf("%c", i) }
+		$0 == "" { next }
+		{ c = ch[$0]; printf "%s", (c ~ /^[A-Za-z0-9_.~\/-]$/ ? c : "%" toupper($0)) }'
+}
+# The issue link the shell report ends with: bare, or, when the Summary (the redacted report in file $1, above
+# its friction log) holds the computed outcome line, with the title and the fields that line gives, as
+# setup_report.build_issue_url writes them (H24). The agent is read from the redacted line, since the link is
+# written after redaction, keeps only what _issue_link keeps (ASCII here) and at most 100 characters. No
+# run type: the shell computes none. Sets LINK and LINK_FIELDS (the fields it fills, for the Send it line).
+LINK=""
+LINK_FIELDS=""
+fallback_issue_link() { # REDACTED-BODY-FILE
+	local line n agent fail="Failed at step 1 (preflight)"
+	LINK="$ISSUE_URL"
+	LINK_FIELDS=""
+	line="$(LC_ALL=C awk -v p="$OUTCOME_LINE_HEAD" '$0 == "## Agent friction log" { exit } index($0, p) == 1 { print; exit }' "$1" 2>/dev/null || true)"
+	[ -n "$line" ] || return 0
+	n="${line#"$OUTCOME_LINE_HEAD"}"
+	n="${n%% *}"
+	case "$n" in "" | *[!0-9]*) return 0 ;; esac
+	agent="${line##* · agent: }"
+	[ "$agent" != "$line" ] || agent=""
+	agent="$(printf '%s' "$agent" | LC_ALL=C tr -cd 'A-Za-z0-9_ .:/()+,@<>-' | LC_ALL=C cut -c 1-100 | LC_ALL=C sed 's/^ *//; s/ *$//')"
+	LINK="$ISSUE_URL&title=$(url_quote "Setup report: $fail · v$n")&outcome=$(url_quote "$fail")&prompt_version=v$n"
+	LINK_FIELDS="Outcome and Prompt version"
+	[ -z "$agent" ] || {
+		LINK="$LINK&agent=$(url_quote "$agent")"
+		LINK_FIELDS="Outcome, Prompt version, and Agent tool and model"
 	}
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
@@ -2110,12 +2197,14 @@ write_fallback_report() { # RC WHY
 	friction="$(friction_text 2>/dev/null || true)"
 	(
 		umask 077
+		fallback_body "$1" "$2" "$friction" | strip_run_pids | redact_stream | scrub_exclude_lists >"$tmp"
+		# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65).
+		# What it fills is read from the redacted Summary just written.
+		fallback_issue_link "$tmp"
 		{
-			fallback_body "$1" "$2" "$friction" | strip_run_pids | redact_stream | scrub_exclude_lists
-			fallback_redaction
-			# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65)
-			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$ISSUE_URL"
-		} >"$tmp"
+			fallback_redaction "$LINK_FIELDS"
+			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$LINK"
+		} >>"$tmp"
 	) 2>/dev/null || {
 		rm -f "$tmp"
 		return 1

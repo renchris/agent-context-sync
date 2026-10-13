@@ -14167,6 +14167,8 @@ item amends an older section, a dated line sits at that section too.
   Amended 2026-10-13, §16.65 G14: an earlier run's `NEXT:` line is no longer dropped (see §16.65).
   Amended 2026-10-13, §16.65 G16, G17: it also edits the install.out embed's summary line: `, K of them left
   out` where lines of the embed were dropped, and F20's label where an agentsync older than F20 rendered it.
+  Amended 2026-10-13, §16.70 H24: the shell fallback's link is filled in one case (a step 1 failure that
+  states its prompt and agent); it still starts with `ISSUE_URL`, so the drop is unchanged.
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
   finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
   report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
@@ -16164,6 +16166,28 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   the last thing before ` [setup report: ...]`. Only where bring-back.md exists, as before.
   `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`,
   `test_the_report_of_a_stopped_copy_invites_no_bring_back`.
+- **The shell report states the one outcome it can, and fills its link for it** (H24). A session whose step 1
+  failed before agentsync was installed has a shell report whose friction line states the prompt version and
+  the agent, but its Summary had neither and its link was bare, while setup-feedback.md says to copy the values
+  from the Summary. The rule is narrow so that it cannot drift from `compute_outcome`: the friction log's latest
+  attempt (`friction_attempt_begin`'s boundaries) has exactly one timed line besides its end line; that line is
+  a step 1 error that states `prompt vN, <agent>:` (`stated()`), and is not the line `--log-start` writes for a
+  copy it stopped; and the attempt has no install run (a `--report-only` run with no install log, no install
+  run in it, or a last one that started before the attempt). Then the Summary's third line reads `- outcome:
+  failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: vN (from the step 1 error
+  line) · agent: <agent>`, redacted with the rest of the body, and the report ends on `ISSUE_URL&title=Setup
+  report: Failed at step 1 (preflight) · vN&outcome=Failed at step 1 (preflight)&prompt_version=vN&agent=<agent>`,
+  encoded as `urllib.parse.quote` encodes it: the string `build_issue_url` returns for those values with no run
+  type (the shell computes none). The agent is read back from the redacted Summary line, since the link is
+  written after redaction, keeps `A-Za-z0-9_ .:/()+,@<>-` and at most 100 characters (the Python report also
+  keeps letters outside ASCII), and is left out when nothing remains. The `Send it: ` line then names the fields
+  the link fills, in the agentsync report's words. In every other case the line reads `- outcome: not computed
+  (this shell fallback computes none for this attempt; the issue form's fields are left for you, from the
+  friction log below)` and the link stays bare. A private-only report still has no link, and a stopped copy's
+  report still drops link and send line (a titled link starts with `ISSUE_URL`).
+  `test_the_shell_report_states_a_step_1_failure_and_fills_its_link`,
+  `test_the_shell_report_computes_no_other_outcome`,
+  `test_the_shell_report_computes_no_outcome_once_the_attempt_ran_install`.
 
 ### 16.71 Round 7: converters and the .msg re-read (2026-10-13, wave B13 round 7 lane E)
 

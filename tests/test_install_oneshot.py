@@ -2362,6 +2362,110 @@ def test_the_shell_report_says_how_to_send_it_before_its_link(env: dict[str, str
     ]
 
 
+NOT_COMPUTED = (
+    "- outcome: not computed (this shell fallback computes none for this attempt; the issue form's fields "
+    "are left for you, from the friction log below)"
+)
+"""The shell report's Summary line where it computes no outcome (B13 round 7 H24)."""
+
+
+def _summary(report: str) -> list[str]:
+    return report.split("\n## Summary\n\n", 1)[1].split("\n\n## ", 1)[0].splitlines()
+
+
+def test_the_shell_report_states_a_step_1_failure_and_fills_its_link(env: dict[str, str]) -> None:
+    """B13 round 7 H24: a session whose step 1 failed before agentsync was installed has a shell report whose
+    one friction line states the prompt version and the agent, yet its Summary had no outcome, prompt or
+    agent and its link was bare, while docs/deploy/setup-feedback.md says to copy the values from the
+    Summary. In that one case (the latest attempt's only event is a step 1 error that states both, and the
+    attempt has no install run) the Summary has the line the agentsync report computes, and the link is the
+    one ``build_issue_url`` writes for the same values, with no run type. The agent is taken from the
+    redacted line, so a folder it names is that folder's placeholder in the link too."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    (cloud / "Fabrikam Bridge").mkdir(parents=True)
+    _write_config(env, local_source_table("fabrikam-bridge", cloud / "Fabrikam Bridge"))
+    said = "prompt v15, Northwind Agent 2.1 (Fabrikam Bridge): git pull failed: could not resolve host"
+    assert install_sh(env, "--log", "1", "error", said, "check the network").returncode == 0
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert _summary(text)[2] == (
+        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v15 "
+        "(from the step 1 error line) · agent: Northwind Agent 2.1 (<folder-1>)"
+    )
+    # what the agentsync report computes from the same friction log, and the link it builds
+    attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
+    outcome = setup_report.compute_outcome(attempt, [])
+    assert (outcome.text, outcome.why) == ("failed at step 1", ("no install.sh run; step 1 logged an error",))
+    assert setup_report._prompt_version(attempt) == "v15"
+    assert attempt is not None and attempt.said("Agent") == "Northwind Agent 2.1 (Fabrikam Bridge)"
+    link = setup_report.build_issue_url(
+        outcome=outcome.form_label,
+        title_outcome=outcome.title_label,
+        run_type=None,
+        prompt="v15",
+        agent="Northwind Agent 2.1 (<folder-1>)",
+    )
+    lines = text.splitlines()
+    assert lines[-1] == link and setup_report.issue_link(text) == link
+    assert setup_report.issue_link_fields(link) == ["Outcome", "Prompt version", "Agent tool and model"]
+    assert lines[-3].startswith(
+        'Send it: the link on the last line opens a new "Setup report" issue with the Outcome, Prompt '
+        "version, and Agent tool and model fields filled in (nothing else); paste this report into its "
+    )
+    assert "Fabrikam" not in text and f"issue link (review the report first): {link}" in cp.stdout
+
+
+@pytest.mark.parametrize(
+    "logged",
+    [
+        [],  # no friction log
+        [("1", "error", "git pull failed: could not resolve host")],  # states no prompt or agent
+        [
+            ("1", "error", "prompt v15, Contoso Agent: git pull failed"),
+            ("1", "deviation", "asked"),
+        ],  # two events
+        [("2", "error", "prompt v15, Contoso Agent: install.sh failed")],  # not step 1
+    ],
+)
+def test_the_shell_report_computes_no_other_outcome(
+    env: dict[str, str], logged: list[tuple[str, ...]]
+) -> None:
+    """H24's rule is narrow on purpose: a wider copy of ``compute_outcome`` in shell would drift from it.
+    Every other attempt has a Summary line that says no outcome is computed, the bare link, and the Send it
+    line for a blank form."""
+    for step, kind, what in logged:
+        assert install_sh(env, "--log", step, kind, what, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert _summary(text)[2] == NOT_COMPUTED
+    assert text.splitlines()[-1] == setup_report.ISSUE_URL
+    assert 'opens a blank "Setup report" issue form; ' in text.splitlines()[-3]
+
+
+def test_a_stopped_copys_shell_report_computes_no_outcome_and_has_no_link(env: dict[str, str]) -> None:
+    """The line --log-start writes for a copy it stopped is a step 1 error too, and the attempt's only event:
+    H24's rule leaves it out, and the stopped copy's report still ends with no link."""
+    assert install_sh(env, "--log-start", f"prompt v{COMPAT + 1}, Contoso Agent").returncode == 2
+    assert install_sh(env, "--report-only").returncode == 0
+    text = (friction_path(env).parent / "stopped-copy-report.md").read_text()
+    assert NOT_COMPUTED in _summary(text) and setup_report.ISSUE_URL not in text and "Send it: " not in text
+
+
+def test_the_shell_report_computes_no_outcome_once_the_attempt_ran_install(env: dict[str, str]) -> None:
+    """The attempt of H24's case, then an install run that fails before agentsync is installed: the agentsync
+    report would judge that run, so the shell report computes nothing, in the run's own report and in a
+    --report-only after it."""
+    said = "prompt v15, Contoso Agent: git pull failed: could not resolve host"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}).returncode == 1
+    for again in (False, True):
+        if again:
+            assert install_sh(env, "--report-only").returncode == 0
+        text = report_path(env).read_text()
+        assert NOT_COMPUTED in _summary(text) and text.splitlines()[-1] == setup_report.ISSUE_URL, text
+
+
 def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: dict[str, str]) -> None:
     """With no friction.md the shell report takes the friction log from the earlier report. macOS awk's
     regex match exits under UTF-8 at a byte that is not UTF-8 on its own, and every later line was lost
