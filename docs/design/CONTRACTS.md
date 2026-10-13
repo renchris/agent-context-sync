@@ -15786,6 +15786,16 @@ no clause about who converts the files is added (for `no-sources` and `status-fa
 borrowed path, already labelled "an earlier run's", is unchanged. Test:
 `tests/test_setup_report.py::test_a_first_sync_that_printed_no_counts_borrows_none_from_an_earlier_run`.
 
+**A prompt newer than the report's agentsync says so** (H23). On a scenario-D Mac the installed agentsync, older
+than the pasted prompt, writes the report with its own step names and checks, and nothing said so. When the
+attempt's prompt (header or stated) is above `PROMPT_VERSION` and the installer's own stop note
+(`_prompt_copy_note`, unchanged) is absent, the prompt line adds `(newer than this report's agentsync, for prompt
+vN)`. It names no cause: a header comes from `--log-start`, after a pull that worked (step 2 may have failed before
+the reinstall), and a header-less step 1 error may be xcode-select's, before any pull (the verifier's measurement
+of the finder's "its pull did not update it"). The run metadata's agentsync line names the build's prompt
+(`agentsync: <version>, setup prompt vN (python …)`), so any report shows the comparison. The issue form's version and
+the title keep the attempt's. Test: `tests/test_setup_report.py::test_a_prompt_newer_than_the_reports_agentsync_says_so`.
+
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
 assert sat after the loop over Status, Probe, Stage, Context and Agent, so it checked Agent alone; it is inside the

@@ -3107,6 +3107,37 @@ def test_first_sync_clause_says_the_sync_waited_for_another(
     assert "(waited-for-the-lock)" not in line and "converted 4, deferred 2 online-only" in line, line
 
 
+def test_a_prompt_newer_than_the_reports_agentsync_says_so(fake_mac: dict[str, Path]) -> None:
+    """B13 round 7 H23: a scenario-D Mac's report (the pasted prompt newer than the installed agentsync, whose
+    step names and checks it then uses) said nothing of it. The prompt line says the prompt is newer than this
+    report's agentsync, naming no cause (the pull may have worked, or never run), the run metadata names the
+    build's prompt, and the issue keeps the attempt's version."""
+    v6_install_log(fake_mac, rc=1)
+    newer, mine = setup_report.PROMPT_VERSION + 1, setup_report.PROMPT_VERSION
+    note = f" (newer than this report's agentsync, for prompt v{mine})"
+
+    def report(friction: str) -> tuple[str, str]:
+        write_friction(fake_mac, friction)
+        now = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
+        return text, section(text, "Summary")
+
+    stated = f"2026-09-29T10:20:00Z | step 1 | error | prompt v{newer}, Contoso Bot: git pull failed | -\n"
+    header = f"Attempt: 2026-09-29T09:58:00Z\nPrompt: v{newer}\nAgent: Contoso Bot\n"
+    for friction, prompt in (
+        (stated, f"- prompt: v{newer} (from the step 1 error line){note} · run: "),
+        (header, f"- prompt: v{newer}{note} · run: "),
+    ):
+        text, summary = report(friction)
+        assert prompt in summary, summary
+        assert "pull" not in summary.split("\n- prompt: ", 1)[1].split(" · run: ", 1)[0]
+        link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+        assert link["title"][0].endswith(f" · v{newer}") and link["prompt_version"] == [f"v{newer}"], link
+        assert f"- agentsync: {setup_report.__version__}, setup prompt v{mine} (python " in text
+    _text, summary = report(header.replace(f"v{newer}", f"v{mine}"))
+    assert f"- prompt: v{mine} · run: " in summary and "newer than this report" not in summary
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_first_sync_that_printed_no_counts_borrows_none_from_an_earlier_run(
     fake_mac: dict[str, Path], tmp_path: Path

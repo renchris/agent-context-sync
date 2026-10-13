@@ -5899,6 +5899,18 @@ _PROMPT_STOP_RE = re.compile(
 (``PROMPT_STOPPED`` there): the installer's version, and which of its two reasons it gave."""
 
 
+def _newer_than_me_note(attempt: Attempt | None) -> str:
+    """What the Summary's prompt line adds for an attempt whose prompt (header or stated) is newer than this
+    report's agentsync (B13 round 7 H23): the report, its step names and its checks are an older build's. It
+    names no cause: the pull may have worked (step 2 failed before the reinstall) or never run (xcode-select
+    failed), and the build, not install.sh, writes the report. Nothing when the installer's own stop says
+    more (:func:`_prompt_copy_note`)."""
+    version = _prompt_version(attempt)
+    if version is None or int(version[1:]) <= PROMPT_VERSION or _prompt_copy_note(attempt):
+        return ""
+    return f" (newer than this report's agentsync, for prompt v{PROMPT_VERSION})"
+
+
 def _prompt_copy_note(attempt: Attempt | None) -> str:
     """What the Summary's prompt line adds when the installer stopped the attempt's copy of the prompt:
     the pasted prompt was not the README's of the installer that ran it.  ``install.sh --log-start`` says
@@ -6694,8 +6706,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         why_run += "; HOME is also under a temporary folder"
     agent = (att.said("Agent") if att is not None else None) or "not stated"
     out.append(
-        f"- prompt: {_prompt_version(att) or 'not stated'}{_stated_note(att)}{_prompt_copy_note(att)} · run: "
-        f"{ISSUE_RUN_TYPES[run_type]} (computed: {why_run}) · agent: {agent}"
+        f"- prompt: {_prompt_version(att) or 'not stated'}{_stated_note(att)}{_prompt_copy_note(att)}"
+        f"{_newer_than_me_note(att)} · run: {ISSUE_RUN_TYPES[run_type]} (computed: {why_run}) · agent: "
+        f"{agent}"
     )
     if att is not None and att.header.get("Run"):
         out.append(f"- agent said run: {att.header['Run']}")
@@ -7145,7 +7158,10 @@ def build_report(
     except Exception as exc:
         r.friction_error = f"{type(exc).__name__}: {exc}"
     header: list[str] = [f"- generated at: {moment.strftime('%Y-%m-%dT%H:%M:%SZ')}"]
-    header.append(f"- agentsync: {__version__} (python {platform.python_version()}, {sys.executable})")
+    header.append(  # the build's prompt too, so any report says which prompt it was built for (H23)
+        f"- agentsync: {__version__}, setup prompt v{PROMPT_VERSION} (python {platform.python_version()}, "
+        f"{sys.executable})"
+    )
     try:
         header.append(f"- install source: {_install_source(r)}")
     except Exception as exc:
