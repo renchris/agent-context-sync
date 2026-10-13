@@ -15427,6 +15427,10 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   anything ...` stays on one line, which `stopped_report_note` rewrites. docs/deploy/setup-feedback.md's
   `<proxy-N>` row says the same for both reports (the agentsync report's rule is the URL alone).
   `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+  **Amended 2026-10-13, §16.73 H62:** the agentsync report's rule is not the URL alone: its url mode also matches
+  such a host before `:<port>` (`proxy:8080 refused` reads `<proxy-1>:8080 refused`), so the row gives one rule
+  for both reports, a URL or `host:port`. Only the port differs: the shell report matches the configured one, the
+  agentsync report any number.
 - **The shell report's private-only send advice is one line** (G50). The advice, `Send this report privately ...
   never as a public issue.`, ran on from the `Private only:` lines and survived in a stopped copy's report under
   its `do not send it` note. It is now one unwrapped line, `Send it: privately (docs/deploy/setup-feedback.md in the
@@ -15805,3 +15809,9 @@ configured folder or library named as every cloud drive's (`_GENERIC_FOLDERS`, �
 public. The doc gives examples, not the lists: a third copy would have no test keeping it equal. Test:
 `test_the_placeholder_table_states_the_org_word_and_generic_folder_rules_of_round_6`, which checks each example
 against the lists.
+
+**The `<proxy-N>` row gives one rule for both reports** (H62; dated line at §16.65 G4). The row and G4 said the
+agentsync report replaces a common-word proxy host only inside a URL; its url mode also matches one before
+`:<port>`, as the shell report does, so the row now says "only where a URL or `host:port` names it, in both
+reports". The module docstring already gave that rule; the inner docstrings that say "only where a URL names it"
+are left to their lanes (comments only). Test: `test_the_proxy_row_gives_one_rule_for_both_reports`.
