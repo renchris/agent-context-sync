@@ -15165,6 +15165,8 @@ prints whenever U, F or R is non-zero; before, a run with failed conversions and
 `setup_report._SPLIT_RE` takes an optional `, R refused`; `first_sync_unreadable` is (N, U, F, R). Tests:
 `test_a_file_refused_after_its_read_is_named_in_the_sync_lines_split`,
 `test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`.
+Amended 2026-10-13, §16.69 H46: when the refused count is printed, the setup report's first-sync source tag names it,
+`the unreadable/failed/refused split: install.out`; with no refused count it stays `the unreadable/failed split`.
 
 **G39: a folder stored through a CloudStorage link is the folder by its real name (`agentsync.cli`,
 `scripts/install.sh`, `agentsync.setup_report`).** The stored path is kept and `canonical_source_root` is
@@ -15685,6 +15687,11 @@ read "the docs repo's AGENTS.md" and "the docs repo's _sync/STATE.md" (`_AGENTS_
 added, so K16b holds and `_NEXT_PATH_RE` (paths from `~` or `/`) leaves the words alone. Tests:
 `tests/test_setup_report.py::test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces`,
 `tests/test_loop.py::test_the_empty_folder_wait_points_where_a_plain_sync_names_its_folders`.
+
+**The first-sync source tag names refused when it printed it** (H46; dated line at §16.63 G35). After G35 added `, R
+refused` to the split, the tag still read `the unreadable/failed split`; it now reads `the unreadable/failed/refused
+split` when R is printed (R > 0), and keeps the old name otherwise, so it never names a count the line left out.
+Test: `tests/test_setup_report.py::test_first_sync_clause_carries_the_read_again_count`.
 
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 

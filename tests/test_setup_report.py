@@ -2985,12 +2985,13 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 1, deferred 0 online-only, read again 1: 1 of them read for the first time, also in "
             "the converted count (install.out)",
         ),
-        (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept
+        (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept; the tag
+            # names refused once its count is printed (round 7 H46)
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
             "refused)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused "
-            "(install.log; the unreadable/failed split: install.out)",
+            "(install.log; the unreadable/failed/refused split: install.out)",
         ),
         (  # a first-read count of another sync (its read-again count differs) is not this one's
             "note=converted-1-deferred-0-reread-3",

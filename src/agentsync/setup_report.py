@@ -681,7 +681,8 @@ _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its c
 # unreadable, X failed" since B13 round 5 F34, side by side in two brackets before it, which an older
 # agentsync's install.out still holds (round 5 F8, F32)
 _FIRST_READ_RE = re.compile(r"\b(\d+) of them read for the first time, also counted above\b")
-# and since B13 round 6 G35 ", R refused" after it
+# and since B13 round 6 G35 ", R refused" after it (a sync line that prints it is named "the
+# unreadable/failed/refused split" in its source tag since round 7 H46)
 _SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b(?:, (\d+) refused\b)?")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
@@ -6262,7 +6263,8 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         if split is not None and split[0] == converted and any(split[1:]):
             refused = f", {split[3]} refused" if split[3] else ""  # B13 round 6 G35
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
-            named.append("the unreadable/failed split")
+            # the tag names refused only when its count was printed (B13 round 7 H46)
+            named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")
         # Name the file the clauses came from: install.log's note carries none (B13 round 4 Q1). A borrowed
         # run is matched to install.out's last sync line only by equal counts: say which line
         if named and source.startswith("install.log"):
