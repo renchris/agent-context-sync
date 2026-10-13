@@ -15430,7 +15430,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   and `--report-only`'s NEXT read `... copy that one file back privately, or paste the setup report into the
   issue the link above opens`; `agentsync setup-report --out` printed the link as its last line too. The person
   reads those lines, not the Redaction part. `report_issue_link` now returns nothing for a report with a line that
-  starts `Private only:` (both writers write it at column 0), so `on_exit` prints no link line, on the install
+  starts `Private only:` in its Redaction part (both writers write it there at column 0; a friction line that
+  quotes one is not the flag), so `on_exit` prints no link line, on the install
   path as on `--report-only`, and the NEXT keeps its bring-back-only default. It reads the report's own text,
   so an agentsync older than the installer is covered. `_cmd_setup_report` prints no link line when
   `red.word_named_shown`. The shell report sets `PRIVATE_ONLY` where it prints its lines and then ends without
@@ -15441,6 +15442,16 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   `test_the_shell_report_sends_a_report_with_a_word_named_folder_privately`,
   `test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line`,
   `test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately` (tests/test_setup_report.py).
+- **The shell report fences the friction log** (G6). The agentsync report fences it (`_fence`); the shell
+  fallback printed it raw, so in a Markdown view its lines ran into one paragraph and a placeholder such as
+  `<folder-1>` read as an HTML tag a renderer drops (the issue form wraps the paste in a code block, so the issue
+  was unaffected). `fallback_body` writes `~~~text`, the log with `~~~` and three backticks broken up as `_fence`
+  does, then `~~~`; no line numbers, which a read-back would number again. `friction_text`, which reads the log
+  back from an earlier report when friction.md is gone (the finding's "stopped-copy awk" is this reader), leaves
+  out lines that are exactly `~~~text`, `~~~` or `~~~<folder-N>` (a folder named `text` is redacted in the
+  opener), so a fenced earlier report of either writer neither nests the
+  new fence (an inner `~~~` would close it and leave every later section in an unclosed block) nor adds a pair a
+  run. `test_the_shell_report_fences_the_friction_log_once`, `test_report_only_keeps_an_earlier_friction_log`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

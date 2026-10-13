@@ -1676,7 +1676,12 @@ fallback_body() {
 	say "## Agent friction log"
 	say ""
 	if [ -n "$friction" ]; then
-		printf '%s\n' "$friction"
+		# fenced as setup_report._fence does: unfenced, the lines ran into one paragraph and a placeholder such as
+		# <folder-1> read as an HTML tag a renderer drops (B13 round 6 G6); a fence inside is broken up
+		say "~~~text"
+		# shellcheck disable=SC2016 # the backticks are text
+		printf '%s\n' "$friction" | LC_ALL=C sed 's/~~~/~ ~ ~/g; s/```/` ` `/g'
+		say "~~~"
 	else
 		say "No friction log at $(friction_file)."
 	fi
@@ -1871,7 +1876,9 @@ fallback_redaction() {
 	done < <(redaction_pairs 2>/dev/null || true)
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading
-# (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there).
+# (byte-wise: that report can hold a byte that is not UTF-8, and macOS awk's regex match exits there), less
+# the fence either writer puts around it, so the new fence neither nests nor grows a pair a run (G6); a folder
+# named "text" turns the opener into "~~~<folder-N>" (the body is redacted after it is written).
 friction_text() {
 	local f
 	f="$(friction_file)"
@@ -1879,6 +1886,7 @@ friction_text() {
 		head -c 262144 "$f"
 	elif [ -f "$REPORT_PATH" ]; then
 		LC_ALL=C awk '/^## / { found = ($0 == "## Agent friction log"); next } found { print }' "$REPORT_PATH" |
+			LC_ALL=C grep -v -x -e '~~~text' -e '~~~' -e '~~~<folder-[0-9]*>' |
 			LC_ALL=C grep -v '^<!-- agent:' | LC_ALL=C grep -v '^No friction log at ' | LC_ALL=C sed '/./,$!d'
 	fi
 }

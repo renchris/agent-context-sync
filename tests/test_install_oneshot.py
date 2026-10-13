@@ -2262,7 +2262,44 @@ def test_report_only_keeps_an_earlier_friction_log(env: dict[str, str]) -> None:
     assert not install_out(env).exists(), "K17: --report-only writes no install.out"
     text = report_path(env).read_text()
     friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
-    assert friction.strip() == "Outcome: failed at step 2"
+    assert friction.strip() == "~~~text\nOutcome: failed at step 2\n~~~", "fenced (B13 round 6 G6)"
+    assert install_sh(env, "--report-only").returncode == 0
+    assert report_path(env).read_text().count("~~~text\nOutcome: failed at step 2\n~~~\n") == 1, "no new pair"
+
+
+def test_the_shell_report_fences_the_friction_log_once(env: dict[str, str]) -> None:
+    """The Python report fences the friction log; the shell fallback printed it raw, so its lines ran into one
+    paragraph and a placeholder read as an HTML tag a renderer drops (B13 round 6 G6). Read back from an
+    earlier report of either writer, the old fence is left out, so the new one neither nests (which would
+    leave every later section inside a code block) nor grows a pair a run; a fence in the log is broken up."""
+    log = friction_path(env)
+    log.parent.mkdir(parents=True)
+    log.write_text("Prompt: v10\nF1 | step 1 | clean | 1 | listed a folder | -\n~~~\n```\n")
+    assert install_sh(env, "--report-only").returncode == 0
+    friction = report_path(env).read_text().split("\n## Agent friction log\n\n", 1)[1].split("\n\n## ", 1)[0]
+    assert (
+        friction == "~~~text\nPrompt: v10\nF1 | step 1 | clean | 1 | listed a folder | -\n~ ~ ~\n` ` `\n~~~"
+    )
+    log.unlink()
+    report_path(env).write_text(
+        "# agentsync setup report\n\n## Agent friction log\n\nThe agent's own log.\n\n~~~text\n"
+        "  1  Prompt: v10\n  2  F1 | step 1 | clean | 1 | listed a folder | -\n~~~\n\n## Environment\n\n- x\n"
+    )
+    for _ in range(2):
+        assert install_sh(env, "--report-only").returncode == 0
+        text = report_path(env).read_text()
+        part = text.split("\n## Agent friction log\n", 1)[1].split("\n## Environment\n", 1)[0]
+        assert part.count("~~~text") == 1 and part.count("\n~~~\n") == 1, part
+        assert text.count("~~~text") == text.count("\n~~~\n"), "## Environment sits outside every fence"
+    # A folder named "text" is redacted in the opener too; the read-back still drops it
+    word = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "text"
+    word.mkdir(parents=True)
+    config = report_path(env).parent / "sources.toml"
+    config.write_text(f'[[source]]\nid = "text"\nkind = "local"\npath = "{word}"\n')
+    for _ in range(2):
+        assert install_sh(env, "--report-only").returncode == 0
+        part = report_path(env).read_text().split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+        assert part.count("\n~~~") == 2 and "~ ~ ~" not in part, part
 
 
 def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: dict[str, str]) -> None:
