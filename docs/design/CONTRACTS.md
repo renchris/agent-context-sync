@@ -13816,7 +13816,8 @@ redacted stub keep the heading above the banner. The banner is still in the body
 **Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** a credential or path stub is rendered again once as well
 (`Cycle._stub_again`). Only a redacted stub, and a tombstone written before the change until it is reaped or
 rendered again by repair or unarchive, keeps the heading above the banner. Test:
-`test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once`.
+`test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once`. That was round 5's state: since
+§16.66 G76 and G77 a redacted stub and an old tombstone are rendered again once too, so none keeps it.
 
 **Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
 `refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
@@ -14958,7 +14959,8 @@ Each is pinned in `tests/test_deploy_pack.py` against the code it describes:
   keeps the heading anyway, so the doc must name the exception either way
   (`test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`).
   (**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** credential and path stubs are rendered again once since F94.
-  Only a redacted stub and an old tombstone keep the heading, as data-governance.md says.)
+  Only a redacted stub and an old tombstone kept the heading then; since §16.66 G76 and G77 they are rendered again
+  once too.)
   (**Amended 2026-10-13, §16.67 G69 (by §16.60 F73):** a `.msg` that reading means a download for (online-only, a
   Graph item, a refused hydration) is not fetched but withheld by its name; setup-feedback.md's Quarantine row and
   the report's legend say so since §16.66 G62, the same defect, built there.)

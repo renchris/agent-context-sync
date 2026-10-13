@@ -2863,9 +2863,9 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     """B13 round 5 F75 and F81 (one defect): since round 4's Q78 a label rule routes `.msg` to `msg-mime`,
     so every `.msg` on this Mac is fetched and one that holds MIME text is screened and read as an `.eml`,
     while the docs said no `.msg` is fetched or converted under a rule and none has its label read.  F87: Q45
-    retired "runs once the file is gone again", which read as a run nobody starts.  F88, amended by F94: a
-    tombstone and a redacted stub written before Q9 keep the heading above the banner; a credential or path
-    stub is rendered again once."""
+    retired "runs once the file is gone again", which read as a run nobody starts.  F88, amended by F94 and
+    round 6's G76 and G77: a stub or tombstone written before Q9 is rendered again once, so none keeps the
+    heading above the banner."""
     from agentsync.config import ConvertConfig  # noqa: PLC0415
     from agentsync.convert.registry import Registry  # noqa: PLC0415
     from agentsync.policy import PolicyConfig  # noqa: PLC0415
