@@ -14083,6 +14083,8 @@ item amends an older section, a dated line sits at that section too.
   sending it: a...` reads `A...`.
   Amended 2026-10-13, §16.65 G18: a blank line always comes before the closing `Not for sending` line.
   Amended 2026-10-13, §16.65 G14: an earlier run's `NEXT:` line is no longer dropped (see §16.65).
+  Amended 2026-10-13, §16.65 G16, G17: it also edits the install.out embed's summary line: `, K of them left
+  out` where lines of the embed were dropped, and F20's label where an agentsync older than F20 rendered it.
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
   finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
   report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
@@ -15359,6 +15361,22 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   are left out of this report)`. Dropping step 2's real NEXT instead would contradict the Installer section's
   count of NEXT lines in install.out. `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` seeds
   install.out with a full run's real end and checks the line after the marker is that run's `NEXT: stop:`.
+- **The install.out embed says what it quotes** (G16, G17). `stopped_report_note` reads the report twice. The
+  first read counts the lines it leaves out between the embed's `<details><summary>the last N line(s) of ...`
+  line and `</details>` (every line it drops or turns into the marker), and the second writes the count into
+  that summary line before its last ` (`: `the last 60 line(s) of ~/agent-context/setup/install.out, 2 of them
+  left out (...)`. The count is of install.out lines, so N is the fence's lines, less the marker, plus K. A
+  summary line in another wording is left as it is. A stopped copy stops before step 2 reinstalls agentsync, so
+  the first one after an update is rendered by the agentsync from before, whose embed always ends `(what the
+  agent saw)`. Where the report's own Summary has `- installer output: no run of this attempt in the last `
+  (the renderer's own F20 condition), that suffix becomes F20's `(earlier attempts' install.sh output: this
+  attempt ran no install.sh)` when the Summary also has `- install.sh: no run during this attempt` or `- install.sh:
+  no run in the install log`, else `(... none of this attempt's runs is in it)`; with this attempt's run in the
+  tail the label stays. The issue's "the most common field case" overstates it: since v11 a stop that names the
+  prompt as not the installer's goes to no report, so this comes from copies v10 and older, an agent that
+  strays, or a hand-run `--report-only`. Tests: `test_a_stopped_copys_embed_counts_the_lines_it_leaves_out`,
+  `test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it_quotes` (the agentsync stub
+  copies `STUB_REPORT_FILE`), and `test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

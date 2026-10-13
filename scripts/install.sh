@@ -2158,6 +2158,12 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # --report-only run's NEXT, the one that names bring-back.md (B13 round 6 G14).
 # The closing line has a blank line of its own: the one held before the dropped issue link is never printed, and
 # without it Markdown reads the closing line into the Redaction part (B13 round 6 G18).
+# Two reads of the report. The first counts the lines left out of the install.out embed, between its
+# "<details><summary>the last N line(s) of ..." line and "</details>", and the second says so in that summary
+# line (", K of them left out"): the fence holds fewer lines than N (G16). An older summary wording is left as
+# it is. The second read also gives the summary F20's label where the agentsync that rendered the report is
+# older than F20 (a stopped copy stops before step 2 reinstalls it): only where the report's own Summary says
+# no run of this attempt is in install.out's tail, as the renderer's condition is, and with its two texts (G17).
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt that a copy of the setup prompt that does not match this installer started: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -2166,13 +2172,32 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	if {
 		printf '%s\n\n' "$note" &&
 			LC_ALL=C awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
-				-v gone="(an earlier run's bring-back and issue link lines are left out of this report)" '
+				-v gone="(an earlier run's bring-back and issue link lines are left out of this report)" \
+				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " '
+				function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
+				NR == FNR {
+					if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
+					if (index($0, "- install.sh: no run during this attempt") == 1 || $0 == "- install.sh: no run in the install log") norun = 1
+					if (!at && index($0, "<details><summary>the last ") == 1 && index($0, " line(s) of ") > 0) { at = FNR; inside = 1; next }
+					if (inside && $0 == "</details>") inside = 0
+					if (inside && left($0)) k++
+					next
+				}
+				FNR == at {
+					n = length($0) - length(saw)
+					if (noout && n > 0 && substr($0, n + 1) == saw)
+						$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
+					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line\(s\) of .* \(.*\)<\/summary>$/) {
+						for (j = 0; (i = index(substr($0, j + 1), " (")) > 0;) j += i
+						$0 = substr($0, 1, j - 1) ", " k " of them left out" substr($0, j)
+					}
+				}
 				index($0, "Send it: ") == 1 || index($0, u) == 1 { next }
 				index($0, u) > 0 || index($0, "bring back: ") == 1 { if (shown++) next; $0 = gone }
 				(j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
 				$0 == "" { blank++; next }
 				{ for (; blank > 0; blank--) print ""; print }
-				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH"
+				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH"
 	} >"$tmp"; then
 		mv -f "$tmp" "$REPORT_PATH"
 	else

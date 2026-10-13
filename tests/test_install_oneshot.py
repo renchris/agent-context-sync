@@ -163,8 +163,12 @@ case "$sub" in
   setup-report)
     [ -z "${STUB_REPORT_RC:-}" ] || { echo "stub setup-report failed" >&2; exit "$STUB_REPORT_RC"; }
     mkdir -p "$(dirname "$out")"
+    # an older agentsync's report, as it is
+    if [ -n "${STUB_REPORT_FILE:-}" ]; then cat "$STUB_REPORT_FILE" > "$out"
+    else
     printf '# agentsync setup report\\n\\nstub, simulate=%s\\n' "${AGENTSYNC_SIMULATE_LAUNCHD:-0}" > "$out"
     [ -n "${STUB_REPORT_NO_LINK:-}" ] || printf '\\n%s\\n' "$STUB_ISSUE_LINK" >> "$out"
+    fi
     echo "wrote $out (0 value(s) redacted)"
     hint "review it" ;;
 esac
@@ -4315,6 +4319,135 @@ def _sends_nothing(side: Path) -> None:
     )
 
 
+def _old_renderer_report(summary: list[str], tail: list[str]) -> str:
+    """A stopped copy's report as an agentsync older than F20 (B13 round 5) rendered it: the install.out
+    embed's summary always ends "(what the agent saw)". ``summary`` is its Summary's installer lines,
+    ``tail`` the install.out lines it quotes."""
+    return "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            *summary,
+            "",
+            "## Installer",
+            "",
+            f"<details><summary>the last {len(tail)} line(s) of ~/agent-context/setup/install.out (what the "
+            "agent saw)</summary>",
+            "",
+            "~~~text",
+            *tail,
+            "~~~",
+            "",
+            "</details>",
+            "",
+            "## Redaction",
+            "",
+            "Read the report before sending it: anything else confidential is yours to remove.",
+            "Send it: the link on the last line opens a blank issue form. Nothing is sent automatically.",
+            "",
+            setup_report.ISSUE_URL,
+            "",
+        ]
+    )
+
+
+def _embed(side: Path) -> tuple[str, list[str]]:
+    """The install.out embed's summary line and the lines its fence holds."""
+    lines = side.read_text().splitlines()
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("<details><summary>the last "))
+    start = lines.index("~~~text", at)
+    return lines[at], lines[start + 1 : lines.index("~~~", start)]
+
+
+@pytest.mark.parametrize(
+    ("summary", "label"),
+    [
+        (
+            [
+                "- install.sh: no run during this attempt (1 earlier in the install log)",
+                "- installer output: no run of this attempt in the last 3 line(s) of install.out",
+            ],
+            "earlier attempts' install.sh output: this attempt ran no install.sh",
+        ),
+        (
+            [
+                "- install.sh: exit 0 (finished)",
+                "- installer output: no run of this attempt in the last 3 line(s) of install.out",
+            ],
+            "earlier attempts' install.sh output: none of this attempt's runs is in it",
+        ),
+        (
+            ["- install.sh: exit 0 (finished)", "- installer output: 1 NEXT: line(s) in 1 run(s)"],
+            "what the agent saw",
+        ),
+    ],
+)
+def test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it_quotes(
+    env: dict[str, str], tmp_path: Path, summary: list[str], label: str
+) -> None:
+    """A stopped copy stops before step 2 reinstalls agentsync, so the first one after an update is rendered
+    by the agentsync from before it, whose embed always reads "(what the agent saw)" (B13 round 6 G17). The
+    installer gives it F20's label by the report's own Summary, as the renderer's condition is: an attempt
+    whose run is in the tail keeps "(what the agent saw)"."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    old = tmp_path / "old-report.md"
+    old.write_text(
+        _old_renderer_report(summary, ["# run=20261012T090000Z-41 install.sh", "done", "NEXT: stop"])
+    )
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
+    assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout
+    head, fenced = _embed(side)
+    assert (
+        head
+        == f"<details><summary>the last 3 line(s) of ~/agent-context/setup/install.out ({label})</summary>"
+    )
+    assert len(fenced) == 3
+    _sends_nothing(side)
+
+
+def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str], tmp_path: Path) -> None:
+    """The earlier run's "bring back:" and issue link lines leave the install.out embed for one marker line,
+    so its fence held 59 lines under "the last 60 line(s)" (B13 round 6 G16). The summary says how many are
+    left out, so its count is the fence's install.out lines plus those; a summary in another wording, an
+    older agentsync's, is left as it is."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    tail = [f"filler {n}" for n in range(56)] + [
+        "report: ~/agent-context/setup-report.md",
+        "bring back: ~/agent-context/bring-back.md (one file: report, fix request, local work)",
+        f"issue link (review the report first): {setup_report.ISSUE_URL}&title=Contoso",
+        "NEXT: stop: the operator confirms the baseline questions in Contoso Docs; session done",
+    ]
+    old = tmp_path / "old-report.md"
+    old.write_text(_old_renderer_report(["- install.sh: exit 0 (finished)"], tail))
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    head, fenced = _embed(side)
+    gone = "(an earlier run's bring-back and issue link lines are left out of this report)"
+    found = re.fullmatch(
+        r"<details><summary>the last (\d+) line\(s\) of \S+, (\d+) of them left out \(.*\)</summary>", head
+    )
+    assert found is not None, head
+    assert (int(found[1]), int(found[2])) == (60, 2) and fenced.count(gone) == 1
+    assert int(found[1]) == len(fenced) - 1 + int(found[2]), "the marker is no install.out line"
+    _sends_nothing(side)
+    old.write_text(
+        _old_renderer_report(["- install.sh: exit 0 (finished)"], tail).replace(" line(s) of ", " lines of ")
+    )
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    head, fenced = _embed(side)
+    assert "left out" not in head and len(fenced) == 59, (
+        "a summary that does not end as F20's is not rewritten"
+    )
+
+
 def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[str, str]) -> None:
     """The same with the real agentsync's setup-report, whose Redaction part ends on a "Send it:" line and a
     filled issue link (the rehearsal's file, B13 round 4 Q18); a later report that was not stopped keeps
@@ -4351,6 +4484,9 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     assert lines[lines.index(gone) + 1].startswith("NEXT: stop: "), (
         "the earlier run's NEXT is kept, and the line above it does not say otherwise (B13 round 6 G14)"
     )
+    head, fenced = _embed(side)
+    found = re.search(r"the last (\d+) line\(s\) of \S+, (\d+) of them left out \(", head)
+    assert found is not None and int(found[1]) == len(fenced) - 1 + int(found[2]) == 5, (head, fenced)
     _backdate(real_env, 11)
     assert install_sh(real_env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0
     real = install_sh(real_env, "--report-only")
