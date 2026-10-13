@@ -46,7 +46,9 @@ _MIN_PYTHON = (3, 11)
 _MIN_FREE_BYTES = 2 * 1024**3
 _MAX_LOG_BYTES = 64 * 1024**2
 _STALE_FACTOR = 3  # design 4.7 watcher rule: cursor/success age > 3 x cadence
-_INCOMPLETE_RUNS = 3  # consecutive passes with enumeration_complete false before we warn
+# The heartbeat's consecutive_incomplete before we warn: passes not counted as listed. A Graph delta pass
+# resets it while its own enumeration_complete stays false (B13 round 6 G53; round 7 H51).
+_INCOMPLETE_RUNS = 3
 _POLICY_NAMES = {0: "default", 1: "off", 2: "on"}
 AGENT_STEP_PENDING_ENV = "AGENTSYNC_AGENT_STEP_PENDING"
 """Set to 1 by scripts/install.sh --confirm-install-agent for its doctor step: the LaunchAgents are installed
@@ -1760,8 +1762,10 @@ def _empty_folders_held(config: Config, src: SourceConfig) -> bool:
 def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int | None = None) -> str:
     """The fix for a source whose listing stays incomplete. ``yours`` (default: a local source): a WAITING ON
     YOU line explains it. A local folder's walk is always a full pass, so the same folder stops it again: each
-    such line about the source says which case it is and what to do (they count the empty cloud folders and
-    name the command that lists them). No command and no "above": status prints the lines, and the setup
+    such line about the source says which case it is and what to do (they count the empty cloud folders,
+    name ``exclude-empty``, and point at the docs repo's STATE.md, which keeps the sync's alarm line with the
+    folder names; the alarm names ``sync -v`` only past its first five: B13 round 6 G13, G42; round 7 H12,
+    H35, H51). No command and no "above": status prints the lines, and the setup
     report's Doctor section may have none above. Otherwise a Graph pass resumes, and an inbox is most often
     incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names any
     other cause. A local source with no such line either changed since its last walk (its stopping folders are
