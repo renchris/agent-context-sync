@@ -425,6 +425,8 @@ def test_a_joined_name_that_spells_any_report_word_leaves_the_word_alone() -> No
     assert words >= setup_report._JOINED_WORDS and words >= {"install", "content", "agentsync", "issue"}
     assert "janedoe" not in words and "contoso" not in words, "a docstring's example is not the report's text"
     assert "abel" not in words and "feedback" in words, "whole words only, a hyphenated one too"
+    owner = setup_report._REPO_SLUG.partition("/")[0]
+    assert owner not in words, "a locator's owner is a login run together, never a report word"
     red = setup_report.Redactor()
     red.add("name", "In Stall", fuzzy=True)
     assert red.redact("install.sh exited 0; the install log; INSTALL; InStall in-stall In Stall") == (

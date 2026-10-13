@@ -1028,8 +1028,10 @@ joined_word() {
 REPORT_WORDS=""
 report_word() {
 	joined_word "$1" && return 0
+	# a URL or this repository's locator names its owner, a login run together: never a report word
 	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '/^[[:space:]]*#/ { next }
-		{ sub(/[[:space:]]#[[:space:]].*$/, ""); n = split($0, a, /[^A-Za-z]+/)
+		{ sub(/[[:space:]]#[[:space:]].*$/, ""); gsub(/[A-Za-z]+:\/\/[^ \t"\047]*|github\.com[:\/][^ \t"\047]*/, " ")
+			n = split($0, a, /[^A-Za-z]+/)
 			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1 }
 		END { for (k in w) printf "%s ", k }' "$SELF_FILE" 2>/dev/null || true) "
 	case "$REPORT_WORDS" in *" $1 "*) return 0 ;; esac

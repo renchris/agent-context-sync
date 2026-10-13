@@ -470,6 +470,7 @@ word left off was over-redacted, and that gives the name back). install.sh's ``j
 """
 
 _REPORT_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
+_URL_RE = re.compile(r"\b[A-Za-z]+://\S*|\bgithub\.com[:/]\S*")
 
 
 @functools.cache
@@ -489,8 +490,9 @@ def report_words() -> frozenset[str]:
         loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose:
-                words.update(_REPORT_WORD_RE.findall(node.value))
-    return frozenset(words)
+                words.update(_REPORT_WORD_RE.findall(_URL_RE.sub(" ", node.value)))
+    # A locator names its owner, which is a person's login run together (a fork's owner is redacted as one)
+    return frozenset(words - {_REPO_SLUG.partition("/")[0].lower()})
 
 
 _GENERIC_IDS = frozenset(
