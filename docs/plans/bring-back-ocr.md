@@ -660,6 +660,11 @@ worktree removed; the dated-line and shared-pair rules are in COMMON5).
 Waiting on the account: the operator's ruling sends every lane to next3, which is at 100% of its weekly limit until
 2026-10-13 12:00 UTC. The lanes fire at that reset.
 
+CORRECTED (2026-10-13): the operator replaced the next3 ruling: "we use all of our accounts agnostic to any
+functionality / config, its just for usage across the board." Every lane gets the same model and effort; the account
+only decides whose quota pays. Round 6's lanes fired at 07:00 UTC on next (panes 402 to 407); from round 7 lanes
+fire with `--account auto`.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
