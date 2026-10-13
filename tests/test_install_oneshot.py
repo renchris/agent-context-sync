@@ -5489,6 +5489,15 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     # The first sync then waits for the same lock: its note says so, after the counts when the sync prints
     # them (the stub prints none; setup_report's test reads the joined note) (B13 round 4 Q29).
     assert ("first-sync", "done", "0", "waited-for-the-lock") in steps(install_log(e))
+    # B13 round 6 G37: that second wait was said only in agentsync's WARNING lines, which the prompt never
+    # names, so an agent logged it as a deviation. A line of the installer's own says it first, in the words
+    # step 2 of the prompt quotes; this Mac's config existed, so the step is "sync", not "first sync".
+    out = cp.stdout.splitlines()
+    wait = "sync: another sync is still running; waiting for it to end, at most 10 minutes"
+    assert wait in out, cp.stdout
+    assert out.index(wait) > out.index(
+        "agentsync: the background sync is still running after 1s; reinstalling without waiting longer"
+    )
 
 
 def test_no_lock_file_means_no_wait_and_none_is_created(
@@ -5498,6 +5507,7 @@ def test_no_lock_file_means_no_wait_and_none_is_created(
     cp = install_sh(e, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert not [ln for ln in cp.stdout.splitlines() if "background sync" in ln or "reinstalling" in ln]
+    assert "another sync is still running" not in cp.stdout
     assert not lock.exists()
     assert _lock_log(e) == ["released=no", "held=False"]
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
