@@ -26,12 +26,14 @@ sync reads more of them, and other words once the last sync read none or did not
 (:func:`_reread_notes`).
 
 The text is fixed wording plus counts and source ids, never a mirror path or file name (a page name is
-third-party content). One wait is the exception: the ``exclude = [...]`` line for a source's empty cloud
-folders names them, since the operator has to paste it; the setup report shows that list as ``<path>``.
+third-party content). No wait names a folder: a source's empty cloud folders are counted, the wait names
+``exclude-empty <id>`` (B13 round 4 Q71), and the sync's alarm line, kept in the docs repo's STATE.md,
+names the folders (:func:`_named`; round 5 F43, round 6 G13, G42). ``exclude-empty`` prints the
+``exclude = [...]`` paste line only as its fallback, when it cannot write sources.toml (B13 round 6 G43).
 The draft baseline's wait says where its two files are: the docs repo's ``_eval`` folder, by its path
-(:func:`_shown`). That is the config's own folder and the tool's own file names, as a command line here
-names ``~/.local/bin/agentsync``: no mirror path and no document's name. Rules 4, 6 and 8 name the docs
-repo's ``AGENTS.md`` the same way (:func:`_baseline`).
+(:func:`_shown`). That and STATE.md are the config's own folder and the tool's own file names, as a
+command line here names ``~/.local/bin/agentsync``: no mirror path and no document's name. Rules 4, 6 and 8
+name the docs repo's ``AGENTS.md`` the same way (:func:`_baseline`).
 ``sync`` (without ``--mode``) and ``status`` print :meth:`NextStep.lines`.
 """
 
