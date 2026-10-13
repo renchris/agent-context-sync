@@ -59,6 +59,7 @@ from agentsync.convert.registry import Registry
 from agentsync.convert.speech import SpeechEngine
 from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError
+from agentsync.frontmatter import parse_frontmatter
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
@@ -1490,6 +1491,64 @@ def test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_wi
     assert run(sample_config).commit_sha is None
     with Manifest(sample_config.state_paths.db) as m:  # a later rendering finds the page as this one left it
         m.set_meta(cycle_mod._STUB_RENDER_META, "")
+    assert run(sample_config).commit_sha is None
+
+
+@pytest.mark.parametrize("history", ["content kept", "squashed"])
+def test_a_tombstone_with_no_last_commit_is_rendered_again_with_the_commit_that_holds_its_content(
+    sample_config: Config, local_source_dir: Path, history: str
+) -> None:
+    """B13 round 7 H77: compaction leaves a tombstone row with no ``last_commit``, and G77's one-time rewrite
+    rendered its "pick the commit before this tombstone" line, though the rewrite is itself a tombstone
+    commit: that commit opened the older tombstone, not the content. The row takes the newest commit on the
+    path whose page is not a tombstone now, and the page an exact ``git show`` line; with no such commit
+    in history the page is still rewritten, banner first, and its line names no position."""
+    rel = "projects/Contoso Board Template.potx"
+    build_potx(local_source_dir / rel)
+    assert run(sample_config).exit_code == 0
+    repo, at = sample_config.docs_repo, str(slug.mirror_rel_path(SID, rel))
+    content = git(repo, "rev-parse", "HEAD").strip()
+    (local_source_dir / rel).unlink()
+    run(sample_config)  # a local file must be absent from two complete passes
+    assert run(sample_config).commit_sha is not None
+    assert page(repo, at)[0]["status"] == "deleted"
+    text = (repo / at).read_text(encoding="utf-8")
+    stale = text.replace(f"git show {content}:", f"git show {'0' * 40}:")  # the squashed sha the page kept
+    assert stale != text
+    (repo / at).write_text(stale, encoding="utf-8")
+    git(repo, "commit", "-qam", "a tombstone whose commit was squashed")
+    if history == "squashed":  # one root commit holding the tombstone: no page with content in history
+        git(repo, "reset", "-q", "--soft", git(repo, "commit-tree", "HEAD^{tree}", "-m", "squashed").strip())
+    with Manifest(sample_config.state_paths.db) as m:
+        m._db.execute("UPDATE tombstones SET last_commit = NULL WHERE output_path = ?", (at,))
+        [out] = [o for o in m.iter_outputs(source_id=SID) if o.output_path == at]
+        page_sha = hashlib.sha256(stale.encode()).hexdigest()
+        m.replace_outputs(
+            SID,
+            out.stable_id,
+            [
+                dataclasses.replace(o, page_sha256=page_sha) if o.output_path == at else o
+                for o in m.outputs_for(SID, out.stable_id)
+            ],
+        )
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before this rendering version
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.MODIFIED, at)]
+    fm, body = page(repo, at)
+    assert fm["status"] == "deleted" and body.startswith(f"{UNTRUSTED_BANNER}\n\n# [DELETED UPSTREAM] ")
+    with Manifest(sample_config.state_paths.db) as m:
+        tomb = m.get_tombstone(at)
+    assert tomb is not None
+    if history == "squashed":
+        assert tomb.last_commit is None
+        assert "pick the newest commit whose page is not a tombstone, status: deleted" in body
+        assert "commit before this tombstone" not in body
+    else:
+        assert tomb.last_commit == content
+        assert f"    git show {content}:{at}\n" in body
+        shown = parse_frontmatter(git(repo, "show", f"{content}:{at}"))[0]
+        assert shown["status"] == "current", "the line opens the content"
     assert run(sample_config).commit_sha is None
 
 

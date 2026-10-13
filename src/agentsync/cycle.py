@@ -1928,7 +1928,12 @@ class _Cycle:
         G77): one written before Q9 kept its heading above the banner until it was reaped. Each is rebuilt
         from its own frontmatter, so its title, path and redaction stay; a page that is missing or changed
         is the repair path's. Its output row takes the new hashes, or that repair would see drift. The
-        count."""
+        count.
+
+        A tombstone row with no ``last_commit`` (compaction squashed it) first takes the newest commit on
+        its path whose page is not a tombstone, so the page gets an exact ``git show`` line: the rewrite is
+        itself a tombstone commit, and "the commit before this tombstone" would then open the older one
+        (B13 round 7 H77). With none in history it is still rewritten, banner first."""
         rewritten, today = 0, self.today()
         for out in list(self.manifest.iter_outputs(source_id=source_id)):
             path = self.repo / out.output_path
@@ -1943,6 +1948,8 @@ class _Cycle:
                 or _sha256_file(path) != out.page_sha256
             ):
                 continue
+            if tomb.last_commit is None and (found := self._content_commit(out.output_path)) is not None:
+                self.manifest.add_tombstone(dataclasses.replace(tomb, last_commit=found))
             try:
                 new = self.publisher.rerender_tombstone(out)
             except (PublishError, OSError) as exc:
@@ -1958,6 +1965,24 @@ class _Cycle:
             )
             rewritten += 1
         return rewritten
+
+    def _content_commit(self, output_path: str) -> str | None:
+        """The newest commit on ``output_path`` whose page there is not a tombstone (``status: deleted``),
+        read-only; None when history holds none."""
+        proc = gitops.run_git(self.repo, "log", "--format=%H", "--", output_path, check=False)
+        if proc.returncode != 0:
+            return None
+        for sha in proc.stdout.split():
+            blob = gitops.file_at(self.repo, sha, output_path)
+            if blob is None:
+                continue
+            try:
+                status = parse_frontmatter(blob.decode("utf-8", "replace"))[0].get("status")
+            except FrontmatterError:
+                status = None
+            if status != PageStatus.DELETED.value:
+                return sha
+        return None
 
     def _replace_output(self, new: OutputRow) -> None:
         """Store ``new`` in place of its item's output row at the same path."""

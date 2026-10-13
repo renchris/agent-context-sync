@@ -299,7 +299,7 @@ _CHANGELOG_MAX_PATHS = 2000
 _INDEX_MAX_LINES = 200
 _INDEX_MAX_BYTES = 25_000
 _REASON_MAX = 300
-STUB_RENDER = 4
+STUB_RENDER = 5
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
@@ -307,7 +307,8 @@ re-renders the stubs it can rebuild without reading a byte, once per version (``
 Q75). 3: a withheld .msg says it is a binary one, whose label cannot be read, and a withheld stub names no
 converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is withheld by the label rule,
 a redacted item's stub is rendered again too, and so is every intact tombstone page (B13 round 6 G29, G76,
-G77)."""
+G77). 5: a tombstone with no ``last_commit`` gets the newest commit on its path that holds content, and the
+recovery line of one that has none names no position (B13 round 7 H77)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"
@@ -555,7 +556,8 @@ def _tombstone_body(row: TombstoneRow, title: str, *, archived: bool = False) ->
         lines += ["Recover the last content:", "", f"    git show {row.last_commit}:{path}", ""]
     else:
         lines += [
-            "Recover the last content (pick the commit before this tombstone):",
+            "Recover the last content (pick the newest commit whose page is not a tombstone, "
+            "status: deleted):",
             "",
             f"    git log --oneline -- {path}",
             f"    git show <commit>:{path}",
