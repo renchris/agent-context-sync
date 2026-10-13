@@ -1710,8 +1710,12 @@ def test_the_pre_sync_listing_note_promises_no_waiting_line(
     name = "heartbeat.local-fixture"
     r = by_name(doctor._check_heartbeat(sample_config, loop_checks=(name,)))[name]
     assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
-    assert "see WAITING ON YOU" not in r.note and "yours" not in r.note and "sync" not in r.note
-    assert "whether it still is" in r.note and "(" not in r.note, "the report's fix parser strips one level"
+    # no command: "sync" is named only as this run's (B13 round 6 G33), never as one to run
+    assert "see WAITING ON YOU" not in r.note and "yours" not in r.note and "`" not in r.note
+    assert "agentsync" not in r.note and "run " not in r.note.replace("this run", "")
+    # no line type promised either (G33): a FAIL, a privacy-held listing or a cleared one print different ones
+    assert "WAITING ON YOU" not in r.note and "whether this run's sync cleared it" in r.note
+    assert "(" not in r.note, "the report's fix parser strips one level"
 
 
 def test_heartbeat_incomplete_follows_the_loop_checks(

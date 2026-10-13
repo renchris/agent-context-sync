@@ -78,11 +78,11 @@ _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # empty cloud folder, a folder without access), and install.sh prints the loop's line for it. That status runs
 # before install.sh's sync and reads the last walk's stored state, which the sync can clear (a file added, a
 # folder no longer a File Provider domain): the note promises no line, it says where the answer is, true
-# whether the wait stays, goes, or a FAIL skips the sync (B13 round 4 Q26, Q32). No parentheses: the
-# report's fix parser strips one level.
-_LISTING_YOURS_NOTE = (
-    "held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is"
-)
+# whether the wait stays, goes, or a FAIL skips the sync (B13 round 4 Q26, Q32). The answer can be a WAITING
+# ON YOU line, the NEXT line (a listing held for a privacy prompt), install.sh's line that the sync cleared
+# it, or nothing when a FAIL skips the sync, so it names no line type; no reader infers "cleared" from a
+# missing line (B13 round 6 G33). No parentheses: the report's fix parser strips one level.
+_LISTING_YOURS_NOTE = "held at its last walk: the end of this run says whether this run's sync cleared it"
 # The same note in the setup report, whose run prints no WAITING ON YOU line at its end (``--report-only``
 # prints none at all): the waits are on its Summary's Loop line. It promises no line, since the report's
 # doctor calls a local listing yours by the source's kind, not by the loop's waits (B13 round 5 F12, F45).

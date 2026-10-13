@@ -701,6 +701,40 @@ def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
     assert one_next(cp) and "WAITING ON YOU:" not in cp.stdout, "the held line is the NEXT, not printed twice"
 
 
+_HELD_WARN = (
+    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes (deletions held) (held "
+    "at its last walk: the end of this run says whether this run's sync cleared it)"
+)
+_CLEARED = "heartbeat.fy26-projects: this run's sync listed it in full; deletions are no longer held"
+
+
+@pytest.mark.parametrize("case", ["cleared", "still held", "fail skips the sync"])
+def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
+    env: dict[str, str], folder: Path, wheel: Path, case: str
+) -> None:
+    """B13 round 6 G33: the status step warns that a listing was held at its last walk; when this run's sync
+    clears it, the end of the run says so in a line of its own, rather than leaving the reader to infer it
+    from a WAITING ON YOU line that is missing. Still held: the wait, and no such line. A [FAIL] that skips
+    the sync: neither."""
+    ok = "[ok  ] heartbeat.fy26-projects — last success 2026-10-13T10:00:00Z (0s ago, full_enumeration)"
+    wait = "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of fy26-projects incomplete (stub)"
+    e = {**env, "STUB_DOCTOR_OUT": _HELD_WARN}
+    if case == "cleared":
+        e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{ok}"
+    elif case == "still held":
+        e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{wait}\n" + _HELD_WARN.partition(" (held")[0]
+    else:
+        fail = "[FAIL] docs_repo.git — /x/docs does not exist and /x is not writable (fix: mkdir -p /x/docs)"
+        e |= {"STUB_DOCTOR_OUT": f"{_HELD_WARN}\n{fail}", "STUB_DOCTOR_RC": "1", "STUB_STATUS_OUT": ok}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    lines = cp.stdout.splitlines()
+    assert (_CLEARED in lines) is (case == "cleared"), cp.stdout + cp.stderr
+    assert (wait in lines) is (case == "still held"), cp.stdout
+    if case == "cleared":
+        assert lines.index(_CLEARED) < len(lines) - 1 and one_next(cp)
+        assert last_line(cp).startswith(f"NEXT: {LOOP_NEXT}")
+
+
 def test_a_held_listing_beside_the_launchers_tcc_pending_still_exits_1(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:

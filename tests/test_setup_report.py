@@ -7554,7 +7554,7 @@ def _yours_step() -> loop.NextStep:
     [
         " (fix: each WAITING ON YOU line about project-x says what stops the listing and what to do: "
         "another sync does not clear it)",
-        " (held at its last walk: the WAITING ON YOU lines at the end of this run say whether it still is)",
+        " (held at its last walk: the end of this run says whether this run's sync cleared it)",
         " (held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)",
     ],
     ids=["by-hand", "install.sh", "report"],
@@ -7635,9 +7635,7 @@ def test_the_doctor_line_names_the_checks_install_shs_doctor_printed_that_this_o
         "[warn] heartbeat.project-q — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
         "NEXT: done",
         f"# run={new} 2026-10-09T10:01:00Z install.sh --source-local x",
-        _INCOMPLETE
-        + " (held at its last walk: the WAITING ON YOU lines at the end of this run say whether it "
-        "still is)",
+        _INCOMPLETE + " (held at its last walk: the end of this run says whether this run's sync cleared it)",
         "[warn] heartbeat.project-z — no successful pass yet (fix: ~/.local/bin/agentsync sync -v)",
         "[warn] launchd.poll — com.agentsync.poll is not installed (installed by the agent step below)",
         "first sync: converted 1, deferred 0 online-only",

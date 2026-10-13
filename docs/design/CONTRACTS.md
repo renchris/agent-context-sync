@@ -14096,6 +14096,11 @@ item amends an older section, a dated line sits at that section too.
   report's yours/unexpected tally keys on the detail, not the note. Tests:
   `test_the_pre_sync_listing_note_promises_no_waiting_line` (tests/test_ops_doctor.py) and the pins in
   test_ops_doctor, test_loop and test_setup_report (test_cli's pin is the purge queue's own note, unchanged).
+  **Amended 2026-10-13, §16.63 G33:** "none follows" left the reader to infer a cleared hold from a missing line.
+  The note now reads `held at its last walk: the end of this run says whether this run's sync cleared it`, and
+  install.sh's `loop_next` prints `heartbeat.<id>: this run's sync listed it in full; deletions are no longer
+  held` above the NEXT for each source the step-5 status warned as held (`(deletions held)`) and the closing
+  status reads ok; a [FAIL] that skips the sync prints none.
 - **The inbox line under a linked home** (Q36). The inbox is stored resolved (`canonical_source_root`, how a
   OneDrive link reaches the CloudStorage checks), so a home reached through a link printed `/private/tmp/...`
   beside a docs repo and config printed as `/tmp/...`. Storage is unchanged (`ensure_inbox` dedupes by exact
