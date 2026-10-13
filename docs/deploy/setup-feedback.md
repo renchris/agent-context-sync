@@ -71,7 +71,8 @@ Redaction is on by default and consistent within one report, so the same value i
 
 When a folder, library or organisation name redacted everywhere is also a word the report prints (a folder
 `Status`), its placeholder in the report's own text reads back as that word, so the Redaction section says so
-(`Private only: ...`) and its `Send it:` line sends the report privately, not through the issue link.
+(`Private only: ...`) and its `Send it:` line sends the report privately, never as a public issue; such a report
+ends with no issue link.
 
 The "Redaction" section gives the count per kind: a numbered placeholder as often as the report shows it, the
 unnumbered ones (`~`, `<user>`, `<name>`, `<serial>`, `<host>`, `<mdmhost>`, `<tmp>`) as often as a value was
@@ -94,7 +95,7 @@ words) is yours to remove. The CLI always redacts.
   form shows the report as a code block. The report fences command output with `~~~`, which the form's backtick
   fence does not break. Keep the agent's additions to `~~~` too.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
-  prints the issue link for it, the shell fallback report has none, and `--report-only`'s NEXT names only
+  prints the issue link for it, neither report has one, and `--report-only`'s NEXT names only
   bring-back.md. Send that one privately.
 - **Privately (no public post needed):** copy `~/agent-context/bring-back.md` back to the machine you administer
   this setup from (AirDrop, a USB stick, a shared folder you already use). It is the one file the prompt's last

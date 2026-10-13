@@ -14804,6 +14804,9 @@ Amended 2026-10-13, §16.65 G50: the shell report puts its send advice on one `S
 a public issue. Nothing is sent automatically.` line.
 Amended 2026-10-13, §16.65 G47, G65: a report with a `Private only:` line gets no printed issue link from
 `install.sh` or `agentsync setup-report --out`, and the shell report then ends without its issue link.
+Amended 2026-10-13, §16.69 H75: the agentsync report's `Send it:` line reads `privately (docs/deploy/setup-feedback.md
+in the agentsync repository), never as a public issue: it would show that name. Nothing is sent automatically.`, and
+the report ends after its Redaction section with no issue link, as the shell report does.
 
 **F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
 sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
@@ -15469,6 +15472,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   `test_the_shell_report_sends_a_report_with_a_word_named_folder_privately`,
   `test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line`,
   `test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately` (tests/test_setup_report.py).
+  Amended 2026-10-13, §16.69 H75: the agentsync report no longer keeps its last-line link: a private copy ends
+  after its Redaction section, and its `Send it:` line says `never as a public issue`, as G65 proposed.
 - **The shell report fences the friction log** (G6). The agentsync report fences it (`_fence`); the shell
   fallback printed it raw, so in a Markdown view its lines ran into one paragraph and a placeholder such as
   `<folder-1>` read as an HTML tag a renderer drops (the issue form wraps the paste in a code block, so the issue
@@ -15743,6 +15748,16 @@ merge that failed) that invites "current". `_checkout_facts` now runs one more r
 --count HEAD...origin/main` and reads `yes, 5 behind (…)` or `no, 1 ahead, 2 behind (…)`; the token stays first and
 the dated fetch last, and a failed count prints none. The count is against the local origin/main, which the fetch
 clause dates. Test: `tests/test_setup_report.py::test_install_source_names_origin_main_and_the_tree`.
+
+**A private copy ends with no public issue link** (H75; dated lines at §16.58 F92 and §16.65 G47, G65). With
+`red.word_named_shown`, the agentsync report's `Send it:` line said "not through the link on the last line" and the
+report still ended with the prefilled link; round 6 kept it only because the file was another lane's. `build_report`
+now ends such a report after its Redaction section, and the line reads `Send it: privately
+(docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue: it would show that name.
+Nothing is sent automatically.`, the shell report's words. No reader needs the link: `issue_link`,
+`report_issue_link` and `stopped_report_note` handle a report without one, and `setup-report --out` and install.sh
+already print none for it. The README prompt already says "none when the report says it is for a private copy only".
+Test: `tests/test_setup_report.py::test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately`.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`

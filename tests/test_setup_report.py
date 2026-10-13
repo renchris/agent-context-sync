@@ -540,10 +540,13 @@ def test_a_word_named_folder_makes_the_redaction_section_advise_sending_privatel
         "so where its placeholder stands in the report's own text it can be read back.\n" in redaction
     ), redaction
     assert (
-        "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), not through the "
-        "link on the last line: a public issue would show that name." in redaction
+        "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public "
+        "issue: it would show that name. Nothing is sent automatically." in redaction
     )
     assert "Send it: the link on the last line opens" not in redaction
+    # and the report ends with no public issue link, as the shell report does (B13 round 7 H75)
+    assert setup_report.issue_link(text) is None and setup_report.ISSUE_URL not in redaction, redaction
+    assert text.endswith("\n") and not text.endswith("\n\n"), repr(text[-80:])
     assert "Read the report before sending it: anything else confidential" in redaction, "the caveat stays"
     # nor does `setup-report --out` print the issue link that offers the public issue (B13 round 6 G47, G65)
     out = tmp_path / "setup-report.md"

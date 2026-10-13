@@ -10,7 +10,8 @@ canary.
 
 The report opens with a computed ``## Summary``, then the friction log (``~/agent-context/setup/friction.md``,
 embedded and redacted, one line per attempt), then the machine sections and the redaction legend, and its last
-line is a prefilled "Setup report" issue link. The friction log is a sequence of attempts (``Attempt:
+line is a prefilled "Setup report" issue link (none for a private-only copy, which ends after its redaction
+legend: B13 round 7 H75). The friction log is a sequence of attempts (``Attempt:
 <time>``, ``Prompt:``, ``Agent:``, then ``<time> | step <n> | <kind> | <what> | <fix>`` lines and ``<time> |
 end | finished``), written by ``install.sh --log-start``, ``--log`` and ``--report-only`` (``--log-end`` until
 KISS K17) since setup prompt v6 (by the agent itself in v5); :class:`PromptLayout` keeps the step numbers of
@@ -6896,9 +6897,9 @@ def _redaction_section(
             "Private only: one of your folder, library or organisation names is also a word this report "
             "prints, so where its placeholder stands in the report's own text it can be read back."
         ]
-        send = (
-            "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), not through the "
-            "link on the last line: a public issue would show that name. Nothing is sent automatically."
+        send = (  # and no link ends the report (B13 round 7 H75), as the shell report has none
+            "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a "
+            "public issue: it would show that name. Nothing is sent automatically."
         )
     return [
         "",
@@ -7084,7 +7085,8 @@ def build_report(
     redacted (KISS K16b: the ``redact`` argument went with ``--no-redact``, its last caller). Never
     raises for a failed probe or section. ``friction_path`` (default :func:`default_friction_path`) is the
     agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
-    line is the prefilled issue link (:func:`issue_link` returns it)."""
+    line is the prefilled issue link (:func:`issue_link` returns it), except in a private-only copy
+    (``red.word_named_shown``), which ends after its Redaction section (B13 round 7 H75)."""
     moment = now or datetime.now(UTC)
     budget_s = TIME_BUDGET_S if budget_s is None else budget_s  # read at the call: a test can widen it
     r = _Run(config_path, hooks or ReportHooks(), budget_s)
@@ -7145,7 +7147,9 @@ def build_report(
     except Exception:  # the link is a convenience: the bare form always works
         link = ISSUE_URL
     hits = residue_by_section(main, ignore=r.provider_heads)
-    tail = [*_redaction_section(red, hits, issue_link_fields(link)), "", link]
+    tail = _redaction_section(red, hits, issue_link_fields(link))
+    if not red.word_named_shown:  # a private copy ends with no public issue link (B13 round 7 H75)
+        tail += ["", link]
     return main + "\n" + "\n".join(tail) + "\n", red
 
 
