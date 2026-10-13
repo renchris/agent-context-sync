@@ -2903,6 +2903,13 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
         "A stub or tombstone written before the banner came first (a credential, path or redacted stub"
         in page
     )
+    # B13 round 7 H53, H59 (one defect): since round 6's G29 a withheld `.msg`'s page `reason:` and its
+    # QUARANTINE.tsv row read `withheld by label rule`; only the stored reason keeps `no converter for .msg`.
+    from agentsync.publish import _withheld_reason  # noqa: PLC0415
+
+    assert "reason stays `no converter for .msg`" not in page
+    assert f"`_sync/QUARANTINE.tsv` row both read `{_withheld_reason('.msg')}`" in page
+    assert "only the reason agentsync stores keeps `no converter for .msg`" in page
 
 
 def test_setup_feedback_states_the_report_rules_of_round_3() -> None:

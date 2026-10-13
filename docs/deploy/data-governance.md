@@ -108,10 +108,12 @@ editing `sources.toml`.
   downloaded and gets the withheld page below. A `.msg` that holds MIME text (mail saved as `.eml` under a `.msg` name) is screened
   as an `.eml` (an excluded label, or no label under `refuse_unlabelled`, refuses it) and then converted. A binary
   (Outlook-format) `.msg` keeps its label in a property agentsync does not read, so it is not converted: its page
-  says that a `[policy]` label rule withholds it and that it can be saved as `.eml`, and its `_sync/QUARANTINE.tsv`
-  reason stays `no converter for .msg`. A policy change turns a binary `.msg` page published before it into that
-  stub. No purge is queued for it, so its earlier text stays in git history until that is squashed or the item is
-  purged. To publish a binary one under a label rule, drag the message out as `.eml` (CONTRACTS §16.42, §16.54).
+  says that a `[policy]` label rule withholds it and that it can be saved as `.eml`. Its page's `reason:` and its
+  `_sync/QUARANTINE.tsv` row both read `withheld by label rule: the label of a binary .msg, or of a .msg not on
+  this Mac, cannot be read`, as do those of a `.msg` withheld without a download (above); only the reason
+  agentsync stores keeps `no converter for .msg`. A policy change turns a binary `.msg` page published before it
+  into that stub. No purge is queued for it, so its earlier text stays in git history until that is squashed or the
+  item is purged. To publish a binary one under a label rule, drag the message out as `.eml` (CONTRACTS §16.42, §16.54).
 
 ## Untrusted-content boundary
 
