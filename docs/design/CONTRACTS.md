@@ -4773,7 +4773,10 @@ stubs, screened before they are written and by the builtin patterns too, and pub
 (`convert.registry.SIDECAR_DIGEST_PREFIX`, `SIDECAR_DIGEST_VERSION` in the options, `sidecar_digest_lines`;
 text sidecars start with the banner), so H2 covers sidecars (correctness-h2-cutoff) and `_pages_intact` verifies
 them (`publish.sidecar_rel`; **amended 2026-10-06:** the file may carry a shorter name than the one the page
-lists, §16.23). STATE.md quotes alarms, errors, skipped reasons and lint text in code spans;
+lists, §16.23). STATE.md quotes alarms, errors, skipped reasons and lint text in code spans
+(**Amended 2026-10-13, §16.68 H37:** the text keeps its backticks inside a fence one backtick longer than its
+longest run of them, so none can close the span; **§16.68 H48:** alarm lines are cut at 6000 characters, not 300;
+**§16.68 H73:** a source a run did not select shows the last selecting run's lines as `alarm (run N):`);
 QUARANTINE.tsv and new CHANGELOG month files start with an untrusted-names line; `policy.BOUNDARY_TEXT` names
 `_sync/`, CHANGELOG, `_manifest/` and sidecars as untrusted.
 
@@ -15791,7 +15794,107 @@ Tests: `tests/test_deploy_pack.py` (`test_the_docs_state_what_round_5_changed`,
 
 ### 16.68 Round 7: sync, status and doctor (2026-10-13, wave B13 round 7 lane B)
 
-Reserved for round 7 lane B of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 7").
+Lane B's round 7 items: H12, H31, H32, H33, H34, H35, H37, H48, H49, H50, H51, H73, all built. H12 and H35 are one
+defect from two finders, built once, in the same commit as H50 (all three are `loop._named`).
+
+**H12, H35, H50: the waits name STATE.md first, and only the alarm names `sync -v` (`agentsync.loop`,
+`agentsync.arm_local`, `agentsync.cli`).** The clear, collides and gone waits, both could-not-list waits and
+exclude-empty's tail read `the alarm line a sync prints for <id>, also kept in <docs repo>/_sync/STATE.md, names
+<what> (the first five; \`~/.local/bin/agentsync sync -v\` logs each one)`, even for one folder, and install.sh's
+step 2 and `status` print no alarm line. They now read `<docs repo>/_sync/STATE.md keeps the alarm line for <id>,
+which names <what> (a plain \`~/.local/bin/agentsync sync\` prints it too)` (`loop._named(config, ids, what)`, ids
+a list). The five-name cap is applied in the alarm, so the alarm alone says `(+N more;
+\`~/.local/bin/agentsync sync -v\` logs each one)`, only past five: a wait's own count is a part of the alarm's
+(three empty and three held folders make two waits of three, and a sixth name the alarm holds back). Two or more
+sources that could not be listed share one plural line: `a folder in each of <A and B> could not be listed (...):
+... keeps the alarm lines for <A and B>, which name them (... prints them too); grant Files and Folders access, or
+add each to its source's exclude in sources.toml`; one source's text is otherwise as before. install.sh's output is
+unchanged (the first sync's alarm lines would put folder names below a source root into install.out). Tests:
+`test_loop.py::test_one_empty_folder_is_never_sent_to_a_full_sync`,
+`test_loop.py::test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders`,
+`test_loop.py::test_two_sources_that_cannot_be_listed_get_a_plural_wait`.
+
+**H48: STATE.md keeps an alarm whole (`agentsync.publish`).** `write_state` wrote alarms at `_REASON_MAX` (300):
+of five nested folder paths of about 65 characters it kept three and lost the `(+N more` tail. Alarm lines now
+take `_ALARM_MAX` (6000: five relative paths at macOS's 1024-character limit fit); errors, skipped reasons and lint
+messages keep 300. No name is cut: a tail cut makes sibling paths with a shared start identical. Tests:
+`test_loop.py::test_state_md_keeps_the_five_long_folder_names_the_empty_folder_wait_points_at`,
+`test_loop.py::test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at`.
+
+**H37: quoted text keeps its backticks, inside a fence they cannot close (`agentsync.publish`).** `_quoted`
+turned every backtick into a single quote, so the command an alarm quotes in backticks read otherwise in STATE.md
+than on the terminal. It now keeps them and opens and closes the code span with one backtick more than the longest
+run in the text (padded with a space when the text starts or ends with one, or is empty), so no run inside can
+close the span: third-party text stays inert data, the guarantee of SG13. Plain text keeps a single backtick. Every
+`_quoted` caller (STATE.md alarms, errors, skipped reasons, lint findings, CHANGELOG paths) changes alike. Tests:
+`test_review_fixes.py::test_quoted_text_keeps_its_backticks_and_stays_one_inert_span`,
+`test_review_fixes.py::test_sg13_third_party_text_in_state_md_is_quoted_data`.
+
+**H73: STATE.md keeps an unselected source's lines (`agentsync.cycle`, `agentsync.publish`, `agentsync.model`).**
+A `reconcile --source`, `sync --source` or `accept-deletions` of one source rewrote STATE.md without the other
+sources' alarms, while their waits said STATE.md keeps them. Each cycle stores every selected source's raw alarm and
+error lines with its run id in the manifest meta `state_md_lines` (`{id: [run, [alarms], [errors]]}`), keeps the
+entries of sources it did not select, and drops sources no longer configured. `write_state(..., carried=)` shows
+them under such a source as `alarm (run N): ...` and `error (run N): ...`, after any line this run has about it (a
+rescan alarm, `not in this run`); quoting is at render time only. The keys are the sources the run reached (selected
+and given an accumulator), not `report is None`: a selected source a failed cycle never reached keeps its stored
+lines and shows them tagged. An unreadable store carries nothing and never fails the cycle. Test:
+`test_loop.py::test_state_md_keeps_another_sources_alarm_after_a_one_source_run`.
+
+**H32: the sync line counts the files refused without a read (`agentsync.cycle`, `agentsync.model`,
+`agentsync.cli`).** A source line's `refused=` counts every refused stub, the closing split only those refused after
+a read, so a file a rule withheld by its name (or a type with no converter) was in neither N nor the split.
+`SourceReport.refused_unread` counts refusals `_publish(..., unread=True)` made with no byte read (no converter for
+the name, `policy_refusal`, a withheld online-only `.msg`); a stub that stands or a page that is kept publishes
+nothing and counts nothing. The line then ends `; Q refused without a read (no converter for the type, or a rule
+that needs no bytes)`, only when Q > 0, with no bare `converted`, `deferred` or `read again` (install.sh's awk and
+`setup_report._SPLIT_RE` read the line as before). It names no label rule: a type with no converter is refused the
+same way. Tests: `test_cli.py::test_the_sync_line_counts_the_files_refused_without_a_read`,
+`test_cli.py::test_a_type_with_no_converter_is_counted_refused_without_a_read_and_no_rule_is_named`.
+
+**H49: an inbox duplicate is not in R (`agentsync.cycle`).** An inbox file whose bytes match a Graph file is read,
+then quarantined (`duplicate-of ...`), yet `acc.refused` counted it, so the line said `1 refused` beside the source
+line's `quarantined=1`. It stays in N and leaves R, as the name-and-size duplicate already did. Test:
+`test_cycle.py::test_an_inbox_duplicate_by_its_bytes_is_quarantined_on_the_sync_line_too`.
+
+**H31: install.sh's first sync waits for the lock quietly (`agentsync.cycle`, `agentsync.cli`,
+`scripts/install.sh`).** During the first sync's lock wait install.sh's wait line and ticker, a WARNING every 30 s
+and three skip lines said the same news (about 65 lines over 800 s). `AGENTSYNC_QUIET_LOCK_WAIT=1`, which install.sh
+sets for its first sync only (an environment variable, no flag: an older agentsync ignores it), makes
+`_acquire_waiting` log its first WARNING and send the later beats to DEBUG, and the CLI drop its `skipped: lock held
+by ...` WARNING, which the stderr line `skipped: lock held (...)` beside it carries with the holder's detail (that
+line still shows the bare label, `pid N (poll) since ...`: it is `_describe_holder`'s, shared with doctor and the
+lock-wait WARNING, which the setup report scrubs by its shape). Every other run keeps a beat each 30 s: without a
+ticker it is the run's only sign of life. install.sh's 75 branch now says `<label>: skipped, lock busy`, without the
+generic `rc_meaning` tail. The launchd jobs' `.err.log`, which the setup report reads, keeps its beats and its skip
+WARNING (in H33's words). Tests:
+`test_cli.py::test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`,
+`test_install_oneshot.py::test_first_sync_lock_busy_is_skipped_not_failed`.
+
+**H33: a terminal's sync is not called the background one (`scripts/install.sh`, `agentsync.cli`).** A sync typed
+in a terminal holds the lock as `poll` or `reconcile`, as the job does, and the installer reads only the lock.
+install.sh now says `agentsync: another sync is running (the background job, or one started in a terminal); the
+reinstall waits for it to end (at most <N>s)`, ticks `agentsync: reinstalling after the other sync ends` and, when
+the wait runs out, `agentsync: the other sync is still running after <N>s; reinstalling without waiting longer`.
+The note `waited-for-a-background-sync` is a machine word the setup report reads, and stays. The skip WARNING
+renders a cycle label as `another sync (its pass: <label>)` (`cli._lock_holder`); the unrecorded and unidentified
+holders and the governance and exclude-empty labels are named as before (wrapping them would call install.sh's
+reinstall a sync). Still one text per label, so Recent errors merges repeats. Tests:
+`test_cli.py::test_lock_held_warning_names_the_holder_and_repeats_verbatim`, the reinstall pins in
+`test_install_oneshot.py` (`REINSTALL_WAITS`, `REINSTALL_TICK`).
+
+**H34: a provider link keeps the form of the root that held it (`agentsync.paths`).** Under a home reached through
+a link (`/tmp` is `/private/tmp`), a provider link whose absolute target is written in the unresolved form was read
+through to that form, while the stored path and the real folder are resolved: add-source added the folder twice,
+step 1 listed it unmarked, the overlap check said none. `provider_link_resolved` now returns the root that held the
+path, joined with the target's name and the rest: one readlink still, nothing inside a domain read, no `resolve()`.
+Test: `test_cli.py::test_a_cloud_link_written_in_a_linked_homes_other_form_is_the_same_folder`.
+
+**H51: two doctor comments (`agentsync.ops.doctor`).** `_INCOMPLETE_RUNS` counts the heartbeat's
+`consecutive_incomplete` (passes not counted as listed; a Graph delta resets it), and `_incomplete_fix`'s docstring
+names exclude-empty, STATE.md's copy of the alarm and `sync -v` only past five. Comments only.
+
+No command, flag or config key is added; no prompt words were needed (nothing sent to lane P).
 
 ### 16.69 Round 7: setup report (2026-10-13, wave B13 round 7 lane RA)
 
