@@ -686,6 +686,32 @@ pane before suspecting a stall.
 Round 7: the round 6 workflow again on `52b86d93` with prompt v15 (run `wf_08dc4330-aab`, outputs `round7/`); its
 scenario F now expects the exclude-empty wait (G43), and its post-processing skips an empty verify slot.
 
+### B13 round 7: v15 rehearsal, cross-lane review, harvest (2026-10-13)
+
+Run `wf_08dc4330-aab` on `52b86d93` (90 agents, 0 errors). 79 findings, 77 confirmed (5 turn, 15 wrong, 57 small),
+2 refuted; 15 carry "a fix makes things worse"; 10 need prompt text, so the next prompt is v16.
+
+The rehearsal caught a regression round 6 shipped: on every Mac set up before round 6 (the corporate Mac included),
+v15's step 1 marks no folder as already synced, so an unattended run stops at the folder question (H7, H15, H27,
+H38: install.sh's synced-folder reader imports `agentsync.paths.provider_link_resolved` through the installed
+agentsync, which is older and lacks it). v15 must not be pasted until this is fixed. The fifth turn (H19): a checkout
+with a local commit leaves step 1 on a branch with no upstream. The lane brief (`lanes/COMMON6.md`) now requires
+install.sh's Python to fall back when the installed build lacks a new name.
+
+Convergence: confirmed 127, 85, 99, 79, 77 over rounds 2 and 4 to 7; turns 3, 0, 0, 1, 5.
+
+| Lane | Count | Area |
+|---|---|---|
+| RB | 15 | install.sh: the step 1 regression first, the shell report |
+| RA | 19 | setup_report.py (Summary, outcome labels, redaction) |
+| B | 12 | loop waits, cycle lock-wait output, cli counts, paths under `/tmp`, STATE.md |
+| E | 5 | the `.msg` re-read on a policy change, QUARANTINE.tsv under OCR, tombstone re-render, the timing skip |
+| P | 10 | prompt v16 |
+| D | 15 | docs/deploy and CONTRACTS cross-references |
+
+Lanes fire with `--account auto` (CONTRACTS §16.68 to §16.73). Lead: H79 (round 6's last worktree removed; round 5
+and 6 `/tmp` scratch goes to the operator, since deletion is refused to agents).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
