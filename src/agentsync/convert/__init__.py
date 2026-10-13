@@ -16,8 +16,10 @@ from agentsync.model import ConversionResult, ConversionStatus, RenderedUnit
 log = logging.getLogger(__name__)
 
 NO_CONVERTER_PREFIX = "no converter for "
-"""How the reason of a file no converter claims starts (``convert_file``; the stub ``publish`` writes for
-such a file says the same).  The cycle goes by it to find the files a converter registered since can read."""
+"""How the reason of a file no converter claims starts (``convert_file``; the stored reason of its stub keeps
+it).  The page, its ``reason:`` and ``_sync/QUARANTINE.tsv`` of a file a label rule withholds show ``withheld
+by label rule: ...`` instead (``publish._withheld_reason``, B13 round 6 G29).  The cycle goes by the prefix to
+find the files a converter registered since can read."""
 
 NO_CONVERTER_ID = "none"
 NO_CONVERTER_VERSION = "0"
