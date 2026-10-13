@@ -2887,7 +2887,13 @@ def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
         assert "Only `.eml`, a `.msg` saved as MIME text, `.pdf`" in text, readme
     feedback = _page("docs/deploy/setup-feedback.md")
     assert "so no converter is registered for it" not in feedback
-    assert "a `.msg` that holds MIME text is screened and read as an `.eml`" in feedback
+    assert "a `.msg` on this Mac that holds MIME text is screened and read as an `.eml`" in feedback
+    # B13 round 6 G62: a .msg not on this Mac is withheld by its name too (B13 round 5 F73)
+    assert (
+        "a binary `.msg`, or any `.msg` not on this Mac (online-only, on a Graph source, or one the OS will "
+        "not hydrate, which is not downloaded to tell), is `withheld by label rule` instead" in feedback
+    )
+    assert "unless `~/.local/bin/agentsync materialise PATH` names it" in feedback
     assert "runs once the file is gone again" not in page
     assert "once the file is gone, the next `agentsync purge --queue` runs it" in page
     # B13 round 6 G76, G77: a redacted stub and an old tombstone are rendered again once too

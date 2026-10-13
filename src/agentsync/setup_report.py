@@ -3486,7 +3486,7 @@ _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".w
 _LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
 """``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
 while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33): a binary .msg
-(B13 round 4 Q78) and an image."""
+or a .msg not on this Mac (B13 round 4 Q78, round 5 F73) and an image."""
 _OCR_DOCUMENTS = {
     ".pdf": "PDF",
     ".pptx": "deck",
@@ -4542,8 +4542,9 @@ def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             [
                 "",
                 "- `withheld by label rule`: a [policy] label rule is set and the label of a binary .msg or "
-                "an image cannot be read, so no converter reads them while it is set (the page says so); a "
-                "message saved as .eml, or an image exported as a PDF, is converted and its label screened",
+                "an image cannot be read, or a .msg is not on this Mac and is not downloaded to tell, so no "
+                "converter reads them while it is set (the page says so); a message saved as .eml, or an "
+                "image exported as a PDF, is converted and its label screened",
             ]
             if any(cls == "withheld by label rule" for _s, _st, cls, *_rest in stubs)
             else []

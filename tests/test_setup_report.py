@@ -5767,8 +5767,9 @@ def test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter(
     assert any(ln.split(" | ")[2:4] == ["withheld by label rule", "1"] for ln in part.splitlines()), part
     assert (
         "- `withheld by label rule`: a [policy] label rule is set and the label of a binary .msg or an image"
-        in part
-    )
+        " cannot be read, or a .msg is not on this Mac and is not downloaded to tell, so no converter"
+        in " ".join(part.split())
+    ), "B13 round 6 G62: a .msg not on this Mac is withheld by its name (B13 round 5 F73)"
     assert [ln for ln in part.splitlines() if ln.startswith("- <")] == [
         "- <folder-2>, no converter by type: .mp4 1 · .png 1"
     ]
