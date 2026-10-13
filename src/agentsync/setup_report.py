@@ -470,6 +470,37 @@ reads :func:`report_words`, which holds these and every word of the report's sta
 word left off was over-redacted, and that gives the name back). install.sh's ``joined_word`` holds this list.
 """
 
+_CONTEXT_ORG_WORDS = frozenset(
+    {
+        "data",
+        "docs",
+        "domain",
+        "files",
+        "folder",
+        "group",
+        "home",
+        "issue",
+        "link",
+        "links",
+        "report",
+        "shared",
+        "sync",
+        "team",
+        "work",
+    }
+)
+"""The generic words a one-word organisation can be matched in context mode for: only after a CloudStorage
+app's name or before a SharePoint or tenant domain, never in the report's sentences (B13 round 5 F42, F55).
+Reviewed: no plausible tenant uses one as its whole name (B13 round 6 G46). Any other one-word organisation
+that is a report word ("Status", "Context") is matched everywhere and makes the Redaction section
+advise sending privately (F92): in context mode its name would print bare in a sentence. install.sh's
+``context_org_word`` holds this list (a test keeps them equal)."""
+_CONTEXT_HEADS = frozenset({"Box", "Dropbox", "Egnyte", "GoogleDrive", "OneDrive", "SharedLibraries"})
+"""The CloudStorage app names a context-mode organisation is matched after (``OneDrive-<org>``) when the Mac
+names no other (B13 round 6 G45, G75): with those of this Mac's entries and sources
+(:meth:`Redactor.set_app_heads`), never after any word and a hyphen, which put the organisation inside the
+report's own words (``~/agent-<org-1>``)."""
+
 _REPORT_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
 _URL_RE = re.compile(r"\b[A-Za-z]+://\S*|\bgithub\.com[:/]\S*")
 
@@ -793,6 +824,8 @@ class Redactor:
         # _norm(value) -> placeholder of a one-word organisation that is a report word (:func:`report_words`),
         # matched only where a folder or domain name puts it (B13 round 5 F42, F55): apart, as _joined
         self._context: dict[str, str] = {}
+        # the app names a context-mode organisation is matched after (B13 round 6 G45, G75)
+        self._heads: frozenset[str] = _CONTEXT_HEADS
         # placeholders of one-word folder, library or organisation values matched anywhere that are report
         # words: one shown means the report's own text may give the value back (B13 round 5 F92)
         self._word_named: set[str] = set()
@@ -889,7 +922,7 @@ class Redactor:
         if joined and _norm(value) in self._joined:
             return
         word = len(_tokens(value)) == 1 and _norm(value) in report_words()
-        context = word and fuzzy and kind == "org"
+        context = word and fuzzy and kind == "org" and _norm(value) in _CONTEXT_ORG_WORDS  # B13 round 6 G46
         if context and _norm(value) in self._context:
             return
         known = self._known(value)
@@ -923,6 +956,12 @@ class Redactor:
         else:
             self._exact.setdefault(_bare(value), placeholder)
             self._literals.append((value, "exact"))
+        self._regex = None
+
+    def set_app_heads(self, heads: Iterable[str]) -> None:
+        """The app names before this Mac's organisations (``OneDrive`` of ``OneDrive-<org>``), with
+        :data:`_CONTEXT_HEADS`: a context-mode organisation is matched after one of them only."""
+        self._heads = frozenset({*(h for h in heads if h), *_CONTEXT_HEADS})
         self._regex = None
 
     def add_commit(self, sha: str | None) -> None:
@@ -980,9 +1019,12 @@ class Redactor:
                 if (
                     mode == "context"
                 ):  # "OneDrive-Link", "link.sharepoint.com"; never "link" or "Link" in prose
-                    # after any app's name (OneDrive-, SharedLibraries-, Box-, Egnyte-), and "OneDrive - " as
-                    # written, shell-escaped (install.log's args) or URL-encoded
-                    after = r"(?:(?<=[A-Za-z0-9]-)|(?<=Drive - )|(?<=Drive\\ -\\ )|(?<=Drive%20-%20))"
+                    # after an app's name (OneDrive-, SharedLibraries-, Box-, Egnyte-: self._heads, each a
+                    # whole word, so "inbox-" is no "Box-"; never after any word and a hyphen, B13 round 6
+                    # G45, G75), and "OneDrive - " as written, shell-escaped (install.log's args) or
+                    # URL-encoded
+                    heads = "".join(f"(?<=(?<![A-Za-z0-9]){re.escape(h)}-)|" for h in sorted(self._heads))
+                    after = rf"(?:{heads}(?<=Drive - )|(?<=Drive\\ -\\ )|(?<=Drive%20-%20))"
                     domain = r"(?=(?:-my)?\.sharepoint\.com|\.onmicrosoft\.com)"
                     literals.append(f"(?i:{after}{body}(?![A-Za-z0-9])|(?<![A-Za-z0-9.-]){body}{domain})")
                     continue
@@ -2559,6 +2601,7 @@ def _build_redactor(r: _Run) -> Redactor:
                 name = site_path.rstrip("/").rsplit("/", 1)[-1]
                 red.add("library", unquote(name), fuzzy=True)
     r.provider_heads = frozenset(heads)
+    red.set_app_heads(heads)
     for org in orgs:
         red.add("org", org, fuzzy=True)
     for _sid, provider, comps in cloud_sources:

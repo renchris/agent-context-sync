@@ -1026,8 +1026,8 @@ joined_word() {
 # WORD (lower case): joined_word, or a lower-case word of 3 or more letters on one of this script's lines that is
 # not a comment: the text the shell report prints, read when first asked, as setup_report.report_words reads
 # its string literals (B13 round 5 F93: a word left off was over-redacted, which gives a joined name back; a
-# comment's example, "janedoe", is no word of the report). name_forms reads it, and so does the organisation
-# rule: a one-word organisation that is such a word is registered only in the entry's own name and domains.
+# comment's example, "janedoe", is no word of the report). name_forms reads it, and so does fallback_redaction's
+# private-only rule; the organisation rule reads context_org_word (B13 round 6 G46).
 REPORT_WORDS=""
 report_word() {
 	joined_word "$1" && return 0
@@ -1038,6 +1038,16 @@ report_word() {
 			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1 }
 		END { for (k in w) printf "%s ", k }' "$SELF_FILE" 2>/dev/null || true) "
 	case "$REPORT_WORDS" in *" $1 "*) return 0 ;; esac
+	return 1
+}
+# WORD (lower case): a generic word a one-word organisation is registered for only in each entry's own name and
+# its domains, never in the report's sentences: setup_report._CONTEXT_ORG_WORDS (a test keeps them equal). Any
+# other one-word organisation, a report word or not, is replaced everywhere; a report word then makes the report
+# private only (B13 round 6 G46: a tenant named like any word of this script printed bare in a sentence).
+context_org_word() {
+	case "$1" in
+	data | docs | domain | files | folder | group | home | issue | link | links | report | shared | sync | team | work) return 0 ;;
+	esac
 	return 1
 }
 # A folder name every OneDrive or Google Drive has: setup_report._GENERIC_FOLDERS (a test keeps them equal). A
@@ -1241,7 +1251,7 @@ redaction_pairs() {
 			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) continue ;;
 			esac
 			low="$(recase lower "$org")"
-			if [ "${org#* }" = "$org" ] && report_word "$low"; then
+			if [ "${org#* }" = "$org" ] && context_org_word "$low"; then
 				# a word the report prints ("Link"): in each entry's own name (and its %q form) and the domains
 				# only, never the word in the report's own sentences (B13 round 5 F42, F55), as setup_report's
 				# context mode. Every entry gets its pair; only the number is shared (OneDrive-X, -SharedLibraries-X)

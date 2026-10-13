@@ -7995,3 +7995,71 @@ def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) 
     os.utime(head, (1_790_000_000, 1_790_000_000))
     facts = setup_report._checkout_facts(run, tree)
     assert facts.endswith("(as of the checkout's last fetch, 2026-09-21T14:13:20Z)"), facts
+
+
+def test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word() -> None:
+    """B13 round 6 G45, G46, G75 (one defect, built once). Context mode matched after any word and a hyphen,
+    so an organisation named like a report word was replaced inside the report's own words (``first-<org-1>``,
+    ``~/agent-<org-1>``) and could be read back, with no private-send advice; and it covered every report
+    word, so a tenant named "Status" printed bare in a sentence. Context mode is now for a short list of
+    generic words only, matched after a CloudStorage app's name (a whole word) or before a domain; any other
+    report word is matched everywhere and makes the report private only."""
+    fixed = (
+        "~/agent-context/docs; install.sh --log-start; coding-agent; install-agent; first-sync; "
+        "agent-context-sync; --list-folders; setup-report.md; agentsync-docs; inbox-sync; inbox-report"
+    )
+    for org in ("Sync", "Report", "Docs", "Folder", "Link"):
+        assert org.lower() in setup_report._CONTEXT_ORG_WORDS
+        red = setup_report.Redactor()
+        red.add("org", "Contoso", fuzzy=True)
+        red.add("org", org, fuzzy=True)
+        assert red.redact(fixed) == fixed, org
+        assert red.redact(
+            f"OneDrive-{org}; OneDrive-SharedLibraries-{org}; Egnyte-{org}; Box-{org}; OneDrive\\ -\\ {org}; "
+            f"OneDrive%20-%20{org}; OneDrive - {org}; {org.lower()}.sharepoint.com"
+        ) == (
+            "OneDrive-<org-2>; OneDrive-SharedLibraries-<org-2>; Egnyte-<org-2>; Box-<org-2>; "
+            "OneDrive\\ -\\ <org-2>; OneDrive%20-%20<org-2>; OneDrive - <org-2>; <org-2>.sharepoint.com"
+        ), org
+        assert not red.word_named_shown, org
+    red = setup_report.Redactor()
+    red.add("org", "Sync", fuzzy=True)
+    assert red.redact("Hubspot-Sync; CloudApp-Sync") == "Hubspot-Sync; CloudApp-Sync", "not a known app"
+    red.set_app_heads({"CloudApp"})
+    assert red.redact("Hubspot-Sync; CloudApp-Sync; OneDrive-Sync") == (
+        "Hubspot-Sync; CloudApp-<org-1>; OneDrive-<org-1>"
+    ), "an app this Mac's CloudStorage names, and the defaults"
+    for org in ("Status", "Probe", "Stage", "Context", "Agent"):
+        assert org.lower() not in setup_report._CONTEXT_ORG_WORDS
+        red = setup_report.Redactor()
+        red.add("org", org, fuzzy=True)
+        assert red.redact(f"the {org} tenant asked for MFA; OneDrive-{org}") == (
+            "the <org-1> tenant asked for MFA; OneDrive-<org-1>"
+        ), org
+    assert red.word_named_shown, "a report word matched everywhere: the report is private only"
+
+
+@pytest.mark.parametrize("org", ["Sync", "Status"])
+def test_a_report_word_organisation_never_prints_and_a_generic_one_keeps_the_reports_words(
+    fake_mac: dict[str, Path], org: str
+) -> None:
+    """B13 round 6 G45, G46, G75 end to end: a OneDrive-<org> entry beside OneDrive-Contoso and a friction
+    line naming it. "Sync" (a generic word) is replaced in its names only: the report's own words and
+    sentences keep the word and the report can go public. "Status" is replaced everywhere and the report is
+    private only."""
+    (fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{org}").mkdir()
+    write_friction(
+        fake_mac,
+        V7_HAPPY.replace(
+            "2026-09-29T10:01:10Z | end",
+            f"2026-09-29T10:00:00Z | step 2 | deviation | the {org} tenant asked for MFA | -\n"
+            "2026-09-29T10:01:10Z | end",
+        ),
+    )
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    assert f"OneDrive-{org}" not in text and "OneDrive-<org-2>" in text
+    # a generic word in prose is the report's own word (F42): only a reviewed list is generic (G46)
+    assert ("the <org-2> tenant" if org == "Status" else "the Sync tenant") in text
+    assert "agent-<org-" not in text and "first-<org-" not in text and "~/agent-context/" in text
+    private = "Private only:" in text
+    assert private == (org == "Status"), org

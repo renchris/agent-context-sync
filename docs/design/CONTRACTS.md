@@ -14752,6 +14752,11 @@ which would also match hyphenated prose. F42 and F55 describe one defect and are
 `test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words`,
 `test_the_shell_report_keeps_the_word_a_one_word_organisation_spells`,
 `test_the_shell_report_sends_a_report_with_a_word_named_folder_privately` (F92's shell half).
+Amended 2026-10-13, §16.64 G45 (with G46, G75): `context` mode is for the one-word organisations in
+`_CONTEXT_ORG_WORDS` only (link, data, group, shared, issue, report, domain, folder, files, docs, team, work, home,
+sync, links; install.sh's `context_org_word`), and it matches after a CloudStorage app's name as a whole word
+(`Redactor.set_app_heads`: this Mac's heads with OneDrive, SharedLibraries, Dropbox, Box, GoogleDrive and Egnyte),
+never after any word and a hyphen. Any other one-word organisation is matched everywhere, as before F42.
 
 **F92: a folder named like a report word sends the report privately.** Amends §16.46 "Kept as they are" and its
 R135 line (dated lines there). A one-word folder, library or organisation value in `report_words()` matched
@@ -14768,6 +14773,9 @@ at interpolation, is a broad change to `_redact_lines`' callers and is not built
 was not reproducible (that sentence is appended unredacted), and its org `Link` test is replaced by a folder
 `Status`, since F42 keeps a word-named organisation out of fixed text. Test:
 `test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately`.
+Amended 2026-10-13, §16.64 G45 (with G46, G75): "never lands in fixed text" holds because `context` mode now
+matches only after an app's name; a one-word organisation outside `_CONTEXT_ORG_WORDS` that is a report word
+(`Status`, `Context`) is matched everywhere and raises `Private only:`.
 
 **F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
 sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
@@ -15278,6 +15286,34 @@ one trailing bracket, as on every other line: `converted 2, deferred 0 online-on
 the first time, also in the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read
 count and the unreadable/failed split: install.out)`; with no re-read, `online-only; of the converted: …`. Test:
 `test_first_sync_clause_carries_the_read_again_count` (no `) (` in the line).
+
+**G45, G46, G75: a context-mode organisation is a generic word, matched only after an app's name.** One defect from
+three finders, built once. Amends §16.58 F42, F55 and F92 (dated lines there). F42's `context` mode matched after
+any letter or digit and a hyphen, so an organisation named like a report word was replaced inside the report's own
+hyphenated words (`~/agent-<org-1>/docs`, `first-<org-2>`, `--log-<org-2>`, `setup-<org-1>.md`) where anyone can
+read it back, with no `Private only:`; and it covered all of `report_words()` (1,081 words; the shell's 863 code
+tokens), so a tenant named like any of them (`Status`, `Probe`) printed bare in a sentence. Now:
+- `context` mode is for a one-word organisation in `_CONTEXT_ORG_WORDS` only: data, docs, domain, files, folder,
+  group, home, issue, link, links, report, shared, sync, team, work (generic words no plausible tenant uses as its
+  whole name; not `_JOINED_WORDS`, which holds brand-like words such as shell, signal and origin). install.sh's
+  `context_org_word` holds the same list and its organisation rule reads it instead of `report_word`; `report_word`
+  stays for the joined-name rule (F93) and the shell's private-only rule.
+- It matches after a CloudStorage app's name as a whole word (`(?<=(?<![A-Za-z0-9])OneDrive-)`, so `inbox-` is no
+  `Box-`): the heads of this Mac's entries and configured sources (`Redactor.set_app_heads`, set where
+  `r.provider_heads` is) with `_CONTEXT_HEADS` (OneDrive, SharedLibraries, Dropbox, Box, GoogleDrive, Egnyte). The
+  `Drive - ` forms and the domain lookahead are unchanged.
+- Any other one-word organisation is fuzzy, matched everywhere; one that is a report word (`Status`, `Context`,
+  `Agent`) goes into `_word_named`, so the Redaction section says `Private only:` (F92), and its name never prints.
+  `~/agent-context` then reads `~/agent-<org-N>` in that private report; that is the cost F42's verifier ranked
+  below a leak.
+Known difference: a word that is only an install.sh code token (a local variable's name) is replaced everywhere in
+both reports, but only the shell report adds `Private only:`, because its `report_word` reads every code token. Narrowing that vocabulary to
+printed text would also change the joined-name rule (F93), which the verifier warned against; it over-warns and
+leaks nothing, so it is not built. Tests:
+`test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word`,
+`test_a_report_word_organisation_never_prints_and_a_generic_one_keeps_the_reports_words`,
+`test_the_shell_context_org_word_list_is_the_reports`,
+`test_the_shell_report_replaces_a_one_word_organisation_outside_the_generic_list_everywhere`.
 
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 

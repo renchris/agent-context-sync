@@ -5699,3 +5699,38 @@ def test_a_locked_install_that_meets_a_half_removed_environment_runs_once_more(
 def test_a_bad_reinstall_wait_is_a_usage_error(env: dict[str, str]) -> None:
     cp = install_sh({**env, "AGENTSYNC_REINSTALL_WAIT_SECONDS": "2m"})
     assert cp.returncode == 2 and "AGENTSYNC_REINSTALL_WAIT_SECONDS must be a whole number" in cp.stderr
+
+
+def test_the_shell_context_org_word_list_is_the_reports() -> None:
+    """B13 round 6 G46: install.sh's context_org_word holds setup_report._CONTEXT_ORG_WORDS, word for word."""
+    body = INSTALL_SH.read_text().split("\ncontext_org_word() {\n", 1)[1].split("\n}\n", 1)[0]
+    [line] = [ln.strip() for ln in body.splitlines() if ln.strip().endswith(") return 0 ;;")]
+    assert set(line.removesuffix(") return 0 ;;").split(" | ")) == set(setup_report._CONTEXT_ORG_WORDS)
+
+
+def test_the_shell_report_replaces_a_one_word_organisation_outside_the_generic_list_everywhere(
+    env: dict[str, str],
+) -> None:
+    """B13 round 6 G46: every word install.sh's code holds was a context word, so a tenant named "Status" or
+    "Probe" printed bare in a sentence, and the Python report disagreed on a code-only word. Only the generic
+    list is matched in names alone; any other one-word organisation is replaced everywhere, and a report word
+    then makes the report private only, as the Python report does."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
+    team = cloud / "OneDrive-Contoso" / "Q3 Launch"
+    team.mkdir(parents=True)
+    for org in ("Status", "Probe"):
+        (cloud / f"OneDrive-{org}").mkdir()
+    friction = Path(env["HOME"]) / "agent-context" / "setup" / "friction.md"
+    friction.parent.mkdir(parents=True)
+    friction.write_text(
+        "Prompt: v4\nF1 | step 3 | clean | 1 | the Status tenant; the Probe tenant; the Contoso tenant | -\n",
+        encoding="utf-8",
+    )
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(team))
+    assert cp.returncode == 1
+    text = report_path(env).read_text(encoding="utf-8")
+    for org in ("Status", "Probe", "Contoso"):
+        assert f"the {org} tenant" not in text and f"OneDrive-{org}" not in text, org
+    assert "Contoso" not in text
+    assert re.search(r"the <org-\d> tenant; the <org-\d> tenant; the <org-\d> tenant", text), text
+    assert "Private only:" in text, "status is a word the shell report prints"
