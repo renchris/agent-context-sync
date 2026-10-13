@@ -36,6 +36,7 @@ from pptx.util import Inches
 from agentsync import arm_local as al
 from agentsync import curate, gitops, governance, lints, loop, materialise, slug
 from agentsync import cycle as cycle_mod
+from agentsync import policy as content_policy
 from agentsync import publish as publish_mod
 from agentsync.arm_local import LocalArm
 from agentsync.config import Config, parse_config
@@ -1341,6 +1342,15 @@ def _path_stub(config: Config, rel: str) -> bool:
     )
 
 
+class _OldPolicy:
+    """``publish.policy`` with another banner text: a stub rendering before this one."""
+
+    UNTRUSTED_BANNER = "> [UNTRUSTED CONTENT] Third-party data mirrored by agentsync (an older wording)."
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(content_policy, name)
+
+
 @pytest.mark.parametrize("rules_moved", [False, True])
 def test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, rules_moved: bool
@@ -1350,14 +1360,6 @@ def test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_onc
     before a rendering change kept it.  Each is rebuilt from its own page now: one rewrite each, no byte of
     the file read, no state moved, the secret never written; then nothing.  ``rules_moved``: the secret-scan
     rules moved in the same run, which re-screens the credential stub and clears its row's hashes first."""
-    import agentsync.policy as content_policy  # noqa: PLC0415
-
-    class _OldPolicy:  # a publisher whose banner text differs: a rendering before this one
-        UNTRUSTED_BANNER = "> [UNTRUSTED CONTENT] Third-party data mirrored by agentsync (an older wording)."
-
-        def __getattr__(self, name: str) -> Any:
-            return getattr(content_policy, name)
-
     monkeypatch.setattr(lints, "_gitleaks", lambda: None)  # the builtin rules, whatever this Mac has
     keys = "projects/Contoso keys.txt"
     (local_source_dir / keys).write_text(f"deploy key {AWS_KEY}\n", encoding="utf-8")
@@ -3267,6 +3269,97 @@ def test_a_potx_stub_from_before_the_deck_converter_read_templates_is_read_once_
     assert (fm["status"], fm["source_title"]) == ("current", "Contoso Quarterly Template")
     assert fm["converter"].startswith("pptx-python-pptx@1.0.0+") and "## Contoso Quarterly Template" in body
     assert run(sample_config).commit_sha is None and fetched == [rel], "no file is read a second time"
+
+
+def _changelog_lines(config: Config, op: str) -> list[str]:
+    """Every ``- <op>`` line of the month files under ``CHANGELOG/``."""
+    return [
+        line
+        for month in sorted((config.docs_repo / "CHANGELOG").glob("*.md"))
+        for line in month.read_text(encoding="utf-8").splitlines()
+        if line.startswith(f"- {op} ")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rel", "converter", "cut", "made_by"),
+    [
+        ("projects/Contoso Board Template.potx", "pptx-python-pptx@", pptx_mod.PptxConverter, (".pptx",)),
+        (KICKOFF_MSG, "msg-olefile@", msg_mod.MsgConverter, ()),
+    ],
+)
+def test_a_stub_rendered_again_and_read_in_one_sync_is_one_change(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rel: str,
+    converter: str,
+    cut: type[Any],
+    made_by: tuple[str, ...],
+) -> None:
+    """B13 round 6 G7, G28: a ``no converter`` stub from an older rendering, whose name a converter claims
+    now, is rewritten by the one-time stub re-render and then read into its page by the re-read in the same
+    sync. Each write appended a change, so one page was counted twice: ``0a 2m`` in the commit subject, two
+    ``- M`` lines in CHANGELOG and M=2 beside converted=1 in the run record. One page is one change."""
+    if rel.endswith(".potx"):
+        build_potx(local_source_dir / rel)
+    else:
+        (local_source_dir / rel).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
+    with monkeypatch.context() as old:  # a stub made before the converter claimed the name, and its banner
+        old.setattr(cut, "extensions", made_by)
+        old.setattr(publish_mod, "policy", _OldPolicy())
+        assert run(sample_config).exit_code == 0
+    assert _mirror_page(sample_config, rel)[0]["reason"].startswith("no converter for .")
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+    m_lines = len(_changelog_lines(sample_config, "M"))
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    at = str(slug.mirror_rel_path(SID, rel))
+    assert [(c.op, c.path) for c in report.changes] == [(ChangeOp.MODIFIED, at)]
+    assert git(sample_config.docs_repo, "log", "-1", "--format=%s").strip() == f"sync: 0a 1m 0r 0d {SID}"
+    assert len(_changelog_lines(sample_config, "M")) == m_lines + 1
+    record = _run_record(sample_config)
+    assert (record.get("M"), report.sources[0].converted) == (1, 1)
+    fm, body = _mirror_page(sample_config, rel)
+    assert (
+        fm["status"] == "current"
+        and fm["converter"].startswith(converter)
+        and body.startswith(UNTRUSTED_BANNER)
+    )
+    assert run(sample_config).commit_sha is None
+
+
+def test_a_stub_rendered_again_whose_read_fails_in_that_sync_is_one_change_and_rendered_once(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 6 G28: the re-render does not wait for the re-read the same sync makes. When that read
+    fails, the stub still has the new rendering (one change) and the rendering is recorded as done, so a
+    stub is never left on the old one."""
+    rel = "projects/Contoso Board Template.potx"
+    build_potx(local_source_dir / rel)
+    with monkeypatch.context() as old:
+        old.setattr(pptx_mod.PptxConverter, "extensions", (".pptx",))
+        old.setattr(publish_mod, "policy", _OldPolicy())
+        assert run(sample_config).exit_code == 0
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")
+
+    def broken(self: Any, src: Path, *, name: str) -> Any:
+        raise RuntimeError("the deck cannot be opened")
+
+    monkeypatch.setattr(pptx_mod.PptxConverter, "convert", broken)
+    report = run(sample_config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert [(c.op, c.path) for c in report.changes] == [
+        (ChangeOp.MODIFIED, str(slug.mirror_rel_path(SID, rel)))
+    ]
+    fm, body = _mirror_page(sample_config, rel)
+    assert (fm["status"], fm["reason"]) == ("refused", "no converter for .potx") and body.startswith(
+        UNTRUSTED_BANNER
+    )
+    with Manifest(sample_config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish_mod.STUB_RENDER)
 
 
 @pytest.mark.parametrize("fault", ["the helper fails on it", "the converter breaks on it"])

@@ -649,6 +649,28 @@ def _no_converter_stub(row: ItemRow) -> bool:
     return row.state is RowState.REFUSED and (row.state_reason or "").startswith(NO_CONVERTER_PREFIX)
 
 
+def _one_change_per_page(changes: Sequence[MirrorChange]) -> list[MirrorChange]:
+    """``changes`` with one added or modified entry per page, at its first place: an add wins over a modify.
+
+    One run can write a page twice: the one-time stub re-render rewrites a ``no converter`` stub, and the
+    re-read that follows in the same run converts the file (B13 round 6 G7, G28). Both writes say the page
+    differs from HEAD, so the commit subject, its body, CHANGELOG and the run's counts name it once."""
+    seen: dict[tuple[str, str, str, str | None], int] = {}
+    out: list[MirrorChange] = []
+    for c in changes:
+        if c.op not in (ChangeOp.ADDED, ChangeOp.MODIFIED):
+            out.append(c)
+            continue
+        key = (c.path, c.source_id, c.stable_id, c.prev_path)
+        if key in seen:
+            if c.op is ChangeOp.ADDED:
+                out[seen[key]] = c
+            continue
+        seen[key] = len(out)
+        out.append(c)
+    return out
+
+
 def _same_stub(outs: Sequence[OutputRow], row: ItemRow, result: ConversionResult) -> OutputStatus | None:
     """The status of the stub ``row`` already has when ``result`` says what it says (one page, the same
     reason), else None: the unreadable stub, or the ``no converter`` refusal an image gets once more when
@@ -1630,6 +1652,7 @@ class _Cycle:
             self._quarantine_secrets()
             if rescan:
                 self.manifest.set_meta(_SECRET_RESCAN_META, "")
+            self.changes = _one_change_per_page(self.changes)
             self._flush_changes(rewrite=True)
             self.lock.beat(LockStage.CURATE)
             pre_head, session_pages = self._session_topic_pages()  # before this run's banner rewrites
