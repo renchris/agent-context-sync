@@ -2983,7 +2983,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
             "refused)",
-            "converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 refused) "
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused "
             "(install.log; the unreadable/failed split: install.out)",
         ),
         (  # a first-read count of another sync (its read-again count differs) is not this one's
