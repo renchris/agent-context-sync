@@ -3341,6 +3341,24 @@ def _policy_line(c: Config) -> str:
     )
 
 
+def _doctor_skipped(config: Config) -> str:
+    """The checks this run left out that ``agentsync status`` would run on this config, from the gates status
+    itself uses (B13 round 6 G1): the Graph probe only for a live Graph source (cli._network_checks), the TCC
+    canary only with background sync wanted and a TCC-protected source, and then only when it is due
+    (cli._tcc_canary_due). Neither: status runs neither, so nothing is said."""
+    from agentsync.ops import doctor, launchd  # noqa: PLC0415 - lazy: the report must import even if broken
+
+    names = []
+    if any(s.kind.is_graph and s.is_live for s in config.sources):
+        names.append("the Graph network probe")
+    if doctor.agents_wanted(config) and launchd.canary_paths(config):
+        names.append("the TCC canary (when it is due)")
+    if not names:
+        return ""
+    them = "them" if len(names) > 1 else "it"
+    return f" (run without {' and '.join(names)}: `{AGENTSYNC_BIN} status` runs {them})"
+
+
 def _doctor(r: _Run) -> list[str]:
     if r.config is None:
         return [f"Not run: the config does not load ({r.config_error})."]
@@ -3389,9 +3407,7 @@ def _doctor(r: _Run) -> list[str]:
         else ""
     )
     return [
-        summary + " (run without the Graph network probe and the TCC canary: "
-        f"`{AGENTSYNC_BIN} status` runs them). "
-        f"Only the lines that are not ok:{note}",
+        summary + _doctor_skipped(config) + f". Only the lines that are not ok:{note}",
         "",
         *_fence(shown),
         "",

@@ -7735,3 +7735,45 @@ def test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli(
     assert "· yours 1: heartbeat.<folder-1> (see WAITING ON YOU) ·" in line
     assert "heartbeat.<folder-1> warn" not in line
     assert "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of <folder-1> incomplete" in summary
+
+
+# ---- B13 round 6 lane RA -----------------------------------------------------------------------------------
+
+
+def _doctor_head(text: str) -> str:
+    return section(text, "Doctor").strip().splitlines()[0]
+
+
+@pytest.mark.usefixtures("roomy_budget")
+def test_the_doctor_line_names_only_the_checks_status_would_run(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 6 G1: the Doctor line said `status` runs the Graph probe and the TCC canary on a local-only
+    Mac with no background sync, where status runs neither. It names only what status's own gates run."""
+    monkeypatch.delenv(doctor.AGENT_STEP_PENDING_ENV, raising=False)
+    cfg = fake_mac["config"]
+    hooks = setup_report.ReportHooks(doctor=lambda config: [])
+    head = _doctor_head(setup_report.build_report(cfg, hooks=hooks)[0])
+    assert "runs them" not in head and "runs it" not in head and "TCC canary" not in head, head
+    assert head == "0 check(s): 0 ok, 0 info, 0 warn, 0 FAIL. Only the lines that are not ok:", head
+
+    monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")  # background sync wanted, a protected source
+    assert launchd.canary_paths(load_config(cfg))
+    head = _doctor_head(setup_report.build_report(cfg, hooks=hooks)[0])
+    assert "(run without the TCC canary (when it is due): `~/.local/bin/agentsync status` runs it)" in head
+    assert "Graph" not in head
+
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + '\n[graph]\nclient_id = "00000000-0000-0000-0000-000000000000"\n'
+        + '\n[[source]]\nid = "tailspin-drive"\nkind = "graph_drive"\ndrive_id = "me"\n',
+        encoding="utf-8",
+    )
+    head = _doctor_head(setup_report.build_report(cfg, hooks=hooks)[0])
+    assert (
+        "(run without the Graph network probe and the TCC canary (when it is due): "
+        "`~/.local/bin/agentsync status` runs them)" in head
+    ), head
+    monkeypatch.delenv(doctor.AGENT_STEP_PENDING_ENV)
+    head = _doctor_head(setup_report.build_report(cfg, hooks=hooks)[0])
+    assert "(run without the Graph network probe: `~/.local/bin/agentsync status` runs it)" in head, head

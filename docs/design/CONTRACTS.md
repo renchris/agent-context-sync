@@ -15173,7 +15173,17 @@ with no '['. Test: `test_a_folder_renamed_in_case_upstream_counts_the_files_stil
 
 ### 16.64 Round 6: setup report (2026-10-13, wave B13 round 6 lane RA)
 
-Reserved for round 6 lane RA of B13.
+Wave B13 round 6, lane RA: 19 items (`~/.cache/agentsync-bring-back/b13/round6/items/G<n>.md`, lanes in
+`round6/lanes.json`), each built to its verifier's corrected fix with a test that fails without it, or left with a
+measured reason. Where an item amends an older section, the amendment is stated here and the older text is read
+with it.
+
+**G1: the Doctor line names only what status runs.** The first line of the Doctor section reads `N check(s): …`
+then, only for a check this run left out that `~/.local/bin/agentsync status` would run on this config, `(run
+without the Graph network probe and the TCC canary (when it is due): `~/.local/bin/agentsync status` runs them)`,
+from status's own gates: the Graph probe for a live Graph source (`cli._network_checks`), the TCC canary when
+background sync is wanted (`doctor.agents_wanted`) and a live source is TCC-protected (`launchd.canary_paths`). With
+neither, the line names none. Test: `test_the_doctor_line_names_only_the_checks_status_would_run`.
 
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
