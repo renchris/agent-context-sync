@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import inspect
 import itertools
 import json
 import os
@@ -3198,3 +3199,20 @@ def test_the_proxy_row_gives_one_rule_for_both_reports() -> None:
     assert "only where a URL or `host:port` names it, in both reports)" in page
     g4 = " ".join(_contracts_section("### 16.65 ", "### 16.66 ").split())
     assert "**Amended 2026-10-13, §16.73 H62:** the agentsync report's rule is not the URL alone" in g4
+
+
+def test_the_banner_re_render_names_the_tombstones_it_covers() -> None:
+    """B13 round 7 H68: `Cycle._rerender_stubs` walks the tombstones of the sources in sources.toml only (a
+    retired one's too), so a source deleted from sources.toml keeps its old tombstones until they are reaped;
+    data-governance.md said every intact tombstone is rendered again."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    walk = inspect.getsource(cycle._Cycle._rerender_stubs)
+    assert "for src in self.config.sources:" in walk and "self._rerender_tombstones(src.id)" in walk
+    page = _page("docs/deploy/data-governance.md")
+    assert "from what it stored: an intact tombstone, and" not in page
+    assert "an intact tombstone of a source still in `sources.toml` (a retired one's too)" in page
+    assert (
+        "A source deleted from `sources.toml` keeps its tombstones in the old layout until they are reaped"
+        in page
+    )

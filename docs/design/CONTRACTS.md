@@ -15826,3 +15826,9 @@ the §16.58 F23 line §16.67 G64 wrote and §16.67's own bullet defined a header
 says: such a line splits an attempt exactly as `Prompt:` does (measured with `parse_friction`). Both passages now
 name the four, with the last two marked as a v4 log's. Test: `test_setup_feedback_states_the_report_rules_of_round_4`,
 whose `parse_friction` loop now runs an `Outcome:` and a `Run:` header too.
+
+**The banner re-render names the tombstones it covers** (H68). `Cycle._rerender_stubs` runs the tombstone pass for
+each source in sources.toml, a retired one's included (§16.66 G77), and sets the stub-render mark after it, so a
+tombstone of a source deleted from sources.toml (allowed once its rows are all tombstones) keeps the old layout until
+it is reaped. data-governance.md said "an intact tombstone"; it now says one of a source still in `sources.toml` and
+names the exception. Test: `test_the_banner_re_render_names_the_tombstones_it_covers`.
