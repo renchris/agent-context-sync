@@ -8079,8 +8079,13 @@ def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) 
     subprocess.run(["git", "-C", str(upstream), *ident, "commit", "-q", "-m", "one"], check=True)
     repo = tmp_path / "checkout"
     subprocess.run(["git", "clone", "-q", str(upstream), str(repo)], check=True)
-    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
-    assert setup_report._checkout_facts(run, repo).endswith(
+
+    def fresh() -> (
+        setup_report._Run
+    ):  # its 12 s budget covers one call: a loaded machine runs this test longer
+        return setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+
+    assert setup_report._checkout_facts(fresh(), repo).endswith(
         " · on origin/main: yes (no fetch since the clone)"
     )
 
@@ -8088,7 +8093,7 @@ def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) 
     head = repo / ".git" / "FETCH_HEAD"
     assert head.stat().st_size > 0
     os.utime(head, (1_790_000_000, 1_790_000_000))
-    facts = setup_report._checkout_facts(run, repo)
+    facts = setup_report._checkout_facts(fresh(), repo)
     assert facts.endswith(" · on origin/main: yes (as of the checkout's last fetch, 2026-09-21T14:13:20Z)"), (
         facts
     )
@@ -8099,7 +8104,7 @@ def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) 
     pulled = subprocess.run(["git", "-C", str(repo), "pull", "-q"], capture_output=True, check=False)
     assert pulled.returncode != 0 and head.stat().st_size == 0, "git truncates FETCH_HEAD on a failed pull"
     when = setup_report._iso(datetime.fromtimestamp(head.stat().st_mtime, UTC))
-    assert setup_report._checkout_facts(run, repo).endswith(
+    assert setup_report._checkout_facts(fresh(), repo).endswith(
         f" · on origin/main: yes (the checkout's last fetch, {when}, failed; origin/main is from an earlier "
         "fetch)"
     )
@@ -8111,8 +8116,26 @@ def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) 
     subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", str(tree), "-b", "side"], check=True)
     subprocess.run(["git", "-C", str(repo), "fetch", "-q"], check=True)
     os.utime(head, (1_790_000_000, 1_790_000_000))
-    facts = setup_report._checkout_facts(run, tree)
+    facts = setup_report._checkout_facts(fresh(), tree)
     assert facts.endswith("(as of the checkout's last fetch, 2026-09-21T14:13:20Z)"), facts
+    # Both files there, each the newer in turn: only "the newer of the two" passes both (first-found,
+    # last-found, common-only and worktree-only each fail one; B13 round 7 H45)
+    subprocess.run(["git", "-C", str(tree), "fetch", "-q"], check=True)
+    subprocess.run(["git", "-C", str(repo), "fetch", "-q"], check=True)
+    out = subprocess.run(
+        ["git", "-C", str(tree), "rev-parse", "--git-path", "FETCH_HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    own = Path(out) if Path(out).is_absolute() else tree / out
+    assert own.is_file() and own.resolve() != head.resolve(), "a worktree's fetch writes its own FETCH_HEAD"
+    older, newer = (1_780_000_000,) * 2, (1_790_000_000,) * 2
+    for own_time, head_time in ((older, newer), (newer, older)):
+        os.utime(own, own_time)
+        os.utime(head, head_time)
+        facts = setup_report._checkout_facts(fresh(), tree)
+        assert facts.endswith("(as of the checkout's last fetch, 2026-09-21T14:13:20Z)"), (own_time, facts)
 
 
 def test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word() -> None:
@@ -8154,7 +8177,8 @@ def test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a
         assert red.redact(f"the {org} tenant asked for MFA; OneDrive-{org}") == (
             "the <org-1> tenant asked for MFA; OneDrive-<org-1>"
         ), org
-    assert red.word_named_shown, "a report word matched everywhere: the report is private only"
+        # each of the five, not the last alone (B13 round 7 H45)
+        assert red.word_named_shown, f"{org}: a report word matched everywhere: the report is private only"
 
 
 @pytest.mark.parametrize("org", ["Sync", "Status"])

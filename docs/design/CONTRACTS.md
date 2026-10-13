@@ -15744,6 +15744,13 @@ merge that failed) that invites "current". `_checkout_facts` now runs one more r
 the dated fetch last, and a failed count prints none. The count is against the local origin/main, which the fetch
 clause dates. Test: `tests/test_setup_report.py::test_install_source_names_origin_main_and_the_tree`.
 
+**Two round 6 tests pin what they claim** (H45; tests only). In
+`test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
+assert sat after the loop over Status, Probe, Stage, Context and Agent, so it checked Agent alone; it is inside the
+loop now. `test_the_on_origin_main_line_dates_the_checkouts_last_fetch` never gave the worktree a FETCH_HEAD of its
+own, so "the newer of the two" (G27) compared one file; the worktree now fetches too, and each file is made the
+newer in turn. Measured: replacing `max(stats, key=st_mtime)` with the first or the last file found fails the test.
+
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 
 Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scripts/install.sh`, each with a test in
