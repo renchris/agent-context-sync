@@ -329,8 +329,11 @@ friction_append() {
 # without the checkout's path or remote URL, for the friction line's fix column and the stopped NEXT, which
 # reach the report (a fork owner's login or a company mirror's host is nothing the redaction knows). No "|"
 # in either. Mutates nothing.
+# With no upstream, git's own config says why (B13 round 6 G21): a branch with no merge setting follows no
+# upstream branch and a detached HEAD is on no branch, while a merge setting whose remote ref git cannot read
+# (a narrowed fetch refspec) is a branch git could not name.
 newer_copy_fix() {
-	local src shown url="" u="" r=origin d canon=0 follows
+	local src shown url="" u="" r=origin d canon=0 follows b="" m="" how="git could not say which branch it follows"
 	src="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" || src=""
 	shown="$src"
 	# shellcheck disable=SC2088 # the ~ is printed
@@ -340,6 +343,11 @@ newer_copy_fix() {
 		u="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 		[ -z "$u" ] || r="${u%%/*}"
 		url="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" remote get-url "$r" 2>/dev/null || true)"
+		b="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" symbolic-ref -q --short HEAD 2>/dev/null || true)"
+		[ -z "$b" ] || m="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" config --get "branch.$b.merge" 2>/dev/null || true)"
+	fi
+	if [ -n "$url" ] && [ -z "$u" ]; then
+		if [ -z "$b" ]; then how="it is on no branch"; elif [ -z "$m" ]; then how="it follows no upstream branch"; fi
 	fi
 	url="$(printf '%s' "$url" | LC_ALL=C sed -E 's#^([A-Za-z+]+://)[^/@]*@#\1#')" # no user or token
 	case "$(printf '%s' "${url%/}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
@@ -352,11 +360,12 @@ newer_copy_fix() {
 		FIX="$TELL"
 	elif [ -n "$url" ] && { [ "$canon" -eq 0 ] || [ -n "$u" ]; }; then
 		# a remote that is not the repository, or a branch of it that is not main: the checkout is the cause
-		if [ -n "$u" ]; then follows="$u of $url"; else follows="$url (no upstream branch)"; fi
+		follows="${how#it follows }"
+		if [ -n "$u" ]; then follows="$u of $url"; else follows="$url (${follows#it is })"; fi
 		FIX="point this Mac's checkout at main of $CANON_REPO (it follows another remote or branch, so a fresh copy of the prompt would stop here again), or move the checkout aside so step 1 clones it, then paste the same prompt into a new session"
 		TELL="point this Mac's checkout ($shown) at main of $CANON_REPO (it follows $follows, so a fresh copy of the prompt would stop here again), or move the checkout aside so step 1 clones it, then paste the same prompt into a new session"
 	else
-		follows="does not follow main of $CANON_REPO (git could not say which branch it follows): point it there, or move it aside so step 1 clones it, then paste the prompt again"
+		follows="does not follow main of $CANON_REPO ($how): point it there, or move it aside so step 1 clones it, then paste the prompt again"
 		FIX="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session; if that copy stops here too, this Mac's checkout $follows"
 		TELL="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session; if that copy stops here too, this Mac's checkout ($shown) $follows"
 	fi

@@ -15390,6 +15390,18 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   bring-back.md exists. Any other fix keeps the copy-again sentence with the version inside its own brackets.
   `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`,
   `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it`.
+- **A checkout with no upstream is said to have none** (G21). `newer_copy_fix` said `(git could not say which
+  branch it follows)` of a checkout whose branch has no upstream, though git answered: there is none. Whether
+  `@{u}` is empty cannot tell that from a configured upstream whose remote ref is missing (a narrowed fetch
+  refspec, where `git pull --ff-only` still works through FETCH_HEAD), so the wording reads git's config
+  instead, inside the same developer-tools guard: `git symbolic-ref -q --short HEAD` and `git config --get
+  branch.<b>.merge`. With a remote URL and no `@{u}`: no branch is `(it is on no branch)`, a branch with no
+  merge setting `(it follows no upstream branch)`, and anything else (no developer tools, no URL, a merge
+  setting git cannot resolve) keeps `(git could not say which branch it follows)`. A remote that is not the
+  repository reads the same states as `<url> (no upstream branch)`, `<url> (on no branch)` and `<url> (git could
+  not say which branch it follows)`. Step 1's own pull fails first in the no-upstream state, so only a hand-run
+  `--log-start` reaches this text. `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it` (the
+  `--unset-upstream`, deleted-tracking-ref and detached-HEAD states).
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

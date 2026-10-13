@@ -4061,7 +4061,7 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
 def _checkout_following(tmp_path: Path, origin: str | None, upstream: bool | str) -> Path:
     """A git checkout of install.sh whose origin is ``origin`` and whose main tracks origin/main when
     ``upstream``, or main of a remote named upstream on the repository itself when it is that word; its
-    install.sh."""
+    install.sh. "gone": main tracks origin/main, whose ref is then deleted; "detached": no branch."""
     src = tmp_path / "checkout"
     (src / "scripts").mkdir(parents=True)
     shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
@@ -4081,6 +4081,12 @@ def _checkout_following(tmp_path: Path, origin: str | None, upstream: bool | str
         subprocess.run([*git, "branch", "-u", "upstream/main"], check=True, capture_output=True)
     elif upstream:
         subprocess.run([*git, "branch", "-u", "origin/main"], check=True, capture_output=True)
+    if upstream == "gone":
+        subprocess.run(
+            [*git, "update-ref", "-d", "refs/remotes/origin/main"], check=True, capture_output=True
+        )
+    elif upstream == "detached":
+        subprocess.run([*git, "checkout", "-q", "--detach"], check=True, capture_output=True)
     return src / "scripts" / "install.sh"
 
 
@@ -4092,7 +4098,10 @@ def _checkout_following(tmp_path: Path, origin: str | None, upstream: bool | str
         ("git@github.com:renchris/agent-context-sync", True, "copy-again"),
         ("https://example.invalid/contoso/agent-context-sync.git", True, "checkout"),
         ("https://jdoe:secret-token@example.invalid/contoso/agent-context-sync", False, "checkout"),
-        ("https://github.com/renchris/agent-context-sync", False, "both"),
+        ("https://github.com/renchris/agent-context-sync", False, "no-upstream"),
+        ("https://github.com/renchris/agent-context-sync", "gone", "both"),
+        ("https://github.com/renchris/agent-context-sync", "detached", "no-branch"),
+        ("https://example.invalid/contoso/agent-context-sync.git", "detached", "checkout"),
         (None, False, "both"),
         ("https://example.invalid/contoso/agent-context-sync.git", "upstream", "copy-again"),
     ],
@@ -4130,13 +4139,23 @@ def test_a_copy_newer_than_the_checkout_is_told_what_fixes_it(
         shown = "https://example.invalid/contoso/agent-context-sync"
         assert "Tell the person to point this Mac's checkout (" in cp.stderr and shown in cp.stderr
         assert "copy the prompt again from" not in cp.stderr, "a fresh copy would stop here again"
-        assert ("it follows origin/main of " in cp.stderr) == bool(upstream)
+        assert ("it follows origin/main of " in cp.stderr) == (upstream is True)
+        if not upstream or upstream == "detached":
+            on = "no upstream branch" if not upstream else "on no branch"
+            assert f" ({on}), so a fresh copy" in cp.stderr, cp.stderr
         assert "secret-token" not in cp.stderr + friction_path(env).read_text() and "jdoe" not in cp.stderr
     else:
         assert f"Tell the person to {copy_again} and paste it into a new session; if that copy stops" in (
             cp.stderr
         )
-        assert "git could not say which branch it follows" in cp.stderr
+        # what git says of the checkout: no upstream is an answer; a configured one it cannot read is not
+        # (B13 round 6 G21)
+        said = {
+            "both": "git could not say which branch it follows",
+            "no-upstream": "it follows no upstream branch",
+            "no-branch": "it is on no branch",
+        }[kind]
+        assert f"main of https://github.com/renchris/agent-context-sync ({said}): point it" in cp.stderr
     told = cp.stderr.split("Tell the person to ", 1)[1]
     tell = told.split('. If the first line of your prompt says "', 1)[0]
     if kind == "copy-again":
