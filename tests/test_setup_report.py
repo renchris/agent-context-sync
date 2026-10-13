@@ -2902,6 +2902,44 @@ def v6_install_log(fake_mac: dict[str, Path], **kwargs: Any) -> Path:
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_an_open_attempts_warning_names_the_command_that_ends_it_and_its_time_takes_in_install_log(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 7 H1, H2: before its end line, an attempt's report said to run ``agentsync setup-report``
+    again, which closes no attempt (only ``install.sh --report-only`` writes the end line), and timed the
+    session over the friction log alone: 6s beside a 57s install run. The WARNING now names install.sh's
+    command as step 3's last one, never to be run before it, and the span takes in the attempt's install.log
+    runs, "so far" while the attempt is open."""
+    v6_install_log(fake_mac)
+    write_friction(
+        fake_mac,
+        "Attempt: 2026-09-29T09:58:00Z\nPrompt: v15\nAgent: Claude Code, claude-opus-5-5\n"
+        "2026-09-29T09:58:06Z | step 2 | deviation | waited for the install | -\n",
+    )
+    _text, summary = summary_of(fake_mac)
+    [warning] = [ln for ln in summary.splitlines() if ln.startswith("- WARNING: attempt 1 ")]
+    assert warning == (
+        '- WARNING: attempt 1 has no "end | finished" line, so this report may be stale: it was written '
+        "before prompt step 3 finished, or the agent stopped early. The attempt ends, and this report is "
+        "rewritten, when step 3's last command `~/src/agent-context-sync/scripts/install.sh --report-only` "
+        "runs; if the session stopped early, run that command (`~/.local/bin/agentsync setup-report` closes "
+        "no attempt)."
+    ), warning
+    assert "setup-report` again" not in summary
+    [time] = [ln for ln in summary.splitlines() if ln.startswith("- time: ")]
+    assert time.startswith(
+        "- time: session 2m57s so far (first to last timestamp, friction log and install.log); install.sh "
+    ), time
+
+    # With its end line, the friction log's span covers the runs: the wording is as before
+    with (fake_mac["setup"] / "friction.md").open("a", encoding="utf-8") as fh:
+        fh.write("2026-09-29T10:01:10Z | end | finished\n")
+    _text, summary = summary_of(fake_mac)
+    assert "- time: session 3m10s (first to last timestamp); install.sh (install.log): " in summary, summary
+    assert "WARNING" not in summary
+
+
+@pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)
     write_friction(fake_mac, V6_HAPPY)

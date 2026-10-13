@@ -6646,12 +6646,23 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         )
     elif att is not None and not att.finished:
         step = att.layout.report_step
-        closer = "install.sh --report-only" if not att.layout.logs_steps else "the agent's end line"
-        out.append(
-            f'- WARNING: attempt {att.number} has no "end | finished" line ({closer}), so this report may be '
-            f"stale: it was written before prompt step {step}, or the agent stopped early. Run "
-            f"`{AGENTSYNC_BIN} setup-report` again after step {step}."
-        )
+        if att.layout.logs_steps:  # v5: the agent writes the end line
+            out.append(
+                f'- WARNING: attempt {att.number} has no "end | finished" line (the agent\'s end line), so '
+                f"this report may be stale: it was written before prompt step {step}, or the agent stopped "
+                f"early. Run `{AGENTSYNC_BIN} setup-report` again after step {step}."
+            )
+        else:
+            # setup-report closes no attempt: only install.sh --report-only writes the end line, so the
+            # WARNING names it, and keeps it to step 3's last command or an early stop: run mid-session it
+            # would end the attempt before the sync loop (B13 round 7 H1)
+            out.append(
+                f'- WARNING: attempt {att.number} has no "end | finished" line, so this report may be stale: '
+                f"it was written before prompt step {step} finished, or the agent stopped early. The attempt "
+                f"ends, and this report is rewritten, when step {step}'s last command `{INSTALL_SH} "
+                "--report-only` runs; if the session stopped early, run that command "
+                f"(`{AGENTSYNC_BIN} setup-report` closes no attempt)."
+            )
     elif att is not None and att.finished:
         end = max((e.at for e in att.events if e.kind == "finished" and e.at is not None), default=None)
         if (
@@ -6692,8 +6703,25 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- friction (attempt {att.number}): {len(att.events)} event line(s): {_kind_counts(att)}{extra}"
         )
         timing = []
+        late = _after_end(runs, _attempt_end(att))
         wall, stamps = att.wall_seconds(), att.timestamps()
-        if wall is not None:
+        # Before its end line an attempt's times are the friction log's alone, which an install run can
+        # outlast (6s beside a 4-minute install): the span takes in the attempt's install.log runs too, those
+        # inside its end line (B13 round 7 H2; a run after it no session time covers, round 5 F37)
+        times = list(stamps)
+        for run in runs:
+            if run in late or run.started is None or not stamps:
+                continue
+            times.append(run.started)
+            if run.seconds is not None:
+                times.append(run.started + timedelta(seconds=run.seconds))
+        span = (max(times) - min(times)).total_seconds() if len(times) >= 2 else None
+        if span is not None and (wall is None or span > wall):
+            so_far = "" if att.finished else " so far"
+            timing.append(
+                f"session {_secs(span)}{so_far} (first to last timestamp, friction log and install.log)"
+            )
+        elif wall is not None:
             timing.append(f"session {_secs(wall)} (first to last timestamp)")
         elif stamps:  # one time is no duration, but it is a time (B13 round 3 R26)
             timing.append(f"session: one timestamp ({_iso(stamps[0])}), no duration")
@@ -6704,7 +6732,6 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             timing.append("steps (start to end): " + " · ".join(steps))
         elif not att.layout.logs_steps:
             # only the runs inside the attempt's times are summed into its steps (B13 round 5 F37)
-            late = _after_end(runs, _attempt_end(att))
             timed = _installer_step_times([run for run in runs if run not in late], att.layout)
             if timed:
                 timing.append("install.sh (install.log): " + " · ".join(timed))

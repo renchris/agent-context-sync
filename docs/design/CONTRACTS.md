@@ -5051,6 +5051,13 @@ what it resolves to) is under one of `SANDBOX_HOMES` (/tmp, /private/tmp, /var/f
 else "real". **Amended (2026-10-11, §16.40 "The first-sync line says `sync:` after a config that already existed"):** the first-sync line is labelled `sync`
 after a config that already existed. **Amended (2026-10-11, §16.40 "The IT draft line dates the draft and names where it differs"):** the IT draft line
 then gives the draft's date and the first line where its email is not what `agentsync it-request` writes now.
+Amended 2026-10-13, §16.69 H2: the session time is first to last timestamp over the friction log and the attempt's
+install.log runs inside its end line (each run's start and start plus seconds), and reads `session <t> (first to last
+timestamp, friction log and install.log)` when the runs extend it, with `so far` after `<t>` only while the attempt
+has no end line; otherwise it is worded as before.
+Amended 2026-10-13, §16.69 H1: for v6 and later the WARNING names `~/src/agent-context-sync/scripts/install.sh
+--report-only` as step 3's last command, which ends the attempt and rewrites the report, and says `agentsync
+setup-report` closes no attempt; the v5 WARNING (the agent's end line) is unchanged.
 
 v5 revision, redaction (J6, J21). Folder, library, organisation and full-name values are registered `fuzzy`: they
 also match, case-insensitively, their space, hyphen, underscore and CamelCase variants (`Client Alpha` covers
@@ -15692,6 +15699,18 @@ added, so K16b holds and `_NEXT_PATH_RE` (paths from `~` or `/`) leaves the word
 refused` to the split, the tag still read `the unreadable/failed split`; it now reads `the unreadable/failed/refused
 split` when R is printed (R > 0), and keeps the old name otherwise, so it never names a count the line left out.
 Test: `tests/test_setup_report.py::test_first_sync_clause_carries_the_read_again_count`.
+
+**An open attempt's WARNING names the command that ends it, and its time takes in install.log** (H1, H2; dated lines
+at §16.14). `setup-report` has no write path to the friction log, so the WARNING's "Run `agentsync setup-report`
+again after step 3" left the WARNING in place. It now says the attempt ends, and the report is rewritten, when step
+3's last command `install.sh --report-only` runs, and to run that command only if the session stopped early: telling
+an agent mid-session to run it would end the attempt before the sync loop, time the end line wrong and leave later
+friction lines after it (the verifier's measurement). The v5 branch keeps the agent's end line. Before the end line
+the session span was the friction log's alone (6s beside a 4m13s install); it now spans the attempt's install.log
+runs too, never those after the end line (round 5 F37), and says `so far` while the attempt is open; with the end
+line the friction log's span usually covers the runs, so the final report reads as before, and a run that outlasts
+the end line keeps the longer span without `so far`. Test:
+`tests/test_setup_report.py::test_an_open_attempts_warning_names_the_command_that_ends_it_and_its_time_takes_in_install_log`.
 
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 
