@@ -2002,7 +2002,9 @@ class Manifest:
         ).fetchone()
         return str(r[0]) if r is not None else None
 
-    def mark_for_rescreen(self, suffixes: Sequence[str], withheld_suffixes: Sequence[str] = ()) -> int:
+    def mark_for_rescreen(
+        self, suffixes: Sequence[str], withheld_suffixes: Sequence[str] = (), *, unread_only: bool = False
+    ) -> int:
         """Queue every published or policy-refused file named with one of ``suffixes`` for a re-screen.
 
         A ``[policy]`` change must re-decide label-capable files already in the mirror: their content
@@ -2012,12 +2014,18 @@ class Manifest:
         ``withheld_suffixes``: a refused row whose reason is ``no converter for <suffix>`` with one of them
         is a file a label rule may have withheld by its name, with no byte read (a Graph or online-only
         ``.msg``, an image): it is decided again too, or it kept the stub after the rule was lifted, since
-        an unchanged Graph row is never pending work and no re-read downloads (B13 round 6 G52)."""
+        an unchanged Graph row is never pending work and no re-read downloads (B13 round 6 G52).
+
+        ``unread_only``: mark only such a row with no byte read (no content hash).  Set while the new policy
+        still has a label rule on: a binary ``.msg`` read on this Mac stays withheld under it, so re-reading
+        it on every ``[policy]`` tweak only counted it as newly converted and refused (B13 round 7 H47).  Once
+        the rule is lifted every such row is marked, a read one that has gone online-only included."""
         from agentsync.convert import NO_CONVERTER_PREFIX  # noqa: PLC0415 - the manifest imports no converter
 
         like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"
         withheld = [NO_CONVERTER_PREFIX + s.lower() for s in withheld_suffixes]
-        named = f" OR state_reason IN ({', '.join('?' for _ in withheld)})" if withheld else ""
+        unread = " AND content_sha256 IS NULL" if unread_only else ""
+        named = f" OR (state_reason IN ({', '.join('?' for _ in withheld)}){unread})" if withheld else ""
         cur = self._db.execute(
             "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
             "canonical_parts = NULL, last_verdict = ? WHERE is_dir = 0 "

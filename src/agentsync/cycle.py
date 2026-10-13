@@ -1866,7 +1866,9 @@ class _Cycle:
         if stored == current:
             return
         if stored is not None or policy.labels_active:
-            marked = self.manifest.mark_for_rescreen(_LABEL_CAPABLE, sorted(label_withheld_suffixes()))
+            marked = self.manifest.mark_for_rescreen(
+                _LABEL_CAPABLE, sorted(label_withheld_suffixes()), unread_only=policy.labels_active
+            )
             if marked:
                 self.manifest.set_meta(_RESCREEN_META, current)
                 log.warning("[policy] changed: %d label-capable file(s) queued for a re-screen", marked)

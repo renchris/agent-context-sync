@@ -2777,6 +2777,59 @@ def test_a_msg_withheld_by_its_name_is_read_once_the_label_rule_is_lifted(
         client.close()
 
 
+def test_a_policy_tweak_that_keeps_the_label_rule_reads_no_binary_msg_again(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 7 H47: G52 marked every refused ``no converter for .msg`` row on a [policy] change, a binary
+    .msg read on this Mac under the rule included. A tweak that keeps the rule on (a second label id) read
+    each one again, and the sync line called them newly converted and refused, out of the re-screened
+    count. Only a row withheld with no byte read is decided again while a rule stays on."""
+    from agentsync import cli  # noqa: PLC0415
+
+    for n in range(3):
+        (local_source_dir / "projects" / f"Contoso note {n}.msg").write_bytes(msg_bytes(plain=f"Body {n}.\n"))
+    assert run(config_with(tmp_path, local_source_dir, LABEL_RULE)).exit_code == 0
+    fetched = _fetches(monkeypatch)
+    two = LABEL_RULE.replace('"]', '", "00000000-0000-4000-8000-00000000beef"]')
+    report = run(config_with(tmp_path, local_source_dir, two))
+    assert report.exit_code == 0
+    assert [f for f in fetched if f.endswith(".msg")] == [], (
+        "the rule stays on: no withheld .msg is read again"
+    )
+    rep = source_report(report)
+    capsys.readouterr()
+    cli._print_report(report)
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last == (
+        f"converted {rep.converted}, deferred 0 online-only; re-screened {rep.converted} for a rule change "
+        f"(also counted above, {rep.converted} of them unchanged)"
+    ), last
+    assert rep.refused == 0
+
+
+def test_a_binary_msg_read_under_the_rule_then_online_only_is_read_once_the_rule_is_lifted(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 7 H47: the narrowing above holds only while a label rule stays on. A binary .msg read on
+    this Mac under the rule (its content hash set) that has since gone online-only is still decided again
+    when the rule is lifted: fetched once, its page made from it."""
+    (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    assert run(labelled).exit_code == 0
+    _online_only(monkeypatch, local_source_dir / KICKOFF_MSG)
+    assert run(labelled).exit_code == 0
+    assert _mirror_page(labelled, KICKOFF_MSG)[0]["status"] == "refused"
+    fetched = _fetches(monkeypatch)
+    open_cfg = config_with(tmp_path, local_source_dir)
+    assert run(open_cfg).exit_code == 0
+    fm, body = _mirror_page(open_cfg, KICKOFF_MSG)
+    assert [f for f in fetched if f.endswith(".msg")] == [KICKOFF_MSG], "read once"
+    assert fm["status"] == "current" and "Renewal is in March." in body
+
+
 def test_a_msg_stub_from_before_its_converter_is_read_once_as_a_page(
     sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
