@@ -15217,6 +15217,11 @@ is set only by an Attempt: line, which clears the stated words the rule needs) a
 so the test pins it rather than failing without the change. Test:
 `test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt`.
 
+**G56: the withheld legend names a .msg not on this Mac.** The same defect as lane E's G62 (§16.66), which landed
+first in `1a37b7ec` with this item's fix (the legend, setup-feedback.md's Quarantine row, the `_LABEL_WITHHELD` and
+`label_withheld_suffixes` docstrings); this lane builds nothing more for it. Test:
+`test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.
