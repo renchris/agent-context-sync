@@ -97,6 +97,8 @@ _EVAL_DIR = "_eval"
 _BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section'
 _AGENTS_MD = "AGENTS.md"
 """The docs repo's root guide that also carries the Baseline questions section (``publish.root_guide``)."""
+_STATE_MD = Path("_sync", "STATE.md")
+"""The docs repo's live status page (``DocsLayout.state_md``), which every cycle rewrites with its alarms."""
 _STATUS_LINE = re.compile(r"^\s*status:\s*(\S+)\s*$")
 _STATUS_LINES_READ = 10  # the skill puts ``status:`` on the first line; a frontmatter fence may precede it
 _UNCONVERTED = frozenset({Verdict.CREATED, Verdict.MAYBE_CHANGED, Verdict.CHANGED, Verdict.DEFERRED})
@@ -151,6 +153,18 @@ def _shown(path: Path) -> str:
         return "~/" + path.relative_to(Path.home()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _named(config: Config, ids: str, what: str) -> str:
+    """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the ``alarm:`` line a sync prints
+    under the source names them, and every cycle, the background one too, keeps it in the docs repo's
+    STATE.md. The alarm names five, so ``sync -v`` (a full sync, which downloads what a plain one does) is
+    named for the rest. The wait itself keeps a count and never a path (B13 round 5 F43)."""
+    state = _shown(expand(config.docs_repo) / _STATE_MD)
+    return (
+        f"the alarm line a sync prints for {ids}, also kept in {state}, names {what} "
+        f"(the first five; `{BIN} sync -v` logs each one)"
+    )
 
 
 def _baseline(docs: Path) -> str:
@@ -664,9 +678,9 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 # folder, so no second round for a sixth one, and checks the file before it writes it.
                 f"run `{BIN} exclude-empty {shlex.quote(src.id)}` (it adds them to that source's exclude in "
                 f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
-                # Which folders, by the command that names them (B13 round 5 F43): the wait carries a count
-                # and never a path, and status prints no folder of the source.
-                f"`{BIN} sync -v` names the folder(s)"
+                # Which folders, by where they are named (B13 round 5 F43; round 6 G13, G42): the wait
+                # carries a count and never a path, and status prints no folder of the source.
+                + _named(config, src.id, "the folder(s)")
                 + (f"; {size}" if size and not gone and not collides else "")
             )
         if collides:
@@ -675,7 +689,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "one would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 "empty folder(s) in the cloud drive; "
-                f"`{BIN} sync -v` names them" + (f"; {size}" if size and not gone else "")
+                + _named(config, src.id, "them")
+                + (f"; {size}" if size and not gone else "")
             )
         if gone:
             waits.append(
@@ -683,21 +698,22 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "has (the listing stays incomplete, so their deletion is held; another sync does not clear "
                 "it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive "
                 "too, and later syncs take the pages out with the usual deletion check; excluding such a "
-                "folder instead retires its pages at once, with no deletion check and no purge queued. "
-                f"`{BIN} sync -v` names the folders" + (f"; in all, {size}" if size else "")
+                "folder instead retires its pages at once, with no deletion check and no purge queued; "
+                + _named(config, src.id, "the folders")
+                + (f"; in all, {size}" if size else "")
             )
     # A source whose last walk missed mirrored files gets its own line: excluding the folder retires their
     # pages at once (the gone line's warning), so that line never offers the exclude as a plain choice.
     if bare := sorted(s for s, missed in unlisted if not missed):
         waits.append(
             f"a folder in {', '.join(bare)} could not be listed (no access, or a missing folder "
-            f"or sentinel; another sync does not clear it): `{BIN} sync -v` names it; grant Files and "
-            "Folders access, or add it to that source's exclude in sources.toml"
+            f"or sentinel; another sync does not clear it): {_named(config, ', '.join(bare), 'it')}; grant "
+            "Files and Folders access, or add it to that source's exclude in sources.toml"
         )
     for sid, missed in sorted((s, m) for s, m in unlisted if m):
         waits.append(
             f"a folder in {sid} could not be listed (no access, or a missing folder or sentinel; another "
-            f"sync does not clear it): `{BIN} sync -v` names it; grant Files and Folders access (the safe "
+            f"sync does not clear it): {_named(config, sid, 'it')}; grant Files and Folders access (the safe "
             f"fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and adding "
             "the folder to that source's exclude retires the pages under it at once, with no deletion check "
             "and no purge queued"

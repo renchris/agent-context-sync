@@ -6227,12 +6227,14 @@ def _eval_by_name(line: str, config: Config) -> str:
     ``Client Alpha/kb docs/_eval`` in the line.  So the folder is replaced here as the loop wrote it
     (``loop._shown``), before the paths without spaces are shortened.  The wait for empty cloud folders
     names the config file by its path, and rules 4, 6 and 8 name the docs repo's ``AGENTS.md`` by its path:
-    each is replaced by its file name the same way."""
+    each is replaced by its file name the same way. The waits for empty and unlisted folders name the docs
+    repo's ``_sync/STATE.md`` by its path, shown as ``_sync/STATE.md`` (B13 round 6 G42)."""
     from agentsync import loop  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     docs = expand(config.docs_repo)
     line = line.replace(loop._shown(docs / loop._EVAL_DIR), _EVAL_SHOWN)
     line = line.replace(loop._shown(docs / loop._AGENTS_MD), loop._AGENTS_MD)
+    line = line.replace(loop._shown(docs / loop._STATE_MD), loop._STATE_MD.as_posix())  # B13 round 6 G42
     return line.replace(loop._shown(config.config_path), config.config_path.name)
 
 

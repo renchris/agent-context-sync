@@ -6150,6 +6150,9 @@ or empty for this case (a source sat incomplete for 900 passes):
   - nothing stored (no access, a missing folder or sentinel): the sources share one line, `a folder in <ids>
     could not be listed (no access, or a missing folder or sentinel; another sync does not clear it)`, then
     that `agentsync sync -v` names it, and to grant Files and Folders access or add it to that source's exclude.
+    **Amended 2026-10-13, §16.63 G42:** every "`agentsync sync -v` names ..." of these lines now reads `the alarm
+    line a sync prints for <id>, also kept in <docs repo>/_sync/STATE.md, names ... (the first five;
+    \`~/.local/bin/agentsync sync -v\` logs each one)`.
 - doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
   an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
   while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
@@ -14438,7 +14441,9 @@ the draft. Test: `test_rule_5_names_one_wait_line_or_more_by_their_count`.
 wait names `exclude-empty` and no folder, and status prints no folder of the source, so the wait now adds
 `` `~/.local/bin/agentsync sync -v` names the folder(s)`` after the exclude-empty sentence, as the gone line
 does. The wait keeps a count and never a path (STATE.md and the setup report carry it). Test:
-`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`.
+`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`. **Amended 2026-10-13, §16.63 G13:** the
+pointer is now the sync's alarm line, kept in STATE.md, which a plain sync already prints; `sync -v` is named only
+for the folders past the alarm's five.
 
 **F65: one rule for exclude-empty and its wait (`agentsync.loop`, `agentsync.cli`).** `loop._excludable(manifest,
 src, below)` splits the empty folders with no mirrored file below them into those `exclude-empty` excludes and
@@ -14446,7 +14451,8 @@ those whose `/<path>/` glob would also prune a folder holding mirrored files (a 
 command leaves. `_cmd_exclude_empty` and `next_step` both use it (`_folders_holding_files` moved to loop). A
 colliding folder gets its own wait: `N empty cloud folder(s) in <id> have a [ in the name, so an exclude of one
 would also match a folder whose files are mirrored (...): rename or remove the empty folder(s) in the cloud drive;
-`~/.local/bin/agentsync sync -v` names them`. It never names exclude-empty, which would leave the folder and the
+`~/.local/bin/agentsync sync -v` names them` (**Amended 2026-10-13, §16.63 G42:** now the alarm line, as the
+other empty-folder waits). It never names exclude-empty, which would leave the folder and the
 wait for good. The `size` tail goes on the last empty-folder line, as before. `_empty_dirs` and
 `empty_cloud_folders_held` are unchanged. Test: `test_a_folder_whose_glob_would_match_a_folder_with_files_is_left`.
 
@@ -14458,6 +14464,10 @@ follows the same rule. Status is named by `skill.AGENTSYNC_BIN`, as §16.51 Q49 
 a command. doctor's heartbeat fix keeps `each WAITING ON YOU line about <id>`, which is true for any count. Tests:
 `test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits`,
 `test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`.
+**Amended 2026-10-13, §16.63 G42:** the waits now name this alarm as where the folders are named, so the alarm
+names the wait for the step and no longer sends the reader back for the folders: `the WAITING ON YOU line about
+<id> at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` prints it too` (`each ...
+prints them too` for two or more). Its comment counts up to three waits per source (§16.63 G57).
 
 **F2: the tcc ok line names no LaunchAgent that is not there (`agentsync.ops.doctor`).** When `agents_wanted` is
 false (no plist, no pending agent step) the line reads `cloud roots were listed with this terminal's privacy
