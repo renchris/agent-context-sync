@@ -14460,6 +14460,9 @@ would also match a folder whose files are mirrored (...): rename or remove the e
 other empty-folder waits). It never names exclude-empty, which would leave the folder and the
 wait for good. The `size` tail goes on the last empty-folder line, as before. `_empty_dirs` and
 `empty_cloud_folders_held` are unchanged. Test: `test_a_folder_whose_glob_would_match_a_folder_with_files_is_left`.
+**Amended 2026-10-13, §16.63 G55:** `_empty_dirs(manifest, src)` returns `_EmptyDirs(stored, below, holding)` from
+one walk of the rows, counting a file below a stored folder whose name differs only in case (the glob ignores
+case), and `_excludable(found)` takes it; `_folders_holding_files` and the second walk are gone.
 
 **F11, F44: the empty-folder alarm counts its waits and names status by its path (`agentsync.arm_local`).** Each
 empty folder lands on exactly one wait (clear, colliding or gone), so with one folder the alarm reads `the

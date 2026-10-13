@@ -392,52 +392,59 @@ def _reread_notes(
     return notes
 
 
-def _empty_dirs(manifest: Manifest, src: SourceConfig) -> tuple[bool, dict[str, int]]:
+@dataclass(frozen=True, slots=True)
+class _EmptyDirs:
+    """What :func:`_empty_dirs` reads in one walk of the source's rows."""
+
+    stored: bool  # the last walk stored some zero-child cloud folder
+    below: dict[str, int]  # those not excluded today, each with the mirrored files below it
+    holding: frozenset[str]  # every folder (relative POSIX path) with a mirrored file at or below it
+
+
+def _empty_dirs(manifest: Manifest, src: SourceConfig) -> _EmptyDirs:
     """The zero-child cloud folders the source's last walk stored (manifest meta ``empty_cloud_dirs:<id>``):
     whether it stored any, and those sources.toml does not exclude today, each with the number of files the
     mirror still holds below it. A folder usually became empty because its files were removed upstream; while
     the listing is incomplete those deletions are held, and excluding the folder would retire the pages as a
-    scope change, past the deletion breaker and with no purge queued."""
+    scope change, past the deletion breaker and with no purge queued. A file counts below a folder whose
+    name differs only in case, as the exclude glob matches (``paths.glob_match`` ignores case): the rows of a
+    case-only rename upstream are still held under the old name (B13 round 6 G55). The same walk keeps every
+    folder holding files, for :func:`_excludable`, so the rows are read once, not twice."""
     try:
         stored = json.loads(manifest.get_meta(_EMPTY_DIRS_META + src.id) or "[]")
     except ValueError:
         stored = []
     names = [d for d in stored if isinstance(d, str)] if isinstance(stored, list) else []
     below = dict.fromkeys(_unexcluded(src, names), 0)
+    holding: set[str] = set()
     if below:
+        by_key: dict[str, list[str]] = {}
+        for d in below:
+            by_key.setdefault(d.casefold(), []).append(d)
         for row in manifest.iter_items(src.id, states=_PRESENT):
             if row.is_dir:
                 continue
-            parent = row.rel_path
-            while "/" in parent:
-                parent = parent.rsplit("/", 1)[0]
-                if parent in below:
-                    below[parent] += 1
+            parts = row.rel_path.split("/")[:-1]
+            folders = ["/".join(parts[: i + 1]) for i in range(len(parts))]
+            holding.update(folders)
+            for folder in reversed(folders):  # the nearest stored folder above the file
+                if hit := by_key.get(folder.casefold()):
+                    for d in hit:
+                        below[d] += 1
                     break
-    return bool(names), below
+    return _EmptyDirs(bool(names), below, frozenset(holding))
 
 
-def _folders_holding_files(manifest: Manifest, source_id: str) -> set[str]:
-    """Every folder (relative POSIX path) with a mirrored file at or below it, from the manifest's rows."""
-    out: set[str] = set()
-    for row in manifest.iter_items(source_id, states=_PRESENT):
-        if row.is_dir:
-            continue
-        parts = row.rel_path.split("/")[:-1]
-        out.update("/".join(parts[: i + 1]) for i in range(len(parts)))
-    return out
-
-
-def _excludable(manifest: Manifest, src: SourceConfig, below: dict[str, int]) -> tuple[list[str], list[str]]:
+def _excludable(empty_dirs: _EmptyDirs) -> tuple[list[str], list[str]]:
     """Of ``below`` (:func:`_empty_dirs`), the folders with no mirrored file below them, split in two: those
     ``agentsync exclude-empty`` excludes, and those whose exclude glob would also prune a folder holding
     mirrored files (a ``[`` is written as ``?``: ``arm_local._glob_literal``), which it leaves, since
     excluding one would retire those pages at once. One rule for the command and the wait naming it (B13
     round 5 F65), so the wait never names a command that refuses its folder."""
-    empty = [d for d, files in below.items() if not files]
+    empty = [d for d, files in empty_dirs.below.items() if not files]
     if not empty:
         return [], []
-    held = _folders_holding_files(manifest, src.id)
+    held = empty_dirs.holding
     clear: list[str] = []
     collides: list[str] = []
     for d in empty:
@@ -460,7 +467,7 @@ def empty_cloud_folders_held(manifest: Manifest, src: SourceConfig) -> bool:
         return False
     if (last.skipped_reason or "").startswith(LISTING_HELD):
         return False
-    return bool(_empty_dirs(manifest, src)[1])
+    return bool(_empty_dirs(manifest, src).below)
 
 
 def _missed(manifest: Manifest, source_id: str) -> int:
@@ -605,9 +612,10 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                     ran_full = last is not None and last.pass_kind is PassKind.FULL
                     if ran_full and src.kind in (SourceKind.LOCAL, SourceKind.INBOX):
                         # An empty cloud folder is unknown on every pass in an inbox too: the same waits.
-                        stored, below = _empty_dirs(manifest, src)
+                        found = _empty_dirs(manifest, src)
+                        stored, below = found.stored, found.below
                         if below:
-                            clear, collides = _excludable(manifest, src, below)
+                            clear, collides = _excludable(found)
                             empty.append((src, below, clear, collides, _missed(manifest, src.id)))
                         elif src.kind is SourceKind.INBOX:
                             inbox_partial.append(src.id)

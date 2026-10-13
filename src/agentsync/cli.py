@@ -795,11 +795,12 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         if src is None:
             return EXIT_USAGE
         with Manifest(db) as manifest:
-            _stored, below = loop._empty_dirs(manifest, src)
+            found = loop._empty_dirs(manifest, src)
+            below = found.below
             # A folder's glob that would also prune a folder holding mirrored files (a "[" is written as
             # "?") is left as well: excluding that folder would retire its pages at once. The loop's wait
             # names this command by the same rule (B13 round 5 F65).
-            clear, _collides = loop._excludable(manifest, src, below)
+            clear, _collides = loop._excludable(found)
         gone = len(below) - len(clear)
         held = (
             f"; {gone} empty cloud folder(s) in {src.id} were left as they are: each held file(s) the mirror "

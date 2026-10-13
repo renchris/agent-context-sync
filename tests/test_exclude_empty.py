@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -196,6 +197,35 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     assert "the alarm line a sync prints for work, also kept in " in wait and "Plans" not in wait
     assert "STATE.md, names them (the first five; `~/.local/bin/agentsync sync -v` logs each one)" in wait
     assert "file(s) the mirror still has" not in wait, "not the gone line: the folder held no file"
+
+
+class _Rows:
+    """A manifest with stored empty folders and file rows; counts how often the rows are read."""
+
+    def __init__(self, stored: str, files: list[str]) -> None:
+        self.stored, self.files, self.walks = stored, files, 0
+
+    def get_meta(self, key: str) -> str | None:
+        return self.stored if key.startswith("empty_cloud_dirs:") else None
+
+    def iter_items(self, source_id: str, *, states: object) -> object:
+        self.walks += 1
+        return (SimpleNamespace(rel_path=rel, is_dir=False) for rel in self.files)
+
+
+def test_a_folder_renamed_in_case_upstream_counts_the_files_still_held_under_it(tmp_path: Path) -> None:
+    """B13 round 6 G55: the exclude glob matches in any case, but the files below a stored empty folder were
+    counted by exact case, so after a case-only rename upstream (the old rows held while the listing is
+    incomplete) REPORTS read as holding no file. It counts them now, and is no folder exclude-empty offers;
+    the rows are read once for the counts and the folders holding files, not twice."""
+    cfg = _setup(tmp_path, local_source_table("work", _root()))
+    src = load_config(cfg).source("work")
+    rows = _Rows('["REPORTS", "Drafts"]', ["Reports/a.docx", "Reports/2026/b.docx", "Plans/c.docx"])
+    found = loop._empty_dirs(rows, src)  # type: ignore[arg-type]
+    assert found.below == {"REPORTS": 2, "Drafts": 0}
+    assert loop._excludable(found) == (["Drafts"], [])
+    assert {"Reports", "Reports/2026", "Plans"} <= found.holding
+    assert rows.walks == 1
 
 
 _ACQUIRE_WAITING = cli._acquire_waiting
