@@ -96,16 +96,21 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         for marker, (env, reason) in gates.items():
             if marker in item.keywords and os.environ.get(env) != "1":
                 item.add_marker(pytest.mark.skip(reason=reason))
-    # A ``timing`` test asserts a time bound (wall clock or CPU) that is the contract (the report's time
-    # budget). On a Mac whose load is many runnable processes per core, that time says nothing about the code:
-    # such a run skips them, and says why; CI's runners and an idle Mac run them. AGENTSYNC_TIMING=1 runs them
-    # anyway.
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Skip a ``timing`` test when the Mac is too busy for its time bound to mean anything.
+
+    A ``timing`` test asserts a time bound (wall clock or CPU) that is the contract (the report's time
+    budget). On a Mac whose load is many runnable processes per core, that time says nothing about the code:
+    such a run skips them, and says why; CI's runners and an idle Mac run them. AGENTSYNC_TIMING=1 runs them
+    anyway. The load is read when each timing test starts, not once at collection: under ``-n auto`` each
+    worker collects at startup, and a long run whose load rose later still ran them (B13 round 7 H78)."""
+    if item.get_closest_marker("timing") is None or os.environ.get("AGENTSYNC_TIMING") == "1":
+        return
     per_core = os.getloadavg()[0] / (os.cpu_count() or 1)
-    if per_core > _TIMING_LOAD_PER_CORE and os.environ.get("AGENTSYNC_TIMING") != "1":
-        busy = pytest.mark.skip(reason=f"load {per_core:.0f} per core: a time bound cannot be judged")
-        for item in items:
-            if "timing" in item.keywords:
-                item.add_marker(busy)
+    if per_core > _TIMING_LOAD_PER_CORE:
+        pytest.skip(f"load {per_core:.0f} per core: a time bound cannot be judged")
 
 
 _TIMING_LOAD_PER_CORE = 4.0

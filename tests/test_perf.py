@@ -15,6 +15,8 @@ import resource
 import subprocess
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -108,3 +110,22 @@ max_files = 10000000
     )
     print(summary)
     assert wall <= budget, summary
+
+
+@pytest.mark.parametrize("override", [False, True], ids=["skipped", "AGENTSYNC_TIMING=1 runs it"])
+def test_a_timing_test_reads_the_load_when_it_starts(monkeypatch: pytest.MonkeyPatch, override: bool) -> None:
+    """B13 round 7 H78: the ``timing`` skip read the load once, at collection, so under ``-n auto`` a worker
+    that started on an idle Mac ran its timing tests through a load that rose later (34 per core, a 6 s
+    bound failed). Each timing test reads the load when it starts now; AGENTSYNC_TIMING=1 still runs it."""
+    import conftest  # noqa: PLC0415 - the hook under test
+
+    timed: Any = SimpleNamespace(
+        get_closest_marker=lambda n: pytest.mark.timing.mark if n == "timing" else None
+    )
+    monkeypatch.setattr(os, "getloadavg", lambda: (34.0 * (os.cpu_count() or 1), 0.0, 0.0))
+    monkeypatch.setenv("AGENTSYNC_TIMING", "1" if override else "0")
+    if override:
+        conftest.pytest_runtest_setup(timed)
+        return
+    with pytest.raises(pytest.skip.Exception, match="load 34 per core: a time bound cannot be judged"):
+        conftest.pytest_runtest_setup(timed)
