@@ -1846,6 +1846,8 @@ fallback_redaction() {
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac
 		case "$v" in "" | *[!A-Za-z]*) continue ;; esac
+		# a name every OneDrive or Google Drive has (Documents) reads back as nothing private (B13 round 6 G48)
+		case "$p" in "<folder-"*) ! generic_folder "$v" || continue ;; esac
 		report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" || continue
 		say "Private only: one of your folder or organisation names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back. Send this report privately"

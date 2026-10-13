@@ -8063,3 +8063,17 @@ def test_a_report_word_organisation_never_prints_and_a_generic_one_keeps_the_rep
     assert "agent-<org-" not in text and "first-<org-" not in text and "~/agent-context/" in text
     private = "Private only:" in text
     assert private == (org == "Status"), org
+
+
+def test_a_configured_generic_folder_leaves_the_report_public(fake_mac: dict[str, Path]) -> None:
+    """B13 round 6 G48: a configured Documents, Desktop or Pictures folder is a report word, so it made the
+    report private only, while the shell report kept the public option; every OneDrive has those folders, so
+    reading <folder-N> back as "Documents" gives nothing away. A word-named folder that is not generic
+    ("Status") still makes it private (F92)."""
+    for name in ("Documents", "Downloads"):
+        folder = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / name
+        folder.mkdir()
+        assert cli.main(["add-source", str(folder), "--config", str(fake_mac["config"])]) == 0
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+    assert "OneDrive-<org-1>/<folder-" in text and "/Documents" not in text, "still redacted"
+    assert "Private only:" not in text and "Send it: the link on the last line opens" in text

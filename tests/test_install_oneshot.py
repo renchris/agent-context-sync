@@ -5734,3 +5734,16 @@ def test_the_shell_report_replaces_a_one_word_organisation_outside_the_generic_l
     assert "Contoso" not in text
     assert re.search(r"the <org-\d> tenant; the <org-\d> tenant; the <org-\d> tenant", text), text
     assert "Private only:" in text, "status is a word the shell report prints"
+
+
+def test_the_shell_report_leaves_a_report_with_a_generic_folder_public(env: dict[str, str]) -> None:
+    """B13 round 6 G48: a configured Downloads (a word install.sh prints) made only the shell report private,
+    and a Documents only the Python one. A name every OneDrive has gives nothing away: neither is private."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    folders = [cloud / "Documents", cloud / "Downloads"]
+    for folder in folders:
+        folder.mkdir(parents=True)
+    args = [a for f in folders for a in ("--source-local", str(f))]
+    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, *args).returncode == 1
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "Contoso" not in text and "Private only:" not in text, text

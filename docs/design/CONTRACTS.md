@@ -15315,6 +15315,15 @@ leaks nothing, so it is not built. Tests:
 `test_the_shell_context_org_word_list_is_the_reports`,
 `test_the_shell_report_replaces_a_one_word_organisation_outside_the_generic_list_everywhere`.
 
+**G48: a configured generic folder leaves the report public.** Amends §16.58 F92: a one-word folder or library
+value in `_GENERIC_FOLDERS` (Documents, Desktop, Downloads, Pictures, ...; exact case, as the listing path's
+exemption) is still redacted, but never raises `Private only:`: every OneDrive or Google Drive has one, so reading
+`<folder-N>` back as the name gives nothing away. install.sh's `fallback_redaction` skips a `<folder-N>` pair whose
+value is a `generic_folder` the same way, so the two reports agree (before, Documents made only the Python report
+private, Downloads only the shell's). An organisation is unaffected; `Status` stays private. Tests:
+`test_a_configured_generic_folder_leaves_the_report_public`,
+`test_the_shell_report_leaves_a_report_with_a_generic_folder_public`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.

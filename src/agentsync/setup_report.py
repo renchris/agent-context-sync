@@ -936,7 +936,9 @@ class Redactor:
             return
         placeholder = known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
-        if word and kind in ("folder", "library", "org") and not context:
+        # a name every OneDrive or Google Drive has ("Documents") reads back as nothing private (round 6 G48)
+        generic = kind in ("folder", "library") and value in _GENERIC_FOLDERS
+        if word and kind in ("folder", "library", "org") and not context and not generic:
             self._word_named.add(placeholder)
         if joined:  # matched with a separator or a CamelCase boundary only (report_words)
             self._joined[_norm(value)] = placeholder
