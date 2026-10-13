@@ -3388,3 +3388,20 @@ def test_the_placeholder_table_states_the_org_word_and_generic_folder_rules_of_r
     for name in re.findall(r"`(\w+)`", folders.group(1)):
         assert name in setup_report._GENERIC_FOLDERS, name
     assert "so it does not make the report private (in either report)" in page
+
+
+def test_the_proxy_row_gives_one_rule_for_both_reports() -> None:
+    """B13 round 7 H62: the `<proxy-N>` row and §16.65 G4 said the agentsync report replaces a common-word
+    proxy host only inside a URL, while its url mode also matches one before `:<port>`, as the shell report
+    does."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    red = setup_report.Redactor()
+    setup_report._add_proxy_host(red, "proxy")
+    assert red.redact("proxy:8080 refused") == "<proxy-1>:8080 refused"
+    assert red.redact("Could not resolve proxy: proxy") == "Could not resolve proxy: proxy"
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "only where a URL names it, or in the shell fallback report" not in page
+    assert "only where a URL or `host:port` names it, in both reports)" in page
+    g4 = " ".join(_contracts_section("### 16.65 ", "### 16.66 ").split())
+    assert "**Amended 2026-10-13, §16.73 H62:** the agentsync report's rule is not the URL alone" in g4
