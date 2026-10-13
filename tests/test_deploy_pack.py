@@ -3438,3 +3438,17 @@ def test_the_banner_re_render_names_the_tombstones_it_covers() -> None:
         "A source deleted from `sources.toml` keeps its tombstones in the old layout until they are reaped"
         in page
     )
+
+
+def test_the_send_step_counts_the_values_the_link_fills() -> None:
+    """B13 round 7 H71: the issue link fills five fields (`setup_report.ISSUE_FIELDS`; `loop_stage` since
+    2026-10-05), while the Send step said it fills the Summary's four values."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    words = {5: "five"}
+    count = words[len(setup_report.ISSUE_FIELDS)]
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "the Summary's four values" not in page
+    assert "copy the four values from the Summary" not in page
+    assert f"opens the form with the Summary's {count} values" in page
+    assert f"copy the {count} values from the Summary" in page
