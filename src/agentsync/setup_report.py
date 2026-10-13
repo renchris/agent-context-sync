@@ -1978,16 +1978,29 @@ def cloud_folder_names(root: Path | None = None, limit: int = _LISTING_MAX) -> l
 
 def _domain_text(folder: Path) -> str:
     """Whether a ~/Library/CloudStorage folder is a File Provider domain, from its own extended attributes.
-    Read as the walk reads it (``arm_local._is_domain``): a symlink, an entry that is not a folder, and one
-    whose attributes cannot be read are domains, so the empty-folder rule stands (B13 round 4 Q33). A link's
-    target is never printed."""
+    Read as the walk reads it (``arm_local._is_domain``): an entry that is not a folder, and one whose
+    attributes cannot be read, are domains, so the empty-folder rule stands (B13 round 4 Q33). A symlink is
+    read as the provider folder its target sits in (B13 round 6 G40), and as a domain when it does not
+    resolve or points into no provider folder. A link's target is never printed."""
+    from agentsync import arm_local  # noqa: PLC0415 - the walk's own reading of a link
+
     try:
         mode = os.lstat(folder).st_mode
         if stat.S_ISLNK(mode):
-            return (
-                "a symlink: read as a File Provider domain (a link's own attributes say nothing about its "
-                "target)"
-            )
+            try:
+                target = folder.resolve(strict=True)
+            except (OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop
+                return (
+                    "a symlink that does not resolve: read as a File Provider domain (the empty-folder "
+                    "rule stands)"
+                )
+            real = arm_local._provider_folder(target, arm_local._cloud_roots())
+            if real is None:
+                return (
+                    "a symlink into no provider folder: read as a File Provider domain (the empty-folder "
+                    "rule stands)"
+                )
+            return f"a symlink: read as the provider folder it points into, {_domain_text(real)}"
         if not stat.S_ISDIR(mode):
             return "not a folder: read as a File Provider domain (the empty-folder rule stands)"
         marker = file_provider_marker(folder)

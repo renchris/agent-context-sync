@@ -398,6 +398,27 @@ def test_a_provider_folder_reached_through_a_symlink_or_dot_dot_keeps_the_rule()
     assert _walk(cloud / "OneDrive-Link" / "Proj")[1].empty_cloud_dirs == ("Empty",)
     dot_dot = cloud / ".." / "CloudStorage" / "OneDrive-Contoso" / "Proj"
     assert _walk(dot_dot)[1].empty_cloud_dirs == ("Empty",)
+    # B13 round 6 G40: a link is judged by the provider folder its target sits in. One to a subfolder of a
+    # domain keeps the rule (only the domain root carries the marker, so reading the target's own would call
+    # it a plain folder and its zero-child folders known-empty); one to a plain folder does not.
+    (real / "Team" / "Proj" / "Empty").mkdir(parents=True)
+    _write(real / "Team" / "Proj" / "a.txt")
+    (cloud / "OneDrive-Team").symlink_to(real / "Team", target_is_directory=True)
+    assert _walk(cloud / "OneDrive-Team" / "Proj")[1].empty_cloud_dirs == ("Empty",)
+    plain = cloud / "Plain"
+    (plain / "Proj" / "Empty").mkdir(parents=True)
+    _write(plain / "Proj" / "a.txt")
+    (cloud / "OneDrive-Plain").symlink_to(plain, target_is_directory=True)
+    assert _walk(plain / "Proj")[1].empty_cloud_dirs == ()
+    assert _walk(cloud / "OneDrive-Plain" / "Proj")[1].empty_cloud_dirs == ()
+    # a chain of links ends at that folder; a link to the cloud root itself, or one that does not resolve,
+    # keeps the rule
+    (cloud / "OneDrive-Chain").symlink_to(cloud / "OneDrive-Plain", target_is_directory=True)
+    assert _walk(cloud / "OneDrive-Chain" / "Proj")[1].empty_cloud_dirs == ()
+    (cloud / "OneDrive-Root").symlink_to(cloud, target_is_directory=True)
+    assert al._is_domain(cloud / "OneDrive-Root")
+    (cloud / "OneDrive-Loop").symlink_to(cloud / "OneDrive-Loop")
+    assert al._is_domain(cloud / "OneDrive-Loop")
 
 
 @pytest.mark.usefixtures("real_domain_check")

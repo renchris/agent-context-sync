@@ -324,15 +324,32 @@ def cloud_provider_root(path: Path) -> Path | None:
 def _is_domain(provider: Path) -> bool:
     """Whether a provider folder is a File Provider domain, from its own extended attributes: True when one
     is a File Provider attribute (a real domain root carries ``com.apple.file-provider-domain-id``), when the
-    entry is not a real folder (a symlink's own attributes say nothing about the folder it points to), and
-    when a read fails for any reason (EPERM, ENOSYS off macOS, anything: the zero-children rule stands).
-    False only for a clean read of a real folder with none, such as a sandbox's ``mkdir`` makes."""
+    entry is neither a real folder nor a link (:func:`_linked_is_domain`), and when a read fails for any
+    reason (EPERM, ENOSYS off macOS, anything: the zero-children rule stands). False only for a clean read
+    of a real folder with none, such as a sandbox's ``mkdir`` makes, or of a link to one."""
     try:
-        if not stat.S_ISDIR(os.lstat(provider).st_mode):
+        mode = os.lstat(provider).st_mode
+        if stat.S_ISLNK(mode):
+            return _linked_is_domain(provider)
+        if not stat.S_ISDIR(mode):
             return True
         return file_provider_marker(provider) is not None
     except OSError:
         return True
+
+
+def _linked_is_domain(provider: Path) -> bool:
+    """A provider entry that is a symlink, judged by the provider folder its target sits in (B13 round 6
+    G40), never by the target's own attributes: only a domain root carries the marker, so a link to a
+    subfolder of a domain would read as a plain folder. True when the target cannot be resolved (a link
+    loop too), lies outside every cloud root or is a cloud root; else :func:`_is_domain` of that real
+    provider folder. The target is resolved in full, so a chain of links ends at a real folder."""
+    try:
+        target = provider.resolve(strict=True)
+    except (OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop
+        return True
+    real = _provider_folder(target, _cloud_roots())
+    return True if real is None else _is_domain(real)
 
 
 def _dir_excluded(rel: str, exclude: Sequence[str]) -> bool:

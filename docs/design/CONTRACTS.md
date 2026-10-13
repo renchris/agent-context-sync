@@ -13951,6 +13951,9 @@ target)`, an entry that is not a folder `not a folder: read as a File Provider d
 stands)`, and an unreadable one adds `read as a domain (the empty-folder rule stands)`; a link's target is never
 printed. The count names links and other entries apart: `listable, P provider folder(s) and L symlink(s) and O
 other entry(ies)`. Test: `test_environment_says_whether_each_provider_folder_is_a_file_provider_domain`.
+**Amended 2026-10-13, §16.63 G40:** a symlinked provider entry is read as the provider folder its target sits
+in, never by its own or its target's attributes: `a symlink: read as the provider folder it points into, <that
+folder's reading>`, and `a symlink that does not resolve` or `a symlink into no provider folder` read as a domain.
 
 **Q41: the module docstring's redaction paragraph** names the LaunchAgent's proxy, the generic dotless host replaced
 only inside a URL, the unaccented spellings, the joined-word rule (Q72), the held placeholders and the kept

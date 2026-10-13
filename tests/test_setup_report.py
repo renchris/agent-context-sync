@@ -517,7 +517,7 @@ def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
     env = section(text, "Environment")
     assert "OneDrive-<org-" in env
     if link:
-        assert "(a link's own attributes say nothing about its target)" in env, env
+        assert "(a symlink: read as the provider folder it points into, " in env, env  # B13 round 6 G40
     assert "<org-2>'s own" not in text and "issue <org-" not in text
 
 
@@ -5058,16 +5058,19 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
     assert "OneDrive-<org-1> (not a File Provider domain: no File Provider attribute (a plain folder))" in env
-    monkeypatch.setattr(
-        setup_report,
-        "file_provider_marker",
-        lambda p: "com.apple.file-provider-domain-id" if p.name == f"OneDrive-{ORG}" else None,
-    )
+    for module in (setup_report, arm_local):  # the walk reads it too
+        monkeypatch.setattr(
+            module,
+            "file_provider_marker",
+            lambda p: "com.apple.file-provider-domain-id" if p.name == f"OneDrive-{ORG}" else None,
+        )
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
     assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
     assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain" in env
-    # B13 round 4 Q33: a symlink is read as the walk reads it (a domain), and is no provider folder of its own
+    # B13 round 4 Q33: a symlink is read as the walk reads it, and is no provider folder of its own; since
+    # round 6 G40 the walk reads it as the provider folder it points into (here a domain), not by its own
+    # attributes
     root = setup_report.cloud_storage_root()
     (root / "OneDrive-Zeta").symlink_to(root / f"OneDrive-{ORG}")
     (root / "Icon\r").write_text("", encoding="utf-8")
@@ -5075,9 +5078,9 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     env = section(text, "Environment")
     assert "listable, 2 provider folder(s) and 1 symlink(s) and 1 other entry(ies): " in env, env
     assert (
-        " (a symlink: read as a File Provider domain (a link's own attributes say nothing about its target))"
-        in env
-    )
+        " (a symlink: read as the provider folder it points into, File Provider domain "
+        "(com.apple.file-provider-domain-id))" in env
+    ), env
     assert "(not a folder: read as a File Provider domain (the empty-folder rule stands))" in env
     assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
     assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain: no File Provider attribute" in env
