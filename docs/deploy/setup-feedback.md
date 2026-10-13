@@ -369,6 +369,14 @@ version, and the installer wrote its own number into the log.
   the prompt again from the README. The checkout follows another remote or branch (a fork, a mirror): the
   checkout is the cause, so the fix is to point it at main, or move it aside so step 1 clones it, and paste
   the same prompt; a fresh copy would stop at the same place. When git cannot say which, the fix names both.
+  Since 2026-10-13 the agentsync report's Summary says which cause the fix column names, in its own words
+  ([CONTRACTS §16.64](../design/CONTRACTS.md) G20), and never shows the column: `prompt: vM (newer than the
+  installer's vN: this Mac's checkout follows main, so the pasted copy came from another branch or a fork)` for a
+  checkout on main of the repository; `prompt: vM (newer than the installer's vN: this Mac's checkout follows
+  another remote or branch)` when the checkout is the cause; and the bare `(newer than the installer's vN)` when
+  the fix names both (a checkout of this repository that follows no upstream branch, or one whose remote git
+  cannot read), the installer is too old to name a cause, or the column is empty. The shell report (`install.sh --report-only` without agentsync) has no such clause, so read its friction
+  log's fix column.
   Since v15 the prompt has the agent tell the person what the installer's error says, in its words, and
   copy the prompt again only when there is no such error (the `--version` check failed alone).
 - Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped

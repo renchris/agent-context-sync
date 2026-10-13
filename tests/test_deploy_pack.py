@@ -3452,3 +3452,31 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     assert "copy the four values from the Summary" not in page
     assert f"opens the form with the Summary's {count} values" in page
     assert f"copy the {count} values from the Summary" in page
+
+
+def test_the_newer_copy_paragraph_quotes_the_summarys_cause() -> None:
+    """B13 round 7 H72: since round 6's G20 the Summary's prompt clause names which cause the installer's fix
+    column found (`setup_report._prompt_copy_note`), while the newer-copy paragraph sent the reader to the
+    friction log's fix column alone."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is vM and this installer is for setup prompt vN: "
+        "this checkout is older than the prompt; setup stopped"
+    )
+    fixes = (
+        "copy the prompt again ...: this Mac's checkout follows that branch, so a copy newer than it came "
+        "from another branch or a fork",
+        "point this Mac's checkout at main of https://example.com/contoso/agent-context-sync (...)",
+        "",
+    )
+    page = _page("docs/deploy/setup-feedback.md")
+    for fix in fixes:
+        log = f"Attempt: 2026-10-13T10:00:00Z\nPrompt: vM\n2026-10-13T10:00:00Z | step 1 | error | {stop} | "
+        log += f"{fix}\n"
+        [attempt] = setup_report.parse_friction(log.replace("vN", "v14").replace("vM", "v15")).attempts
+        note = setup_report._prompt_copy_note(attempt).replace("v14", "vN")
+        assert note.startswith(" (newer than the installer's vN"), note
+        quoted = f"`prompt: vM{note}`" if ":" in note.split("vN", 1)[1] else f"the bare `{note.strip()}`"
+        assert quoted in page, quoted
+    assert "The shell report (`install.sh --report-only` without agentsync) has no such clause" in page

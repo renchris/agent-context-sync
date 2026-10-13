@@ -16163,3 +16163,9 @@ names the exception. Test: `test_the_banner_re_render_names_the_tombstones_it_co
 **The Send step counts five values** (H71). The issue link fills `setup_report.ISSUE_FIELDS`, five since
 `loop_stage` joined it (2026-10-05), and the field table lists five; the Send step still said "the Summary's four
 values" twice. Test: `test_the_send_step_counts_the_values_the_link_fills`, which takes the count from the code.
+
+**The newer-copy paragraph quotes the Summary's cause** (H72). Since §16.64 G20 the agentsync report's Summary names
+which cause the installer's fix column found, in its own words; setup-feedback.md sent the reader to the friction
+log's fix column alone. It now quotes the three forms `_prompt_copy_note` prints, with `vM` and `vN` for the
+versions, and says the shell report has no such clause. Test:
+`test_the_newer_copy_paragraph_quotes_the_summarys_cause`, which builds each form with the code.
