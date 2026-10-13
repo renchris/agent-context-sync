@@ -15277,6 +15277,8 @@ it as `title_outcome` for the title only. A v7 to v14 attempt failed at step 3 g
 at step 3 (sync loop and report) · …`, while the `outcome` field keeps v6's option `Failed at step 3 (IT request and
 report)` (KISS K16b), so old and new links stay valid options and triage counts stay in one bucket. v6 titles are
 unchanged. Test: `test_prompt_layout_is_picked_by_explicit_version`.
+Amended 2026-10-13, §16.69 H42: a `stopped` attempt's title reads `Stopped at step 1 (<the step's name in its own
+layout>)`, as its Summary does; its `outcome` field stays `Failed at step 1 (preflight)`.
 
 **G20: a newer copy's cause comes from the installer's fix column.** The Summary's prompt clause for a copy newer than
 the installer no longer always blames the checkout. install.sh's error line says `this checkout is older than the
@@ -15295,6 +15297,9 @@ install run and no error)`; its why is `no install.sh run and no error; step 1 l
 issue form has no such option, so `form_label` gives step 1's `Failed at step 1 (preflight)`. An error, an install
 run, an end line or a later step keeps `failed`. Seen in the Summary's `- attempt: N of N (earlier: …)` and the
 friction section's attempt lines. Test: `test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
+Amended 2026-10-13, §16.69 H40: step 1 may also log `question`, `click`, `approval` and `prompt` lines beside its
+deviation; the wait is read from the deviations alone, and the why then reads `step 1 logged a deviation (F<n>), <N
+kind(s)> and nothing else`. Amended 2026-10-13, §16.69 H42: the issue title says `Stopped at step 1 (…)`.
 
 **G27: the origin/main clause dates the checkout's last fetch.** The run metadata's `install source` line ends `on
 origin/main: <yes|no|unknown> (<fetch>)`, from one lstat of the checkout's FETCH_HEAD (no new network, no write):
@@ -15711,6 +15716,16 @@ runs too, never those after the end line (round 5 F37), and says `so far` while 
 line the friction log's span usually covers the runs, so the final report reads as before, and a run that outlasts
 the end line keeps the longer span without `so far`. Test:
 `tests/test_setup_report.py::test_an_open_attempts_warning_names_the_command_that_ends_it_and_its_time_takes_in_install_log`.
+
+**A stop for the folder answer may log approvals and questions, and its title says "Stopped"** (H40, H42; dated
+lines at §16.64 G12 and G23). G23's gate required every event to be a step 1 deviation, so a session that did what
+the prompt asks, logging the approval its tool asked for (step 1's clone or pull) and then waiting, read "failed at
+step 1". `compute_outcome` now also allows step 1 `question`, `click`, `approval` and `prompt` lines (`_WAIT_OK_KINDS`)
+beside at least one step 1 deviation; an error, an install run, an end line, a later step or an untyped line keeps
+`failed`, and the "waiting for the folder answer" note is read from the deviations only, so an approval's own "wait"
+does not set it. `Outcome.title_label` says `Stopped at step N (<the layout's step name>)` for a stopped attempt (v5:
+`preflight and code`), so the title no longer contradicts the Summary; `form_label` keeps the Failed option, the
+only one the form has. Test: `tests/test_setup_report.py::test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
 
 ### 16.70 Round 7: installer and the shell report (2026-10-13, wave B13 round 7 lane RB)
 

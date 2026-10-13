@@ -1619,10 +1619,13 @@ class Outcome:
     def title_label(self) -> str | None:
         """The issue title's words: a failed step named as the attempt's own prompt names it (v14's step 3 is
         "sync loop and report"), where :attr:`form_label` keeps v6's option names so every link's prefilled
-        field stays a valid option (KISS K16b; B13 round 6 G12). Otherwise :attr:`form_label`."""
+        field stays a valid option (KISS K16b; B13 round 6 G12). A stopped attempt's title says "Stopped",
+        as its Summary does, while the form, which has no such option, still gets the Failed one (B13 round 7
+        H42). Otherwise :attr:`form_label`."""
         steps = prompt_layout(self.version).steps
-        if self.kind == "failed" and self.step in steps:
-            return f"Failed at step {self.step} ({steps[self.step]})"
+        if self.kind in ("failed", "stopped") and self.step in steps:
+            verb = "Failed" if self.kind == "failed" else "Stopped"
+            return f"{verb} at step {self.step} ({steps[self.step]})"
         return self.form_label
 
 
@@ -1706,6 +1709,12 @@ def retried_runs(attempt: Attempt | None, runs: Sequence[InstallRun]) -> list[In
     installs = install_runs_only(runs)
     first_ok = next((i for i, run in enumerate(installs) if run.rc == 0), 0)  # none ended 0: no retry worked
     return [run for run in installs[:first_ok] if run.rc is not None and run.rc not in STOPPED_EXITS]
+
+
+_WAIT_OK_KINDS = ("question", "click", "approval", "prompt")
+"""The kinds a step 1 that stopped for the folder answer may also log (B13 round 7 H40): the prompt asks the
+agent to log an approval its tool asked for and a go-ahead as a question, and a ``prompt`` line is feedback.
+An error, a start, an end line or an untyped line keeps "failed"."""
 
 
 def compute_outcome(
@@ -1800,20 +1809,22 @@ def compute_outcome(
         return Outcome("failed", error.step, (why_error,), version)
     steps = [e.step for e in attempt.events if e.step is not None]
     events = list(attempt.events)
+    deviations = [e for e in events if e.kind == "deviation"]
     if (
-        events
+        deviations
         and not attempt.finished
-        and all(e.step == FOLDER_QUESTION_STEP and e.kind == "deviation" for e in events)
+        and all(e.step == FOLDER_QUESTION_STEP and e.kind in ("deviation", *_WAIT_OK_KINDS) for e in events)
     ):  # only stopped where the prompt says to: no install run, no error, no end line (B13 round 6 G23)
-        waiting = any(re.search(r"folder answer|\bwait", e.what, re.IGNORECASE) for e in events)
-        lines = ", ".join(f"F{e.line}" for e in events)
+        waiting = any(re.search(r"folder answer|\bwait", e.what, re.IGNORECASE) for e in deviations)
+        lines = ", ".join(f"F{e.line}" for e in deviations)
+        others = Counter(e.kind for e in events if e.kind != "deviation")
+        besides = "".join(f", {_plural(n, k)}" for k, n in others.items())
+        one = "a deviation" if len(deviations) == 1 else _plural(len(deviations), "deviation")
+        what = f"{one} ({lines}){besides} and nothing else" if others else f"only {one} ({lines})"
         return Outcome(
             "stopped",
             FOLDER_QUESTION_STEP,
-            (
-                f"no install.sh run and no error; step {FOLDER_QUESTION_STEP} logged only a deviation "
-                f"({lines})",
-            ),
+            (f"no install.sh run and no error; step {FOLDER_QUESTION_STEP} logged {what}",),
             version,
             "waiting for the folder answer" if waiting else "a deviation, no install run and no error",
         )

@@ -7978,6 +7978,16 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     assert (stopped.kind, stopped.step) == ("stopped", 1)
     assert stopped.why == ("no install.sh run and no error; step 1 logged only a deviation (F4)",)
     assert stopped.form_label == "Failed at step 1 (preflight)", "the form has no stopped option"
+    # the title says what the Summary says (B13 round 7 H42); a v5 attempt's step 1 has v5's name
+    assert stopped.title_label == "Stopped at step 1 (preflight)"
+    write_friction(fake_mac, head + wait)  # the latest attempt, read by a direct setup-report
+    text, summary = summary_of(fake_mac)
+    assert summary.strip().startswith("- **outcome: stopped at step 1 (waiting for the folder answer)**")
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["title"][0].startswith("Setup report: Stopped at step 1 (preflight) · "), link["title"]
+    assert link["outcome"] == ["Failed at step 1 (preflight)"]
+    v5 = setup_report.Outcome("stopped", 1, (), 5, "waiting for the folder answer")
+    assert v5.title_label == "Stopped at step 1 (preflight and code)", v5.title_label
     other = head + wait.replace(
         "stopped to wait for the folder answer, as step 1 says", "asked which folders"
     )
@@ -7989,9 +7999,34 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
         head + wait + "2026-10-13T00:53:00Z | end | finished\n",
         head + wait + "2026-10-13T00:51:40Z | step 1 | error | the list failed | -\n",
         head + wait + "2026-10-13T00:51:40Z | step 2 | deviation | ran it twice | -\n",
+        # B13 round 7 H40: an approval with no deviation, or one at step 2, is no stop for the folder answer
+        head + "2026-10-13T00:51:25Z | step 1 | approval | allowed git clone | -\n",
+        head + wait + "2026-10-13T00:51:40Z | step 2 | approval | allowed install.sh | -\n",
     ):
         [only] = setup_report.parse_friction(log).attempts
         assert setup_report.compute_outcome(only, ()).kind == "failed", log
+
+    # B13 round 7 H40: step 1 logs the approvals and go-aheads the prompt asks for and still stopped there
+    for kind, what in (("approval", "allowed git clone"), ("question", "asked to go ahead")):
+        line = f"2026-10-13T00:51:25Z | step 1 | {kind} | {what} | -\n"
+        [only] = setup_report.parse_friction(head + line + wait).attempts
+        stopped = setup_report.compute_outcome(only, ())
+        assert stopped.text == "stopped at step 1 (waiting for the folder answer)", (kind, stopped)
+        assert stopped.why == (
+            f"no install.sh run and no error; step 1 logged a deviation (F5), 1 {kind} and nothing else",
+        ), stopped.why
+    [only] = setup_report.parse_friction(head + line + wait + wait).attempts
+    assert setup_report.compute_outcome(only, ()).why == (
+        "no install.sh run and no error; step 1 logged 2 deviations (F5, F6), 1 question and nothing else",
+    )
+    # the wait is read from the deviations alone: an approval's "wait" is not the folder answer
+    line = "2026-10-13T00:51:25Z | step 1 | approval | allowed the wait for the clone | -\n"
+    [only] = setup_report.parse_friction(
+        head + line + wait.replace("to wait for the folder answer, as step 1 says", "asked which folders")
+    ).attempts
+    assert setup_report.compute_outcome(only, ()).text == (
+        "stopped at step 1 (a deviation, no install run and no error)"
+    )
 
 
 def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) -> None:
