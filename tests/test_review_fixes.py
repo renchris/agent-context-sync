@@ -25,7 +25,7 @@ from typing import Any, cast
 import pytest
 from pptx import Presentation
 
-from agentsync import arm_local, cli, cycle, gitops, governance, lints, paths, policy, slug
+from agentsync import arm_local, cli, cycle, gitops, governance, lints, loop, paths, policy, slug
 from agentsync import manifest as manifest_mod
 from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, parse_config
 from agentsync.cycle import run_cycle
@@ -532,6 +532,53 @@ def test_a_relabelled_folder_raises_one_label_escalation_alarm_that_counts_its_f
     assert not [w for w in warnings if any(i in w for i in ids)], warnings
     infos = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
     assert f"{SID}: label escalation of alpha.docx; purge queued" in infos, infos
+
+
+def test_a_label_escalation_purge_stays_queued_while_the_policy_publishes_its_file_again(
+    tmp_path: Path, fixture_files: dict[str, Path]
+) -> None:
+    """B13 round 6 G30: a label-escalation purge queued under a rule stayed runnable after the rule was taken
+    out and the file published again, and running it erased that current page and suppressed the file for
+    good. It is kept queued like an upstream deletion of a listed file, and is no wait; with the rule back the
+    file is refused again and the same entry runs."""
+    config, src = make_env(tmp_path, extra=f'\n[policy]\nexclude_label_ids = ["{OTHER_LABEL}"]\n')
+    labelled_docx(
+        fixture_files["sample.docx"], src / "hr-review.docx", labelinfo=labelinfo_xml((LABEL, SITE, "1", "0"))
+    )
+    assert run(config).exit_code == 0
+    text = config.config_path.read_text(encoding="utf-8").replace(
+        f'["{OTHER_LABEL}"]', f'["{OTHER_LABEL}", "{LABEL}"]'
+    )
+    tightened = write_config(tmp_path, text)
+    assert run(tightened).exit_code == 0
+    entry = (item_id(tightened, "hr-review.docx"), "label-escalation")
+    assert entry in queued(tightened)
+    queue, kept = governance.partition_purges(tightened.state_paths)
+    assert len(queue) == 1 and not kept, "refused: the purge is runnable"
+    loosened = write_config(tmp_path, text.replace(f', "{LABEL}"]', "]"))
+    run(loosened)
+    run(loosened)
+    page = "mirror/src/hr-review.docx.md"
+    assert page_fm(loosened, page)["status"] == "current"
+    queue, kept = governance.partition_purges(loosened.state_paths)
+    assert not queue and [q.reason for q, _why in kept] == [governance.PurgeReason.LABEL_ESCALATION]
+    assert kept[0][1].startswith("stays queued: the label policy no longer refuses the file"), kept
+    step = loop.next_step(loosened)
+    assert not [w for w in step.waits if "purge" in w], step.waits
+    assert f"1 {governance.KEPT_ESCALATIONS}" in step.notes, step.notes
+    assert governance.KEPT_PURGES not in " ".join(step.notes), "worded for upstream deletions only"
+    (rep,) = governance.run_purge_queue(loosened, now=NOW)
+    assert rep.not_run and rep.not_run == kept[0][1]
+    assert page in git(loosened.docs_repo, "ls-tree", "-r", "--name-only", "HEAD")
+    assert entry in queued(loosened), "kept, not dropped"
+    run(loosened)
+    assert page_fm(loosened, page)["status"] == "current", "not suppressed: it still syncs"
+    # the rule back: the file is refused again, and the same entry (enqueue_purge dedups the new one) runs
+    tightened = write_config(tmp_path, text)
+    assert run(tightened).exit_code == 0
+    assert queued(tightened).count(entry) == 1
+    queue, kept = governance.partition_purges(tightened.state_paths)
+    assert len(queue) == 1 and not kept
 
 
 def test_a_policy_rescreen_is_counted_apart_on_the_sync_line(

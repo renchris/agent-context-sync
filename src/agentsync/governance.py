@@ -2335,9 +2335,13 @@ _LISTED_STATES = ("live", "dataless")
 """Row states of a file the source still has (``RowState.LIVE``, ``RowState.DATALESS``)."""
 
 
-def _kept_upstream_deletion(db: Path, q: QueuedPurge) -> str:
+KEPT_REASONS = (PurgeReason.UPSTREAM_DELETED, PurgeReason.LABEL_ESCALATION)
+"""The reasons :func:`_kept_why` judges: the cycle queues both for a file that may be listed again later."""
+
+
+def _kept_queued(db: Path, q: QueuedPurge) -> str:
     """Why the queue must not run ``q`` now, or "" (:func:`_kept_why` over a fresh read of the manifest)."""
-    if q.reason is not PurgeReason.UPSTREAM_DELETED or not db.exists():
+    if q.reason not in KEPT_REASONS or not db.exists():
         return ""
     Manifest(db).close()  # schema/version check; raises ManifestSchemaError on a mismatch
     conn = _connect(db)
@@ -2355,14 +2359,17 @@ def _kept_why(
 ) -> str:
     """Why the queue must not run ``q`` now, or "".
 
-    Only an ``upstream-deleted`` entry is judged.  It is queued as its row becomes a tombstone, and a file
-    that came back is listed again: under the queued id, or under a later one the queued id is an alias of
-    (a re-key), which a purge follows.  Run, the entry would erase that file's page and history.  A row that
-    is quarantined or refused does not stop it: after a file comes back refused, the queued purge is the only
-    thing that erases its earlier text from history.  Label escalation, DLP and erasure entries erase live
-    content on purpose and are never judged here.  ``state`` (each row's state) saves a caller that judges
-    many entries a pass over the rows per entry."""
-    if q.reason is not PurgeReason.UPSTREAM_DELETED:
+    An ``upstream-deleted`` entry is queued as its row becomes a tombstone, and a file that came back is
+    listed again: under the queued id, or under a later one the queued id is an alias of (a re-key), which a
+    purge follows.  Run, the entry would erase that file's page and history.  A ``label-escalation`` entry is
+    queued as its row becomes refused, and a file the label policy no longer refuses (the rule was loosened,
+    or the label taken off) is published again, its row live or online-only (B13 round 6 G30).  Run, the
+    entry would erase that current page and suppress the file, so it never syncs again.  A row that is
+    quarantined or refused does not stop either: after a file comes back refused, the queued purge is the
+    only thing that erases its earlier text from history, so a rule added back makes the entry runnable
+    again.  DLP, erasure and operator entries erase live content on purpose and are never judged here.
+    ``state`` (each row's state) saves a caller that judges many entries a pass over the rows per entry."""
+    if q.reason not in KEPT_REASONS:
         return ""
     if state is None:
         state = {(r["source_id"], r["stable_id"]): r["state"] for r in m.rows}
@@ -2392,6 +2399,13 @@ def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
         return ""
     later = sum(1 for _s, i in listed if i != q.selector.stable_id) if q.selector.stable_id else 0
     via = f", {later} of them under a later id" if later else ""
+    if q.reason is PurgeReason.LABEL_ESCALATION:
+        return (
+            f"stays queued: the label policy no longer refuses the file and its page is current again "
+            f"({len(listed)} row(s){via}); running it would erase that page and stop the file syncing. "
+            "`purge --queue` skips it while the file is published, and runs it if the policy refuses the "
+            f"file again; `{AGENTSYNC_BIN} purge path=<its path> --source <its source>` erases it anyway"
+        )
     return (
         f"stays queued: the manifest lists the file as live or online-only ({len(listed)} row(s){via}); "
         "an upstream deletion is not run against a listed file; a later `purge --queue` runs it once the "
@@ -2403,13 +2417,14 @@ def partition_purges(
     state_paths: StatePaths, queue: Sequence[QueuedPurge] | None = None
 ) -> tuple[list[QueuedPurge], list[tuple[QueuedPurge, str]]]:
     """The queued purges (``queue``, default the queue file) a ``purge --queue`` would run, and the ones it
-    keeps queued with why: an upstream deletion of a file the manifest lists again (:func:`_kept_why`, the
-    rule the run itself applies).  Read-only, the manifest is read once, and an entry the cycle queues (a
-    source + id selector) is judged by lookup, so the cost is rows + entries, not their product.  A manifest
-    this build cannot read leaves every entry runnable, as before the kept ones were told apart."""
+    keeps queued with why: an upstream deletion of a file the manifest lists again, or a label escalation of a
+    file the policy publishes again (:func:`_kept_why`, the rule the run itself applies).  Read-only, the
+    manifest is read once, and an entry the cycle queues (a source + id selector) is judged by lookup, so the
+    cost is rows + entries, not their product.  A manifest this build cannot read leaves every entry
+    runnable, as before the kept ones were told apart."""
     entries = pending_purges(state_paths.root) if queue is None else list(queue)
     db = state_paths.db
-    if not db.exists() or all(q.reason is not PurgeReason.UPSTREAM_DELETED for q in entries):
+    if not db.exists() or all(q.reason not in KEPT_REASONS for q in entries):
         return entries, []
     try:
         Manifest(db).close()
@@ -2423,12 +2438,7 @@ def partition_purges(
             whys: list[str] = []
             for q in entries:
                 sel = q.selector
-                if (
-                    q.reason is PurgeReason.UPSTREAM_DELETED
-                    and sel.source_id
-                    and sel.stable_id
-                    and not sel.docs_glob
-                ):
+                if q.reason in KEPT_REASONS and sel.source_id and sel.stable_id and not sel.docs_glob:
                     whys.append(
                         _kept_note(q, _kept_listed(sel.source_id, sel.stable_id, info, m.alias_to_current))
                     )
@@ -2448,9 +2458,29 @@ KEPT_PURGES = (
     "upstream deletion(s) stay queued while their file is listed again; once the file is gone, they wait for "
     f"`{AGENTSYNC_BIN} purge --queue` like any queued purge"
 )
-"""The note after the count of kept entries (:func:`partition_purges`) in the loop, status, doctor and
-STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait until their file is
-gone.  Nothing runs them on its own: the history rewrite runs only from ``agentsync purge --queue``."""
+"""The note after the count of kept upstream deletions (:func:`partition_purges`) in the loop, status,
+doctor and STATE.md: no ``purge --queue`` clears them while their file is listed, so they are no wait until
+their file is gone.  Nothing runs them on its own: the history rewrite runs only from
+``agentsync purge --queue``."""
+
+KEPT_ESCALATIONS = (
+    "label-escalation purge(s) stay queued while the label policy lets their file publish again: "
+    f"`{AGENTSYNC_BIN} purge --queue` skips them, since running one would erase a current page; if the "
+    "policy refuses the file again, they wait for it like any queued purge"
+)
+""":data:`KEPT_PURGES` for kept label-escalation entries (B13 round 6 G30): the file is published again, not
+gone, so the upstream wording would tell the reader the wrong thing."""
+
+
+def kept_lines(kept: Sequence[tuple[QueuedPurge, str]]) -> list[str]:
+    """The kept entries of :func:`partition_purges` as one ``<count> <note>`` per reason: the upstream
+    deletions (:data:`KEPT_PURGES`) apart from the label escalations (:data:`KEPT_ESCALATIONS`)."""
+    escalations = sum(1 for q, _why in kept if q.reason is PurgeReason.LABEL_ESCALATION)
+    upstream = len(kept) - escalations
+    return [
+        *([f"{upstream} {KEPT_PURGES}"] if upstream else []),
+        *([f"{escalations} {KEPT_ESCALATIONS}"] if escalations else []),
+    ]
 
 
 _HELD_WHY = "the purge failed; the log has the error"
@@ -2473,7 +2503,8 @@ def run_purge_queue(
     has already purged; the entry in flight stays in the file.  An entry a verified purge of this run already
     did (:func:`_covers`) is not run again: it leaves the queue with a ``purge-covered`` audit line and a note
     on the covering report; a dry run notes it the same way and does not preview it on its own.  An entry
-    kept queued (a listed file's upstream deletion, a hold, a failure) gets a report with ``not_run`` set.
+    kept queued (a listed file's upstream deletion, a published file's label escalation, a hold, a failure)
+    gets a report with ``not_run`` set.
     """
     gov = gov or load_governance(config.config_path)
     sp = config.state_paths
@@ -2508,7 +2539,7 @@ def run_purge_queue(
                 # report.  Skipped before the kept check, which a preview would judge on a manifest it left as
                 # it is: the run's covering purge has already erased the row that check reads
                 continue
-            why = _kept_upstream_deletion(sp.db, q)
+            why = _kept_queued(sp.db, q)
             if why:
                 log.warning("governance: %s", why)
                 not_run(q, why)

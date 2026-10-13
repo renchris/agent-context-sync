@@ -4581,9 +4581,9 @@ def _alias_of(m: _Mirror, source_id: str, stable_id: str) -> str | None:
 def _purge_fate(m: _Mirror, source_id: str, stable_id: str) -> tuple[str, bool, bool]:
     """What the manifest says of one queued stable id, as one of :data:`_PURGE_FATES`, whether that is said
     of a later id of the same file, and whether that file is live or online-only (a run of the queue keeps
-    an upstream deletion of such a file queued, ``governance._kept_upstream_deletion``): the file is listed
-    again, a live file elsewhere has its bytes (a renamed or re-exported copy), a live file with another id
-    sits at its path (a safe-save or re-export), or nothing live takes its place.
+    an upstream deletion or a label escalation of such a file queued, ``governance._kept_queued``): the file
+    is listed again, a live file elsewhere has its bytes (a renamed or re-exported copy), a live file with
+    another id sits at its path (a safe-save or re-export), or nothing live takes its place.
 
     An id with no row is looked up among the aliases (:func:`_alias_of`). A file that came back and was
     saved again is re-keyed: its row moves to a new id and the queued one becomes an alias, which a purge
@@ -4638,7 +4638,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     grouped: dict[tuple[str, str, str, str], Counter[str]] = {}
     lookups = 0
     aliased: Counter[str] = Counter()  # fate -> the queued ids judged by a later id of the same file
-    kept = 0  # still listed, upstream-deleted, the file live or online-only: a run keeps the entry queued
+    # still listed, upstream-deleted or label-escalated, the file live or online-only: a run keeps it queued
+    kept = 0
     for entry in queue[:_PURGES_READ]:
         selector = entry.selector
         day = entry.enqueued_at[:10] if _DAY_RE.fullmatch(entry.enqueued_at[:10]) else "unknown day"
@@ -4649,7 +4650,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             try:
                 fate, by_alias, present = _purge_fate(m, selector.source_id, selector.stable_id)
                 aliased[fate] += by_alias
-                kept += present and entry.reason is governance.PurgeReason.UPSTREAM_DELETED
+                kept += present and entry.reason in governance.KEPT_REASONS
             except (_OutOfTimeError, _NoManifestError):
                 lookups = _PURGE_LOOKUPS
         key = (labels.of(selector.source_id), reason, selector.kind(), day)
@@ -4726,13 +4727,14 @@ def _purge_notes(fates: Counter[str], aliased: Counter[str], *, kept: int, alias
         via = f" ({aliased['still listed']} of them under a later id)" if aliased["still listed"] else ""
         if kept == listed:
             run = (
-                "A run of the queue keeps them queued: an upstream deletion is not run against a file that "
-                "is live or online-only"
+                "A run of the queue keeps them queued: an upstream deletion or a label escalation is not run "
+                "against a file that is live or online-only"
             )
         elif kept:
             run = (
-                f"A run of the queue keeps {kept} of them queued (an upstream deletion of a file that is "
-                f"live or online-only) and erases the page and history of the other {listed - kept}"
+                f"A run of the queue keeps {kept} of them queued (an upstream deletion or a label escalation "
+                f"of a file that is live or online-only) and erases the page and history of the other "
+                f"{listed - kept}"
             )
         else:
             run = "A run of the queue would erase that file's page and its history"

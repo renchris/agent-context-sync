@@ -942,8 +942,7 @@ def _status_lines(config: Config) -> list[str]:
             f"queued purges: {len(queued)} (preview with `{loop.BIN} purge --queue --dry-run` before "
             f"`{loop.BIN} purge --queue`)"
         )
-    if kept:
-        out.append(f"queued purges kept: {len(kept)} {governance.KEPT_PURGES}")
+    out += [f"queued purges kept: {line}" for line in governance.kept_lines(kept)]
     try:
         cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
@@ -1362,13 +1361,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
     queued, kept = governance.partition_purges(config.state_paths)
-    also = f"; {len(kept)} {governance.KEPT_PURGES}" if kept else ""
+    kept_text = "; ".join(governance.kept_lines(kept))
+    also = f"; {kept_text}" if kept else ""
     if not queued and kept:
-        out.append(
-            _check(
-                "governance.purge_queue", True, f"{len(kept)} {governance.KEPT_PURGES}", doctor.Severity.INFO
-            )
-        )
+        out.append(_check("governance.purge_queue", True, kept_text, doctor.Severity.INFO))
     if queued:
         detail = (
             f"{len(queued)} purge request(s) queued (confirmed upstream deletions / label escalations){also}"

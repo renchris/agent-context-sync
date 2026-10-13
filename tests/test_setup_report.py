@@ -6138,8 +6138,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "later one (it was saved again, or its volume's id changed). Each is counted by that file's row, "
         "since a purge follows the alias to it",
         "- still listed: 3 queued purge(s) name a file the manifest lists now (1 of them under a later id). "
-        "A run of the queue keeps 2 of them queued (an upstream deletion of a file that is live or "
-        "online-only) and erases the page and history of the other 1",
+        "A run of the queue keeps 2 of them queued (an upstream deletion or a label escalation of a file "
+        "that is live or online-only) and erases the page and history of the other 1",
         "- no trace: 2 queued id(s) have no row and are no alias. A re-key leaves an alias, so what took "
         "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
         "history still names for them and takes them off the queue",
@@ -6162,8 +6162,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     )
     assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
         "- still listed: 2 queued purge(s) name a file the manifest lists now. A run of the queue keeps 1 of "
-        "them queued (an upstream deletion of a file that is live or online-only) and erases the page and "
-        "history of the other 1",
+        "them queued (an upstream deletion or a label escalation of a file that is live or online-only) and "
+        "erases the page and history of the other 1",
         "- no row: 4 queued id(s) have no row. This manifest has no alias table, so none was looked up as an "
         "alias: an earlier id of a file listed now cannot be told from one a purge took away",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "

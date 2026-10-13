@@ -523,7 +523,8 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
         return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks))
 
     # a kept upstream deletion is no wait: no run clears it while its file is listed; once the file is gone it
-    # is a queued purge again, and the wait returns
+    # is a queued purge again, and the wait returns. A kept label escalation is no wait either: its file is
+    # published again, and running it would erase that page (B13 round 6 G30)
     queued, kept = governance.partition_purges(config.state_paths)
     if queued:
         waits.append(
@@ -531,8 +532,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
             f"before you run `{BIN} purge --queue` (rewrites history)"
         )
         checks.append("governance.purge_queue")
-    if kept:
-        notes.append(f"{len(kept)} {governance.KEPT_PURGES}")
+    notes += governance.kept_lines(kept)
 
     # Rule 1: status FAILs.
     live = config.live_sources()

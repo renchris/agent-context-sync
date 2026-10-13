@@ -2540,8 +2540,7 @@ class _Cycle:
                 f"`{skill.AGENTSYNC_BIN} purge --queue --dry-run`, then run "
                 f"`{skill.AGENTSYNC_BIN} purge --queue` (rewrites history)"
             )
-        if kept:
-            lines.append(f"- {len(kept)} {governance.KEPT_PURGES}")
+        lines += [f"- {line}" for line in governance.kept_lines(kept)]
         if queued or kept:
             lines.append("")
         return lines

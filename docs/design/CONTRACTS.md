@@ -14946,7 +14946,55 @@ round 4's markers alone.
 
 ### 16.62 Round 6: purge and cycle alarms (2026-10-13, wave B13 round 6 lane A)
 
-Reserved for round 6 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 6").
+Round 6 lane A of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 6"): G30, G36, G38 and G58. No command, flag or
+config key.
+
+**A label-escalation purge stays queued while its file is published again** (G30; extends §16.44 and §16.50 Q45's
+kept upstream deletions). The cycle queues a `label-escalation` purge when a published file becomes refused. Take
+the label out of `[policy]` (or the label off the file) and the next sync publishes it again, but the entry stayed
+runnable: the loop still waited for `purge --queue`, and running it erased the current page and added the file to
+the suppressions, so it never synced again. `governance._kept_why` now judges both reasons in
+`governance.KEPT_REASONS` (`upstream-deleted`, `label-escalation`) by the same rule: a row the selector names (the
+queued id, or the id it is an alias of) that is live or online-only keeps the entry queued. A refused row is not
+listed, so with the rule back the same entry is runnable again, and `enqueue_purge` dedups the one the cycle
+queues. Its note reads ``stays queued: the label policy no longer refuses the file and its page is current again
+(N row(s)); running it would erase that page and stop the file syncing. `purge --queue` skips it while the file is
+published, and runs it if the policy refuses the file again; `~/.local/bin/agentsync purge path=<its path> --source
+<its source>` erases it anyway``. `partition_purges` and `run_purge_queue` (through `_kept_queued`, formerly
+`_kept_upstream_deletion`) apply it; DLP, erasure and operator entries are still never judged. The loop, status,
+doctor and STATE.md print the kept entries through `governance.kept_lines(kept)`: one `<count> <note>` per reason,
+`KEPT_PURGES` for upstream deletions and `KEPT_ESCALATIONS` for label escalations (``label-escalation purge(s) stay
+queued while the label policy lets their file publish again: `~/.local/bin/agentsync purge --queue` skips them,
+since running one would erase a current page; if the policy refuses the file again, they wait for it like any
+queued purge``). A kept escalation is a note, never a wait. The setup report's Purge queue counts a kept
+escalation with the kept upstream deletions, and its "still listed" line names both. Test:
+`tests/test_review_fixes.py` (`test_a_label_escalation_purge_stays_queued_while_the_policy_publishes_its_file_again`).
+
+**The lock-wait WARNING names no host, and the report keeps a fixed stage word** (G36). `lock._describe_holder`,
+which LockHeldError, the cycle's `another sync is running (...)` WARNING and doctor print, no longer appends `on
+<host>`: the lock is a local flock, so the holder is always this Mac, and the name reached the terminal and the
+chat for nothing. The holder sidecar keeps `host`. The fixed stage words are `ops.lock.Stage` (`acquired`,
+`secrets`, `curate`, `surface`, `land-gate`, `commit`, `retention`, `recordings`), which `beat` is called with;
+`setup_report._scrub_item_paths` leaves a quoted value whole only when it is one of them right after `stage `.
+A stage built from a source id (`source:<id>`, `work:<id>`, `fetch <id>`) is no fixed word and is still
+`'<path>'`, and so is a fixed word quoted anywhere else (a folder named `commit`). Tests:
+`tests/test_ops_lock.py` (`test_the_holder_description_names_no_host`), `tests/test_setup_report.py`
+(`test_the_lock_wait_warning_keeps_a_fixed_stage_word_and_redacts_a_source_stage`).
+
+**One label-escalation alarm per source** (G38). Each escalated file appended its own alarm, word for word the same
+and naming no file, under a WARNING that printed the raw stable id and said "purge queued" even when the purge was
+already queued. The source's accumulator now keeps a running tally (files, cached conversions removed, purges
+queued) and one alarm, replaced in place: ``label escalation: N published file(s) now refused by the label policy;
+R cached conversion(s) deleted; Q purge(s) queued[, A already queued] <_PURGE_QUEUE_STEPS>`` (the queued clause
+is left out when Q is 0; the preview steps stay). The per-file line is INFO (`sync -v`), names the path and says
+`purge queued` or `purge already queued`; the stable id is logged at DEBUG only. Test: `tests/test_review_fixes.py`
+(`test_a_relabelled_folder_raises_one_label_escalation_alarm_that_counts_its_files`; `test_sg04`'s suffix now
+reads `1 purge(s) queued (preview ...)`).
+
+**The F35 re-screen count drops a condition that was always true** (G58). In `cycle._after_fetch`, `rescreen`
+requires `not reread` and `again` is `reread and same`, so `if rescreen and not again:` was `if rescreen:`; it now
+reads so, with the invariant in a comment. No behavior changes, so no test can fail without it
+(`test_a_policy_rescreen_is_counted_apart_on_the_sync_line` pins the counts and passes before and after).
 
 ### 16.63 Round 6: sync, status and doctor (2026-10-13, wave B13 round 6 lane B)
 

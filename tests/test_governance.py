@@ -680,9 +680,10 @@ def test_scoped_state_hold_blocks_only_its_source(world: World) -> None:
 
 
 def test_purge_queue_runs_and_keeps_held_requests(world: World) -> None:
+    # S1 is live: an operator purge, which is never judged (a label escalation of it is kept, G30)
     s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
-    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
-    assert not gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.OPERATOR, now=NOW)
+    assert not gv.enqueue_purge(world.state, s1, gv.PurgeReason.OPERATOR, now=NOW)
     assert [q.selector for q in gv.pending_purges(world.state)] == [s1]
     gv.set_hold(world.state, "src", reason="hold", owner="legal", now=NOW)
     (held,) = gv.run_purge_queue(world.config, now=NOW)
@@ -701,7 +702,7 @@ def test_purge_queue_runs_and_keeps_held_requests(world: World) -> None:
 def test_purge_queue_dry_run_writes_nothing_and_keeps_the_queue(world: World) -> None:
     """Field report 2026-10-05: `purge --queue --dry-run` ran both queued purges and rewrote history."""
     s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
-    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.OPERATOR, now=NOW)
     head = git(world.repo, "rev-parse", "HEAD").strip()
     reports = gv.run_purge_queue(world.config, dry_run=True, now=NOW)
     assert len(reports) == 1 and reports[0].dry_run and reports[0].commits_rewritten == 0
@@ -718,8 +719,9 @@ def test_purge_queue_that_stops_part_way_keeps_no_entry_it_already_purged(
     k1 = gv.PurgeSelector(stable_id="K1", source_id="src")
     for selector in (held, g1):
         assert gv.enqueue_purge(world.state, selector, gv.PurgeReason.UPSTREAM_DELETED, now=NOW)
-    # K1 is live: an upstream deletion of it is kept before purge() is called (C8), so it stops as a label
-    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    # K1 is live: an upstream deletion or a label escalation of it is kept before purge() is called (C8,
+    # G30), so it stops as an operator purge
+    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.OPERATOR, now=NOW)
     real = gv.purge
 
     def stops_on_the_last(config: Config, selector: gv.PurgeSelector, **kwargs: Any) -> gv.PurgeReport:
@@ -739,14 +741,15 @@ def test_purge_queue_that_stops_part_way_keeps_no_entry_it_already_purged(
 def test_purge_queue_runs_an_entry_an_earlier_purge_of_the_run_covered_only_once(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """R95: a label escalation then an erasure request for one item.  The second entry was a full no-op purge
+    """R95: an operator purge then an erasure request for one item.  The second entry was a full no-op purge
     with its own audit summary; now it leaves the queue with a ``purge-covered`` audit line and a note on the
-    first report, and a stop after the first purge does not put it back."""
+    first report, and a stop after the first purge does not put it back.  (R95 queued a label escalation
+    first; since G30 one of a live file is kept, so an operator purge, never judged, stands in.)"""
     s1 = gv.PurgeSelector(stable_id="S1", source_id="src")
     k1 = gv.PurgeSelector(stable_id="K1", source_id="src")
     # the covered entry sits after the entry the run stops on (review of R95: it left the file unaudited)
-    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
-    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
+    assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.OPERATOR, now=NOW)
+    assert gv.enqueue_purge(world.state, k1, gv.PurgeReason.OPERATOR, now=NOW)
     assert gv.enqueue_purge(world.state, s1, gv.PurgeReason.ERASURE_REQUEST, now=NOW)
     calls: list[gv.PurgeReason] = []
     real = gv.purge
@@ -760,7 +763,7 @@ def test_purge_queue_runs_an_entry_an_earlier_purge_of_the_run_covered_only_once
     monkeypatch.setattr(gv, "purge", counted)
     with pytest.raises(RuntimeError, match="stopped part-way"):
         gv.run_purge_queue(world.config, now=NOW)
-    assert calls == [gv.PurgeReason.LABEL_ESCALATION]
+    assert calls == [gv.PurgeReason.OPERATOR]
     assert [q.selector for q in gv.pending_purges(world.state)] == [k1]  # the covered entry is not put back
     assert [a["reason"] for a in gv.read_audit(world.state) if a["action"] == "purge-covered"] == [
         "erasure-request"
@@ -782,8 +785,9 @@ def test_purge_queue_runs_an_entry_an_earlier_purge_of_the_run_covered_only_once
 def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(world: World) -> None:
     """C8 (2026-10-07), CONTRACTS 16.30 'Not done here': `purge --queue` ran an upstream-deleted entry whose
     id names a listed file, by its own id or as an alias, and erased that live file's page and history. Such
-    an entry stays queued, not run and not verified, with its reason; a quarantined or refused row still runs,
-    and so does any other reason."""
+    an entry stays queued, not run and not verified, with its reason; a quarantined or refused row still runs.
+    A label escalation of a listed file is kept the same way (B13 round 6 G30); DLP, erasure and operator
+    entries still run."""
     db = world.config.state_paths.db
     conn = sqlite3.connect(db)
     conn.execute("INSERT INTO item_aliases (source_id, alias_id, stable_id) VALUES ('src', 'K0', 'K1')")
@@ -819,14 +823,20 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     conn.commit()
     conn.close()
     assert [r.not_run != "" for r in gv.run_purge_queue(world.config, dry_run=True, now=NOW)] == [True, True]
-    # a label escalation erases live content on purpose: never judged
+    # a label escalation of a listed file is kept too (G30): the label policy publishes it again
     assert gv.enqueue_purge(world.state, by_id, gv.PurgeReason.LABEL_ESCALATION, now=NOW)
-    *_, label = gv.run_purge_queue(world.config, now=NOW)
-    assert label.reason is gv.PurgeReason.LABEL_ESCALATION and label.verified and not label.not_run
+    *_, label = gv.run_purge_queue(world.config, dry_run=True, now=NOW)
+    assert label.reason is gv.PurgeReason.LABEL_ESCALATION and label.not_run.startswith(
+        "stays queued: the label policy no longer refuses the file"
+    )
+    # an operator purge erases live content on purpose: never judged
+    assert gv.enqueue_purge(world.state, by_id, gv.PurgeReason.OPERATOR, now=NOW)
+    *_, op = gv.run_purge_queue(world.config, now=NOW)
+    assert op.reason is gv.PurgeReason.OPERATOR and op.verified and not op.not_run
     assert not (world.repo / "mirror/src/keep.md").exists()
-    # the run reported the two entries as staying queued, so the label purge's cover does not drop them
-    assert [q.selector for q in gv.pending_purges(world.state)] == [by_alias, by_id]
-    # the file is gone now: the next run runs the two entries it kept and empties the queue
+    # the run reported the three entries as staying queued, so the operator purge's cover does not drop them
+    assert [q.selector for q in gv.pending_purges(world.state)] == [by_alias, by_id, by_id]
+    # the file is gone now: the next run runs the entries it kept and empties the queue
     assert all(r.verified for r in gv.run_purge_queue(world.config, now=NOW))
     assert gv.pending_purges(world.state) == []
     assert gv.pending_purges(world.state) == []
