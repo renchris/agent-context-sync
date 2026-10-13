@@ -1843,13 +1843,14 @@ fallback_redaction() {
 	say "Shell fallback redaction: the home path (~), this account's temporary folder (\$TMPDIR: <tmp>), the login name"
 	say "(<user>), the full name and its joined forms (<name>), the organisation or team after the app's name in a"
 	say "CloudStorage folder (OneDrive-<org-N>, Dropbox-<org-N>; an account's email address too), the MDM server's host"
-	say "(<mdmhost>), proxy hosts (one named like proxy or wpad only inside a URL) and the system PAC URL after its"
-	say "scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local, sources.toml or install.log"
-	say "name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole"
-	say "word), a configured source id (<source-N>; one of agentsync's own words, such as docs or inbox, only for a cloud"
-	say "folder), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every word"
-	say "bash wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or an"
-	say "accent (<path>). Read the report before sending it: anything else confidential is yours to remove."
+	say "(<mdmhost>), proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a URL or"
+	say "host:port names it) and the system PAC URL after its scheme (<proxy-N>), the names of the folders under"
+	say "CloudStorage that --source-local, sources.toml or install.log name (<folder-N>; a name every OneDrive or Google"
+	say "Drive has, such as Documents, only where it stands as a whole word), a configured source id (<source-N>; one of"
+	say "agentsync's own words, such as docs or inbox, only for a cloud folder), a --source-local argument in install.log"
+	say "that names no CloudStorage folder (<path>), and every word bash wrote in its dollar-quote form, which install.log"
+	say "uses for a name with a curly apostrophe, an en dash or an accent (<path>)."
+	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5).
 	local v p

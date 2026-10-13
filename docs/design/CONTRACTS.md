@@ -15402,6 +15402,13 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   not say which branch it follows)`. Step 1's own pull fails first in the no-upstream state, so only a hand-run
   `--log-start` reaches this text. `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it` (the
   `--unset-upstream`, deleted-tracking-ref and detached-HEAD states).
+- **The legend's proxy clause has a verb and the matcher's rule** (G4). `proxy hosts (one named like proxy or
+  wpad only inside a URL)` read as a garden path and hid that a bare `proxy:8080` is replaced too. It reads
+  `proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a URL or
+  host:port names it)`, the paragraph is reflowed to 115 columns, and `Read the report before sending it:
+  anything ...` stays on one line, which `stopped_report_note` rewrites. docs/deploy/setup-feedback.md's
+  `<proxy-N>` row says the same for both reports (the agentsync report's rule is the URL alone).
+  `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

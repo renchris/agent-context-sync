@@ -1749,6 +1749,12 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
         "(<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands"
         in flat
     )
+    assert (
+        "proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a "
+        "URL or host:port names it) and the system PAC URL after its scheme (<proxy-N>)" in flat
+    ), "a clause with a verb, and the rule the matcher applies (B13 round 6 G4)"
+    legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
+    assert max(map(len, legend)) <= 115 and legend[-1].startswith("Read the report before sending it: a")
 
 
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
