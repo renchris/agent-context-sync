@@ -15238,6 +15238,15 @@ Mac's checkout follows another remote or branch)` for a fix that starts `point t
 `(newer than the installer's vN)` otherwise (no upstream, an older installer, an empty column). The column itself is
 never shown. Test: `test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary`.
 
+**G23: an attempt that stopped for the folder answer is "stopped", not "failed".** `compute_outcome` gives kind
+`stopped`, step 1, when the attempt has no install run, no error and no end line and every event is a step 1
+`deviation`: the session stopped where the prompt says to wait. Its text is `stopped at step 1 (waiting for the folder
+answer)` when a deviation's words mention the folder answer or waiting, else `stopped at step 1 (a deviation, no
+install run and no error)`; its why is `no install.sh run and no error; step 1 logged only a deviation (F<n>)`. The
+issue form has no such option, so `form_label` gives step 1's `Failed at step 1 (preflight)`. An error, an install
+run, an end line or a later step keeps `failed`. Seen in the Summary's `- attempt: N of N (earlier: …)` and the
+friction section's attempt lines. Test: `test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.

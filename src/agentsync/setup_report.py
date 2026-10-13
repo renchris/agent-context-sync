@@ -1540,16 +1540,20 @@ def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[Insta
 class Outcome:
     """The computed outcome of one attempt: never what the agent declared."""
 
-    kind: str  # "fully one command" | "worked with help" | "failed" | "unknown"
+    kind: str  # "fully one command" | "worked with help" | "failed" | "stopped" | "unknown"
     step: int | None  # the failing prompt step, in the attempt's own prompt's numbering
     why: tuple[str, ...]
     version: int = PROMPT_VERSION  # the prompt whose step numbers ``step`` uses (its layout's, or its own)
+    note: str = ""  # what a "stopped" attempt was doing (B13 round 6 G23)
 
     @property
     def text(self) -> str:
-        """ "fully one command", "worked with help", "failed at step 2", "failed" or "unknown"."""
+        """ "fully one command", "worked with help", "failed at step 2", "stopped at step 1 (<note>)",
+        "failed" or "unknown"."""
         if self.kind == "failed" and self.step is not None:
             return f"failed at step {self.step}"
+        if self.kind == "stopped":
+            return f"stopped at step {self.step} ({self.note})"
         return self.kind
 
     @property
@@ -1560,7 +1564,7 @@ class Outcome:
             return "Fully one command"
         if self.kind == "worked with help":
             return "Worked with help"
-        if self.kind == "failed" and self.step is not None:
+        if self.kind in ("failed", "stopped") and self.step is not None:  # the form has no "stopped"
             step = prompt_layout(self.version).form_step.get(self.step, self.step)
             step = max(1, min(step, max(PROMPT_STEPS)))
             return f"Failed at step {step} ({PROMPT_STEPS[step]})"
@@ -1673,7 +1677,10 @@ def compute_outcome(
       with no v5 event line, whose human turns are unknown);
     - failed at step <n>: at the installer's step (3) when the last install run did not end rc 0; at the
       stopping error's step when install.sh ended rc 0; with no install run, at the step of the last error
-      with no later end of that step (then the last error, then the last step logged).
+      with no later end of that step (then the last error, then the last step logged);
+    - stopped at step 1: no install run, no error and no end line, and every event is a step 1 deviation:
+      the session stopped where the prompt says to wait for the folder answer (B13 round 6 G23); the form's
+      option for it is step 1's failure, as it has no "stopped".
 
     Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
     never change the outcome by themselves, except an error that stopped the run."""
@@ -1747,6 +1754,24 @@ def compute_outcome(
         why_error = f"no install.sh run; step {error.step} logged an error"
         return Outcome("failed", error.step, (why_error,), version)
     steps = [e.step for e in attempt.events if e.step is not None]
+    events = list(attempt.events)
+    if (
+        events
+        and not attempt.finished
+        and all(e.step == FOLDER_QUESTION_STEP and e.kind == "deviation" for e in events)
+    ):  # only stopped where the prompt says to: no install run, no error, no end line (B13 round 6 G23)
+        waiting = any(re.search(r"folder answer|\bwait", e.what, re.IGNORECASE) for e in events)
+        lines = ", ".join(f"F{e.line}" for e in events)
+        return Outcome(
+            "stopped",
+            FOLDER_QUESTION_STEP,
+            (
+                f"no install.sh run and no error; step {FOLDER_QUESTION_STEP} logged only a deviation "
+                f"({lines})",
+            ),
+            version,
+            "waiting for the folder answer" if waiting else "a deviation, no install run and no error",
+        )
     if steps:
         why_step = f"no install.sh run and no error; the last step logged is {steps[-1]}"
         return Outcome("failed", steps[-1], (why_step,), version)

@@ -7899,3 +7899,46 @@ def test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt() -> N
     assert only.stated == {} and only.events[0].what == "prompt v12, Contoso Bot: git pull failed"
     headed = f"Attempt: 2026-10-06T10:00:00Z\nPrompt: v12\n{err}"
     assert len(setup_report.parse_friction(headed).attempts) == 2
+
+
+def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 6 G23 (probe P3): an earlier attempt whose only line is the step 1 deviation the prompt asks
+    for ("stopped to wait for the folder answer") was "failed at step 1"; that session did what the prompt
+    says and may still be waiting. It is "stopped at step 1 (waiting for the folder answer)"; an error, an
+    install run or an end line keeps "failed", and the form's option stays step 1's."""
+    (fake_mac["setup"] / "install.log").unlink()
+    wait = "2026-10-13T00:51:30Z | step 1 | deviation | stopped to wait for the folder answer, as step 1 says"
+    wait += " | -\n"
+    head = "Attempt: 2026-10-13T00:51:20Z\nPrompt: v14\nAgent: Contoso Bot\n"
+    err = "2026-10-13T00:52:20Z | step 1 | error | prompt v14, Claude Code, claude-opus-5-5: git pull failed"
+    err += " | -\n"
+    write_friction(fake_mac, head + wait + err)
+    text, summary = summary_of(fake_mac)
+    assert (
+        "- attempt: 2 of 2 (earlier: attempt 1 stopped at step 1 (waiting for the folder answer))" in summary
+    )
+    assert summary.strip().startswith("- **outcome: failed at step 1** (computed: no install.sh run; step 1 ")
+    fr = section(text, "Agent friction log")
+    assert "): stopped at step 1 (waiting for the folder answer); 1 event line(s): 1 deviation;" in fr, fr
+
+    [only] = setup_report.parse_friction(head + wait).attempts
+    stopped = setup_report.compute_outcome(only, ())
+    assert (stopped.kind, stopped.step) == ("stopped", 1)
+    assert stopped.why == ("no install.sh run and no error; step 1 logged only a deviation (F4)",)
+    assert stopped.form_label == "Failed at step 1 (preflight)", "the form has no stopped option"
+    other = head + wait.replace(
+        "stopped to wait for the folder answer, as step 1 says", "asked which folders"
+    )
+    [only] = setup_report.parse_friction(other).attempts
+    assert setup_report.compute_outcome(only, ()).text == (
+        "stopped at step 1 (a deviation, no install run and no error)"
+    )
+    for log in (  # an end line, an error, a later step: a failure as before
+        head + wait + "2026-10-13T00:53:00Z | end | finished\n",
+        head + wait + "2026-10-13T00:51:40Z | step 1 | error | the list failed | -\n",
+        head + wait + "2026-10-13T00:51:40Z | step 2 | deviation | ran it twice | -\n",
+    ):
+        [only] = setup_report.parse_friction(log).attempts
+        assert setup_report.compute_outcome(only, ()).kind == "failed", log
