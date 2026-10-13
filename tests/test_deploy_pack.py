@@ -3337,3 +3337,29 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     )
     contracts = _contracts_section("### 16.64 ", "### 16.65 ")
     assert '**Amended 2026-10-13, §16.73 H67:** "a v7 to v14 attempt" is every v7 or later' in contracts
+
+
+def test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_published() -> None:
+    """B13 round 7 H58, H63: since round 6's G30 a `label-escalation` entry whose file the label policy
+    publishes again stays queued, as an `upstream-deleted` one whose file is listed does
+    (`governance.KEPT_REASONS`), and the run's K counts both; setup-feedback.md's Purge queue row said such an
+    entry is erased, and data-governance.md never said it stays queued."""
+    from agentsync.governance import KEPT_REASONS, PurgeReason  # noqa: PLC0415
+
+    assert set(KEPT_REASONS) == {PurgeReason.UPSTREAM_DELETED, PurgeReason.LABEL_ESCALATION}
+    feedback = _page("docs/deploy/setup-feedback.md")
+    assert "or an entry with another reason, is still erased" not in feedback
+    assert "and also a `label-escalation` entry whose file the label policy publishes again" in feedback
+    assert (
+        "a `label-escalation` entry whose file is published again (`note: stays queued: the label" in feedback
+    )
+    assert "when some of the M are listed upstream deletions" not in feedback
+    assert "when some of the M are upstream deletions or label escalations whose file is listed" in feedback
+    governance = _page("docs/deploy/data-governance.md")
+    assert "the next sync publishes it again and the entry stays queued" in governance
+    assert "While the file is published, `agentsync purge --queue` skips it" in governance
+    assert (
+        "If the policy refuses the file again, the next `agentsync purge --queue` runs the entry"
+        in governance
+    )
+    assert "An `upstream-deleted` entry whose file is listed again" in governance

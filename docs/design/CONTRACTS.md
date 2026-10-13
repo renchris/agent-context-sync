@@ -16113,3 +16113,13 @@ step as the attempt's own prompt does, while the `outcome` field takes the form'
 words for step 3; v7's step 2 `install` and a v5 step still map to the option for the same work), and since §16.69
 H42 a stopped attempt's title reads `Stopped at step 1 (preflight)`. Test:
 `test_setup_feedback_states_the_report_rules_of_round_6`.
+
+**A label-escalation entry stays queued while its file is published, in both guides** (H58, H63). Since §16.62
+G30, `governance.KEPT_REASONS` holds `label-escalation` as well as `upstream-deleted`: a run of the queue skips such
+an entry while the label policy publishes its file again (live or online-only), its preview says so in its own
+`note: stays queued:`, and the run's K counts both reasons. setup-feedback.md's Purge queue row said an entry with
+another reason is erased and listed only the upstream deletion as kept; it now names both, and DLP, erasure and
+operator entries as the ones still erased. data-governance.md's labels item says the entry stays queued, is skipped
+while the file is published, runs if the policy refuses the file again, and that `agentsync purge path=<its path>
+--source <its source> --reason label-escalation` erases it anyway; the purge-queue item names its kept entry as an
+`upstream-deleted` one. Test: `test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_published`.
