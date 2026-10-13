@@ -421,7 +421,10 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     ...`` after the Q28 clause, so
     two parentheses never stand side by side (B13 round 5 F34), then ``; re-screened S for a rule change
     (also counted above, K of them unchanged)``: a [policy] or secret-rule re-screen runs the converter on the
-    same bytes, so it is in N, and counted again in S (F35). With
+    same bytes, so it is in N, and counted again in S (F35), then ``; Q refused without a read (no converter
+    for the type, or a rule that needs no bytes)`` when Q files were refused with no byte read: those are in
+    each source line's ``refused=`` but not in N, so with it the line's refusals add up to the sources' (B13
+    round 7 H32; it names no label rule, since a type with no converter is refused the same way). With
     ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are one
     count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
@@ -488,7 +491,14 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if report.rescreened
         else ""
     )
-    _out(f"converted {converted}, deferred {online} online-only{again}{of_them}{rescreened}")
+    # No bare "converted", "deferred" or "read again" in it either, and nothing when Q is 0 (B13 round 7 H32)
+    unread = sum(s.refused_unread for s in report.sources)
+    unread_tail = (
+        f"; {unread} refused without a read (no converter for the type, or a rule that needs no bytes)"
+        if unread
+        else ""
+    )
+    _out(f"converted {converted}, deferred {online} online-only{again}{of_them}{rescreened}{unread_tail}")
 
 
 def _print_checkpoint(report: CycleReport) -> None:

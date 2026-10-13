@@ -416,6 +416,9 @@ class SourceReport:
     # of ``converted``: REFUSED after a read (a label rule, a .msg whose label cannot be read; B13 round 6
     # G35). An inbox duplicate is quarantined, not refused (round 7 H49)
     refused: int = 0
+    # refused with no byte read (no converter for the name, a rule that needs no bytes, a withheld online-only
+    # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32)
+    refused_unread: int = 0
 
 
 @dataclass(frozen=True, slots=True)

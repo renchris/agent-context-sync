@@ -991,6 +991,7 @@ class SourceReport:
     unreadable: int = 0  # 2026-10-12 (§16.56 F86)
     conversion_failed: int = 0  # 2026-10-12 (§16.56 F86)
     refused: int = 0  # 2026-10-13 (§16.63 G35): of ``converted``, files refused after their bytes were read
+    refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
 
 @dataclass(frozen=True, slots=True)
 class CycleReport:

@@ -1452,6 +1452,7 @@ class _SourceAcc:
     unreadable: int = 0
     conversion_failed: int = 0
     refused: int = 0
+    refused_unread: int = 0
     breaker_tripped: bool = False
     live_rows: int = 0
     staged_cursor: bool = False
@@ -1484,6 +1485,7 @@ class _SourceAcc:
             unreadable=self.unreadable,
             conversion_failed=self.conversion_failed,
             refused=self.refused,
+            refused_unread=self.refused_unread,
         )
 
 
@@ -4179,11 +4181,13 @@ class _Cycle:
         refused = self._no_converter(src, row)
         if refused is not None:  # no bytes are needed to refuse a type: never download it
             if not self._keeps_page(row, acc) and not self._stub_stands(src, row, refused):
-                self._publish(src, row, refused, acc)
+                self._publish(src, row, refused, acc, unread=True)
             return
         screening = self.publisher.policy_refusal(row)
         if screening is not None:  # an excluded item label: never download it (C15 section 9 item 27)
-            self._publish(src, row, self._stub(row, ConversionStatus.REFUSED, screening.reason), acc)
+            self._publish(
+                src, row, self._stub(row, ConversionStatus.REFUSED, screening.reason), acc, unread=True
+            )
             return
         duplicate = self._inbox_name_size_duplicate(src, row)
         if duplicate is not None:  # the Graph arm is authoritative: never read the drop's bytes
@@ -4220,7 +4224,7 @@ class _Cycle:
             if self._msg_withheld(row):  # a .msg under a label rule: withheld by its name, not left as it was
                 withheld = self._no_converter(src, dataclasses.replace(row, dataless=True))
                 if withheld is not None and not self._stub_stands(src, row, withheld):
-                    self._publish(src, row, withheld, acc)
+                    self._publish(src, row, withheld, acc, unread=True)
                 if withheld is not None:
                     return
             self.manifest.set_verdict(sid, stable, Verdict.DEFERRED)
@@ -4587,7 +4591,12 @@ class _Cycle:
         acc: _SourceAcc,
         *,
         quarantine_reason: str | None = None,
+        unread: bool = False,
     ) -> None:
+        """Publish ``result``'s pages for ``row`` and set its state, verdict and counts. ``unread``: the
+        result was made without reading a byte of the file (no converter for its name, a rule that needs no
+        bytes, a withheld online-only .msg); a refusal from it is counted apart, in ``refused_unread``, for
+        the sync line, whose split counts only the refusals made after a read (B13 round 7 H32)."""
         sid, stable = row.source_id, row.stable_id
         prior_ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
         if quarantine_reason == _CREDENTIAL or (
@@ -4636,6 +4645,8 @@ class _Cycle:
             self.manifest.set_state(sid, stable, RowState.REFUSED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
             acc.counts[Verdict.REFUSED] += 1
+            if unread:
+                acc.refused_unread += 1
         elif result.status is ConversionStatus.FAILED:
             self.manifest.set_state(sid, stable, RowState.QUARANTINED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.ERROR)  # not cached: retried next cycle

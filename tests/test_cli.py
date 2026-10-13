@@ -341,6 +341,56 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     assert line.split().count("converted") == 1
 
 
+def test_the_sync_line_counts_the_files_refused_without_a_read(capsys: pytest.CaptureFixture[str]) -> None:
+    """B13 round 7 H32: a source line's ``refused=`` counts every refused stub, the closing split only those
+    refused after a read, so a file a rule withheld by its name (refused=1) was in neither the split nor N:
+    the line said 4 refused against 1 + 4. It now adds the files refused without a read, after the split or
+    alone, so its refusals add up to the sources'; with none it is as before."""
+    alpha = SourceReport(
+        "project-alpha", SourceKind.LOCAL, PassKind.FULL, True, counts={Verdict.REFUSED: 1}, refused_unread=1
+    )
+    beta = SourceReport(
+        "project-beta",
+        SourceKind.LOCAL,
+        PassKind.FULL,
+        True,
+        counts={Verdict.CHANGED: 10, Verdict.REFUSED: 4},
+        converted=14,
+        refused=4,
+    )
+    report = CycleReport(run_id=9, mode=CycleMode.POLL, sources=(alpha, beta), changes=(), commit_sha=None)
+    cli._print_report(report)
+    out = capsys.readouterr().out.splitlines()
+    assert out[-1] == (
+        "converted 14, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 4 refused); 1 "
+        "refused without a read (no converter for the type, or a rule that needs no bytes)"
+    )
+    said = sum(int(n) for n in re.findall(r"(\d+) refused\b", out[-1]))
+    assert said == sum(int(n) for ln in out for n in re.findall(r"\brefused=(\d+)", ln)) == 5
+    assert out[-1].split().count("converted") == 1 and "read again" not in out[-1]
+    cli._print_report(dataclasses.replace(report, sources=(alpha,)))
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "converted 0, deferred 0 online-only; 1 refused without a read (no converter for the type, or a rule "
+        "that needs no bytes)"
+    )
+    cli._print_report(dataclasses.replace(report, sources=(beta,)))
+    assert "without a read" not in capsys.readouterr().out.splitlines()[-1], "nothing when there are none"
+
+
+def test_a_type_with_no_converter_is_counted_refused_without_a_read_and_no_rule_is_named(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 7 H32: with no label rule set, a type no converter takes is refused by its name; the sync
+    line counts it as refused without a read and names no label rule as its cause."""
+    (local_source_dir / "archive.zip").write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    (summary,) = [ln for ln in out if ln.startswith("converted ")]
+    assert "; 1 refused without a read (" in summary and "label" not in summary, summary
+    assert any("refused=1" in ln for ln in out if ln.startswith("  source: ")), out
+
+
 def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_pass(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
