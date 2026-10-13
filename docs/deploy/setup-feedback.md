@@ -138,7 +138,12 @@ words) is yours to remove. The CLI always redacts.
 
 The form's field ids are stable, because the pre-filled link names them
 (`https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml&title=...&outcome=...&run_type=...&prompt_version=...&agent=...&loop_stage=...`,
-each value URL-encoded; `title` is the issue title, "Setup report: " and the outcome, run type and prompt version):
+each value URL-encoded; `title` is the issue title: "Setup report: ", then the outcome, run type and prompt
+version joined by ` · `. A failed step is named in the title by the number and name the attempt's own prompt gives
+it (a v7 or later attempt's step 3 is `sync loop and report`, its step 2 `install`; a v5 attempt uses its own six
+steps), while the `outcome` field keeps the form's option below, such as `Failed at step 3 (IT request and
+report)`, so the link always fills a valid option. A stopped attempt's title is the field's `Failed at step 1
+(preflight)`):
 
 | Field id | Type | Value |
 |---|---|---|
@@ -191,7 +196,8 @@ for zero.
 ### The computed outcome
 
 setup-report works the outcome out from what the person saw and did, never from the agent's words, and the
-form's Outcome copies it. It reads the last attempt in friction.md and that attempt's last install run in
+form's Outcome copies it (the form has no stopped option, so it records a stopped attempt as step 1's failure). It
+reads the last attempt in friction.md and that attempt's last install run in
 install.log (a `--list-folders` run is not an install run):
 
 - **Fully one command**: the last install run exited 0, and the attempt has no `question` line and no `click`
@@ -224,7 +230,16 @@ install.log (a `--list-folders` run is not an install run):
   is the one install.sh command (in v6 too: its exit 0 covers the background sync v6 could ask for), so any install
   run of the attempt that ended 0 resolves a step 2 error, whenever the line was logged: a step 2 `error` line
   written after install.sh exited 0 is agent friction. If no install run happened, N is the step of the last
-  `error` line, failing that the last step logged, and failing that 1 when only `--list-folders` ran.
+  `error` line, failing that the last step logged (unless the attempt only stopped at step 1, below), and failing
+  that 1 when only `--list-folders` ran.
+- **Stopped at step 1**: no install run, no `error` line and no `end | finished` line, and every line the attempt
+  logged is a step 1 `deviation`. The session stopped where step 1 says to wait for the folder answer and may still
+  be waiting, so it did not fail. The outcome reads `stopped at step 1 (waiting for the folder answer)` when a
+  deviation's words mention the folder answer or waiting, and `stopped at step 1 (a deviation, no install run and
+  no error)` otherwise. It shows so in the Summary's outcome line, in its `earlier:` clause and in the friction
+  section's attempt lines. The form's Outcome records it as `Failed at step 1 (preflight)`. An end line, an error
+  or any other logged line keeps the attempt failed (at step 1 or the step logged); an install run gives the
+  outcome of the bullets above.
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
 attempt's outcome. One kind of late line is another session: a step 1 `error` dated more than 10 minutes after
@@ -251,7 +266,8 @@ is not logged there), says so in a note: a session whose step 1 stopped before `
 not in it, and the person who ran it says which stop it was.
 
 `deviation` and `prompt` lines, and `error` lines that did not stop the run, are agent friction: the Summary counts
-them on their own "agent friction" line with their F-ids, and they do not change the outcome. They are still
+them on their own "agent friction" line with their F-ids, and they do not change the outcome, except that an
+attempt whose only lines are step 1 deviations reads 'stopped' rather than 'failed' (above). They are still
 triaged like every other line (below).
 - **Failed at step 4 (finish)** is never computed. Only the person sees whether the closing lines came, so
   they pick it by hand. With no friction log and no install.sh run, the outcome is "unknown", and the person picks
