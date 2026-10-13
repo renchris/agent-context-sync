@@ -4146,12 +4146,29 @@ def test_a_copy_newer_than_the_checkout_is_told_what_fixes_it(
         assert event.fix.rsplit(", ", 1)[1] == tell.rsplit(", ", 1)[1], (event.fix, tell)
     reported = run("--report-only")
     assert reported.returncode == 0, reported.stdout + reported.stderr
-    assert last_line(reported).startswith(
-        f"{STOPPED_NEXT}, so do not send it or bring it back: {event.fix} (this installer is for setup "
-        f"prompt v{COMPAT})"
+    assert last_line(reported) == (
+        f"{STOPPED_NEXT}, which is for setup prompt v{COMPAT}, so do not send it or bring it back: "
+        f"{event.fix} [setup report: {friction_path(env).parent / 'stopped-copy-report.md'}]"
     ), last_line(reported)
     side = friction_path(env).parent / "stopped-copy-report.md"
     assert "example.invalid" not in reported.stdout + side.read_text(), "nor in what the report holds"
+
+
+def test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer(env: dict[str, str]) -> None:
+    """B13 round 6 G9, G19: a newer copy's NEXT ended "... from another branch or a fork (this installer is
+    for setup prompt v14) (<path> was not touched: ...)": two brackets in a row, the first read as part of the
+    clause before it. The version is said once, after "this installer", and one bracket follows the fix."""
+    back = report_path(env).parent / "bring-back.md"
+    back.parent.mkdir(parents=True)
+    back.write_text("")
+    assert install_sh(env, "--log-start", f"prompt v{COMPAT + 1}, Contoso Agent").returncode == 2
+    next_line = last_line(install_sh(env, "--report-only"))
+    assert next_line.startswith(f"{STOPPED_NEXT}, which is for setup prompt v{COMPAT}, so do not send it")
+    assert ") (" not in next_line and next_line.count("setup prompt v") == 1, next_line
+    assert next_line.endswith(
+        f" ({back} was not touched: it still holds the report of the last attempt that was not stopped) "
+        f"[setup report: {friction_path(env).parent / 'stopped-copy-report.md'}]"
+    ), next_line
 
 
 def test_a_stopped_newer_copy_is_not_called_out_of_date(env: dict[str, str]) -> None:
@@ -4192,8 +4209,8 @@ def test_log_start_reads_the_current_version_in_the_shape_an_agent_gave_it(
 
 
 STOPPED_NEXT = (
-    "NEXT: this report is of an attempt that a copy of the setup prompt that does not match this installer "
-    "started"
+    "NEXT: this report is of an attempt started by a copy of the setup prompt that does not match this "
+    "installer"
 )
 
 
@@ -4255,8 +4272,8 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     back = report_path(env).parent / "bring-back.md"
     side = report_path(env).parent / "setup" / "stopped-copy-report.md"
     warning = (
-        "> This report is of an attempt that a copy of the setup prompt that does not match this installer "
-        "started: do not send"
+        "> This report is of an attempt started by a copy of the setup prompt that does not match this "
+        "installer: do not send"
     )
 
     def invites(cp: subprocess.CompletedProcess[str]) -> list[str]:

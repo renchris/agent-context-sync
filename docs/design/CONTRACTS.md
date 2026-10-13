@@ -13028,6 +13028,9 @@ and the next report of an attempt that was not stopped deletes the file.
 Amended 2026-10-12 (§16.59, F18): the first line reads `> This report is of an attempt that a copy of the setup
 prompt that does not match this installer started: do not send it or bring it back.`; "an out-of-date copy" was
 false of a newer one.
+Amended 2026-10-13, §16.65 G9: the first line and the NEXT read `an attempt started by a copy of the setup
+prompt that does not match this installer`; a newer copy's NEXT says `, which is for setup prompt v<N>` after
+"this installer" and has at most one bracket after its fix.
 
 #### Step 2's reinstall (R34, R114, R125)
 
@@ -15377,6 +15380,16 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   strays, or a hand-run `--report-only`. Tests: `test_a_stopped_copys_embed_counts_the_lines_it_leaves_out`,
   `test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it_quotes` (the agentsync stub
   copies `STUB_REPORT_FILE`), and `test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
+- **A stopped copy's note and NEXT read in order** (G9, G19, one defect). The first line reads `> This report
+  is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or
+  bring it back.` and the NEXT starts the same way (the subject, verb and object were split by a relative
+  clause). A newer copy's NEXT ended `... came from another branch or a fork (this installer is for setup
+  prompt v14) (<path> was not touched: ...)`: two brackets in a row, the first read as part of the clause before
+  it. The version now follows the installer, `... does not match this installer, which is for setup prompt v14,
+  so do not send it or bring it back: <fix>`, and only the bring-back bracket follows the fix, where
+  bring-back.md exists. Any other fix keeps the copy-again sentence with the version inside its own brackets.
+  `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`,
+  `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

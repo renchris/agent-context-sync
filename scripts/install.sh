@@ -2143,7 +2143,7 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 	return 1
 }
 
-# The report of an attempt a copy of the prompt that does not match this installer started (older, naming no
+# The report of an attempt started by a copy of the prompt that does not match this installer (older, naming no
 # version, or newer: B13 round 5 F18) is written to its own file, so the
 # setup-report.md of the last attempt that was not stopped keeps its bytes, as bring-back.md does. Its first
 # line says not to send it, and names that report only where one exists (B13 round 3 R17). Written after the
@@ -2165,7 +2165,7 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # older than F20 (a stopped copy stops before step 2 reinstalls it): only where the report's own Summary says
 # no run of this attempt is in install.out's tail, as the renderer's condition is, and with its two texts (G17).
 stopped_report_note() { # KEPT-REPORT-PATH
-	local tmp shown="$1" note="> This report is of an attempt that a copy of the setup prompt that does not match this installer started: do not send it or bring it back."
+	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
 	[ ! -f "$1" ] || note="$note The report of the last attempt that was not stopped is $shown."
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
@@ -2207,7 +2207,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 }
 
 on_exit() {
-	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell
+	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
@@ -2237,15 +2237,19 @@ on_exit() {
 				# What to do instead is the fix the stop logged: copy the prompt again, or, for a copy newer
 				# than a checkout that does not follow main, point the checkout there (B13 round 5 F17, F18).
 				# Only a fix this installer writes for a newer copy is repeated; any other text in that column
-				# (an older installer's, a hand edit) gets the copy-again sentence.
+				# (an older installer's, a hand edit) gets the copy-again sentence. The version this installer
+				# is for is said once, of the installer: inside the copy-again sentence's own brackets, or
+				# after "this installer" for a newer copy's fix, where a bracket at its end read as part of
+				# its last clause and came right before the bring-back one (B13 round 6 G9, G19).
+				ver=""
 				case "$tell" in
 				"copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session"[:\;]* | \
 					"point this Mac's checkout at main of $CANON_REPO "*)
-					tell="$tell (this installer is for setup prompt v$SETUP_PROMPT_COMPAT)"
+					ver=", which is for setup prompt v$SETUP_PROMPT_COMPAT"
 					;;
 				*) tell="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session" ;;
 				esac
-				NEXT_MSG="this report is of an attempt that a copy of the setup prompt that does not match this installer started, so do not send it or bring it back: $tell"
+				NEXT_MSG="this report is of an attempt started by a copy of the setup prompt that does not match this installer$ver, so do not send it or bring it back: $tell"
 				# R18: bring-back.md is named only where one exists, and not as "finished": a failed
 				# attempt's report writes it too.
 				[ ! -f "$back" ] || NEXT_MSG="$NEXT_MSG ($back was not touched: it still holds the report of the last attempt that was not stopped)"
