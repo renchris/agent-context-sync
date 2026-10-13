@@ -2154,6 +2154,8 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # index() and LC_ALL=C read them byte for byte. An earlier run's "bring back:", issue link and NEXT lines, quoted in
 # the report's install.out tail, go too, with one line saying so in their place, and the Redaction legend's
 # "Read the report before sending it: a..." reads "A..." (B13 round 5 F16, F7): a field Mac has an earlier run.
+# The closing line has a blank line of its own: the one held before the dropped issue link is never printed, and
+# without it Markdown reads the closing line into the Redaction part (B13 round 6 G18).
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt that a copy of the setup prompt that does not match this installer started: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -2168,7 +2170,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				(j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
 				$0 == "" { blank++; next }
 				{ for (; blank > 0; blank--) print ""; print }
-				END { print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH"
+				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH"
 	} >"$tmp"; then
 		mv -f "$tmp" "$REPORT_PATH"
 	else

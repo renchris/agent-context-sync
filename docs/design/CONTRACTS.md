@@ -14081,6 +14081,7 @@ item amends an older section, a dated line sits at that section too.
   install.out's tail, which holds the last full run's), with one `(an earlier run's bring-back, issue link and
   NEXT lines are left out of this report)` line in their place, and the legend's `Read the report before
   sending it: a...` reads `A...`.
+  Amended 2026-10-13, §16.65 G18: a blank line always comes before the closing `Not for sending` line.
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
   finished or failed, deletes `$SETUP_DIR/stopped-copy-report.md` before `bring-back.md` is written: that
   report is now the last one that was not stopped, and nothing the attempt prints names the side file. A dry run
@@ -15343,6 +15344,10 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   fails where `~/.local/bin` is not on PATH. The backticks are escaped in the `say` line, so bash prints them;
   unescaped they would run both commands. `$AGENTSYNC` is not used: it is empty when the fallback runs before
   step 2. `test_the_shell_report_names_another_installs_job_as_not_this_setups`.
+- **A stopped copy's closing line is its own paragraph** (G18). `stopped_report_note` holds each blank line back
+  until a line that is kept follows, so the blank before the dropped issue link was never printed and Markdown
+  read `Not for sending: ...` into the Redaction part. Its END prints a blank line first, whichever line the
+  input ended on. `_sends_nothing` checks the gap for both writers.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

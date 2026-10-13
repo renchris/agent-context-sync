@@ -4309,7 +4309,10 @@ def _sends_nothing(side: Path) -> None:
     assert "Send it:" not in text and "issues/new" not in text, text[-600:]
     assert "Read the report before sending it" not in text and "is yours to remove." in text
     assert not [ln for ln in text.splitlines() if ln.startswith("bring back: ")]
-    assert text.endswith("\nNot for sending: see the note at the top of this report.\n"), text[-300:]
+    assert text.endswith("\n\nNot for sending: see the note at the top of this report.\n"), (
+        "a paragraph of its own, not the Redaction part's last line (B13 round 6 G18)",
+        text[-300:],
+    )
 
 
 def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[str, str]) -> None:
