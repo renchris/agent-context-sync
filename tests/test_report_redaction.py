@@ -266,7 +266,9 @@ def test_the_shell_report_redacts_a_configured_source_id(env: dict[str, str]) ->
     """The shell report read only ``path`` from sources.toml, so a quoted id showed the folder's name in slug
     form where the Python report showed a placeholder. Every id in a ``[[source]]`` table is <source-N>, as a
     whole word ("-" is no word character); one of agentsync's own words (``inbox``) is kept for a source that
-    is not a cloud folder, and an id outside a ``[[source]]`` table is not read."""
+    is not a cloud folder, and an id outside a ``[[source]]`` table is not read. A cloud folder's id that is
+    its folder's name in another spelling is that folder's <folder-N>, as in the Python report (B13 round 6
+    G8), so the wait an agent quotes reads as the folder its --source-local names."""
     home = Path(env["HOME"])
     folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
     folder.mkdir(parents=True)
@@ -275,15 +277,44 @@ def test_the_shell_report_redacts_a_configured_source_id(env: dict[str, str]) ->
     cfg.write_text(
         '[graph]\nid = "graph-tenant"\n\n'
         f'[[source]]\nid = "project-alpha"\nkind = "local"\npath = "{folder}"\n\n'
-        f'[[source]]\nid = "inbox"\nkind = "inbox"\npath = "{home}/agent-context/inbox"\n',
+        f'[[source]]\nid = "inbox"\nkind = "inbox"\npath = "{home}/agent-context/inbox"\n\n'
+        f'[[source]]\nid = "gamma-bridge-mail"\nkind = "local"\npath = "{home}/Mail/Gamma Bridge"\n',
         encoding="utf-8",
     )
-    text = _shell_report(env, _ID_FRICTION.format(id="project-alpha"))
+    said = _ID_FRICTION.format(id="project-alpha") + (
+        "2026-10-12T10:02:00Z | step 2 | clean | --source-local "
+        "~/Library/CloudStorage/OneDrive-Contoso/Project Alpha; gamma-bridge-mail kept | -\n"
+    )
+    text = _shell_report(env, said)
     friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
-    assert "project-alpha" not in text, friction
-    assert 'id = "<source-1>"' in friction and "exclude-empty <source-1> |" in friction, friction
+    assert "project-alpha" not in text and "<source-1>" not in text, friction
+    assert 'id = "<folder-1>"' in friction and "exclude-empty <folder-1> |" in friction, friction
+    assert "OneDrive-<org-1>/<folder-1>; <source-3> kept" in friction, "not a cloud folder: its own number"
     assert "the inbox source and the docs repo are fine" in friction
     assert "a configured source id (<source-N>" in text
+
+
+def test_the_shell_report_keeps_a_deduplicated_ids_own_number(env: dict[str, str]) -> None:  # noqa: F811
+    """Two cloud folders of one name under two organisations: their ids are "reports" and "reports-2". The
+    first is the folder's name in another spelling and reads as its <folder-N>; the second is not, and keeps
+    its <source-N>, so the report still says which of the two a wait is about (B13 round 6 G8)."""
+    home = Path(env["HOME"])
+    cloud = home / "Library" / "CloudStorage"
+    one, two = cloud / "OneDrive-Contoso" / "Reports", cloud / "OneDrive-Fabrikam" / "Reports"
+    one.mkdir(parents=True)
+    two.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(
+        f'[[source]]\nid = "reports"\nkind = "local"\npath = "{one}"\n\n'
+        f'[[source]]\nid = "reports-2"\nkind = "local"\npath = "{two}"\n',
+        encoding="utf-8",
+    )
+    text = _shell_report(
+        env, "Prompt: v13\n2026-10-12T10:00:00Z | step 2 | clean | reports and reports-2 | -\n"
+    )
+    friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+    assert "| <folder-1> and <source-2> |" in friction, friction
 
 
 def test_the_shell_generic_source_ids_are_the_reports() -> None:

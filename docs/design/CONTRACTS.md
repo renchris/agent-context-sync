@@ -15452,6 +15452,18 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   opener), so a fenced earlier report of either writer neither nests the
   new fence (an inner `~~~` would close it and leave every later section in an unclosed block) nor adds a pair a
   run. `test_the_shell_report_fences_the_friction_log_once`, `test_report_only_keeps_an_earlier_friction_log`.
+- **A cloud folder's id reads as its folder** (G8). The shell report gave each `[[source]]` id `<source-N>` by its
+  table's place and nothing tied it to its folder, so `exclude-empty <source-1>` and the `--source-local
+  .../<folder-1>` it is about read as two things; the Python report's fuzzy folder pair makes such an id the
+  folder's placeholder (`_norm`). `redaction_pairs` records the number each folder part's pair has (a later
+  part of the same bytes loses to the first, as `add_pair` does), and a source whose path is under CloudStorage
+  takes `<folder-N>` when `id_key` of its id equals `id_key` of its path's last part (lower case, no blank, `_`,
+  `\` or `-`: `_norm` for ASCII). Keyed on the id's spelling, not on the path: two `Reports` folders under two
+  organisations share one `<folder-1>`, so `reports` reads as it and `reports-2` keeps `<source-2>`, as in the
+  Python report. A user-chosen `--id`, inbox and non-cloud ids stay `<source-N>`, and the legend says so.
+  Non-ASCII names do not match `id_key` (it strips no accents) and keep `<source-N>`, which hides nothing.
+  `test_the_shell_report_redacts_a_configured_source_id`, `test_the_shell_report_keeps_a_deduplicated_ids_own_number`
+  (tests/test_report_redaction.py).
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

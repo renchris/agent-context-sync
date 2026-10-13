@@ -1096,6 +1096,8 @@ git_proxy_values() {
 			true
 	done 2>/dev/null
 }
+# What setup_report._norm keeps of an ASCII id or folder name: lower case, no blank, "_", "\" or "-".
+id_key() { printf '%s' "$1" | LC_ALL=C tr -d ' \t_\\-' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }
 # Source ids that are agentsync's own words (setup_report._GENERIC_IDS; a test holds the two equal).
 GENERIC_SOURCE_IDS="agent agentsync archive calendar chats config docs drive files graph inbox local mail mirror notes"
 GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources status sync teams"
@@ -1103,7 +1105,7 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
-	local port k
+	local port k folders_seen=$'\n' ph b
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1293,6 +1295,8 @@ redaction_pairs() {
 			whole=""
 			if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments"
 			add_pair "$part" "<folder-$n>" "$whole"
+			# the number its pair has: a later part of the same bytes loses to the first (add_pair)
+			case "$folders_seen" in *$'\n'"$part"$'\t'*) ;; *) folders_seen+="$part"$'\t'"$n"$'\n' ;; esac
 		done
 	done
 	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
@@ -1300,12 +1304,29 @@ redaction_pairs() {
 	# A whole word, where "-" is no word character, so "exclude-empty <id>" is matched. An id that is one of
 	# agentsync's own words is kept unless its source is a cloud folder (setup_report._GENERIC_IDS), so "the
 	# docs repo" and "inbox" stay readable. Only ids inside [[source]] tables: the graph and policy ones are not.
+	# A cloud folder's id that is its folder's name in another spelling (setup_report._norm: lower case, no
+	# blanks, "_", "\" or "-") shares that folder's <folder-N>, as in the Python report, so the wait an agent
+	# quotes reads as the folder it is about (B13 round 6 G8). Matched by the id's spelling, not its path: of
+	# two folders "Reports" under two organisations, "reports-2" keeps its own <source-N>.
 	if [ -f "$CONFIG" ]; then
 		while IFS=$'\t' read -r i v f; do
 			case " $GENERIC_SOURCE_IDS " in
 			*" $v "*) case "$f" in "$cs"/* | \~/Library/CloudStorage/*) ;; *) continue ;; esac ;;
 			esac
-			add_pair "$v" "<source-$i>" w
+			ph="<source-$i>"
+			case "$f" in
+			"$cs"/* | \~/Library/CloudStorage/*)
+				b="${f%/}"
+				b="${b##*/}"
+				case "$folders_seen" in
+				*$'\n'"$b"$'\t'*)
+					x="${folders_seen#*$'\n'"$b"$'\t'}"
+					[ "$(id_key "$v")" != "$(id_key "$b")" ] || ph="<folder-${x%%$'\n'*}>"
+					;;
+				esac
+				;;
+			esac
+			add_pair "$v" "$ph" w
 		done < <(LC_ALL=C awk '
 			function flush() { if (inside && id != "") print n "\t" id "\t" path; id = ""; path = "" }
 			/^[[:space:]]*\[/ {
@@ -1852,10 +1873,11 @@ fallback_redaction() {
 	say "(<mdmhost>), proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a URL or"
 	say "host:port names it) and the system PAC URL after its scheme (<proxy-N>), the names of the folders under"
 	say "CloudStorage that --source-local, sources.toml or install.log name (<folder-N>; a name every OneDrive or Google"
-	say "Drive has, such as Documents, only where it stands as a whole word), a configured source id (<source-N>; one of"
-	say "agentsync's own words, such as docs or inbox, only for a cloud folder), a --source-local argument in install.log"
-	say "that names no CloudStorage folder (<path>), and every word bash wrote in its dollar-quote form, which install.log"
-	say "uses for a name with a curly apostrophe, an en dash or an accent (<path>)."
+	say "Drive has, such as Documents, only where it stands as a whole word), a configured source id (<source-N>, or its"
+	say "folder's <folder-N> where it is that name in slug form; one of agentsync's own words, such as docs or inbox, only"
+	say "for a cloud folder), a --source-local argument in install.log that names no CloudStorage folder (<path>), and every"
+	say "word bash wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or"
+	say "an accent (<path>)."
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an
