@@ -8027,6 +8027,11 @@ v8 adds no command, flag, installer option, config key or environment variable. 
   `NEXT:` said "bring it back" while the Summary still judged the stopped attempt. One case stays as the
   report has it: a new session whose step 1 fails before `--log-start` within ten minutes of the stop reads
   as a late line of the stopped session.
+  **Amended 2026-10-13, §16.67 G72 (by §16.58 F23):** a step 1 error that starts with `prompt vN, <agent>:` after
+  the stopped attempt's header is another session's at any gap, since that prefix is written only before
+  `--log-start` and every stopped attempt has a header. So "Any other line after the end line" and the "One case
+  stays" sentence now cover only a step 1 error without that prefix, one that an older prompt or a session that
+  dropped the prefix wrote.
 
 ```python
 # agentsync.setup_report
@@ -13808,6 +13813,10 @@ re-render (Q75). Tests:
 tombstone written since this change. Q75's one-time re-render moves the banner to the top of an existing refused or
 unreadable stub; a tombstone written before the change (until it is reaped) and an existing credential, path or
 redacted stub keep the heading above the banner. The banner is still in the body.
+**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** a credential or path stub is rendered again once as well
+(`Cycle._stub_again`). Only a redacted stub, and a tombstone written before the change until it is reaped or
+rendered again by repair or unarchive, keeps the heading above the banner. Test:
+`test_a_credential_or_path_stub_from_an_older_rendering_is_rendered_again_once`.
 
 **Q27: a withheld file's summary (`agentsync.publish`).** Under a label rule a `.msg` or image stub's summary reads
 `refused: withheld by label rule: the label of a <suffix> file cannot be read; save it as .eml to have it
@@ -14130,6 +14139,10 @@ beside an unusable bundle. Pinned by `tests/test_speech.py::test_the_seed_trusts
 `tests/test_speech.py::test_a_proxy_only_in_gits_config_still_seeds_and_the_shells_ca_wins_over_the_configs`,
 `tests/test_speech.py::test_without_a_proxy_in_the_shell_or_gits_config_nothing_is_fetched` and
 `tests/test_speech.py::test_a_ca_folder_only_git_trusts_is_the_seeds_curl_folder_unless_curl_has_its_own`.
+**Amended 2026-10-13, §16.67 G61 (by §16.60 F78):** the query is `git config --type=path --get-urlmatch http
+<NEMO_URL>`, the url curl fetches, so a proxy scoped to that path counts as well as a host-wide one. An empty
+`http.proxy` is git's way to turn the environment's proxy off: the seed then fetches nothing, even when the shell
+sets a proxy, and `_curl_env` drops every proxy variable.
 
 **The person's SwiftPM mirrors and registries reach the build (Q53; amends §16.48 R90).** `--config-path`
 replaces SwiftPM's shared configuration folder outright (Swift 6.2.4: a mirror resolved under its own
@@ -14164,6 +14177,8 @@ The deck emitter's version is unchanged: an `outdated()` rule cannot tell `.potx
 read every deck again, and no install has written a `.potx` deck page yet (its stubs are read again by the
 no-converter rule). Pinned by
 `tests/test_convert_formats.py::test_a_template_with_no_slides_says_what_its_layouts_and_master_hold`.
+**Amended 2026-10-13, §16.67 G61 (by §16.60 F77):** fixed text is de-duplicated a shape at a time, and the title is
+the first fixed line that can be a title (never a table row), else the first layout name.
 
 **Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and §16.47 R33).**
 `policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
@@ -14629,7 +14644,12 @@ attempt with stated words. In awk, `track()` sets `HD` on every header line Pyth
 `test_a_header_less_step_1_error_states_its_prompt_and_agent`,
 `test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions`,
 `test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`,
-`test_the_installer_and_the_report_split_the_same_attempts_after_any_header`.
+`test_the_installer_and_the_report_split_the_same_attempts_after_any_header`. (**Amended 2026-10-13, §16.67 G72:** F23 amends §16.28's
+`friction_attempt_stopped` rule as well, which a dated line there says. **Amended 2026-10-13, §16.67 G64:** "or an
+`Attempt:` line" does not hold alone: `orphan()` returns before that check unless the attempt has a header (a
+`Prompt:` or `Agent:` line) or stated words, and `track()` clears `HD` on an `Attempt:` line, so an attempt with an
+`Attempt:` line and no header keeps the error (measured with `parse_friction`). `--log-start` writes the three lines
+together, so only a hand-written or cut header meets it; setup-feedback.md says "a header".)
 
 **F14: bring-back.md fences each file it embeds.** In install.sh's `write_bring_back`, the setup report
 (section 1) and fix-request.md (section 2) each sit inside a tilde fence with the info string `markdown`, and the
@@ -14856,7 +14876,8 @@ drops every proxy variable for it. The tests' git stub runs the real git with `G
 `_build_env` drops conftest's; product code still reads the system config, as the build's git does. Pinned by
 `tests/test_speech.py::test_an_empty_proxy_in_gits_config_turns_the_proxy_off_for_the_seed_as_for_git`,
 `test_a_proxy_git_scopes_to_fluidaudios_path_on_github_routes_the_seed` and
-`test_a_proxy_in_the_machines_system_gitconfig_never_reaches_the_tests_git`.
+`test_a_proxy_in_the_machines_system_gitconfig_never_reaches_the_tests_git`. (**Amended 2026-10-13, §16.67 G61:** F78 amends
+§16.54 Q52, whose dated line says so.)
 
 **A MIME message with an encrypted Office attachment only lists it (F98).** Test only: an `.eml`, and a `.msg` that
 holds MIME text with and without a label rule, carrying a protected `.docx` is converted with the attachment
@@ -14936,6 +14957,11 @@ Each is pinned in `tests/test_deploy_pack.py` against the code it describes:
   its version are lane E's this round (`.msg` stubs and their re-render), and a credential, path or redacted stub
   keeps the heading anyway, so the doc must name the exception either way
   (`test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4`).
+  (**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** credential and path stubs are rendered again once since F94.
+  Only a redacted stub and an old tombstone keep the heading, as data-governance.md says.)
+  (**Amended 2026-10-13, §16.67 G69 (by §16.60 F73):** a `.msg` that reading means a download for (online-only, a
+  Graph item, a refused hydration) is not fetched but withheld by its name; setup-feedback.md's Quarantine row and
+  the report's legend say so since §16.66 G62, the same defect, built there.)
 - §7 routes `.msg` to `msg-mime` with a label rule, and its routing test reads §7 twice, without and with a rule,
   splitting it at each SUPERSEDED clause: a clause "with a label rule" counts only under a rule and one for "no
   label rule" only without one. The doc line alone turned the old test red, since its last match won in both
@@ -15093,3 +15119,29 @@ deviations: do not log them." A skipped first sync is still recorded (`skipped 7
 600 s cap stays: a first sync that did not wait would be skipped more often. Tests:
 `tests/test_install_oneshot.py::test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before` and
 `tests/test_deploy_pack.py` (`test_readme_step2_is_the_one_install_command`).
+
+**Prompt words from another lane** (lane RB's G47 and G65, §16.65). A report that holds a `Private only:` line gets
+no `issue link (review the report first):` line, and its `NEXT:` names `bring-back.md` alone, so step 3's "its last
+lines are an issue link and a NEXT: line" now adds "(none when the report says it is for a private copy only)". Test:
+`tests/test_deploy_pack.py` (`test_readme_report_step_after_any_failure`).
+
+**Docs that lagged round 5's code** (G61, G64, G66, G68, G69, G70, G72). Docs and dated lines only; no behavior
+changes:
+- data-governance.md listed "a save that changes only the label ... is re-screened only when the content changes
+  or the policy changes" under Known limits, while §16.60 F72 screens such a save under a label rule; the sentence
+  leaves the limits and the labels item says what F72 does (G66).
+- setup-feedback.md gave round 4's rule for a stated step 1 error, while F23 (§16.58) makes one after a header
+  (a `Prompt:` or `Agent:` line) a new attempt at any gap; three passages now give F23's rule first and round 4's for a
+  header-less attempt, and the pin that matched the stale sentence is replaced (G64). Its placeholder table
+  names the Configuration section's excludes line as a home of `(source N)`, which the shell report uses for
+  every source, and says an own-word source id is redacted under `~/Library/CloudStorage` (G70).
+- Dated lines: §16.54 Q52 and Q77 by F78 and F77, and §16.60 F78 says what it amends (G61); §16.51 Q9's F88 line
+  and §16.61 by F94, since credential and path stubs are rendered again (G68); §16.61's "every `.msg` is fetched"
+  by F73 (G69); §16.28's "One case stays" by F23, and §16.58 F23 names §16.28 (G72). install.sh's comment above
+  `friction_attempt_stopped` says the same (G72).
+- G69's Quarantine row in setup-feedback.md and the report's `withheld by label rule` legend are lane E's G62,
+  the same defect, built once there (§16.66).
+Tests: `tests/test_deploy_pack.py` (`test_the_docs_state_what_round_5_changed`,
+`test_setup_feedback_states_the_report_rules_of_round_4`, and
+`test_a_round_5_item_that_amends_another_has_a_dated_line_there`, which for each §16.60 item that says "amends
+§N <item>" requires a dated line in §N naming §16.60 and the item; it found F77's and F78's missing).

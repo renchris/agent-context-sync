@@ -483,8 +483,10 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 # this installer's): the friction log's last attempt holds that error line. The attempt ends where
 # `agentsync setup-report` ends it (parse_friction), so this NEXT and the report's Summary are of the same
 # attempt: a step 1 error dated more than NEW_SESSION_GAP seconds after its end line is another session's,
-# whose step 1 stopped before --log-start, and that one is not a stopped copy. Any other line after the end
-# line is a late line of the stopped session (an old copy logs the failed command, then writes its report).
+# whose step 1 stopped before --log-start, and that one is not a stopped copy; so, at any gap, is a step 1
+# error that starts with "prompt vN, <agent>:", since that prefix is written only before --log-start and a
+# stopped attempt has a header (B13 round 5 F23, track()). Any other line after the end line is a late line
+# of the stopped session (an old copy logs the failed command, then writes its report).
 # When it is, it prints the fix that stop logged (its line's last column), for the NEXT (B13 round 5 F17).
 NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of

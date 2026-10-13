@@ -2860,10 +2860,11 @@ def test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs() ->
 
 def test_the_docs_state_the_msg_purge_and_banner_rules_of_round_4() -> None:
     """B13 round 5 F75 and F81 (one defect): since round 4's Q78 a label rule routes `.msg` to `msg-mime`,
-    so every `.msg` is fetched and one that holds MIME text is screened and read as an `.eml`, while the docs
-    said no `.msg` is fetched or converted under a rule and none has its label read.  F87: Q45 retired "runs
-    once the file is gone again", which read as a run nobody starts.  F88: a tombstone and a credential, path
-    or redacted stub written before Q9 keep the heading above the banner."""
+    so every `.msg` on this Mac is fetched and one that holds MIME text is screened and read as an `.eml`,
+    while the docs said no `.msg` is fetched or converted under a rule and none has its label read.  F87: Q45
+    retired "runs once the file is gone again", which read as a run nobody starts.  F88, amended by F94: a
+    tombstone and a redacted stub written before Q9 keep the heading above the banner; a credential or path
+    stub is rendered again once."""
     from agentsync.config import ConvertConfig  # noqa: PLC0415
     from agentsync.convert.registry import Registry  # noqa: PLC0415
     from agentsync.policy import PolicyConfig  # noqa: PLC0415
@@ -2935,7 +2936,30 @@ def test_setup_feedback_states_the_report_rules_of_round_4() -> None:
     assert "since round 4, in the installer's shell fallback report" in page
     for label in setup_report._HEADERLESS_LABEL.values():
         assert label in page, label
-    assert "and the open attempt has a header or stated words of its own" in page
+    # B13 round 6 G64: since round 5 F23 a prefixed step 1 error after a header is a new attempt at any gap
+    # (setup_report.parse_friction's orphan()); the page still gave round 4's rule, and this pin was a
+    # substring of the stale sentence. The version, agent and gap checks follow a header-less one. An
+    # `Attempt:` line alone is no header: the error stays (measured in the round 6 review).
+    head = "Attempt: 2026-10-13T10:00:00Z\n"
+    tail = (
+        "2026-10-13T10:01:00Z | end | finished\n"
+        "2026-10-13T10:03:00Z | step 1 | error | prompt v15, Tool-A: x\n"
+    )
+    for header, count in ((head + "Prompt: v15\nAgent: Tool-A\n", 2), (head, 1)):
+        assert len(setup_report.parse_friction(header + tail).attempts) == count, header
+    flat = " ".join(page.split())
+    assert "the open attempt has a header (a `Prompt:` or `Agent:` line), at any gap" in flat
+    assert (
+        "always starts its own attempt when the open attempt has a header (a `Prompt:` or `Agent:` line)"
+        in flat
+    )
+    assert "header or an `Attempt:` line" not in flat, "an Attempt: line alone splits nothing (orphan())"
+    assert "after a headed attempt, at any gap (2 minutes after the end line is enough)" in flat
+    assert "After a header-less attempt with stated words (round 4), it does so only when" in flat
+    assert (
+        "with a version or agent that differs from that attempt's or more than 10 minutes after" not in flat
+    )
+    assert "when the open attempt has a header or stated words of its own and the error's version" not in flat
     assert "the shell fallback report names only `$TMPDIR`" in page
     code = Path(doctor.__file__).read_text(encoding="utf-8")
     assert doctor.BIN == "~/.local/bin/agentsync"
@@ -2965,3 +2989,83 @@ def test_setup_feedback_states_the_report_rules_of_round_4() -> None:
     for entry in setup_report._LEGEND.values():
         placeholder = entry.split(" ", 1)[0]
         assert f"`{placeholder}`" in table, placeholder
+
+
+def test_the_docs_state_what_round_5_changed() -> None:
+    """B13 round 6: docs that lagged round 5's code.  G66: data-governance.md listed a label-only save as a
+    known limit, while §16.60 F72 screens one under a label rule.  G70: setup-feedback.md's placeholder table
+    said `(source N)` is in the evidence parts only, though the Configuration section's excludes line uses it,
+    and that agentsync's own source ids are never redacted, though one is under CloudStorage.  G61, G68, G69,
+    G72: CONTRACTS sections round 5 changed carry dated lines saying how (§16.54 Q52 and Q77 by F78 and F77;
+    §16.51 Q9 and §16.61 by F94; §16.61 by F73; §16.28 by F23), and install.sh's comment on the stopped-copy
+    reader says what F23 changed."""
+    governance = _page("docs/deploy/data-governance.md")
+    limits = governance.split("**Known limits:**", 1)[1].split("**Images and on-device OCR:**", 1)[0]
+    assert "re-screened only when the content changes or the policy changes" not in governance
+    assert "label" not in limits.replace("extractSensitivityLabels", "").replace("Graph-side label", "")
+    assert (
+        "Under a label rule, a save that changes only a file's label, not its content, is screened at the "
+        "next sync that fetches the file, and its page is withheld or restored to match the new label "
+        "(CONTRACTS §16.60 F72)." in governance
+    )
+    feedback = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "except one of agentsync's own words such as `inbox` or `mail` whose folder is not under "
+        "`~/Library/CloudStorage` (in both reports)" in feedback
+    )
+    assert (
+        "in the evidence parts and the Configuration section's `source excludes beyond agentsync's own` line "
+        "only" in feedback
+    )
+    assert "the shell fallback report's excludes line names every source this way" in feedback
+    contracts = " ".join(CONTRACTS.read_text(encoding="utf-8").split())
+    for line in (
+        "**Amended 2026-10-13, §16.67 G61 (by §16.60 F78):** the query is `git config --type=path "
+        "--get-urlmatch http <NEMO_URL>`",
+        "**Amended 2026-10-13, §16.67 G61 (by §16.60 F77):** fixed text is de-duplicated a shape at a time",
+        "**Amended 2026-10-13, §16.67 G61:** F78 amends §16.54 Q52",
+        "**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** a credential or path stub is rendered again",
+        "**Amended 2026-10-13, §16.67 G68 (by §16.60 F94):** credential and path stubs are rendered",
+        "**Amended 2026-10-13, §16.67 G69 (by §16.60 F73):** a `.msg` that reading means a download for",
+        "**Amended 2026-10-13, §16.67 G72 (by §16.58 F23):** a step 1 error that starts with",
+        "**Amended 2026-10-13, §16.67 G72:** F23 amends §16.28's `friction_attempt_stopped` rule",
+    ):
+        assert line in contracts, line
+    sections = dict(_contracts_numbered_sections())
+    assert "§16.67 G72 (by §16.58 F23)" in " ".join(sections["16.28"].split())
+    for number, item in (("16.54", "G61 (by §16.60 F78)"), ("16.54", "G61 (by §16.60 F77)")):
+        assert f"§16.67 {item}" in " ".join(sections[number].split()), item
+    assert "§16.67 G68 (by §16.60 F94)" in " ".join(sections["16.51"].split())
+    script = " ".join(SCRIPTS[0].read_text(encoding="utf-8").replace("#", " ").split())
+    assert (
+        'so, at any gap, is a step 1 error that starts with "prompt vN, <agent>:", since that prefix is '
+        "written only before --log-start and a stopped attempt has a header" in script
+    )
+
+
+def test_a_round_5_item_that_amends_another_has_a_dated_line_there() -> None:
+    """B13 round 6 G61: §16.60 said F77 amends §16.54 Q77 and F78 changed Q52's query, but neither had a dated
+    line in §16.54, and the pointer test reads only round 4's sections.  For each §16.60 item whose heading
+    says "amends §N <item>" (and F78, whose dated line says it amends Q52), section N holds a dated line that
+    names §16.60 and the item, or one of its pair."""
+    sections = _contracts_numbered_sections()
+    body = dict(sections)["16.60"]
+    amends = [("F78", "16.54", "Q52")]
+    for para in re.split(r"\n\s*\n", body):
+        flat = " ".join(para.split())
+        head = re.match(r"\*\*[^*]*\((F\d+(?:, F\d+)*); amends §(\d+\.\d+) ([QR]\d+)\)\.\*\*", flat)
+        if head:
+            amends.extend((f, head.group(2), head.group(3)) for f in head.group(1).split(", "))
+    assert len({(s, q) for _f, s, q in amends}) >= 5, "the scan found §16.60's amends (few, so it is broken)"
+    for section, item in {(s, q) for _f, s, q in amends}:
+        flat = " ".join(dict(sections)[section].split())
+        dated = [
+            chunk
+            for chunk in re.split(r"(?=Amended 2026-10-1\d, )", flat)
+            if re.match(r"Amended 2026-10-1\d, (?:§16\.60\b|§16\.6\d G\d+ \(by §16\.60 )", chunk)
+        ]
+        named = {f for f, s, q in amends if (s, q) == (section, item)}
+        # A dated line's marker and its text end at the next bold run.
+        said = [" ".join(chunk.split("**")[:2]) for chunk in dated]
+        found = [f for f in named if any(re.search(rf"\b{f}\b", line) for line in said)]
+        assert found, (section, item, sorted(named))

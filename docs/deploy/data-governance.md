@@ -85,7 +85,9 @@ editing `sources.toml`.
   `.eml`. A `.msg` that holds MIME text (no compound-file header, an RFC 822 header block) has its `msip_labels`
   header read as an `.eml`'s. No label is read from an Outlook-format (binary) `.msg`: it sits in a named MAPI
   property agentsync does not read. A file with an excluded label is never converted or published. Its earlier conversions are deleted and a
-  `label-escalation` purge is queued. A policy change re-screens every label-capable item.
+  `label-escalation` purge is queued. A policy change re-screens every label-capable item. Under a label rule, a
+  save that changes only a file's label, not its content, is screened at the next sync that fetches the file, and
+  its page is withheld or restored to match the new label (CONTRACTS §16.60 F72).
 - **Encryption:** an encrypted Office file (CFB with `EncryptedPackage`) or PDF (`/Encrypt`) becomes an UNREADABLE
   stub. It is never decrypted. An S/MIME-encrypted or IRM-protected (rpmsg) `.msg` is also an UNREADABLE stub
   (`encrypted` / `IRM-protected`), and an Outlook-format `.msg` that carries an encrypted Office attachment is
@@ -93,8 +95,7 @@ editing `sources.toml`.
   R87), so an encrypted Office attachment in it, like one in an `.eml`, is listed by name, size and sha256 and
   never opened.
 - **Known limits:** Graph-side label reads (`extractSensitivityLabels`) are not implemented, so a Graph file is
-  downloaded to staging before it is screened. A save that changes only the label, not the content, is re-screened
-  only when the content changes or the policy changes (CONTRACTS §16.11).
+  downloaded to staging before it is screened.
 - **Images and on-device OCR:** text in an image file, on a scanned PDF page and in the pictures of a PDF, deck or
   Word document is read on the Mac by Apple's Vision framework, through a helper `scripts/install.sh` compiles
   locally; agentsync uploads nothing for it. No label is read from an image file, so while any `[policy]` label rule
