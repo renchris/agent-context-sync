@@ -3363,3 +3363,28 @@ def test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_pu
         in governance
     )
     assert "An `upstream-deleted` entry whose file is listed again" in governance
+
+
+def test_the_placeholder_table_states_the_org_word_and_generic_folder_rules_of_round_6() -> None:
+    """B13 round 7 H60: the `<org-N>` row gave round 5's rule (a one-word organisation the report prints is
+    replaced only in the folder names) for every report word, while since round 6 that holds only for the
+    reviewed generic words (`setup_report._CONTEXT_ORG_WORDS`) and any other one is replaced everywhere and
+    makes the report Private only; and the paragraph under the table had no word of G48's exception, a
+    configured generic folder (`_GENERIC_FOLDERS`) that leaves the report public.  The examples are checked
+    against those lists, which stay the only full copies."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "(`Link`) only in those names, never the word in the report's sentences" not in page
+    words = re.search(r"generic words the report prints \(([^)]*)\)", page)
+    assert words is not None
+    for word in re.findall(r"`(\w+)`", words.group(1)):
+        assert word.lower() in setup_report._CONTEXT_ORG_WORDS, word
+    other = re.search(r"any other one-word organisation the report prints \(`(\w+)`\) everywhere", page)
+    assert other is not None and other.group(1).lower() not in setup_report._CONTEXT_ORG_WORDS
+    assert "which makes the report Private only (below)" in page
+    folders = re.search(r"a name every OneDrive or Google Drive has \(([^)]*)\) is the exception", page)
+    assert folders is not None
+    for name in re.findall(r"`(\w+)`", folders.group(1)):
+        assert name in setup_report._GENERIC_FOLDERS, name
+    assert "so it does not make the report private (in either report)" in page

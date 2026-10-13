@@ -60,7 +60,7 @@ Redaction is on by default and consistent within one report, so the same value i
 |---|---|
 | `~` | the home folder path |
 | `<user>`, `<name>` | the login name and the full name (`id -F`) |
-| `<org-N>` | the organization or team after the app's name in a `~/Library/CloudStorage` folder (`OneDrive-<org>`, `OneDrive-SharedLibraries-<org>`, `Dropbox-<team>`; never `Personal`, `Business`, `Work` or a name repeating the app's, such as `Box-Box`), `OneDrive - <org>`, the tenant's and SharePoint host's first label; one that is a single word the report prints (`Link`) only in those names, never the word in the report's sentences |
+| `<org-N>` | the organization or team after the app's name in a `~/Library/CloudStorage` folder (`OneDrive-<org>`, `OneDrive-SharedLibraries-<org>`, `Dropbox-<team>`; never `Personal`, `Business`, `Work` or a name repeating the app's, such as `Box-Box`), `OneDrive - <org>`, the tenant's and SharePoint host's first label; a single word from a short reviewed list of generic words the report prints (`Link`, `Sync`, `Team`, `Docs`, ...) only in those names, never in the report's sentences; any other one-word organisation the report prints (`Status`) everywhere, which makes the report Private only (below) |
 | `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; every configured source id, except one of agentsync's own words such as `inbox` or `mail` whose folder is not under `~/Library/CloudStorage` (in both reports), and an id that is its cloud folder's name in slug form is that folder's `<folder-N>`; in the shell fallback report, a generic name such as `Documents` only as a whole word |
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know; in the shell fallback report (install.sh, when agentsync cannot run), every `$'...'` word, how install.log writes a name with a curly apostrophe, a dash or an accent, and a relative `--source-local` argument from install.log that names no CloudStorage folder |
 | `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host and computer names, proxy hosts (git's config files and the LaunchAgent's proxy included; a host that is just a common word, such as `proxy` or `wpad`, only where a URL names it, or in the shell fallback report a URL or `host:port`) and the system PAC URL after its scheme |
@@ -72,7 +72,9 @@ Redaction is on by default and consistent within one report, so the same value i
 When a folder, library or organisation name redacted everywhere is also a word the report prints (a folder
 `Status`), its placeholder in the report's own text reads back as that word, so the Redaction section says so
 (`Private only: ...`) and its `Send it:` line sends the report privately, never as a public issue; such a report
-ends with no issue link.
+ends with no issue link. A configured folder or library with a name every OneDrive or Google Drive has (`Documents`,
+`Downloads`, `Desktop`) is the exception: it is still redacted, but reading its placeholder back gives nothing away,
+so it does not make the report private (in either report).
 
 The "Redaction" section gives the count per kind: a numbered placeholder as often as the report shows it, the
 unnumbered ones (`~`, `<user>`, `<name>`, `<serial>`, `<host>`, `<mdmhost>`, `<tmp>`) as often as a value was
