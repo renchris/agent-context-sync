@@ -15464,6 +15464,19 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   Non-ASCII names do not match `id_key` (it strips no accents) and keep `<source-N>`, which hides nothing.
   `test_the_shell_report_redacts_a_configured_source_id`, `test_the_shell_report_keeps_a_deduplicated_ids_own_number`
   (tests/test_report_redaction.py).
+- **A second Prompt: line opens an attempt in the shell readers too** (G81). `parse_friction` opens an attempt
+  at a `Prompt:` line when the open one already has one, for any log version; `FRICTION_AWK`'s `track()` only set
+  its header flag, so `friction_attempt_begin` dated the attempt from the first header (and the shell report's
+  "no install run during this attempt" line, F30, disagreed with the agentsync report's), while
+  `friction_attempt_stopped` and `friction_earlier_end` read the two as one. `track()` keeps `PS` (a `Prompt:`
+  line in this attempt, cleared wherever an attempt opens: an `Attempt:` line, a line it reads as another
+  session's, `restate`); at a second one it resets the attempt's words and time as a time-less `Attempt:` line
+  would and sets `NH`, which each of the three readers takes right after `track()` as it takes an `Attempt:` line,
+  and clears (`track()` returns 0 there: every reader's `q` branch reads a time from the line). Since v5
+  `--log-start` writes `Attempt:` before every header, so this reaches v4 logs and repeated headers only. The
+  awk's `Prompt:`/`Agent:` patterns stay case-sensitive and take no bold keys, a gap `_FRICTION_KEY_RE` does not
+  have, left as it was. `test_the_installer_and_the_report_split_the_same_attempts_after_any_header` (two-`Prompt:`
+  logs), `test_the_shell_report_only_says_the_last_install_run_was_before_this_attempt`.
 
 ### 16.66 Round 6: converters, stub re-render and speech (2026-10-13, wave B13 round 6 lane E)
 

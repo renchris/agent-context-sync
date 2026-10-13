@@ -1057,6 +1057,19 @@ def test_the_shell_report_only_says_the_last_install_run_was_before_this_attempt
         "no install run during this attempt (began 2026-10-12T20:31:00Z); the last one, started "
         "2026-10-12T20:30:00Z, has no end line (stopped or still running)"
     )
+    # A repeated header with no Attempt: line (a v4 log) opens another attempt, as parse_friction reads it
+    # (B13 round 6 G81)
+    friction.write_text(
+        "Prompt: v4\nAgent: Claude Code\n2026-10-12T20:10:00Z | step 2 | ok | a | -\n"
+        "2026-10-12T20:20:00Z | end | finished\n"
+        "Prompt: v4\nAgent: Claude Code\n2026-10-12T20:40:00Z | step 2 | ok | b | -\n"
+    )
+    latest = setup_report.parse_friction(friction.read_text()).latest
+    assert latest is not None and latest.begin == datetime(2026, 10, 12, 20, 40, tzinfo=UTC)
+    assert line() == (
+        "no install run during this attempt (began 2026-10-12T20:40:00Z); the last one, started "
+        "2026-10-12T20:30:00Z, has no end line (stopped or still running)"
+    )
 
 
 def _background_part(env: dict[str, str]) -> str:
@@ -2106,11 +2119,12 @@ def test_a_prefixed_step_1_error_after_a_headed_attempt_is_another_sessions(
 
 def _awk_attempts(log: str) -> int:
     """How many attempts install.sh's FRICTION_AWK opens in ``log``: one per ``Attempt:`` line (or one for a
-    log that starts without one) and one per line its track() calls another session's."""
+    log that starts without one), one per line its track() calls another session's, and one per second
+    ``Prompt:`` line in an attempt (NH)."""
     script = INSTALL_SH.read_text(encoding="utf-8")
     [body] = re.findall(r"^FRICTION_AWK='(.*?)'$", script, re.MULTILINE | re.DOTALL)
     [s1] = re.findall(r"^STEP1_ERROR_RE='([^']*)'$", script, re.MULTILINE)
-    program = body + "{ n += track($0) } END { print n }"
+    program = body + "{ n += track($0); if (NH) { n++; NH = 0 } } END { print n }"
     cp = subprocess.run(
         ["/usr/bin/awk", "-v", "gap=600", "-v", f"s1={s1}", program],
         input=log,
@@ -2141,6 +2155,10 @@ def test_the_installer_and_the_report_split_the_same_attempts_after_any_header()
         f"Attempt: 2026-10-06T10:00:00Z\n2026-10-06T10:01:00Z {err}",
         f"Attempt: 2026-10-06T10:00:00Z\nPrompt: v12\nAgent: Claude Code\n2026-10-06T10:00:30Z {err}",
         f"2026-10-06T10:00:00Z {err}2026-10-06T10:00:30Z {err}",
+        "Prompt: v4\nAgent: Claude Code\n2026-10-01T10:00:00Z | step 2 | ok | a | -\n"
+        "2026-10-01T10:05:00Z | end | finished\nPrompt: v4\nAgent: Claude Code\n"
+        "2026-10-02T10:00:00Z | step 2 | ok | b | -\n",
+        f"Attempt: 2026-10-06T10:00:00Z\nPrompt: v12\nPrompt: v12\n2026-10-06T10:01:00Z {err}",
     ]
     for log in logs:
         assert _awk_attempts(log) == len(setup_report.parse_friction(log).attempts), log

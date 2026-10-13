@@ -506,6 +506,9 @@ NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # always another session's (B13 round 5 F23); after a header-less attempt, a version or agent that differs
 # from its words, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
 # restate(LINE) gives an attempt a step 1 error opened the words that line states.
+# A second Prompt: line in one attempt opens another, as in parse_friction, for any log version (B13 round 6
+# G81): track() then reads it as a time-less Attempt: line (PS: a Prompt: line seen in this attempt) and sets
+# NH, which each reader takes right after track() as it takes an Attempt: line, and clears.
 FRICTION_AWK='
 		function secs(t,    y, m) { # "2026-10-06T16:42:00Z": seconds on a day count, to subtract two of them
 			y = substr(t, 1, 4) + 0; m = substr(t, 6, 2) + 0
@@ -532,10 +535,13 @@ FRICTION_AWK='
 			if (length(c) > 100) return 0
 			SA = agent_key(a); return 1
 		}
-		function restate(line) { HD = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
+		function restate(line) { HD = 0; PS = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
 		function track(line,    a, new) {
-			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
-			if (line ~ /^[-* ]*Prompt:/) { SEEN = 1; HD = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0 }
+			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PS = 0; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
+			if (line ~ /^[-* ]*Prompt:/) {
+				if (PS) { NH = 1; PV = ""; AG = ""; LT = "" }
+				SEEN = 1; HD = 1; PS = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0
+			}
 			if (line ~ /^[-* ]*(Outcome|Run):/) { SEEN = 1; HD = 1; return 0 }
 			if (line ~ /^[-* ]*Agent:/) { # a no-break space around it goes, as parse_friction strips the value
 				SEEN = 1; HD = 1; a = line; sub("^[-* ]*Agent:", "", a); gsub("^([ \t]|\302\240)+|([ \t]|\302\240)+$", "", a)
@@ -547,7 +553,7 @@ FRICTION_AWK='
 			else if (line ~ s1 && (HD || PV != "" || AG != "") && stated(line)) {
 				if (HD || (PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
 			}
-			if (new) { HD = 0; PV = SV; AG = SA; LT = substr(line, 1, 20) }
+			if (new) { HD = 0; PS = 0; PV = SV; AG = SA; LT = substr(line, 1, 20) }
 			else if (LT == "" || secs(line) > secs(LT)) LT = substr(line, 1, 20)
 			return new
 		}
@@ -559,6 +565,7 @@ friction_attempt_stopped() {
 	[ -f "$f" ] || return 1
 	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		{ q = track($0) }
+		NH { NH = 0; stopped = 0; ended = ""; next }
 		/^Attempt:/ { stopped = 0; ended = ""; next }
 		q { stopped = 0; ended = ""; next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
@@ -1631,6 +1638,7 @@ friction_attempt_begin() {
 	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
 		{ q = track($0) }
+		NH { NH = 0; b = ""; ended = ""; next }
 		/^Attempt:/ { b = substr($0, 10, 20); if (b !~ (stamp "$")) b = ""; ended = ""; next }
 		q { b = substr($0, 1, 20); ended = ""; next }
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = substr($0, 1, 20); ended = ""; restate($0); next }
@@ -2033,6 +2041,7 @@ friction_earlier_end() {
 	[ -f "$f" ] || return 0
 	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		{ q = track($0) }
+		NH { NH = 0; if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
 		/^Attempt:/ { if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
 		q { if (e != "" && !stopped) last = e; e = ""; stopped = 0; next }
 		e != "" && $0 ~ s1 && secs($0) - secs(e) > gap { if (!stopped) last = e; e = ""; stopped = 0; restate($0); next }
