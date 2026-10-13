@@ -126,7 +126,7 @@ from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, 
 from agentsync.materialise import file_provider_marker
 from agentsync.ops.lock import Stage
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary, provider_link_resolved
-from agentsync.skill import AGENTSYNC_BIN
+from agentsync.skill import AGENTSYNC_BIN, INSTALL_SH
 
 REPORT_TITLE = "# agentsync setup report"
 SECTION_TITLES = (
@@ -661,6 +661,7 @@ _APPS = {
     "Company Portal": ("/Applications/Company Portal.app", "~/Applications/Company Portal.app"),
 }
 _REDACTION_MARK = "\x00redaction-summary\x00"
+_F_IDS_MARK = "\x00f-ids\x00"  # the friction section's line-number note, settled once the Summary is built
 
 _T = TypeVar("_T")
 
@@ -5129,7 +5130,7 @@ def _evidence_line(r: _Run) -> str:
         return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
     return (
         f'- evidence: {count} line(s) at the end of Status say "not measured": write the report again when '
-        "this Mac is idle (`install.sh --report-only`) before sending it"
+        f"this Mac is idle (`{INSTALL_SH} --report-only`) before sending it"
     )
 
 
@@ -5807,7 +5808,8 @@ def _friction_section(r: _Run) -> list[str]:
         ]
     out = [
         f"Embedded from {r.friction_path} as this report read it: {fr.line_count} line(s), last modified "
-        f"{_iso(fr.mtime)} (a line written after that is not in this report: run setup-report again). "
+        f"{_iso(fr.mtime)} (a line written after that is not in this report: run "
+        f"`{INSTALL_SH} --report-only` again). "
         "Redacted with the same placeholders as the rest of the report.",
         "",
         f"{len(fr.attempts)} attempt(s):",
@@ -5827,14 +5829,15 @@ def _friction_section(r: _Run) -> list[str]:
             tail.append(
                 f"{len(att.untyped)} line(s) with a kind outside the prompt's list, shown, not counted"
             )
-        tail.append("finished" if att.finished else 'no "end | finished" line')
+        if not att.finished:  # a finished one says so in its counts ("1 finished")
+            tail.append('no "end | finished" line')
         out.append(
             f"- attempt {att.number} (lines {att.first_line}-{att.last_line}; {', '.join(bits)}): "
             f"{outcome.text}; {'; '.join(tail)}"
         )
     if fr.truncated:
         out.append(f"Only the first {FRICTION_MAX_BYTES // 1024} KiB are shown.")
-    out.append("Each line is shown with its line number: the F<n> ids in the Summary are these numbers.")
+    out.append(f"Each line is shown with its line number{_F_IDS_MARK}")
     body = [f"{n:>3}  {ln}" for n, ln in enumerate(fr.text.rstrip("\n").splitlines(), start=1)]
     return [*out, "", *_fence(body)]
 
@@ -6924,6 +6927,11 @@ def build_report(
         r.loop_line = f"- Loop: not read ({type(exc).__name__})"
     header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s)")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
+    # the friction section is built first: it says the Summary's F<n> ids are its line numbers only when the
+    # Summary cites one (B13 round 6 G10)
+    cited = re.search(r"\bF\d+\b", "\n".join(bodies["Summary"])) is not None
+    said = ": the F<n> ids in the Summary are these numbers." if cited else "."
+    bodies["Agent friction log"] = [ln.replace(_F_IDS_MARK, said) for ln in bodies["Agent friction log"]]
     lines = [REPORT_TITLE]
     for title in SECTION_TITLES[:-1]:
         lines += bodies[title]

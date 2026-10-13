@@ -15185,6 +15185,16 @@ from status's own gates: the Graph probe for a live Graph source (`cli._network_
 background sync is wanted (`doctor.agents_wanted`) and a live source is TCC-protected (`launchd.canary_paths`). With
 neither, the line names none. Test: `test_the_doctor_line_names_only_the_checks_status_would_run`.
 
+**G2, G10, G22: the friction section's own lines.** The embed line ends `(a line written after that is not in this
+report: run `~/src/agent-context-sync/scripts/install.sh --report-only` again)`, the prompt's report command, and
+the Summary's evidence line names the same full path (`skill.INSTALL_SH`, which `loop.INSTALL_SH` now reads). The
+line-number note reads `Each line is shown with its line number: the F<n> ids in the Summary are these numbers.`
+only when the Summary cites an F id; otherwise `Each line is shown with its line number.` (the Summary is built
+after this section, so a marker is settled then). An attempt line no longer ends `; finished` after counts that
+already say `1 finished`; an unfinished one keeps `no "end | finished" line`. Tests:
+`test_v5_happy_path_is_fully_one_command`,
+`test_the_friction_section_names_the_summarys_f_ids_only_when_it_cites_one`.
+
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
 Reserved for round 6 lane RB of B13.

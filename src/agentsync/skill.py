@@ -26,6 +26,8 @@ log = logging.getLogger(__name__)
 DEFAULT_SKILLS_DIR = "~/.claude/skills"
 SKILL_NAME = "agentsync-docs"
 AGENTSYNC_BIN = "~/.local/bin/agentsync"
+INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
+"""Where the README's setup prompt clones the checkout: the installer and its ``--report-only``."""
 
 
 _AUTHORING = (

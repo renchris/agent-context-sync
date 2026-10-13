@@ -831,7 +831,16 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert (
         "- attempt 1 (lines 1-15; started 2026-09-29T09:58:00Z, prompt v5, agent Claude Code, "
         "claude-opus-5-5): fully one command; 12 event line(s): 4 start, 4 end, 1 question, 2 click, 1 "
-        "finished; finished" in fr
+        "finished\n" in fr
+    ), "a finished attempt says so once, in its counts (B13 round 6 G22)"
+    assert "finished; finished" not in fr
+    assert (
+        "(a line written after that is not in this report: run "
+        "`~/src/agent-context-sync/scripts/install.sh --report-only` again)" in fr
+    ), "the prompt's command (G2)"
+    assert "run setup-report" not in text
+    assert "Each line is shown with its line number: the F<n> ids in the Summary are these numbers." in fr, (
+        "the Summary cites F7, F8 and F11 (G10)"
     )
     assert "\n  7  2026-09-29T09:58:50Z | step 2 | click | " in fr, "numbered: F7 is line 7 (L9)"
 
@@ -6425,7 +6434,8 @@ def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
         assert parts[title].strip() == f"- {setup_report.NOT_MEASURED}", title
     assert (
         '- evidence: 5 line(s) at the end of Status say "not measured": write the report again when this Mac '
-        "is idle (`install.sh --report-only`) before sending it\n" in section(text, "Summary")
+        "is idle (`~/src/agent-context-sync/scripts/install.sh --report-only`) before sending it\n"
+        in section(text, "Summary")
     )
 
 
@@ -7777,3 +7787,27 @@ def test_the_doctor_line_names_only_the_checks_status_would_run(
     monkeypatch.delenv(doctor.AGENT_STEP_PENDING_ENV)
     head = _doctor_head(setup_report.build_report(cfg, hooks=hooks)[0])
     assert "(run without the Graph network probe: `~/.local/bin/agentsync status` runs it)" in head, head
+
+
+def test_the_friction_section_names_the_summarys_f_ids_only_when_it_cites_one(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 6 G10: "the F<n> ids in the Summary are these numbers" was printed under a Summary that cites
+    none. The line numbers stay (the attempt lines cite them); the Summary clause only when it has an F id."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY)
+    text, summary = summary_of(fake_mac)
+    assert re.search(r"\bF\d+\b", summary) is None, summary
+    fr = section(text, "Agent friction log")
+    assert "\nEach line is shown with its line number.\n" in fr, fr
+    assert "F<n> ids" not in text and "\x00" not in text
+    late = "2026-09-29T10:00:30Z | step 2 | deviation | ran the install twice | -\n"
+    write_friction(
+        fake_mac,
+        V7_HAPPY.replace(
+            "Agent: Claude Code, claude-opus-5-5\n", f"Agent: Claude Code, claude-opus-5-5\n{late}"
+        ),
+    )
+    text, summary = summary_of(fake_mac)
+    assert re.search(r"\bF\d+\b", summary) is not None, summary
+    assert "Each line is shown with its line number: the F<n> ids in the Summary are these numbers." in text

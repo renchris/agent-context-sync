@@ -84,7 +84,7 @@ NEXT_PREFIX = "NEXT: "
 WAIT_PREFIX = "WAITING ON YOU: "
 NOTE_PREFIX = "note: "
 BIN = skill.AGENTSYNC_BIN
-INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
+INSTALL_SH = skill.INSTALL_SH
 """Where the README's setup prompt clones the checkout; ``--list-folders`` lists the candidate folders."""
 SYNC_AGAIN = "sync again: "
 """How the note of an unfinished re-read starts while another sync reads more of it (:func:`_reread_notes`).
