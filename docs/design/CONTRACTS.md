@@ -14642,6 +14642,10 @@ run(s)] after its end line (<time>)` (each kind counted apart) instead of `durin
 `after its end line: install Ns` (or `--list-folders Ns`), so no run is summed beside a session time that does not
 cover it. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
 `test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
+Amended 2026-10-13, §16.64 G32: N and L count only the runs inside the end line, and the line reads `N install
+run(s) (+L --list-folders) during this attempt and K install run(s) [and J --list-folders run(s)] after its end line
+(<time>)` (`no install run during this attempt and …` when none is inside); "for this attempt, K …" read as one run
+more than there was.
 
 **F38: the report install.sh writes says its run time is before its report step.** install.sh's `on_exit`
 writes a provisional `end rc=N seconds=S` line, runs the report, and only then logs the report step and the final
@@ -15257,6 +15261,13 @@ FETCH_HEAD`) and the common one (`--git-common-dir`); one that cannot be read ke
 friction log's step 1 error is not merged in: the empty file already carries that fact. Test:
 `test_the_on_origin_main_line_dates_the_checkouts_last_fetch` (real `git pull`, against a missing path for the
 failure).
+
+**G32: the runs after the end line are not counted twice.** Amends §16.58 F37 (dated line there): the install line's
+first count holds only the runs inside the attempt's end line, `N install run(s) (+L --list-folders) during this
+attempt and K install run(s) [and J --list-folders run(s)] after its end line (<time>)`, or `no install run during
+this attempt and …`; "the last exit" still names the last run overall, and the outcome, retry and time logic are
+unchanged. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
+`test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
 
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 

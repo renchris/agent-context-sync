@@ -4700,13 +4700,13 @@ def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dic
     both = LIST_RUN + install_run("2026-09-29T09:59:00Z", 0) + install_run("2026-09-29T10:05:00Z", 0)
     log.write_text(both, encoding="utf-8")
     _text, summary = summary_of(fake_mac)
-    assert (
-        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 install run after its end line "
-        "(2026-09-29T10:01:10Z); the last exit 0 after 19s" in summary
+    assert (  # B13 round 6 G32: the late run is counted apart, not inside the first count too
+        "- install.sh: 1 install run (+1 --list-folders) during this attempt and 1 install run after its end "
+        "line (2026-09-29T10:01:10Z); the last exit 0 after 19s" in summary
     ), summary
     [time] = [ln for ln in summary.splitlines() if ln.startswith("- time: ")]
     assert time.endswith("install 19s; after its end line: install 19s"), time
-    assert "install 19s + 19s" not in time and "during this attempt" not in summary
+    assert "install 19s + 19s" not in time and "for this attempt" not in summary
     # Each kind counted apart: a --list-folders run after the end line is not an install run's
     later_list = LIST_RUN.replace("2026-09-29T09:58:05Z", "2026-09-29T10:06:00Z").replace(
         "095805Z", "100600Z"
@@ -4714,8 +4714,14 @@ def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dic
     log.write_text(LIST_RUN + install_run("2026-09-29T09:59:00Z", 0) + later_list, encoding="utf-8")
     _text, summary = summary_of(fake_mac)
     assert (
-        "- install.sh: 1 install run (+2 --list-folders) for this attempt, 1 --list-folders run after its "
-        "end line (2026-09-29T10:01:10Z); the last exit 0" in summary
+        "- install.sh: 1 install run (+1 --list-folders) during this attempt and 1 --list-folders run after "
+        "its end line (2026-09-29T10:01:10Z); the last exit 0" in summary
+    ), summary
+    log.write_text(install_run("2026-09-29T10:05:00Z", 0), encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "- install.sh: no install run during this attempt and 1 install run after its end line "
+        "(2026-09-29T10:01:10Z); the last exit 0" in summary
     ), summary
 
 
@@ -4795,8 +4801,8 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
         "by itself" in summary
     )
     assert (  # B13 round 5 F37: the run that ended 0 began after the end line, and the line says so
-        "- install.sh: 2 install runs (+1 --list-folders) for this attempt, 1 install run after its end line "
-        "(2026-09-29T10:01:10Z); the last exit 0" in summary
+        "- install.sh: 1 install run (+1 --list-folders) during this attempt and 1 install run after its end "
+        "line (2026-09-29T10:01:10Z); the last exit 0" in summary
     )
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
     assert items == (

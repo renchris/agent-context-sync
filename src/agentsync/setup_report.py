@@ -6434,16 +6434,19 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: dateti
         return f"- install.sh: no run during this attempt ({len(r.install_runs)} earlier in the install log)"
     pool = list(runs) if scoped else r.install_runs
     installs = install_runs_only(pool)
-    lists = len(pool) - len(installs)
-    where = f"{len(installs)} install run{'' if len(installs) == 1 else 's'}"
     after = _after_end(pool, end) if scoped else []
-    where += f" (+{lists} --list-folders)" if lists else ""
+    # The runs after the end line are counted apart from those inside it, never in both (B13 round 6 G32)
+    inside = [run for run in pool if run not in after]
+    n_in = len(install_runs_only(inside))
+    l_in = len(inside) - n_in
+    where = f"{n_in} install run{'' if n_in == 1 else 's'}" if n_in or l_in or not after else "no install run"
+    where += f" (+{l_in} --list-folders)" if l_in else ""
     if after:  # each kind counted apart, so the count cannot point at a run of the other kind
         late = len(install_runs_only(after))
         kinds = [f"{late} install run{'' if late == 1 else 's'}"] if late else []
         if len(after) > late:
             kinds.append(f"{len(after) - late} --list-folders run{'' if len(after) - late == 1 else 's'}")
-        where += f" for this attempt, {' and '.join(kinds)} after its end line ({_iso(end)})"
+        where += f" during this attempt and {' and '.join(kinds)} after its end line ({_iso(end)})"
     elif scoped:
         where += " during this attempt"
     if not installs:
