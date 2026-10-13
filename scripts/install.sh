@@ -2355,7 +2355,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 }
 
 on_exit() {
-	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver
+	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
@@ -2397,10 +2397,13 @@ on_exit() {
 					;;
 				*) tell="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\"; this installer is for setup prompt v$SETUP_PROMPT_COMPAT) and paste it into a new session" ;;
 				esac
-				NEXT_MSG="this report is of an attempt started by a copy of the setup prompt that does not match this installer$ver, so do not send it or bring it back: $tell"
 				# R18: bring-back.md is named only where one exists, and not as "finished": a failed
-				# attempt's report writes it too.
-				[ ! -f "$back" ] || NEXT_MSG="$NEXT_MSG ($back was not touched: it still holds the report of the last attempt that was not stopped)"
+				# attempt's report writes it too. Its bracket stands after "bring it back", which it is about:
+				# after the fix it read as part of the fix's last clause (B13 round 7 H18). No colon inside
+				# it, as the fix's colon follows.
+				held=""
+				[ ! -f "$back" ] || held=" ($back was not touched and still holds the report of the last attempt that was not stopped)"
+				NEXT_MSG="this report is of an attempt started by a copy of the setup prompt that does not match this installer$ver, so do not send it or bring it back$held: $tell"
 			else
 				# A stopped copy's report from before is stale from here (it names this file as the last
 				# report that was not stopped), and nothing this attempt prints names it (B13 round 4 Q20).

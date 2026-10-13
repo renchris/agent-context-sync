@@ -4464,10 +4464,14 @@ def test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer(e
     next_line = last_line(install_sh(env, "--report-only"))
     assert next_line.startswith(f"{STOPPED_NEXT}, which is for setup prompt v{COMPAT}, so do not send it")
     assert ") (" not in next_line and next_line.count("setup prompt v") == 1, next_line
-    assert next_line.endswith(
-        f" ({back} was not touched: it still holds the report of the last attempt that was not stopped) "
-        f"[setup report: {friction_path(env).parent / 'stopped-copy-report.md'}]"
-    ), next_line
+    # B13 round 7 H18: the bring-back bracket stands after "bring it back", so the fix is the last clause
+    kept = f"bring it back ({back} was not touched and still holds the report of the last attempt that was "
+    assert f"{kept}not stopped): " in next_line, next_line
+    fix = next_line.split("not stopped): ", 1)[1]
+    # the fix's own last words depend on what this checkout follows; no bracket of the bring-back's follows it
+    assert fix.startswith("copy the prompt again from ") and "was not touched" not in fix
+    assert fix.endswith(f" [setup report: {friction_path(env).parent / 'stopped-copy-report.md'}]"), next_line
+    assert not fix.rsplit(" [setup report: ", 1)[0].endswith(")"), next_line
 
 
 def test_a_stopped_newer_copy_is_not_called_out_of_date(env: dict[str, str]) -> None:
@@ -4608,8 +4612,8 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     assert last_line(stopped).startswith(STOPPED_NEXT) and invites(stopped) == [], stopped.stdout
     assert back.read_bytes() == kept and report_path(env).read_bytes() == kept_report
     assert (
-        f"({back} was not touched: it still holds the report of the last attempt that was not stopped)"
-        in (last_line(stopped))
+        f"bring it back ({back} was not touched and still holds the report of the last attempt that was not "
+        "stopped): " in (last_line(stopped))
     )
     first = side.read_text().splitlines()[0]
     assert first.startswith(warning) and first.endswith(

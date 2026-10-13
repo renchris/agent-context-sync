@@ -13099,6 +13099,9 @@ false of a newer one.
 Amended 2026-10-13, §16.65 G9: the first line and the NEXT read `an attempt started by a copy of the setup
 prompt that does not match this installer`; a newer copy's NEXT says `, which is for setup prompt v<N>` after
 "this installer" and has at most one bracket after its fix.
+Amended 2026-10-13, §16.70 H18: the bring-back bracket stands after "bring it back", before the fix, and reads
+`(<path> was not touched and still holds the report of the last attempt that was not stopped)`; no bracket follows
+the fix.
 
 #### Step 2's reinstall (R34, R114, R125)
 
@@ -15519,6 +15522,7 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   bring-back.md exists. Any other fix keeps the copy-again sentence with the version inside its own brackets.
   `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`,
   `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it`.
+  Amended 2026-10-13, §16.70 H18: the bring-back bracket no longer follows the fix; it follows "bring it back".
 - **A checkout with no upstream is said to have none** (G21). `newer_copy_fix` said `(git could not say which
   branch it follows)` of a checkout whose branch has no upstream, though git answered: there is none. Whether
   `@{u}` is empty cannot tell that from a configured upstream whose remote ref is missing (a narrowed fetch
@@ -16152,6 +16156,14 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   `noout` line; the shell report prints neither. So the pair never occurs, and the alternative could match only
   a quoted line elsewhere in the report, where it would pick the wrong label. Behaviour is unchanged, so no test
   fails without it; the stopped-report label tests pass as before.
+- **The stopped NEXT's bring-back bracket stands where it belongs** (H18). After the fix, `(<path> was not
+  touched: ...)` read as part of the fix's last clause ("... then paste the prompt again (<path> was not
+  touched ...)"). It now follows the words it is about: `... so do not send it or bring it back (<path> was not
+  touched and still holds the report of the last attempt that was not stopped): <fix>`, with no colon inside it
+  since the fix's colon follows, and not as a `;` clause, which two of the fix texts already have. The fix is
+  the last thing before ` [setup report: ...]`. Only where bring-back.md exists, as before.
+  `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`,
+  `test_the_report_of_a_stopped_copy_invites_no_bring_back`.
 
 ### 16.71 Round 7: converters and the .msg re-read (2026-10-13, wave B13 round 7 lane E)
 
