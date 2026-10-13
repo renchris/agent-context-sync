@@ -2190,6 +2190,10 @@ class _Facts:
     first_sync_unreadable: tuple[int, int, int, int] | None = None
     # its "F of them read for the first time, also counted above" as (N, R, F); None: the line has none
     first_sync_first_read: tuple[int, int, int] | None = None
+    # the run whose output holds that line, the id of the last "# run=<id> " header above it: "" when
+    # install.out has no header at all (an older install.sh), None when the line is above the first header
+    # read (the tail starts inside an earlier run)
+    first_sync_run: str | None = None
     # (run id, started, files read again) of each run the OCR part read, newest first; None: not read
     runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
     loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
@@ -3227,9 +3231,18 @@ def _installer_output(r: _Run) -> list[str]:
     me = os.environ.get(REPORT_RUN_ENV, "").strip()
     r.facts.instructions = (counts, len(counted), runs, first, bool(me) and bool(heads) and heads[-1] == me)
     r.facts.out_counted = counted
-    synced = [m for m in (_CONVERTED_LINE_RE.search(ln) for ln in lines) if m is not None]
+    synced: list[tuple[re.Match[str], str | None]] = []
+    current: str | None = None  # the run whose output this is (B13 round 7 H29)
+    for ln in lines:
+        head = _OUT_RUN_RE.match(ln)
+        if head is not None:
+            current = head.group(1)
+        elif (found := _CONVERTED_LINE_RE.search(ln)) is not None:
+            synced.append((found, current))
     if synced:
-        last = synced[-1]
+        last, r.facts.first_sync_run = synced[-1]
+        if not heads:  # no header at all: an install.sh too old to write one, not a tail inside a run
+            r.facts.first_sync_run = ""
         converted, again = int(last.group("c")), int(last.group("r") or 0)
         r.facts.first_sync = (converted, int(last.group("d")), again)
         split = _SPLIT_RE.search(last.group("tail"))
@@ -6286,7 +6299,16 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     else:
         parts.append("no install.sh run with a first-sync step (install.log)")
     source = "install.log: that earlier run" if borrowed else "install.log"
-    if counts is None and r.facts.first_sync is not None:
+    # install.out's last sync line is this step's only when the step ran a sync and the line is in its run's
+    # output: a skipped sync (lock-busy, no-sources, status-failed) or one that printed no counts left an
+    # earlier run's line there, which read as its own (B13 round 7 H29). An install.out with no run header
+    # (an older install.sh) cannot say whose the line is: only a skipped step leaves it out then
+    shown = pool[-1] if pool and not borrowed else None
+    own_line = shown is None or (
+        (shown.step("first-sync") or {}).get("result") != "skipped"
+        and r.facts.first_sync_run in ("", shown.run_id)
+    )
+    if counts is None and r.facts.first_sync is not None and own_line:
         counts = r.facts.first_sync
         source = (
             "install.out: an earlier run's; this attempt ran none" if scoped and not runs else "install.out"

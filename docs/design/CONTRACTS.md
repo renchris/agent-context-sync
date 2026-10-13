@@ -15775,6 +15775,17 @@ The path is the same on every Mac, so holding it reveals nothing;
 (lane RB's file; only a lowercase `context` organisation would cut it there). Test:
 `tests/test_setup_report.py::test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole`.
 
+**A first sync that printed no counts borrows none** (H29). With no counts in its install.log note, the first-sync
+line fell back to install.out's last `converted N, deferred M online-only` line, whichever run printed it, so a
+`skipped 75 lock-busy` sync (which prints `sync: skipped, lock busy` and no counts) read `· converted 7, deferred 3
+online-only (install.out)`, an earlier run's. `_installer_output` now records the run id of the last `# run=<id>`
+header above that line (`_Facts.first_sync_run`), and `_first_sync_line` uses install.out's counts for the shown run
+only when its step was not skipped and the line is in that run's output; an install.out with no header at all (an
+older install.sh) keeps the old reading except for a skipped step. A skipped step's own words say what happened, so
+no clause about who converts the files is added (for `no-sources` and `status-failed` no sync follows). The
+borrowed path, already labelled "an earlier run's", is unchanged. Test:
+`tests/test_setup_report.py::test_a_first_sync_that_printed_no_counts_borrows_none_from_an_earlier_run`.
+
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
 assert sat after the loop over Status, Probe, Stage, Context and Agent, so it checked Agent alone; it is inside the

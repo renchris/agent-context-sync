@@ -3107,6 +3107,44 @@ def test_first_sync_clause_says_the_sync_waited_for_another(
     assert "(waited-for-the-lock)" not in line and "converted 4, deferred 2 online-only" in line, line
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_first_sync_that_printed_no_counts_borrows_none_from_an_earlier_run(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 7 H29: a skipped first sync (lock-busy, no-sources) prints no counts, and nor does one whose
+    note has none, so the line took install.out's last counts, an earlier run's, as its own ("skipped in 600s,
+    rc 75 (lock-busy) · converted 7"). The counts are read only from the shown run's own output."""
+    earlier, later = "20260929T100000Z-4242", "20260929T101000Z-4343"
+    out = (
+        f"# run={earlier} 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "sync: converted 7, deferred 3 online-only\n"
+        f"# run={later} 2026-09-29T10:10:00Z install.sh --source-local x\n"
+    )
+    for first_sync, printed in (
+        ("seconds=600 rc=75 result=skipped note=lock-busy", "sync: skipped, lock busy\n"),
+        ("seconds=0 rc=0 result=skipped note=no-sources", ""),
+        ("seconds=9 rc=0 result=done", ""),
+    ):
+        write_install_log(fake_mac, first_sync="seconds=34 rc=0 result=done note=converted-7-deferred-3")
+        write_install_log(
+            fake_mac, start="2026-09-29T10:10:00Z", run=later, first_sync=first_sync, append=True
+        )
+        (fake_mac["setup"] / "install.out").write_text(out + printed, encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+        assert "converted 7" not in line and "deferred 3" not in line, (first_sync, line)
+
+    # a run whose own counts are under its own header still shows them (an older note with none)
+    (fake_mac["setup"] / "install.out").write_text(
+        out + "sync: converted 2, deferred 1 online-only\n", encoding="utf-8"
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- first sync: ")]
+    assert line.startswith(
+        "- first sync: done in 9s (install.log) · converted 2, deferred 1 online-only (install.out"
+    ), line
+
+
 def _n25_run(minute: int, config: str | None, first_sync: str) -> str:
     """One install.sh run in install.log: its start, uv, the config step (none when ``config`` is None),
     status, first-sync and end lines."""
