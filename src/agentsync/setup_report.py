@@ -6712,9 +6712,9 @@ def _redaction_section(
         "## Redaction",
         "",
         f"{red.total} replacement(s) of {red.values} value(s) ({kinds}). Numbered placeholders are counted "
-        f"each time this report shows them; the unnumbered kinds ({unnumbered}) each time a value was "
-        "replaced, a line cut short afterwards included, because the report also writes ~/ paths and "
-        "template fields of its own.",
+        f"each time this report shows one. The unnumbered kinds ({unnumbered}) are counted each time a value "
+        "was replaced, even in a line that was cut short later, because the report also writes ~/ paths and "
+        "template fields of its own, and those are not replacements.",
         f"Placeholders used: {legend or 'none'}. {_TEMPLATE_NOTE} Read the report before sending it: "
         "anything else confidential (a project name inside a log line, say) is yours to remove.",
         check,

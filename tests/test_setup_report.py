@@ -7413,6 +7413,13 @@ def test_the_redaction_count_is_the_placeholders_the_report_shows(fake_mac: dict
         assert red.counts[kind] == len(re.findall(rf"<{kind}-\d+>", main)), kind
     assert f"- redaction: {red.total} replacement(s)" in section(text, "Summary")
     assert f"\n{red.total} replacement(s) of {red.values} value(s) (" in section(text, "Redaction")
+    assert re.search(  # B13 round 6 G3: two sentences, each with its verb
+        r"\. Numbered placeholders are counted each time this report shows one\. "
+        r"The unnumbered kinds \([^)]*\) are counted each time a value was replaced, even in a line that "
+        r"was cut short later, because the "
+        r"report also writes ~/ paths and template fields of its own, and those are not replacements\.",
+        section(text, "Redaction"),
+    )
 
 
 N32_INSTALL = (

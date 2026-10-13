@@ -11503,6 +11503,9 @@ characters around placeholders (every reader of redacted text would have to stri
 prints no count, so it has no twin. Tests: `test_recount_counts_numbered_placeholders_in_the_text_and_leaves_the_rest`
 and `test_the_redaction_count_is_the_placeholders_the_report_shows`. Rehearsal triage will see the number rise
 (the field report's 182 would be about 238).
+Amended 2026-10-13, §16.64 G3: the sentence reads "Numbered placeholders are counted each time this report shows
+one. The unnumbered kinds (...) are counted each time a value was replaced, even in a line that was cut short
+later, because the report also writes ~/ paths and template fields of its own, and those are not replacements."
 
 **A run with no end line says whether its process is gone** (B13 H14 and N33; amends §16.28's Installer
 paragraph and §16.14's outcome detail). No trap sees a SIGKILL, so a killed run keeps its start line and the step
@@ -15194,6 +15197,12 @@ after this section, so a marker is settled then). An attempt line no longer ends
 already say `1 finished`; an unfinished one keeps `no "end | finished" line`. Tests:
 `test_v5_happy_path_is_fully_one_command`,
 `test_the_friction_section_names_the_summarys_f_ids_only_when_it_cites_one`.
+
+**G3: the Redaction count line in two sentences.** Amends §16.40's count-line sentence (dated line there): "Numbered
+placeholders are counted each time this report shows one. The unnumbered kinds (...) are counted each time a value
+was replaced, even in a line that was cut short later, because the report also writes ~/ paths and template fields
+of its own, and those are not replacements." The kind list is still built from `_LEGEND` and `_UNNUMBERED`. Test:
+`test_the_redaction_count_is_the_placeholders_the_report_shows`.
 
 ### 16.65 Round 6: installer and the shell report (2026-10-13, wave B13 round 6 lane RB)
 
