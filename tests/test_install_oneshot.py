@@ -1717,9 +1717,11 @@ def test_the_shell_report_never_redacts_inside_a_placeholder(env: dict[str, str]
     assert "| copied <name> and <mdmhost> |" in text
     assert "<<" not in text
     note = text.split("\n## Redaction\n", 1)[1]
+    # the legend lists the kinds the body shows: no <user>, the login "org" printed nowhere (B13 round 10 L1)
+    assert "<user>" not in _legend_kinds(text)
     assert (
-        "\n- <user>: the login name\n- <name>: the full name and its joined forms\n"
-        "- <org-N>: the organisation" in note
+        "\n- ~: the home path\n- <name>: the full name and its joined forms\n- <org-N>: the organisation"
+        in note
     )
     assert "  Dropbox-<org-N>), and an account's email address\n- <mdmhost>: the MDM server's host\n" in note
 
@@ -1824,22 +1826,11 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
     assert max(map(len, legend)) <= 115 and legend[-1].startswith("Read the report before sending it: a")
     # one placeholder kind a list item, its own lines continued by two spaces (B13 round 9 K3, K15)
-    assert legend[0] == "Shell fallback redaction, one placeholder per kind:"
+    assert legend[0] == "Placeholders used, one kind per item:"
     items = " ".join(legend[1:-1]).replace("   ", " ").split(" - ")
     assert [ln[:2] for ln in legend[1:-1]] == ["- " if ln.startswith("- ") else "  " for ln in legend[1:-1]]
-    kinds = [ln.split(":", 1)[0] for ln in legend[1:-1] if ln.startswith("- ")]
-    assert kinds == [
-        "- ~",
-        "- <tmp>",
-        "- <user>",
-        "- <name>",
-        "- <org-N>",
-        "- <mdmhost>",
-        "- <proxy-N>",
-        "- <folder-N>",
-        "- <source-N>",
-        "- <path>",
-    ], kinds
+    kinds = _legend_kinds(text)
+    assert {"<path>", "<folder-N>"} <= set(kinds) and "<proxy-N>" not in kinds, kinds
     item = {i.split(":", 1)[0].lstrip("- "): " ".join(i.split()) for i in items}
     assert item["<path>"].endswith(
         "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly "
@@ -1849,12 +1840,97 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
         "a name every OneDrive or Google Drive has, such as Documents, only where it stands"
         in item["<folder-N>"]
     )
-    assert item["<proxy-N>"] == (
-        "<proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only "
-        "where a "
-        "URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; "
-        "github.com kept) and the system PAC URL after its scheme"
-    ), "a clause with a verb, the rule the matcher applies (B13 round 6 G4), and URL rewrites (round 8 J63)"
+
+
+_LEGEND_KINDS = (
+    "~",
+    "<tmp>",
+    "<user>",
+    "<name>",
+    "<org-N>",
+    "<mdmhost>",
+    "<proxy-N>",
+    "<folder-N>",
+    "<source-N>",
+)
+_LEGEND_KINDS += ("<path>",)
+
+
+def _legend_kinds(text: str) -> list[str]:
+    """The kinds the shell report's legend lists, checked against its body (B13 round 10 L1): each kind the
+    body shows has its item, and no item is of a kind the body never shows (~ always: the body writes ~/
+    paths of its own)."""
+    body, redaction = text.split("\n## Redaction\n", 1)
+    legend = redaction.split("\n\n")[0].strip().splitlines()
+    kinds = [ln[2:].split(":", 1)[0] for ln in legend[1:-1] if ln.startswith("- ")]
+    for kind in _LEGEND_KINDS:
+        stem = kind.removesuffix("N>")
+        shown = kind == "~" or (re.search(re.escape(stem) + r"\d", body) if stem != kind else kind in body)
+        assert (kind in kinds) == bool(shown), (kind, kinds)
+    return kinds
+
+
+def test_the_shell_legend_lists_only_the_kinds_its_report_shows(env: dict[str, str]) -> None:
+    """B13 round 10 L1: the legend listed all ten placeholder kinds, seven of which the plain report never
+    showed, under a heading that read as a description of the shell's redaction. Like the Python report's
+    "Placeholders used:" line it lists the kinds its body shows, read from the redacted body itself, since
+    some placeholders (<path>, <tmp>) are written by no pair."""
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Project Alpha"
+    folder.mkdir(parents=True)
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n"
+        "2026-10-10T00:00:01Z | step 1 | deviation | picked OneDrive-Contoso/Project Alpha | -\n"
+    )
+    (friction_path(env).parent / "install.log").write_text(
+        "2026-10-10T00:00:02Z run=20261010T000002Z-1 start install.sh compat=15 commit=- kind=- source=- "
+        f"args=--source-local {shlex.quote(str(folder))}\n"
+    )
+    assert install_sh({k: v for k, v in env.items() if k != "TMPDIR"}, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "<folder-1>" in text and "<org-1>" in text
+    kinds = _legend_kinds(text)
+    assert {"~", "<org-N>", "<folder-N>"} <= set(kinds), kinds
+    # <user> and <tmp> only where the test's own stub paths show them
+    assert not {"<name>", "<mdmhost>", "<proxy-N>", "<source-N>", "<path>"} & set(kinds), kinds
+    assert "Shell fallback redaction, one placeholder per kind:" not in text
+
+
+def test_both_legends_say_a_proxy_number_can_be_missing(env: dict[str, str]) -> None:
+    """B13 round 10 L3: the two reports share proxy numbers (B13 round 8 J78), and each shows only some of
+    them: the shell names an environment proxy by its variable only, the Python report only the proxy it
+    resolves. So the shell report's proxies started at <proxy-3>. The numbers stay shared; both legends say
+    a number can be missing."""
+    home = Path(env["HOME"])
+    (home / ".gitconfig").write_text(
+        "[http]\n\tproxy = http://gitproxy.contoso.example:8080\n"
+        '[url "https://mirror.contoso.example/contoso-team/"]\n\tinsteadOf = https://github.com/\n'
+    )
+    proxied = {
+        **env,
+        "HTTPS_PROXY": "http://egress.contoso.example:8080",
+        "all_proxy": "http://allproxy.contoso.example:3128",
+    }
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(  # an agent quotes the git proxy and the rewrite
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | deviation | "
+        "saw gitproxy.contoso.example:8080 and https://mirror.contoso.example/contoso-team/x | -\n"
+    )
+    assert install_sh(proxied, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    body = text.split("\n## Redaction\n", 1)[0]
+    shown = sorted({int(n) for n in re.findall(r"<proxy-(\d+)>", body)})
+    assert shown and shown[0] == 3, shown  # 1 and 2 are the environment's, named by variable only
+    assert "<proxy-N>" in _legend_kinds(text)
+    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
+    assert (
+        "and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be "
+        "missing here (an environment proxy this report names only by its variable keeps its number)"
+    ) in legend
+    assert setup_report._LEGEND["proxy"].endswith(
+        "numbered as in the shell fallback report, so a number can be missing"
+    )
 
 
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:

@@ -615,9 +615,9 @@ _LEGEND = {
     "serial": "<serial> serial number",
     "host": "<host> this Mac's host or computer name",
     "mdmhost": "<mdmhost> MDM server's host",
-    "proxy": (
+    "proxy": (  # numbered as install.sh's shell fallback report numbers them (B13 round 8 J78, round 10 L3)
         "<proxy-N> proxy host, git URL rewrite (insteadOf) host and its company-named path, or the system "
-        "PAC URL after its scheme"
+        "PAC URL after its scheme, numbered as in the shell fallback report, so a number can be missing"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
 }

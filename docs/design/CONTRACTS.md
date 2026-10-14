@@ -16868,6 +16868,8 @@ longer pair covers the span, so a lower-case `agent` or `context` organisation n
 `test_the_shell_report_keeps_agentsyncs_own_names_for_an_organisation_named_like_them`.
 Amended 2026-10-14, §16.80 K46: "as in Python" was false for a URL path, which Python matched only before no
 letter, digit, dot, hyphen or underscore; both readers now use the end boundary. A rewrite path's pair is flag `p`.
+Amended 2026-10-14, §16.87 L3: each report shows only some shared numbers, so both legends' proxy items say a
+number can be missing; the numbers are unchanged.
 
 **Two stale docstrings** (J44; J79 is the same test docstring). The private-copy test describes an agentsync from
 before H75, which its stub writes; `compute_outcome`'s "stopped at step 1" names H40's `_WAIT_OK_KINDS` (that half
@@ -17455,6 +17457,8 @@ placeholder per kind:`, an item per kind (`~`, `<tmp>`, `<user>`, `<name>`, `<or
 no blank line inside, so it still ends on `Read the report before sending it: ...`. The folder item names `step 1's
 folder list in install.out` and the names it keeps. Tests: `test_the_shell_report_registers_the_folders_step_1s_list_printed`,
 `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+Amended 2026-10-14, §16.87 L1: the list is headed `Placeholders used, one kind per item:` and has an item only
+for a kind the redacted body shows (`~` always).
 
 **A rewrite path's placeholder keeps its separator** (K2 and K27, one defect). The path of a git URL rewrite base
 was matched with its leading `/` or `:` and replaced with it, so host and path read as one token
@@ -18165,6 +18169,21 @@ attempt states them)`; docs/deploy/setup-feedback.md says so. Tests:
 `test_the_shell_reports_link_fills_the_latest_attempts_version_and_agent` (two attempts, a header-less one, one
 that states nothing; against `parse_friction` and `_prompt_version` on the same log),
 `test_the_shell_report_computes_no_other_outcome`, `test_the_shell_report_says_how_to_send_it_before_its_link`.
+
+**The legend lists the kinds the report shows** (L1 and L3; amends §16.81 K3 and §16.75 J78). The shell legend
+listed all ten kinds, seven of which a plain report never showed. `legend_kinds` reads the redacted body before
+the legend is written (so the legend's own words never count) and `fallback_redaction` writes an item only for a
+kind it shows: `<org-`, `<proxy-`, `<folder-`, `<source-` followed by a digit, the literal `<tmp>`, `<user>`,
+`<name>`, `<mdmhost>`, `<path>`; `~` always. Not by which pair matched: the `$'...'` stage, `scrub_exclude_lists`
+and the script's own run commands write placeholders with no pair. The heading reads `Placeholders used, one kind
+per item:`, beside the Python report's `Placeholders used:`; each item's words, continuation lines and the
+115-column limit are unchanged (L1). Proxy numbers stay shared (J78), so each report shows a gap: the shell names
+an environment proxy only by its variable, Python only the proxy it resolves. The shell item ends `; numbered as
+in agentsync's own report, so a number can be missing here (an environment proxy this report names only by its
+variable keeps its number)`, and `_LEGEND["proxy"]` ends `, numbered as in the shell fallback report, so a number
+can be missing` (L3; numbering each report on its own was not built: it would undo J78). Tests:
+`test_the_shell_legend_lists_only_the_kinds_its_report_shows`, `test_both_legends_say_a_proxy_number_can_be_missing`,
+`test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
 
 **bring-back.md's header names only what the file holds** (L4; amends §16.75 J65). The header said sections 2 and
 3 name real folders and files, and that section 3's patches start with author lines, when both sections read

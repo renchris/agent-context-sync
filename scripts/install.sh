@@ -2348,31 +2348,63 @@ fallback_body() {
 PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a private copy only
 # The shell report's Redaction section: fixed text, written after redact_stream (as the issue link is), so no
 # value can replace a word of it ("the login name" with a folder named "name").
-fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them]
+# The placeholder kinds the redacted body (file $1) shows, as the Python report's "Placeholders used:" line
+# reads its replacements: " ~ <kind> ... ", with each numbered kind as its stem and "[0-9]". A pair is not the
+# test, since the $'...' stage, scrub_exclude_lists and this script's own run commands write placeholders with
+# none (B13 round 10 L1). ~ always: the body writes ~/ paths of its own. Read before the legend is written, so
+# its own words never count.
+legend_kinds() { # BODY
+	local used=" ~ " k
+	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>'; do
+		! LC_ALL=C grep -q -- "$k" "$1" 2>/dev/null || used+="$k "
+	done
+	printf '%s' "$used"
+}
+fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds]
+	local used="${2:-}"
+	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
 	say "## Redaction"
 	say ""
 	# One placeholder kind a list item, continued on lines indented by two spaces; no blank line inside, so the
 	# legend stays one block that ends on the "Read the report" line (B13 round 9 K3, K15).
-	say "Shell fallback redaction, one placeholder per kind:"
+	say "Placeholders used, one kind per item:"
 	say "- ~: the home path"
-	say "- <tmp>: this account's temporary folder (\$TMPDIR)"
-	say "- <user>: the login name"
-	say "- <name>: the full name and its joined forms"
-	say "- <org-N>: the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
-	say "  Dropbox-<org-N>), and an account's email address"
-	say "- <mdmhost>: the MDM server's host"
-	say "- <proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a"
-	say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
-	say "  kept) and the system PAC URL after its scheme"
-	say "- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml, install.log or"
-	say "  step 1's folder list in install.out name; a name every OneDrive or Google Drive has, such as Documents,"
-	say "  only where it stands as a whole word, and neither such a name nor one made of coding-agent product words"
-	say "  (Copilot, GitHub Copilot) where only step 1's list names it"
-	say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
-	say "  agentsync's own words, such as docs or inbox, only for a cloud folder"
-	say "- <path>: a --source-local argument in install.log that names no CloudStorage folder, and every word bash"
-	say "  wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or"
-	say "  an accent"
+	case "$used" in *" <tmp> "*) say "- <tmp>: this account's temporary folder (\$TMPDIR)" ;; esac
+	case "$used" in *" <user> "*) say "- <user>: the login name" ;; esac
+	case "$used" in *" <name> "*) say "- <name>: the full name and its joined forms" ;; esac
+	case "$used" in *" <org-[0-9] "*)
+		say "- <org-N>: the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
+		say "  Dropbox-<org-N>), and an account's email address"
+		;;
+	esac
+	case "$used" in *" <mdmhost> "*) say "- <mdmhost>: the MDM server's host" ;; esac
+	# numbered as in agentsync's own report (B13 round 8 J78), so a number the other report gave can be missing
+	# here: the shell names an environment proxy only by its variable (B13 round 10 L3)
+	case "$used" in *" <proxy-[0-9] "*)
+		say "- <proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a"
+		say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
+		say "  kept) and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be"
+		say "  missing here (an environment proxy this report names only by its variable keeps its number)"
+		;;
+	esac
+	case "$used" in *" <folder-[0-9] "*)
+		say "- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml, install.log or"
+		say "  step 1's folder list in install.out name; a name every OneDrive or Google Drive has, such as Documents,"
+		say "  only where it stands as a whole word, and neither such a name nor one made of coding-agent product words"
+		say "  (Copilot, GitHub Copilot) where only step 1's list names it"
+		;;
+	esac
+	case "$used" in *" <source-[0-9] "*)
+		say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
+		say "  agentsync's own words, such as docs or inbox, only for a cloud folder"
+		;;
+	esac
+	case "$used" in *" <path> "*)
+		say "- <path>: a --source-local argument in install.log that names no CloudStorage folder, and every word bash"
+		say "  wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or"
+		say "  an accent"
+		;;
+	esac
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an
@@ -2597,7 +2629,7 @@ scrub_exclude_lists() {
 # alike. Anchored to the run id's shape, so no other number is touched; LC_ALL=C, as every stage here.
 strip_run_pids() { LC_ALL=C sed -E 's/(run=[0-9]{8}T[0-9]{6}Z)-[0-9]+([^0-9A-Za-z_-]|$)/\1\2/g'; }
 write_fallback_report() { # RC WHY
-	local dir tmp friction c
+	local dir tmp friction c used
 	# --report-only reads no SOURCE: its Summary names this installer's checkout, as --version does. Only here,
 	# so a report agentsync writes runs no git.
 	if [ "$REPORT_ONLY" -eq 1 ] && [ -e "$repo/.git" ]; then
@@ -2620,8 +2652,9 @@ write_fallback_report() { # RC WHY
 		# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65).
 		# What it fills is read from the redacted Summary just written.
 		fallback_issue_link "$tmp"
+		used="$(legend_kinds "$tmp")"
 		{
-			fallback_redaction "$LINK_FIELDS"
+			fallback_redaction "$LINK_FIELDS" "$used"
 			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$LINK"
 		} >>"$tmp"
 	) 2>/dev/null || {
