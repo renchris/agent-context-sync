@@ -1901,6 +1901,54 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     text = back.read_text(encoding="utf-8")
     assert text.split("## 2. Fix request", 1)[1].split("\n\n", 2)[1] == "none"
     assert text.rstrip().endswith("none")
+    head = text.split("\n## 1. Setup report", 1)[0]
+    assert "author's name" not in head and "Sections 2 and 3" not in head, "B13 round 10 L4"
+
+
+@pytest.mark.parametrize(
+    ("fix", "patch", "review"),
+    [
+        (False, None, None),
+        (True, None, "Section 2 is not: it names real folders and files, so review it before sending."),
+        (False, "new", "Section 3 is not: it names real folders and files, so review it before sending."),
+        (
+            True,
+            "new",
+            "Sections 2 and 3 are not: they name real folders and files, so review them before sending.",
+        ),
+        (False, "old", None),  # a patch not repeated: one line, no author line, nothing named
+    ],
+)
+def test_the_bring_back_header_names_only_what_the_file_holds(
+    env: dict[str, str], fix: bool, patch: str | None, review: str | None
+) -> None:
+    """B13 round 10 L4: the header said sections 2 and 3 name real folders and files, and that section 3's
+    patches start with author lines, when both sections read "none" or section 3 held only a "not repeated"
+    line. The review sentence names only the sections that hold something, and the author sentence comes
+    only with a patch embedded."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    if fix:
+        (setup / "fix-request.md").write_text("- OCR scanned PDFs\n", encoding="utf-8")
+    if patch == "old":
+        _two_attempts(env)
+        _keep_patch(env, "2026-10-06T16:40:00Z")
+    elif patch == "new":
+        _keep_patch(env, "2026-10-07T16:00:00Z")
+    assert install_sh(env, "--report-only").returncode == 0
+    text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    head = " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+    assert head.split(
+        " Private: copy this file back as it is, and never paste it into the public issue form. "
+    )[1].startswith("Section 1 is redacted." + (f" {review}" if review else ""))
+    for sentence in (
+        "Sections 2 and 3 are not",
+        "Section 2 is not",
+        "Section 3 is not",
+    ):
+        assert (sentence in head) == (review is not None and review.startswith(sentence)), sentence
+    assert ("Section 3 holds one patch per kept commit" in head) == (patch == "new")
+    assert ("not repeated: a patch file" in text) == (patch == "old")
 
 
 def test_the_bring_back_file_fences_each_file_it_embeds(env: dict[str, str]) -> None:
@@ -2064,7 +2112,8 @@ def test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch(env: d
         path.unlink()
     head = header()
     assert authors not in head and "Section 3 sends" not in head, head
-    assert head.endswith("so review them before sending."), head
+    # nothing in sections 2 and 3: no review sentence either (B13 round 10 L4, lane RB)
+    assert head.endswith("Section 1 is redacted.") and "Sections 2 and 3" not in head, head
     # a symlinked patch is no patch the report counts, so section 3 does not send it (a reviewer's find)
     target = Path(env["HOME"]) / "elsewhere.patch"
     target.write_text("+linked = 3\n", encoding="utf-8")

@@ -16854,6 +16854,8 @@ it. Test: `test_report_only_writes_one_bring_back_file`.
 Amended 2026-10-14, §16.86 L25: the sentence is written only when section 3 sends a patch; when each patch was in
 an earlier report the header reads "Section 3 sends no patch this time: each was in an earlier report and is
 listed by its hash.", and with no patch it has neither.
+Amended 2026-10-14, §16.87 L4: the review sentence names only the sections that hold something (none, section 2,
+section 3, or both), beside L25's author rule.
 
 **The shell report redacts what the Python one does, numbered alike** (J37, J78, J71; J45 is J71; dated lines at
 §16.69 H20 and H74). J37: the scp rewrite path's pair is `e` (end boundary only: no letter or digit after it, so `.git` or `-tools`
@@ -18163,6 +18165,18 @@ attempt states them)`; docs/deploy/setup-feedback.md says so. Tests:
 `test_the_shell_reports_link_fills_the_latest_attempts_version_and_agent` (two attempts, a header-less one, one
 that states nothing; against `parse_friction` and `_prompt_version` on the same log),
 `test_the_shell_report_computes_no_other_outcome`, `test_the_shell_report_says_how_to_send_it_before_its_link`.
+
+**bring-back.md's header names only what the file holds** (L4; amends §16.75 J65). The header said sections 2 and
+3 name real folders and files, and that section 3's patches start with author lines, when both sections read
+`none` or section 3 held only `not repeated:` lines. `write_bring_back` writes section 3 to a second temp file
+first (removed on every path), then the header: `Section 1 is redacted.`, then `Sections 2 and 3 are not: ...`
+when the fix request is non-empty and a patch is embedded, `Section 2 is not: it names real folders and files, so
+review it before sending.` (or `Section 3 ...`) when one of them holds something, and no review sentence when
+neither does; J65's author sentence only when at least one patch is embedded (a patch not repeated carries no
+author line). Tests: `test_the_bring_back_header_names_only_what_the_file_holds` (none, fix request only, patch
+only, both, a patch not repeated), `test_report_only_writes_one_bring_back_file`. Landed beside §16.86 L25 (lane RA), which
+built the same author rule and adds "Section 3 sends no patch this time: ..." when only `not repeated:` lines
+remain; the two are one function.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 

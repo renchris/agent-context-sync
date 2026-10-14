@@ -2722,19 +2722,20 @@ source_excludes_line() { # CONFIG
 		}' "$1" 2>/dev/null || true
 }
 write_bring_back() {
-	local out="${REPORT_PATH%/*}/bring-back.md" tmp three p fence shown="$SETUP_DIR"
-	local prev at sha sent=0 skipped=""
+	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
+	local prev at sha sent=0 skipped="" fix=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
 	prev="$(utc_stamp "$(friction_earlier_end)")"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
-	three="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || {
+	local_work="$(mktemp "${REPORT_PATH%/*}/.bring-back-local-work.XXXXXX" 2>/dev/null)" || {
 		rm -f "$tmp"
 		return 1
 	}
-	# Section 3 first, into its own file, so the header says what it holds: the sentence on authors only when it
-	# sends a patch (B13 round 10 L25: every patch was in an earlier report and the header still named them)
+	# Section 3 first, so the header names only what the file holds: the review sentence only the sections that
+	# hold something, and the author lines only when a patch is embedded (a patch not repeated has none; B13
+	# round 10 L4)
 	{
 		fence="$(fence_for "$SETUP_DIR"/local-work/*.patch)"
 		for p in "$SETUP_DIR"/local-work/*.patch; do
@@ -2758,38 +2759,48 @@ write_bring_back() {
 		[ "$sent" -eq 0 ] || printf '%s\n' "$fence"
 		printf '%s' "$skipped"
 		[ "$sent" -gt 0 ] || [ -n "$skipped" ] || printf 'none\n'
-	} >"$three" 2>/dev/null || {
-		rm -f "$tmp" "$three"
+	} >"$local_work" 2>/dev/null || {
+		rm -f "$tmp" "$local_work"
 		return 1
 	}
+	[ ! -s "$SETUP_DIR/fix-request.md" ] || fix=1
 	{
 		printf '# agentsync: the one file to bring back\n\n'
 		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
-		printf 'Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so review\n'
-		printf 'them before sending.\n'
+		printf 'Section 1 is redacted.'
+		if [ "$fix" -eq 1 ] && [ "$sent" -gt 0 ]; then
+			printf ' Sections 2 and 3 are not: they name real folders and files, so review\nthem before sending.\n'
+		elif [ "$fix" -eq 1 ] || [ "$sent" -gt 0 ]; then
+			printf ' Section %s is not: it names real folders and files, so review it before\nsending.\n' "$((fix ? 2 : 3))"
+		else
+			printf '\n'
+		fi
 		# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
 		# tell it from the agentsync commit of the keep (B13 round 8 J65)
 		if [ "$sent" -gt 0 ]; then
 			printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
 				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
-				"set, a name and address git filled in from this Mac's account), so check those lines too." ""
-		elif [ -n "$skipped" ]; then
-			printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash." ""
-		else
-			printf '\n'
+				"set, a name and address git filled in from this Mac's account), so check those lines too."
+		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
+			printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
 		fi
-		printf '## 1. Setup report\n\n'
+		printf '\n## 1. Setup report\n\n'
 		embed "$REPORT_PATH" markdown
 		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
-		if [ -s "$SETUP_DIR/fix-request.md" ]; then embed "$SETUP_DIR/fix-request.md" markdown; else printf 'none\n'; fi
+		if [ "$fix" -eq 1 ]; then embed "$SETUP_DIR/fix-request.md" markdown; else printf 'none\n'; fi
 		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$shown/local-work"
-		cat "$three"
+		cat "$local_work"
 	} >"$tmp" 2>/dev/null || {
-		rm -f "$tmp" "$three"
+		rm -f "$tmp" "$local_work"
 		return 1
 	}
-	rm -f "$three"
-	chmod 600 "$tmp" && mv -f "$tmp" "$out" && say "bring back: $out (one file: report, fix request, local work)"
+	rm -f "$local_work"
+	# a file left behind would hold section 3's patches, which are not redacted
+	if ! { chmod 600 "$tmp" && mv -f "$tmp" "$out"; }; then
+		rm -f "$tmp"
+		return 1
+	fi
+	say "bring back: $out (one file: report, fix request, local work)"
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
