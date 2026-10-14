@@ -3704,6 +3704,26 @@ def test_the_guide_reads_a_folder_list_that_could_not_read_the_config(tmp_path: 
     assert "A list that finished without the count printed no such line" not in page
 
 
+def test_the_guide_maps_each_prompts_steps_to_the_forms_options() -> None:
+    """B13 round 8 J60: since round 7 H11 the form has v7's step 3 by its own name and `Outcome.form_label`
+    gives a v7 or later step 3 that option; the guide said a v7 step N maps to v6's option."""
+    from agentsync.setup_report import FORM_OUTCOME_OPTIONS, PROMPT_VERSION, Outcome  # noqa: PLC0415
+
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "so its N maps to the same option" not in page
+    para = page[
+        page.index("An attempt whose header says `Prompt: v5`") : page.index("The outcome judges only")
+    ]
+    for version in (7, PROMPT_VERSION):
+        labels = [Outcome("failed", step, (), version).form_label for step in (1, 2, 3)]
+        assert all(label in FORM_OUTCOME_OPTIONS for label in labels)
+        assert labels[2] == "Failed at step 3 (sync loop and report)"
+        assert f"(`{labels[2]}`)" in para and f"takes `{labels[1]}`" in para
+    v5 = [Outcome("failed", step, (), 5).form_label.split(" (")[0][-1] for step in range(1, 7)]
+    assert v5 == ["1", "1", "2", "3", "3", "4"]
+    assert "1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4" in para
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is

@@ -296,9 +296,12 @@ triaged like every other line (below).
 
 An attempt whose header says `Prompt: v5` is judged with v5's six steps: its folder question is the first
 question in its step 2, its Allow clicks the first click in its steps 2 and 3, a later `end` line of its step
-resolves an error, and N is 3 for the installer. The form has v6's steps, so the Outcome option maps v5's steps
-1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first
-three (step 3 runs the sync loop, then the report; there is no IT request step), so its N maps to the same option.
+resolves an error, and N is 3 for the installer. The form has v6's four step options plus v7's step 3 by its own
+name (`Failed at step 3 (sync loop and report)`). A v5 attempt's step maps to the v6 option for the same work: 1
+and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first three
+(step 3 runs the sync loop, then the report; there is no IT request step). Its step 1 and step 3 each take the
+form's option with the same number and name, and its step 2 (`install`) takes `Failed at step 2 (install and
+start)`.
 A `Prompt: v8`, `Prompt: v9`, `Prompt: v10`, `Prompt: v11`, `Prompt: v12`, `Prompt: v13`, `Prompt: v14`, `Prompt: v15`, `Prompt: v16` or `Prompt: v17` attempt is judged by the same rules: none moved a step. So is every
 later version until one moves a step, since the version changes with every edit of the prompt's text (below) and
 the rules only with its steps.

@@ -16587,3 +16587,11 @@ reason, the table the expected-turns variant and the `note:` line, and the triag
 (agentsync's turn when `kept` is above 0; with `kept=0`, no install run or a step 1 stop the question stays
 expected). Test: `test_the_guide_reads_a_folder_list_that_could_not_read_the_config`, which builds each wording with
 `unread_synced`, `unread_why`, `compute_outcome` and `_expected_turns_line`.
+
+**The guide maps a v7 or later step 3 to its own form option** (J60). Since §16.69 H11 `FORM_OUTCOME_OPTIONS` (and
+the issue form) hold `Failed at step 3 (sync loop and report)` beside v6's four, and `Outcome.form_label` gives a v7
+or later step 3 that option; the computed-outcome section still said a v7 step N "maps to the same option" as v6's,
+against its own field table. It now says the form has v6's four options plus v7's step 3, a v7 or later step 1 and 3
+take the option of the same number and name, and step 2 (`install`) takes `Failed at step 2 (install and start)`;
+the v5 mapping is unchanged. Test: `test_the_guide_maps_each_prompts_steps_to_the_forms_options`, which reads each
+label from `form_label`.
