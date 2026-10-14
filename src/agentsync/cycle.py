@@ -234,8 +234,6 @@ _recording_clock = time.monotonic  # the staging of a recording, charged to the 
 _POLICY_META = "policy_fingerprint"
 _STUB_RENDER_META = "stub_render"
 """The ``publish.STUB_RENDER`` the stub pages were last re-rendered for (``Cycle._rerender_stubs``)."""
-_WITHHELD_BODY = "its content is withheld (content policy)"  # every withheld stub's body (publish._plan_stub)
-_WITHHELD_WORDS = "withheld by label rule"  # its summary since Q27, its reason: since G29
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
 _SCOPE_ROOT_META = "scope_root:"
@@ -1963,9 +1961,7 @@ class _Cycle:
                 fm, body = parse_mirror_page((self.repo / out.output_path).read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError, FrontmatterError):
                 return None
-            said = [fm.reason or "", (fm.summary or "").removeprefix(content_policy.REFUSED_PREFIX)]
-            text = body.split("\n\n", 2)[-1]  # below the banner and the heading, which holds the file's name
-            return _WITHHELD_BODY in text or any(s.startswith(_WITHHELD_WORDS) for s in said)
+            return content_policy.page_says_withheld(fm.reason, fm.summary, body)
         return None
 
     def _rerender_tombstones(self, source_id: str) -> int:

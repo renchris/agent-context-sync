@@ -4013,14 +4013,15 @@ def _unreadable_examples() -> str:
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
 """``ImageConverter.extensions`` (tests/test_setup_report.py holds the two equal): a file OCR alone reads."""
 _LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
+"""``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
+while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33): a binary .msg
+or a .msg not on this Mac (B13 round 4 Q78, round 5 F73) and an image. :class:`_Mirror` withholds the
+part that is not an image for every row and an image row by its stub page (B13 round 9 K61)."""
 _WITHHELD_IMAGE_REASON = "withheld by label rule: the label of a {} file cannot be read"
 """``publish._withheld_reason`` for an image suffix (a test keeps them equal): the ``reason:`` of an image
 stub the run that planned it withheld (:meth:`_Mirror.read_image_pages`)."""
-_PAGE_READS = 400  # image stub pages read for their reason: (B13 round 8 J52), at most
-_PAGE_HEAD_BYTES = 8192  # of each, the start only: the front matter of a stub is a few hundred bytes
-"""``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
-while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33): a binary .msg
-or a .msg not on this Mac (B13 round 4 Q78, round 5 F73) and an image."""
+_PAGE_HEAD_BYTES = 8192  # of each image stub page, the start only: a stub's front matter and short body
+_PAGES_S = 0.75  # image stub pages are read for at most this long: some 1,200 pages at the J55 measure
 _OCR_DOCUMENTS = {
     ".pdf": "PDF",
     ".pptx": "deck",
@@ -4062,7 +4063,8 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> s
     free text in places (a duplicate names a mirror path, a failed conversion carries an exception's words),
     so the report prints the class and never the reason. A file with no converter whose suffix is in
     ``withheld`` is ``withheld by label rule``: the suffixes a label rule now leaves without one
-    (:data:`_LABEL_WITHHELD`; images only on a Mac whose OCR engine is ready, see :class:`_Mirror`)."""
+    (:data:`_LABEL_WITHHELD`; an image when its stub page says so, and by this report's OCR probe only when
+    the page could not be read, B13 round 8 J52, J54: :meth:`_Mirror.withheld_for`)."""
     text = " ".join((reason or "").split()).casefold()
     if not text:
         return "no reason recorded"
@@ -4228,6 +4230,24 @@ class _NoManifestError(Exception):
     """No sync has run: there is no manifest to read."""
 
 
+def _page_strings(fm: str) -> tuple[str | None, str | None] | None:
+    """A stub page's ``reason:`` and ``summary:`` read from their own front matter lines, as
+    ``render_frontmatter`` writes them (one JSON string each, read as ``publish._reason_line`` does: no YAML
+    parse per page), or None when a line holds anything else, for a full parse."""
+    found: dict[str, str | None] = {"reason": None, "summary": None}
+    for line in fm.splitlines():
+        key = line.partition(": ")[0]
+        if key in found and line.startswith(f"{key}: "):
+            try:
+                value = json.loads(line[len(key) + 2 :])
+            except ValueError:
+                return None
+            if not isinstance(value, str):
+                return None
+            found[key] = value
+    return found["reason"], found["summary"]
+
+
 class _Mirror:
     """The manifest, read only, for the evidence parts. One connection opened ``mode=ro``: nothing is
     created, migrated or written. Every statement is stopped once the evidence's time is used up, and
@@ -4243,12 +4263,15 @@ class _Mirror:
         # An image is withheld as its stub page says (image_pages, read by read_image_pages: the wording of
         # the run that planned the stub, as _sync/QUARANTINE.tsv copies it since B13 round 7 H52), and only
         # a stub whose page could not be read goes by this report's OCR probe (images_by_probe, set when the
-        # OCR part finds the engine ready; without it no image converter exists) (B13 round 8 J52, J54).
+        # OCR part finds the engine ready; without it no image converter exists) (B13 round 8 J52, J54). An
+        # engine that comes or goes later changes the class of those stubs only, and the Quarantine part
+        # says how many they are (B13 round 9 K58).
         self.labels_active = labels_active
-        self.withheld: set[str] = {".msg"} if labels_active else set()
+        self.withheld: set[str] = set(_LABEL_WITHHELD.difference(_IMAGE_SUFFIXES)) if labels_active else set()
         self.image_pages: dict[tuple[str, str], bool] = {}
         self.images_by_probe = False
         self.pages_unread = 0  # withheld-eligible image stubs whose page could not be read
+        self.pages_failed = False  # the query for those stubs failed: every one goes by the probe
         self.deadline = time.monotonic() + budget_s
         self.latest = latest
         self.steps = 0
@@ -4302,35 +4325,51 @@ class _Mirror:
         converter for <image suffix>``: whether it says withheld was decided by the run that planned the stub
         (``Publisher.images_readable``), and the page and ``_sync/QUARANTINE.tsv`` keep that, so the report
         classes the row by it, never by its own OCR probe, which disagreed with both whenever the engine came
-        or went after the stub (B13 round 8 J52, J54). At most :data:`_PAGE_READS` pages, the first
-        :data:`_PAGE_HEAD_BYTES` of each, under ``docs`` only, inside the evidence time; a page that is
-        missing, a symlink, past a cap or not one of the two wordings is counted in :attr:`pages_unread` and
-        goes by the probe. Only the class is kept: the reason's text is never shown."""
+        or went after the stub (B13 round 8 J52, J54). The page says withheld as the cycle's re-render reads
+        it (``policy.page_says_withheld``: its ``reason:``, its summary or its body, so a page from before its
+        ``reason:`` said so is read alike, B13 round 9 K48). Pages are read in a fixed order, the first
+        :data:`_PAGE_HEAD_BYTES` of each, under ``docs`` only, for at most a quarter of the evidence time
+        left and :data:`_PAGES_S` (B13 round 9 K58: a fixed count of 400 sent every later stub to the probe;
+        the parts after the OCR part keep the rest); a page that is missing, a
+        symlink, past that time or neither ``no converter`` nor withheld is counted in :attr:`pages_unread`
+        and goes by the probe, and a query that fails sets :attr:`pages_failed`. Only the class is kept: the
+        reason's text is never shown."""
         if not self.labels_active:
             return
-        from agentsync.frontmatter import parse_frontmatter  # noqa: PLC0415 - lazy, only with a label rule
+        from agentsync import policy  # noqa: PLC0415 - lazy, only with a label rule
+        from agentsync.frontmatter import parse_frontmatter, split_frontmatter  # noqa: PLC0415
 
         marks = ", ".join("?" for _ in _IMAGE_SUFFIXES)
-        found = self.rows(
-            "SELECT i.source_id, i.stable_id, lower(i.state_reason), (SELECT o.output_path FROM outputs o "
-            "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id ORDER BY o.built_run DESC "
-            f"LIMIT 1) FROM items i WHERE i.is_dir = 0 AND lower(i.state_reason) IN ({marks})",
-            [_NO_CONVERTER + suffix for suffix in _IMAGE_SUFFIXES],
-        )
+        try:
+            found = self.rows(
+                "SELECT i.source_id, i.stable_id, (SELECT o.output_path FROM outputs o "
+                "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id ORDER BY o.built_run DESC "
+                f"LIMIT 1) FROM items i WHERE i.is_dir = 0 AND lower(i.state_reason) IN ({marks}) "
+                "ORDER BY i.source_id, i.stable_id",
+                [_NO_CONVERTER + suffix for suffix in _IMAGE_SUFFIXES],
+            )
+        except Exception:
+            self.pages_failed = True
+            raise
         root = docs.resolve()
-        for n, (sid, stable, reason, rel) in enumerate(found):
+        stop = time.monotonic() + min(max(self.left(), 0.0) / 4, _PAGES_S)
+        for sid, stable, rel in found:
             says: bool | None = None
-            if n < _PAGE_READS and isinstance(rel, str) and rel and self.left() > 0:
+            if isinstance(rel, str) and rel and time.monotonic() < stop:
                 with contextlib.suppress(Exception):
                     path = docs / rel
                     if not path.is_symlink() and path.is_file() and path.resolve().is_relative_to(root):
                         with path.open("rb") as fh:
                             head = fh.read(_PAGE_HEAD_BYTES).decode("utf-8", errors="replace")
-                        shown = parse_frontmatter(head)[0].get("reason")
-                        suffix = str(reason)[len(_NO_CONVERTER) :]
-                        if shown == _WITHHELD_IMAGE_REASON.format(suffix):
+                        fm, body = split_frontmatter(head)
+                        said = _page_strings(fm or "")
+                        if said is None:  # not the one-line JSON strings a page is written with: YAML
+                            data = parse_frontmatter(head)[0]
+                            said = (data.get("reason"), data.get("summary"))
+                        shown, summary = (v if isinstance(v, str) else None for v in said)
+                        if policy.page_says_withheld(shown, summary, body):
                             says = True
-                        elif isinstance(shown, str) and shown.casefold().startswith(_NO_CONVERTER):
+                        elif shown is not None and shown.casefold().startswith(_NO_CONVERTER):
                             says = False
             if says is None:
                 self.pages_unread += 1
@@ -5125,6 +5164,21 @@ def _refused_types(m: _Mirror, labels: _Labels) -> list[str]:
     return out
 
 
+def _unread_pages(m: _Mirror) -> str:
+    """The legend's clause for the image stubs whose class went by this report's OCR probe, not their page,
+    in both probe states (B13 round 9 K58: with OCR not ready they were moved to `no converter` unsaid)."""
+    how = (
+        "as withheld because OCR is ready now"
+        if m.images_by_probe
+        else "under no converter because OCR is not ready now"
+    )
+    if m.pages_failed:
+        return f", and every image stub is counted {how}: the manifest query for their pages failed"
+    return f", and {m.pages_unread} image stub(s) whose page could not be read are counted {how}" * bool(
+        m.pages_unread
+    )
+
+
 def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """Every file whose row carries a reason, by source, state and reason class, then the files no
     converter reads by their type (:func:`_refused_types`). Counts, classes and fixed type words only."""
@@ -5164,16 +5218,13 @@ def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 "an image cannot be read, or a .msg is not on this Mac and is not downloaded to tell, so no "
                 "converter reads them while it is set; an image is counted here as its stub page says, which "
                 "keeps the wording of the run that wrote the stub (as _sync/QUARANTINE.tsv does)"
-                + (
-                    f", and {m.pages_unread} image stub(s) whose page could not be read by whether OCR is "
-                    "ready now"
-                    if m.pages_unread and m.images_by_probe
-                    else ""
-                )
+                + (_unread_pages(m))
                 + "; a message saved as .eml, or an image exported as a PDF, is converted and its label "
                 "screened",
             ]
             if any(cls == "withheld by label rule" for _s, _st, cls, *_rest in stubs)
+            or m.pages_unread
+            or m.pages_failed
             else []
         ),
         *_lines(lambda: _refused_types(m, labels)),

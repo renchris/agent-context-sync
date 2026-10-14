@@ -17187,7 +17187,33 @@ used the same words for its four targets; they now have dated lines too.
 
 ### 16.80 Round 9: setup report (2026-10-14, wave B13 round 9 lane RA)
 
-Reserved for round 9 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 9").
+Lane RA's round 9 items: K5, K6, K10, K11, K16, K22, K23, K24, K30, K36, K43, K45, K46, K48, K49, K58, K61, K62,
+K76, K77. Each test fails on the code before it, except where a paragraph says why none can.
+
+**An image stub's page is read the way the cycle reads it, every page** (K48, K58, K61, K62). The report and the
+cycle's re-render read a stub page by one test, `policy.page_says_withheld` (its `reason:`, its summary less
+`refused: `, or the body marker below the banner and heading), so a page from before G29, `reason: no converter
+for .png` under a withheld summary and body, is withheld in the report too. The page reads have no count cap (400
+sent every later stub to the OCR probe); they run in `(source_id, stable_id)` order for at most a quarter of the evidence
+time left and 0.75 s (`_PAGES_S`, about 1,200 pages at the J55 measure; the old cap of 400 took about 0.25 s, and
+the parts after the OCR part keep the rest), reading `reason:` and `summary:` from their JSON lines, YAML only when a line is not one. The legend
+under the Quarantine table names the stubs whose page could not be read in both probe states (`... are counted as
+withheld because OCR is ready now` or `... under no converter because OCR is not ready now`), appears when any
+such stub exists even with no withheld row, and says when the query for those stubs failed. `_Mirror.withheld` is
+`_LABEL_WITHHELD` less the image suffixes, so the registry equality test guards what the report does. The Q30 OCR
+test writes the stub page a run with the engine ready writes, instead of passing through the probe; K62 changes
+only that test, so it passes on the code before too, and it passes with the probe fallback disabled, which it did
+not. The K48 test writes the pre-G29 page by hand (`reason: no converter for .png`, a withheld summary or the body
+marker below a banner and heading): the real page shape is lane E's
+`test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_said_so`, which now reads it through
+the same `policy.page_says_withheld`. Tests:
+`test_an_image_stub_page_from_before_its_reason_said_withheld_is_read_as_withheld`,
+`test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_ready`,
+`test_image_stubs_whose_pages_are_all_unread_still_get_the_legend`, `test_a_failed_image_stub_query_is_said_not_passed_over`,
+`test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter`.
+
+**Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
+`_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 
 ### 16.81 Round 9: installer and the shell report (2026-10-14, wave B13 round 9 lane RB)
 

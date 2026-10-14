@@ -12,6 +12,7 @@ import logging
 import os
 import plistlib
 import re
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -6278,18 +6279,24 @@ def test_ocr_part_says_the_helper_is_ready_and_that_a_label_rule_is_on(
 def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """B13 round 4 Q30: with a label rule on and the OCR engine ready, an image with no converter is the
-    rule's (Quarantine by reason says `withheld by label rule`), and the OCR part's images line names the same
-    outcome, not "other stub". Its count comes first, as on the document lines (Q4)."""
+    """B13 round 4 Q30: an image whose stub page says withheld by label rule (the wording of a run with the
+    engine ready, B13 round 8 J52) is the rule's (Quarantine by reason says `withheld by label rule`), and
+    the OCR part's images line names the same outcome, not "other stub". Its count comes first, as on the
+    document lines (Q4)."""
     cfg = fake_mac["config"]
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.delenv("AGENTSYNC_OCR")
     write_fake(ocr._helper_path(load_config(cfg).cache_dir))
     seed = Seed(cfg)
-    seed.item(
-        seed.ids()[0], "Northwind logo.png", reason="no converter for .png", state="refused", page="refused"
+    one = seed.ids()[0]
+    stable = seed.item(
+        one, "Northwind logo.png", reason="no converter for .png", state="refused", page="refused"
     )
     seed.close()
+    page = load_config(cfg).docs_repo / "mirror" / one / f"{stable}.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    reason = setup_report._WITHHELD_IMAGE_REASON.format(".png")
+    page.write_text(f"---\nreason: '{reason}'\nstatus: refused\n---\nstub\n", encoding="utf-8")
     cfg.write_text(
         cfg.read_text(encoding="utf-8")
         + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
@@ -6297,6 +6304,7 @@ def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
     )
     parts = status_parts(fake_mac)[1]
     assert "- images: 1 file(s): 1 withheld-by-label-rule stub\n" in parts["OCR"], parts["OCR"]
+    assert "could not be read" not in parts["Quarantine by reason"], "the page was read (B13 round 9 K62)"
     assert "other stub" not in parts["OCR"]
     assert any(
         ln.split(" | ")[2:4] == ["withheld by label rule", "1"]
@@ -6359,7 +6367,10 @@ def test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe(
     )
     assert "the page says so" not in part
     assert "an image is counted here as its stub page says" in part
-    assert "and 1 image stub(s) whose page could not be read by whether OCR is ready now" in part, part
+    assert (
+        "and 1 image stub(s) whose page could not be read are counted as withheld because OCR is ready now"
+        in " ".join(part.split())
+    ), part
     assert [ln for ln in part.splitlines() if ", no converter by type: " in ln] == [
         "- <folder-2>, no converter by type: .png 1"
     ], part
@@ -6367,8 +6378,141 @@ def test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe(
     ocr._helper_path(load_config(cfg).cache_dir).unlink()
     rows, _ocr_part, part = classes()
     assert sorted(rows) == [["no converter", "2"], ["withheld by label rule", "1"]], rows
-    assert "could not be read by whether OCR is ready now" not in part
+    assert (  # said with OCR not ready too (B13 round 9 K58)
+        "and 1 image stub(s) whose page could not be read are counted under no converter because OCR is not "
+        "ready now" in " ".join(part.split())
+    ), part
     assert unread
+
+
+LABEL_RULE_TOML = '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n'
+
+
+def quarantine_rows(fake_mac: dict[str, Path]) -> tuple[list[list[str]], str]:
+    """The Quarantine part's class and file-count cells, and the part."""
+    part = status_parts(fake_mac)[1]["Quarantine by reason"]
+    rows = [ln.split(" | ")[2:4] for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:]
+    return rows, part
+
+
+@pytest.mark.parametrize("ready", [True, False], ids=["ocr ready", "ocr not ready"])
+def test_an_image_stub_page_from_before_its_reason_said_withheld_is_read_as_withheld(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, ready: bool
+) -> None:
+    """B13 round 9 K48: before G29 a withheld image's page kept ``reason: no converter for .png`` under a
+    withheld summary and body. The cycle's re-render reads it as withheld (B13 round 8 J47); the report read
+    only its ``reason:`` and classed it `no converter`, whatever OCR's state. Both read it by one test now."""
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
+    docs = load_config(cfg).docs_repo
+    seed = Seed(cfg)
+    one = seed.ids()[0]
+    by_summary = seed.item(
+        one, "Northwind logo.png", reason="no converter for .png", state="refused", page="refused"
+    )
+    by_body = seed.item(
+        one, "Northwind map.jpeg", reason="no converter for .jpeg", state="refused", page="refused"
+    )
+    plain = seed.item(
+        one, "Northwind chart.gif", reason="no converter for .gif", state="refused", page="refused"
+    )
+    seed.close()
+    for stable, suffix, summary, text in (
+        (by_summary, ".png", "refused: withheld by label rule: the label cannot be read", "stub"),
+        (by_body, ".jpeg", "Northwind map.jpeg", "its content is withheld (content policy). See the TSV."),
+        (plain, ".gif", "Northwind chart.gif", "agentsync has no converter for this file."),
+    ):
+        page = docs / "mirror" / one / f"{stable}.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(
+            f'---\nreason: "no converter for {suffix}"\nsummary: "{summary}"\nstatus: refused\n---\n'
+            f"> banner\n\n# Northwind file{suffix}\n\n{text}\n",
+            encoding="utf-8",
+        )
+    if ready:
+        monkeypatch.setattr(sys, "platform", "darwin")
+        monkeypatch.delenv("AGENTSYNC_OCR")
+        write_fake(ocr._helper_path(load_config(cfg).cache_dir))
+    rows, part = quarantine_rows(fake_mac)
+    assert sorted(rows) == [["no converter", "1"], ["withheld by label rule", "2"]], part
+    assert "could not be read" not in part, part
+
+
+def test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_ready(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 9 K58: past 400 image stubs the rest went by the OCR probe, so with OCR not ready a stub
+    whose page says withheld was counted under `no converter`, and the legend, which named the unread
+    stubs only with OCR ready, said every image was counted as its page says. Every page is read now (within
+    the evidence time), and the unread are named in both probe states."""
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
+    docs = load_config(cfg).docs_repo
+    seed = Seed(cfg)
+    one = seed.ids()[0]
+    stables = [
+        seed.item(one, f"Northwind {n}.png", reason="no converter for .png", state="refused", page="refused")
+        for n in range(450)
+    ]
+    seed.item(one, "Northwind chart.gif", reason="no converter for .gif", state="refused")  # no page
+    seed.close()
+    folder = docs / "mirror" / one
+    folder.mkdir(parents=True, exist_ok=True)
+    reason = json.dumps(setup_report._WITHHELD_IMAGE_REASON.format(".png"))
+    for stable in stables:
+        (folder / f"{stable}.md").write_text(
+            f"---\nreason: {reason}\nstatus: refused\n---\nstub\n", encoding="utf-8"
+        )
+    rows, part = quarantine_rows(fake_mac)
+    assert sorted(rows) == [["no converter", "1"], ["withheld by label rule", "450"]], part
+    flat = " ".join(part.split())
+    assert (
+        "and 1 image stub(s) whose page could not be read are counted under no converter because OCR is not "
+        "ready now" in flat
+    ), part
+
+
+def test_image_stubs_whose_pages_are_all_unread_still_get_the_legend(fake_mac: dict[str, Path]) -> None:
+    """B13 round 9 K58: with every image page unread and OCR not ready, no row is `withheld by label rule`,
+    and the legend, shown only beside such a row, left the unread count out entirely."""
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
+    seed = Seed(cfg)
+    seed.item(seed.ids()[0], "Northwind chart.gif", reason="no converter for .gif", state="refused")
+    seed.close()
+    rows, part = quarantine_rows(fake_mac)
+    assert rows == [["no converter", "1"]], part
+    assert "and 1 image stub(s) whose page could not be read are counted under no converter" in " ".join(
+        part.split()
+    ), part
+
+
+def test_a_failed_image_stub_query_is_said_not_passed_over(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 9 K58: an error from the image stub query itself (a locked manifest, say) was swallowed
+    before any page was counted, so every image went by the probe and nothing said so."""
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
+    seed = Seed(cfg)
+    seed.item(
+        seed.ids()[0], "Northwind logo.png", reason="no converter for .png", state="refused", page="refused"
+    )
+    seed.close()
+    rows_of = setup_report._Mirror.rows
+
+    def rows(self: setup_report._Mirror, sql: str, params: Sequence[object] = ()) -> list[tuple[Any, ...]]:
+        if "ORDER BY i.source_id, i.stable_id" in sql:
+            raise sqlite3.OperationalError("database is locked")
+        return rows_of(self, sql, params)
+
+    monkeypatch.setattr(setup_report._Mirror, "rows", rows)
+    rows_seen, part = quarantine_rows(fake_mac)
+    assert rows_seen == [["no converter", "1"]], part
+    assert (
+        "and every image stub is counted under no converter because OCR is not ready now: the manifest query "
+        "for their pages failed" in " ".join(part.split())
+    ), part
 
 
 def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[str, Path]) -> None:
@@ -6519,7 +6663,17 @@ def test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter(
         "- <folder-2>, no converter by type: .mp4 1 · .png 1"
     ]
     assert registry_mod.label_withheld_suffixes() == setup_report._LABEL_WITHHELD
-    # With the engine ready the image is the rule's too (the OCR part adds the image suffixes).
+    # The report withholds the part that is not an image for every row (B13 round 9 K61: a registry suffix
+    # _Mirror ignored passed the line above); an image row goes by its stub page, or by the OCR probe when
+    # the page could not be read (B13 round 8 J52).
+    mirror = setup_report._Mirror(Path("manifest.db"), 1.0, labels_active=True)
+    assert mirror.withheld == set(registry_mod.label_withheld_suffixes()).difference(
+        setup_report._IMAGE_SUFFIXES
+    )
+    assert setup_report._Mirror(Path("manifest.db"), 1.0).withheld == set()
+    with pytest.MonkeyPatch.context() as later:  # a suffix the registry and the constant gain is withheld
+        later.setattr(setup_report, "_LABEL_WITHHELD", setup_report._LABEL_WITHHELD | {".one"})
+        assert setup_report._Mirror(Path("manifest.db"), 1.0, labels_active=True).withheld == {".msg", ".one"}
     withheld = setup_report._LABEL_WITHHELD
     assert (
         setup_report.quarantine_class("no converter for .png", withheld=withheld) == "withheld by label rule"

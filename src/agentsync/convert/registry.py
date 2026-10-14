@@ -59,7 +59,9 @@ def label_withheld_suffixes() -> frozenset[str]:
     6 G29, G62). For an image, the run that planned the stub decides the page's ``reason:`` (withheld only
     when that run's engine was ready), the TSV copies it (B13 round 7 H52) and the setup report classes the
     row by it, going by its own OCR probe only for a stub whose page it cannot read (B13 round 8 J52, J54):
-    an engine that comes or goes later changes none of the three until the stub is planned again."""
+    an engine that comes or goes later changes neither the page nor the TSV until the stub is planned again,
+    and the report's class only for the stubs whose page it could not read, which it counts (B13 round 9
+    K58)."""
     from agentsync.convert.image import ImageConverter  # noqa: PLC0415 - lazy, as in Registry.default
     from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
 
