@@ -34,6 +34,7 @@ import sys
 import threading
 import time
 import unicodedata
+import urllib.parse
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -2414,6 +2415,31 @@ def test_the_shell_report_states_a_step_1_failure_and_fills_its_link(env: dict[s
         "version, and Agent tool and model fields filled in (nothing else); paste this report into its "
     )
     assert "Fabrikam" not in text and f"issue link (review the report first): {link}" in cp.stdout
+
+
+@pytest.mark.parametrize("ahead", [1, 0, -1])
+def test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer(
+    env: dict[str, str], ahead: int
+) -> None:
+    """B13 round 8 J21: a step 1 error line that states a prompt newer than this installer's got no note in
+    the shell report, while the agentsync report adds one (H23). The note sits in the line's own parenthesis
+    and names this installer, which writes the report; the link's version, title and agent stay as they were,
+    and a version at or below this installer's gets none."""
+    said = f"prompt v{COMPAT + ahead}, Contoso Agent: git pull --ff-only failed"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    note = f"; newer than this installer, which is for prompt v{COMPAT}: step 1's pull did not update it"
+    outcome = next(ln for ln in _summary(text) if ln.startswith("- outcome: "))
+    assert outcome.startswith(
+        f"- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: "
+        f"v{COMPAT + ahead} (from the step 1 error line{note if ahead > 0 else ''}) · "
+    ), outcome
+    assert outcome.endswith(" · agent: Contoso Agent")
+    link = text.splitlines()[-1]
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(link).query)
+    assert fields["prompt_version"] == [f"v{COMPAT + ahead}"] and fields["agent"] == ["Contoso Agent"]
+    assert fields["title"][0].endswith(f" · v{COMPAT + ahead}")
 
 
 @pytest.mark.parametrize(

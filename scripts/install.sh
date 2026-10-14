@@ -1761,11 +1761,19 @@ attempt_ran_no_install() {
 # reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
 # redaction, for the link.
 OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v"
+# A stated version above this installer's has the agentsync report's note (H23) in the same parenthesis, naming
+# this installer, which writes the report (B13 round 8 J21); no blank comes before the digits, and no " · agent: "
+# is added, so fallback_issue_link reads the version and the agent as before.
 fallback_outcome_line() {
-	local stated=""
+	local stated="" n note=""
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
 	if [ -n "$stated" ]; then
-		say "$OUTCOME_LINE_HEAD${stated%%$'\t'*} (from the step 1 error line) · agent: ${stated#*$'\t'}"
+		n="${stated%%$'\t'*}"
+		case "$n" in
+		"" | *[!0-9]*) ;;
+		*) [ "$n" -le "$SETUP_PROMPT_COMPAT" ] || note="; newer than this installer, which is for prompt v$SETUP_PROMPT_COMPAT: step 1's pull did not update it" ;;
+		esac
+		say "$OUTCOME_LINE_HEAD$n (from the step 1 error line$note) · agent: ${stated#*$'\t'}"
 	else
 		say "- outcome: not computed (this shell fallback computes none for this attempt; the issue form's fields are left for you, from the friction log below)"
 	fi
