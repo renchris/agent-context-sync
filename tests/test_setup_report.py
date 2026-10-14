@@ -8914,6 +8914,17 @@ def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
         assert word not in text, word
 
 
+def test_a_rewrite_paths_hits_are_counted_as_proxy_values() -> None:
+    """B13 round 9 K10 (a reviewer's finding): the separator put before a rewrite path's placeholder made
+    the hit count as kind "other" and as one more value."""
+    red = setup_report.Redactor()
+    setup_report._add_proxy_host(red, "mirror.northwind.invalid")
+    red.add("proxy", "/northwind-team", ignore_case=True, keep_lead=True)
+    shown = red.redact("https://mirror.northwind.invalid/northwind-team/x.git and /northwind-team-tools")
+    assert shown == "https://<proxy-1>/<proxy-2>/x.git and /<proxy-2>-tools", shown
+    assert red.counts == {"proxy": 3} and red._used == {"<proxy-1>", "<proxy-2>"}, (red.counts, red._used)
+
+
 def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Path]) -> None:
     """B13 round 8 J18: a copy the installer stopped leaves step 1's pull and no step 2 reinstall, so doctor
     warns install.commit with "fix: re-run install.sh", and the Summary counted it unexpected, while the
@@ -9419,9 +9430,8 @@ def test_a_listing_that_finishes_late_is_used_before_any_line_is_cut(
     finish = threading.Event()
 
     def late(*args: Any, **kwargs: Any) -> list[tuple[str, int, str]]:
-        finish.wait(
-            5
-        )  # past the listing's time; the doctor hook, which runs before the friction part, ends it
+        # past the listing's time: the doctor hook, which runs before the friction part, ends it
+        finish.wait(60)
         return real(*args, **kwargs)
 
     def doctor(_config: object) -> list[str]:
@@ -9429,6 +9439,7 @@ def test_a_listing_that_finishes_late_is_used_before_any_line_is_cut(
         return ["[ok  ] python — fine"]
 
     monkeypatch.setattr(setup_report, "_LISTING_S", 0.3)
+    monkeypatch.setattr(setup_report, "_LATE_LISTING_S", 5.0)  # a loaded machine: the budget still bounds it
     monkeypatch.setattr(setup_report, "cloud_folder_names", late)
     text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(doctor=doctor))[0]
     assert "Nort" not in text, [ln for ln in text.splitlines() if "Nort" in ln]
@@ -9440,12 +9451,15 @@ def test_a_listing_that_finishes_late_is_used_before_any_line_is_cut(
         "- redaction: the CloudStorage listing finished after 0.3s and was used for redaction\n"
         in section(text, "Environment")
     )
-    # a listing that never finishes: J69's private-only report, as before
+    # a listing that never finishes: J69's private-only report, as before (released once the report is done)
     finish.clear()
-    text = setup_report.build_report(
-        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=lambda _c: ["[ok  ] python — fine"])
-    )[0]
-    finish.set()
+    monkeypatch.setattr(setup_report, "_LATE_LISTING_S", 0.2)
+    try:
+        text = setup_report.build_report(
+            fake_mac["config"], hooks=setup_report.ReportHooks(doctor=lambda _c: ["[ok  ] python — fine"])
+        )[0]
+    finally:
+        finish.set()
     assert "Private only: the listing of ~/Library/CloudStorage for redaction did not finish" in text, text
     assert "- redaction: could not list ~/Library/CloudStorage at depth 2-3 for redaction: " in text
 

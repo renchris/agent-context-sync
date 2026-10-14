@@ -7794,13 +7794,13 @@ def local_work_line() -> str | None:
     heads = git / "refs" / "heads"
     branches = {p.name for p in heads.glob("local-work-*") if p.is_file() and not p.is_symlink()}
     with contextlib.suppress(OSError, UnicodeDecodeError):
-        for line in (git / "packed-refs").read_text(encoding="utf-8").splitlines():
+        for line in (git / "packed-refs").read_text(encoding="utf-8", errors="surrogateescape").splitlines():
             ref = line.partition(" ")[2]
             if ref.startswith("refs/heads/local-work-"):
                 branches.add(ref.removeprefix("refs/heads/"))
     times: list[float] = []
     kept = default_setup_log().parent / "local-work"
-    for root, _dirs, files in os.walk(kept):
+    for root, _dirs, files in [] if kept.is_symlink() else os.walk(kept):  # as find, which does not follow it
         for name in files:
             path = Path(root, name)
             if name.endswith(".patch") and not path.is_symlink() and path.is_file():
