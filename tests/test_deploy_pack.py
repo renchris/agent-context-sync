@@ -4327,6 +4327,21 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
     )
 
 
+def test_k52s_withheld_constants_are_named_where_they_live() -> None:
+    """B13 round 10 L55: §16.84 K52 said J47's `_WITHHELD_BODY` and `_WITHHELD_WORDS` sit below
+    `_STUB_RENDER_META`'s docstring in agentsync.cycle; round 9's K48 moved them to agentsync.policy, where
+    `page_says_withheld` reads them, and a later commit made them private."""
+    from agentsync import cycle, policy  # noqa: PLC0415
+
+    for name in ("_WITHHELD_BODY", "_WITHHELD_WORDS"):
+        assert hasattr(policy, name) and not hasattr(cycle, name), name
+    k52 = " ".join(_contracts_section("**K52: `_STUB_RENDER_META` keeps its own docstring", "\n\n").split())
+    assert (
+        "Amended 2026-10-14, §16.91 L55 (by §16.80 K48): the two constants are no longer in `agentsync.cycle`"
+        in k52
+    )
+    assert "`policy._WITHHELD_BODY` and `policy._WITHHELD_WORDS`" in k52
+
 def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() -> None:
     """B13 round 9 K68: since round 8 J30 the Repeat conversions table counts the same file converted again
     from the same bytes and converter options, and a note under it says a label-rule re-screen is a new

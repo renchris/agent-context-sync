@@ -17702,6 +17702,10 @@ carried lines are scrubbed); under any other heading the log scrubber decides as
 **K52: `_STUB_RENDER_META` keeps its own docstring (`agentsync.cycle`).** J47's `_WITHHELD_BODY` and
 `_WITHHELD_WORDS` sat between the constant and its attribute docstring; they move below it, no value changes. Test:
 `test_cycle.py::test_the_stub_render_meta_keeps_its_own_docstring`.
+Amended 2026-10-14, §16.91 L55 (by §16.80 K48): the two constants are no longer in `agentsync.cycle`. K48 moved them
+to `agentsync.policy`, where `page_says_withheld` reads them, and dd3fa850 made them private:
+`policy._WITHHELD_BODY` and `policy._WITHHELD_WORDS`. The K52 test still checks only that `_STUB_RENDER_META` is
+followed by its own docstring.
 
 **K63: the recording index's How to read defines `SAID vN:` and `SPEAKING:` (`agentsync.convert.recording_page`,
 README).** Both fold into the existing `SCREEN:` and `TILE:` lines, as the sample index in the grammar tests shows:
@@ -17950,3 +17954,8 @@ test pinned those sentences. The row now gives the three routes, the pre-G29 pag
 case that goes by the probe, and the legend's words. Test:
 `test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe` (classes a pre-G29 page through
 `page_says_withheld`, and reads the legend's words from `_unread_pages`).
+
+**K52's constants live in policy** (L55; dated line at §16.84 K52). §16.84 K52 said J47's `_WITHHELD_BODY` and
+`_WITHHELD_WORDS` sit below `_STUB_RENDER_META`'s docstring in `agentsync.cycle`; §16.80 K48 moved them to
+`agentsync.policy`, made private later in round 9. Test:
+`test_k52s_withheld_constants_are_named_where_they_live`.
