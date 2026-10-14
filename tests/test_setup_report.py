@@ -6612,6 +6612,8 @@ def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
     engine ready, B13 round 8 J52) is the rule's (Quarantine by reason says `withheld by label rule`), and
     the OCR part's images line names the same outcome, not "other stub". Its count comes first, as on the
     document lines (Q4)."""
+    from agentsync import publish  # noqa: PLC0415
+
     cfg = fake_mac["config"]
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.delenv("AGENTSYNC_OCR")
@@ -6624,7 +6626,7 @@ def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
     seed.close()
     page = load_config(cfg).docs_repo / "mirror" / one / f"{stable}.md"
     page.parent.mkdir(parents=True, exist_ok=True)
-    reason = setup_report._WITHHELD_IMAGE_REASON.format(".png")
+    reason = publish._withheld_reason(".png")  # the report reads no constant of its own (B13 round 10 L53)
     page.write_text(f"---\nreason: '{reason}'\nstatus: refused\n---\nstub\n", encoding="utf-8")
     cfg.write_text(
         cfg.read_text(encoding="utf-8")
@@ -6648,10 +6650,7 @@ def test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe(
     run that planned the stub, while the report classed the row by its own OCR probe and said "the page says
     so". A stub planned with no engine reads "no converter" here once an engine is ready, and one planned
     with an engine reads withheld once it is gone; a stub whose page cannot be read goes by the probe."""
-    from agentsync import publish  # noqa: PLC0415
-
     cfg = fake_mac["config"]
-    assert setup_report._WITHHELD_IMAGE_REASON.format(".png") == publish._withheld_reason(".png")
     cfg.write_text(
         cfg.read_text(encoding="utf-8")
         + '\n[policy]\nexclude_label_ids = ["00000000-0000-4000-8000-00000000c0de"]\n',
@@ -6774,6 +6773,8 @@ def test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_read
     whose page says withheld was counted under `no converter`, and the legend, which named the unread
     stubs only with OCR ready, said every image was counted as its page says. Every page is read now (within
     the evidence time), and the unread are named in both probe states."""
+    from agentsync import publish  # noqa: PLC0415
+
     cfg = fake_mac["config"]
     cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
     docs = load_config(cfg).docs_repo
@@ -6787,7 +6788,7 @@ def test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_read
     seed.close()
     folder = docs / "mirror" / one
     folder.mkdir(parents=True, exist_ok=True)
-    reason = json.dumps(setup_report._WITHHELD_IMAGE_REASON.format(".png"))
+    reason = json.dumps(publish._withheld_reason(".png"))
     for stable in stables:
         (folder / f"{stable}.md").write_text(
             f"---\nreason: {reason}\nstatus: refused\n---\nstub\n", encoding="utf-8"

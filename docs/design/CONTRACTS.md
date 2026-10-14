@@ -18038,6 +18038,13 @@ the fix holds no checkout path or remote URL, only fixed words, the canonical re
 `test_every_newer_copy_stop_line_keeps_its_second_remedy_in_the_summary`, whose fix columns are built from
 install.sh's own words for each branch of `newer_copy_fix`.
 
+**The withheld image reason has one home** (L53). `setup_report._WITHHELD_IMAGE_REASON` lost its only reader in
+K48 (`_Mirror.read_image_pages` reads a page by `policy.page_says_withheld`, a prefix and body match), yet its
+docstring still named that reader and a test kept it equal to `publish._withheld_reason`, guarding nothing the
+report does. The constant is gone; the tests that write a withheld image page, and the class-table check in
+`tests/test_deploy_pack.py`, take the words from `publish._withheld_reason`. No behavior changes, so no test fails
+without it (as K49's docstrings).
+
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 
 Reserved for round 10 lane RB of B13.

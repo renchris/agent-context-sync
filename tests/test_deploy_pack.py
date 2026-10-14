@@ -4284,7 +4284,7 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
     converter` row by its stub page's `reason:` (`_Mirror.withheld_for`), and the OCR probe decides only for a
     page it could not read, while the guide's Quarantine row and §16.28's class table said an image is
     withheld only when the OCR part reads ready and keeps `no converter` without an engine."""
-    from agentsync import setup_report  # noqa: PLC0415
+    from agentsync import publish, setup_report  # noqa: PLC0415
 
     mirror = setup_report._Mirror.__new__(setup_report._Mirror)
     mirror.labels_active, mirror.withheld, mirror.images_by_probe = True, {".msg"}, False
@@ -4344,7 +4344,7 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
         "Amended 2026-10-14, §16.85 K59 (by §16.74 J52, J54): an image is no longer counted by whether"
         in table
     )
-    assert f"`{setup_report._WITHHELD_IMAGE_REASON.format('<suffix>')}`" in table
+    assert f"`{publish._withheld_reason('<suffix>')}`" in table
     assert (
         "Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the page decides as `policy.page_says_withheld`"
         in (table)

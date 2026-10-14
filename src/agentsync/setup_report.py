@@ -4130,9 +4130,6 @@ _LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
 while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33): a binary .msg
 or a .msg not on this Mac (B13 round 4 Q78, round 5 F73) and an image. :class:`_Mirror` withholds the
 part that is not an image for every row and an image row by its stub page (B13 round 9 K61)."""
-_WITHHELD_IMAGE_REASON = "withheld by label rule: the label of a {} file cannot be read"
-"""``publish._withheld_reason`` for an image suffix (a test keeps them equal): the ``reason:`` of an image
-stub the run that planned it withheld (:meth:`_Mirror.read_image_pages`)."""
 _PAGE_HEAD_BYTES = 8192  # of each image stub page, the start only: a stub's front matter and short body
 _PAGES_S = 0.75  # image stub pages are read for at most this long: some 1,200 pages at the J55 measure
 _OCR_DOCUMENTS = {
