@@ -1193,7 +1193,7 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
-	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n'
+	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1298,6 +1298,17 @@ redaction_pairs() {
 			[ -z "$v" ] || [ "$v" = "$1" ] || emit_pair "$v" "$2" "${3:-}" utf8
 		done
 	}
+	# A folder's or an organisation's pair is matched as the Python report's fuzzy mode matches it (B13 round 10
+	# L66): in any case and with any separator or none between its words, as a whole word (redact_stream's flag
+	# f). Flag j for a name of two or more words that run together spell a report word ("Ho Me"): only with a
+	# separator or a CamelCase boundary between them, as setup_report's joined mode. Sets FUZZY.
+	fuzzy_flag() { # VALUE
+		local low
+		FUZZY=f
+		case "$1" in *[\ _-]* | *[[:lower:]][[:upper:]]* | *[[:digit:]][[:upper:]]*) ;; *) return 0 ;; esac
+		low="$(printf '%s' "$1" | LC_ALL=C tr -d ' \t_\\-' | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		! report_word "$low" || FUZZY=j
+	}
 	recase() { # upper|lower TEXT, as Python's str.upper and str.lower write it ("ÅL" for "Ål"): tr in UTF-8,
 		# byte-wise for TEXT that is not UTF-8 (where tr in UTF-8 stops). bash 3.2 has no ${x^^}.
 		local from='[:lower:]' to='[:upper:]' out
@@ -1347,7 +1358,7 @@ redaction_pairs() {
 		# reads it): not a bare app name, Personal, Business or Work, nor a name repeating the app's (Box-Box).
 		# An account's email address too (GoogleDrive-<address>): the shell has no email pattern. An organisation
 		# already registered takes no second number (OneDrive-X and OneDrive-SharedLibraries-X; B13 round 3
-		# R44). Only the same bytes: the matcher is case-sensitive, so another spelling keeps its own pair.
+		# R44), nor another spelling of it (B13 round 10 L66: its pair is matched as Python's fuzzy mode).
 		orgs_seen=$'\n'
 		for e in "$cs"/*; do
 			[ -e "$e" ] || continue
@@ -1377,16 +1388,30 @@ redaction_pairs() {
 				continue
 			fi
 			case "$orgs_seen" in *$'\n'"$org"$'\n'*) continue ;; esac
-			orgs_seen+="$org"$'\n'
-			n=$((n + 1))
-			add_pair "$org" "<org-$n>"
+			# another spelling of one (GoogleDrive-CONTOSO beside Box-Contoso) takes the number it has, as the
+			# Python report's _norm key (B13 round 10 L66), and still a pair of its own: an accented spelling
+			# or one with other separators is no match of the first one's pattern
+			k="~$(id_key "$org")"$'\t'
+			case "$orgs_seen" in
+			*$'\n'"$k"*)
+				x="${orgs_seen#*$'\n'"$k"}"
+				x="${x%%$'\n'*}"
+				;;
+			*)
+				n=$((n + 1))
+				x="$n"
+				;;
+			esac
+			orgs_seen+="$org"$'\n'"$k$x"$'\n'
+			fuzzy_flag "$org"
+			add_pair "$org" "<org-$x>" "$FUZZY"
 		done
 	fi
 	# The configured folders first, then the listed ones, as the Python report registers them. One number per
 	# folder (B13 round 9 K4): a name found in two places (configured and listed), a parent counted again by a
 	# nested listed path, or another spelling of it (id_key, setup_report._norm's sharing) takes the number it
-	# has; each spelling still gets its own pair, since the matcher compares bytes. A listed name skipped
-	# takes no number.
+	# has; each spelling still gets its own pair, all matched in any case and with any separator (flag f, B13
+	# round 10 L66). A listed name skipped takes no number.
 	folder_parts() { # LISTED PATH...: LISTED non-empty for step 1's list
 		local only="$1" f rel part whole k
 		shift
@@ -1411,8 +1436,9 @@ redaction_pairs() {
 					folder_keys+="$k"$'\t'"$m"$'\n'
 					;;
 				esac
-				whole=""
-				if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments"
+				fuzzy_flag "$part"
+				whole="$FUZZY"
+				if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments", byte for byte
 				add_pair "$part" "<folder-$m>" "$whole"
 				# the number its pair has: a later part of the same bytes loses to the first (add_pair)
 				case "$folders_seen" in *$'\n'"$part"$'\t'*) ;; *) folders_seen+="$part"$'\t'"$m"$'\n' ;; esac
@@ -1709,7 +1735,7 @@ redact_stream() {
 	# regex match (the placeholder match, the word test) under UTF-8 exits at a byte that is not UTF-8 on its
 	# own ("Jane" + U+2019), and the placeholder match runs on every line.
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
-		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ print length($1) "\t" $0 }' |
+		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
@@ -1727,9 +1753,65 @@ redact_stream() {
 	# is held only where no longer pair covers it, as the Python report checks for a longer value: else a folder
 	# named "agent-context Fabrikam" lost its first words to the hold and printed the rest in clear.
 	# A heading of the report itself is never redacted, as in the Python report.
+	# A pair flagged f or j (a folder or an organisation) is matched as setup_report.Redactor matches a fuzzy
+	# value (B13 round 10 L66): a regex of its words, each ASCII letter in either case, any run of blanks, "_",
+	# "-" or "\" (printf %q) or none between words (j: at least one, or a CamelCase boundary with the case as
+	# written there), a "\" allowed before any other ASCII sign, as %q writes it; a match only where no ASCII
+	# letter or digit is right before or after it (when the value starts or ends with a letter, a digit or a
+	# byte outside ASCII). Sorted by its length without separators, as Python sorts by _norm. The NFC, NFD and
+	# accentless forms stay pairs of their own (add_forms).
+	function letters(t, up, low, i, c, out) { # one word; up: its first letter in upper case only, low: its last in lower
+		out = ""
+		for (i = 1; i <= length(t); i++) {
+			c = substr(t, i, 1)
+			if (c ~ /[A-Za-z]/) out = out ((i == 1 && up) ? toupper(c) : (i == length(t) && low) ? tolower(c) : "[" toupper(c) tolower(c) "]")
+			else if (c ~ /[0-9]/ || c ~ "[\200-\377]") out = out c
+			else out = out "\\\\?" (c == "^" || c == "]" ? "\\" c : "[" c "]")
+		}
+		return out
+	}
+	function fuzzy(k, v, jn, i, c, p, q, nt, tok, cur, a, b) {
+		nt = 0; cur = ""
+		for (i = 1; i <= length(v); i++) { # its words: split at separators and at CamelCase boundaries (_tokens)
+			c = substr(v, i, 1)
+			if (c ~ /[ \t_-]/ || c == "\\") { if (cur != "") tok[++nt] = cur; cur = ""; continue }
+			p = substr(v, i - 1, 1); q = substr(v, i + 1, 1)
+			# a byte outside ASCII before the capital is read as a small letter ("CaféPlans")
+			if (cur != "" && c ~ /[A-Z]/ && (p ~ /[a-z0-9]/ || p ~ "[\200-\377]" || (p ~ /[A-Z]/ && q ~ /[a-z]/))) { tok[++nt] = cur; cur = "" }
+			cur = cur c
+		}
+		if (cur != "") tok[++nt] = cur
+		if (!nt) return
+		a = ""
+		for (i = 1; i <= nt; i++) a = a (i > 1 ? (jn ? "[ \t_\\\\-]+" : "[ \t_\\\\-]*") : "") letters(tok[i], 0, 0)
+		if (jn && nt >= 2) { # "HoMe": a small letter, then the next word\047s capital, as written
+			b = ""
+			for (i = 1; i <= nt; i++) {
+				if ((i < nt && substr(tok[i], length(tok[i]), 1) !~ /[A-Za-z]/) || (i > 1 && substr(tok[i], 1, 1) !~ /[A-Za-z]/)) { b = ""; break }
+				b = b letters(tok[i], i > 1, i < nt)
+			}
+			if (b != "") a = "(" a ")|(" b ")"
+		}
+		rx[k] = a
+		key[k] = tolower(tok[1]); sub(/[^a-z0-9].*$/, "", key[k]) # a word every match holds, in lower case
+		lead[k] = substr(v, 1, 1) ~ /[A-Za-z0-9]/ || substr(v, 1, 1) ~ "[\200-\377]"
+		trail[k] = substr(v, length(v), 1) ~ /[A-Za-z0-9]/ || substr(v, length(v), 1) ~ "[\200-\377]"
+		for (i = 1; i < k; i++) if ((i in rx) && rx[i] == a && ph[i] == ph[k]) delete rx[k] # one form of many
+	}
 	function keep(text, isheld) { if (text != "") { m++; tx[m] = text; th[m] = isheld } }
-	function covered(s, c, L, k, v, t, i, off) { # 1: a pair longer than L spans s from c on, for L chars or more
+	function covered(s, c, L, k, v, t, i, off, rs, rl, hit) { # 1: a pair longer than L spans s from c on, for L chars or more
 		for (k = 1; k <= np; k++) {
+			if (k in rx) { # a fuzzy pair by its pattern, as Python checks a longer value (B13 round 10 L66);
+				# RSTART and RLENGTH of the caller, set before this runs, are kept
+				rs = RSTART; rl = RLENGTH; t = s; off = 0; hit = 0
+				while (!hit && match(t, rx[k])) {
+					if (RLENGTH > L && off + RSTART <= c && off + RSTART + RLENGTH >= c + L) hit = 1
+					off += RSTART; t = substr(t, RSTART + 1)
+				}
+				RSTART = rs; RLENGTH = rl
+				if (hit) return 1
+				continue
+			}
 			v = val[k]
 			if (length(v) <= L) continue
 			t = s; off = 0
@@ -1779,7 +1861,10 @@ redact_stream() {
 	BEGIN {
 		slug = tolower(ENVIRON["REPO_SLUG"])
 		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
-		for (k = 1; k <= np; k++) { split(rows[k], f, "\t"); val[k] = f[1] }
+		for (k = 1; k <= np; k++) {
+			split(rows[k], f, "\t"); val[k] = f[1]; ph[k] = f[2]
+			if (f[3] == "f" || f[3] == "j") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j") }
+		}
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
 		for (k = 1; k <= nh; k++) heading[hd[k]] = 1
@@ -1801,9 +1886,33 @@ redact_stream() {
 		keep(s, 0)
 		ns = m
 		for (j = 1; j <= m; j++) { seg[j] = tx[j]; held[j] = th[j] }
+		low = tolower($0)
 		for (k = 1; k <= np; k++) {
 			if (split(rows[k], f, "\t") < 2) continue
 			v = f[1]
+			if (k in fz) {
+				if (!(k in rx) || (key[k] != "" && !index(low, key[k])) || !match($0, rx[k])) continue
+				m = 0
+				for (j = 1; j <= ns; j++) {
+					if (held[j]) { keep(seg[j], 1); continue }
+					s = seg[j]; acc = ""
+					while (match(s, rx[k])) {
+						i = RSTART; n = RLENGTH
+						pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
+						post = substr(s, i + n, 1)
+						if ((lead[k] && pre ~ /[A-Za-z0-9]/) || (trail[k] && post ~ /[A-Za-z0-9]/)) {
+							acc = acc substr(s, 1, i); s = substr(s, i + 1); continue
+						}
+						keep(acc substr(s, 1, i - 1), 0); acc = ""
+						keep(f[2], 1)
+						s = substr(s, i + n)
+					}
+					keep(acc s, 0)
+				}
+				ns = m
+				for (j = 1; j <= m; j++) { seg[j] = tx[j]; held[j] = th[j] }
+				continue
+			}
 			if (!index($0, v)) continue # every plain piece is a piece of the input line
 			n = length(v); word = (f[3] == "w"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			for (j = 1; j <= ns; j++) {

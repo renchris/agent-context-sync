@@ -17455,6 +17455,9 @@ spelling of it, takes the number it has, and every spelling still gets its own p
 bytes. Correction to the spec: its test (b) put a second spelling only in the friction log, which no reader
 registers; the test gives the second spelling a listed path of its own. Test:
 `test_the_shell_report_gives_each_folder_one_number`.
+Amended 2026-10-14, §16.87 L66: "no reader registers" was the wrong test: the Python report matches every case and
+separator spelling of a registered folder, library or organisation, so the friction-log spelling is redacted, and
+the shell report now does the same; K4's test (b) is restored.
 
 **The Redaction legend is one placeholder kind a line** (K3, K15). The legend was one 200-word sentence and left
 out step 1's list as a source of `<folder-N>`. It is a Markdown list after the line `Shell fallback redaction, one
@@ -18252,6 +18255,30 @@ test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`,
 `test_install_oneshot.py::test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket` (both
 wordings), `test_setup_report.py::test_first_sync_clause_carries_the_read_again_count` (the new words added, the old
 kept as an older install.out).
+
+**The shell report matches a folder or organisation in every spelling** (L66; amends §16.81 K4). The shell matched
+a folder or organisation byte for byte, so `kestrel-ridge`, `KESTREL RIDGE`, `KestrelRidge` or `contoso` printed in
+clear beside `<folder-2>`, with no `Private only:` line, where the Python report's fuzzy mode redacts them all. A
+folder pair (not a generic one, which keeps `w`) and a non-context organisation pair are flagged `f`, and
+`redact_stream` matches them as `Redactor`'s fuzzy mode: a regex of the value's words (split at separators and
+CamelCase, as `_tokens`), each ASCII letter in either case, `[ \t_\\-]*` between words, an optional `\` before
+any other ASCII sign (`printf %q`), and a match only where no ASCII letter or digit is right before or after it
+(Python's lead and trail), so `Ops` leaves `stops` and `drops` whole. Flag `j` for a value of two or more words
+that run together spell a report word (`Ho Me`): a separator of one or more, or a CamelCase boundary with the case
+as written there (`HoMe`), never `home`, `HOME` or `Home`, as the joined mode. f and j values sort by their length
+without separators (`_norm`). A precheck on the lower-cased line (the first word) keeps the regexes off lines
+that cannot match. Context organisations (`Link`) keep their entry-name and domain pairs. The private-only check
+skips a j value. An organisation's other spelling (`GoogleDrive-CONTOSO` beside `Box-Contoso`, or an accented or
+otherwise separated one) takes the number it has (R44's test now expects `<org-1>` for it), as `_norm` keys it in
+Python, and keeps a pair of its own, which the first one's pattern may not match. The test that holds agentsync's
+own names (`covered`) reads a fuzzy pair by its pattern, as Python's longer values; a byte outside ASCII before a
+capital splits a word (`CaféPlans`), as `_tokens` does. The NFC, NFD and accentless forms
+stay pairs of their own (`add_forms`), each flagged. Tests:
+`test_the_shell_report_redacts_every_spelling_of_a_folder_or_organisation` (equal to `Redactor.redact` on the same
+state, K4's test (b) restored), `test_the_shell_reports_fuzzy_match_keeps_words_whole` (`Ops`, `Ho Me`),
+`test_a_context_organisation_keeps_the_prose_word`, `test_the_shell_report_gives_a_repeated_organisation_one_number`,
+`test_another_spelling_of_an_organisation_shares_its_number_and_is_redacted`,
+`test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held_names`.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 

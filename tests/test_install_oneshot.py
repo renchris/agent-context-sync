@@ -1510,8 +1510,8 @@ def test_the_shell_report_redacts_any_providers_team_and_account(env: dict[str, 
 
 def test_the_shell_report_gives_a_repeated_organisation_one_number(env: dict[str, str]) -> None:
     """An organisation in two CloudStorage folders (a OneDrive and its SharePoint libraries, or two apps) took
-    two numbers, so every later one was numbered past a gap. It takes one; another spelling of it (the
-    matcher is case-sensitive) keeps its own pair (B13 round 2 R44)."""
+    two numbers, so every later one was numbered past a gap. It takes one (B13 round 2 R44); so, since the
+    shell's match is the Python report's fuzzy one, does another spelling of it (B13 round 10 L66)."""
     cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
     for name in ("Box-Contoso", "Dropbox-Contoso", "Dropbox-Wingtip Partners", "GoogleDrive-CONTOSO"):
         (cloud / name).mkdir(parents=True)
@@ -1521,8 +1521,8 @@ def test_the_shell_report_gives_a_repeated_organisation_one_number(env: dict[str
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
     text = report_path(env).read_text()
-    assert "F1 | step 1 | clean | 1 | <org-1>, <org-2> and <org-3> | -" in text, text
-    assert "<org-4>" not in text
+    assert "F1 | step 1 | clean | 1 | <org-1>, <org-2> and <org-1> | -" in text, text
+    assert "<org-3>" not in text
 
 
 def test_usage_error_after_parsing_still_writes_the_report(env: dict[str, str], tmp_path: Path) -> None:
@@ -7356,6 +7356,120 @@ def test_the_two_reports_number_each_proxy_value_alike(
         assert kept in python and kept not in shell, ("the shell keeps it redacted", kept)
     shared = max(int(n[7:-1]) for n in numbers(python))
     assert min(int(n[7:-1]) for n in numbers(shell)[-2:]) > shared, "numbered after every shared value"
+
+
+def _fuzzy_report(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, folders: list[str], said: str, org: str = "Contoso"
+) -> tuple[str, str]:
+    """The friction line ``said`` as the shell report and the Python report redact it, with ``folders``
+    configured under OneDrive-<org> (B13 round 10 L66)."""
+    lib = _cloud(env) / f"OneDrive-{org}"
+    tables = []
+    for n, name in enumerate(folders):
+        (lib / name).mkdir(parents=True)
+        tables.append(local_source_table(f"s{n}", lib / name))
+    cfg = _write_config(env, *tables)
+    line = f"2026-10-10T00:00:01Z | step 1 | deviation | saw {said} | -"
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{line}\n")
+    assert install_sh(env, "--report-only").returncode == 0
+    [shell] = [ln for ln in report_path(env).read_text().splitlines() if " | step 1 | deviation | saw " in ln]
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    return shell.split(" | saw ", 1)[1].removesuffix(" | -"), red.redact(line).split(" | saw ", 1)[
+        1
+    ].removesuffix(" | -")
+
+
+def test_the_shell_report_redacts_every_spelling_of_a_folder_or_organisation(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 10 L66: the shell matched a folder or organisation byte for byte, so "kestrel-ridge",
+    "KESTREL RIDGE" or "contoso" printed in clear beside "<folder-2>", with no Private only line, where the
+    Python report's fuzzy mode redacts every case and separator spelling, joined ones too. It matches them as
+    that mode does, with the same numbers (and K4's test (b): a spelling only the friction log holds)."""
+    spellings = (
+        "Kestrel Ridge, kestrel-ridge, kestrel ridge, KESTREL RIDGE, Kestrel_Ridge, KestrelRidge, "
+        "kestrelridge; "
+        "quillon works, QUILLON WORKS, Quillon_Works, quillon-works; Contoso, contoso, CONTOSO; q3-plans"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Quillon Works", "Kestrel Ridge", "Q3 Plans"], spellings)
+    assert shell == python, (shell, python)
+    assert shell == (
+        "<folder-2>, <folder-2>, <folder-2>, <folder-2>, <folder-2>, <folder-2>, <folder-2>; <folder-1>, "
+        "<folder-1>, <folder-1>, <folder-1>; <org-1>, <org-1>, <org-1>; <folder-3>"
+    ), shell
+
+
+@pytest.mark.parametrize(
+    ("folder", "said", "want"),
+    [
+        # a short name matches as a word only, as Python's lead and trail: never inside "stops" or "drops"
+        (
+            "Ops",
+            "the job stops and drops; OPS ran; ops ran",
+            "the job stops and drops; <folder-1> ran; <folder-1> ran",
+        ),
+        # a name whose words run together spell a report word: with a separator or a CamelCase boundary only
+        (
+            "Ho Me",
+            "home, HOME, Home, ho-me, Ho Me, HoMe",
+            "home, HOME, Home, <folder-1>, <folder-1>, <folder-1>",
+        ),
+    ],
+)
+def test_the_shell_reports_fuzzy_match_keeps_words_whole(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, folder: str, said: str, want: str
+) -> None:
+    """B13 round 10 L66: the fuzzy match is bounded as the Python report's is, so a case-folded pair does not
+    garble the report's words (from which the name could be read back)."""
+    shell, python = _fuzzy_report(env, monkeypatch, [folder], said)
+    assert shell == want and python == want, (shell, python)
+
+
+@pytest.mark.parametrize(
+    ("folders", "said"),
+    [
+        (["CaféPlans"], "Café Plans and café-plans"),  # a CamelCase split after a letter outside ASCII
+        (["agent-context Fabrikam"], "~/agent-context fabrikam/x and agentsync"),  # longer than the held name
+    ],
+)
+def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held_names(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, folders: list[str], said: str
+) -> None:
+    """Review of B13 round 10 L66: the CamelCase split read only an ASCII letter before a capital, and the
+    test that holds agentsync's own names whole compared a fuzzy pair byte for byte, so "café-plans" and
+    "fabrikam" printed in clear where the Python report redacts them."""
+    shell, python = _fuzzy_report(env, monkeypatch, folders, said)
+    assert shell == python and "<folder-1>" in shell and "fabrikam" not in shell.lower(), (shell, python)
+
+
+def test_another_spelling_of_an_organisation_shares_its_number_and_is_redacted(env: dict[str, str]) -> None:
+    """Review of B13 round 10 L66: an organisation spelled with an accent or other separators in a second
+    CloudStorage folder took the first one's number and no pair, and the first one's pattern does not match
+    it, so it printed in clear. Each spelling keeps a pair, under the one number."""
+    cloud = Path(env["HOME"]) / "Library" / "CloudStorage"
+    for name in ("Box-Societe", "OneDrive-Soci\u00e9t\u00e9", "Dropbox-Contoso", "GoogleDrive-Con-Toso"):
+        (cloud / name).mkdir(parents=True)
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Prompt: v4\nF1 | step 1 | clean | 1 | OneDrive-Soci\u00e9t\u00e9, Societe, Con-Toso, Contoso | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "| OneDrive-<org-1>, <org-1>, <org-2>, <org-2> |" in text, text
+    assert "<org-3>" not in text
+
+
+def test_a_context_organisation_keeps_the_prose_word(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 10 L66: an organisation that is a word the report prints ("Link") keeps its context pairs
+    (B13 round 6 G46): no fuzzy match, so the word "link" in prose stays."""
+    shell, _python = _fuzzy_report(
+        env, monkeypatch, ["Plans"], "the link to OneDrive-Link and LINK", org="Link"
+    )
+    assert shell.startswith("the link to OneDrive-<org-1>"), shell
 
 
 def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[str, str]) -> None:
