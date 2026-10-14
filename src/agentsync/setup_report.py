@@ -700,7 +700,9 @@ _CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited fo
     r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?|(waited-for-the-lock)"
 )
 _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its clauses
-    r"\bconverted (?P<c>\d+), deferred (?P<d>\d+) online-only\b(?:, read again (?P<r>\d+)\b)?(?P<tail>.*)"
+    r"\bconverted (?P<c>\d+), deferred (?P<d>\d+) online-only\b"
+    # R after "read again", or after "first read" when all R were first reads (B13 round 10 L34)
+    r"(?:, read again (?P<r>\d+)\b|, first read (?P<r1>\d+)\b)?(?P<tail>.*)"
 )
 # The clauses in that rest, read apart so their order and brackets do not matter: Q28's first reads and the
 # unreadable/failed split, "(F of them read for the first time, also counted above); of the converted: U
@@ -3575,7 +3577,7 @@ def _installer_output(r: _Run) -> list[str]:
         last, r.facts.first_sync_run = synced[-1]
         if not heads:  # no header at all: an install.sh too old to write one, not a tail inside a run
             r.facts.first_sync_run = ""
-        converted, again = int(last.group("c")), int(last.group("r") or 0)
+        converted, again = int(last.group("c")), int(last.group("r") or last.group("r1") or 0)
         r.facts.first_sync = (converted, int(last.group("d")), again)
         split = _SPLIT_RE.search(last.group("tail"))
         if split is not None:
@@ -3588,7 +3590,9 @@ def _installer_output(r: _Run) -> list[str]:
         if withheld is not None:
             r.facts.first_sync_withheld_unread = (converted, int(withheld.group(1)))
         read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
-        if read_first is not None:
+        if last.group("r1") is not None:  # the head says every one was a first read (B13 round 10 L34)
+            r.facts.first_sync_first_read = (converted, again, again)
+        elif read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
     shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
     # An attempt that ran no install.sh (a stopped copy) saw none of these lines: say whose they are, as the
@@ -6945,10 +6949,16 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         # trailing bracket, as on every other line (round 6 G34), and the CLI's line reads so too (F34)
         named: list[str] = []
         first = r.facts.first_sync_first_read
-        if first is not None and first[:2] == (converted, again) and first[2]:
-            # the CLI's words since B13 round 9 K34, without its bracket
+        if again and first is not None and first[:2] == (converted, again) and first[2] == again:
+            # every one a first read: no "read again" (the CLI's head since B13 round 10 L34), no bracket
+            reread = (
+                f", first read {again}: stubs whose bytes had never been read, also in the converted count"
+            )
+            named.append("the first-read count")
+        elif first is not None and first[:2] == (converted, again) and first[2]:
+            # the CLI's words since B13 round 9 K34, without its bracket (no comma before "of": round 10 L34)
             reread += (
-                f": {first[2]} of them a first read, of a stub whose bytes had never been read, also in the "
+                f": {first[2]} of them a first read of a stub whose bytes had never been read, also in the "
                 "converted count"
             )
             named.append("the first-read count")

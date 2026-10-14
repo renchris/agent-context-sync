@@ -6020,6 +6020,22 @@ def test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket(
     assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2") in steps(install_log(env))
 
 
+def test_first_sync_note_reads_the_count_after_the_first_read_head(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 10 L34: when every file read again was a first read, the sync's head is ``, first read R``,
+    with no "read again"; the note's awk adds the number after "first read" too, so it still logs
+    ``-reread-R`` and the setup report reads the same note."""
+    line = (
+        "converted 3, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, now in "
+        "the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
+    )
+    cp = install_sh({**env, "STUB_SYNC_OUT": line}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert f"first sync: {line}" in cp.stdout.splitlines()
+    assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2") in steps(install_log(env))
+
+
 # ---- the on-device OCR helper is built in the helpers step -------------------------------------------------
 
 STUB_TOOL_PYTHON = """#!/bin/bash

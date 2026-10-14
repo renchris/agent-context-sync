@@ -3084,31 +3084,54 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them a first read: a stub "
             "whose bytes had never been read, now in the count above); of the converted: 1 unreadable, 0 "
             "failed",
-            "converted 2, deferred 0 online-only, read again 2: 2 of them a first read, of a stub whose "
-            "bytes had never been read, also in the converted count; of the converted: 1 unreadable, 0 "
-            "failed (install.log; the first-read count and the unreadable/failed split: install.out)",
+            # B13 round 10 L34: every file read again was a first read, so the head says "first read"
+            "converted 2, deferred 0 online-only, first read 2: stubs whose bytes had never been read, also "
+            "in the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read "
+            "count and the unreadable/failed split: install.out)",
         ),
         (  # an older agentsync's two brackets in a row: the same two clauses
             "note=converted-2-deferred-0-reread-2",
             "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
             "time, also counted above) (of the converted: 1 unreadable, 0 failed)",
-            "read again 2: 2 of them a first read, of a stub whose bytes had never been read, also in the "
-            "converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read count "
-            "and the unreadable/failed split: install.out)",
+            "first read 2: stubs whose bytes had never been read, also in the converted count; of the "
+            "converted: 1 unreadable, 0 failed (install.log; the first-read count and the unreadable/failed "
+            "split: install.out)",
         ),
         (  # the first read alone; nothing else changes
             "",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them a first read: a stub "
             "whose bytes had never been read, now in the count above)",
-            "converted 1, deferred 0 online-only, read again 1: 1 of them a first read, of a stub whose "
-            "bytes had never been read, also in the converted count (install.out)",
+            "converted 1, deferred 0 online-only, first read 1: stubs whose bytes had never been read, also "
+            "in the converted count (install.out)",
+        ),
+        (  # B13 round 10 L34: the CLI's own first-read head, from install.out and with install.log's note
+            "",
+            "first sync: converted 2, deferred 0 online-only, first read 2 (stubs whose bytes had never been "
+            "read, now in the count above); of the converted: 1 unreadable, 0 failed, 0 refused",
+            "converted 2, deferred 0 online-only, first read 2: stubs whose bytes had never been read, also "
+            "in the converted count; of the converted: 1 unreadable, 0 failed (install.out)",
+        ),
+        (
+            "note=converted-2-deferred-0-reread-2",
+            "first sync: converted 2, deferred 0 online-only, first read 2 (stubs whose bytes had never been "
+            "read, now in the count above)",
+            "converted 2, deferred 0 online-only, first read 2: stubs whose bytes had never been read, also "
+            "in the converted count (install.log; the first-read count: install.out)",
+        ),
+        (  # some read again, some a first read: "read again" holds, and no comma before "of a stub"
+            "note=converted-2-deferred-0-reread-3",
+            "first sync: converted 2, deferred 0 online-only, read again 3 (1 of them a first read: a stub "
+            "whose bytes had never been read, now in the count above)",
+            "converted 2, deferred 0 online-only, read again 3: 1 of them a first read of a stub whose bytes "
+            "had never been read, also in the converted count (install.log; the first-read count: "
+            "install.out)",
         ),
         (  # B13 round 9 K34: an older agentsync's words in install.out still give the first-read count
             "",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
             "time, also counted above)",
-            "converted 1, deferred 0 online-only, read again 1: 1 of them a first read, of a stub whose "
-            "bytes had never been read, also in the converted count (install.out)",
+            "converted 1, deferred 0 online-only, first read 1: stubs whose bytes had never been read, also "
+            "in the converted count (install.out)",
         ),
         (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept; the tag
             # names refused once its count is printed (round 7 H46)
@@ -3184,6 +3207,14 @@ def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -
     match = setup_report._CONVERTED_LINE_RE.search("converted 1, deferred 0 online-only, read again 4")
     assert match is not None and match.group("c", "d", "r", "tail") == ("1", "0", "4", "")
     assert setup_report._SPLIT_RE.search(match.group("tail")) is None
+    # B13 round 10 L34: R after "first read" when every file read again was a first read
+    match = setup_report._CONVERTED_LINE_RE.search(
+        "converted 3, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, now in "
+        "the count above); of the converted: 1 unreadable, 0 failed"
+    )
+    assert match is not None and match.group("c", "d", "r", "r1") == ("3", "0", None, "2")
+    split = setup_report._SPLIT_RE.search(match.group("tail"))
+    assert split is not None and split.groups() == ("1", "0", None)
 
 
 @pytest.mark.usefixtures("clean_doctor")

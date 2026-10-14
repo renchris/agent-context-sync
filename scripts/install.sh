@@ -157,7 +157,7 @@
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
 #      no online-only file is downloaded here and this step's time does not grow with the folders' size; each
 #      later sync downloads and converts the online-only files it deferred, within its per-run budget. Its
-#      output is shown as its "converted N, deferred M online-only[, read again R]" line(s), each prefixed
+#      output is shown as its "converted N, deferred M online-only[, read again R | , first read R]" line(s), each prefixed
 #      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0 and
 #      -waited-for-the-lock when another sync held the config's lock as it started), else as all it printed. The flag is passed unconditionally: sync --help hides it, and the agentsync
 #      installed here always has it. When another sync holds the config's lock as it starts, a line before
@@ -3889,7 +3889,7 @@ show_first_sync() { # RC
 		printf '%s\n' "$summary" | sed "s/^[[:space:]]*/$SYNC_LABEL: /"
 		[ -n "$FIRST_SYNC_NOTE" ] || FIRST_SYNC_NOTE="$(printf '%s\n' "$summary" | awk '
 			{ for (i = 1; i < NF; i++) { if ($i == "converted") c += $(i + 1); if ($i == "deferred") d += $(i + 1)
-				if ($i == "again" && $(i - 1) == "read") r += $(i + 1) } }
+				if (($i == "again" && $(i - 1) == "read") || ($i == "read" && $(i - 1) == "first")) r += $(i + 1) } }
 			END { printf "converted-%d-deferred-%d", c, d; if (r > 0) printf "-reread-%d", r }')"
 	else
 		cat "$SYNC_OUT" 2>/dev/null || true

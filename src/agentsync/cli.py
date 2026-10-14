@@ -420,7 +420,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     the same bytes is never in N; a no-converter stub's re-read is the first read of its bytes, so it is in N
     as well, and `` (F of them a first read: a stub whose bytes had never been read, now in the count above)``
     says how many: B13 round 4 Q28; round 9 K34 reworded it, since "read for the first time", said of files
-    read again, said both things of the same files), then `` (of the converted: U unreadable, F failed, R
+    read again, said both things of the same files; when all R are first reads the head says so instead,
+    ``, first read R (stubs whose bytes had never been read, now in the count above)``, since "read again" was
+    false of every one: round 10 L34), then `` (of the converted: U unreadable, F failed, R
     refused)`` when some of the N are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files
     refused after their bytes were read (R: a label rule, a .msg whose label cannot be read; B13 round 6 G35,
     which also prints the split for F or R alone; an inbox duplicate is quarantined, never in R: round 7 H49),
@@ -487,7 +489,16 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""
-    if report.read_again and report.read_first:  # no bare "converted" token: install.sh's awk adds after one
+    if report.read_again and report.read_first == report.read_again:
+        # all of them first reads: no "again" at all, and R right after "first read", which install.sh's awk
+        # and setup_report read as they read "read again R" (B13 round 10 L34)
+        again = (
+            f", first read {report.read_again} (stubs whose bytes had never been read, now in the count "
+            "above)"
+        )
+    elif (
+        report.read_again and report.read_first
+    ):  # no bare "converted" token: install.sh's awk adds after one
         # and no bare "again": R stays right after "read again" (B13 round 9 K34; setup_report reads both)
         again += (
             f" ({report.read_first} of them a first read: a stub whose bytes had never been read, now in the "

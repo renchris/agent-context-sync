@@ -321,13 +321,23 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     # B13 round 5 F34: with the split as well, one parenthesis per subject: "; of the converted" follows
     # the Q28 clause, never a second parenthesis beside it; no other field is a bare "converted".
     unread = SourceReport("work", SourceKind.LOCAL, PassKind.FULL, True, converted=3, unreadable=1)
-    cli._print_report(dataclasses.replace(report, sources=(unread,), read_first=2))
+    cli._print_report(dataclasses.replace(report, sources=(unread,), read_first=1))
     line = capsys.readouterr().out.splitlines()[-1]
     assert line == (
-        "converted 3, deferred 0 online-only, read again 2 (2 of them a first read: a stub whose bytes had "
+        "converted 3, deferred 0 online-only, read again 2 (1 of them a first read: a stub whose bytes had "
         "never been read, now in the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
     )
     assert ") (" not in line and line.split().count("converted") == 1
+    # B13 round 10 L34: when every one was a first read, "read again 2 (2 of them a first read ...)" said
+    # both things of the same files: the head says "first read" instead, R right after it, and the split
+    # still follows with "; "
+    cli._print_report(dataclasses.replace(report, sources=(unread,), read_first=2))
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line == (
+        "converted 3, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, now in "
+        "the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
+    )
+    assert "again" not in line and ") (" not in line and line.split().count("converted") == 1
     cli._print_report(dataclasses.replace(report, sources=(unread,), read_again=0))
     assert capsys.readouterr().out.splitlines()[-1] == (
         "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed, 0 refused)"
