@@ -269,13 +269,17 @@ install.log (a `--list-folders` run is not an install run):
   form's Outcome records it as `Failed at step 1 (preflight)`. An end line, an error, a `start` line, a line of a
   later step or an untyped line keeps the attempt failed (at step 1 or the step logged); an install run gives the
   outcome of the bullets above. One exception (since round 8, J9): an attempt whose step 1 error is install.sh's
-  `--log-start` stop is stopped, not failed, though it holds that error and its end line, when the next attempt
+  `--log-start` stop of a copy newer than the installer (`this checkout is older than the prompt`) is stopped, not failed, though it holds that error and its end line, when the next attempt
   names the stopping installer's own version (not the report's build), names the same agent, and starts within
   120 s of the stop. That is the agent changing the value back and running step 1's command again, as the stop
   message tells it to. It reads `stopped at step 1 (rerun: --log-start said v61; the next attempt, 18s later, said
   v18)` (versions and seconds only), in the Summary's `earlier:` clause and the friction section's attempt lines.
   Such an attempt is never the latest one, so the Summary's outcome line, the title and the form's Outcome never
-  show it. A copy fetched again from the README and pasted into a new session stays `failed at step 1`.
+  show it. A copy fetched again from the README and pasted into a new session stays `failed at step 1`. Since
+  2026-10-14 (round 9, K11) the stop of an older copy (`the pasted copy is not the current one`) is never read as a
+  rerun, since a person can paste a fresh copy inside the 120 s (a rehearsal did in 23 s): it stays failed and, inside
+  the window, reads `failed at step 1 (a changed --log-start value, or a fresh copy: the next attempt, 23s later,
+  said v18)`.
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
 attempt's outcome. One kind of late line is another session: a step 1 `error` dated more than 10 minutes after

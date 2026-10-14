@@ -3715,9 +3715,15 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
         "(exit 2) | -\n"
         "2026-10-13T10:00:00Z | end | finished\nAttempt: 2026-10-13T10:00:18Z\nPrompt: v18\nAgent: Tool-A\n"
     )
-    note = setup_report._rerun_note(parse_friction(stop), 0)
-    assert note is not None
-    assert f"`{Outcome('stopped', 1, (), 61, note).text}`" in stopped_rule
+    rerun = setup_report._rerun_note(parse_friction(stop), 0)
+    assert rerun is not None and rerun[0] == "stopped"
+    assert f"`{Outcome('stopped', 1, (), 61, rerun[1]).text}`" in stopped_rule
+    # B13 round 9 K11: an older copy's stop stays failed, with a note naming both readings
+    older = stop.replace("Prompt: v61", "Prompt: v17").replace("prompt is v61", "prompt is v17")
+    older = older.replace("this checkout is older than the prompt", "the pasted copy is not the current one")
+    failed = setup_report._rerun_note(parse_friction(older), 0)
+    assert failed is not None and failed[0] == "failed"
+    assert f"`{Outcome('failed', 1, (), 17, failed[1]).text}`".replace("18s", "23s") in " ".join(page.split())
     window = int(setup_report._RERUN_WINDOW.total_seconds())
     assert f"starts within {window} s of the stop" in stopped_rule
     assert (
@@ -4282,7 +4288,7 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
         r'"(Private only: the listing of ~/Library/CloudStorage for redaction did not finish) and "', source
     )
     assert line is not None and "red.listing_unread = not listing_ok and not has_list" in source
-    assert "for provider, depth, name in [*listed, *printed]:" in source  # after the listing, before the rest
+    assert "_add_listed(red, [*listed, *printed])" in source  # after the listing, before the rest
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     assert installer.index("printed into install.out") > installer.index('"$SETUP_LOG" 2>/dev/null |')
     page = _page("docs/deploy/setup-feedback.md")

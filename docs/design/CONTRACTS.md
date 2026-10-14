@@ -16281,8 +16281,6 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   `test_list_folders_marks_nothing_when_the_config_cannot_be_read`.
   Amended 2026-10-14, §16.75 J27: `the installed agentsync is older than this installer: it has no <name>`; the
   report's note says `...older than the installer: it had no <name>` and `...could not load it: a <class>`.
-  Amended 2026-10-14, §16.80 K23: the report's words read `...older than the installer and had no <name>` and
-  `...could not load it and raised <class>`; install.sh's warning is unchanged.
 - **The shell report that may be sent says how** (H4). Its Redaction part ended on the legend and the report on a
   bare link: no private route, no "Nothing is sent automatically", and no word that the form opens empty. After
   the legend's paragraph `fallback_redaction` now writes one unwrapped line, `Send it: the link on the last line
@@ -16795,6 +16793,8 @@ unmarked. It returns `root.joinpath(target.name, ...)`. Test:
 older than this installer: it has no <name>)`, and the report's note `...older than the installer: it had no <name>`
 and `...could not load it: a <class>`. Tests: `test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader`,
 `tests/test_setup_report.py::test_the_summary_says_why_a_folder_list_could_not_read_the_config`.
+Amended 2026-10-14, §16.80 K23: the report's words read `...older than the installer and had no <name>` and
+`...could not load it and raised <class>`; install.sh's warning is unchanged.
 
 **Step 1's NEXT over an unread config** (J17; dated line at §16.29). The folder question stays, and whichever NEXT
 is chosen (it, or the two exit-3 sign-in ones) adds `; this Mac has a config (<config>) whose folders could not be
