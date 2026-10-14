@@ -3454,6 +3454,7 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     G23's `stopped at step 1 (<note>)` outcome was missing from the computed outcomes, whose `Failed at step
     N` fallback and agent-friction sentence called such an attempt failed, and the `title` row said the title
     holds the outcome, while since G12 it names the step as the attempt's own prompt does."""
+    from agentsync import setup_report  # noqa: PLC0415
     from agentsync.setup_report import Outcome, compute_outcome, parse_friction  # noqa: PLC0415
 
     page = _page("docs/deploy/setup-feedback.md")
@@ -3468,7 +3469,23 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     assert "failing that the last step logged (unless the attempt only stopped at step 1, below)" in page
     assert "the form has no stopped option, so it records a stopped attempt as step 1's failure" in page
     assert "and they do not change the outcome. They" not in page
-    assert "except that an attempt whose only lines are step 1 deviations reads 'stopped'" in page
+    # B13 round 8 J58: since round 7 H40 a step 1 question, click, approval or prompt line beside a deviation
+    # also reads stopped (`_WAIT_OK_KINDS`); the guide said every line must be a deviation
+    assert "every line the attempt logged is a step 1 `deviation`" not in page
+    assert "except that an attempt whose only lines are step 1 deviations reads 'stopped'" not in page
+    assert (
+        "except that an attempt that only stopped at step 1 (above) reads 'stopped' rather than 'failed'"
+        in page
+    )
+    body = "2026-10-13T10:01:00Z | step 1 | approval | ran the folder list | -\n"
+    body += "2026-10-13T10:01:00Z | step 1 | deviation | stopped to wait for the folder answer | -\n"
+    [attempt] = parse_friction(head + body).attempts
+    mixed = compute_outcome(attempt, ())
+    assert mixed.kind == "stopped" and mixed.text == "stopped at step 1 (waiting for the folder answer)"
+    assert f"(`{mixed.why[0].split('; ', 1)[1]}`)" in page
+    stopped_rule = page[page.index("**Stopped at step 1**") : page.index("A line logged after an attempt's")]
+    for kind in setup_report._WAIT_OK_KINDS:
+        assert f"`{kind}`" in stopped_rule, kind
     assert '"Setup report: " and the outcome, run type and prompt version)' not in page
     failed = Outcome("failed", 2, (), 15)
     assert failed.title_label != failed.form_label
@@ -3481,6 +3498,8 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     )
     contracts = _contracts_section("### 16.64 ", "### 16.65 ")
     assert '**Amended 2026-10-13, §16.73 H67:** "a v7 to v14 attempt" is every v7 or later' in contracts
+    h43 = " ".join(_contracts_section("### 16.73 ", "### 16.74 ").split())
+    assert "**Amended 2026-10-14, §16.79 J58:** the condition is at least one step 1 deviation" in h43
 
 
 def test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_published() -> None:

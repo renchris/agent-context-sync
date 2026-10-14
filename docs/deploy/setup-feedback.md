@@ -246,13 +246,16 @@ install.log (a `--list-folders` run is not an install run):
   written after install.sh exited 0 is agent friction. If no install run happened, N is the step of the last
   `error` line, failing that the last step logged (unless the attempt only stopped at step 1, below), and failing
   that 1 when only `--list-folders` ran.
-- **Stopped at step 1**: no install run, no `error` line and no `end | finished` line, and every line the attempt
-  logged is a step 1 `deviation`. The session stopped where step 1 says to wait for the folder answer and may still
-  be waiting, so it did not fail. The outcome reads `stopped at step 1 (waiting for the folder answer)` when a
-  deviation's words mention the folder answer or waiting, and `stopped at step 1 (a deviation, no install run and
-  no error)` otherwise. It shows so in the Summary's outcome line, in its `earlier:` clause and in the friction
-  section's attempt lines. The form's Outcome records it as `Failed at step 1 (preflight)`. An end line, an error
-  or any other logged line keeps the attempt failed (at step 1 or the step logged); an install run gives the
+- **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
+  `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
+  line (since round 7: step 1 may log an approval or a go-ahead before it stops). The session stopped where step 1
+  says to wait for the folder answer and may still be waiting, so it did not fail. The outcome reads `stopped at
+  step 1 (waiting for the folder answer)` when a deviation's words mention the folder answer or waiting (the
+  deviations' words only), and `stopped at step 1 (a deviation, no install run and no error)` otherwise; the
+  Summary's reason names the other lines (`step 1 logged a deviation (F5), 1 approval and nothing else`). It shows
+  so in the Summary's outcome line, in its `earlier:` clause and in the friction section's attempt lines. The
+  form's Outcome records it as `Failed at step 1 (preflight)`. An end line, an error, a `start` line, a line of a
+  later step or an untyped line keeps the attempt failed (at step 1 or the step logged); an install run gives the
   outcome of the bullets above.
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
@@ -282,7 +285,7 @@ not in it, and the person who ran it says which stop it was.
 
 `deviation` and `prompt` lines, and `error` lines that did not stop the run, are agent friction: the Summary counts
 them on their own "agent friction" line with their F-ids, and they do not change the outcome, except that an
-attempt whose only lines are step 1 deviations reads 'stopped' rather than 'failed' (above). They are still
+attempt that only stopped at step 1 (above) reads 'stopped' rather than 'failed'. They are still
 triaged like every other line (below).
 - **Failed at step 4 (finish)** is never computed. Only the person sees whether the closing lines came, so
   they pick it by hand. With no friction log and no install.sh run, the outcome is "unknown", and the person picks

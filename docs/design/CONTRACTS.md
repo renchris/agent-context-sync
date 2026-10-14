@@ -16388,6 +16388,9 @@ step as the attempt's own prompt does, while the `outcome` field takes the form'
 words for step 3; v7's step 2 `install` and a v5 step still map to the option for the same work), and since §16.69
 H42 a stopped attempt's title reads `Stopped at step 1 (preflight)`. Test:
 `test_setup_feedback_states_the_report_rules_of_round_6`.
+**Amended 2026-10-14, §16.79 J58:** the condition is at least one step 1 deviation, and otherwise only step 1
+`question`, `click`, `approval` or `prompt` lines (§16.69 H40, `setup_report._WAIT_OK_KINDS`), not "every line a
+step 1 deviation"; the guide's bullet and agent-friction sentence say so.
 
 **A label-escalation entry stays queued while its file is published, in both guides** (H58, H63). Since §16.62
 G30, `governance.KEPT_REASONS` holds `label-escalation` as well as `upstream-deleted`: a run of the queue skips such
@@ -16563,3 +16566,12 @@ has. The friction log holds no run type, and the shell report computes none and 
 (`fallback_issue_link` fills Outcome, Prompt version and, when named, Agent). The sentence now names those three
 and their source, says Run type is the person's by section 4's rule and Loop stage stays empty; the comment quotes
 the five. Test: `test_the_send_step_counts_the_values_the_link_fills`.
+
+**A step 1 stop may log approvals, questions, clicks and prompt lines beside its deviation** (J58; dated line at
+§16.73 H43). Since §16.69 H40 `compute_outcome` reads an attempt as stopped at step 1 when it has at least one step 1
+deviation and every other line is a step 1 line of a kind in `_WAIT_OK_KINDS`; the guide's bullet, its agent-friction
+sentence, §16.73's H43 paragraph and `compute_outcome`'s docstring still said every line must be a deviation. They
+now give that condition, the lines that keep the attempt failed (an error, a `start` or end line, a later step's line,
+an untyped line), that the folder-answer note reads the deviations' words only, and the Summary's reason for a
+deviation and an approval, built by `compute_outcome` in the test:
+`test_setup_feedback_states_the_report_rules_of_round_6`.

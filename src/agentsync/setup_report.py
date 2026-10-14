@@ -1820,9 +1820,10 @@ def compute_outcome(
     - failed at step <n>: at the installer's step (3) when the last install run did not end rc 0; at the
       stopping error's step when install.sh ended rc 0; with no install run, at the step of the last error
       with no later end of that step (then the last error, then the last step logged);
-    - stopped at step 1: no install run, no error and no end line, and every event is a step 1 deviation:
-      the session stopped where the prompt says to wait for the folder answer (B13 round 6 G23); the form's
-      option for it is step 1's failure, as it has no "stopped".
+    - stopped at step 1: no install run, no error and no end line, at least one step 1 deviation, and every
+      other event a step 1 event of a kind in :data:`_WAIT_OK_KINDS` (B13 round 7 H40): the session stopped
+      where the prompt says to wait for the folder answer (B13 round 6 G23); the form's option for it is step
+      1's failure, as it has no "stopped".
 
     Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
     never change the outcome by themselves, except an error that stopped the run."""
