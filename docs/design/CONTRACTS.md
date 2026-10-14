@@ -16961,6 +16961,10 @@ holds a `WAITING ON YOU:` line, so it never points at a wait that is not there (
 cannot be read, or a carried alarm that outlived its wait). The terminal, `status`, install.sh and the setup report
 keep the STATE.md pointer. Tests: `tests/test_loop.py` (`test_state_md_points_its_waits_at_its_own_sections`,
 `test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`).
+Amended 2026-10-14, §16.84 K38, K42: the legend now reads `(In this file the WAITING ON YOU lines are here, under ##
+Next, and each source's alarm lines are under its own ## <id> section below. When an alarm says the WAITING ON YOU
+line at the end of a sync's output says what to do, that is the line here, under ## Next.)`, and it is written only
+when the block holds a wait and an alarm STATE.md holds, this run's or a carried one, says that phrase.
 
 **J29: the sync line names the label rule for a file it withheld unread (`agentsync.cycle`, `agentsync.publish`,
 `agentsync.model`, `agentsync.cli`).** H32's one clause, `Q refused without a read (no converter for the type, or
@@ -17003,6 +17007,9 @@ stays, and a value it cannot read is deleted. Test:
 **J50: a purge removes a CHANGELOG line written before H37 (`agentsync.governance`).** Dated line at §16.68 H37.
 Tests: `test_review_fixes.py::test_a_purge_removes_a_changelog_line_written_before_backticks_were_kept`,
 `test_review_fixes.py::test_a_purge_keeps_the_lines_of_a_live_file_named_like_the_old_quoted_form`.
+Amended 2026-10-14, §16.84 K79: kept not built, next to R123: an old-form line shared by a purged backtick path and
+a live path with the same old form cannot be told apart, so it is scrubbed (fail-closed); the live item loses only
+its pre-H37 CHANGELOG line.
 
 **J47, J53: the stub re-render keeps the wording its page has (`agentsync.cycle`, `agentsync.publish`).** The
 re-render once per `STUB_RENDER` planned an image stub a label rule may withhold with that run's OCR state, so a run
@@ -17347,7 +17354,68 @@ is unchanged. Test: `test_ops_doctor.py::test_heartbeat_incomplete_follows_the_l
 
 ### 16.84 Round 9: stubs, front matter and purge (2026-10-14, wave B13 round 9 lane E)
 
-Reserved for round 9 lane E of B13.
+Lane E's round 9 items: K38, K42, K50, K51, K52, K63, K74 built; K79 kept not built, with a test that pins it. K38
+and K42 are one change.
+
+**K38, K42: STATE.md's wait legend names the alarm's words, and only beside such an alarm (`agentsync.publish`,
+`agentsync.model`, `agentsync.arm_local`).** Dated line at §16.77 J33. The legend's `where an alarm puts that line
+... it is here` had no clear antecedent; it now quotes the alarm's phrase and says that line is the one under `##
+Next`, keeping `## <id> section below`. It was written beside any wait, so a baseline draft wait with no alarm in
+the file still explained alarm lines; it is written now only when an alarm STATE.md holds, this run's or a carried
+one, says its wait is `at the end of a sync's output`. That phrase is one constant, `model.SYNC_OUTPUT_END`, which
+the empty-cloud-folder alarm and the check share. Tests:
+`test_loop.py::test_state_md_points_its_waits_at_its_own_sections`,
+`test_loop.py::test_state_md_writes_its_wait_legend_only_when_an_alarm_there_names_the_wait`.
+
+**K50: an online-only image a label rule refuses keeps its stub on a run with no engine (`agentsync.cycle`).** Such
+an image is pending work every pass, and `_stub_stands` planned its stub with this run's OCR state, so a run whose
+engine missed turned `withheld by label rule` into `no converter for .png` (page and QUARANTINE.tsv, a commit) and
+the next run with an engine turned it back. On a run that cannot read images `_stub_stands` passes `plan_pages(...,
+withheld=)` the page's own decision (`_page_withheld`, as §16.78 J47's re-render does), as §16.71 H52 says the run
+that planned the stub decides; a run with an engine still upgrades a `no converter` page once, and a later run with
+none does not revert it. Test:
+`test_cycle.py::test_an_online_only_image_a_label_rule_refuses_keeps_its_stub_whatever_this_runs_ocr`.
+
+**K51: a purge keeps another source's STATE.md line that names the same rel path (`agentsync.governance`).**
+§16.78 J48 scrubbed STATE.md with the log scrubber, which cuts a bare rel path under any heading, so purging one
+source's file also cut another source's line about its own file of that name, which J46 keeps in the carried meta.
+`_reset_worktrees` scrubs STATE.md section by section: under the `## <id>` of a configured source a line goes when
+the paired scrubber hits it or it names that source's purged file by its bare rel path (`own_line_hit`, as its
+carried lines are scrubbed); under any other heading the log scrubber decides as before. Test:
+`test_loop.py::test_a_purge_leaves_the_purged_files_name_in_neither_state_md_nor_its_carried_lines`.
+
+**K52: `_STUB_RENDER_META` keeps its own docstring (`agentsync.cycle`).** J47's `_WITHHELD_BODY` and
+`_WITHHELD_WORDS` sat between the constant and its attribute docstring; they move below it, no value changes. Test:
+`test_cycle.py::test_the_stub_render_meta_keeps_its_own_docstring`.
+
+**K63: the recording index's How to read defines `SAID vN:` and `SPEAKING:` (`agentsync.convert.recording_page`,
+README).** Both fold into the existing `SCREEN:` and `TILE:` lines, as the sample index in the grammar tests shows:
+N numbers a voice, not a person; `SPEAKING:` is the one label the meeting app lit, and with `TILE:` is on-screen
+text, not proof of who spoke. The README's tag list names `SCREEN+:` and `SCREEN-:`. The recording
+`_EMITTER_VERSION` is not bumped: it is part of every picture piece's key (`_picture_version`), so a bump would
+read every frame of a recording again on its next conversion for a legend change; a page keeps the legend it has
+until its recording is converted again. Tests:
+`test_recording_grammar.py::test_how_to_read_defines_every_tag_a_window_line_carries`,
+`test_deploy_pack.py::test_the_readme_says_what_a_recording_page_reads_of_speech_and_which_decks_get_ocr`.
+
+**K74: a DEL or C1 character in a title or a file name is written as an escape (`agentsync.frontmatter`).**
+`_render_scalar` wrote strings with `json.dumps`, which leaves DEL, U+0080-009F, U+FFFE/FFFF and lone surrogates
+raw; YAML refuses them, so one mail subject or file name holding one made a page no reader parses, and the land
+gate's repo-wide FRONTMATTER finding held every source's commit on every run. `_quote` writes each, and U+2028 and
+U+2029, as `\uXXXX`, which YAML and the `reason:` line's JSON read both decode. A page whose `source_path` or
+`part_name` holds U+0085, U+2028 or U+2029 re-renders once: those used to fold to a space on read. Tests:
+`test_frontmatter.py::test_a_character_yaml_refuses_or_folds_reads_back_as_written`,
+`test_frontmatter.py::test_a_plain_title_renders_as_it_did`,
+`test_frontmatter.py::test_a_control_character_in_a_title_or_name_holds_no_sync`.
+
+**K79: kept not built: an old-form CHANGELOG line a live file shares with a purged one (`agentsync.governance`).**
+Dated line at §16.78 J50. ``q3-`plan`-x`` and a live ``q3-'plan`-x`` write one pre-H37 form, `q3-'plan'-x`, which is
+neither's path now, so the line cannot be told apart and the purge scrubs it (R123's fail-closed rule); the live
+item loses only its pre-H37 CHANGELOG line. Sparing it whenever a live twin exists would leave the purged file's
+own old line in history, with the purge VERIFIED, when the twin never wrote one; sparing it per commit, where the
+commit's tree holds the twin and not the purged page, fails the same way, since a month's CHANGELOG carries
+earlier commits' lines forward. Test:
+`test_review_fixes.py::test_a_purge_scrubs_an_old_form_line_a_live_file_shares_and_keeps_that_files_own_lines`.
 
 ### 16.85 Round 9: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 9 lane D)
 
