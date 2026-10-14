@@ -712,6 +712,29 @@ Convergence: confirmed 127, 85, 99, 79, 77 over rounds 2 and 4 to 7; turns 3, 0,
 Lanes fire with `--account auto` (CONTRACTS §16.68 to §16.73). Lead: H79 (round 6's last worktree removed; round 5
 and 6 `/tmp` scratch goes to the operator, since deletion is refused to agents).
 
+### B13 round 7 landed (2026-10-13)
+
+All six lanes landed and none left an item not built; CI green on `a350196b` (prompt v16). Notes `lanes/r7-<lane>.md`.
+The regression fix (H7) is `77151d37`: step 1 marks synced folders again with any installed agentsync from
+2026-09-29 on, which covers the corporate Mac's `4a42af9` (2026-10-08). The operator ran the `/tmp` scratch cleanup.
+
+| Lane | Landed |
+|---|---|
+| E | `568024c8..ba661677` |
+| RB | `77151d37` (H7), `54cb9a0c`, `7cfed4d2`, `c1a24093`, `a350196b` |
+| P | `77151d37..69c873d2` (v16) |
+| RA | `69c873d2..0bc75885`, 15 commits |
+| D | `85d7e292..1d8d4c95`, 11 commits |
+| B | `3ece9aed..265a121d` |
+
+Learnings: every lane's `git push` stopped at the "ask" rule on `git push` and waited hours for the operator's Yes;
+only the first of several queued pushes lands, the rest rebase and ask again. A load spike near 1000 killed one
+lane's gate. Left in place: branch `b13/r7-rb-dev` (one commit git cannot match patch-for-patch; lane RB says its
+content landed folded into `54cb9a0c`) and a pushed backup branch `origin/b13/r7-d` (lane D's pre-rebase copy).
+
+Round 8: the round 7 workflow on `a350196b` with prompt v16 (run `wf_70c4dec6-8b1`, outputs `round8/`); scenario B
+now expects step 1 to mark the field Mac's folders synced (H7).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
