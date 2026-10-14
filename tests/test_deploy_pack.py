@@ -4115,7 +4115,7 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     # (round 9 K8), and the uncomputed case's own `- run:` line gives Run type; no case leaves it to section
     # 4's rule
     assert "computes no run type" not in shell
-    computed, bare = shell.split("Otherwise the line says no outcome is computed and the link is bare")
+    computed, bare = shell.split("Otherwise the line says no outcome is computed")
     fields = max(re.findall(r'LINK_FIELDS="([^"]+)"', installer), key=len)
     assert fields.endswith("and Agent tool and model")
     for label in re.split(r", (?:and )?", fields):
@@ -4143,7 +4143,9 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     assert "the line's bracket also says so, naming no cause" in computed
     for label in ("Outcome", "Prompt version", "Agent tool and model"):
         assert label in bare, label
-    assert "and Run type from the `- run:` line below it" in bare
+    # B13 round 10 L2: not computed, the link fills the run type and what the latest attempt states
+    assert "the link fills Run type from the `- run:` line below it" in bare
+    assert "where the friction log's latest attempt states them" in bare and "is bare" not in shell
     assert "In both cases the shell report has no `Loop:` line, and Loop stage stays empty" in bare
     j42 = " ".join(_contracts_section("**The Send step names the fields the shell report", "\n\n**").split())
     assert (

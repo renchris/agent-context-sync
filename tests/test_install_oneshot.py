@@ -859,9 +859,11 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
     assert f"report: {report_path(env)} (shell fallback: agentsync is not installed)" in cp.stdout
     assert last_line(cp).startswith("NEXT: fix the error above")
     assert last_line(cp).endswith(f" [setup report: {report_path(env)}]")
-    assert cp.stdout.splitlines()[-2] == f"issue link (review the report first): {setup_report.ISSUE_URL}"
     text = report_path(env).read_text()
-    assert text.rstrip("\n").splitlines()[-1] == setup_report.ISSUE_URL, "the report ends on the issue form"
+    link = _uncomputed_link(env, text)
+    assert "&prompt_version=v4" in link, "the v4 log's Prompt: line (B13 round 10 L2)"
+    assert cp.stdout.splitlines()[-2] == f"issue link (review the report first): {link}"
+    assert text.rstrip("\n").splitlines()[-1] == link, "the report ends on the issue form"
     assert (report_path(env).stat().st_mode & 0o777) == 0o600
     assert _headings(text) == list(setup_report.SECTION_TITLES), "the same headings as agentsync's report"
     assert text.startswith(setup_report.REPORT_TITLE + "\n")
@@ -1596,7 +1598,9 @@ def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
         assert name not in text, name
     # Past the stray byte too, and the issue link still follows (BSD sed in its two readers; B13 H15).
     assert _headings(text) == list(setup_report.SECTION_TITLES), "past the stray byte (BSD sed)"
-    assert cp.stdout.splitlines()[-2] == f"issue link (review the report first): {setup_report.ISSUE_URL}"
+    link = text.rstrip("\n").splitlines()[-1]
+    assert link.startswith(f"{setup_report.ISSUE_URL}&title=")
+    assert cp.stdout.splitlines()[-2] == f"issue link (review the report first): {link}"
 
 
 def test_the_shell_report_keeps_every_pair_past_a_non_ascii_folder(env: dict[str, str], folder: Path) -> None:
@@ -2426,25 +2430,28 @@ def test_the_shell_report_says_how_to_send_it_before_its_link(env: dict[str, str
     Its Redaction part now ends on the same one-line "Send it: " advice, in that report's words for a link
     that fills no field, with the legend's last sentence still closing its own paragraph."""
     assert install_sh(env, "--report-only").returncode == 0
-    blank = 'a blank "Setup report" issue form'
-    assert blank in Path(setup_report.__file__).read_text(encoding="utf-8"), "the Python report's own words"
-    assert report_path(env).read_text().splitlines()[-5:] == [
+    text = report_path(env).read_text()
+    # no friction log: the link fills the run type alone (B13 round 10 L2), in the Python report's words
+    assert setup_report.issue_link_fields(text.splitlines()[-1]) == ["Run type"]
+    opens = 'a new "Setup report" issue with the Run type field filled in (nothing else)'
+    assert text.splitlines()[-5:] == [
         "Read the report before sending it: anything else confidential is yours to remove.",
         "",
-        f"Send it: the link on the last line opens {blank}; paste this report into its Setup report field, "
+        f"Send it: the link on the last line opens {opens}; paste this report into its Setup report field, "
         "or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent "
         "automatically.",
         "",
-        setup_report.ISSUE_URL,
+        _uncomputed_link(env, text),
     ]
 
 
 NOT_COMPUTED = (
-    "- outcome: not computed (this shell fallback computes none for this attempt; Outcome, Prompt version "
-    "and Agent are yours from the friction log below, Run type from the run line)"
+    "- outcome: not computed (this shell fallback computes none for this attempt; the Outcome is yours to "
+    "choose from the friction log's step lines; the link fills Run type, and Prompt version and Agent where "
+    "the latest attempt states them)"
 )
 """The shell report's Summary line where it computes no outcome (B13 round 7 H24; round 9 K8 names where each
-field comes from)."""
+field comes from; round 10 L2: the link fills what the shell can read)."""
 
 
 def _summary(report: str) -> list[str]:
@@ -2621,15 +2628,19 @@ def test_the_shell_report_computes_no_other_outcome(
     env: dict[str, str], logged: list[tuple[str, ...]]
 ) -> None:
     """H24's rule is narrow on purpose: a wider copy of ``compute_outcome`` in shell would drift from it.
-    Every other attempt has a Summary line that says no outcome is computed, the bare link, and the Send it
-    line for a blank form."""
+    Every other attempt has a Summary line that says no outcome is computed, and a link with no outcome that
+    fills the run type and what the latest attempt states (B13 round 10 L2: it was bare), named on the Send
+    it line."""
     for step, kind, what in logged:
         assert install_sh(env, "--log", step, kind, what, "-").returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
     assert _summary(text)[2] == NOT_COMPUTED
-    assert text.splitlines()[-1] == setup_report.ISSUE_URL
-    assert 'opens a blank "Setup report" issue form; ' in text.splitlines()[-3]
+    link = text.splitlines()[-1]
+    assert link == _uncomputed_link(env, text) and "outcome=" not in link
+    fields = setup_report.issue_link_fields(link)
+    names = " and ".join(fields) if len(fields) < 3 else ", ".join(fields[:-1]) + ", and " + fields[-1]
+    assert f"issue with the {names} field" in text.splitlines()[-3]
 
 
 @pytest.mark.parametrize(
@@ -2754,6 +2765,90 @@ def _run_line(text: str) -> str:
     return next(ln for ln in _summary(text) if ln.startswith("- run: "))
 
 
+def _uncomputed_link(env: dict[str, str], text: str) -> str:
+    """B13 round 10 L2: with no computed outcome the shell report's link fills the run type of its run line,
+    and the Prompt version and Agent the friction log's latest attempt states, read as ``_issue_link`` reads
+    them (``Attempt.said``), with no outcome; it was bare."""
+    path = friction_path(env)
+    att = setup_report.parse_friction(path.read_text()).latest if path.is_file() else None
+    agent = att.said("Agent") if att is not None else ""
+    agent = re.sub(r"[^\w .:/()+,@<>-]", "", " ".join(agent.split()))[:100].strip()  # as _issue_link
+    return setup_report.build_issue_url(
+        outcome=None,
+        run_type=_run_line(text).removeprefix("- run: ").split(" (computed: ", 1)[0],
+        prompt=setup_report._prompt_version(att),
+        agent=agent or None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("friction", "prompt", "agent"),
+    [
+        (  # two attempts: the latest one's header, not the first's
+            "Attempt: 2026-10-10T00:00:00Z\nPrompt: v16\nAgent: Fabrikam Bot\n"
+            "2026-10-10T00:00:05Z | step 2 | error | install.sh failed | -\n"
+            "2026-10-10T00:01:00Z | end | finished\n"
+            "Attempt: 2026-10-10T01:00:00Z\n**Prompt:** setup prompt v18 (README)\n"
+            "- Agent: Contoso  Agent (model 2)\n"
+            "2026-10-10T01:00:05Z | step 2 | error | install.sh failed | -\n",
+            "v18",
+            "Contoso Agent (model 2)",
+        ),
+        (  # a header-less attempt its step 1 error opened after the gap: the words that line states
+            "Attempt: 2026-10-10T00:00:00Z\nPrompt: v16\nAgent: Fabrikam Bot\n"
+            "2026-10-10T00:01:00Z | end | finished\n"
+            "2026-10-10T02:00:00Z | step 1 | error | prompt v17, Northwind Agent: git pull failed | -\n"
+            "2026-10-10T02:00:05Z | step 2 | error | install.sh failed | -\n",
+            "v17",
+            "Northwind Agent",
+        ),
+        (  # a header-less attempt the gap opened takes its first stated step 1 error's words, not the
+            # earlier attempt's header (review of L2; B13 round 10 L26 for the place of that line)
+            "Attempt: 2026-10-10T00:00:00Z\nPrompt: v12\nAgent: Fabrikam Bot\n"
+            "2026-10-10T00:01:00Z | end | finished\n"
+            "2026-10-10T02:00:00Z | step 1 | error | git missing | -\n"
+            "2026-10-10T02:00:05Z | step 1 | error | prompt v13, Northwind Agent: stopped | -\n"
+            "2026-10-10T02:00:09Z | step 2 | error | install.sh failed | -\n",
+            "v13",
+            "Northwind Agent",
+        ),
+        (  # a "## " line inside the log is no heading of the report: the latest attempt still wins
+            "Attempt: 2026-10-10T00:00:00Z\nPrompt: v12\nAgent: Fabrikam Bot\n## second try\n"
+            "Attempt: 2026-10-10T01:00:00Z\nPrompt: v14\nAgent: Northwind Agent\n"
+            "2026-10-10T01:00:05Z | step 2 | error | install.sh failed | -\n",
+            "v14",
+            "Northwind Agent",
+        ),
+        (  # an attempt with no Prompt: or Agent: line and no stated words: no field from it
+            "Attempt: 2026-10-10T00:00:00Z\nPrompt: v16\nAgent: Fabrikam Bot\n"
+            "Attempt: 2026-10-10T01:00:00Z\n2026-10-10T01:00:05Z | step 2 | error | install.sh failed | -\n",
+            None,
+            None,
+        ),
+    ],
+)
+def test_the_shell_reports_link_fills_the_latest_attempts_version_and_agent(
+    env: dict[str, str], friction: str, prompt: str | None, agent: str | None
+) -> None:
+    """B13 round 10 L2: with no computed outcome the shell report's link was bare, though the run type was
+    computed and the friction log stated the version and the agent. It fills those of the latest attempt
+    only, as _issue_link reads them (Attempt.said: the header, else a header-less attempt's stated words), and
+    names them on the Send it line; never an earlier attempt's, a wrong prefill being worse than none."""
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(friction)
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    link = text.splitlines()[-1]
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(link).query)
+    assert fields.get("prompt_version") == ([prompt] if prompt else None)
+    assert fields.get("agent") == ([agent] if agent else None)
+    assert "outcome" not in fields and fields["run_type"] == ["Sandbox"]
+    assert fields["title"] == [f"Setup report: Sandbox{f' · {prompt}' if prompt else ''}"]
+    assert link == _uncomputed_link(env, text), "the agentsync report's reading of the same log"
+    want = "Run type, Prompt version, and Agent tool and model fields" if prompt else "Run type field"
+    assert f'opens a new "Setup report" issue with the {want} filled in (nothing else); ' in text
+
+
 @pytest.mark.parametrize(
     ("start", "sim", "label", "why"),
     [
@@ -2778,7 +2873,7 @@ def test_the_shell_reports_run_line_is_the_run_type_the_agentsync_report_compute
     """B13 round 9 K8: an outcome the shell does not compute left the form's fields to the friction log, which
     holds no run type. The Summary now has a run line of its own with the type compute_run_type gives: the
     attempt's last install run saying launchd=simulated makes it Sandbox with simulated launchd. The link
-    stays bare."""
+    fills that type (B13 round 10 L2: it stayed bare)."""
     setup = Path(env["HOME"]) / "agent-context" / "setup"
     setup.mkdir(parents=True)
     (setup / "friction.md").write_text(
@@ -2799,7 +2894,9 @@ def test_the_shell_reports_run_line_is_the_run_type_the_agentsync_report_compute
         fr, len(fr.attempts) - 1, setup_report.read_install_runs(setup / "install.log")
     )
     assert setup_report.ISSUE_RUN_TYPES[setup_report.compute_run_type(runs, env["HOME"])] == label
-    assert text.splitlines()[-1] == setup_report.ISSUE_URL
+    assert text.splitlines()[-1] == _uncomputed_link(env, text)
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
+    assert fields["run_type"] == [label] and fields["prompt_version"] == ["v15"]
 
 
 def test_the_shell_reports_newer_prompt_note_names_no_pull(env: dict[str, str]) -> None:
@@ -2834,7 +2931,7 @@ def test_the_shell_report_computes_no_outcome_once_the_attempt_ran_install(env: 
         if again:
             assert install_sh(env, "--report-only").returncode == 0
         text = report_path(env).read_text()
-        assert NOT_COMPUTED in _summary(text) and text.splitlines()[-1] == setup_report.ISSUE_URL, text
+        assert NOT_COMPUTED in _summary(text) and text.splitlines()[-1] == _uncomputed_link(env, text), text
 
 
 def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: dict[str, str]) -> None:
@@ -5298,7 +5395,9 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     assert env["HOME"] not in side.read_text()
     _sends_nothing(side)
     text = report_path(env).read_text()
-    assert text.rstrip("\n").splitlines()[-1] == setup_report.ISSUE_URL, "a real report keeps its link"
+    assert text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL), (
+        "a real report keeps its link"
+    )
 
 
 def _sends_nothing(side: Path) -> None:

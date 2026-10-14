@@ -111,10 +111,11 @@ words) is yours to remove. The CLI always redacts.
   temporary folder, otherwise `Real Mac`, and Sandbox with simulated launchd when the attempt's last run says
   `launchd=simulated`), and the link fills Outcome, Run type, Prompt version and Agent tool and model (Agent only
   when the line names one), with the run type in its title. When the stated version is newer than this
-  installer's, the line's bracket also says so, naming no cause. Otherwise the line says no outcome is computed
-  and the link is bare: take Outcome, Prompt version and Agent tool and model from the friction log (its
-  `Prompt:` and `Agent:` header lines and its step lines), and Run type from the `- run:` line below it, which
-  computes it the same way. In both cases the shell report has no `Loop:` line, and Loop stage stays empty.
+  installer's, the line's bracket also says so, naming no cause. Otherwise the line says no outcome is computed,
+  and the link fills Run type from the `- run:` line below it, which computes it the same way, and Prompt version
+  and Agent tool and model where the friction log's latest attempt states them (its `Prompt:` and `Agent:` header
+  lines, or the words its step 1 error line states); the Send it line names the fields it fills. Choose the
+  Outcome from the friction log's step lines, and take any field the link leaves empty from the friction log. In both cases the shell report has no `Loop:` line, and Loop stage stays empty.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
   prints the issue link for it, neither report has one, and `--report-only`'s NEXT names only
   bring-back.md. Send that one privately.

@@ -1910,6 +1910,34 @@ friction_step1_stated() {
 		$0 !~ (stamp " [|] step 1 [|]") { other = 1 }
 		END { if (!HD && !other && first != "" && !index(first, mark) && stated(first)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
 }
+# The Prompt and Agent values of the friction log's latest attempt, as Attempt.said gives them: the attempt's
+# first Prompt: and Agent: header lines, else what the step 1 error line that opened a header-less attempt
+# states (the log's first line, a line track() reads as another session's, or one dated more than
+# NEW_SESSION_GAP after an end line), with the attempt boundaries every other reader here takes. Reads the
+# friction text on stdin (the redacted one of the report, for the link: B13 round 10 L2) and prints
+# "<prompt><TAB><agent>", either possibly empty; nothing when the text holds no attempt.
+friction_latest_said() {
+	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]" }
+		function fresh() { hp = ""; ha = ""; sp = ""; sa = ""; ended = "" }
+		function from(line) { fresh(); if (line ~ s1 && stated(line)) { sp = "v" SV; sa = SR } }
+		function value(line) { # as parse_friction: the text after the colon, less stars and blanks around it
+			sub(/^[^:]*:/, "", line); gsub(/^[ \t*]+|[ \t*]+$/, "", line); return line
+		}
+		{ first = !SEEN; q = track($0) }
+		NH { NH = 0; fresh() }
+		/^Attempt:/ { fresh(); next }
+		q { from($0); next }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { from($0); restate($0); next }
+		first && $0 ~ stamp { from($0); next }
+		# an attempt with no header and no words takes them from its first step 1 error that states them, wherever
+		# it sits, as parse_friction (B13 round 10 L26)
+		!HD && sp == "" && $0 ~ s1 && stated($0) { sp = "v" SV; sa = SR; next }
+		/^[-* ]*Prompt:/ { if (hp == "") hp = value($0); next }
+		/^[-* ]*Agent:/ { if (ha == "") ha = value($0); next }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20) }
+		END { if (SEEN) printf "%s\t%s\n", (hp != "" ? hp : sp), (ha != "" ? ha : sa) }'
+}
 # Whether the friction log's latest attempt has no install run of its own, by the test fallback_install_line
 # makes: a --report-only run, and no install log, no install run in it, or a last one that started before the
 # attempt began.
@@ -1990,7 +2018,8 @@ run_type_why() {
 # cause: a step 1 error can come from the Xcode or the not-a-checkout stop, before any pull ran (B13 round 9 K26).
 # The run type comes before the agent, where the agentsync report has it. Not computed, the line says which
 # field comes from where, and a run line of its own gives the run type the agentsync report computes, which the
-# friction log does not hold (B13 round 9 K8); the link stays bare.
+# friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
+# version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
 	local stated="" n note=""
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
@@ -2002,7 +2031,7 @@ fallback_outcome_line() {
 		esac
 		say "$OUTCOME_LINE_HEAD$n (from the step 1 error line$note) · run: $(run_type_label) (computed: $(run_type_why)) · agent: ${stated#*$'\t'}"
 	else
-		say "- outcome: not computed (this shell fallback computes none for this attempt; Outcome, Prompt version and Agent are yours from the friction log below, Run type from the run line)"
+		say "- outcome: not computed (this shell fallback computes none for this attempt; the Outcome is yours to choose from the friction log's step lines; the link fills Run type, and Prompt version and Agent where the latest attempt states them)"
 		say "- run: $(run_type_label) (computed: $(run_type_why))"
 	fi
 }
@@ -2374,7 +2403,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# for the fields it fills (H24).
 	[ -n "$PRIVATE_ONLY" ] || {
 		v='a blank "Setup report" issue form'
-		[ -z "${1:-}" ] || v="a new \"Setup report\" issue with the $1 fields filled in (nothing else)"
+		[ -z "${1:-}" ] || v="a new \"Setup report\" issue with the $1 field$([ "$1" = "Run type" ] || printf s) filled in (nothing else)"
 		say ""
 		say "Send it: the link on the last line opens $v; paste this report into its Setup report field, or send it privately (docs/deploy/setup-feedback.md in the agentsync repository). Nothing is sent automatically."
 	}
@@ -2386,28 +2415,20 @@ url_quote() {
 		$0 == "" { next }
 		{ c = ch[$0]; printf "%s", (c ~ /^[A-Za-z0-9_.~\/-]$/ ? c : "%" toupper($0)) }'
 }
-# The issue link the shell report ends with: bare, or, when the Summary (the redacted report in file $1, above
-# its friction log) holds the computed outcome line, with the title and the fields that line gives, as
-# setup_report.build_issue_url writes them (H24). The agent is read from the redacted line, since the link is
-# written after redaction, keeps only what _issue_link keeps and at most 100 characters: letters and digits
-# outside ASCII too, by the UTF-8 classes, so an accented name is not cut (B13 round 8 J77); a symbol Python
-# counts as a digit, such as a superscript two, is the gap left. A byte that is not UTF-8 is dropped first, and
-# where the UTF-8 filter fails the ASCII one runs instead. The run
-# type is computed again, not read from the redacted line, where a folder named after it would read as its
-# placeholder (B13 round 8 J22). Sets LINK and LINK_FIELDS (the fields it fills, for the Send it line).
-LINK=""
-LINK_FIELDS=""
-fallback_issue_link() { # REDACTED-BODY-FILE
-	local line n agent run v fail="Failed at step 1 (preflight)"
-	LINK="$ISSUE_URL"
-	LINK_FIELDS=""
-	line="$(LC_ALL=C awk -v p="$OUTCOME_LINE_HEAD" '$0 == "## Agent friction log" { exit } index($0, p) == 1 { print; exit }' "$1" 2>/dev/null || true)"
-	[ -n "$line" ] || return 0
-	n="${line#"$OUTCOME_LINE_HEAD"}"
-	n="${n%% *}"
-	case "$n" in "" | *[!0-9]*) return 0 ;; esac
-	agent="${line##* · agent: }"
-	[ "$agent" != "$line" ] || agent=""
+# The issue link the shell report ends with, as setup_report.build_issue_url writes it (H24). When the Summary
+# (the redacted report in file $1, above its friction log) holds the computed outcome line, with the title and the
+# fields that line gives; otherwise with the run type, and the Prompt version and Agent the friction log's latest
+# attempt states (friction_latest_said, read from the redacted log, as _issue_link reads Attempt.said), and no
+# outcome, which only the agentsync report computes (B13 round 10 L2: the link was bare). The agent is read from
+# redacted text, since the link is written after redaction (link_agent). The run type is computed again, not
+# read from the redacted line, where a folder named after it would read as its placeholder (B13 round 8 J22).
+# Sets LINK and LINK_FIELDS (the fields it fills, for the Send it line).
+# link_agent AGENT: what _issue_link keeps of it, at most 100 characters: letters and digits outside ASCII too,
+# by the UTF-8 classes, so an accented name is not cut (B13 round 8 J77); a symbol Python counts as a digit,
+# such as a superscript two, is the gap left. A byte that is not UTF-8 is dropped first, and where the UTF-8
+# filter fails the ASCII one runs instead.
+link_agent() {
+	local agent="$1" v
 	# as " ".join(agent.split()): each blank Python splits on is one space (tab, the C0 separators, and the
 	# Unicode spaces such as U+00A0 and U+2009, byte by byte), then a run of them is one
 	agent="$(printf '%s' "$agent" | LC_ALL=C awk 'BEGIN {
@@ -2418,9 +2439,62 @@ fallback_issue_link() { # REDACTED-BODY-FILE
 	v="$(printf '%s' "$agent" | { LC_ALL=C /usr/bin/iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true; } |
 		LC_ALL=en_US.UTF-8 sed 's/[^[:alnum:]_ .:/()+,@<>-]//g' 2>/dev/null | LC_ALL=en_US.UTF-8 cut -c 1-100)" ||
 		v="$(printf '%s' "$agent" | LC_ALL=C tr -cd 'A-Za-z0-9_ .:/()+,@<>-' | LC_ALL=C cut -c 1-100)"
-	agent="$v"
-	agent="$(printf '%s' "$agent" | LC_ALL=C sed 's/^ *//; s/ *$//')"
+	printf '%s' "$v" | LC_ALL=C sed 's/^ *//; s/ *$//'
+}
+# The version _prompt_version reads from a Prompt value (re.search(r"\bv?(\d{1,3})\b")): the first run of one to
+# three digits, after an optional "v", with no letter, digit or "_" right before it or right after it (a byte
+# outside ASCII counts as a letter, so such a run is not read: no field rather than a wrong one).
+prompt_number() {
+	printf '%s' "$1" | LC_ALL=C awk '{
+		w = "[A-Za-z0-9_\200-\377]"
+		for (i = 1; i <= length($0); i++) {
+			if (i > 1 && substr($0, i - 1, 1) ~ w) continue
+			j = i; if (substr($0, j, 1) == "v") j++
+			for (k = j; k <= length($0) && substr($0, k, 1) ~ /[0-9]/; k++) ;
+			if (k == j || k - j > 3 || (k <= length($0) && substr($0, k, 1) ~ w)) continue
+			print substr($0, j, k - j) + 0; exit
+		}
+	}'
+}
+LINK=""
+LINK_FIELDS=""
+fallback_issue_link() { # REDACTED-BODY-FILE
+	local line n agent run said fail="Failed at step 1 (preflight)"
+	LINK="$ISSUE_URL"
+	LINK_FIELDS=""
 	run="$(run_type_label)"
+	line="$(LC_ALL=C awk -v p="$OUTCOME_LINE_HEAD" '$0 == "## Agent friction log" { exit } index($0, p) == 1 { print; exit }' "$1" 2>/dev/null || true)"
+	n="${line#"$OUTCOME_LINE_HEAD"}"
+	n="${n%% *}"
+	case "$n" in
+	"" | *[!0-9]*)
+		# inside the section's fence only: a "## " line of the log itself is no heading of the report
+		said="$(LC_ALL=C awk '$0 == "## Agent friction log" { f = 1; next } f && $0 == "~~~text" { fence = 1; next }
+			fence && index($0, "~~~") == 1 { exit } fence' "$1" 2>/dev/null | friction_latest_said 2>/dev/null || true)"
+		n="$(prompt_number "${said%%$'\t'*}")"
+		agent="$(link_agent "${said#*$'\t'}")"
+		[ "$said" != "${said#*$'\t'}" ] || agent=""
+		LINK="$ISSUE_URL&title=$(url_quote "Setup report: $run${n:+ · v$n}")&run_type=$(url_quote "$run")"
+		LINK_FIELDS="Run type"
+		[ -z "$n" ] || {
+			LINK="$LINK&prompt_version=v$n"
+			LINK_FIELDS="$LINK_FIELDS, Prompt version"
+		}
+		[ -z "$agent" ] || {
+			LINK="$LINK&agent=$(url_quote "$agent")"
+			LINK_FIELDS="$LINK_FIELDS, Agent tool and model"
+		}
+		# the agentsync report's list: "A and B" for two, "A, B, and C" for three
+		case "$LINK_FIELDS" in
+		*", "*", "*) LINK_FIELDS="${LINK_FIELDS%, *}, and ${LINK_FIELDS##*, }" ;;
+		*", "*) LINK_FIELDS="${LINK_FIELDS%, *} and ${LINK_FIELDS##*, }" ;;
+		esac
+		return 0
+		;;
+	esac
+	agent="${line##* · agent: }"
+	[ "$agent" != "$line" ] || agent=""
+	agent="$(link_agent "$agent")"
 	LINK="$ISSUE_URL&title=$(url_quote "Setup report: $fail · $run · v$n")&outcome=$(url_quote "$fail")"
 	LINK="$LINK&run_type=$(url_quote "$run")&prompt_version=v$n"
 	LINK_FIELDS="Outcome, Run type, and Prompt version"

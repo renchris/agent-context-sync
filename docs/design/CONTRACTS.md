@@ -17491,6 +17491,10 @@ says launchd=simulated`, and `; HOME is also under a temporary folder` where it 
 line and the link use the same type. The link stays bare, and no field is read from the friction header. Test:
 `test_the_shell_reports_run_line_is_the_run_type_the_agentsync_report_computes`. docs/deploy/setup-feedback.md
 says so.
+Amended 2026-10-14, §16.87 L2: the link is no longer bare; it fills the run type, and the Prompt version and Agent
+the friction log's latest attempt states, with no outcome, and the line reads `the Outcome is yours to choose from
+the friction log's step lines; the link fills Run type, and Prompt version and Agent where the latest attempt
+states them`.
 
 **The install line says why a copy has no commit** (K17 and K29, one defect; amends §16.41). `source commit -` gave
 no reason. COMMIT and install.log's `commit=` field stay `-` (a machine word the install stamp compares), and the
@@ -18138,6 +18142,27 @@ agentsync)`, before its `(python ...)` bracket. Tests:
 `test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected` (K24's renderer left alone, another
 expected warn keeps the bare words), `test_the_shell_stopped_copy_beyond_is_the_reports`,
 `test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version`.
+
+**Not computed, the link still fills what the shell reads** (L2; amends §16.81 K8). With no computed outcome the
+link was bare, though the run line computes the run type and the friction log states the version and the agent.
+`fallback_issue_link` now adds `run_type` (`run_type_label`, as before), and from the friction log's latest
+attempt only (`friction_latest_said`, over the redacted log inside the report's `~~~text` fence, where a `## `
+line of the log is no heading, with the attempt boundaries and `restate` of
+every other reader: `Attempt:`, a second `Prompt:`, `track()`'s other-session line, a step 1 error past the gap
+after an end line, the log's first line) its first `Prompt:` and `Agent:` header values, else the words the step 1
+error that opened a header-less attempt states, or its first stated step 1 error wherever it sits (§16.86 L26),
+as `Attempt.said`. The version is `_prompt_version`'s
+(`prompt_number`: one to three digits after an optional `v`, bounded by no letter, digit or `_`; a byte outside
+ASCII counts as a letter, so no field rather than a wrong one), the agent `_issue_link`'s cleaning (`link_agent`,
+shared with the computed case). The title is `Setup report: <run type>[ · vN]`, as `build_issue_url` joins the
+values present; no outcome or loop stage, which only the agentsync report computes. `LINK_FIELDS` names what was
+filled, joined as `_redaction_section` joins them (`A and B`, `A, B, and C`; `field` for one). The outcome line
+reads `- outcome: not computed (this shell fallback computes none for this attempt; the Outcome is yours to
+choose from the friction log's step lines; the link fills Run type, and Prompt version and Agent where the latest
+attempt states them)`; docs/deploy/setup-feedback.md says so. Tests:
+`test_the_shell_reports_link_fills_the_latest_attempts_version_and_agent` (two attempts, a header-less one, one
+that states nothing; against `parse_friction` and `_prompt_version` on the same log),
+`test_the_shell_report_computes_no_other_outcome`, `test_the_shell_report_says_how_to_send_it_before_its_link`.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 
