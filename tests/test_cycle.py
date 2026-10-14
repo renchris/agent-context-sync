@@ -34,7 +34,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 from agentsync import arm_local as al
-from agentsync import curate, gitops, governance, lints, loop, materialise, slug
+from agentsync import cli, curate, gitops, governance, lints, loop, materialise, slug
 from agentsync import cycle as cycle_mod
 from agentsync import policy as content_policy
 from agentsync import publish as publish_mod
@@ -2670,6 +2670,26 @@ def test_a_withheld_image_is_counted_apart_from_a_type_with_no_converter(
         "withheld by label rule: the label of a .png file cannot be read"
     )
     assert (rep.withheld_unread, rep.refused_unread, rep.counts.get(Verdict.REFUSED)) == (1, 1, 2), rep
+
+
+def test_the_sync_line_does_not_say_a_local_image_needs_the_file_for_its_label(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 9 K33: the W clause said "(its label cannot be read without the file)" for a .png on this
+    Mac, whose stub says the label of a .png cannot be read: having the file does not help. It names the
+    cause an image, a binary .msg and a .msg not on this Mac share."""
+    _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / "Contoso floor.png", "Loading dock")
+    report = run(config_with(tmp_path, local_source_dir, LABEL_RULE))
+    assert report.sources[0].withheld_unread == 1
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert "; 1 withheld unread by the label rule (" in line, line
+    assert "without the file" not in line and "an image" in line, line
 
 
 def test_without_an_engine_an_image_under_a_label_rule_is_counted_with_no_converter(

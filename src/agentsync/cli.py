@@ -408,28 +408,34 @@ def _config(args: argparse.Namespace) -> Config:
 
 
 _OVER_BUDGET = "exceeds the per-cycle budget ("
+# why the sync line's W files were withheld unread: the cause the three stub kinds share (B13 round 9 K33)
+_WITHHELD_WHY = "a file whose label cannot be read: an image, a binary .msg or a .msg not on this Mac"
 
 
 def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None:
     """Print a cycle's report, ending with one line for the whole run, ``converted N, deferred M online-only``
-    (N files read and converted, M online-only files left for a later run's download budget), then
-    ``, read again R`` when R files were read again for what their converter has gained (a re-read for a
-    capability of the same bytes is never in N; a no-converter stub's re-read is the first read of its bytes,
-    so it is in N as well, and `` (F of them read for the first time, also counted above)`` says how many:
-    B13 round 4 Q28), then `` (of the converted: U unreadable, F failed, R refused)`` when some of the N
-    are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files refused after their bytes were
-    read (R: a label rule, a .msg whose label cannot be read; B13 round 6 G35, which also prints the split
-    for F or R alone; an inbox duplicate is quarantined, never in R: round 7 H49), as ``; of the converted:
-    ...`` after the Q28 clause, so
-    two parentheses never stand side by side (B13 round 5 F34), then ``; re-screened S for a rule change
-    (also counted above, K of them unchanged)``: a [policy] or secret-rule re-screen runs the converter on the
-    same bytes, so it is in N, and counted again in S (F35), then ``; Q refused without a read (no converter
-    for the type, or a rule that needs no bytes)`` when Q files were refused with no byte read: those
-    are in each source line's ``refused=`` but not in N, so with it the line's refusals add up to the sources'
-    (B13 round 7 H32). Before it, ``; W withheld unread by the label rule (its label cannot be read without
-    the file)`` counts those of them whose stub says a label rule withheld them, by the page's own test (B13
-    round 8 J29: the one clause named no label rule, so a withheld image read as a type with no converter).
-    With ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are
+    (N files read and converted, M online-only files left for a later run's download budget), then ``, read
+    again R`` when R files were read again for what their converter has gained (a re-read for a capability of
+    the same bytes is never in N; a no-converter stub's re-read is the first read of its bytes, so it is in N
+    as well, and `` (F of them a first read: a stub whose bytes had never been read, now in the count above)``
+    says how many: B13 round 4 Q28; round 9 K34 reworded it, since "read for the first time", said of files
+    read again, said both things of the same files), then `` (of the converted: U unreadable, F failed, R
+    refused)`` when some of the N are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files
+    refused after their bytes were read (R: a label rule, a .msg whose label cannot be read; B13 round 6 G35,
+    which also prints the split for F or R alone; an inbox duplicate is quarantined, never in R: round 7 H49),
+    as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side (B13
+    round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
+    [policy] or secret-rule re-screen runs the converter on the same bytes, so it is in N, and counted again
+    in S (F35), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
+    when Q files were refused with no byte read: those are in each source line's ``refused=`` but not in N, so
+    with R and W the line's refusals add up to the sources' (B13 round 7 H32). Before it, ``; W withheld
+    unread by the label rule (a file whose label cannot be read: an image, a binary .msg or a .msg not on this
+    Mac)`` counts the files refused with no byte read whose stub says a label rule withheld them, by the
+    page's own test. They are not in Q (W and Q are disjoint), and R + W + Q add up to the sources'
+    ``refused=`` (B13 round 8 J29: the one clause named no label rule, so a withheld image read as a type with
+    no converter; round 9 K54). The parenthesis names the cause all three stub kinds share: "without the file"
+    was false for an image on this Mac (round 9 K33). With ``run_budget`` (``sync --materialise-budget``) the
+    per-file "exceeds the per-cycle budget" alarms are
     one count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
     counted = f"{len(report.changes)} change(s)"
@@ -478,7 +484,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""
     if report.read_again and report.read_first:  # no bare "converted" token: install.sh's awk adds after one
-        again += f" ({report.read_first} of them read for the first time, also counted above)"
+        # and no bare "again": R stays right after "read again" (B13 round 9 K34; setup_report reads both)
+        again += (
+            f" ({report.read_first} of them a first read: a stub whose bytes had never been read, now in the "
+            "count above)"
+        )
     unreadable = sum(s.unreadable for s in report.sources)
     failed = sum(s.conversion_failed for s in report.sources)
     refused = sum(s.refused for s in report.sources)
@@ -497,13 +507,14 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     )
     # No bare "converted", "deferred" or "read again" in it either, and nothing when Q is 0 (B13 round 7 H32).
     # A file whose stub says a label rule withheld it is counted apart, by the page's own test, so the line
-    # names the cause its page names (B13 round 8 J29).
+    # names the cause its page names (B13 round 8 J29), the one an image, a binary .msg and a .msg not on this
+    # Mac share (round 9 K33); setup_report reads only the prefix up to "label rule".
     withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
     unread_tail = "".join(
         f"; {n} {what}"
         for n, what in (
-            (withheld, "withheld unread by the label rule (its label cannot be read without the file)"),
+            (withheld, f"withheld unread by the label rule ({_WITHHELD_WHY})"),
             (unread, "refused without a read (no converter for the type, or a rule that needs no bytes)"),
         )
         if n

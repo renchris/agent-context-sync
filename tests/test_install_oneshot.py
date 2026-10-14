@@ -5688,6 +5688,22 @@ def test_first_sync_note_carries_the_read_again_count(env: dict[str, str], folde
     assert ("first-sync", "done", "0", "converted-0-deferred-1-reread-2") in steps(install_log(env))
 
 
+def test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 9 K34 reworded the first-read bracket after ``, read again R``: the note's awk adds the
+    number after each bare ``converted``, ``deferred`` and ``read again``, so the new words, with the split
+    after them, still log ``-reread-R`` and nothing else."""
+    line = (
+        "converted 3, deferred 0 online-only, read again 2 (2 of them a first read: a stub whose bytes had "
+        "never been read, now in the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
+    )
+    cp = install_sh({**env, "STUB_SYNC_OUT": line}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert f"first sync: {line}" in cp.stdout.splitlines()
+    assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2") in steps(install_log(env))
+
+
 # ---- the on-device OCR helper is built in the helpers step -------------------------------------------------
 
 STUB_TOOL_PYTHON = """#!/bin/bash

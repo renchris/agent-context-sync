@@ -3051,26 +3051,34 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         ),
         (  # B13 round 5 F8, F32: both clauses of the sync's line (F34's form), and the first read is kept
             "note=converted-2-deferred-0-reread-2",
-            "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
-            "time, also counted above); of the converted: 1 unreadable, 0 failed",
-            "converted 2, deferred 0 online-only, read again 2: 2 of them read for the first time, also in "
-            "the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read "
-            "count and the unreadable/failed split: install.out)",
+            "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them a first read: a stub "
+            "whose bytes had never been read, now in the count above); of the converted: 1 unreadable, 0 "
+            "failed",
+            "converted 2, deferred 0 online-only, read again 2: 2 of them a first read, of a stub whose "
+            "bytes had never been read, also in the converted count; of the converted: 1 unreadable, 0 "
+            "failed (install.log; the first-read count and the unreadable/failed split: install.out)",
         ),
         (  # an older agentsync's two brackets in a row: the same two clauses
             "note=converted-2-deferred-0-reread-2",
             "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "
             "time, also counted above) (of the converted: 1 unreadable, 0 failed)",
-            "read again 2: 2 of them read for the first time, also in the converted count; of the converted: "
-            "1 unreadable, 0 failed (install.log; the first-read count and the unreadable/failed split: "
-            "install.out)",
+            "read again 2: 2 of them a first read, of a stub whose bytes had never been read, also in the "
+            "converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read count "
+            "and the unreadable/failed split: install.out)",
         ),
         (  # the first read alone; nothing else changes
             "",
+            "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them a first read: a stub "
+            "whose bytes had never been read, now in the count above)",
+            "converted 1, deferred 0 online-only, read again 1: 1 of them a first read, of a stub whose "
+            "bytes had never been read, also in the converted count (install.out)",
+        ),
+        (  # B13 round 9 K34: an older agentsync's words in install.out still give the first-read count
+            "",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
             "time, also counted above)",
-            "converted 1, deferred 0 online-only, read again 1: 1 of them read for the first time, also in "
-            "the converted count (install.out)",
+            "converted 1, deferred 0 online-only, read again 1: 1 of them a first read, of a stub whose "
+            "bytes had never been read, also in the converted count (install.out)",
         ),
         (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept; the tag
             # names refused once its count is printed (round 7 H46)
@@ -3090,9 +3098,9 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         ),
         (  # B13 round 8 J29's clause before it, the files a label rule withheld unread: carried too
             "note=converted-4-deferred-0",
-            "first sync: converted 4, deferred 0 online-only; 2 withheld unread by the label rule (its "
-            "label cannot be read without the file); 5 refused without a read (no converter for the type, or "
-            "a rule that needs no bytes)",
+            "first sync: converted 4, deferred 0 online-only; 2 withheld unread by the label rule (a file "
+            "whose label cannot be read: an image, a binary .msg or a .msg not on this Mac); 5 refused "
+            "without a read (no converter for the type, or a rule that needs no bytes)",
             "converted 4, deferred 0 online-only; 2 withheld unread by the label rule; 5 refused without a "
             "read (install.log; the withheld-unread count and the refused-without-a-read count: install.out)",
         ),
@@ -3130,6 +3138,8 @@ def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -
     stand side by side; an earlier sync's two-parenthesis line persists in install.out. Both give the
     counts and the split, which the old pattern lost after the Q28 clause."""
     for line in (
+        "converted 3, deferred 0 online-only, read again 2 (2 of them a first read: a stub whose bytes had "
+        "never been read, now in the count above); of the converted: 1 unreadable, 0 failed",
         "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "
         "above); of the converted: 1 unreadable, 0 failed",
         "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "

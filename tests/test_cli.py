@@ -312,8 +312,8 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     cli._print_report(dataclasses.replace(report, read_first=1))
     line = capsys.readouterr().out.splitlines()[-1]
     assert line == (
-        "converted 0, deferred 0 online-only, read again 2 (1 of them read for the first time, also counted "
-        "above)"
+        "converted 0, deferred 0 online-only, read again 2 (1 of them a first read: a stub whose bytes had "
+        "never been read, now in the count above)"
     )
     assert re.findall(r"\bconverted\b", line) == ["converted"]
     # B13 round 5 F34: with the split as well, one parenthesis per subject: "; of the converted" follows
@@ -322,8 +322,8 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     cli._print_report(dataclasses.replace(report, sources=(unread,), read_first=2))
     line = capsys.readouterr().out.splitlines()[-1]
     assert line == (
-        "converted 3, deferred 0 online-only, read again 2 (2 of them read for the first time, also counted "
-        "above); of the converted: 1 unreadable, 0 failed, 0 refused"
+        "converted 3, deferred 0 online-only, read again 2 (2 of them a first read: a stub whose bytes had "
+        "never been read, now in the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
     )
     assert ") (" not in line and line.split().count("converted") == 1
     cli._print_report(dataclasses.replace(report, sources=(unread,), read_again=0))
@@ -401,17 +401,17 @@ def test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread(
     cli._print_report(report)
     out = capsys.readouterr().out.splitlines()
     assert out[-1] == (
-        "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (its label cannot be read "
-        "without the file); 1 refused without a read (no converter for the type, or a rule that needs no "
-        "bytes)"
+        "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (a file whose label cannot "
+        "be read: an image, a binary .msg or a .msg not on this Mac); 1 refused without a read (no converter "
+        "for the type, or a rule that needs no bytes)"
     )
     said = sum(int(n) for n in re.findall(r"(\d+) (?:refused|withheld)\b", out[-1]))
     assert said == sum(int(n) for ln in out for n in re.findall(r"\brefused=(\d+)", ln)) == 3
     assert out[-1].split().count("converted") == 1 and "deferred" not in out[-1].split("online-only", 1)[1]
     cli._print_report(dataclasses.replace(report, sources=(dataclasses.replace(alpha, refused_unread=0),)))
     assert capsys.readouterr().out.splitlines()[-1] == (
-        "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (its label cannot be read "
-        "without the file)"
+        "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (a file whose label cannot "
+        "be read: an image, a binary .msg or a .msg not on this Mac)"
     )
 
 

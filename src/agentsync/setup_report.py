@@ -705,7 +705,12 @@ _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its c
 # unreadable/failed split, "(F of them read for the first time, also counted above); of the converted: U
 # unreadable, X failed" since B13 round 5 F34, side by side in two brackets before it, which an older
 # agentsync's install.out still holds (round 5 F8, F32)
-_FIRST_READ_RE = re.compile(r"\b(\d+) of them read for the first time, also counted above\b")
+# (and since B13 round 9 K34 "(F of them a first read: a stub whose bytes had never been read, now in the
+# count above)", the old words read still for an older agentsync's install.out)
+_FIRST_READ_RE = re.compile(
+    r"\b(\d+) of them (?:read for the first time, also counted above|a first read: a stub whose bytes had "
+    r"never been read)\b"
+)
 # and since B13 round 6 G35 ", R refused" after it (a sync line that prints it is named "the
 # unreadable/failed/refused split" in its source tag since round 7 H46)
 _SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b(?:, (\d+) refused\b)?")
@@ -2340,7 +2345,7 @@ class _Facts:
     # that line's "(of the converted: U unreadable, F failed, R refused)" as (N, U, F, R), R 0 when an older
     # line has none; None: the line has no split
     first_sync_unreadable: tuple[int, int, int, int] | None = None
-    # its "F of them read for the first time, also counted above" as (N, R, F); None: the line has none
+    # its first-read count F (either wording, B13 round 9 K34) as (N, R, F); None: the line has none
     first_sync_first_read: tuple[int, int, int] | None = None
     # its "Q refused without a read" as (N, Q); None: the line has none
     first_sync_refused_unread: tuple[int, int] | None = None
@@ -6778,7 +6783,11 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         named: list[str] = []
         first = r.facts.first_sync_first_read
         if first is not None and first[:2] == (converted, again) and first[2]:
-            reread += f": {first[2]} of them read for the first time, also in the converted count"
+            # the CLI's words since B13 round 9 K34, without its bracket
+            reread += (
+                f": {first[2]} of them a first read, of a stub whose bytes had never been read, also in the "
+                "converted count"
+            )
             named.append("the first-read count")
         split = r.facts.first_sync_unreadable
         if split is not None and split[0] == converted and any(split[1:]):

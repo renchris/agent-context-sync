@@ -420,8 +420,10 @@ class SourceReport:
     # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32); not one whose stub says
     # a label rule withheld it, which ``withheld_unread`` counts (B13 round 8 J29)
     refused_unread: int = 0
-    # refused with no byte read, and its stub says a label rule withheld it (an image OCR would read, a .msg,
-    # neither on this Mac): in the source's REFUSED count, never in ``converted`` (B13 round 8 J29)
+    # refused with no byte read, and its stub says a label rule withheld it (a .msg not on this Mac, or an
+    # image while OCR could read it, on this Mac or not; without an engine an image is in ``refused_unread``):
+    # in the source's REFUSED count, never in ``converted``, never in ``refused_unread`` (B13 round 8 J29,
+    # round 9 K54; a .msg on this Mac is read, so a refused one is in ``refused``)
     withheld_unread: int = 0
 
 
