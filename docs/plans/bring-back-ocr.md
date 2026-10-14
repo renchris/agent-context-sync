@@ -797,6 +797,29 @@ Lanes (`--account auto`, CONTRACTS §16.80 to §16.85, brief `lanes/COMMON8.md`)
 CONTRACTS). Lead: K39 and K44 (round 10's scenario E and F wording), K71 (exact ranges in the landed tables), K81
 (round 7's local branch; round 8's scratch goes to the operator).
 
+### B13 round 9 landed (2026-10-14)
+
+All six lanes landed; CI green on `3ee72827` (prompt v18). Notes `lanes/r9-<lane>.md`. Not built, each with a
+measured reason: K77 (the tool-path skip would leak `/opt/<company>/...` paths the old code redacted), K27's form
+of the rewrite-path fix (it leaks two-letter paths under the shell's floor; K2's form is built) and K79 (kept, with a
+pinning test `086ccb8a`). Lead: K39 and K44 are in round 10's scenarios E and F; K71 fixed the ranges (`f753c3b7`);
+K81's branch delete was refused for the agent and is in the operator's `b13-r8` cleanup.
+
+| Lane | Landed |
+|---|---|
+| P | `bc773369`, 1 commit (v18) |
+| B | `f753c3b7..a84e7186`, 7 commits |
+| D | `bc773369..7d35f97d`, 11 commits |
+| RB | `f247ea4d^..da658e5b`, 9 commits |
+| E | `7d35f97d..e88d24fd`, 8 commits |
+| RA | `da658e5b..3ee72827`, 17 commits |
+
+Learnings: four lanes reached their push within the same half hour and the prompts waited about six hours for the
+operator; once answered, the later lanes rebased onto the earlier ones before landing. Lane D's widened dated-line test
+(K80) caught a missing dated line in lane P's section; it now covers §16.68 to §16.85.
+
+Round 10: the round 9 workflow on `3ee72827` with prompt v18 (run `wf_cc5fd9e4-b48`, outputs `round10/`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
