@@ -16551,4 +16551,15 @@ Reserved for round 8 lane E of B13.
 
 ### 16.79 Round 8: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 8 lane D)
 
-Reserved for round 8 lane D of B13.
+Docs, docstrings and dated lines that lagged round 7's code (`docs/plans/bring-back-ocr.md`, "B13 round 8"; specs
+`round8/items/J<n>.md`, the verifier's corrected fix built); no behavior changes. Each item is pinned by a test that
+fails on the text it replaced. A dated line this round writes for an older round's change reads `Amended
+2026-10-14, §16.79 J<n> (by §16.7N H<n>)`.
+
+**The Send step names the fields the shell report leaves to the person** (J42, J61: one defect). §16.70 H24 wrote
+"the link is bare, and the four fields are yours to fill in from the friction log" after §16.73 H71 had made the
+count five, and install.sh's comment quoted "copy the four values from the Summary", a phrase the page no longer
+has. The friction log holds no run type, and the shell report computes none and has no `Loop:` line
+(`fallback_issue_link` fills Outcome, Prompt version and, when named, Agent). The sentence now names those three
+and their source, says Run type is the person's by section 4's rule and Loop stage stays empty; the comment quotes
+the five. Test: `test_the_send_step_counts_the_values_the_link_fills`.

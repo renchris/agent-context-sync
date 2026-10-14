@@ -1757,7 +1757,7 @@ attempt_ran_no_install() {
 	[ -n "$begin" ] && [ -n "$(utc_stamp "$at")" ] && [[ "$at" < "$begin" ]]
 }
 # The Summary's outcome line. Computed in the one case above, in the agentsync report's words; in every other
-# case the line says that it is not, so "copy the four values from the Summary" (setup-feedback.md) finds a
+# case the line says that it is not, so "copy the five values from the Summary" (setup-feedback.md) finds a
 # reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
 # redaction, for the link.
 OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v"

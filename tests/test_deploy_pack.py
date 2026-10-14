@@ -3580,6 +3580,17 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     assert "copy the four values from the Summary" not in page
     assert f"opens the form with the Summary's {count} values" in page
     assert f"copy the {count} values from the Summary" in page
+    # B13 round 8 J42, J61: the shell fallback's sentence said "the four fields are yours to fill in from the
+    # friction log", which holds no run type; it names the fields, and install.sh's comment quotes the page.
+    assert "four fields" not in page
+    shell = page[page.index("Its Summary has an `- outcome:` line.") : page.index("Not for a report with")]
+    for label in ("Outcome", "Prompt version", "Agent tool and model"):
+        assert label in shell, label
+    assert "so Run type is yours to choose by section 4's rule" in shell
+    assert "and Loop stage stays empty" in shell
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "copy the four values from the Summary" not in installer
+    assert f'"copy the {count} values from the Summary" (setup-feedback.md)' in installer
 
 
 def test_the_newer_copy_paragraph_quotes_the_summarys_cause() -> None:

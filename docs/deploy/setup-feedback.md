@@ -98,10 +98,14 @@ words) is yours to remove. The CLI always redacts.
   fence does not break. Keep the agent's additions to `~~~` too.
   The shell fallback report ends its Redaction part on the same one-line `Send it:` advice as the agentsync
   report, then the link.
-  Its Summary has an `- outcome:` line: computed, with the prompt version and the agent, and a link that fills
-  those fields, only for an attempt whose one event is a step 1 error that states them and that ran no
-  `install.sh`; otherwise it says no outcome is computed, the link is bare, and the four fields are yours to
-  fill in from the friction log.
+  Its Summary has an `- outcome:` line. That line is computed only for an attempt that ran no `install.sh` and
+  whose one event is a step 1 error stating the prompt version and the agent; then the link fills Outcome,
+  Prompt version and Agent tool and model (Agent only when the line names one). Otherwise the line says no
+  outcome is computed and the link is bare: take Outcome, Prompt version and Agent tool and model from the
+  friction log (its `Prompt:` and `Agent:` header lines and its step lines). Either way the shell report computes
+  no run type and has no `Loop:` line, so Run type is yours to choose by section 4's rule (the Summary's
+  `launchd: simulated` is Sandbox with simulated launchd; otherwise Real Mac, or Sandbox when HOME was a
+  throwaway one), and Loop stage stays empty.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
   prints the issue link for it, neither report has one, and `--report-only`'s NEXT names only
   bring-back.md. Send that one privately.
