@@ -3881,10 +3881,10 @@ def test_the_summary_says_why_a_folder_list_could_not_read_the_config(
         " marks=no-tool": "no agentsync was installed",
         " marks=timeout": "the reader took over 10 s",
         " marks=failed": "the installed agentsync could not load it",
-        " marks=failed:ConfigError": "the installed agentsync could not load it (ConfigError)",
+        " marks=failed:ConfigError": "the installed agentsync could not load it: a ConfigError",
         " marks=failed:<org-1>": "the installed agentsync could not load it",
         " marks=older:provider_link_resolved": (
-            "the installed agentsync was older than the installer (it had no provider_link_resolved)"
+            "the installed agentsync was older than the installer: it had no provider_link_resolved"
         ),
         " marks=older:a-b": "the installed agentsync was older than the installer",
         "": "the installed agentsync could not run the reader",  # an installer that logged no marks=
@@ -3894,6 +3894,7 @@ def test_the_summary_says_why_a_folder_list_could_not_read_the_config(
         step = f"done note=listed-6 synced=unreadable{marks}"
         runs = setup_report.read_install_runs(set_up_log(fake_mac, new_mac, listed="", list_step=step))
         assert setup_report.unread_why(runs) == why, marks
+        assert "(" not in why and ")" not in why, "the note puts it in a bracket of its own (B13 round 8 J27)"
         assert setup_report.unread_synced(runs) is None, "nothing was kept: the question was needed"
     write_friction(fake_mac, V11_HAPPY)
     note = "- note: step 1's folder list could not read which folders sources.toml already syncs ("

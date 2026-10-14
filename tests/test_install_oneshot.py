@@ -3402,9 +3402,10 @@ def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(e
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stdout) == (0, unmarked)
     assert cp.stderr == (
-        f"{head}the installed agentsync is older than this installer (it has no is_under)), so none is "
+        f"{head}the installed agentsync is older than this installer: it has no is_under), so none is "
         "marked below\n"
     )
+    assert "((" not in cp.stderr and "))" not in cp.stderr, "no bracket inside the bracket (B13 round 8 J27)"
     assert install_log(env)[-2].endswith(" note=listed-1 synced=unreadable marks=older:is_under")
     py = _tool_python(env)
     _write_exe(py, "#!/bin/sh\nexec sleep 30\n")
@@ -3415,7 +3416,7 @@ def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(e
     # what the report makes of the first of those lines (it reads the log these runs wrote)
     runs = setup_report.read_install_runs(Path(env["HOME"]) / "agent-context" / "setup" / "install.log")
     assert setup_report.unread_why(runs) == (
-        "the installed agentsync was older than the installer (it had no is_under)"
+        "the installed agentsync was older than the installer: it had no is_under"
     )
 
 

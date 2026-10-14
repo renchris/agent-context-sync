@@ -8531,6 +8531,8 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   **Amended 2026-10-13, §16.70 H14:** the bracket names one of four causes: `no agentsync is installed`, `the
   reader took over 10 s`, `the installed agentsync is older than this installer (it has no <name>)` or `the
   installed agentsync could not load it`.
+  Amended 2026-10-14, §16.75 J27: the third reads `the installed agentsync is older than this installer: it has
+  no <name>`, so the bracket holds no bracket.
 - The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
   (`note=listed-25 synced=2`, and `result=failed note=denied synced=2` for a list that ends on a click). The
   note itself is unchanged, and so is a line written without a config.
@@ -16197,6 +16199,8 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   copies a warning into the friction log. The prefix and the suffix are unchanged.
   `test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader`,
   `test_list_folders_marks_nothing_when_the_config_cannot_be_read`.
+  Amended 2026-10-14, §16.75 J27: `the installed agentsync is older than this installer: it has no <name>`; the
+  report's note says `...older than the installer: it had no <name>` and `...could not load it: a <class>`.
 - **The shell report that may be sent says how** (H4). Its Redaction part ended on the legend and the report on a
   bare link: no private route, no "Nothing is sent automatically", and no word that the form opens empty. After
   the legend's paragraph `fallback_redaction` now writes one unwrapped line, `Send it: the link on the last line

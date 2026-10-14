@@ -2800,7 +2800,7 @@ list_folders() {
 				why="the reader took over 10 s"
 				marks="timeout"
 			elif [ -n "$lacks" ]; then
-				why="the installed agentsync is older than this installer (it has no $lacks)"
+				why="the installed agentsync is older than this installer: it has no $lacks"
 				marks="older:$lacks"
 			else
 				why="the installed agentsync could not load it"

@@ -1623,10 +1623,11 @@ def unread_why(runs: Sequence[InstallRun]) -> str | None:
         kind, _, detail = listed.get("marks", "").partition(":")
         name = detail if _UNREAD_NAME_RE.fullmatch(detail) else ""
         if kind == "older":
-            lacks = f" (it had no {name})" if name else ""
+            # a colon, not a parenthesis: the caller puts this in one (B13 round 8 J27)
+            lacks = f": it had no {name}" if name else ""
             return f"the installed agentsync was older than the installer{lacks}"
         why = _UNREAD_WHY.get(kind, "the installed agentsync could not run the reader")
-        return f"{why} ({name})" if kind == "failed" and name else why
+        return f"{why}: a {name}" if kind == "failed" and name else why
     return None
 
 
