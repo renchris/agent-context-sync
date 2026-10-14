@@ -4059,6 +4059,37 @@ def test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend() -> None
     assert 'is §16.49\'s "The finish" (R11, R30)' in opening
 
 
+_ROUND_8_PROMPT_AMENDS = (
+    ("16.72", "**The finish's folder list is the config's**", "J6"),
+    ("16.72", "**The keep command keeps a local commit", "J7, J8"),
+    ("16.49", '"Before going to the report from either of these two stops"', "J19"),
+    ("16.61", "**A missing checkout is step 3's third case", "J19"),
+)
+"""§16.76's targets (B13 round 9 K65): the section, a phrase only the amended paragraph or bullet holds, and
+the round 8 items whose dated line it carries. §16.76 names them by quoted phrase, which no heading scan
+reads."""
+
+
+def test_round_8s_prompt_items_have_dated_lines_at_the_text_they_amend() -> None:
+    """B13 round 9 K65: §16.76 (v17) amended §16.72's finish and keep paragraphs, §16.49's logging sentence
+    and §16.61's missing-checkout condition with "the older text stays as the record of its version" and no
+    dated line, the defect round 8's J66 fixed for §16.72 while saying the rule was found nowhere else in §16.
+    Each target holds `Amended 2026-10-1N, §16.85 K65 (by §16.76 J<n>)`, §16.76's opening a line saying so,
+    and J66 a line correcting its claim."""
+    sections = dict(_contracts_numbered_sections())
+    for section, anchor, items in _ROUND_8_PROMPT_AMENDS:
+        blocks = [" ".join(b.split()) for b in re.split(r"\n\s*\n|\n(?=\s*- )", sections[section])]
+        [block] = [b for b in blocks if anchor in b]
+        marker = rf"\*\*Amended 2026-10-1\d, §16\.85 K65 \(by §16\.76 {re.escape(items)}\):\*\* since v17"
+        assert re.search(marker, block), f"§{section} {anchor[:40]} has no dated line for §16.76 {items}"
+    opening = " ".join(sections["16.76"].split("\n\n")[1].split())
+    assert (
+        "stays as the record of its version. **Amended 2026-10-14, §16.85 K65:** as §16.79 J66 did" in opening
+    )
+    j66 = " ".join(_contracts_section("**Round 7's prompt items have dated lines", "\n\n").split())
+    assert 'Amended 2026-10-14, §16.85 K65: "a rule found nowhere else in §16" was not so.' in j66
+
+
 def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 8 J73: §16.71 H47 and H52 corrected §16.66 G52 and G29, and H77 its "`STUB_RENDER` is
     4", with no dated line at any of them, the defect class H54 fixed for round 6, whose test reads only G

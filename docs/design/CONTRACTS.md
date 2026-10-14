@@ -13710,6 +13710,9 @@ a network this Mac is not on".
   report is the old checkout's code.
 - "Before going to the report from either of these two stops" followed three cases, the middle one a recovery;
   it now names "the Xcode stop or the other-git-failure stop above".
+  **Amended 2026-10-14, §16.85 K65 (by §16.76 J19):** since v17 it names three stops, "the Xcode stop, the
+  not-a-checkout stop or the other-git-failure stop above", and logs the error if
+  ~/src/agent-context-sync/scripts/install.sh exists, the installer, not the folder, being the condition.
 
 **The step 1 error names the prompt and the agent** (R25). That line is the only one a session writes when step 1
 stops before `--log-start`, so its attempt had no header and the Summary, the friction log section and the issue
@@ -15182,6 +15185,9 @@ once. The `## Not used` section was skipped "if ~/agent-context/setup does not e
 or `--log-start` creates on every path with a checkout (umask 077, measured), so it fired only with no checkout;
 it now reads "if ~/src/agent-context-sync does not exist", the one condition for both parts of the report. Test:
 `tests/test_deploy_pack.py` (`test_readme_report_step_after_any_failure`).
+**Amended 2026-10-14, §16.85 K65 (by §16.76 J19):** since v17 the condition reads
+"~/src/agent-context-sync/scripts/install.sh does not exist": a folder there that is not a checkout has no
+installer, and that stop also ends with no report.
 
 **The heading rule has step 3's exception** (F26; amends §16.43 H5 by a dated line). "Write that heading even when
 this session asks for no change" had no exception, so a session with no checkout would create `fix-request.md` only
@@ -16440,6 +16446,9 @@ prints that line for every folder the first run added, so the positive line is t
 2 refuse an already-configured `--source-local` (exit 2 ends setup before install on the Mac where the reader
 fails, H9's verifier) and a second "already synced, not added" line (`already configured:` is that line). Test:
 `tests/test_deploy_pack.py` (`test_readme_step3_runs_the_loop_then_the_report`).
+**Amended 2026-10-14, §16.85 K65 (by §16.76 J6):** since v17 the "none" form also covers a missing sources.toml,
+which is all a stop before step 2 on a new Mac has: "or, if ~/agent-context/sources.toml does not exist yet or has
+no such kind = "local" source, "none: this Mac syncs no folder"".
 
 **At the folder wait the NEXT item is "none"** (H6; amends §16.43's H3 paragraph, "The finish names one NEXT
 line"). Step 3 lists the folder wait as a case with no report, so "the last NEXT: line printed before the report"
@@ -16478,6 +16487,10 @@ Amended 2026-10-14, §16.75 J65: such a patch starts with the commit's author's 
 header and setup-feedback.md now say so.
 Amended 2026-10-14, §16.82 K28: since v18 each patch name carries its keep's branch, so a second keep overwrites no
 earlier keep's patch.
+**Amended 2026-10-14, §16.85 K65 (by §16.76 J7, J8):** since v17 "no tracking information" no longer goes to a
+bare `git switch main`: step 1 keeps the branch's work on a new `local-work-<time>` branch, writes its patches
+(`origin/main..`), switches to main, gives main `origin/main` as its upstream only when it has none, names both
+branches to the person and runs step 1 again.
 
 **The git stop's quote is sentences, and its rewrite query is anchored** (H21, H25; amends §16.67's G73 paragraph).
 The quote was one 106-word sentence, 86 words of it one parenthesis nesting three sources, with the one action
@@ -16794,6 +16807,9 @@ together; a saved v16 copy is stopped at step 1 like every older copy. v17 moves
 `PROMPT_LAYOUTS` entry and is read with v7's rules. J24, J56 and J57 are documentation outside the block. None adds
 an agentsync command, an installer flag, a config key or a friction kind. This section amends the older sections it
 names here; the older text stays as the record of its version.
+**Amended 2026-10-14, §16.85 K65:** as §16.79 J66 did for §16.72, each text this section amends now has a dated
+line, `Amended 2026-10-14, §16.85 K65 (by §16.76 J<n>)`: §16.72's finish (J6) and keep (J7, J8) paragraphs, §16.49's
+logging bullet and §16.61's missing-checkout paragraph (J19).
 
 **The "none" form covers a missing `sources.toml`** (J6; amends §16.72's "The finish's folder list is the
 config's"). Step 1's `--list-folders` installs nothing, so at the folder wait, and at any stop before step 2 on a new
@@ -17129,6 +17145,8 @@ replaced is §16.49's "The finish" (R11, R30), where the line is, and §16.72's 
 amended by a line, not rewritten, as for every older section. Test:
 `test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend`, which holds the targets as (section, a phrase
 only the target holds, items), since §16.72 names paragraphs, not items, and no heading scan can find them.
+Amended 2026-10-14, §16.85 K65: "a rule found nowhere else in §16" was not so. §16.76 (v17), of the same round,
+used the same words for its four targets; they now have dated lines too.
 
 ### 16.80 Round 9: setup report (2026-10-14, wave B13 round 9 lane RA)
 
@@ -17353,3 +17371,14 @@ leaves Run type to the person, and J42's test pinned that. The paragraph now spl
 names the four fields the link fills and J21's newer-than-this-installer note; the uncomputed one keeps section 4's
 rule; neither has a `Loop:` line. Test: `test_the_send_step_counts_the_values_the_link_fills` (reads the field list
 from install.sh's `LINK_FIELDS`).
+
+**Round 8's prompt items have dated lines at the text they amend** (K65; dated lines at §16.72's finish and keep
+paragraphs, §16.49's logging bullet, §16.61's missing-checkout paragraph, §16.76's opening and §16.79 J66). §16.76
+(v17) said it amends §16.72's finish (J6) and keep (J7, J8) paragraphs, §16.49's logging sentence and §16.61's "if
+~/src/agent-context-sync does not exist" (J19), with "the older text stays as the record of its version" and no
+dated line at any of them, the defect §16.79 J66 fixed for §16.72 in the same round while calling that rule "found
+nowhere else in §16". Each target now has `Amended 2026-10-14, §16.85 K65 (by §16.76 J<n>)`, §16.76's opening a
+line saying so, and J66 a line correcting its claim. The text stays as written. Test:
+`test_round_8s_prompt_items_have_dated_lines_at_the_text_they_amend`, which holds the targets as (section, a phrase
+only the target holds, items), as J66's test does: §16.76 names paragraphs by quoted phrase, which no heading scan
+reads.
