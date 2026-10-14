@@ -1669,8 +1669,11 @@ def _check_heartbeat(
     ``loop_checks`` (``loop.NextStep.checks``, which status passes) are the checks a WAITING ON YOU line
     explains: an incomplete listing points at that line only when its ``heartbeat.<id>`` is among them, and
     otherwise says to sync again. ``None`` (no loop state read): a local source points at the line. Under
-    ``NO_NEXT_HINT_ENV`` (install.sh) every incomplete local source, and an inbox among the checks, reads
-    ``_LISTING_YOURS_NOTE`` with no fix: the run's own sync comes next (B13 round 8 J12)."""
+    ``NO_NEXT_HINT_ENV`` (install.sh) every incomplete local source reads ``_LISTING_YOURS_NOTE`` with no
+    fix: the run's own sync comes next (B13 round 8 J12). So does an inbox on status's path (``loop_checks``
+    given), named by a wait or not, since an inbox pass is always full (B13 round 9 K75). Without
+    ``loop_checks`` (the setup report), only an inbox held by empty cloud folders reads it; any other inbox
+    keeps ``sync -v`` (B13 round 10 L49)."""
     path = config.state_paths.heartbeat
     try:
         beats: Mapping[str, Mapping[str, object]] = read_heartbeat(path)
