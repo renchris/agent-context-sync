@@ -167,7 +167,7 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 17
+PROMPT_VERSION = 18
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
 whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
@@ -277,15 +277,15 @@ is gone and step 3 runs the sync loop, then the report), v6 and v5. A log is rea
 own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v7 share this module's step
 constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
 report while a note says so), and neither did v9 (a Mac that already syncs folders is not asked for them
-again), v10 (three sentences reworded), v11, v12, v13, v14, v15, v16 or v17 (wording only), so they have no
-entry: :func:`prompt_layout` reads them as v7."""
+again), v10 (three sentences reworded), v11, v12, v13, v14, v15, v16, v17 or v18 (wording only), so they
+have no entry: :func:`prompt_layout` reads them as v7."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
     """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
     :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
     is not stated. The prompt's version moves with every change of its text and a layout only when a step
-    moves, so v8 to v17, and every later version until one adds an entry, is read with v7's rules."""
+    moves, so v8 to v18, and every later version until one adds an entry, is read with v7's rules."""
     if version is None:
         return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]
@@ -1686,6 +1686,25 @@ def unread_synced(runs: Sequence[InstallRun]) -> int | None:
     return None
 
 
+UNREAD_GOES_ON = 18
+"""The first setup prompt whose step 1 treats a folder list that could not read an existing config as one
+that marked the folders already synced: it asks at most whether to add a folder, and an agent that cannot
+ask adds none and goes on to step 2 (B13 round 9 K9, K20, K32: v17 had it log a deviation and wait)."""
+
+
+def unread_asked(attempt: Attempt | None, runs: Sequence[InstallRun]) -> int | None:
+    """:func:`unread_synced` when its folder question was a turn agentsync caused: the attempt's prompt is
+    older than :data:`UNREAD_GOES_ON` or states no version, or the attempt logged a deviation at the folder
+    question's step (its agent stopped to wait all the same). None otherwise: from v18 on that question is
+    the expected "at most whether to add one", as on a Mac whose list marked its folders (B13 round 9 K20)."""
+    unread = unread_synced(runs)
+    if not unread or attempt is None:
+        return unread
+    version = attempt.version
+    waited = any(e.step == attempt.layout.folder_question_step for e in attempt.of_kind("deviation"))
+    return unread if version is None or version < UNREAD_GOES_ON or waited else None
+
+
 def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]:
     """The install.sh runs that started during attempt ``index`` (from its begin time to the next attempt's);
     every run when there is no friction log, or when the latest attempt has no time at all."""
@@ -1909,8 +1928,8 @@ def compute_outcome(
             approvals = len(attempt.of_kind("approval"))
             if approvals:
                 why.append(f"{approvals} approval(s)")
-            unread = unread_synced(runs)
-            if unread:  # asked again, since the list could not mark them (B13 round 7 H17, H28)
+            unread = unread_asked(attempt, runs)
+            if unread:  # asked again, since the list could not mark them (B13 round 7 H17, H28; round 9 K20)
                 why.append(
                     f"the folder question: step 1's list could not read the {_plural(unread, 'folder')} this "
                     "Mac already syncs"
@@ -6540,6 +6559,7 @@ def _expected_turns_line(
     unstarted: bool = False,
     no_run: bool = False,
     unread: int | None = None,
+    kept_unread: int | None = None,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -6547,8 +6567,9 @@ def _expected_turns_line(
     installer ``stopped`` before the folder list (:func:`_stopped_before_the_list`) has none at all, and
     nor has one ``unstarted``: a header-less attempt with no install.sh run, whose step 1 command stopped
     before ``install.sh --log-start``, nor one with ``no_run``: an attempt with no install.sh run of its own,
-    so no folder list was printed (B13 round 3 R15). With ``unread`` (:func:`unread_synced`) the Mac already
-    synced folders the list could not read: no folder question was due, and the one asked is an Item."""
+    so no folder list was printed (B13 round 3 R15). With ``unread`` (:func:`unread_asked`) the Mac already
+    synced folders the list could not read: no folder question was due, and the one asked is an Item. With
+    ``kept_unread`` instead, the prompt (v18 on) asked at most whether to add one, as with ``synced``."""
     layout = att.layout
     if unstarted:
         return (
@@ -6580,6 +6601,11 @@ def _expected_turns_line(
             parts = [
                 f"no folder question ({_plural(unread, 'folder')} already synced; step {step}'s list could "
                 "not read them, so it was asked: see Items)"
+            ]
+        elif kept_unread:
+            parts = [
+                f"no folder question ({_plural(kept_unread, 'folder')} already synced; step {step}'s list "
+                "could not read them, so it asked at most whether to add one; not logged)"
             ]
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
@@ -7236,7 +7262,10 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         no_run = not runs and not att.layout.logs_expected_turns
         copy_stopped = _stopped_before_the_list(att, runs)
         stopped = copy_stopped or unstarted or no_run
-        out.append(_turns_line(att, run_type, synced, stopped=stopped))
+        # from prompt v18 a list that could not read the config asks at most whether to add one (round 9 K20)
+        unread, asked = unread_synced(runs), unread_asked(att, runs)
+        kept_unread = unread if unread and not asked else None
+        out.append(_turns_line(att, run_type, synced or kept_unread, stopped=stopped))
         out.append(
             _expected_turns_line(
                 att,
@@ -7245,7 +7274,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 stopped=copy_stopped,
                 unstarted=unstarted,
                 no_run=no_run and not unstarted,
-                unread=unread_synced(runs),
+                unread=asked,
+                kept_unread=kept_unread,
             )
         )
         why_unread = unread_why(runs)
@@ -7341,7 +7371,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     retried = retried_runs(att, runs) if outcome.kind == "worked with help" else []  # one of its reasons
     # an installer-side item, as retried runs are: v6+ never logs the folder question (B13 round 7 H17, H28)
     # whatever the outcome: the expected turns line points here (a reviewer's finding)
-    unread = unread_synced(runs) if att is not None else None
+    unread = unread_asked(att, runs) if att is not None else None
     if att is not None and (items or retried or unread):
         if unread:
             warned = any("could not read which folders" in ln for ln in r.facts.out_counted)

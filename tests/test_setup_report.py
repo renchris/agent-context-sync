@@ -3339,21 +3339,21 @@ V12_HAPPY = V11_HAPPY.replace("Prompt: v11", "Prompt: v12")
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 to v17 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v18 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
-    versions = (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, None, 99)
+    versions = (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, None, 99)
     read_as = [setup_report.prompt_layout(v).version for v in versions]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
     assert (
-        setup_report.PROMPT_VERSION == 17 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 18 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
-    for version in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17):  # none moved a step: each gets v7's every rule
+    for version in (8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):  # none moved a step: each gets v7's every rule
         assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
     assert (v7.install_step, v7.report_step) == (v6.install_step, v6.report_step) == (2, 3)
     assert max(v7.steps) == 3 and max(v6.steps) == 4
     # B13 round 7 H11: the field names the step the person had, now an option of the form; v6 keeps its own
-    for version in (7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
+    for version in (7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
         label = setup_report.Outcome("failed", 3, (), version).form_label
         assert label == "Failed at step 3 (sync loop and report)", version
         assert label in setup_report.FORM_OUTCOME_OPTIONS
@@ -3535,11 +3535,11 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
     other way round. The installer's version and its reason come from that line, never from the number of
-    the build that writes the report: here the installer was v8 or v18, whatever this build is. Only the
+    the build that writes the report: here the installer was v8 or v19, whatever this build is. Only the
     installer's fixed words are shown."""
     what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    assert setup_report.PROMPT_VERSION < 18
+    assert setup_report.PROMPT_VERSION < 19
     for header, installer, shown, why in (
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
@@ -3560,8 +3560,8 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ),
         (
             "v9",
-            18,
-            "v9 (older than the installer's v18: the pasted copy was not the current README)",
+            19,
+            "v9 (older than the installer's v19: the pasted copy was not the current README)",
             "the pasted copy is not the current one",
         ),
     ):
@@ -4026,6 +4026,49 @@ def test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked(
     summary = section(text, "Summary")
     assert summary.strip().startswith("- **outcome: fully one command** "), summary
     assert _line(summary, "- expected turns: ").startswith(f"- expected turns: {ASKED} · ")
+
+
+def test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 9 K9, K20, K32 (one defect, built once): v17's step 1 went on unattended only after an
+    "already synced on this Mac:" line, so where the list could not read the config the agent waited, and the
+    report called the folder question a turn agentsync caused. v18 treats that list as one that marked the
+    folders: it asks at most whether to add one, and with nobody to ask it adds none. So a v18 attempt gets
+    no outcome reason, no Item and no counted question, and its expected turns say so; v17 and older keep
+    the old reading, and so does a v18 attempt whose agent logged a step 1 deviation (it waited all the
+    same)."""
+    kept = ("", "skipped note=exists kept=2 added=0")
+    unread = "done note=listed-25 synced=unreadable marks=no-tool"
+    runs = setup_report.read_install_runs(set_up_log(fake_mac, kept, listed="", list_step=unread))
+    caused = "the folder question: step 1's list could not read the 2 folders this Mac already syncs"
+    item = "- install.sh · step 1 · the folder list could not read the 2 folders this Mac already syncs"
+    waited = "2026-09-29T09:58:30Z | step 1 | deviation | waited for the folder answer | -\n"
+    for prompt, extra, asked in (("v17", "", True), ("v18", "", False), ("v18", waited, True)):
+        friction = V11_HAPPY.replace("Prompt: v11", f"Prompt: {prompt}").replace(
+            "2026-09-29T10:01:10Z | end", f"{extra}2026-09-29T10:01:10Z | end"
+        )
+        write_friction(fake_mac, friction)
+        [attempt] = setup_report.parse_friction(friction).attempts
+        assert setup_report.unread_asked(attempt, runs) == (2 if asked else None), prompt
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        first = summary.strip().splitlines()[0]
+        expected = _line(summary, "- expected turns: ")
+        assert (caused in first) is asked and (item in summary) is asked, (prompt, summary)
+        assert (
+            "- note: step 1's folder list could not read which folders sources.toml already syncs" in summary
+        )
+        if asked:
+            assert _line(summary, "- human turns: ").startswith("- human turns: 1 (1 question"), prompt
+            assert "so it was asked: see Items) · " in expected, prompt
+            continue
+        assert first.startswith("- **outcome: fully one command** "), summary
+        assert _line(summary, "- human turns: ").startswith("- human turns: 0 (0 questions"), summary
+        assert expected.startswith(
+            "- expected turns: no folder question (2 folders already synced; step 1's list could not read "
+            "them, so it asked at most whether to add one; not logged) · "
+        ), expected
 
 
 def test_the_summary_says_why_a_folder_list_could_not_read_the_config(

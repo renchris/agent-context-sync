@@ -9295,6 +9295,9 @@ attempt reached its report. Every other patch is sent, fenced, as before.
   lacks (`format-patch -q origin/main..`), and only the commit of uncommitted changes gets the constant subject,
   so a second keep overwrites a first keep's patch only where both get the same number and subject. Section 3
   still reads every `*.patch` by its mtime, so the rule above is unchanged.
+  **Amended 2026-10-14, §16.82 K28:** since v18 every patch name carries its keep's local-work branch
+  (`format-patch -q --suffix=".<branch>.patch"`), so a second keep no longer overwrites a first keep's patch; the
+  names still end in `.patch`, so section 3's flat `*.patch` read is unchanged.
 
 **Every doubt sends the patch.** No friction log, no earlier attempt that ended, an end line or an mtime
 that is not exactly `YYYY-MM-DDTHH:MM:SSZ` (`utc_stamp`), or a hash that is not 12 hex digits: the patch is
@@ -12477,6 +12480,9 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   **Amended 2026-10-14, §16.79 J66 (by §16.72 H6):** since v16 the item adds "(also "none: waiting for your folder answer"
   while you wait for my folder answer in step 1; the folder list's NEXT: line is not a step for me)": at the
   folder wait no report runs, so "before the report" pointed at nothing.
+  **Amended 2026-10-14, §16.82 K19:** since v18 the clause covers the folder wait only ("... in step 1: there, the
+  NEXT: line that leaves the folders to choose is not a step for me)"); at the list's exit-3 stops (OneDrive not
+  signed in, no folders synced yet) its NEXT is the person's step and is the one named.
 - **Step 2's NEXT does not count toward the loop** (H4; amends §16.28 "One round"). "Step 2's NEXT: line does not count, even when it
   already said "session done": step 2's sync downloaded nothing, so run this loop's sync at least once." On a
   re-run, loop rules 5, 9 and 10 can end the installer's `NEXT:` in "session done". Step 2's sync is
@@ -16432,6 +16438,9 @@ pointed at a report that never ran, while `--list-folders` had printed a NEXT: l
 folder left open. The item now adds "(also "none: waiting for your folder answer" while you wait for my folder
 answer in step 1; the folder list's NEXT: line is not a step for me)". Test: as H9.
 
+**Amended 2026-10-14, §16.82 K19:** since v18 the clause reads "... in step 1: there, the NEXT: line that leaves the
+folders to choose is not a step for me)": the folder wait only, so a list's sign-in `NEXT:` is still named.
+
 **The keep command keeps a local commit and moves main to the update** (H19; amends §16.30's "The bring-back sends
 local work once"). A checkout with a local commit behind origin fails the pull with "Not possible to fast-forward",
 which the prompt did not call local changes; v15's keep command then failed at its commit ("nothing to commit",
@@ -16458,6 +16467,8 @@ changes. Tests: `tests/test_deploy_pack.py` (`test_readme_keeps_a_local_commit_a
 `test_readme_keeps_local_work_then_runs_step_1_again`, `test_step1_keeps_local_changes_on_a_branch_and_updates`).
 Amended 2026-10-14, §16.75 J65: such a patch starts with the commit's author's name and email; bring-back.md's
 header and setup-feedback.md now say so.
+Amended 2026-10-14, §16.82 K28: since v18 each patch name carries its keep's branch, so a second keep overwrites no
+earlier keep's patch.
 
 **The git stop's quote is sentences, and its rewrite query is anchored** (H21, H25; amends §16.67's G73 paragraph).
 The quote was one 106-word sentence, 86 words of it one parenthesis nesting three sources, with the one action
@@ -17114,7 +17125,91 @@ Reserved for round 9 lane RB of B13.
 
 ### 16.82 Round 9: setup prompt v18 (2026-10-14, wave B13 round 9 lane P)
 
-Reserved for round 9 lane P of B13.
+The B13 round 9 items of lane P (specs `round9/items/K<n>.md`, the verifier's corrected fix built). Nine need
+prompt text (K9, K12, K19, K20, K25, K28, K31, K32, K78), so the prompt is **setup prompt v18**:
+`SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v18` and `setup-prompt-compat 18`, the issue form's
+placeholder and the block's digest move together; a saved v17 copy is stopped at step 1 like every older copy. v18
+moves no step, so it has no `PROMPT_LAYOUTS` entry. K13 and K73 need no prompt text of their own and ship in it. No
+other lane sent prompt words. None adds an agentsync command, an installer flag, a config key or a friction kind.
+The older text this section amends stays as the record of its version; dated lines are where an item's spec asks.
+
+**A folder list that could not read the config is not a wait** (K9, K20, K32, K73, K78: one defect, built once;
+records the decision §16.75 J17 left to lane P, which §16.76 did not record: v17 kept only the "already synced on
+this Mac:" exception). Where step 1's `--list-folders` could not read an existing `sources.toml` (no agentsync,
+a reader timeout, an older build, a config that does not load), it marks nothing and prints no "already synced"
+line, and its folder `NEXT:` ends "; this Mac has a config (<config>) whose folders could not be read: if it was
+set up before, <install.sh> with no --source-local keeps whatever that config syncs, and each --source-local only
+adds" (§16.75 J17), plus "; or re-run <install.sh> --list-folders to mark them" after a timeout. v17's agent that
+could not ask logged a deviation and waited, and the report called the question "a turn agentsync caused" (round 9
+rehearsals b, c, e). v18 step 1 has a second exception, keyed on those words and only on a list that printed
+folders (the sign-in `NEXT:`s carry the same clause and keep v17's no-folder-paths rule): run the offered re-run
+once; if no list marked a folder, say the list could not read them and that, if this Mac was set up before, step 2
+with no `--source-local` keeps them, and ask only whether to add one; an agent that cannot ask adds none and runs
+step 2 with no `--source-local`, which is not a deviation. The words do not claim folders are kept, since an
+inbox-only config keeps none (the verifiers' correction): if step 2 then says no folder is synced yet, the Mac syncs
+no folder after all, and step 1's folder question applies as on a new Mac (an agent that cannot ask
+chooses none and waits). The README's intro says the same (K73).
+`setup_report.unread_asked` gates the three uses of `unread_synced` (the outcome reason, the expected-turns line's
+"so it was asked: see Items", the Item): from `UNREAD_GOES_ON` (18) the question is the expected "at most whether
+to add one", the human turns count it as the already-synced case does, and the expected-turns line reads "no
+folder question (N folders already synced; step 1's list could not read them, so it asked at most whether to add
+one; not logged)". v17 and older, an attempt that states no version, and a v18 attempt that logged a step 1
+deviation (its agent waited all the same: K9's verifier) keep v17's reading. Tests: `tests/test_deploy_pack.py`
+(`test_a_folder_list_that_could_not_read_the_config_goes_on_unattended`,
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_list_folders_is_step_1s_only_listing`),
+`tests/test_setup_report.py` (`test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`).
+
+**The branch recovery says what it kept** (K12, K13; amends §16.76's J7 and J8 paragraph). On a main with no
+upstream and nothing of its own, v17's recovery made an empty local-work branch and wrote no patch, while the
+words after it said "my commits stay on my branch" and that the work was "copied as patches"; on a main with a
+commit of its own the next keep's `switch -C main origin/main` moves main, so the first claim was false there too
+(K12, measured in throwaway homes). After `git switch main` the command now runs `git rev-list --count
+origin/main..@{-1}` (`@{-1}` is the local-work branch just made), which prints the number of commits that branch
+keeps and no path; at 0 the agent says there was nothing to keep and that the person may delete that branch,
+otherwise that all of the work is on it and copied as patches, and only for a branch other than main that the
+person's commits also stay on it. `format-patch -q` stays quiet, since without `-q` it prints paths that hold the
+login. Its upstream test is `test -n "$(git config --get branch.main.merge)"`, which prints nothing where main
+already follows the Source; v17's bare `config --get` printed `refs/heads/main` there (K13: a branch with no
+upstream while main tracks the Source; a main with no upstream printed git's "set up to track" line, as now). Test:
+`test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref`.
+
+**The finish's folder-wait clause covers the folder wait only** (K19; dated lines at §16.43's H3 paragraph and
+§16.72's H6 paragraph). "...; the folder list's NEXT: line is not a step for me" stood on its own after a
+semicolon, so it also read as covering the list's exit-3 stops (OneDrive not signed in, no folders synced yet),
+whose `NEXT:` is the person's step and the one the finish names. It now reads "(also "none: waiting for your
+folder answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the folders to
+choose is not a step for me)". Test: `test_readme_step3_runs_the_loop_then_the_report`.
+
+**A broken checkout goes to the clone's stop** (K25). Step 1 pulled whenever `~/src/agent-context-sync/.git`
+was a folder, so an empty `.git`, or one with no `HEAD`, gave git's "not a git repository", which the prompt routed
+to the proxy advice; and under a home that is itself a repository, git climbed to it, and "no tracking
+information" sent the branch recovery to commit the whole home there (measured, git 2.54). Step 1 now tests
+`[ -f ~/src/agent-context-sync/.git/HEAD ]` (the Claude Code allow rule too), so both go to the clone and its "already
+exists and is not an empty directory" stop; a `.git` file keeps its route. As a second net, git's "not a git
+repository" is the not-a-checkout stop, and "detected dubious ownership" is a stop of its own: the folder belongs to
+another user account, the person moves it aside, and the agent does not run the `safe.directory` command git
+suggests. Both are in the list of stops that log the failed command before the report. Tests:
+`test_a_folder_at_the_checkouts_path_that_is_not_a_checkout_is_named`, `test_readme_step1_is_one_command`,
+`test_readme_step1_command_clones_then_pulls`.
+
+**Each kept patch carries its keep's branch** (K28; dated lines at §16.30's "Not by file name" and §16.72's H19
+paragraph). Two keeps, each with an uncommitted change, both wrote `0001-local-changes-kept-before-update.patch`,
+so the second overwrote the first in the folder the person was told holds it; after a folder wait no report had
+read the first. Both keep commands now run `format-patch -q --suffix=".$(git branch --show-current).patch"`
+right after `switch -c local-work-<time>`, so each name ends `.<that branch>.patch` (git shortens the subject part).
+Section 3 reads `local-work/*.patch` flat, as before; per-branch folders would need a second glob, as `/bin/bash`
+3.2 has no `**`. Test: `test_a_second_keep_leaves_the_first_keeps_patch` (two keeps, both patches, both in
+bring-back.md).
+
+**The git stop's commands are the person's** (K31). The block opens with "Run each command yourself", and the git
+stop's quote named three commands without saying whose they are. Run by the agent, `git config --get-urlmatch
+http.proxy`, the `insteadof` query and `env | grep -i proxy` print proxy hosts, company paths and any stored
+credential into the chat, where the report prints only yes or no (`install.sh` proxy lines). After the quote:
+"(those three commands are mine to run in my own terminal: do not run them yourself)". The finder's other option,
+the agent running the two git reads, would make things worse for that reason and is not built. Test:
+`test_readme_step1_is_one_command`.
+
+Register: `docs/deploy/setup-feedback.md` K42 and its already-set-up bullet for an unread config.
 
 ### 16.83 Round 9: sync, status, locks and doctor (2026-10-14, wave B13 round 9 lane B)
 

@@ -305,10 +305,12 @@ option; it is for this step and the installer.
 
 On a Mac that already runs agentsync the same block is a re-run. The folders you chose before are kept: the
 list marks them, the agent asks only whether to add one, and when it cannot ask you it adds none and goes on.
-It stops and waits for your answer only on a Mac that syncs no folder yet.
+When the list cannot read which folders the Mac syncs, it marks none, and the agent says so and does the same:
+a run with no folder keeps whatever was synced. It stops and waits for your answer only on a Mac that syncs no
+folder yet.
 
 ```text
-Set up agentsync on this Mac (setup prompt v17). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+Set up agentsync on this Mac (setup prompt v18). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
 in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
@@ -344,7 +346,7 @@ name, a short form of it or a placeholder; if a name itself is the problem, stil
 the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id):
-   `sw_vers -productVersion && xcode-select -p && { if [ -d ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v17, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v18, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -352,7 +354,7 @@ the name in fix-request.md.
    ~/src/agent-context-sync (uncommitted changes, which git reports as "would be overwritten", or a local
    commit, which git reports as "Not possible to fast-forward"), keep them on a new local branch and update, in
    one command:
-   `git -C ~/src/agent-context-sync merge-base --is-ancestor main HEAD && git -C ~/src/agent-context-sync switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C ~/src/agent-context-sync add -A && { git -C ~/src/agent-context-sync diff --cached --quiet || git -C ~/src/agent-context-sync -c user.name=agentsync -c user.email=agentsync@localhost commit -q -m 'local changes kept before update'; } && git -C ~/src/agent-context-sync format-patch -q origin/main.. -o ~/agent-context/setup/local-work && git -C ~/src/agent-context-sync fetch origin && git -C ~/src/agent-context-sync switch -C main origin/main`
+   `git -C ~/src/agent-context-sync merge-base --is-ancestor main HEAD && git -C ~/src/agent-context-sync switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C ~/src/agent-context-sync add -A && { git -C ~/src/agent-context-sync diff --cached --quiet || git -C ~/src/agent-context-sync -c user.name=agentsync -c user.email=agentsync@localhost commit -q -m 'local changes kept before update'; } && git -C ~/src/agent-context-sync format-patch -q --suffix=".$(git -C ~/src/agent-context-sync branch --show-current).patch" origin/main.. -o ~/agent-context/setup/local-work && git -C ~/src/agent-context-sync fetch origin && git -C ~/src/agent-context-sync switch -C main origin/main`
    then tell me the branch name (my changes are safe on it, and copied as patches to
    ~/agent-context/setup/local-work) and run step 1's command again. If only its last two steps (the fetch or
    the switch) failed, my changes are already kept: tell me the branch name, run
@@ -360,39 +362,54 @@ the name in fix-request.md.
    then step 1's command again. If the pull says "no tracking information", or the keep command exits 1 at once
    and prints nothing (main has commits the checked-out branch lacks), keep the checked-out branch's work on a
    new local branch and go back to main, in one command:
-   `git -C ~/src/agent-context-sync switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C ~/src/agent-context-sync add -A && { git -C ~/src/agent-context-sync diff --cached --quiet || git -C ~/src/agent-context-sync -c user.name=agentsync -c user.email=agentsync@localhost commit -q -m 'local changes kept before update'; } && git -C ~/src/agent-context-sync format-patch -q origin/main.. -o ~/agent-context/setup/local-work && git -C ~/src/agent-context-sync switch main && { git -C ~/src/agent-context-sync config --get branch.main.merge || git -C ~/src/agent-context-sync branch --set-upstream-to=origin/main main; }`
-   then tell me the name of the branch I was on and of the new local-work branch (my commits stay on my branch; all of
-   my work, uncommitted changes included, is also on the local-work branch and copied as patches to
-   ~/agent-context/setup/local-work), and run step 1's command again. If git clone says the folder "already exists and
-   is not an empty directory", ~/src/agent-context-sync is not a git checkout: tell me to move it aside so step 1
-   clones it, then paste this prompt again, and go to step 3's report. If git failed any other way, show me its error
-   and tell me: "A corporate proxy may need HTTPS_PROXY set in your terminal. If git's error names a host other than
-   github.com, git was told to use that host in one of three ways, and any of them may point at a network this Mac is
-   not on: a URL rewrite, which `git config --get-regexp '^url\..*\.insteadof$'` prints; git's own proxy setting,
-   which `git config --get-urlmatch http.proxy https://github.com` prints and which wins over the terminal's; or the
-   terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which `env | grep -i proxy` shows. Once git can reach
-   GitHub from a terminal, start a new session from that terminal and paste this prompt again", and go to step 3's
-   report. Before going to the report from the Xcode stop, the not-a-checkout stop or the other-git-failure stop
-   above, log the failed command as a step 1 error if ~/src/agent-context-sync/scripts/install.sh exists, starting its
-   what-text with prompt v17, <agent> and a colon (the same words as in step 1's command; write no colon inside
-   <agent>). If --version does not end with "setup-prompt-compat 17", or the command says the pasted prompt is not the
-   installer's, stop and run no other step: this prompt is v17, and a copy that does not match the installer must not
-   be used. But if the error says this installer is for v17, this prompt's own number, the copy matches and only step
-   1's command was changed: run it again once, exactly as written here, and stop as above if it stops the same way
-   again. When step 1 stops here, if the command's error says what to tell me, tell me that, in its words; otherwise
-   (--version printed another number and no such error), tell me to copy the prompt again from README.md on the main
-   branch of the Source above. Either way, unless the error's words already mention this Mac's checkout, also tell me
-   that if a fresh copy stops here too, this Mac's checkout (~/src/agent-context-sync) does not follow main of the
-   Source: point it there, or move it aside so step 1 clones it, then paste the prompt again. If --list-folders
-   printed no folder paths (only a NEXT: line), do what that line says if it is a click for me, otherwise show it to
-   me and go to step 3's report. Otherwise show me the folders and ask which to sync, suggesting project folders
-   rather than a whole library, and tell me that online-only files in them are downloaded by each sync, up to 1 GiB
-   per folder per run. If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not
-   choose folders for me: log a deviation, stop and wait for my answer. One exception: if --list-folders printed a
-   line that starts "already synced on this Mac:", I chose those folders before and they are kept (each has [synced]
-   before its path in the list). Then tell me which they are and ask only whether to add any unmarked folder. If you
-   cannot ask me then, add none and go on to step 2. That is not a deviation: do not log it or stop, and say in your
-   final message that I gave no answer, so no folder was added.
+   `git -C ~/src/agent-context-sync switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C ~/src/agent-context-sync add -A && { git -C ~/src/agent-context-sync diff --cached --quiet || git -C ~/src/agent-context-sync -c user.name=agentsync -c user.email=agentsync@localhost commit -q -m 'local changes kept before update'; } && git -C ~/src/agent-context-sync format-patch -q --suffix=".$(git -C ~/src/agent-context-sync branch --show-current).patch" origin/main.. -o ~/agent-context/setup/local-work && git -C ~/src/agent-context-sync switch main && git -C ~/src/agent-context-sync rev-list --count origin/main..@{-1} && { test -n "$(git -C ~/src/agent-context-sync config --get branch.main.merge)" || git -C ~/src/agent-context-sync branch --set-upstream-to=origin/main main; }`
+   then tell me the name of the branch I was on and of the new local-work branch. The number it printed is how many
+   commits the local-work branch keeps: if it is 0, there was nothing to keep, so say that and that I may delete that
+   branch; otherwise say that all of my work, uncommitted changes included, is on the local-work branch and copied as
+   patches to ~/agent-context/setup/local-work, and, if the branch I was on is not main, that my commits also stay on
+   it. Then run step 1's command again. If git clone says the folder "already exists and is not an empty directory",
+   or git says "not a git repository", ~/src/agent-context-sync is not a git checkout: tell me to move it aside so
+   step 1 clones it, then paste this prompt again, and go to step 3's report. If git says "detected dubious
+   ownership", the folder belongs to another user account of this Mac: tell me to move it aside (do not run the
+   safe.directory command git suggests), then paste this prompt again, and go to step 3's report. If git failed any
+   other way, show me its error and tell me: "A corporate proxy may need HTTPS_PROXY set in your terminal. If git's
+   error names a host other than github.com, git was told to use that host in one of three ways, and any of them may
+   point at a network this Mac is not on: a URL rewrite, which `git config --get-regexp '^url\..*\.insteadof$'`
+   prints; git's own proxy setting, which `git config --get-urlmatch http.proxy https://github.com` prints and which
+   wins over the terminal's; or the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which
+   `env | grep -i proxy` shows. Once git can reach GitHub from a terminal, start a new session from that terminal and
+   paste this prompt again" (those three commands are mine to run in my own terminal: do not run them yourself), and
+   go to step 3's report. Before going to the report from the Xcode stop, the not-a-checkout stop, the ownership stop
+   or the other-git-failure stop above, log the failed command as a step 1 error if
+   ~/src/agent-context-sync/scripts/install.sh exists, starting its what-text with prompt v18, <agent> and a colon
+   (the same words as in step 1's command; write no colon inside <agent>). If --version does not end with
+   "setup-prompt-compat 18", or the command says the pasted prompt is not the installer's, stop and run no other step:
+   this prompt is v18, and a copy that does not match the installer must not be used. But if the error says this
+   installer is for v18, this prompt's own number, the copy matches and only step 1's command was changed: run it
+   again once, exactly as written here, and stop as above if it stops the same way again. When step 1 stops here, if
+   the command's error says what to tell me, tell me that, in its words; otherwise (--version printed another number
+   and no such error), tell me to copy the prompt again from README.md on the main branch of the Source above. Either
+   way, unless the error's words already mention this Mac's checkout, also tell me that if a fresh copy stops here
+   too, this Mac's checkout (~/src/agent-context-sync) does not follow main of the Source: point it there, or move it
+   aside so step 1 clones it, then paste the prompt again. If --list-folders printed no folder paths (only a NEXT:
+   line), do what that line says if it is a click for me, otherwise show it to me and go to step 3's report. Otherwise
+   show me the folders and ask which to sync, suggesting project folders rather than a whole library, and tell me that
+   online-only files in them are downloaded by each sync, up to 1 GiB per folder per run. If you cannot ask me (your
+   tool runs unattended, or the question comes back unanswered), do not choose folders for me: log a deviation, stop
+   and wait for my answer. Two exceptions. First, if --list-folders printed a line that starts "already synced on this
+   Mac:", I chose those folders before and they are kept (each has [synced] before its path in the list). Then tell me
+   which they are and ask only whether to add any unmarked folder. If you cannot ask me then, add none and go on to
+   step 2. That is not a deviation: do not log it or stop, and say in your final message that I gave no answer, so no
+   folder was added. Second, if the list's NEXT: line says this Mac has a config whose folders could not be read, the
+   list marks none. If that line also says to re-run --list-folders to mark them, run
+   `~/src/agent-context-sync/scripts/install.sh --list-folders` once and go by what it prints. If no list marked a
+   folder, tell me the list could not read which folders this Mac already syncs, and that if this Mac was set up
+   before, step 2 with no --source-local keeps them; ask only whether to add a folder from the list (none is needed).
+   If you cannot ask me then, add none and go on to step 2 with no --source-local: as in the first exception, that is
+   not a deviation, and your final message says I gave no answer, so no folder was added. If step 2 then says no
+   folder is synced yet (that config held none), this Mac syncs no folder after all, so the folder question above
+   applies as on a new Mac: ask me which folders from the list to sync, and if you cannot ask me, do not choose them
+   for me.
 2. Install and start. Run, with one --source-local per folder I chose (full paths), using the longest command
    timeout your tool allows (30 minutes if you can set it: the speech helper's build alone can take up to 20 minutes):
    `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`
@@ -464,10 +481,10 @@ the name in fix-request.md.
    session printed an "added source" line; or, if ~/agent-context/sources.toml does not exist yet or has no such
    kind = "local" source, "none: this Mac syncs no folder" (if setup stopped before step 2, say at which step); the
    last NEXT: line printed before the report, or "none" (also "none: waiting for your folder answer" while you wait
-   for my folder answer in step 1; the folder list's NEXT: line is not a step for me), and under it each WAITING ON
-   YOU: line the same command printed; and ~/agent-context/bring-back.md, the one file I review and copy back (the
-   redacted report, then your fix request and the patches of any work step 1 kept); if no report ran this session, say
-   "none" for that file instead, and do not point me to an older bring-back.md.
+   for my folder answer in step 1: there, the NEXT: line that leaves the folders to choose is not a step for me), and
+   under it each WAITING ON YOU: line the same command printed; and ~/agent-context/bring-back.md, the one file I
+   review and copy back (the redacted report, then your fix request and the patches of any work step 1 kept); if no
+   report ran this session, say "none" for that file instead, and do not point me to an older bring-back.md.
 ```
 
 <details>
@@ -494,7 +511,7 @@ names still asks.
     "allow": [
       "Bash(sw_vers -productVersion)",
       "Bash(xcode-select -p)",
-      "Bash([ -d ~/src/agent-context-sync/.git ])",
+      "Bash([ -f ~/src/agent-context-sync/.git/HEAD ])",
       "Bash(git -C ~/src/agent-context-sync pull --ff-only)",
       "Bash(git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync)",
       "Bash(~/src/agent-context-sync/scripts/install.sh *)",
