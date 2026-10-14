@@ -4396,17 +4396,22 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     )
     assert "and last a listing that finished after its 3-second bound but in time for the report" in page
     work = inspect.getsource(setup_report._local_work_line)
+    # B13 round 10 L8, L25, L40, L58: the line reads by the patch count, and its bracket is LOCAL_WORK_WHERE
     for words in (
         "- local work kept by setup prompt step 1: ",
-        " local-work branch(es) in the checkout, ",
-        " patch file(s) in the setup folder's local-work",
-        "bring-back.md section 3 only)",
+        " patch file(s) in the setup folder's ",
+        "({LOCAL_WORK_WHERE}); ",
+        " local-work ",
+        "- local-work branch(es) in the checkout: ",
     ):
         assert words in work, words
     assert (
-        "`- local work kept by setup prompt step 1: N local-work branch(es) in the checkout, M patch file(s) "
-        "in the setup folder's local-work, newest written <time> (the patches are in bring-back.md section 3 "
-        "only)`" in page
+        "`- local work kept by setup prompt step 1: N patch file(s) in the setup folder's local-work, newest "
+        f"written <time> ({setup_report.LOCAL_WORK_WHERE}); M local-work branch(es) in the checkout`" in page
+    )
+    assert (
+        "`- local-work branch(es) in the checkout: M, no patch file in the setup folder's local-work (a keep "
+        "with nothing to keep writes none)`" in page
     )
     assert "Documents" in setup_report._GENERIC_FOLDERS
     assert (

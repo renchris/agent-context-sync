@@ -150,14 +150,19 @@ words) is yours to remove. The CLI always redacts.
   by that role, not by the placeholder's number. A part written before v11 may give a placeholder alone: trust
   its number only against section 1 of the file it first arrived in (K34).
   Both reports also say in counts that step 1 kept local work, under Run metadata in the agentsync report and at
-  the end of the shell fallback's Summary: `- local work kept by setup prompt step 1: N local-work branch(es) in the checkout, M patch file(s) in the setup folder's local-work, newest written
-  <time> (the patches are in bring-back.md section 3 only)`. A public report shows that the work exists, never the
-  patches.
+  the end of the shell fallback's Summary: `- local work kept by setup prompt step 1: N patch file(s) in the setup folder's local-work, newest written
+  <time> (no patch text is in this report: each patch goes once to the private bring-back.md section 3; one an
+  earlier report already carried is listed there by its hash); M local-work branch(es) in the checkout`. It counts
+  the patches at the top of `local-work` (the files section 3 reads) and the local-work branches that hold a commit
+  of their own; with branches and no patch it reads `- local-work branch(es) in the checkout: M, no patch file in
+  the setup folder's local-work (a keep with nothing to keep writes none)`, which is no kept work. A public report
+  shows that the work exists, never the patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
   not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
   hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with
   the patch you hold (`shasum -a 256`). If you hold none, that work never arrived: the Mac cannot know what was
-  copied back, so ask for the file the line names.
+  copied back, so ask for the file the line names. The header's sentence on each patch's author is there only
+  when section 3 sends a patch; when it sends none because each was in an earlier report, the header says so.
   Whoever looks after agentsync for your team triages it there with this page, exactly like an issue; that needs
   no contact with the agentsync maintainer.
   To hand a report to the maintainer without a public post, the optional route is the contact on the maintainer's

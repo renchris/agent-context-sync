@@ -2055,23 +2055,48 @@ fallback_install_line() { # RC
 	fi
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
+# The sha REF names in the checkout GIT, read from its ref files with no git process: the loose file first, else
+# its packed-refs line; empty when neither holds it.
+checkout_ref_sha() { # GIT REF
+	local s=""
+	if [ -f "$1/$2" ] && [ ! -L "$1/$2" ]; then { IFS= read -r s; } <"$1/$2" 2>/dev/null || true; fi
+	s="${s#"${s%%[![:space:]]*}"}" # as Python strips it: a blank or a CR around the sha is no part of it
+	s="${s%%[[:space:]]*}"
+	[ -n "$s" ] || s="$(R="$2" LC_ALL=C awk '$2 == ENVIRON["R"] { print $1; exit }' "$1/packed-refs" 2>/dev/null || true)"
+	printf '%s' "$s"
+}
+# The words after the local-work line patch count, as setup_report.LOCAL_WORK_WHERE (B13 round 10 L8, L25).
+LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the private bring-back.md section 3; one an earlier report already carried is listed there by its hash"
 # The count-only line that says step 1 kept local work, as setup_report._local_work_line writes it (B13 round 9
-# K30): the checkout's local-work-* branches, read from its ref files (no git: without developer tools it offers
-# to install them), and the *.patch files under the setup folder's local-work at any depth, with the newest time.
+# K30, round 10 L8, L25, L40, L58). Patches are the measure of kept work: the *.patch files at the top of the
+# setup folder local-work, the files section 3 of bring-back.md reads, with the newest time. The checkout
+# local-work-* branches, read from its ref files (no git: without developer tools it offers to install them),
+# are counted beside them, less a branch at the main or origin/main commit, which holds no commit of its own.
+# With branches but no patch the line does not say kept.
 fallback_local_work_line() {
-	local git="$HOME/src/agent-context-sync/.git" b p n=0 at newest="" f
+	local git="$HOME/src/agent-context-sync/.git" b=0 p n=0 at newest="" f s main origin
 	[ -d "$git" ] || return 0
-	b="$({
+	main="$(checkout_ref_sha "$git" refs/heads/main)"
+	origin="$(checkout_ref_sha "$git" refs/remotes/origin/main)"
+	while IFS= read -r f; do
+		s="$(checkout_ref_sha "$git" "refs/heads/$f")"
+		[ -n "$s" ] && { [ "$s" = "$main" ] || [ "$s" = "$origin" ]; } && continue
+		b=$((b + 1))
+	done < <({
 		for f in "$git"/refs/heads/local-work-*; do [ -f "$f" ] && [ ! -L "$f" ] && printf '%s\n' "${f##*/}"; done
 		LC_ALL=C sed -n 's|^[^ ]* refs/heads/\(local-work-.*\)$|\1|p' "$git/packed-refs" 2>/dev/null
-	} | LC_ALL=C sort -u | LC_ALL=C grep -c . || true)"
+	} | LC_ALL=C sort -u)
 	while IFS= read -r p; do
 		n=$((n + 1))
 		at="$(date -u -r "$p" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
 		[[ -z "$at" || "$at" < "$newest" ]] || newest="$at"
-	done < <(find "$SETUP_DIR/local-work" -type f -name '*.patch' 2>/dev/null)
-	[ "${b:-0}" -gt 0 ] || [ "$n" -gt 0 ] || return 0
-	say "- local work kept by setup prompt step 1: ${b:-0} local-work branch(es) in the checkout, $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} (the patches are in bring-back.md section 3 only)"
+	done < <(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null)
+	if [ "$n" -gt 0 ]; then
+		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
+	elif [ "$b" -gt 0 ]; then
+		say "- local-work branch(es) in the checkout: $b, no patch file in the setup folder's local-work (a keep with nothing to keep writes none)"
+	fi
+	return 0
 }
 fallback_body() {
 	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o
@@ -2617,31 +2642,24 @@ source_excludes_line() { # CONFIG
 		}' "$1" 2>/dev/null || true
 }
 write_bring_back() {
-	local out="${REPORT_PATH%/*}/bring-back.md" tmp p fence shown="$SETUP_DIR"
+	local out="${REPORT_PATH%/*}/bring-back.md" tmp three p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped=""
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
 	prev="$(utc_stamp "$(friction_earlier_end)")"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
+	three="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || {
+		rm -f "$tmp"
+		return 1
+	}
+	# Section 3 first, into its own file, so the header says what it holds: the sentence on authors only when it
+	# sends a patch (B13 round 10 L25: every patch was in an earlier report and the header still named them)
 	{
-		printf '# agentsync: the one file to bring back\n\n'
-		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
-		printf 'Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so review\n'
-		printf 'them before sending.\n'
-		# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
-		# tell it from the agentsync commit of the keep (B13 round 8 J65)
-		printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
-			"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
-			"set, a name and address git filled in from this Mac's account), so check those lines too." ""
-		printf '## 1. Setup report\n\n'
-		embed "$REPORT_PATH" markdown
-		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
-		if [ -s "$SETUP_DIR/fix-request.md" ]; then embed "$SETUP_DIR/fix-request.md" markdown; else printf 'none\n'; fi
-		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$shown/local-work"
 		fence="$(fence_for "$SETUP_DIR"/local-work/*.patch)"
 		for p in "$SETUP_DIR"/local-work/*.patch; do
-			[ -e "$p" ] || continue
+			# a symlink, or a symlinked local-work, is no patch the report counts, so none is sent (B13 round 10 L8)
+			[ -e "$p" ] && [ ! -L "$p" ] && [ -f "$p" ] && [ ! -L "$SETUP_DIR/local-work" ] || continue
 			at=""
 			[ -z "$prev" ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
 			if [ -n "$at" ] && [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ]; then
@@ -2660,10 +2678,37 @@ write_bring_back() {
 		[ "$sent" -eq 0 ] || printf '%s\n' "$fence"
 		printf '%s' "$skipped"
 		[ "$sent" -gt 0 ] || [ -n "$skipped" ] || printf 'none\n'
-	} >"$tmp" 2>/dev/null || {
-		rm -f "$tmp"
+	} >"$three" 2>/dev/null || {
+		rm -f "$tmp" "$three"
 		return 1
 	}
+	{
+		printf '# agentsync: the one file to bring back\n\n'
+		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
+		printf 'Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so review\n'
+		printf 'them before sending.\n'
+		# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
+		# tell it from the agentsync commit of the keep (B13 round 8 J65)
+		if [ "$sent" -gt 0 ]; then
+			printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
+				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
+				"set, a name and address git filled in from this Mac's account), so check those lines too." ""
+		elif [ -n "$skipped" ]; then
+			printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash." ""
+		else
+			printf '\n'
+		fi
+		printf '## 1. Setup report\n\n'
+		embed "$REPORT_PATH" markdown
+		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
+		if [ -s "$SETUP_DIR/fix-request.md" ]; then embed "$SETUP_DIR/fix-request.md" markdown; else printf 'none\n'; fi
+		printf '\n## 3. Local work kept by setup prompt step 1 (%s)\n\n' "$shown/local-work"
+		cat "$three"
+	} >"$tmp" 2>/dev/null || {
+		rm -f "$tmp" "$three"
+		return 1
+	}
+	rm -f "$three"
 	chmod 600 "$tmp" && mv -f "$tmp" "$out" && say "bring back: $out (one file: report, fix request, local work)"
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run

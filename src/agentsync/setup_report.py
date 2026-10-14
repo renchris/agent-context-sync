@@ -7906,43 +7906,83 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     )
 
 
+LOCAL_WORK_WHERE = (
+    "no patch text is in this report: each patch goes once to the private bring-back.md section 3; one an "
+    "earlier report already carried is listed there by its hash"
+)
+"""The bracket after the local-work line's patch count, word for word in install.sh's fallback: it claims
+nothing this report cannot know (which patches an earlier report carried), B13 round 10 L8, L25."""
+
+
+def _checkout_ref_shas(git: Path, refs: Iterable[str]) -> dict[str, str]:
+    """The sha each of ``refs`` names in the checkout's ref files, with no git process: the loose file first,
+    else its ``packed-refs`` line; "" when neither holds it."""
+    packed: dict[str, str] = {}
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for line in (git / "packed-refs").read_text(encoding="utf-8", errors="surrogateescape").splitlines():
+            sha, _, ref = line.partition(" ")
+            if ref:
+                packed.setdefault(ref, sha)
+    out: dict[str, str] = {}
+    for ref in refs:
+        loose, sha = git / ref, ""
+        if loose.is_file() and not loose.is_symlink():
+            with contextlib.suppress(OSError, UnicodeDecodeError):
+                sha = loose.read_text(encoding="utf-8").strip()
+        out[ref] = sha or packed.get(ref, "")
+    return out
+
+
 def _local_work_line() -> str | None:
     """The Run metadata line that says step 1 kept local work, counts only (B13 round 9 K30: only the private
-    bring-back.md said so, and the public report read "fully one command"): the ``local-work-*`` branches of
-    the checkout, read from its ref files with no git process (an unset-up Mac's git offers to install the
-    developer tools), and the ``*.patch`` files under the setup folder's ``local-work`` at any depth, with the
-    newest one's time. Branches outlive a second keep that overwrites a patch of the same name, so they are
-    the better count. No name, subject, author or content is shown. None when both are 0 or there is no
-    checkout. install.sh's fallback writes the same line (``fallback_local_work_line``)."""
+    bring-back.md said so, and the public report read "fully one command"). Patches are the measure of kept
+    work: the ``*.patch`` files at the top of the setup folder's ``local-work``, the files section 3 reads
+    (B13 round 10 L8, L25: a nested one was counted and sent nowhere), with the newest one's time; since v18
+    each keep writes its own file names (``--suffix``), so only a v17 keep could have overwritten one. The
+    ``local-work-*`` branches of the checkout, read from its ref files with no git process (an unset-up
+    Mac's git offers to install the developer tools), are counted beside them: they outlive a patch folder
+    the person moved or deleted, and v15 to v17 keeps wrote patches without a branch name (a v15 keep wrote
+    none). A branch at main's or origin/main's own commit holds no commit of its own (a keep with nothing to
+    keep made it) and is not counted (L58). With branches but no patch the line says so without "kept"
+    (L40). No name, subject, author or content is shown. None when both are 0 or there is no checkout.
+    install.sh's fallback writes the same line (``fallback_local_work_line``)."""
     git = expand(INSTALL_SH).parents[1] / ".git"
     if not git.is_dir():
         return None
     heads = git / "refs" / "heads"
-    branches = {p.name for p in heads.glob("local-work-*") if p.is_file() and not p.is_symlink()}
+    names = {p.name for p in heads.glob("local-work-*") if p.is_file() and not p.is_symlink()}
     with contextlib.suppress(OSError, UnicodeDecodeError):
         for line in (git / "packed-refs").read_text(encoding="utf-8", errors="surrogateescape").splitlines():
             ref = line.partition(" ")[2]
             if ref.startswith("refs/heads/local-work-"):
-                branches.add(ref.removeprefix("refs/heads/"))
-    times: list[float] = []
+                names.add(ref.removeprefix("refs/heads/"))
+    trunk = ("refs/heads/main", "refs/remotes/origin/main")
+    shas = _checkout_ref_shas(git, [*trunk, *(f"refs/heads/{name}" for name in names)])
+    empty = {shas[ref] for ref in trunk} - {""}
+    branches = [name for name in names if shas[f"refs/heads/{name}"] not in empty]
     kept = default_setup_log().parent / "local-work"
-    for root, _dirs, files in [] if kept.is_symlink() else os.walk(kept):  # as find, which does not follow it
-        for name in files:
-            path = Path(root, name)
-            if name.endswith(".patch") and not path.is_symlink() and path.is_file():
-                times.append(path.stat().st_mtime)
-    if not branches and not times:
-        return None
-    newest = (
-        f", newest written {datetime.fromtimestamp(max(times), UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}"
-        if times
-        else ""
+    times = (
+        []
+        if kept.is_symlink()  # as find, which does not follow it
+        else [
+            path.stat().st_mtime
+            for path in kept.glob("*.patch")
+            if not path.name.startswith(".") and not path.is_symlink() and path.is_file()
+        ]
     )
-    return (
-        f"- local work kept by setup prompt step 1: {len(branches)} local-work branch(es) in the checkout, "
-        f"{len(times)} patch file(s) in the setup folder's local-work{newest} (the patches are in "
-        "bring-back.md section 3 only)"
-    )
+    if times:
+        newest = datetime.fromtimestamp(max(times), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return (
+            f"- local work kept by setup prompt step 1: {len(times)} patch file(s) in the setup folder's "
+            f"local-work, newest written {newest} ({LOCAL_WORK_WHERE}); {len(branches)} local-work "
+            "branch(es) in the checkout"
+        )
+    if branches:
+        return (
+            f"- local-work branch(es) in the checkout: {len(branches)}, no patch file in the setup folder's "
+            "local-work (a keep with nothing to keep writes none)"
+        )
+    return None
 
 
 def _add_listed(red: Redactor, entries: Iterable[tuple[str, int, str]]) -> None:

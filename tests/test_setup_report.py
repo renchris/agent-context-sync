@@ -9099,19 +9099,47 @@ def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
 ) -> None:
     """B13 round 9 K30: step 1's keep command moved local work aside (a local-work branch and its patches),
     and only the private bring-back.md said so: the public report read "fully one command". Run metadata has
-    one count-only line; no patch name, subject, author or content. A Mac with no keep has none."""
+    one count-only line; no patch name, subject, author or content. A Mac with no keep has none.  B13 round
+    10 L8, L25, L40, L58 (one defect, built once): the line said "the patches are in bring-back.md section 3
+    only" when section 3 listed each by hash (an earlier report carried it) or held none; it counted a nested
+    patch section 3 never reads; and a keep with nothing to keep (a branch at main's own commit, no patch)
+    read as "local work kept"."""
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert "local work kept" not in text
-    keep_local_work(fake_mac["home"], fake_mac["setup"])
+    patch = keep_local_work(fake_mac["home"], fake_mac["setup"])
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     metadata = section(text, "Summary").split(setup_report.RUN_METADATA_HEADING, 1)[1]
     assert (
-        "- local work kept by setup prompt step 1: 2 local-work branch(es) in the checkout, 1 patch file(s) "
-        "in the setup folder's local-work, newest written 2026-10-14T03:54:44Z (the patches are in "
-        "bring-back.md section 3 only)\n" in metadata
+        "- local work kept by setup prompt step 1: 1 patch file(s) in the setup folder's local-work, newest "
+        f"written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 2 local-work branch(es) in the "
+        "checkout\n" in metadata
     ), metadata
+    assert "the patches are in" not in text
     for word in ("Northwind", "Fabrikam", "pricing", "0001"):
         assert word not in text, word
+    git = fake_mac["home"] / "src" / "agent-context-sync" / ".git"
+    # a patch in a subfolder: section 3 reads only the top of local-work, so it is not counted (L8, L25)
+    nested = patch.parent / "older" / patch.name
+    nested.parent.mkdir()
+    patch.rename(nested)
+    neutral = "- local-work branch(es) in the checkout: {}, no patch file in the setup folder's local-work "
+    neutral += "(a keep with nothing to keep writes none)"
+    assert setup_report._local_work_line() == neutral.format(2)
+    # a branch at main's own commit (packed) or origin/main's (loose) holds no commit of its own (L58)
+    (git / "refs" / "heads" / "local-work-20261014-005444").write_text("c" * 40 + "\n", encoding="utf-8")
+    assert setup_report._local_work_line() == neutral.format(1), "the branch at main's sha is not counted"
+    (git / "refs" / "remotes" / "origin").mkdir(parents=True)
+    (git / "refs" / "remotes" / "origin" / "main").write_text("b" * 40 + "\n", encoding="utf-8")
+    assert setup_report._local_work_line() is None, "both branches sit on main or origin/main"
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "local work kept" not in text and "local-work branch" not in text
+    # a loose main overrides its packed line: the branch at the old packed sha has a commit of its own now
+    (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n", encoding="utf-8")
+    assert setup_report._local_work_line() == neutral.format(1)
+    # an empty local-work folder beside a branch of its own: no "kept", no section 3 (L40)
+    nested.unlink()
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert neutral.format(1) + "\n" in text and "local work kept" not in text and "section 3" not in text
 
 
 def test_a_rewrite_paths_hits_are_counted_as_proxy_values() -> None:

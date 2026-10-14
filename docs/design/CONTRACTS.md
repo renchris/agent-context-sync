@@ -16840,6 +16840,9 @@ header's sentence on sections 2 and 3, kept word for word: "Section 3 holds one 
 starts with its author's name and email and the commit's date and message; ...". setup-feedback.md says the same.
 The `From:` line is not redacted: the file is private, and the triage tells the person's commit from the keep's by
 it. Test: `test_report_only_writes_one_bring_back_file`.
+Amended 2026-10-14, §16.86 L25: the sentence is written only when section 3 sends a patch; when each patch was in
+an earlier report the header reads "Section 3 sends no patch this time: each was in an earlier report and is
+listed by its hash.", and with no patch it has neither.
 
 **The shell report redacts what the Python one does, numbered alike** (J37, J78, J71; J45 is J71; dated lines at
 §16.69 H20 and H74). J37: the scp rewrite path's pair is `e` (end boundary only: no letter or digit after it, so `.git` or `-tools`
@@ -17377,6 +17380,11 @@ same name (rehearsal D4), so they are the better count. Patches are the regular 
 content is shown; the line is left out when both counts are 0 or there is no checkout. "Sent before" was not
 built: it would copy section 3's rule into Python. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`.
+Amended 2026-10-14, §16.86 L8, L25, L40, L58: the line reads by the patch count (patches at the top of
+`local-work` only, the files section 3 reads), its bracket claims nothing about an earlier report, a branch at
+main's or origin/main's own commit is not counted, and branches with no patch get a line without "kept". Branches
+are still counted because they outlive a patch folder the person moved or deleted and v15 to v17 keeps wrote
+patches without a branch name; the overwrite reason ended with §16.82 K28's `--suffix`.
 
 **A CloudStorage listing that finishes late is used** (K76, J69's step 5). A listing past `_LISTING_S` (3 s) was
 thrown away, so with no list of step 1 in install.out the report was private only. The listing now also hands its
@@ -17938,6 +17946,28 @@ reads `so step 1 asks at most whether to add one`. Tests:
 `test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn`,
 `test_a_folder_list_run_again_before_the_install_is_what_step_1_printed`,
 `test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`.
+
+**The local-work line says only what it can know** (L8, L25, L40, L58; dated lines at §16.80 K30 and §16.75 J65).
+`- local work kept by setup prompt step 1: 1 local-work branch(es) in the checkout, 0 patch file(s) ... (the
+patches are in bring-back.md section 3 only)` was false three ways: a keep with nothing to keep (v18's recovery on
+a main with no commit of its own) leaves a branch at main's commit and no patch (L40, L58); section 3 lists a patch
+an earlier report carried by its hash, not its text (L8, L25); and a nested patch was counted though section 3
+reads only `local-work/*.patch` (L8, L25). Both readers now read: with a patch, `- local work kept by setup prompt
+step 1: N patch file(s) in the setup folder's local-work, newest written <UTC> (no patch text is in this report:
+each patch goes once to the private bring-back.md section 3; one an earlier report already carried is listed there
+by its hash); M local-work branch(es) in the checkout`; with branches and no patch, `- local-work branch(es) in
+the checkout: M, no patch file in the setup folder's local-work (a keep with nothing to keep writes none)`; with
+neither, no line. Patches are the top-level, non-hidden regular `*.patch` files (L40's verifier kept any depth;
+L8's and L25's matching section 3 is built, since every keep command writes to the top). A branch whose sha (loose
+file, else `packed-refs`, no git process) equals `refs/heads/main`'s or `refs/remotes/origin/main`'s is not
+counted (L58's verifier; a branch cut from an older origin/main still counts). The bracket is
+`setup_report.LOCAL_WORK_WHERE` and install.sh's `LOCAL_WORK_WHERE`, one string. bring-back.md builds section 3
+first and prints the header's author sentence only when section 3 sends a patch; when every patch was in an
+earlier report it reads "Section 3 sends no patch this time: each was in an earlier report and is listed by its
+hash." L58's prompt half (delete the empty branch) was not built: it is prompt text, and the reader fix covers
+branches earlier runs left. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
+`test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

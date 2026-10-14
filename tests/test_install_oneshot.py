@@ -2033,6 +2033,41 @@ def test_bring_back_sends_local_work_kept_since_the_earlier_report(env: dict[str
     assert _local_work(env) == sent
 
 
+def test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch(env: dict[str, str]) -> None:
+    """B13 round 10 L25: every patch was in an earlier report, so section 3 held only "not repeated:" lines,
+    yet the header said "Section 3 holds one patch per kept commit, and each starts with its author's name
+    ... so check those lines too", lines that were not there. The header now says what section 3 holds."""
+    authors = "Section 3 holds one patch per kept commit, and each starts with its author's name"
+
+    def header() -> str:
+        cp = install_sh(env, "--report-only")
+        assert cp.returncode == 0, cp.stderr
+        text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+        return " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+
+    _two_attempts(env)
+    old = _keep_patch(env, "2026-10-06T16:42:39Z", "+old = 1\n", "0001-old.patch")
+    head = header()
+    assert authors not in head, head
+    assert head.endswith(
+        "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
+    ), head
+    assert _local_work(env) == _not_repeated(old, "2026-10-06T16:42:39Z")
+    _keep_patch(env, "2026-10-07T15:58:27Z", "+new = 2\n", "0002-new.patch")
+    assert authors in header()
+    for path in (old, old.parent / "0002-new.patch"):
+        path.unlink()
+    head = header()
+    assert authors not in head and "Section 3 sends" not in head, head
+    assert head.endswith("so review them before sending."), head
+    # a symlinked patch is no patch the report counts, so section 3 does not send it (a reviewer's find)
+    target = Path(env["HOME"]) / "elsewhere.patch"
+    target.write_text("+linked = 3\n", encoding="utf-8")
+    (old.parent / "0003-linked.patch").symlink_to(target)
+    assert _local_work(env) == "none\n"
+    assert authors not in header()
+
+
 def test_bring_back_names_older_local_work_beside_the_new(env: dict[str, str]) -> None:
     """One patch from before the earlier report and one kept since: only the new one is fenced, and the
     older one has its line after the fence."""
@@ -6816,7 +6851,12 @@ def test_the_two_reports_number_each_proxy_value_alike(
 
 def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[str, str]) -> None:
     """B13 round 9 K30, the shell twin: the line setup_report._local_work_line writes, from the same files
-    (the checkout's ref files and the setup folder's patches), with no patch name, subject or author."""
+    (the checkout's ref files and the setup folder's patches), with no patch name, subject or author.  B13
+    round 10 L8, L25, L40, L58: word for word the Python line's new form: the patches at the top of local-work
+    (what bring-back.md section 3 reads), a bracket that claims nothing about an earlier report, no branch at
+    main's or origin/main's own commit, and no "kept" for branches with no patch."""
+    from agentsync import setup_report  # noqa: PLC0415
+
     home = Path(env["HOME"])
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True, exist_ok=True)
@@ -6840,12 +6880,31 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     assert cp.returncode == 0, cp.stderr
     text = report_path(env).read_text()
     assert (
-        "- local work kept by setup prompt step 1: 2 local-work branch(es) in the checkout, 1 patch file(s) "
-        "in the setup folder's local-work, newest written 2026-10-14T03:54:44Z (the patches are in "
-        "bring-back.md section 3 only)\n" in text
+        "- local work kept by setup prompt step 1: 1 patch file(s) in the setup folder's local-work, newest "
+        f"written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 2 local-work branch(es) in the "
+        "checkout\n" in text
     ), text
+    assert f'LOCAL_WORK_WHERE="{setup_report.LOCAL_WORK_WHERE}"\n' in INSTALL_SH.read_text(), "one wording"
     for word in ("Northwind", "Fabrikam", "pricing", "0001"):
         assert word not in text, word
+    # a nested patch is not counted, nor a branch at main's or origin/main's own commit
+    nested = patch.parent / "older" / patch.name
+    nested.parent.mkdir()
+    patch.rename(nested)
+    neutral = "- local-work branch(es) in the checkout: {}, no patch file in the setup folder's local-work "
+    neutral += "(a keep with nothing to keep writes none)\n"
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert neutral.format(2) in text and "local work kept" not in text, text
+    (git / "refs" / "heads" / "local-work-20261014-005444").write_text("c" * 40 + "\n")
+    (git / "refs" / "remotes" / "origin").mkdir(parents=True)
+    (git / "refs" / "remotes" / "origin" / "main").write_text("b" * 40 + "\n")
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "local work kept" not in text and "local-work branch" not in text, text
+    (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n")  # a loose main overrides its packed line
+    assert install_sh(env, "--report-only").returncode == 0
+    assert neutral.format(1) in report_path(env).read_text()
 
 
 def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[str, str]) -> None:
