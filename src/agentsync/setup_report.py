@@ -6182,7 +6182,9 @@ _LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(?:[,.]\d+)?Z?) (.
 """A log line's leading time (a Python log line's, once :func:`_utc_log_times` made it UTC, or the launcher's)
 and the text after it."""
 _LOCAL_LOG_TIME_RE = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3}) ")
-"""A Python log line's leading time: ``logging``'s default ``asctime``, the Mac's local time with no zone."""
+"""A Python log line's leading local time, as ``logging``'s default ``asctime`` wrote it before B13 round 8
+J26: the Mac's local time with no zone. agentsync has written UTC ``...T..:..:...mmmZ`` since, which this does
+not match."""
 _QUOTED_LOG_TIME_RE = re.compile(
     r"(warning: agentsync setup-report failed \(.*?\): )(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),(\d{3}) "
 )
@@ -6198,8 +6200,9 @@ is read as the clock going back."""
 def _utc_log_times(lines: Iterable[str]) -> list[str]:
     """``lines`` (one file's, in order) with each Python log line's leading local time written as UTC
     (``2026-10-05 09:00:00,000`` -> ``2026-10-05T15:00:00.000Z`` on a Mac at UTC-6), read with this Mac's
-    time zone. ``logging`` writes local time with no offset; beside the report's UTC times it gave the Mac's
-    UTC offset away. In the hour a fall-back repeats, the later reading is taken when the earlier one would
+    time zone. ``logging`` wrote local time with no offset before B13 round 8 J26 (a line in the UTC form
+    agentsync writes since is left unchanged); beside the report's UTC times it gave the Mac's UTC offset
+    away. In the hour a fall-back repeats, the later reading is taken when the earlier one would
     put the line more than :data:`_LOG_STEP_BACK` before the converted line above it. A stamp no calendar
     holds, and every other line, is unchanged. The time install.sh quotes in its ``setup-report failed``
     warning (:data:`_QUOTED_LOG_TIME_RE`, that one producer only: a time anywhere in a line can be an item's
@@ -7697,7 +7700,8 @@ def build_report(
     raises for a failed probe or section. ``friction_path`` (default :func:`default_friction_path`) is the
     agent's friction log, embedded redacted under :data:`FRICTION_HEADING` and summarised first. The last
     line is the prefilled issue link (:func:`issue_link` returns it), except in a private-only copy
-    (``red.word_named_shown``), which ends after its Redaction section (B13 round 7 H75)."""
+    (``red.private_only``: a word-named placeholder shown, or a CloudStorage listing that did not finish,
+    B13 round 8 J69), which ends after its Redaction section (B13 round 7 H75)."""
     moment = now or datetime.now(UTC)
     budget_s = TIME_BUDGET_S if budget_s is None else budget_s  # read at the call: a test can widen it
     r = _Run(config_path, hooks or ReportHooks(), budget_s)
