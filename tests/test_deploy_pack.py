@@ -3478,7 +3478,8 @@ def test_setup_feedback_states_the_report_rules_of_round_3() -> None:
     assert "are exactly those with a `note: stays queued:` line" in page
     assert "`note: stays queued: purge suspended by legal/records hold: ...`" in page
     assert "a `.msg` or an image with no converter is `withheld by label rule`" not in page
-    assert "So is an image, but only when the OCR part's `helper:` reads `ready`" in page
+    # B13 round 9 K59: since round 8 J52 an image's class follows its stub page, not the OCR probe
+    assert "So is an image, but only when the OCR part's `helper:` reads `ready`" not in page
     assert "or the attempt names no agent (no `Agent:` value)" in page
     assert "agentsync's own globs show as written" in page
 
@@ -4110,6 +4111,43 @@ def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
         assert any(marker.search(p) and re.search(rf"\b{item}\b", p) for p in paragraphs), (
             f"§{section} {item} has no dated line for §{home} {g}"
         )
+
+
+def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None:
+    """B13 round 9 K59, K67 (one defect): since round 8 J52 and J54 the report classes an image's `no
+    converter` row by its stub page's `reason:` (`_Mirror.withheld_for`), and the OCR probe decides only for a
+    page it could not read, while the guide's Quarantine row and §16.28's class table said an image is
+    withheld only when the OCR part reads ready and keeps `no converter` without an engine."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    mirror = setup_report._Mirror.__new__(setup_report._Mirror)
+    mirror.labels_active, mirror.withheld, mirror.images_by_probe = True, {".msg"}, False
+    mirror.image_pages = {("s", "withheld"): True, ("s", "no-converter"): False}
+    reason = f"{setup_report._NO_CONVERTER}.png"
+    assert ".png" in mirror.withheld_for(reason, "s", "withheld")  # the page wins over a probe that is off
+    mirror.images_by_probe = True
+    assert ".png" not in mirror.withheld_for(reason, "s", "no-converter")  # and over one that is ready
+    assert ".png" in mirror.withheld_for(reason, "s", "unread")  # no page read: the probe decides
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "Without an OCR engine no image converter exists whatever the policy says, so an image keeps"
+        not in page
+    )
+    assert "So is an image whose stub page's `reason:` says it is withheld." in page
+    assert "an OCR engine added or removed since then does not change the class" in page
+    assert "An image whose page says `no converter for` keeps the `no converter` class" in page
+    assert (
+        "Only an image stub whose page the report could not read (missing, a symlink, or past the report's "
+        "read bound) goes by whether the OCR part's `helper:` reads `ready` now" in page
+    )
+    table = " ".join(
+        _contracts_section("| `withheld by label rule` | starts `no converter for `", "**OCR.**").split()
+    )
+    assert (
+        "Amended 2026-10-14, §16.85 K59 (by §16.74 J52, J54): an image is no longer counted by whether"
+        in table
+    )
+    assert f"`{setup_report._WITHHELD_IMAGE_REASON.format('<suffix>')}`" in table
 
 
 def test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block() -> None:

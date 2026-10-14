@@ -8277,6 +8277,10 @@ Amended 2026-10-11 by §16.47 (R33): the class `withheld by label rule`, between
 Amended 2026-10-12 by §16.55: the not-the-type row lists `not-msg` and `not a zip` as the code always did. No
 reason written today starts with `not a zip`: policy's `NOT_ZIP_AT_OFFSET_0` reaches a stub only inside a
 `refused: ` reason, which is `label policy`.
+Amended 2026-10-14, §16.85 K59 (by §16.74 J52, J54): an image is no longer counted by whether the OCR part reads
+`ready`. Its suffix is in the withheld set for a row when its stub page's `reason:` reads `withheld by label rule:
+the label of a <suffix> file cannot be read` (`_Mirror.read_image_pages`); a page that says `no converter for` keeps
+the row `no converter`; only a page the report could not read goes by the OCR probe.
 
 **OCR.**
 
@@ -17302,4 +17306,18 @@ Reserved for round 9 lane E of B13.
 
 ### 16.85 Round 9: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 9 lane D)
 
-Reserved for round 9 lane D of B13.
+Docs, dated lines and tests that lagged round 8's code and contract text (`docs/plans/bring-back-ocr.md`, "B13
+round 9"; specs `round9/items/K<n>.md`, the verifier's corrected fix built), and one rendering version. Each item is
+pinned by a test that fails on the text it replaced. A dated line this round writes for an older round's change
+reads `Amended 2026-10-14, §16.85 K<n> (by §16.7N J<n>)`.
+
+**An image's class follows its stub page in the guide and the class table** (K59, K67: one defect; dated line at
+§16.28's class table). Since §16.74 J52 and J54 `_Mirror.withheld_for` classes an image's `no converter for` row by
+its stub page's `reason:`, the run that planned the stub having decided it, and only a page the report could not
+read goes by the OCR probe. The guide's Quarantine-by-reason row still said an image is withheld "only when the OCR
+part's `helper:` reads `ready`" and keeps `no converter` without an engine, and the class table's withheld row said
+images are "counted only when the OCR part reads `ready`"; round 3's guide test pinned the first. The row now says
+the page decides, so an engine added or removed later changes nothing, and that only an unread page goes by the
+probe; the table carries a dated line. Test: `test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe`
+(drives `withheld_for` both ways); `test_setup_feedback_states_the_report_rules_of_round_3` now pins the old
+sentence's absence.
