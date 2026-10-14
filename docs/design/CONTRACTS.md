@@ -8312,6 +8312,8 @@ the OCR probe. There is no page count cap.
   engine's identity (`+ocr-`), has none, or is one of the field build's (§16.27). The version is the cache
   row's of the page's action key, else the output row's, as in `Manifest.reread_candidates`.
   Amended 2026-10-11 by §16.48 (R85): a line for deck templates (`.potx`), which the deck converter reads.
+  Amended 2026-10-14, §16.86 L5: a kind with no page is folded into one line, `- no deck template (.potx) or
+  OpenDocument (.odt) file has a page`; the images-not-on-this-Mac line stays at 0.
 - Scanned PDFs with a stub, by the three reasons, and the engine identities found on pages with their page
   counts (an identity is printed only when it is `ocr-` and plain tokens).
 - Re-read, per local or inbox source, from manifest meta `reread:<source id>`: whether the scan is
@@ -13419,6 +13421,8 @@ source's top is `<path>` in the report, as every claimed suffix is. `_OCR_DOCUME
 `deck template`: with an engine the deck converter reads a template's pictures, so the OCR part prints
 `- deck template (.potx) files with a page: ...` under the deck line, and such pages count among the files
 from before OCR, as a deck's do.
+Amended 2026-10-14, §16.86 L5: only when a template has a page; otherwise it is named in the one `- no ... file
+has a page` line.
 
 #### The speech build and the build watcher
 
@@ -17968,6 +17972,17 @@ hash." L58's prompt half (delete the empty branch) was not built: it is prompt t
 branches earlier runs left. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch`.
+
+**The OCR part folds the document kinds with no page** (L5; dated lines at §16.28's OCR part and §16.48's
+`.potx` paragraph). A Mac with no deck template or OpenDocument page printed `0 with an OCR identity, 0 without an
+OCR identity` for each, and `scanned PDFs with a stub: 0 ..., 0 ..., 0 ...`. A kind whose six counts (three version
+classes, on this Mac or online-only) are all 0 is left out, and one line after the others names them: `- no deck
+template (.potx) or OpenDocument (.odt) file has a page`. It says "has a page", never "no file": the query counts
+only files with an `ok` output, so a refused template is there and reads 0. The all-zero scanned-PDF line reads `-
+scanned PDFs with a stub: none`, as K5 shortened the re-read line. The images-not-on-this-Mac line is kept at 0 in
+every state (the finder dropped it): it is the measurement of the open decision O2's cost, and research cites its 0
+as the evidence. Tests: `test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line`,
+`test_ocr_part_counts_images_documents_rereads_and_time`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

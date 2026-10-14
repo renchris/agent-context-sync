@@ -4800,7 +4800,13 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
         if int(cls) != 2 and not dataless and str(sid) not in graph:
             waiting[str(sid)] += int(files)
             field[str(sid)] += int(files) if int(cls) == 1 else 0
+    # a kind with no page at all is folded into one line, which says "has a page", never "no file": the
+    # query counts only files with a page, so a refused template reads 0 here (B13 round 10 L5)
+    folded = []
     for suffix, name in _OCR_DOCUMENTS.items():
+        if not any(documents[(suffix, cls, away)] for cls in (2, 0, 1) for away in (0, 1)):
+            folded.append(f"{name} ({suffix})")
+            continue
         cells = []
         for cls in (2, 0, 1):
             here, away = documents[(suffix, cls, 0)], documents[(suffix, cls, 1)]
@@ -4809,16 +4815,17 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
                     f"{here + away} {_VERSION_WORDS[cls]}" + (f" ({away} online-only)" if away else "")
                 )
         out.append(f"- {name} ({suffix}) files with a page: " + ", ".join(cells))
+    if folded:
+        listed = folded[0] if len(folded) == 1 else f"{', '.join(folded[:-1])} or {folded[-1]}"
+        out.append(f"- no {listed} file has a page")
     scans: Counter[str] = Counter()
     for sid, row_state, cls, dataless, files, _lo, _hi in _stub_rows(m):
         if row_state == "quarantined" and cls.startswith("no text layer"):
             scans[cls] += files
             if cls == "no text layer (OCR not run)" and not dataless and sid not in graph:
                 waiting[sid] += files
-    out.append(
-        "- scanned PDFs with a stub: "
-        + ", ".join(f"{scans[c]} {c}" for c in QUARANTINE_CLASSES if c.startswith("no text layer"))
-    )
+    stubs = [f"{scans[c]} {c}" for c in QUARANTINE_CLASSES if c.startswith("no text layer")]
+    out.append("- scanned PDFs with a stub: " + (", ".join(stubs) if any(scans.values()) else "none"))
     identities: Counter[str] = Counter()
     for version, pages in m.rows(
         "SELECT COALESCE(c.converter_version, o.converter_version, ''), COUNT(*) FROM outputs o "

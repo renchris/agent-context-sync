@@ -6134,6 +6134,28 @@ def seed_ocr(fake_mac: dict[str, Path]) -> tuple[str, str]:
     return one, two
 
 
+def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_mac: dict[str, Path]) -> None:
+    """B13 round 10 L5: the OCR part printed a row of zeros for each document kind this Mac has no page of
+    (.potx, .odt) and "scanned PDFs with a stub: 0 ..., 0 ..., 0 ...". A kind with no page is folded into one
+    line that says "has a page", never "no file": the query counts only files with a page, so a refused
+    template is there and reads 0. The images-not-on-this-Mac line stays at 0: it is the cost the open
+    decision O2 is measured by."""
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    seed.item(one, "ledger.pdf")
+    seed.item(one, "Wingtip template.potx", state="refused", reason=NO_CONVERTER, page="refused")
+    seed.close()
+    _text, parts = status_parts(fake_mac)
+    ocr = parts["OCR"].splitlines()
+    assert "- PDF (.pdf) files with a page: 0 with an OCR identity, 1 without an OCR identity" in ocr, ocr
+    assert [ln for ln in ocr if "has a page" in ln] == [
+        "- no deck (.pptx), deck template (.potx), Word (.docx) or OpenDocument (.odt) file has a page"
+    ], ocr
+    assert not [ln for ln in ocr if "files with a page: 0 with an OCR identity, 0 without" in ln], ocr
+    assert "- scanned PDFs with a stub: none" in ocr, ocr
+    assert [ln for ln in ocr if ln.startswith("- images that are not on this Mac: 0 file(s)")], ocr
+
+
 def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     text, parts = status_parts(fake_mac)
@@ -6164,6 +6186,10 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "no text layer (over the OCR page limit)\n" in ocr_part
     )
     assert "- engine identities on pages: ocr-paper-vision-r2-h0.3.0-l1 (3 page(s))\n" in ocr_part
+    # B13 round 10 L5: the kinds with no page are one line, not a row of zeros each
+    assert "(.potx) files with a page" not in ocr_part and "(.odt) files with a page" not in ocr_part
+    folded = [ln for ln in ocr_part.splitlines() if ln.startswith("- no ")]
+    assert folded == ["- no deck template (.potx) or OpenDocument (.odt) file has a page"], folded
     rows = [ln for ln in ocr_part.splitlines() if ln.startswith("| <")]
     assert rows[:2] == [
         # one PDF without an identity and one scan OCR was not run on; the online-only image does not wait
