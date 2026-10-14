@@ -997,6 +997,7 @@ class SourceReport:
     unreadable: int = 0  # 2026-10-12 (§16.56 F86)
     conversion_failed: int = 0  # 2026-10-12 (§16.56 F86)
     refused: int = 0  # 2026-10-13 (§16.63 G35): of ``converted``, files refused after their bytes were read
+    withheld_read: int = 0  # 2026-10-14 (§16.89 L33): of ``refused``, the stubs that say a label rule withheld them
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
     withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
 
@@ -5487,6 +5488,8 @@ tally's `reread`: files read again for what their converter has gained; a re-rea
 N, §16.27);
 scripts/install.sh shows that line for its first sync and logs it as the step's `note=converted-N-deferred-M`
 (**amended §16.37:** `-reread-R` appended when R > 0).
+Amended 2026-10-14, §16.89 L34: when all R were first reads the line says `, first read R (...)` in place of
+`, read again R (...)`; the note keeps `-reread-R`.
 **Amended (2026-10-04, KISS K01):** a `sync` without `--mode` (and without `AGENTSYNC_NO_NEXT_HINT=1`) prints the
 summary line and then the loop's lines (§16.20): one `NEXT:` line, any `WAITING ON YOU:` lines, any `note:` lines.
 `--mode`, `reconcile`, `materialise` and `accept-deletions` still end on the summary line.
@@ -15346,10 +15349,12 @@ the round 5 research keeps names out of those. Tests:
 and test_exclude_empty. **Amended 2026-10-13, §16.68 H12, H35:** the waits name STATE.md first and `sync -v`
 nowhere; the alarm names it when it holds names back (§16.68). Amended 2026-10-14, §16.83 K40: the empty-folder
 waits say the alarm line names `the folder(s), up to five, and how to list any more`.
+Amended 2026-10-14, §16.89 L14, L36, L38: `the folder(s), up to five, and past five how to list the rest`.
 
 **G57: the alarm's comment counts up to three waits per source (`agentsync.arm_local`).** Each folder lands on one
 of three waits (exclude-empty, `[` collision, held files), so N folders make at most min(N, 3) lines. Comment only.
 Amended 2026-10-14, §16.83 K41: min(N, 3) is a bound, not the count: there is one line per wait kind present.
+Amended 2026-10-14, §16.89 L15: the alarm's singular `the ... line` follows that count of kinds.
 
 **G43 (c): loop.py's module docstring (`agentsync.loop`).** It said the empty-folder wait carries the `exclude =
 [...]` paste line; it now says no wait names a folder and exclude-empty prints that line only as its fallback.
@@ -17035,6 +17040,8 @@ label on a run with no label rule and breaks the test it asked to keep (a no-rul
 (`test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread`).
 Amended 2026-10-14, §16.83 K33: the clause's parenthesis reads `(a file whose label cannot be read: an image, a
 binary .msg or a .msg not on this Mac)`; K54: W and Q are disjoint, and R + W + Q add up to the sources' `refused=`.
+Amended 2026-10-14, §16.89 L33, L50: `(a file whose label cannot be read: an image or a .msg not on this Mac)`;
+a binary .msg on this Mac is read and counted in R, named by the split's `, K of them withheld by the label rule`.
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 
@@ -17601,6 +17608,9 @@ and `setup_report` and is not needed for a true line. Tests: `test_cycle.py::
 test_the_sync_line_does_not_say_a_local_image_needs_the_file_for_its_label`, and the pins in
 `test_cli.py::test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread` and
 `test_setup_report.py`.
+Amended 2026-10-14, §16.89 L33, L50: the parenthesis reads `(a file whose label cannot be read: an image or a
+.msg not on this Mac)`; a binary .msg on this Mac is read, so it is in R, and the split names it (`, K of them
+withheld by the label rule`).
 
 **K34: the first-read bracket after `read again R` no longer says both things of one file (`agentsync.cli`,
 `agentsync.setup_report`).** With F = R (round 9 step 2: two stubs that had no converter) the line read `read again
@@ -17616,6 +17626,9 @@ test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`, `
 test_first_sync_clause_carries_the_read_again_count` (both wordings), `test_setup_report.py::
 test_the_converted_line_parses_with_the_read_again_clause_in_either_form`, `test_install_oneshot.py::
 test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket`.
+Amended 2026-10-14, §16.89 L34: when F = R the head itself reads `, first read R (stubs whose bytes had never been
+read, now in the count above)`, and every reader named above takes R from either head; the report drops the comma
+before `of a stub`.
 
 **K37: a lock held by a sync reads as a sync and its pass (`agentsync.ops.lock`).** A sync typed in a terminal
 holds the lock as `poll`, as the background job does, so `_describe_holder`'s `pid <n> (poll) since ...` read as
@@ -17627,6 +17640,9 @@ bare label, so the report's Recent errors still merge repeated skips. The verifi
 the holder sidecar is not built: no reader asks which starter it was, and the run's pass is what the line must not
 misname. Tests: `test_ops_lock.py::test_a_cycle_holder_reads_as_a_sync_and_its_pass`, and the pins in
 `test_ops_lock.py`, `test_setup_report.py` and `test_cli.py`.
+Amended 2026-10-14, §16.89 L73: the `started_by` key is built, from the environment (`launchd.in_our_job`), never
+from the arguments; the line names `the background job` or `a sync not started by the background job` when the
+same pid's sidecar says so.
 
 **K40: an empty-folder wait no longer says the alarm names every folder (`agentsync.loop`).** With six empty
 folders the exclude-empty wait said STATE.md's alarm line `names the folder(s)`, but the alarm names five and how
@@ -17637,6 +17653,9 @@ every kind from the last walk, which no wait's own count equals. The wait still 
 (round 7 H12, round 5 F43). The unlisted-folder waits (`names it`, `name them`) are unchanged. Tests:
 `test_loop.py::test_six_empty_folders_on_one_wait_are_not_said_to_be_all_named`, and the pins in `test_loop.py`
 and `test_exclude_empty.py`.
+Amended 2026-10-14, §16.89 L14, L36, L38: the words are `up to five, and past five how to list the
+rest`; L48, L67: the unlisted-folder waits now say `one or more folders` and that the alarm names `what could not
+be listed` with the same words.
 
 **K41: the empty-folder alarm's "prints them" holds for one wait line (`agentsync.arm_local`).** With two or more
 empty folders the alarm said each WAITING ON YOU line about the source says what to do, and that status `prints
@@ -17645,6 +17664,8 @@ true for one line or three; one folder keeps the singular form. The plural is no
 which wait a folder lands on depends on the manifest rows, which the walk does not see. The comment now counts one
 line per wait kind present, at most three. Tests: `test_arm_local.py::
 test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them` and the pin beside it.
+Amended 2026-10-14, §16.89 L15: the plural is now computed on the arm's side, from `known_h0` by the loop's own
+rule (`arm_local.split_empty`); one wait kind is `the ... line ... prints it too`, an unknown count keeps `each`.
 
 **K54: the W and Q counts' docstrings (`agentsync.cli`, `agentsync.model`).** `_print_report`'s docstring made W
 part of Q (`counts those of them ...`) and said Q alone makes the line's refusals add up. W and Q are disjoint, and
@@ -17896,7 +17917,92 @@ Reserved for round 10 lane P of B13.
 
 ### 16.89 Round 10: sync, status, waits, locks and doctor (2026-10-14, wave B13 round 10 lane B)
 
-Reserved for round 10 lane B of B13.
+Lane B's round 10 items: L14, L15, L33, L34, L36, L38, L48, L49, L50, L67, L68, L73, all built. L14, L36 and L38
+are one defect from three finders, built once; so are L48 and L67, and L33 and L50.
+
+**L14, L36, L38: an empty-folder wait promises no pointer its alarm lacks (`agentsync.loop`; amends §16.83 K40).**
+The three empty-folder waits said STATE.md's alarm line `names the folder(s), up to five, and how to list any
+more`, but an alarm of one to five folders holds no such pointer (it adds `(+N more; ... sync -v ...)` only past
+five). They now say `names the folder(s), up to five, and past five how to list the rest` (`them, ...`, `the
+folders, ...`; `loop._UP_TO_FIVE`), in STATE.md's form too. The words still do not depend on a count (K40: the
+alarm caps on every unknown folder, which no wait's own count equals), name no `first five` for one folder (round 7
+H12) and open no second parenthesis beside `(a plain ... sync prints it too)`. Dated lines at §16.63 G13 and §16.83
+K40. Tests: `test_loop.py::test_one_empty_folder_is_never_sent_to_a_full_sync`, the pins in `test_loop.py` and
+`test_exclude_empty.py`.
+
+**L48, L67: a could-not-be-listed wait counts no folder (`agentsync.loop`; amends §16.83 K40).** With six
+unreadable folders the wait said `a folder in work could not be listed ... which names it`, while the alarm names
+five and `+1 more`. The three unlisted-folder waits now say `one or more folders in <id>` (`in each of A and B`),
+that the alarm names `what could not be listed, up to five, and past five how to list the rest`
+(`loop._WHAT_FAILED`: a missing sentinel lands on the same wait, and its alarm names the sentinel, no folder), and
+`add each one to that source's exclude` or `adding such a folder`. Tests: `test_loop.py::
+test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at`, `test_loop.py::
+test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`.
+
+**L68: a source with empty folders and one it cannot read gets both waits (`agentsync.cycle`, `agentsync.loop`).**
+Once a walk stored empty cloud folders, `next_step` gave the source only their waits; a folder beside them that
+could not be read got its wait only after exclude-empty and another sync. `cycle._note_empty_dirs` now also stores
+the walk's other unknown folders (manifest meta `unlisted_dirs:<id>`, a JSON list, "" when none, written only on a
+change), and `loop._unlisted_dirs` reads them through today's exclude, as the empty ones are read. A local source
+then gets the could-not-be-listed wait beside the empty-folder ones on the first sync; the missed-file count moves to
+it, said once, in its safe wording when files went unlisted. An inbox gets the `not fully listed` note instead, as
+with no empty folder. Names, not the verifier's count, so an exclude added since the walk drops the folder at once.
+A manifest from before this build has no key and reads as none. Tests: `test_loop.py::
+test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits`, `test_loop.py::
+test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words`.
+
+**L15: the empty-folder alarm counts the waits by the loop's rule (`agentsync.arm_local`, `agentsync.loop`; amends
+§16.83 K41).** Six empty folders on one exclude-empty wait read `each WAITING ON YOU line ... prints each one
+too`. The count of mirrored files below each folder and the split into clear, `[` collision and held-files folders
+move to `arm_local.files_below` and `arm_local.split_empty`, which the loop's waits and the walk's alarm both use.
+The alarm counts the kinds present from `known_h0`: one kind reads `the WAITING ON YOU line ... prints it too`; two
+or more, or no `known_h0` (count unknown), keep `each`. One folder keeps the singular (round 5 F11). Dated lines at
+§16.63 G57 and §16.83 K41. Tests: `test_arm_local.py::test_the_empty_folder_alarm_counts_the_waits_by_the_loops_rule`,
+`test_arm_local.py::test_an_empty_folder_that_held_files_is_its_own_wait_in_the_alarm`.
+
+**L33, L50: the sync line counts every stub the label rule withheld (`agentsync.cycle`, `agentsync.cli`,
+`agentsync.model`; amends §16.83 K33).** Under a label rule a binary .msg on this Mac is read, then refused on its
+compound-file head: its stub says `withheld by label rule`, but the line counted it only in R, and W's parenthesis
+named `a binary .msg`, which W never holds. `SourceReport.withheld_read` counts, of R, the stubs
+`Publisher.withheld` says so of; the split prints `, K of them withheld by the label rule` after R (no bracket of its
+own, so `setup_report._SPLIT_RE` still matches). W stays out of N, and its parenthesis reads `(a file whose label
+cannot be read: an image or a .msg not on this Mac)`. K + W are the pages that say withheld. Dated lines at §16.77
+J29 and §16.83 K33. Tests: `test_cycle.py::test_the_sync_line_counts_every_stub_the_label_rule_withheld`, the pins
+in `test_cli.py`, `test_cycle.py` and `test_setup_report.py`.
+
+**L34: when every file read again was a first read, the head says so (`agentsync.cli`, `agentsync.setup_report`,
+scripts/install.sh; amends §16.37 and §16.83 K34).** `read again 2 (2 of them a first read: ...)` still said
+"again" of files never read. When F = R the line reads `, first read R (stubs whose bytes had never been read, now
+in the count above)`; F < R keeps K34's words. R keeps its meaning. install.sh's awk adds the number after `first
+read` as after `read again`, so the note keeps `-reread-R`; `_CONVERTED_LINE_RE` takes R from either head (group
+`r` or `r1`) and sets the first-read count from the head itself; the report renders `, first read R: stubs whose
+bytes had never been read, also in the converted count`, and, for F < R, `: F of them a first read of a stub ...`
+with no comma. An older install.out still reads. Dated lines at §16.37 and §16.83 K34. Tests: `test_cli.py::
+test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`, `test_setup_report.py::
+test_first_sync_clause_carries_the_read_again_count`, `test_setup_report.py::
+test_the_converted_line_parses_with_the_read_again_clause_in_either_form`, `test_install_oneshot.py::
+test_first_sync_note_reads_the_count_after_the_first_read_head`.
+
+**L73: the lock holder says who started the sync (`agentsync.ops.lock`, `agentsync.ops.launchd`, `agentsync.cycle`,
+`agentsync.ops.doctor`; amends §16.83 K37).** K37's optional `started_by` key is built, from the environment: the
+LaunchAgent runs `sync --mode <mode>` as a terminal can, and `reconcile` and `accept-deletions` pass a mode too, so
+no rule on the arguments can tell. Doctor's `XPC_SERVICE_NAME` test is now `launchd.in_our_job`; `run_cycle` passes
+`started_by` (`STARTED_BY_LAUNCHD`, "launchd", when `launchd.started_by_our_job` finds our job under the config's prefix or the default
+one, as `agents_installed` counts them, else `STARTED_BY_OTHER`, "other") to `SingleWriterLock`, a keyword-only argument the governance and
+exclude-empty locks leave out, and every holder sidecar rewrite keeps it. `_describe_holder` reads `the background
+job, its pass: poll` or `a sync not started by the background job, its pass: poll` only when the sidecar of the
+same pid says so (the environment cannot tell a terminal from cron or an agent's shell, so the second never says
+"terminal"); no key, an unknown value or another pid keeps `a sync, its pass: poll`. The four-field body and
+`_holder_identity`'s bare label are unchanged. Dated line at §16.83 K37. Tests: `test_ops_lock.py::
+test_the_holder_line_names_who_started_a_cycle_only_from_its_own_sidecar`, `test_ops_lock.py::
+test_a_lock_keeps_who_started_it_on_every_beat`, `test_ops_lock.py::
+test_only_our_launch_agent_reads_as_the_background_job`, `test_ops_lock.py::
+test_a_cycle_records_who_started_it_from_the_environment_not_its_mode`, `test_ops_doctor.py::test_lock_states`.
+
+**L49: `_check_heartbeat`'s docstring says which inbox reads the listing note (`agentsync.ops.doctor`).** It said
+an inbox "among the checks" reads `_LISTING_YOURS_NOTE` under install.sh; since K75 an inbox on status's path reads
+it whether a wait names it or not, and without `loop_checks` only one held by empty cloud folders does. Docstring
+only: no behavior, so no test.
 
 ### 16.90 Round 10: stubs, OCR timing and recordings (2026-10-14, wave B13 round 10 lane E)
 
