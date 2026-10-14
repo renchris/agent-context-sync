@@ -15921,6 +15921,10 @@ close the span: third-party text stays inert data, the guarantee of SG13. Plain 
 `_quoted` caller (STATE.md alarms, errors, skipped reasons, lint findings, CHANGELOG paths) changes alike. Tests:
 `test_review_fixes.py::test_quoted_text_keeps_its_backticks_and_stays_one_inert_span`,
 `test_review_fixes.py::test_sg13_third_party_text_in_state_md_is_quoted_data`.
+**Amended 2026-10-14, §16.78 J50:** CHANGELOG lines written before H37 carry an apostrophe for each backtick of a
+path; a purge matches that old form of a purged docs path only inside a single-backtick span of a non-JSON line, and
+not where it is another item's live page. STATE.md, rewritten by every cycle, holds no such line after one cycle on
+H37's build.
 
 **H73: STATE.md keeps an unselected source's lines (`agentsync.cycle`, `agentsync.publish`, `agentsync.model`).**
 A `reconcile --source`, `sync --source` or `accept-deletions` of one source rewrote STATE.md without the other

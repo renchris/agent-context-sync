@@ -220,6 +220,59 @@ def test_sg02_purge_by_current_id_after_safe_save_removes_pre_rekey_versions(tmp
     assert not committed_blobs_containing(config.docs_repo, b"SECRET-KAPPA")
 
 
+_TICKED = "Q3 `plan` x.txt"
+_TICKED_PAGE = "mirror/src/q3-`plan`-x.txt.md"
+_OLD_FORM = "mirror/src/q3-'plan'-x.txt.md"  # how _quoted wrote _TICKED_PAGE before B13 round 7 H37
+
+
+def _old_changelog_line(config: Config) -> None:
+    """Commit a CHANGELOG line in the pre-H37 form: one backtick span, an apostrophe for each backtick."""
+    (log,) = sorted((config.docs_repo / "CHANGELOG").glob("*.md"))
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## 2026-09-01 · run 0 · sync: 1a\n\n- A `{_OLD_FORM}`\n")
+    git(config.docs_repo, "add", "-A")
+    git(config.docs_repo, "commit", "-q", "-m", "an older run's changelog")
+
+
+def test_a_purge_removes_a_changelog_line_written_before_backticks_were_kept(tmp_path: Path) -> None:
+    """B13 round 8 J50: before H37 a CHANGELOG line quoted a path with an apostrophe for each backtick, and
+    the purge scrubber matched only the real path, so those lines outlived the purge in history and in the
+    month's file."""
+    config, src = make_env(tmp_path)
+    (src / _TICKED).write_text("SECRET-LAMBDA\n", encoding="utf-8")
+    assert run(config).exit_code == 0
+    _old_changelog_line(config)
+    rep = governance.purge(
+        config,
+        governance.PurgeSelector(source_id=SID, stable_id=item_id(config, _TICKED)),
+        reason=governance.PurgeReason.ERASURE_REQUEST,
+    )
+    assert rep.verified, rep.notes
+    history = git(config.docs_repo, "log", "--all", "-p")
+    assert "q3-" not in history and "SECRET-LAMBDA" not in history
+
+
+def test_a_purge_keeps_the_lines_of_a_live_file_named_like_the_old_quoted_form(tmp_path: Path) -> None:
+    """B13 round 8 J50: the old form of ``q3-`plan`-x`` is the real path of a file named with apostrophes;
+    that live file's manifest and CHANGELOG lines stay."""
+    config, src = make_env(tmp_path)
+    (src / _TICKED).write_text("SECRET-LAMBDA\n", encoding="utf-8")
+    (src / "Q3 'plan' x.txt").write_text("A plan from Fabrikam.\n", encoding="utf-8")
+    assert run(config).exit_code == 0
+    _old_changelog_line(config)
+    rep = governance.purge(
+        config,
+        governance.PurgeSelector(source_id=SID, stable_id=item_id(config, _TICKED)),
+        reason=governance.PurgeReason.ERASURE_REQUEST,
+    )
+    assert rep.verified, rep.notes
+    repo = config.docs_repo
+    assert (repo / _OLD_FORM).is_file() and not (repo / _TICKED_PAGE).exists()
+    assert _OLD_FORM in (repo / "_manifest" / f"{SID}.jsonl").read_text(encoding="utf-8")
+    changelog = "".join(p.read_text(encoding="utf-8") for p in (repo / "CHANGELOG").glob("*.md"))
+    assert f"`{_OLD_FORM}`" in changelog and "q3-`plan`" not in changelog
+
+
 def test_sg03_erasure_purge_is_not_undone_by_a_safe_save_or_a_copy(tmp_path: Path) -> None:
     config, src = make_env(tmp_path)
     memo = src / "memo.txt"

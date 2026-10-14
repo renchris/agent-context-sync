@@ -946,6 +946,10 @@ def _page_identity(data: bytes) -> dict[str, str] | None:
 # ---------------------------------------------------------------------------------------------------------
 
 
+_OLD_QUOTED_SPAN = re.compile(r"(?<!`)`([^`]+)`(?!`)")
+"""A single-backtick code span, the only form ``publish._quoted`` wrote before B13 round 7 H37."""
+
+
 class _Scrubber:
     """Line-level removal of every mention of a purged item from index-like text."""
 
@@ -957,10 +961,18 @@ class _Scrubber:
         *,
         standalone_rel_paths: bool,
         spare_ids: Iterable[tuple[str, str]] = (),
+        live_paths: Collection[str] = (),
     ) -> None:
         self._ids = set(ids)
         self._spare = set(spare_ids)  # the live items now at a taken path: their own JSON lines stay
+        docs_paths = list(docs_paths)
         self._paths = _needle_regex([*docs_paths, *(sid for _, sid in self._ids)])
+        # B13 round 8 J50: an index line written before H37 quoted a path with an apostrophe for each
+        # backtick (the old _quoted); that form is matched only inside such a quoted span, and never where it
+        # is another item's live page (``live_paths``), so the lines of a file named with apostrophes stay.
+        self._legacy = _needle_regex(
+            v for p in docs_paths if "`" in p and (v := p.replace("`", "'")) not in live_paths
+        )
         self._pairs: dict[str, re.Pattern[str]] = {}
         by_source: dict[str, set[str]] = {}
         for source_id, rel in rel_paths:
@@ -989,6 +1001,12 @@ class _Scrubber:
         if self._paths is not None and self._paths.search(line):
             return True
         if self._standalone is not None and self._standalone.search(line):
+            return True
+        if (
+            self._legacy is not None
+            and not line.startswith("{")
+            and any(self._legacy.search(span) for span in _OLD_QUOTED_SPAN.findall(line))
+        ):
             return True
         for source_id, rx in self._pairs.items():
             srx = self._source_rx[source_id]
@@ -2167,6 +2185,7 @@ def _purge_locked(
     plan.rel_paths |= {(s, r) for s, _i, r, d in mt.items if not d}
     worktrees: list[_Worktree] = []
     taken: dict[str, set[tuple[str, str] | None]] = {}
+    legacy_live: set[str] = set()  # B13 round 8 J50: an old-quoted form of a purged path that is a live page
     graph: list[tuple[str, list[str], int]] = []
     hlen = 20
     cat: _CatFile | None = None
@@ -2200,6 +2219,13 @@ def _purge_locked(
                     taken = _taken_paths(
                         rw, [w.head for w in worktrees if w.head], mt.docs_paths | plan.dropped_paths
                     )
+                    legacy_live = set(
+                        _taken_paths(
+                            rw,
+                            [w.head for w in worktrees if w.head],
+                            {p.replace("`", "'") for p in mt.docs_paths | plan.dropped_paths if "`" in p},
+                        )
+                    )
                     break
         affected_sources = sorted(
             {s for s, _ in plan.ids} | ({selector.source_id} if selector.source_id else set())
@@ -2208,7 +2234,9 @@ def _purge_locked(
         _refuse_if_held(holds, "purge")
         docs_paths = sorted(mt.docs_paths | plan.dropped_paths)
         rel_paths = plan.rel_paths | {(s, r) for s, _i, r, _d in mt.items}
-        scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=False)
+        scrubber = _Scrubber(
+            docs_paths, plan.ids, rel_paths, standalone_rel_paths=False, live_paths=legacy_live
+        )
         # The history's index files keep the lines of a live page at a taken path: by its path, and its own
         # manifest line by its id.  Logs, run errors and ignored files are scrubbed by every path; logs,
         # agentsync's own ignored files (STATE.md) and STATE.md's carried lines also by a bare rel path.
@@ -2218,8 +2246,11 @@ def _purge_locked(
             rel_paths,
             standalone_rel_paths=False,
             spare_ids={k for ks in taken.values() for k in ks if k is not None},
+            live_paths=legacy_live,
         )
-        log_scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=True)
+        log_scrubber = _Scrubber(
+            docs_paths, plan.ids, rel_paths, standalone_rel_paths=True, live_paths=legacy_live
+        )
         cache_victims = _cache_entries(expand(config.cache_dir), mt.action_keys, mt.rendered | plan.rendered)
         piece_victims = _piece_victims(
             expand(config.cache_dir), mt.canonical | plan.canonical | _staged_hashes(sp.db, mt.items)
