@@ -1922,12 +1922,24 @@ fallback_body() {
 	say ""
 	say "## Installer"
 	say ""
+	# The header counts what the fence shows, as the agentsync report does (B13 round 8 J4): a 15-line log read
+	# "The last 60 lines". awk counts a last line with no newline, which tail prints and wc -l misses, and ends
+	# it, so the closing fence keeps a line of its own; the filters after this body drop no line.
 	if [ -f "$SETUP_LOG" ]; then
-		say "The last 60 lines of $SETUP_LOG (run ids without their process id):"
-		say ""
-		say "~~~"
-		tail -60 "$SETUP_LOG"
-		say "~~~"
+		n="$(LC_ALL=C awk 'END { print NR }' "$SETUP_LOG" 2>/dev/null || echo 0)"
+		if [ "${n:-0}" -eq 0 ]; then
+			say "$SETUP_LOG is empty."
+		else
+			if [ "$n" -le 60 ]; then
+				say "All $n line(s) of $SETUP_LOG (run ids without their process id):"
+			else
+				say "The last 60 of $n lines of $SETUP_LOG (run ids without their process id):"
+			fi
+			say ""
+			say "~~~"
+			tail -60 "$SETUP_LOG" | LC_ALL=C awk '{ print }'
+			say "~~~"
+		fi
 	else
 		say "No install log at $SETUP_LOG."
 	fi

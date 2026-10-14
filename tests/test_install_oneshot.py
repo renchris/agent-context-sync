@@ -2482,6 +2482,33 @@ def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: d
     assert b"| later |" in friction
 
 
+PIDLESS = "(run ids without their process id):"
+
+
+@pytest.mark.parametrize(
+    ("lines", "head"),
+    [
+        (15, "All 15 line(s) of ~/agent-context/setup/install.log " + PIDLESS),
+        (61, "The last 60 of 61 lines of ~/agent-context/setup/install.log " + PIDLESS),
+        (0, "~/agent-context/setup/install.log is empty."),
+    ],
+)
+def test_the_shell_reports_installer_part_counts_the_lines_it_shows(
+    env: dict[str, str], lines: int, head: str
+) -> None:
+    """B13 round 8 J4: the Installer part said "The last 60 lines" above a 15-line install.log, while the
+    agentsync report says "the last 2 of 2". Its header now counts what the fence shows: all of a log of 60
+    lines or fewer, the last 60 of a longer one, and no empty fence for an empty log. The last line has no
+    newline, which tail still prints."""
+    install_log_path(env).parent.mkdir(parents=True)
+    install_log_path(env).write_text("\n".join(f"note {i}" for i in range(1, lines + 1)))
+    assert install_sh(env, "--report-only").returncode == 0
+    part = report_path(env).read_text().split("\n## Installer\n\n", 1)[1].split("\n\n## ", 1)[0]
+    assert part.splitlines()[0] == head
+    shown = part.split("~~~\n", 1)[1].rsplit("\n~~~", 1)[0].splitlines() if lines else []
+    assert shown == [f"note {i}" for i in range(max(1, lines - 59), lines + 1)]
+
+
 # ---- the sandbox seam and the dry run (AGENTSYNC_INSTALL_DRY_RUN=1) ----------------------------------------
 
 
