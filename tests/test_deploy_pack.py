@@ -3774,6 +3774,23 @@ def test_the_prompt_version_section_reads_a_prompt_newer_than_the_reports_agents
     assert "Do not triage it as K18." in page
 
 
+def test_every_contract_paragraph_that_names_sync_source_says_it_does_not_exist() -> None:
+    """B13 round 8 J51: KISS K13b deleted `sync --source` on 2026-10-05, but §16.39 (twice), §16.45 R51 and
+    §16.68 H73, all written later, name it as a run that selects sources.  `sync` refuses it, and each
+    paragraph that names it holds the dated line that says so."""
+    from agentsync import cli  # noqa: PLC0415
+
+    with pytest.raises(SystemExit) as refused:
+        cli.build_parser().parse_args(["sync", "--source", "contoso-docs"])
+    assert refused.value.code == 2
+    cli.build_parser().parse_args(["reconcile", "--source", "contoso-docs"])
+    text = CONTRACTS.read_text(encoding="utf-8")
+    paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", text) if "`sync --source`" in p]
+    assert len(paragraphs) == 4, "the four paragraphs J51 found"
+    for para in paragraphs:
+        assert "**Amended 2026-10-14, §16.79 J51:** `sync --source` does not exist" in para, para[:80]
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is

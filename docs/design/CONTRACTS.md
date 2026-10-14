@@ -10993,6 +10993,9 @@ earlier keeps it). A page the scan now matches becomes a credential stub, its ca
 only. A stub the scan matches carries the credential in the file's name: its path is redacted, as a first write
 under those rules would. The scan reads the pages of every source, also under `sync --source`; a hit
 in a source the run did not select raises its alarm in the report and writes that source no heartbeat.
+**Amended 2026-10-14, §16.79 J51:** `sync --source` does not exist (KISS K13b deleted it on 2026-10-05, before this
+text was written; `sync` refuses it with exit 2): the runs that select sources are `reconcile --source` and
+`accept-deletions SOURCE`, and the scan reads every source's pages under them.
 
 A run without the gitleaks the stored identity names marks nothing, waiting stubs included, and keeps the stored
 value: launchd's PATH lacks a gitleaks that only a shell PATH finds, and a scan without it must not decide what
@@ -11012,6 +11015,9 @@ judged by the builtin patterns alone, as every changed file on such an install a
 removed after a run that had it, nothing is screened again until it is back; `[governance] archive` pages are not
 scanned again; the published-page scan uses the scan of the run (gitleaks alone when there is one), as every new
 page does.
+**Amended 2026-10-14, §16.79 J51:** `sync --source` does not exist (KISS K13b deleted it on 2026-10-05, before this
+text was written; `sync` refuses it with exit 2), and no launchd run selects sources, so the later launchd run's
+reason is the byte budget alone.
 
 **Amended 2026-10-12, §16.45 R76:** the "new id is a new file to the scan" and "gitleaks alone when there is
 one" residuals are gone. `lints.lint_secrets` runs the builtin patterns over every page it scans, and gitleaks
@@ -12698,6 +12704,9 @@ which used to read `skipped (-) · INCOMPLETE · cursor held`. `_Cycle._report` 
 `complete`/`INCOMPLETE` only for such a source. A paused, retired or client-less source therefore reads `skipped
 (<reason>)` followed by its alarms. STATE.md's `pass: skipped` is unchanged. Test:
 `tests/test_credential_rescreen.py::test_a_source_the_run_did_not_select_reads_not_in_this_run_with_no_completeness_word`.
+**Amended 2026-10-14, §16.79 J51:** `sync --source` does not exist (KISS K13b deleted it on 2026-10-05, before this
+text was written; `sync` refuses it with exit 2): the runs that leave a source out are `reconcile --source`,
+`accept-deletions SOURCE` and `materialise`.
 
 **R2: an unreadable conversion is counted apart from a failed one (`agentsync.cycle`, `agentsync.cli`,
 `agentsync.setup_report`).** The run record adds `converted_unreadable`, the UNREADABLE results among `converted`.
@@ -15854,6 +15863,9 @@ rescan alarm, `not in this run`); quoting is at render time only. The keys are t
 and given an accumulator), not `report is None`: a selected source a failed cycle never reached keeps its stored
 lines and shows them tagged. An unreadable store carries nothing and never fails the cycle. Test:
 `test_loop.py::test_state_md_keeps_another_sources_alarm_after_a_one_source_run`.
+**Amended 2026-10-14, §16.79 J51:** `sync --source` does not exist (KISS K13b deleted it on 2026-10-05, before this
+text was written; `sync` refuses it with exit 2): the one-source runs are `reconcile --source` and
+`accept-deletions`.
 
 **H32: the sync line counts the files refused without a read (`agentsync.cycle`, `agentsync.model`,
 `agentsync.cli`).** A source line's `refused=` counts every refused stub, the closing split only those refused after
@@ -16621,3 +16633,11 @@ as K18. A bullet now says it is no installer stop: an older installed build wrot
 names and checks; the clause names no cause; the run metadata's `agentsync:` line gives the build's version; and
 the installer's form wins when its stop line is in the attempt. Test:
 `test_the_prompt_version_section_reads_a_prompt_newer_than_the_reports_agentsync`, which builds the clause.
+
+**No contract names a `--source` option of `sync`** (J51; dated lines at §16.39's published-page rescan and its
+residuals, §16.45 R51 and §16.68 H73). KISS K13b deleted that option on 2026-10-05 (`sync` refuses it, exit 2; only
+the hidden `reconcile` has `--source`, and `accept-deletions` takes its source as an argument), yet four paragraphs
+written later list it among the runs that select sources. Each gets a dated line naming the runs that do; the
+residuals line, about launchd runs, which never select sources, keeps the byte budget as its one reason. The text
+stays as written, as every older section's does. Test:
+`test_every_contract_paragraph_that_names_sync_source_says_it_does_not_exist`, which also parses both commands.
