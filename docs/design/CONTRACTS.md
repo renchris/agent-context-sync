@@ -14738,6 +14738,7 @@ still has one bare `converted` token. Tests:
 `test_the_converted_line_parses_with_the_read_again_clause_in_either_form`.
 Amended 2026-10-14, §16.83 K34: the Q28 clause reads `read again R (F of them a first read: a stub whose bytes had
 never been read, now in the count above)`; `, read again R` is unchanged.
+Amended 2026-10-14, §16.87 L16: it ends `..., so also counted as converted)`.
 
 **F35: a re-screen is counted apart (`agentsync.cycle`, `agentsync.model`, `agentsync.cli`).** A [policy] or
 secret-rule change forgets the hashes of files already converted (`mark_for_rescreen`,
@@ -17697,6 +17698,9 @@ test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket`.
 Amended 2026-10-14, §16.89 L34: when F = R the head itself reads `, first read R (stubs whose bytes had never been
 read, now in the count above)`, and every reader named above takes R from either head; the report drops the comma
 before `of a stub`.
+Amended 2026-10-14, §16.87 L16: both brackets end `so also counted as converted)`, not `now in the count above)`
+(L34's head too). A bracket may hold `converted`, never as a field of its own (`converted)` is none), so never
+`converted <number>`.
 
 **K37: a lock held by a sync reads as a sync and its pass (`agentsync.ops.lock`).** A sync typed in a terminal
 holds the lock as `poll`, as the background job does, so `_describe_holder`'s `pid <n> (poll) since ...` read as
@@ -18235,6 +18239,19 @@ account)` when `_checkout_facts` read nothing and git's stderr (`_git_ro_err`) s
 .git)`. The owning account is never named. Tests: `test_the_shell_report_only_names_this_checkouts_commit`,
 `test_the_shell_report_says_why_a_copy_has_no_commit` (GIT_TEST_ASSUME_DIFFERENT_OWNER=1),
 `test_the_install_source_says_git_refuses_a_checkout_another_account_owns`.
+
+**The first-read bracket names its count** (L16; amends §16.83 K34 and §16.57 F34). install.sh's one-line `sync:`
+summary printed `read again 1 (1 of them a first read: a stub whose bytes had never been read, now in the count
+above)`, with nothing above it, and the nearest count before it is `read again R`, which holds these files by
+definition. The bracket ends `so also counted as converted)`, and so does §16.89 L34's `, first read R (stubs
+whose bytes had never been read, ...)` head, which landed beside this with the old words: the word is in a field `converted)`, which
+install.sh's awk (`$i == "converted"`) does not read, so the note's count is unchanged; no `converted <number>` is
+written. `_FIRST_READ_RE` reads the unchanged prefix, so the older words still parse, and the report's clause
+keeps `also in the converted count`. Tests: `test_cli.py::
+test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`,
+`test_install_oneshot.py::test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket` (both
+wordings), `test_setup_report.py::test_first_sync_clause_carries_the_read_again_count` (the new words added, the old
+kept as an older install.out).
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 

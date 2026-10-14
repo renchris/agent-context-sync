@@ -6509,15 +6509,16 @@ def test_first_sync_note_carries_the_read_again_count(env: dict[str, str], folde
     assert ("first-sync", "done", "0", "converted-0-deferred-1-reread-2") in steps(install_log(env))
 
 
+@pytest.mark.parametrize("said", ["now in the count above", "so also counted as converted"])  # round 10 L16
 def test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket(
-    env: dict[str, str], folder: Path, wheel: Path
+    env: dict[str, str], folder: Path, wheel: Path, said: str
 ) -> None:
     """B13 round 9 K34 reworded the first-read bracket after ``, read again R``: the note's awk adds the
     number after each bare ``converted``, ``deferred`` and ``read again``, so the new words, with the split
     after them, still log ``-reread-R`` and nothing else."""
     line = (
         "converted 3, deferred 0 online-only, read again 2 (2 of them a first read: a stub whose bytes had "
-        "never been read, now in the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
+        f"never been read, {said}); of the converted: 1 unreadable, 0 failed, 0 refused"
     )
     cp = install_sh({**env, "STUB_SYNC_OUT": line}, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
@@ -6532,8 +6533,8 @@ def test_first_sync_note_reads_the_count_after_the_first_read_head(
     with no "read again"; the note's awk adds the number after "first read" too, so it still logs
     ``-reread-R`` and the setup report reads the same note."""
     line = (
-        "converted 3, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, now in "
-        "the count above); of the converted: 1 unreadable, 0 failed, 0 refused"
+        "converted 3, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, so also "
+        "counted as converted); of the converted: 1 unreadable, 0 failed, 0 refused"  # round 10 L16's words
     )
     cp = install_sh({**env, "STUB_SYNC_OUT": line}, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr

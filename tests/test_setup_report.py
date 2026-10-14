@@ -3142,6 +3142,15 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "in the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read "
             "count and the unreadable/failed split: install.out)",
         ),
+        (  # B13 round 10 L16: the bracket names the converted count; the same two clauses (L34's head)
+            "note=converted-2-deferred-0-reread-2",
+            "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them a first read: a stub "
+            "whose bytes had never been read, so also counted as converted); of the converted: 1 unreadable, "
+            "0 failed",
+            "converted 2, deferred 0 online-only, first read 2: stubs whose bytes had never been read, also "
+            "in the converted count; of the converted: 1 unreadable, 0 failed (install.log; the first-read "
+            "count and the unreadable/failed split: install.out)",
+        ),
         (  # an older agentsync's two brackets in a row: the same two clauses
             "note=converted-2-deferred-0-reread-2",
             "first sync: converted 2, deferred 0 online-only, read again 2 (2 of them read for the first "

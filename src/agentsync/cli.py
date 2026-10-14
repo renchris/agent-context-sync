@@ -418,18 +418,18 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     (N files read and converted, M online-only files left for a later run's download budget), then ``, read
     again R`` when R files were read again for what their converter has gained (a re-read for a capability of
     the same bytes is never in N; a no-converter stub's re-read is the first read of its bytes, so it is in N
-    as well, and `` (F of them a first read: a stub whose bytes had never been read, now in the count above)``
-    says how many: B13 round 4 Q28; round 9 K34 reworded it, since "read for the first time", said of files
-    read again, said both things of the same files; when all R are first reads the head says so instead,
-    ``, first read R (stubs whose bytes had never been read, now in the count above)``, since "read again" was
-    false of every one: round 10 L34), then `` (of the converted: U unreadable, F failed, R
-    refused)`` when some of the N are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files
-    refused after their bytes were read (R: a label rule, a .msg whose label cannot be read; B13 round 6 G35,
-    which also prints the split for F or R alone; an inbox duplicate is quarantined, never in R: round 7 H49),
-    with ``, K of them withheld by the label rule`` after R when K of the R have a stub that says so (a binary
-    .msg on this Mac, read and then refused: B13 round 10 L33), as ``; of the converted: ...`` after the Q28
-    clause, so two parentheses never stand side by side (B13
-    round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
+    as well, and `` (F of them a first read: a stub whose bytes had never been read, so also counted as
+    converted)`` says how many: B13 round 4 Q28; round 9 K34 reworded it, since "read for the first time",
+    said of files read again, said both things of the same files; when all R are first reads the head says so
+    instead, ``, first read R (stubs whose bytes had never been read, so also counted as converted)``, since
+    "read again" was false of every one: round 10 L34; round 10 L16 named the count both brackets are in),
+    then `` (of the converted: U unreadable, F failed, R refused)`` when some of the N are UNREADABLE stubs
+    (U), conversions that failed (F; §16.45 R2) or files refused after their bytes were read (R: a label rule,
+    a .msg whose label cannot be read; B13 round 6 G35, which also prints the split for F or R alone; an inbox
+    duplicate is quarantined, never in R: round 7 H49), with ``, K of them withheld by the label rule`` after
+    R when K of the R have a stub that says so (a binary .msg on this Mac, read and then refused: B13 round 10
+    L33), as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side
+    (B13 round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
     [policy] or secret-rule re-screen runs the converter on the same bytes, so it is in N, and counted again
     in S (F35), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
     when Q files were refused with no byte read: those are in each source line's ``refused=`` but not in N, so
@@ -489,20 +489,21 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""
+    # No bare "converted" field: install.sh's awk adds the one after it ("converted)" is no such field), and
+    # no bare "again" in a bracket: R stays right after "read again" (B13 round 9 K34; setup_report reads
+    # both). Each bracket names the count it is in: "the count above" pointed at nothing in install.sh's
+    # one-line summary, and at "read again R" before it (B13 round 10 L16)
     if report.read_again and report.read_first == report.read_again:
         # all of them first reads: no "again" at all, and R right after "first read", which install.sh's awk
         # and setup_report read as they read "read again R" (B13 round 10 L34)
         again = (
-            f", first read {report.read_again} (stubs whose bytes had never been read, now in the count "
-            "above)"
+            f", first read {report.read_again} (stubs whose bytes had never been read, so also counted as "
+            "converted)"
         )
-    elif (
-        report.read_again and report.read_first
-    ):  # no bare "converted" token: install.sh's awk adds after one
-        # and no bare "again": R stays right after "read again" (B13 round 9 K34; setup_report reads both)
+    elif report.read_again and report.read_first:
         again += (
-            f" ({report.read_first} of them a first read: a stub whose bytes had never been read, now in the "
-            "count above)"
+            f" ({report.read_first} of them a first read: a stub whose bytes had never been read, so also "
+            "counted as converted)"
         )
     unreadable = sum(s.unreadable for s in report.sources)
     failed = sum(s.conversion_failed for s in report.sources)
