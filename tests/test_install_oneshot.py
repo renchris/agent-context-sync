@@ -3625,7 +3625,7 @@ def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(e
     # what the report makes of the first of those lines (it reads the log these runs wrote)
     runs = setup_report.read_install_runs(Path(env["HOME"]) / "agent-context" / "setup" / "install.log")
     assert setup_report.unread_why(runs) == (
-        "the installed agentsync was older than the installer: it had no is_under"
+        "the installed agentsync was older than the installer and had no is_under"
     )
 
 

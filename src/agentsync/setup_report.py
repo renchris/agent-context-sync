@@ -1652,17 +1652,20 @@ def _unread_words(fields: dict[str, str]) -> str | None:
     syncs, in the report's words; None when it logged no such thing. install.sh logs ``marks=<why>`` beside
     it (B13 round 7 H8, H16); a log without one (an installer from the hours between) gets the general
     words. Only fixed words and one Python identifier of the log are shown. The words carry no bracket of
-    their own: the Summary's note and the Installer table print them inside one (B13 round 8 J16, J27)."""
+    their own: the Summary's note and the Installer table print them inside one (B13 round 8 J16, J27), and
+    no colon either: the identifier joins them as a clause, so the table's cell has one colon (B13 round 9
+    K23, K36)."""
     if fields.get("synced") != "unreadable":
         return None
     kind, _, detail = fields.get("marks", "").partition(":")
     name = detail if _UNREAD_NAME_RE.fullmatch(detail) else ""
     if kind == "older":
-        # a colon, not a parenthesis: the caller puts this in one (B13 round 8 J27)
-        lacks = f": it had no {name}" if name else ""
+        # a clause, not a parenthesis or a colon: the caller puts this in a bracket after a colon of its own
+        # (B13 round 8 J27, round 9 K23)
+        lacks = f" and had no {name}" if name else ""
         return f"the installed agentsync was older than the installer{lacks}"
     why = _UNREAD_WHY.get(kind, "the installed agentsync could not run the reader")
-    return f"{why}: a {name}" if kind == "failed" and name else why
+    return f"{why} and raised {name}" if kind == "failed" and name else why
 
 
 def unread_why(runs: Sequence[InstallRun]) -> str | None:
@@ -3413,7 +3416,7 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
             if synced is not None:
                 counts = f"{synced} already synced"
             elif unread is not None:
-                counts = f"could not read which folders are synced: {unread}"
+                counts = f"could not read which folders are synced, because {unread}"
         said = _agentsync_note(v.get("note", "")) if name == "agentsync" else v.get("note", "")
         note = ": ".join(part for part in (said, counts) if part)
         if note:

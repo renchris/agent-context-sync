@@ -16279,6 +16279,8 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   `test_list_folders_marks_nothing_when_the_config_cannot_be_read`.
   Amended 2026-10-14, §16.75 J27: `the installed agentsync is older than this installer: it has no <name>`; the
   report's note says `...older than the installer: it had no <name>` and `...could not load it: a <class>`.
+  Amended 2026-10-14, §16.80 K23: the report's words read `...older than the installer and had no <name>` and
+  `...could not load it and raised <class>`; install.sh's warning is unchanged.
 - **The shell report that may be sent says how** (H4). Its Redaction part ended on the legend and the report on a
   bare link: no private route, no "Nothing is sent automatically", and no word that the form opens empty. After
   the legend's paragraph `fallback_redaction` now writes one unwrapped line, `Send it: the link on the last line
@@ -16689,6 +16691,8 @@ and install.sh's warning: one defect with §16.75 J27, whose wording (`could not
 the installer: it had no is_under`) both use.
 Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
 `test_the_summary_says_why_a_folder_list_could_not_read_the_config`.
+Amended 2026-10-14, §16.80 K23: the row reads `done (listed-6: could not read which folders are synced, because
+<why>)`, with one colon.
 
 **The all-zero re-read line** (J3, J15, J41). The clause naming the early OCR build on every Mac is gone ("from before
 OCR" covers it) and the run sentence is one clause; every branch stays. Where a bracket follows the term's first
@@ -17233,6 +17237,18 @@ earlier build did not)` follows `N recorded these counts` only when fewer runs r
 cache line's `(a count that also holds for runs of an earlier build)` only when the newest run or the one before it,
 the two runs it counts for, recorded no conversions. Test:
 `test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is`.
+
+**The list row's unread words have one colon** (K23, K36, one defect; dated lines at §16.74 J10 and §16.75 J27).
+`done (listed-6: could not read which folders are synced: the installed agentsync could not load it: a
+ConfigError)` chained three colons. `_unread_words` joins its identifier as a clause (`...could not load it and
+raised ConfigError`, `...was older than the installer and had no is_under`), and the cell joins the words with
+`because`: `done (listed-6: could not read which folders are synced, because <why>)`. The Summary's note reads
+the same words (`(the installed agentsync could not load it and raised ConfigError), so it marked none`). K36's
+`listed-6;` separator was not built: with K23's words the cell has one colon and keeps the `listed-6: ` every
+other list row starts with. install.sh's warning has its own present-tense words and no class, so it is
+unchanged. Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
+`test_the_summary_says_why_a_folder_list_could_not_read_the_config`, and the `unread_why` read-back in
+`tests/test_install_oneshot.py`.
 
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
