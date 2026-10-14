@@ -964,7 +964,9 @@ class _Scrubber:
         self._pairs: dict[str, re.Pattern[str]] = {}
         by_source: dict[str, set[str]] = {}
         for source_id, rel in rel_paths:
-            by_source.setdefault(source_id, set()).add(rel)
+            # and as STATE.md quotes it (publish._quoted: whitespace runs collapsed, no unprintable character)
+            shown = "".join(c for c in " ".join(rel.split()) if c.isprintable())
+            by_source.setdefault(source_id, set()).update({rel, shown})
         for source_id, rels in by_source.items():
             rx = _needle_regex(rels)
             if rx is not None:
@@ -1001,6 +1003,14 @@ class _Scrubber:
                 ):
                     return True
         return False
+
+    def own_line_hit(self, source_id: str, line: str) -> bool:
+        """True when ``line``, one of ``source_id``'s own with no source id on it (a carried STATE.md line),
+        names a purged item: by a docs path or id, or by a rel path of that source only (B13 round 8 J46)."""
+        if self._paths is not None and self._paths.search(line):
+            return True
+        rx = self._pairs.get(source_id)
+        return rx is not None and rx.search(line) is not None
 
     def scrub(self, text: str) -> tuple[str, int]:
         """Return (text without the hit lines, number of lines removed)."""
@@ -1345,8 +1355,20 @@ def _apply_rewrite(
     return _RewriteResult(cmap, old_refs, new_refs, tuple(deleted), frozenset(rw.replaced_blobs))
 
 
-def _reset_worktrees(worktrees: Sequence[_Worktree], scrubber: _Scrubber | None) -> list[str]:
-    """Scrub ignored text files, then ``reset --hard`` each worktree onto its (rewritten) HEAD."""
+def _owned_ignored(rel: str) -> bool:
+    """An ignored file agentsync itself regenerates in the docs repo (publish.GITIGNORE)."""
+    return rel == "_sync/STATE.md" or rel.startswith("_manifest/cache/")
+
+
+def _reset_worktrees(
+    worktrees: Sequence[_Worktree], scrubber: _Scrubber | None, *, owned: _Scrubber | None = None
+) -> list[str]:
+    """Scrub ignored text files, then ``reset --hard`` each worktree onto its (rewritten) HEAD.
+
+    agentsync's own ignored files take ``owned`` when given (B13 round 8 J48): STATE.md names a source's file
+    by its rel path under a ``## <id>`` heading, so the line holds no source id for the paired scrubber to
+    match. Every other ignored file (a user's own) keeps the paired scrubber, so a generic rel path cuts no
+    line there."""
     touched: list[str] = []
     for wt in worktrees:
         if not wt.path.is_dir():
@@ -1354,7 +1376,8 @@ def _reset_worktrees(worktrees: Sequence[_Worktree], scrubber: _Scrubber | None)
         if scrubber is not None:
             ignored = _git_text(wt.path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
             for rel in sorted(p for p in ignored.split("\0") if p):
-                if _scrub_file(wt.path / rel, scrubber):
+                use = owned if owned is not None and _owned_ignored(rel) else scrubber
+                if _scrub_file(wt.path / rel, use):
                     touched.append(str(wt.path / rel))
         if _git(wt.path, "rev-parse", "--verify", "-q", "HEAD", check=False).returncode == 0:
             _git(wt.path, "reset", "--hard", "-q")
@@ -1790,13 +1813,26 @@ def _manifest_apply(
     squashed: set[str],
     tree_sha: str | None,
     keep_owners: Collection[tuple[str, str]] = frozenset(),
+    line_scrubber: _Scrubber | None = None,
 ) -> dict[str, int]:
     """Delete the purged rows (secure_delete, checkpoint, VACUUM) and remap commit shas; return row counts.
 
     An outputs row at one of ``docs_paths`` whose owner is in ``keep_owners`` (a file the manifest lists that
     the purge did not select) stays: its page may be missing from HEAD after a crash between the manifest
-    write and the commit, and the next cycle's repair republishes it from that row."""
-    counts = {"items": 0, "outputs": 0, "tombstones": 0, "depends": 0, "cache": 0, "run_sources": 0}
+    write and the commit, and the next cycle's repair republishes it from that row.
+
+    With ``line_scrubber`` (a purge's, B13 round 8 J46), each alarm and error line STATE.md carries for a
+    source a run did not select (meta ``state_md_lines``) that it hits becomes ``[purged]``, in this
+    transaction so the old page is overwritten and VACUUMed; a value that cannot be read is deleted."""
+    counts = {
+        "items": 0,
+        "outputs": 0,
+        "tombstones": 0,
+        "depends": 0,
+        "cache": 0,
+        "run_sources": 0,
+        "meta": 0,
+    }
     if not db.exists():
         return counts
     conn = _connect(db)
@@ -1868,6 +1904,8 @@ def _manifest_apply(
                         (err, why, r["run_id"], r["source_id"]),
                     )
                     counts["run_sources"] += 1
+            if line_scrubber is not None:
+                counts["meta"] += _scrub_carried_lines(conn, line_scrubber)
             for r in conn.execute(
                 "SELECT output_path, last_commit FROM tombstones WHERE last_commit IS NOT NULL"
             ):
@@ -1950,6 +1988,55 @@ def _staged_hashes(db: Path, items: Iterable[tuple[str, str, str, bool]]) -> set
         return out
     finally:
         conn.close()
+
+
+_CARRIED_LINES_META = "state_md_lines"  # cycle._STATE_LINES_META: {source id: [run id, alarms, errors]}
+
+
+def _scrub_carried_lines(conn: sqlite3.Connection, scrubber: _Scrubber) -> int:
+    """Mark each carried STATE.md line ``scrubber`` hits for its own source as ``[purged]`` (the decoded
+    strings, since JSON escapes quotes and non-ASCII); another source's alarm stays. A value that is not the
+    stored shape is deleted, an entry that is not and names the item is emptied. 1 if the key changed."""
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (_CARRIED_LINES_META,)).fetchone()
+    if row is None:
+        return 0
+    try:
+        loaded = json.loads(row[0])
+    except ValueError:
+        loaded = None
+    if not isinstance(loaded, dict):
+        conn.execute("DELETE FROM meta WHERE key = ?", (_CARRIED_LINES_META,))
+        return 1
+    changed = False
+    for sid, entry in loaded.items():
+        if isinstance(entry, list) and len(entry) == 3 and all(isinstance(e, list) for e in entry[1:]):
+            new = [
+                entry[0],
+                *(
+                    [
+                        _PURGED_MARK if isinstance(x, str) and scrubber.own_line_hit(sid, x) else x
+                        for x in lines
+                    ]
+                    for lines in entry[1:]
+                ),
+            ]
+            changed = changed or new != entry
+            loaded[sid] = new
+        elif any(scrubber.own_line_hit(sid, x) for x in _strings(entry)):
+            loaded[sid] = None  # not the shape a cycle reads; it carries nothing, and now names nothing
+            changed = True
+    if not changed:
+        return 0
+    conn.execute("UPDATE meta SET value = ? WHERE key = ?", (json.dumps(loaded), _CARRIED_LINES_META))
+    return 1
+
+
+def _strings(value: object) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list | dict):
+        for v in value.values() if isinstance(value, dict) else value:
+            yield from _strings(v)
 
 
 def _scrub_file(path: Path, scrubber: _Scrubber) -> bool:
@@ -2123,7 +2210,8 @@ def _purge_locked(
         rel_paths = plan.rel_paths | {(s, r) for s, _i, r, _d in mt.items}
         scrubber = _Scrubber(docs_paths, plan.ids, rel_paths, standalone_rel_paths=False)
         # The history's index files keep the lines of a live page at a taken path: by its path, and its own
-        # manifest line by its id.  Logs, run errors and ignored files are scrubbed by every path.
+        # manifest line by its id.  Logs, run errors and ignored files are scrubbed by every path; logs,
+        # agentsync's own ignored files (STATE.md) and STATE.md's carried lines also by a bare rel path.
         index_scrubber = _Scrubber(
             [p for p in docs_paths if p not in taken],
             plan.ids,
@@ -2173,7 +2261,7 @@ def _purge_locked(
             result = _apply_rewrite(repo, cat, rw, graph, worktrees)
             cat.close()
             cat = None
-            touched = _reset_worktrees(worktrees, scrubber)
+            touched = _reset_worktrees(worktrees, scrubber, owned=log_scrubber)
             notes += [f"scrubbed ignored file {t}" for t in touched]
             _expire_and_prune(repo)
             targets = plan.target_blobs | result.replaced_blobs
@@ -2213,6 +2301,7 @@ def _purge_locked(
             squashed=set(),
             tree_sha=head_tree,
             keep_owners=mt.others - plan.ids,
+            line_scrubber=log_scrubber,
         )
         for entry in cache_victims:
             _rmtree(entry)

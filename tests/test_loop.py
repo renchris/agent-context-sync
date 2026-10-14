@@ -4,6 +4,7 @@ file."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import re
@@ -24,7 +25,7 @@ from agentsync.config import Config, ensure_inbox, inbox_source_table, load_conf
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, PassKind, RowState, Verdict
+from agentsync.model import ConversionStatus, CycleMode, PassKind, RowState, Verdict
 from agentsync.ops import doctor
 from agentsync.ops.doctor import CheckResult, Severity
 from test_cli import _assert_fix_parses
@@ -1770,6 +1771,52 @@ def test_state_md_keeps_another_sources_alarm_after_a_one_source_run(
         manifest.set_meta("state_md_lines", "{not json")
     assert cli.main(["reconcile", "--source", "plainsrc", "--config", cfg]) == cli.EXIT_OK
     assert work_lines() == []
+
+
+def test_a_purge_leaves_the_purged_files_name_in_neither_state_md_nor_its_carried_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 8 J46, J48: STATE.md and the lines it carries for a source a run did not select (H73's meta
+    ``state_md_lines``) name a source's file by its rel path alone, under the source's heading. A purge cut
+    neither (its paired scrubber needs the source id on the line), so the error line stayed in STATE.md and a
+    later ``reconcile --source <other>`` printed the purged file's name again. STATE.md shows the name with
+    its whitespace runs collapsed, which is cut too; another source's line naming the same rel path stays."""
+    name = "Contoso  Layoffs Plan.txt"  # STATE.md shows it with one space
+    work = tmp_path / "work"
+    _write(work / name, "Plan text.\n")
+    _write(work / "memo.txt", "A memo.\n")
+    other = tmp_path / "plain"
+    _write(other / "note.txt", "A note from Fabrikam.\n")
+    config = _setup(tmp_path, local_source_table("work", work) + local_source_table("plainsrc", other))
+    cfg = str(config.config_path)
+    state_md = config.docs_repo / "_sync" / "STATE.md"
+    real = cycle_module.convert_file
+
+    def failing(path: Path, *, name: str, **kw: object) -> object:
+        res = real(path, name=name, **kw)  # type: ignore[arg-type]
+        if "Layoffs" in name:
+            return dataclasses.replace(
+                res, status=ConversionStatus.FAILED, units=(), reason="conversion failed: x"
+            )
+        return res
+
+    with monkeypatch.context() as mp:
+        mp.setattr(cycle_module, "convert_file", failing)
+        cli.main(["sync", "--config", cfg])
+    assert "`Contoso Layoffs Plan.txt: conversion failed: x`" in state_md.read_text(encoding="utf-8")
+    own = f"{name}: a line of plainsrc's own"
+    with Manifest(config.state_paths.db) as manifest:
+        stored = json.loads(manifest.get_meta("state_md_lines") or "{}")
+        manifest.set_meta("state_md_lines", json.dumps({**stored, "plainsrc": [1, [own], []]}))
+    assert cli.main(["purge", f"path={name}", "--source", "work", "--config", cfg]) == cli.EXIT_OK
+    assert "Layoffs" not in state_md.read_text(encoding="utf-8"), "STATE.md right after the purge"
+    with Manifest(config.state_paths.db) as manifest:
+        carried = json.loads(manifest.get_meta("state_md_lines") or "{}")
+    assert carried["work"][2] == ["[purged]"] and "Layoffs" not in json.dumps(carried["work"])
+    assert carried["plainsrc"] == [1, [own], []], "another source's line is not the purged file's"
+    assert cli.main(["reconcile", "--source", "plainsrc", "--config", cfg]) == cli.EXIT_OK
+    text = state_md.read_text(encoding="utf-8")
+    assert "Layoffs" not in text and "error (run 1): `[purged]`" in text
 
 
 def _raises(*_args: object, **_kwargs: object) -> object:
