@@ -17573,6 +17573,9 @@ right after `switch -c local-work-<time>`, so each name ends `.<that branch>.pat
 Section 3 reads `local-work/*.patch` flat, as before; per-branch folders would need a second glob, as `/bin/bash`
 3.2 has no `**`. Test: `test_a_second_keep_leaves_the_first_keeps_patch` (two keeps, both patches, both in
 bring-back.md).
+Amended 2026-10-14, §16.91 L65: not "right after" `switch -c local-work-<time>`. In both commands `format-patch` runs
+after `add -A` and the commit (made only when something is staged), still on the new `local-work-<time>` branch, so
+`branch --show-current` names it and the suffix is the same.
 
 **The git stop's commands are the person's** (K31). The block opens with "Run each command yourself", and the git
 stop's quote named three commands without saying whose they are. Run by the agent, `git config --get-urlmatch
@@ -17992,3 +17995,7 @@ so deleting §16.80's K5, K10 and K46 lines left the suite green (measured on a 
 dated lines in a form the scan reads; it now has a dated paragraph that names its ten lettered targets. The scan
 reads §16.68 to §16.91 but §16.72 and asserts the new claim forms, at least 90 claims in all; K75's line in §16.22's
 unlettered bullet is held by its words. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`.
+
+**K28's order is the keep commands' order** (L65; dated line at §16.82 K28). §16.82 K28 said both keep commands run
+`format-patch` "right after" `switch -c`; `add -A` and a commit made only when something is staged come between.
+The commands are unchanged. Test: `test_the_keep_commands_name_the_patch_from_the_local_work_branch`.

@@ -4375,6 +4375,22 @@ def test_k52s_withheld_constants_are_named_where_they_live() -> None:
     )
     assert "`policy._WITHHELD_BODY` and `policy._WITHHELD_WORDS`" in k52
 
+
+def test_the_keep_commands_name_the_patch_from_the_local_work_branch() -> None:
+    """B13 round 10 L65: §16.82 K28 said both keep commands run `format-patch` "right after" `switch -c`;
+    `add -A` and a commit made only when something is staged come between, still on the new branch."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for command in (KEEP_LOCAL_WORK, KEEP_BRANCH_WORK):
+        assert f"`{command}" in readme
+        steps = [
+            command.index(w)
+            for w in ("switch -c local-work-", " add -A", "diff --cached --quiet ||", "format-patch")
+        ]
+        assert steps == sorted(steps)
+        assert "switch" not in command[steps[0] + 6 : steps[3]], "a branch change before format-patch"
+    k28 = " ".join(_contracts_section("**Each kept patch carries its keep's branch** (K28", "\n\n").split())
+    assert 'Amended 2026-10-14, §16.91 L65: not "right after" `switch -c local-work-<time>`.' in k28
+    assert "after `add -A` and the commit (made only when something is staged)" in k28
 def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() -> None:
     """B13 round 9 K68: since round 8 J30 the Repeat conversions table counts the same file converted again
     from the same bytes and converter options, and a note under it says a label-rule re-screen is a new
