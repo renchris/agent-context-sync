@@ -83,9 +83,13 @@ an ad-hoc rebuild means one new Allow click. The launcher starts only the interp
 runs as `python3` in the same folder. A build before 2026-10-07 wrote its own path there, and such a job is
 refused at every run (exit 64): `agentsync status` names it, and `agentsync install-agent` rewrites it.
 
-Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain. Proxy
+Behind TLS inspection, the installer sets `UV_SYSTEM_CERTS=1` and agentsync trusts the macOS keychain.
+`[network] proxy` is agentsync's own setting in `sources.toml` and covers only its Graph traffic: there, proxy
 precedence is `[network] proxy`, then `HTTPS_PROXY`, then the macOS manual proxy. A PAC-only network fails closed,
-so set `[network] proxy`. `agentsync status` checks the whole path whenever a Graph source is live.
+so set `[network] proxy`. `agentsync status` checks the whole path whenever a Graph source is live. git, the uv
+download and `uv tool install` do not read `[network] proxy`: behind a proxy, export `HTTPS_PROXY` (an `http://`
+proxy URL; PAC files are not evaluated) in the terminal before the clone, the pull or `install.sh`. If git's error
+names a host other than github.com, step 1 of the setup prompt lists where git may have been pointed elsewhere.
 
 ## Day 1, with zero IT involvement
 

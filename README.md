@@ -160,7 +160,8 @@ What is read:
 - **PDF pages without a text layer** (a scan), and a picture on a PDF page that the page's own text does not cover.
   How much text covers a picture goes by the picture's size, so a scanned page under one stamped line (an envelope
   ID, a page number with a notice) is still read.
-- **Pictures in a deck** (`.pptx`), **a Word document** (`.docx`) or an OpenDocument text file (`.odt`): the text
+- **Pictures on a deck's slides** (`.pptx`, or a `.potx` template that has slides; the pictures in a template's
+  master and layouts are not read), **a Word document** (`.docx`) or an OpenDocument text file (`.odt`): the text
   follows the picture's `[image…]` line.
 
 The text of each picture or scanned page starts with a line that says it was `read by on-device OCR (Apple Vision)`,
@@ -213,16 +214,23 @@ A meeting recording (`.mp4`, `.m4v`, `.mov`) is read on the Mac for the text tha
 AVFoundation and the same Vision OCR as images. It becomes a folder of pages next to where the file would be:
 
 - `00-index.md`: the recording's length and picture size, the title card's text when it has one, the names read
-  on screen, how many screen states and keyframes each kind of view had, and how to read the folder;
+  on screen, how many screen states and keyframes each kind of view had, the number of speech lines and voices,
+  and how to read the folder;
 - one page per five minutes, `01-t000000.md`, `02-t000500.md` and so on: each screen state (a slide, a shared
   window, the camera view) under a heading with its times, then one line per row of on-screen text, each starting
-  with its media time and a tag (`SCREEN:`, `TILE:`, `KEYFRAME:`, `NOTE:`);
+  with its media time and a tag (`SCREEN:`, `TILE:`, `SPEAKING:`, `SAID v<N>:`, `KEYFRAME:`, `NOTE:`);
 - keyframes: one or two JPEG pictures of each screen state, in the window page's `.files/` folder, so an agent can
   look at a chart or a face the text does not cover.
 
-No speech is read yet. The page also does not say who spoke, whether a camera was on, what a video played inside a
-share showed, the chat unless it was shared, anything on screen for less than 4 seconds, or the clock time of a
-moment; the index lists these.
+A `SPEAKING:` line is the name label the meeting app lit on screen. It is read from the picture, needs no speech
+models, and follows sound, not identity. Once both speech model folders are placed
+([Placing the speech models](#placing-the-speech-models)), the words said are read too: one `SAID v<N>:` line per
+spoken line, where N numbers a voice, plus `NOTE:` lines where speech was heard but no words were recognised and
+where the sound ends. The index adds a Voices block with one `VOICE:` line per voice; a VOICE name is the account
+whose audio carried that voice, so people sharing one account are not named. Until the models are placed, the index
+says speech was not read. The page does not say who spoke beyond the VOICE lines, whether a camera was on, what a
+video played inside a share showed, the chat unless it was shared, anything on screen for less than 4 seconds, or
+the clock time of a moment; the index lists these.
 
 Only runs that no tool timeout ends read recordings: a background sync, and `~/.local/bin/agentsync materialise
 <file>` for one recording, which reads it to the end. An interactive `sync` reads none: it counts them in a `note:`

@@ -3527,3 +3527,50 @@ def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
         assert any(marker.search(p) and re.search(rf"\b{item}\b", p) for p in paragraphs), (
             f"§{section} {item} has no dated line for §{home} {g}"
         )
+
+
+def test_the_deploy_guide_says_git_and_the_installer_do_not_read_the_network_proxy() -> None:
+    """B13 round 8 J24: the guide the prompt points at said only "set `[network] proxy`", agentsync's own
+    setting for its Graph traffic, which git, the uv download and `uv tool install` never read. It now says so
+    and names HTTPS_PROXY for them, without git's own http.proxy, which step 1 diagnoses as a stale cause."""
+    deploy = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "`[network] proxy` is agentsync's own setting in `sources.toml` and covers only its Graph traffic"
+    ) in deploy
+    assert (
+        "git, the uv download and `uv tool install` do not read `[network] proxy`: behind a proxy, export "
+        "`HTTPS_PROXY` (an `http://` proxy URL; PAC files are not evaluated) in the terminal before the "
+        "clone, "
+        "the pull or `install.sh`."
+    ) in deploy
+    assert "http.proxy" not in deploy
+
+
+def test_the_readme_says_what_a_recording_page_reads_of_speech_and_which_decks_get_ocr() -> None:
+    """B13 round 8 J56: the README said "No speech is read yet" while a recording page writes SPEAKING lines
+    from the lit name label, and SAID lines, speech NOTE lines and a Voices block once the speech models are
+    placed. J57: its OCR list named only .pptx, while a .potx template's slides are read the same way (its
+    master and layouts are not)."""
+    from agentsync.convert import pptx, recording_page  # noqa: PLC0415
+
+    readme = " ".join(_page("README.md").split())
+    assert "No speech is read yet" not in readme
+    assert "(`SCREEN:`, `TILE:`, `SPEAKING:`, `SAID v<N>:`, `KEYFRAME:`, `NOTE:`)" in readme
+    assert (
+        "A `SPEAKING:` line is the name label the meeting app lit on screen. It is read from the picture, "
+        "needs "
+        "no speech models, and follows sound, not identity."
+    ) in readme
+    assert "The index adds a Voices block with one `VOICE:` line per voice" in readme
+    assert "The page does not say who spoke beyond the VOICE lines" in readme
+    source = Path(recording_page.__file__).read_text(encoding="utf-8")
+    assert (
+        'f"SAID v{line.voice}"' in source
+        and '"## Voices"' in source
+        and "Not on this page: who spoke beyond the VOICE lines" in source
+    )
+    assert (
+        "**Pictures on a deck's slides** (`.pptx`, or a `.potx` template that has slides; the pictures in a "
+        "template's master and layouts are not read)"
+    ) in readme
+    assert ".potx" in pptx.PptxConverter.extensions
