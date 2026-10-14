@@ -6092,11 +6092,22 @@ def _newer_than_me_note(attempt: Attempt | None) -> str:
     report's agentsync (B13 round 7 H23): the report, its step names and its checks are an older build's. It
     names no cause: the pull may have worked (step 2 failed before the reinstall) or never run (xcode-select
     failed), and the build, not install.sh, writes the report. Nothing when the installer's own stop says
-    more (:func:`_prompt_copy_note`)."""
+    more (:func:`_prompt_copy_note`). The bare clause: :func:`_prompt_line_note` brackets it."""
     version = _prompt_version(attempt)
     if version is None or int(version[1:]) <= PROMPT_VERSION or _prompt_copy_note(attempt):
         return ""
-    return f" (newer than this report's agentsync, for prompt v{PROMPT_VERSION})"
+    return f"newer than this report's agentsync, which is for prompt v{PROMPT_VERSION}"
+
+
+def _prompt_line_note(attempt: Attempt | None) -> str:
+    """Everything the Summary's prompt line says after the version, in one bracket (B13 round 8 J23, J40):
+    where a stated version came from, the installer's stop of the copy and the newer-than-this-build note
+    each had a bracket of their own, side by side ("(from the step 1 error line) (newer than ...)"). The
+    parts are joined with "; "; the "or older" of a copy from before v8 stays beside the version."""
+    older, _, copy = _prompt_copy_note(attempt).partition(" (")
+    parts = (_stated_note(attempt).strip(" ()"), copy.removesuffix(")"), _newer_than_me_note(attempt))
+    said = "; ".join(part for part in parts if part)
+    return f"{older} ({said})" if said else older
 
 
 def _prompt_copy_note(attempt: Attempt | None) -> str:
@@ -6141,10 +6152,50 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
     fr = r.friction
     assert fr is not None
     latest = index == len(fr.attempts) - 1
-    return compute_outcome(
+    outcome = compute_outcome(
         fr.attempts[index],
         runs_for_attempt(fr, index, r.install_runs),
         doctor_fails=_doctor_fails(r) if latest else (),
+    )
+    rerun = _rerun_note(fr, index)
+    if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
+        return Outcome("stopped", 1, outcome.why, outcome.version, rerun)
+    return outcome
+
+
+_RERUN_WINDOW = timedelta(seconds=120)
+"""How soon after the installer stopped a ``--log-start`` value the same session's corrected command starts
+the next attempt (:func:`_rerun_note`): seconds in the field, and far under :data:`_NEW_SESSION_GAP`, which
+a prompt copied again and pasted into a new session does not beat."""
+
+
+def _rerun_note(fr: Friction, index: int) -> str | None:
+    """What attempt ``index`` was when the installer stopped its ``--log-start`` value and the same session
+    ran step 1's command again with the installer's own version, as the installer's message tells a current
+    copy whose agent changed the value to (B13 round 8 J9): "failed at step 1" blamed the checkout or the
+    copy for a slip the next command put right. None unless all of these hold: the attempt's step 1 error is
+    the installer's stop (:data:`_PROMPT_STOP_RE`); the next attempt's prompt is the version of the installer
+    that stopped it (its own, never this build's); both name the same agent; and the next one starts within
+    :data:`_RERUN_WINDOW` of the stop. A copy fetched again from the README and pasted into a new session,
+    the remedy for a stale copy, is a real failure and stays one: it comes later. Versions and seconds only
+    are shown."""
+    if index + 1 >= len(fr.attempts):
+        return None
+    att, after = fr.attempts[index], fr.attempts[index + 1]
+    stops = ((e, _PROMPT_STOP_RE.match(e.what)) for e in att.events if e.kind == "error" and e.step == 1)
+    event, stop = next(((e, found) for e, found in stops if found is not None), (None, None))
+    said = _prompt_version(att)
+    if event is None or stop is None or said is None or event.at is None or after.begin is None:
+        return None
+    gap = after.begin - event.at
+    if after.version != int(stop.group(1)) or att.said("Agent") != after.said("Agent"):
+        return None
+    if not timedelta(0) <= gap <= _RERUN_WINDOW:
+        return None
+    older = " or older" if re.fullmatch(r"v\d{1,3} or older", att.header.get("Prompt", "")) else ""
+    return (
+        f"rerun: --log-start said {said}{older}; the next attempt, {_secs(gap.total_seconds())} later, "
+        f"said v{after.version}"
     )
 
 
@@ -6903,9 +6954,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         why_run += "; HOME is also under a temporary folder"
     agent = (att.said("Agent") if att is not None else None) or "not stated"
     out.append(
-        f"- prompt: {_prompt_version(att) or 'not stated'}{_stated_note(att)}{_prompt_copy_note(att)}"
-        f"{_newer_than_me_note(att)} · run: {ISSUE_RUN_TYPES[run_type]} (computed: {why_run}) · agent: "
-        f"{agent}"
+        f"- prompt: {_prompt_version(att) or 'not stated'}{_prompt_line_note(att)} · run: "
+        f"{ISSUE_RUN_TYPES[run_type]} (computed: {why_run}) · agent: {agent}"
     )
     if att is not None and att.header.get("Run"):
         out.append(f"- agent said run: {att.header['Run']}")

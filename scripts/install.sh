@@ -427,10 +427,13 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 				newer_copy_fix
 				fix="$FIX"
 			fi
+			# The line names both readings, as the message below does: a current copy whose agent changed the
+			# value is stopped the same way, and only this line reaches the report (B13 round 8 J9). The words
+			# come after the reason, where setup_report._PROMPT_STOP_RE still reads the line.
 			# The attempt is closed here: the agent is told to run no other step, so an agent that obeys runs
 			# no --report-only (an older copy's step 3 may still run one, and that report reads this closed
 			# attempt), and a later session's line must not join an attempt left open.
-			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what; setup stopped (exit 2) | $fix"$'\n'"$now | end | finished"$'\n' || true
+			friction_append "Attempt: $now"$'\n'"Prompt: $said"$'\n'"Agent: ${v:-unknown}"$'\n'"$now | step 1 | error | $PROMPT_STOPPED $what, or the --log-start value was changed; setup stopped (exit 2) | $fix"$'\n'"$now | end | finished"$'\n' || true
 			# The last sentence is for a current copy whose agent changed the value. It names no value that
 			# passes: an old copy's agent that read one here used it, and ran its old wording after all.
 			printf 'error: the pasted setup prompt is %s. Stop here and run no other step of that prompt. Tell the person to %s. If the first line of your prompt says "setup prompt v%s", the --log-start value was changed: run step 1'\''s command again once, exactly as the prompt writes it.\n' "$what" "$TELL" "$SETUP_PROMPT_COMPAT" >&2

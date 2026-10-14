@@ -3160,7 +3160,7 @@ def test_a_prompt_newer_than_the_reports_agentsync_says_so(fake_mac: dict[str, P
     build's prompt, and the issue keeps the attempt's version."""
     v6_install_log(fake_mac, rc=1)
     newer, mine = setup_report.PROMPT_VERSION + 1, setup_report.PROMPT_VERSION
-    note = f" (newer than this report's agentsync, for prompt v{mine})"
+    note = f"newer than this report's agentsync, which is for prompt v{mine}"
 
     def report(friction: str) -> tuple[str, str]:
         write_friction(fake_mac, friction)
@@ -3171,11 +3171,13 @@ def test_a_prompt_newer_than_the_reports_agentsync_says_so(fake_mac: dict[str, P
     stated = f"2026-09-29T10:20:00Z | step 1 | error | prompt v{newer}, Contoso Bot: git pull failed | -\n"
     header = f"Attempt: 2026-09-29T09:58:00Z\nPrompt: v{newer}\nAgent: Contoso Bot\n"
     for friction, prompt in (
-        (stated, f"- prompt: v{newer} (from the step 1 error line){note} · run: "),
-        (header, f"- prompt: v{newer}{note} · run: "),
+        # B13 round 8 J23, J40: one bracket, where the two notes had one each, side by side
+        (stated, f"- prompt: v{newer} (from the step 1 error line; {note}) · run: "),
+        (header, f"- prompt: v{newer} ({note}) · run: "),
     ):
         text, summary = report(friction)
         assert prompt in summary, summary
+        assert ") (" not in summary.split("\n- prompt: ", 1)[1].split(" · run: ", 1)[0]
         assert "pull" not in summary.split("\n- prompt: ", 1)[1].split(" · run: ", 1)[0]
         link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
         assert link["title"][0].endswith(f" · v{newer}") and link["prompt_version"] == [f"v{newer}"], link
@@ -3421,6 +3423,76 @@ def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_t
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 8 J9: an agent that changed the --log-start value (v61 for v16) is stopped, told to run the
+    command again as written, and does, seconds later. The report kept that attempt as "failed at step 1",
+    which blames the checkout or the copy. It reads "stopped at step 1 (rerun: ...)" when the next attempt
+    names the stopping installer's own version and the same agent within two minutes. A copy fetched again
+    and pasted into a new session (the remedy for a stale copy) stays a failure, as does a next attempt of
+    another version or another agent."""
+    mine = setup_report.PROMPT_VERSION
+    (fake_mac["setup"] / "install.log").unlink()
+    stop = (
+        "Attempt: 2026-09-29T09:58:00Z\nPrompt: {said}\nAgent: {agent}\n"
+        "2026-09-29T09:58:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is {said} "
+        "and this installer is for setup prompt v{installer}: {why}; setup stopped (exit 2) | copy the "
+        "prompt again from README.md on the main branch\n"
+        "2026-09-29T09:58:00Z | end | finished\n"
+    )
+    newer = "this checkout is older than the prompt, or the --log-start value was changed"
+    older = "the pasted copy is not the current one"
+    again = "Attempt: {at}\nPrompt: v{version}\nAgent: {agent}\n"
+    rerun = "stopped at step 1 (rerun: --log-start said {said}; the next attempt, {gap} later, said v{to})"
+    for said, why, at, version, agent, earlier in (
+        (
+            "v61",
+            newer,
+            "2026-09-29T09:58:18Z",
+            mine,
+            "Contoso Bot",
+            rerun.format(said="v61", gap="18s", to=mine),
+        ),
+        (
+            "v61",
+            newer,
+            "2026-09-29T10:00:00Z",
+            mine,
+            "Contoso Bot",
+            rerun.format(said="v61", gap="2m00s", to=mine),
+        ),
+        (
+            "v7 or older",
+            older,
+            "2026-09-29T09:58:18Z",
+            mine,
+            "Contoso Bot",
+            rerun.format(said="v7 or older", gap="18s", to=mine),
+        ),
+        # copied again from the README and pasted into a new session: a real failure
+        (f"v{mine - 1}", older, "2026-09-29T10:13:00Z", mine, "Contoso Bot", "failed at step 1"),
+        ("v61", newer, "2026-09-29T10:00:01Z", mine, "Contoso Bot", "failed at step 1"),
+        # the checkout was updated and the same v61 pasted again: not the stopping installer's version
+        ("v61", newer, "2026-09-29T09:58:18Z", 61, "Contoso Bot", "failed at step 1"),
+        ("v61", newer, "2026-09-29T09:58:18Z", mine, "Fabrikam Bot", "failed at step 1"),
+    ):
+        write_friction(
+            fake_mac,
+            stop.format(said=said, agent="Contoso Bot", installer=mine, why=why)
+            + again.format(at=at, version=version, agent=agent),
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        assert f"- attempt: 2 of 2 (earlier: attempt 1 {earlier})" in summary.splitlines(), (at, summary)
+        assert f"): {earlier}; 2 event line(s): 1 error, 1 finished" in text, text
+    # the stopped attempt alone, or as the latest one, is as before: there is no next attempt to read
+    write_friction(fake_mac, stop.format(said="v61", agent="Contoso Bot", installer=mine, why=newer))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert section(text, "Summary").strip().splitlines()[0].startswith("- **outcome: failed at step 1** (")
+
+
+@pytest.mark.usefixtures("clean_doctor")
 def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -3439,6 +3511,19 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7 or older, said Fabrikam", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v9", 8, "v9 (newer than the installer's v8)", "this checkout is older than the prompt"),
+        # B13 round 8 J9: install.sh's line names the other reading after its reason; the notes are the same
+        (
+            "v9",
+            8,
+            "v9 (newer than the installer's v8)",
+            "this checkout is older than the prompt, or the --log-start value was changed",
+        ),
+        (
+            "v7",
+            8,
+            f"v7 {OLDER_COPY}",
+            "the pasted copy is not the current one, or the --log-start value was changed",
+        ),
         (
             "v9",
             18,
