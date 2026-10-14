@@ -968,7 +968,9 @@ class Redactor:
         it, after ``//`` or ``@`` or before ``:<port>`` (a proxy host that is a word the report prints).
         ``keep_lead``: the value's first character (the ``/`` or ``:`` of a git URL rewrite's path, which
         anchors its start) is written back before the placeholder, so ``https://<proxy-1>/<proxy-2>/`` reads
-        as a host and a path, not one token (B13 round 9 K2, K27)."""
+        as a host and a path, not one token (B13 round 9 K2, K27), after any escape before it (K10); such a
+        value is matched wherever no letter or digit follows it, as install.sh's pair flag ``e``: a ``.git``,
+        a ``-tools`` or a ``_x`` may (K46)."""
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
@@ -1103,6 +1105,10 @@ class Redactor:
                     continue
                 lead = r"(?<![A-Za-z0-9])" if edge[0].isalnum() else ""
                 trail = r"(?![A-Za-z0-9._-])" if edge.startswith("/") else r"(?![A-Za-z0-9])"
+                if (
+                    _bare(edge).lower() in self._lead_kept
+                ):  # a rewrite path: a .git or a -tools may follow it,
+                    trail = r"(?![A-Za-z0-9])"  # as install.sh's pair flag e allows (B13 round 9 K46)
                 if not edge[-1].isalnum() and not edge.startswith("/"):
                     trail = ""
                 literals.append(f"(?i:{lead}{body}{trail})" if mode != "exact" else f"{lead}{body}{trail}")
@@ -1152,8 +1158,9 @@ class Redactor:
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1
             self._used.add(placeholder)
-        if placeholder != text and self._lead_kept and _bare(text).lower() in self._lead_kept:
-            return text[0] + placeholder
+        plain = _bare(text.replace("\\", "")).lower()  # a shell- or JSON-escaped form too (B13 round 9 K10)
+        if placeholder != text and self._lead_kept and plain in self._lead_kept:
+            return text[: text.index(plain[0]) + 1] + placeholder  # the separator, with any escape before it
         return placeholder
 
     def redact(self, text: str) -> str:

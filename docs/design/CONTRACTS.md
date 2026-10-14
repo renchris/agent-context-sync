@@ -16674,6 +16674,7 @@ the path only when a word in it is neither in `_GENERIC_PATH_WORDS` nor a report
 number to the host and over-redacts nothing a report word covers. Both legends, the module docstring and
 docs/deploy/setup-feedback.md name `a git URL rewrite's host and its company-named path`. Tests:
 `test_a_git_url_rewrite_host_and_path_are_redacted`, `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`.
+Amended 2026-10-14, §16.80 K10: the path's own `/` or `:` stays outside its placeholder (`https://<proxy-1>/<proxy-2>/...`).
 
 **A changed `--log-start` value the session ran again is a rerun** (J9). install.sh's stop line adds `, or the
 --log-start value was changed` after its reason, where `_PROMPT_STOP_RE` still reads it. An earlier attempt whose
@@ -16825,6 +16826,8 @@ J71: `redact_stream` holds `agent-context`, `agent-context-sync(.git)` after a `
 longer pair covers the span, so a lower-case `agent` or `context` organisation no longer cuts them. Tests:
 `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`, `test_the_two_reports_number_each_proxy_value_alike`,
 `test_the_shell_report_keeps_agentsyncs_own_names_for_an_organisation_named_like_them`.
+Amended 2026-10-14, §16.80 K46: "as in Python" was false for a URL path, which Python matched only before no
+letter, digit, dot, hyphen or underscore; both readers now use the end boundary. A rewrite path's pair is flag `p`.
 
 **Two stale docstrings** (J44; J79 is the same test docstring). The private-copy test describes an agentsync from
 before H75, which its stub writes; `compute_outcome`'s "stopped at step 1" names H40's `_WAIT_OK_KINDS` (that half
@@ -17299,6 +17302,31 @@ number the names alike. A test holds both to the `*_MARK` values install.sh defi
 `test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private`,
 `test_the_shell_report_registers_the_folders_step_1s_list_printed`,
 `test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
+
+**A git URL rewrite's path: one rule in both readers** (K10, K46; K77 not built; one code path; K72's dated line at §16.79 is
+lane D's; dated lines at §16.74 J20 and §16.75 J37). Three findings on the path J20 registers (`/contoso-team`,
+`:northwind-scp`):
+- K46: Python matched a `/path` value only where no letter, digit, dot, hyphen or underscore followed (the generic
+  rule for a `/` value), so `.../contoso-mirror.git`, `-tools`, `_x` and `.v2` printed the company word, while the
+  shell's flag `e` redacted them. A value registered `keep_lead` (a rewrite path) gets the shell's end check: no
+  letter or digit may follow. Every other `/` value keeps its rule.
+- K10 is lane RB's K2 and K27, one defect, built once there (§16.81, `Redactor.add(keep_lead=True)` and
+  install.sh's `${v:0:1}<proxy-N>`): the placeholder swallowed the path's separator, so a base read
+  `https://<proxy-1><proxy-2>/...`, like a base written without its slash. This lane adds only an escaped form
+  (`\/gh`, `/R\&D`), which keeps its escape and separator before the placeholder as the shell's `%q` pair does.
+  Registering the path without its separator (the finder's first fix) was not built: `gh` alone would redact
+  every `gh` word.
+- K77, not built: a path that is no report word (`/gh`) still cuts `/opt/homebrew/bin/gh` to
+  `/opt/homebrew/bin/<proxy-2>`. The verifier's fix (leave a match that is a segment of a local path under a tool
+  root or a dot folder) was built and measured by a review: with a company path `/ctso-eng` it printed
+  `/Applications/Ctso-Eng VPN.app`, `/opt/ctso-eng/bin/tool`, `/Library/ctso-eng/agent`, `/etc/ctso-eng` and
+  `/usr/local/ctso-eng/x` in clear, all of which the old code redacted, and a work Mac installs its company's tools
+  in exactly those places. A narrower rule (only after `bin`, `sbin` or `.config`) still leaks a company tool named
+  like the path. The path is registered only when it holds a word that is neither generic nor a report word, which
+  is usually the company's, so over-redacting a tool path is the cost kept. The finder's "only after its own host"
+  was not built either: J37 redacts the path after any host on purpose.
+Tests: `test_a_git_url_rewrite_host_and_path_are_redacted`, `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`,
+`test_the_two_reports_number_each_proxy_value_alike` (numbers unchanged).
 
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.

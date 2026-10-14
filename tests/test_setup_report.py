@@ -4900,7 +4900,8 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
     assert "northwind" not in text.lower(), [ln for ln in text.splitlines() if "northwind" in ln.lower()]
     for part in (section(text, "Summary"), section(text, "Agent friction log")):
         # B13 round 8 J1, J20: the host is one placeholder in the URL and in git's resolver error, its port
-        # stays, and the company-named path is a value of its own; scripts/install.sh writes the same line
+        # stays, and the company-named path is a value of its own, after its own "/" (B13 round 9 K10: the
+        # base read as one written without its slash); scripts/install.sh writes the same line
         assert (
             "git clone https://<proxy-1>:8443/<proxy-2>/someone/agent-context-sync.git/: Could not resolve "
             "host: <proxy-1> (exit 128)" in part
@@ -4942,6 +4943,26 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
             "https://dev.example.invalid/northwind-team/",
             "https://dev.example.invalid/northwind-team/jdoe/x: Could not resolve host: dev.example.invalid",
             "https://<proxy-1>/<proxy-2>/jdoe/x: Could not resolve host: <proxy-1>",
+        ),
+        # B13 round 9 K46: a base that ends at a repository name; git prints it before .git, and an agent
+        # before -tools, _x or .v2: the path is redacted there too, as the shell's flag e did
+        (
+            "https://mirror.northwind.invalid/northwind-team",
+            "https://mirror.northwind.invalid/northwind-team.git and .../northwind-team-tools and "
+            "/northwind-team_x and /northwind-team.v2 and /northwind-teamwork",
+            "https://<proxy-1>/<proxy-2>.git and .../<proxy-2>-tools and /<proxy-2>_x and /<proxy-2>.v2 and "
+            "/northwind-teamwork",
+        ),
+        # B13 round 9 K77, not built: a path that is no report word (gh) is redacted in a local tool path
+        # too, since every rule that spares /opt/homebrew/bin/gh leaks some company's /opt/<company>/bin;
+        # the word gh and one that ends in it stay. An escaped form keeps its escape and separator (K10)
+        (
+            "https://dev.example.invalid/gh/",
+            "https://dev.example.invalid/gh/tools.git/; /opt/homebrew/bin/gh auth status; "
+            "~/.config/gh/hosts.yml; gh run list; high; x:/gh; https:\\/\\/dev.example.invalid\\/gh\\/x.git",
+            "https://<proxy-1>/<proxy-2>/tools.git/; /opt/homebrew/bin/<proxy-2> auth status; "
+            "~/.config/<proxy-2>/hosts.yml; gh run list; high; x:/<proxy-2>; "
+            "https:\\/\\/<proxy-1>\\/<proxy-2>\\/x.git",
         ),
     ):
         red = setup_report.Redactor()

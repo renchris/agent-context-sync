@@ -6605,6 +6605,9 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         "insteadof=https://github.com/x/\n"
         '[url "https://mirror.northwind-five.invalid/docs/"]\n'  # a report word: no value (round 8 J20)
         "\tinsteadOf = https://github.com/y/\n"
+        # B13 round 9 K46: a base that ends at a repository name; K77: a path that is no report word
+        '[url "https://mirror.northwind-six.invalid/northwind-mirror"]\n\tinsteadOf = https://github.com/z/\n'
+        '[url "https://dev.example.invalid/gh/"]\n\tinsteadOf = https://github.com/w/\n'
     )
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True)
@@ -6623,6 +6626,11 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         "2026-10-10T00:00:05Z | step 1 | error | saw git@mirror3.example.invalid:northwind-scp.git and "
         "x:northwind-scp-tools | -\n"
         "2026-10-10T00:00:04Z | step 1 | deviation | read ~/agent-context/docs/index.md | -\n"
+        "2026-10-10T00:00:06Z | step 1 | error | saw "
+        "https://mirror.northwind-six.invalid/northwind-mirror.git and .../northwind-mirror-tools and "
+        "/northwind-mirror_x | -\n"
+        "2026-10-10T00:00:07Z | step 1 | error | https://dev.example.invalid/gh/tools.git/; "
+        "/opt/homebrew/bin/gh auth status; ~/.config/gh/hosts.yml; gh run list; high; /gh/x | -\n"
     )
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
@@ -6645,7 +6653,16 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     assert "read ~/agent-context/docs/index.md |" in text and "agent-context<proxy" not in text, (
         "a report-word path is no value"
     )
-    assert "- URL rewrite in git's config: set (5)\n" in text
+    # B13 round 9 K46: .git, -tools and _x may follow a rewrite path; K77 (not built): a tool path is redacted
+    assert re.search(
+        r"saw https://<proxy-(\d+)>/<proxy-(\d+)>\.git and \.\.\./<proxy-\2>-tools and /<proxy-\2>_x \|", text
+    ), text
+    assert re.search(
+        r"\| https://<proxy-\d+>/<proxy-(\d+)>/tools\.git/; /opt/homebrew/bin/<proxy-\1> auth status; "
+        r"~/\.config/<proxy-\1>/hosts\.yml; gh run list; high; /<proxy-\1>/x \|",
+        text,
+    ), text
+    assert "- URL rewrite in git's config: set (7)\n" in text
     (home / ".gitconfig").unlink()
     assert install_sh(env, "--report-only").returncode == 0
     assert "- URL rewrite in git's config: not set\n" in report_path(env).read_text()

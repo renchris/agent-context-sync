@@ -1552,10 +1552,10 @@ redaction_pairs() {
 			# is a server's generic layout (git, scm, repos) or words the report prints. A URL base after its
 			# scheme is no value of its own: it gave the host a second number, so git's error read as naming two
 			# hosts (B13 round 8 J1, J20). The path is matched with an end boundary only, no letter or digit
-			# after it, as in Python (pair flag e): its own ":" or "/" marks the start, and before it in any URL
-			# is the last letter of a host or a port's digit, which a whole-word match refused, so the pair never
-			# matched (B13 round 8 J37). GitHub's own host is skipped, so the repository locator and the issue
-			# link stay.
+			# after it, as setup_report.Redactor matches a rewrite path (pair flag e): its own ":" or "/" marks the
+			# start, and before it in any URL is the last letter of a host or a port's digit, which a whole-word
+			# match refused, so the pair never matched (B13 round 8 J37). A ".git" or a "-tools" may follow it
+			# (B13 round 9 K46). GitHub's own host is skipped, so the repository locator and the issue link stay.
 			rw=1
 			u="${u#rw=}"
 			case "$u" in *://*) h="${u#*://}" sep="/" ;; *) h="$u" sep=":" ;; esac
