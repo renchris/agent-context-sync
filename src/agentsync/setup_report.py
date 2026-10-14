@@ -3435,12 +3435,13 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
         if name == "list-folders":
             # what the list read of the config, which "(listed-6)" alone hid: a list that marked two folders
             # and one that could not read the config were the same row (B13 round 8 J10, J31). Fixed words
-            # and a count only, never the log's own marks= text.
+            # and a count only, never the log's own marks= text. The clause names sources.toml, which the
+            # words' "could not load it" refer back to, as the Summary's note does (B13 round 10 L22, L45).
             synced, unread = _count(v, "synced"), _unread_words(v)
             if synced is not None:
                 counts = f"{synced} already synced"
             elif unread is not None:
-                counts = f"could not read which folders are synced, because {unread}"
+                counts = f"could not read which folders sources.toml syncs, because {unread}"
         said = _agentsync_note(v.get("note", "")) if name == "agentsync" else v.get("note", "")
         note = ": ".join(part for part in (said, counts) if part)
         if note:

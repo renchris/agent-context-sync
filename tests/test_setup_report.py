@@ -9164,7 +9164,9 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
     """B13 round 8 J10, J31: ``list-folders | done (listed-6)`` for a list that marked two folders and for one
     that could not read the config: the row dropped the synced= and marks= install.sh logs beside the note.
     It shows them now, in the Summary's fixed words (never the log's own marks= text); a list from an
-    installer that logged no synced= is as before."""
+    installer that logged no synced= is as before.  B13 round 10 L22, L45 (2026-10-14): the cell named no
+    file, so "could not load it" had nothing to refer to; it names sources.toml, as the Summary's note
+    does."""
 
     def cell(fields: str) -> str:
         v = dict(field.split("=", 1) for field in fields.split())
@@ -9172,7 +9174,7 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
 
     head = "seconds=2 rc=0 result=done note=listed-6"
     # one colon, after the note: the words join the identifier as a clause (B13 round 9 K23, K36)
-    unread = "done (listed-6: could not read which folders are synced, because "
+    unread = "done (listed-6: could not read which folders sources.toml syncs, because "
     assert cell(f"{head} synced=2") == "done (listed-6: 2 already synced)"
     assert cell(f"{head} synced=0") == "done (listed-6: 0 already synced)"
     assert cell(head) == "done (listed-6)"

@@ -17291,6 +17291,8 @@ other list row starts with. install.sh's warning has its own present-tense words
 unchanged. Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
 `test_the_summary_says_why_a_folder_list_could_not_read_the_config`, and the `unread_why` read-back in
 `tests/test_install_oneshot.py`.
+Amended 2026-10-14, §16.86 L22, L45: the cell reads `could not read which folders sources.toml syncs, because
+<why>`, so "could not load it" refers to the file.
 
 **An older copy's stop followed within two minutes stays a failure** (K11; dated line at §16.74 J9). A rehearsal
 copied a fresh prompt into a new session 23 s after the installer stopped a stale copy, and the report called the
@@ -17905,7 +17907,15 @@ claim).
 
 ### 16.86 Round 10: setup report (2026-10-14, wave B13 round 10 lane RA)
 
-Reserved for round 10 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 10").
+Lane RA's round 10 items: L5, L7, L8, L12, L21, L22, L23, L25, L26, L28, L32, L35, L40, L41, L45, L53, L58, L69,
+L71. L7, L12 and L23; L8, L25, L40 and L58; L22 and L45 are one defect each, built once.
+
+**The Installer table's unread list cell names sources.toml** (L22, L45; dated line at §16.80 K23). `done
+(listed-6: could not read which folders are synced, because the installed agentsync could not load it and raised
+ConfigError)` named no file, so "it" referred to nothing. The cell reads `could not read which folders sources.toml
+syncs, because <why>`, the Summary note's own noun; `_UNREAD_WHY`, the Summary's note and install.sh's warning,
+whose "it" refers back to the file they name, are unchanged. Test:
+`test_the_installer_table_shows_what_the_folder_list_read_of_the_config`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 
