@@ -836,6 +836,43 @@ def test_label_policy_refuses_a_labelled_file_and_converts_the_rest(
     assert run(config).commit_sha is None  # settled: the refusal is not retried every cycle
 
 
+def test_a_rule_change_that_leaves_a_label_refusal_as_it_was_rewrites_no_stub(
+    tmp_path: Path, local_source_dir: Path, fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 8 J28: any [policy] edit changes every guarded converter's options hash, so a second label id
+    added while the rule stays on re-screened the labelled file and rewrote its refused stub over a one-line
+    ``options_hash:`` diff, counted as a changed page (1m), while the unchanged pages kept their old hash.
+    The stub is settled as an unchanged page is now; a change that moves the refusal's reason still
+    rewrites it."""
+    label_ooxml(fixture_files["sample.docx"], local_source_dir / "projects" / "Board Pack.docx")
+    rule = '\n[policy]\nexclude_label_ids = ["{}"]\n'
+    config = config_with(tmp_path, local_source_dir, rule.format(LABEL))
+    assert run(config).exit_code == 0 and run(config).commit_sha is None
+    rel = config.docs_repo / mirror("projects/board-pack.docx.md")
+    before = rel.read_bytes()
+    wider = config_with(
+        tmp_path, local_source_dir, rule.format(f'{LABEL}", "00000000-0000-4000-8000-00000000beef')
+    )
+    report = run(wider)
+    assert report.exit_code == 0 and report.commit_sha is None and report.changes == ()
+    assert rel.read_bytes() == before
+    assert report.rescreened == report.rescreened_unchanged > 1, "the sync line counts it unchanged"
+    assert counts(report).get(Verdict.REFUSED) == 1 and not counts(report).get(Verdict.CHANGED)
+    with Manifest(config.state_paths.db) as m:
+        row = next(r for r in m.iter_items(SID) if r.rel_path == "projects/Board Pack.docx")
+    assert (row.state, row.last_verdict) == (RowState.REFUSED, Verdict.REFUSED) and row.content_sha256
+    assert run(wider).commit_sha is None
+    # a rule change whose refusal reads otherwise (here the label's shown form) still rewrites the stub
+    import agentsync.policy as content_policy  # noqa: PLC0415
+
+    monkeypatch.setattr(content_policy.SensitivityLabel, "display", lambda self: f"{self.label_id} (renamed)")
+    report = run(config)
+    assert report.commit_sha is not None
+    assert [c.path for c in report.changes] == [mirror("projects/board-pack.docx.md")]
+    fm, _body = page(config.docs_repo, mirror("projects/board-pack.docx.md"))
+    assert fm["status"] == "refused" and "(renamed)" in fm["reason"]
+
+
 def test_a_label_stub_from_an_older_rendering_is_rendered_again_once(
     tmp_path: Path, local_source_dir: Path, fixture_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

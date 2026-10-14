@@ -385,6 +385,12 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
+def _without_options_hash(page: str) -> str:
+    """A page with its frontmatter's ``options_hash:`` line taken out."""
+    head, sep, body = page.partition("\n---\n")
+    return "\n".join(ln for ln in head.split("\n") if not ln.startswith("options_hash: ")) + sep + body
+
+
 def _one_line(text: str, limit: int = 300) -> str:
     flat = " ".join(str(text).split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
@@ -4235,6 +4241,35 @@ class _Cycle:
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.REFUSED)
         return True
 
+    def _stub_unchanged(
+        self, src: SourceConfig, row: ItemRow, outs: Sequence[OutputRow], result: ConversionResult
+    ) -> bool:
+        """True when ``result`` refuses ``row`` as its live refused stub already says, word for word but for
+        the page's ``options_hash:`` (B13 round 8 J28). A [policy] edit changes every guarded converter's
+        options hash (``label_policy`` in its options), so a rule change that leaves a labelled file refused
+        for the same reason republished its stub over a one-line diff, while an unchanged page kept its old
+        hash. ``_stub_stands``' comparison, loosened on that line only."""
+        live = [o for o in outs if o.status is not OutputStatus.TOMBSTONE]
+        if (
+            result.status is not ConversionStatus.REFUSED
+            or row.state is not RowState.REFUSED
+            or row.state_reason != _one_line(result.reason or "", 200)
+            or len(live) != 1
+            or live[0].status is not OutputStatus.REFUSED
+        ):
+            return False
+        try:
+            pages = self.publisher.plan_pages(src, row, result)
+        except SidecarPathError:
+            return False
+        if [p.output_path for p in pages] != [live[0].output_path]:
+            return False
+        try:
+            have = (self.repo / live[0].output_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return False
+        return _without_options_hash(pages[0].text) == _without_options_hash(have)
+
     def _converting(self) -> Registry:
         """The registry the next file is converted with. Once the cycle reads nothing more with its engine
         (``_ocr_over``: its OCR time is used, or the helper stopped working) it is the one without an engine
@@ -4512,6 +4547,15 @@ class _Cycle:
             self._tally_converted(result, prior)
             if rescreen:
                 self._tally["rescreened"] += 1
+        if rescreen and intact and duplicate is None and self._stub_unchanged(src, fresh, outs, result):
+            # A re-screened refusal that gives the stub it has (B13 round 8 J28): settled as the H2 cutoff
+            # settles a page, keeping its old options_hash as an unchanged page does.
+            self._tally["rescreened_unchanged"] += 1
+            self._move_key(sid, stable, outs, result.action_key, OutputStatus.REFUSED, made_by=result)
+            if self._rewrite_if_moved(src, fresh, outs, acc):
+                acc.counts[Verdict.REFUSED] += 1
+                self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
+            return result
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
         if c3 is Verdict.OUTPUT_UNCHANGED:  # H2 early cutoff: bodies identical, the pages stay as they are
             if rescreen:  # a re-screen is never a re-read, so never `again` (G58)
