@@ -161,15 +161,24 @@ def _shown(path: Path) -> str:
         return path.as_posix()
 
 
+# what an empty-folder wait says of the alarm line it points at, which shows the first five folders of all the
+# source's unknown ones and itself says how to list the rest (B13 round 9 K40: "names the folder(s)" was false
+# past five)
+_UP_TO_FIVE = "up to five, and how to list any more"
+
+
 def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = False) -> str:
     """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the docs repo's STATE.md keeps the
     ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there
     (a run that does not select the source keeps that source's last one, tagged with its run: round 7 H73).
     STATE.md comes first, since it holds the line wherever the wait prints: install.sh's closing step and
     ``status`` print no alarm line, only a plain sync does (B13 round 7 H35). The alarm names five and itself
-    points at ``sync -v`` for the rest, so the wait never does (round 7 H12). Two or more ids have one alarm
-    line each, joined with "and" (round 7 H50). The wait itself keeps a count and never a path (B13 round 5
-    F43). ``in_state``: the wait is written into STATE.md itself, which names no file it is already in: the
+    points at ``sync -v`` for the rest, so the wait never does (round 7 H12); an empty-folder wait says so,
+    ``{what}, up to five, and how to list any more`` (:data:`_UP_TO_FIVE`), true for any count, since the
+    alarm caps on the source's unknown folders of every kind, never on the wait's own (B13 round 9 K40). Two
+    or more ids have one alarm line each, joined with "and" (round 7 H50). The wait itself keeps a count and
+    never a path (B13 round 5 F43). ``in_state``: the wait is written into STATE.md itself, which names no
+    file it is already in: the
     alarm line is under the source's own ``## <id>`` section below (B13 round 8 J33)."""
     if in_state:
         if len(ids) == 1:
@@ -727,7 +736,7 @@ def next_step(
                 f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
                 # Which folders, by where they are named (B13 round 5 F43; round 6 G13, G42): the wait
                 # carries a count and never a path, and status prints no folder of the source.
-                + named([src.id], "the folder(s)")
+                + named([src.id], f"the folder(s), {_UP_TO_FIVE}")
                 + (f"; {size}" if size and not gone and not collides else "")
             )
             names_source(src.id)
@@ -737,7 +746,7 @@ def next_step(
                 "one would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 "empty folder(s) in the cloud drive; "
-                + named([src.id], "them")
+                + named([src.id], f"them, {_UP_TO_FIVE}")
                 + (f"; {size}" if size and not gone else "")
             )
             names_source(src.id)
@@ -748,7 +757,7 @@ def next_step(
                 "it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive "
                 "too, and later syncs take the pages out with the usual deletion check; excluding such a "
                 "folder instead retires its pages at once, with no deletion check and no purge queued; "
-                + named([src.id], "the folders")
+                + named([src.id], f"the folders, {_UP_TO_FIVE}")
                 + (f"; in all, {size}" if size else "")
             )
             names_source(src.id)

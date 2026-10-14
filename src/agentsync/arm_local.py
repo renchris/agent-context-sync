@@ -1051,22 +1051,24 @@ class LocalArm:
             if stats.unknown_dirs == (".",):  # the root could not be listed, and a root cannot be excluded
                 advice = "grant the agent Files and Folders access"
             elif stats.empty_cloud_dirs:
-                # The loop's WAITING ON YOU lines give the step for the empty cloud folders, and warn
-                # against excluding one that held mirrored files (that retires its pages unchecked): point
-                # there, never at an exclude. Only an unreadable folder keeps the access advice. Each folder
-                # lands on one of three waits (the exclude-empty line, the `[` collision line, the held-files
-                # line; B13 round 5 F11, F65), so one folder means one line and N folders make at most
-                # min(N, 3) lines (round 6 G57). The waits name this alarm as where the folders are named,
-                # so it names them for the step, not the step's command for the folders (round 6 G13, G42):
-                # the end of a sync's output, where its waits print, and status, which prints them too, by
-                # its full path, which works with ~/.local/bin off PATH (round 5 F44, as §16.51 Q49).
+                # The loop's WAITING ON YOU lines give the step for the empty cloud folders, and warn against
+                # excluding one that held mirrored files (that retires its pages unchecked): point there,
+                # never at an exclude. Only an unreadable folder keeps the access advice. Each folder lands on
+                # one of three waits (the exclude-empty line, the `[` collision line, the held-files line; B13
+                # round 5 F11, F65), so one folder means one line, and two or more make one line per wait kind
+                # present, at most 3, however many folders (round 6 G57; round 9 K41: the plural "prints them"
+                # was false for six folders on the one exclude-empty line). The waits name this alarm as where
+                # the folders are named, so it names them for the step, not the step's command for the folders
+                # (round 6 G13, G42): the end of a sync's output, where its waits print, and status, which
+                # prints them too, by its full path, which works with ~/.local/bin off PATH (round 5 F44, as
+                # §16.51 Q49).
                 status = f"`{AGENTSYNC_BIN} status`"
                 where = (
                     f"the WAITING ON YOU line about {self.source_id} at the end of a sync's output says what "
                     f"to do, and {status} prints it too"
                     if len(stats.empty_cloud_dirs) == 1
                     else f"each WAITING ON YOU line about {self.source_id} at the end of a sync's output "
-                    f"says what to do, and {status} prints them too"
+                    f"says what to do, and {status} prints each one too"
                 )
                 if stats.unknown_dirs == stats.empty_cloud_dirs:
                     cause, advice = "empty cloud folder(s), zero children in a cloud tree", where

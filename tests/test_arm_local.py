@@ -485,8 +485,11 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
     assert alarm == (
         "2 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One', 'Two'; enumeration "
         "incomplete, no deletions this pass (each WAITING ON YOU line about local-test at the end of a "
-        "sync's output says what to do, and `~/.local/bin/agentsync status` prints them too)"
+        "sync's output says what to do, and `~/.local/bin/agentsync status` prints each one too)"
     )
+    # B13 round 9 K41: both folders are on the one exclude-empty wait, so "prints them" told of lines that
+    # are not there; "each ... line ... says" and "prints each one" are true for one line or three
+    assert "prints them too" not in alarm
 
 
 _TODAY = (
@@ -608,7 +611,7 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
         names=names,
         advice="grant the agent Files and Folders access for the other folders; for the empty ones, each "
         "WAITING ON YOU line about local-test at the end of a sync's output says what to do, and "
-        "`~/.local/bin/agentsync status` prints them too",
+        "`~/.local/bin/agentsync status` prints each one too",
     )
 
 

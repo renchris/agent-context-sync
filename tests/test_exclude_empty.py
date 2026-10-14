@@ -194,7 +194,11 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
         ln for ln in lines if ln.startswith("WAITING ON YOU: 1 empty cloud folder(s) in work have a [")
     ]
     assert "rename or remove the empty folder(s) in the cloud drive" in wait
-    assert "STATE.md keeps the alarm line for work, which names them " in wait and "Plans" not in wait
+    assert (
+        "STATE.md keeps the alarm line for work, which names them, up to five, and how to list any more "
+        in wait
+        and "Plans" not in wait
+    )
     assert "(a plain `~/.local/bin/agentsync sync` prints it too)" in wait and "sync -v" not in wait
     assert "file(s) the mirror still has" not in wait, "not the gone line: the folder held no file"
 
