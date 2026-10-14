@@ -1004,10 +1004,14 @@ def test_a_stop_of_the_whole_process_group_leaves_no_compiler_running(
     tools: Path, tmp_path: Path, sig: signal.Signals
 ) -> None:
     """A coding tool's timeout stops install.sh's whole process group (bring-back B12 E1.d).  The build tool
-    runs outside it, and a watcher stops it with SIGINT once the build's process is gone."""
+    runs outside it, and a watcher stops it with SIGINT once the build's process is gone.  The child sets its
+    own SIGINT handler (B13 round 10 L75): a pytest started with SIGINT ignored (a ``cmd &`` launch) passes
+    SIG_IGN on, and the child then ignored the group's SIGINT and built on for ``_BUILD_TIMEOUT_S``, past the
+    wait below, whatever the load."""
     pidfile = tmp_path / "compiler.pid"
     script(tools / "swiftc", compiling(pidfile))
     code = (
+        "import signal\nsignal.signal(signal.SIGINT, signal.default_int_handler)\n"
         "from pathlib import Path\nfrom agentsync.convert import ocr\n"
         f"ocr._XCODE_SELECT = {str(tools / 'xcode-select')!r}\nocr._XCRUN = {str(tools / 'xcrun')!r}\n"
         f"ocr.build(Path({str(tmp_path / 'cache')!r}))\n"
@@ -1022,7 +1026,7 @@ def test_a_stop_of_the_whole_process_group_leaves_no_compiler_running(
     try:
         compiler = compiler_pid(pidfile, proc)
         os.killpg(proc.pid, sig)
-        proc.wait(timeout=120)  # returns once it exits; 30 s ran out under load (B13 round 8 J80)
+        proc.wait(timeout=120)  # returns once it exits; J80 raised it from 30 s for what was L75
         assert gone(compiler, within=30), f"the compiler outlived a {sig.name} to the build's process group"
     finally:
         with contextlib.suppress(ProcessLookupError):
