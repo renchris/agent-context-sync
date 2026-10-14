@@ -158,6 +158,7 @@ from agentsync.publish import (
     PlannedPage,
     Publisher,
     SourceStatus,
+    _withheld_on_page,
     archive_path,
     render_tombstone,
     sidecar_rel,
@@ -1950,7 +1951,12 @@ class _Cycle:
         body since its first wording, before its ``reason:`` said so (G29). A .msg is withheld whatever
         OCR. ``_stub_stands`` takes it too, on a run that cannot read images (round 9 K50): an online-only
         image a label rule refuses is pending work every pass, and planning its stub with this run's missing
-        engine flipped the page to "no converter" and back, a commit each way."""
+        engine flipped the page to "no converter" and back, a commit each way. So it is read from the
+        page's own frontmatter lines (``publish._withheld_on_page``), and YAML parses only a page where that
+        fails: the parse cost about 1 s per 2000 image stubs on every such poll, J55's cost again (B13 round
+        10 L47).
+        ``_pages_intact`` has matched the page to its hash before this runs, so skipping the validation the
+        parse did loses nothing."""
         suffix = Path(row.name).suffix.lower()
         if suffix == ".msg" or not self.publisher._withheld_eligible(row.state_reason, suffix):
             return None
@@ -1958,8 +1964,14 @@ class _Cycle:
             if out.status is OutputStatus.TOMBSTONE:
                 continue
             try:
-                fm, body = parse_mirror_page((self.repo / out.output_path).read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, FrontmatterError):
+                text = (self.repo / out.output_path).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                return None
+            if (fast := _withheld_on_page(text)) is not None:
+                return fast[1]
+            try:
+                fm, body = parse_mirror_page(text)
+            except FrontmatterError:
                 return None
             return content_policy.page_says_withheld(fm.reason, fm.summary, body)
         return None

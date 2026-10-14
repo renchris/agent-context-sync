@@ -35,7 +35,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 from agentsync import arm_local as al
-from agentsync import cli, curate, gitops, governance, lints, loop, materialise, slug
+from agentsync import cli, curate, gitops, governance, lints, loop, materialise, setup_report, slug
 from agentsync import cycle as cycle_mod
 from agentsync import policy as content_policy
 from agentsync import publish as publish_mod
@@ -3081,6 +3081,104 @@ def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
         assert publish_mod._reason_line(text) == real(text)[0]["reason"] == reason
     assert publish_mod._reason_line(page) == real(page)[0]["reason"] == withheld
     assert publish_mod._reason_line("---\nstatus: refused\n---\nbody\n") is None
+
+
+def test_a_run_with_no_engine_reads_an_online_only_images_stub_without_a_yaml_parse(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 10 L47: K50 has a run that cannot read images read each online-only image stub a label rule
+    may withhold, every pass, and it YAML-parsed the page to do so: about 1 s per 2000 stubs a poll, the cost
+    J55 had taken out of QUARANTINE.tsv. The page's own lines are decoded now, as J55 does."""
+    photo = picture(local_source_dir / SITE_PLAN, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: None)
+    assert run(config).commit_sha is not None
+    online, dataless = {photo.stat().st_ino}, materialise.is_dataless
+
+    def is_dataless(st: Any) -> bool:
+        return st.st_ino in online or dataless(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    photo.chmod(0o600)  # an eviction changes the file's flags, so its change time
+    real, parsed, asked = cycle_mod.parse_mirror_page, [], []
+    read = cycle_mod._Cycle._page_withheld
+
+    def counted(text: str) -> Any:
+        parsed.append("no converter for .png" in text)
+        return real(text)
+
+    def page_withheld(self: Any, row: Any) -> bool | None:
+        asked.append(said := read(self, row))
+        return said
+
+    monkeypatch.setattr(cycle_mod, "parse_mirror_page", counted)
+    monkeypatch.setattr(cycle_mod._Cycle, "_page_withheld", page_withheld)
+    report = run(config)
+    assert report.exit_code == 0 and report.commit_sha is None
+    assert asked == [False] and not any(parsed), (asked, parsed)
+    assert _quarantine_reason(config, SITE_PLAN) == "no converter for .png"
+
+
+def _stub_page(reason: str, summary: str | None, body: str) -> str:
+    fields = {"status": "refused", "reason": reason, "summary": summary}
+    return render_frontmatter(fields) + f"{UNTRUSTED_BANNER}\n\n# {SITE_PLAN}\n\n{body}\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "withheld"),
+    [
+        (_stub_page(publish_mod._withheld_reason(".png"), "refused: withheld by label rule", "x"), True),
+        (_stub_page("no converter for .png", None, f"This file {content_policy._WITHHELD_BODY}."), True),
+        (_stub_page("no converter for .png", "no converter for .png", "No converter reads it."), False),
+        (
+            _stub_page("no converter for .png", None, "No converter reads it.").replace(
+                f"# {SITE_PLAN}", f"# {content_policy._WITHHELD_BODY}.png"
+            ),
+            False,
+        ),
+    ],
+    ids=["withheld since G29", "withheld before G29", "no converter", "the marker in the file name"],
+)
+def test_a_stub_pages_lines_say_withheld_as_its_yaml_parse_does(text: str, withheld: bool) -> None:
+    """B13 round 10 L47, L54: the line read gives what ``policy.page_says_withheld`` gives over the parsed
+    page, the heading (which holds the file name) left out; a summary line JSON cannot read goes to the
+    parse."""
+    fm, body = parse_frontmatter(text)
+    assert content_policy.page_says_withheld(fm["reason"], fm.get("summary"), body) is withheld
+    assert publish_mod._withheld_on_page(text) == (fm["reason"], withheld)
+    if "\nsummary: " in text:
+        assert publish_mod._withheld_on_page(text.replace("\nsummary: ", "\nsummary: x", 1)) is None
+
+
+def test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_the_report_does(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 10 L54: the TSV read a stub's ``reason:`` alone, while the cycle and the setup report read
+    ``policy.page_says_withheld`` (reason, summary or body). A page from before G29 says withheld only in its
+    summary and body, so the TSV said "no converter for .png" where the report classed the file withheld,
+    for good on a paused source, which the stub re-render never reaches."""
+    engine = fake_engine(tmp_path / "ocr-bin")
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine)
+    with monkeypatch.context() as old:  # the rendering before G29: the page's reason: was the stored one
+        old.setattr(publish_mod, "_withheld_reason", lambda suffix: f"no converter for {suffix}")
+        assert run(config).exit_code == 0
+    fm, body = _image_page(config, SITE_PLAN)
+    assert fm["reason"] == "no converter for .png" and content_policy._WITHHELD_BODY in body
+    paused = parse_config(
+        config.config_path.read_text(encoding="utf-8").replace(
+            'kind = "local"', 'kind = "local"\nstate = "paused"'
+        ),
+        config_path=config.config_path,
+    )
+    assert run(paused).exit_code == 0
+    assert _image_page(config, SITE_PLAN)[0]["reason"] == "no converter for .png"  # the page is as it was
+    assert _quarantine_reason(config, SITE_PLAN) == publish_mod._withheld_reason(".png")
+    mirror = setup_report._Mirror(config.state_paths.db, 3600.0, labels_active=True)
+    mirror.read_image_pages(config.docs_repo)
+    assert list(mirror.image_pages.values()) == [True] and mirror.pages_unread == 0
 
 
 def _msg_page_then_a_rule(tmp_path: Path, local_source_dir: Path) -> tuple[Config, str]:

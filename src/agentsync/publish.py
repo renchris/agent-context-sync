@@ -539,21 +539,48 @@ def _is_multi_unit(unit: RenderedUnit) -> bool:
     return unit.kind is not UnitKind.WHOLE or unit.of > 1 or bool(unit.file_stem)
 
 
+def _frontmatter_lines(text: str, keys: tuple[str, ...]) -> tuple[dict[str, str | None], str] | None:
+    """Each of ``keys`` read from its own frontmatter line, as ``render_frontmatter`` writes it (one JSON
+    string; None for a line that does not decode to one), with the page's body; a key with no line is left
+    out. None when the frontmatter does not split. No YAML parse: J55's cost (B13 round 8)."""
+    try:
+        fm, body = split_frontmatter(text)
+    except FrontmatterError:
+        return None
+    found: dict[str, str | None] = {}
+    for line in (fm or "").splitlines():
+        key, sep, raw = line.partition(": ")
+        if sep and key in keys and key not in found:
+            try:
+                value = json.loads(raw)
+            except ValueError:
+                value = None
+            found[key] = value if isinstance(value, str) else None
+    return found, body
+
+
 def _reason_line(text: str) -> str | None:
     """A page's ``reason:`` read from its own frontmatter line (a JSON string, ``render_frontmatter``), or
     None when there is no such line or it does not decode to a non-empty string."""
-    try:
-        fm, _ = split_frontmatter(text)
-    except FrontmatterError:
+    read = _frontmatter_lines(text, ("reason",))
+    return (read[0].get("reason") or None) if read is not None else None
+
+
+def _withheld_on_page(text: str) -> tuple[str, bool] | None:
+    """A stub page's ``reason:`` and whether the page says a label rule withheld its file
+    (:func:`policy.page_says_withheld`: its reason, its summary or its body), read from its frontmatter lines
+    without a YAML parse, or None when the reason line is missing or a reason or summary line does not decode,
+    for the caller's parse. The cycle reads it for every online-only image stub a label rule may withhold on
+    each pass that has no OCR engine, where the parse cost about 1 s per 2000 stubs a poll (B13 round 10
+    L47), and ``_sync/QUARANTINE.tsv`` for each such stub every run (L54)."""
+    read = _frontmatter_lines(text, ("reason", "summary"))
+    if read is None:
         return None
-    for line in (fm or "").splitlines():
-        if line.startswith("reason: "):
-            try:
-                value = json.loads(line[len("reason: ") :])
-            except ValueError:
-                return None
-            return value if isinstance(value, str) and value else None
-    return None
+    found, body = read
+    reason = found.get("reason")
+    if not reason or ("summary" in found and found["summary"] is None):
+        return None
+    return reason, policy.page_says_withheld(reason, found.get("summary"), body)
 
 
 def _withheld_reason(suffix: str) -> str:
@@ -1125,31 +1152,37 @@ class Publisher:
         the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
         return self._withheld(reason, suffix)
 
-    def _stub_reason(self, source_id: str, stable_id: str) -> str | None:
-        """The ``reason:`` of the stub published for one item, or None when it has none on disk.
+    def _stub_says(self, source_id: str, stable_id: str) -> tuple[str | None, bool | None]:
+        """The ``reason:`` of the stub published for one item and whether its page says a label rule withheld
+        the file (:func:`policy.page_says_withheld`), from one read; (None, None) when it has no reason on
+        disk. (It was ``_stub_reason``, the reason alone, until B13 round 10 L54.)
 
-        ``_sync/QUARANTINE.tsv`` copies it for a row a label rule may withhold: whether an image's stub
+        ``_sync/QUARANTINE.tsv`` follows the page for a row a label rule may withhold, as
+        :func:`policy.page_says_withheld` reads it, the test the cycle and the setup report use (L54): a page
+        from before its ``reason:`` said withheld (G29) says so in its body. Whether an image's stub
         says ``withheld by label rule`` was decided by the run that planned it (``images_readable``), and
         the TSV, rewritten every run, followed each run's OCR state instead, so a run whose engine missed
         its ``--version`` made a TSV-only commit that contradicted the page (B13 round 7 H52).
 
         Every run reads it for each such stub, so the page's own ``reason:`` line is decoded first, as
         ``render_frontmatter`` wrote it (one JSON string), and YAML parses only a page where that fails: the
-        parse was most of the cost, about 1.2 s per 2000 image stubs on every poll (B13 round 8 J55)."""
+        parse was most of the cost, about 1.2 s per 2000 image stubs on every poll (B13 round 8 J55). The
+        verdict reads the summary line and the body of the text already read (B13 round 10 L54)."""
         for out in self._manifest.outputs_for(source_id, stable_id):
             text = self._read_text(out.output_path)
             if text is None:
                 continue
-            if (fast := _reason_line(text)) is not None:
+            if (fast := _withheld_on_page(text)) is not None:
                 return fast
             try:
-                data, _ = parse_frontmatter(text)
+                data, body = parse_frontmatter(text)
             except FrontmatterError:
                 continue
-            reason = data.get("reason")
+            reason, summary = data.get("reason"), data.get("summary")
             if isinstance(reason, str) and reason:
-                return reason
-        return None
+                summary = summary if isinstance(summary, str) else None
+                return reason, policy.page_says_withheld(reason, summary, body)
+        return None, None
 
     def _plan_stub(
         self, source: SourceConfig, item: ItemRow, result: ConversionResult, *, withheld: bool | None = None
@@ -2041,9 +2074,14 @@ class Publisher:
                     continue
                 reason = item.state_reason or item.state.value
                 suffix = Path(item.name).suffix.lower()
-                if item.state is RowState.REFUSED and self._withheld_eligible(item.state_reason, suffix):
-                    on_page = self._stub_reason(source.id, item.stable_id)
-                    reason = on_page if on_page in (reason, _withheld_reason(suffix)) else reason
+                # the page's class, as the cycle and the setup report read it: a page from before its reason:
+                # said withheld says so in its body (B13 round 10 L54)
+                if (
+                    item.state is RowState.REFUSED
+                    and self._withheld_eligible(item.state_reason, suffix)
+                    and self._stub_says(source.id, item.stable_id)[1]
+                ):
+                    reason = _withheld_reason(suffix)
                 shown = self._shown_path(source.id, item.stable_id, item.rel_path)
                 rows.add((source.id, _tsv_field(shown), _tsv_field(reason)))
         text = "\n".join([_QUARANTINE_HEADER, *("\t".join(r) for r in sorted(rows))]) + "\n"
