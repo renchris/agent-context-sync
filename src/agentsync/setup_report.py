@@ -7771,6 +7771,45 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     )
 
 
+def local_work_line() -> str | None:
+    """The Run metadata line that says step 1 kept local work, counts only (B13 round 9 K30: only the private
+    bring-back.md said so, and the public report read "fully one command"): the ``local-work-*`` branches of
+    the checkout, read from its ref files with no git process (an unset-up Mac's git offers to install the
+    developer tools), and the ``*.patch`` files under the setup folder's ``local-work`` at any depth, with the
+    newest one's time. Branches outlive a second keep that overwrites a patch of the same name, so they are
+    the better count. No name, subject, author or content is shown. None when both are 0 or there is no
+    checkout. install.sh's fallback writes the same line (``fallback_local_work_line``)."""
+    git = expand(INSTALL_SH).parents[1] / ".git"
+    if not git.is_dir():
+        return None
+    heads = git / "refs" / "heads"
+    branches = {p.name for p in heads.glob("local-work-*") if p.is_file() and not p.is_symlink()}
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for line in (git / "packed-refs").read_text(encoding="utf-8").splitlines():
+            ref = line.partition(" ")[2]
+            if ref.startswith("refs/heads/local-work-"):
+                branches.add(ref.removeprefix("refs/heads/"))
+    times: list[float] = []
+    kept = default_setup_log().parent / "local-work"
+    for root, _dirs, files in os.walk(kept):
+        for name in files:
+            path = Path(root, name)
+            if name.endswith(".patch") and not path.is_symlink() and path.is_file():
+                times.append(path.stat().st_mtime)
+    if not branches and not times:
+        return None
+    newest = (
+        f", newest written {datetime.fromtimestamp(max(times), UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+        if times
+        else ""
+    )
+    return (
+        f"- local work kept by setup prompt step 1: {len(branches)} local-work branch(es) in the checkout, "
+        f"{len(times)} patch file(s) in the setup folder's local-work{newest} (the patches are in "
+        "bring-back.md section 3 only)"
+    )
+
+
 def build_report(
     config_path: Path | None = None,
     *,
@@ -7818,6 +7857,8 @@ def build_report(
         header.append(f"- install source: {_install_source(r)}")
     except Exception as exc:
         header.append(f"- install source: (failed: {type(exc).__name__}: {exc})")
+    with contextlib.suppress(Exception):
+        header += [line for line in (local_work_line(),) if line]
     # Cheap sections first, doctor last (it gets what is left of the budget, less the Loop line's floor), then
     # the friction log (the latest attempt's outcome counts doctor's FAILs); printed in heading order.
     bodies: dict[str, list[str]] = {}

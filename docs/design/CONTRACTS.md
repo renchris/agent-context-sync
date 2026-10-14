@@ -17328,6 +17328,19 @@ lane D's; dated lines at §16.74 J20 and §16.75 J37). Three findings on the pat
 Tests: `test_a_git_url_rewrite_host_and_path_are_redacted`, `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`,
 `test_the_two_reports_number_each_proxy_value_alike` (numbers unchanged).
 
+**The public report says step 1 kept local work, in counts** (K30). Only bring-back.md section 3, which is
+private, said the keep command ran; the report read "fully one command". Both readers add one line, under Run
+metadata in the agentsync report (so the issue form's copied Summary values stay) and at the end of the shell
+fallback's Summary: `- local work kept by setup prompt step 1: N local-work branch(es) in the checkout, M patch
+file(s) in the setup folder's local-work, newest written <UTC> (the patches are in bring-back.md section 3 only)`.
+Branches are read from `~/src/agent-context-sync/.git`'s ref files and `packed-refs`, with no git process (on a Mac
+without developer tools git offers to install them); they outlive a second keep that overwrites a patch of the
+same name (rehearsal D4), so they are the better count. Patches are the regular `*.patch` files under
+`local-work` at any depth, so a keep that writes one folder per branch is counted too. No name, subject, author or
+content is shown; the line is left out when both counts are 0 or there is no checkout. "Sent before" was not
+built: it would copy section 3's rule into Python. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`.
+
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 

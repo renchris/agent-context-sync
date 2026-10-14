@@ -6798,6 +6798,40 @@ def test_the_two_reports_number_each_proxy_value_alike(
     assert min(int(n[7:-1]) for n in numbers(shell)[-2:]) > shared, "numbered after every shared value"
 
 
+def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[str, str]) -> None:
+    """B13 round 9 K30, the shell twin: the line setup_report.local_work_line writes, from the same files (the
+    checkout's ref files and the setup folder's patches), with no patch name, subject or author."""
+    home = Path(env["HOME"])
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    assert install_sh(env, "--report-only").returncode == 0
+    assert "local work kept" not in report_path(env).read_text()
+    # two keeps (one loose branch, one packed) whose second patch overwrote the first's (rehearsal D4)
+    git = home / "src" / "agent-context-sync" / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "refs" / "heads" / "local-work-20261014-005444").write_text("a" * 40 + "\n")
+    (git / "packed-refs").write_text(
+        f"# pack-refs with: peeled\n{'b' * 40} refs/heads/local-work-20261014-010203\n"
+        f"{'c' * 40} refs/heads/main\n"
+    )
+    patch = setup / "local-work" / "0001-Northwind-pricing-notes.patch"
+    patch.parent.mkdir()
+    patch.write_text(
+        "From: Jane Fabrikam <jane@fabrikam.example>\nSubject: [PATCH] Northwind pricing notes\n"
+    )
+    os.utime(patch, (1791950084, 1791950084))
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert (
+        "- local work kept by setup prompt step 1: 2 local-work branch(es) in the checkout, 1 patch file(s) "
+        "in the setup folder's local-work, newest written 2026-10-14T03:54:44Z (the patches are in "
+        "bring-back.md section 3 only)\n" in text
+    ), text
+    for word in ("Northwind", "Fabrikam", "pricing", "0001"):
+        assert word not in text, word
+
+
 def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[str, str]) -> None:
     """B13 round 8 J69, the shell twin: the shell report never lists CloudStorage, so an unconfigured folder
     that step 1's list showed and the agent quoted printed in clear beside the configured one's <folder-N>.

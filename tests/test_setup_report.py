@@ -8872,6 +8872,48 @@ def test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt() -> N
     assert len(setup_report.parse_friction(headed).attempts) == 2
 
 
+def keep_local_work(home: Path, setup: Path) -> Path:
+    """Two keeps of step 1 (two local-work branches, one loose and one packed) whose second patch overwrote
+    the first's, as two keeps of a commit with one subject do (B13 round 9 rehearsal D4)."""
+    git = home / "src" / "agent-context-sync" / ".git"
+    (git / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+    (git / "refs" / "heads" / "local-work-20261014-005444").write_text("a" * 40 + "\n", encoding="utf-8")
+    (git / "packed-refs").write_text(
+        "# pack-refs with: peeled fully-peeled sorted\n"
+        f"{'b' * 40} refs/heads/local-work-20261014-010203\n{'c' * 40} refs/heads/main\n",
+        encoding="utf-8",
+    )
+    patch = setup / "local-work" / "0001-Northwind-pricing-notes.patch"
+    patch.parent.mkdir(parents=True, exist_ok=True)
+    patch.write_text(
+        "From aaaa Mon Sep 17 00:00:00 2001\nFrom: Jane Fabrikam <jane@fabrikam.example>\n"
+        "Subject: [PATCH] Northwind pricing notes\n\n---\n",
+        encoding="utf-8",
+    )
+    os.utime(patch, (1791950084, 1791950084))
+    return patch
+
+
+def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 9 K30: step 1's keep command moved local work aside (a local-work branch and its patches),
+    and only the private bring-back.md said so: the public report read "fully one command". Run metadata has
+    one count-only line; no patch name, subject, author or content. A Mac with no keep has none."""
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "local work kept" not in text
+    keep_local_work(fake_mac["home"], fake_mac["setup"])
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    metadata = section(text, "Summary").split(setup_report.RUN_METADATA_HEADING, 1)[1]
+    assert (
+        "- local work kept by setup prompt step 1: 2 local-work branch(es) in the checkout, 1 patch file(s) "
+        "in the setup folder's local-work, newest written 2026-10-14T03:54:44Z (the patches are in "
+        "bring-back.md section 3 only)\n" in metadata
+    ), metadata
+    for word in ("Northwind", "Fabrikam", "pricing", "0001"):
+        assert word not in text, word
+
+
 def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Path]) -> None:
     """B13 round 8 J18: a copy the installer stopped leaves step 1's pull and no step 2 reinstall, so doctor
     warns install.commit with "fix: re-run install.sh", and the Summary counted it unexpected, while the

@@ -2055,6 +2055,24 @@ fallback_install_line() { # RC
 	fi
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
+# The count-only line that says step 1 kept local work, as setup_report.local_work_line writes it (B13 round 9
+# K30): the checkout's local-work-* branches, read from its ref files (no git: without developer tools it offers
+# to install them), and the *.patch files under the setup folder's local-work at any depth, with the newest time.
+fallback_local_work_line() {
+	local git="$HOME/src/agent-context-sync/.git" b p n=0 at newest="" f
+	[ -d "$git" ] || return 0
+	b="$({
+		for f in "$git"/refs/heads/local-work-*; do [ -f "$f" ] && [ ! -L "$f" ] && printf '%s\n' "${f##*/}"; done
+		LC_ALL=C sed -n 's|^[^ ]* refs/heads/\(local-work-.*\)$|\1|p' "$git/packed-refs" 2>/dev/null
+	} | LC_ALL=C sort -u | LC_ALL=C grep -c . || true)"
+	while IFS= read -r p; do
+		n=$((n + 1))
+		at="$(date -u -r "$p" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+		[[ -z "$at" || "$at" < "$newest" ]] || newest="$at"
+	done < <(find "$SETUP_DIR/local-work" -type f -name '*.patch' 2>/dev/null)
+	[ "${b:-0}" -gt 0 ] || [ "$n" -gt 0 ] || return 0
+	say "- local work kept by setup prompt step 1: ${b:-0} local-work branch(es) in the checkout, $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} (the patches are in bring-back.md section 3 only)"
+}
 fallback_body() {
 	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o
 	say "# agentsync setup report"
@@ -2079,6 +2097,7 @@ fallback_body() {
 		say "- background sync: $v in this home (Background runs has each job's state)"
 	fi
 	[ -z "$LAST_ERROR" ] || say "- last error: $LAST_ERROR"
+	fallback_local_work_line
 	say ""
 	say "## Agent friction log"
 	say ""
