@@ -535,6 +535,23 @@ def _is_multi_unit(unit: RenderedUnit) -> bool:
     return unit.kind is not UnitKind.WHOLE or unit.of > 1 or bool(unit.file_stem)
 
 
+def _reason_line(text: str) -> str | None:
+    """A page's ``reason:`` read from its own frontmatter line (a JSON string, ``render_frontmatter``), or
+    None when there is no such line or it does not decode to a non-empty string."""
+    try:
+        fm, _ = split_frontmatter(text)
+    except FrontmatterError:
+        return None
+    for line in (fm or "").splitlines():
+        if line.startswith("reason: "):
+            try:
+                value = json.loads(line[len("reason: ") :])
+            except ValueError:
+                return None
+            return value if isinstance(value, str) and value else None
+    return None
+
+
 def _withheld_reason(suffix: str) -> str:
     """The reason a stub withheld by a label rule shows in its ``reason:`` and in ``_sync/QUARANTINE.tsv``.
     The stored reason stays ``no converter for <suffix>``: re-reads, stub identity and the setup report's
@@ -1110,11 +1127,17 @@ class Publisher:
         ``_sync/QUARANTINE.tsv`` copies it for a row a label rule may withhold: whether an image's stub
         says ``withheld by label rule`` was decided by the run that planned it (``images_readable``), and
         the TSV, rewritten every run, followed each run's OCR state instead, so a run whose engine missed
-        its ``--version`` made a TSV-only commit that contradicted the page (B13 round 7 H52)."""
+        its ``--version`` made a TSV-only commit that contradicted the page (B13 round 7 H52).
+
+        Every run reads it for each such stub, so the page's own ``reason:`` line is decoded first, as
+        ``render_frontmatter`` wrote it (one JSON string), and YAML parses only a page where that fails: the
+        parse was most of the cost, about 1.2 s per 2000 image stubs on every poll (B13 round 8 J55)."""
         for out in self._manifest.outputs_for(source_id, stable_id):
             text = self._read_text(out.output_path)
             if text is None:
                 continue
+            if (fast := _reason_line(text)) is not None:
+                return fast
             try:
                 data, _ = parse_frontmatter(text)
             except FrontmatterError:

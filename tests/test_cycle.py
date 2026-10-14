@@ -59,7 +59,7 @@ from agentsync.convert.registry import Registry
 from agentsync.convert.speech import SpeechEngine
 from agentsync.cycle import RecoveryAction, recover, run_cycle
 from agentsync.errors import ConversionError, DatalessRefusedError, LockHeldError
-from agentsync.frontmatter import parse_frontmatter
+from agentsync.frontmatter import parse_frontmatter, render_frontmatter
 from agentsync.graph.client import GraphClient
 from agentsync.graph.drive import DriveArm
 from agentsync.manifest import Manifest
@@ -2911,6 +2911,35 @@ def test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_s
     assert (fm["reason"], _quarantine_reason(config, SITE_PLAN)) == (withheld, withheld)
     assert fm["summary"].startswith("refused: withheld by label rule") and body.startswith(UNTRUSTED_BANNER)
     assert run(config).commit_sha is None
+
+
+def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 8 J55: H52 had every run YAML-parse the page of each stub a label rule may withhold, about
+    1.2 s per 2000 image stubs on every poll. The page's ``reason:`` line is decoded as the emitter wrote it
+    now, which gives what the YAML parse gives for any wording."""
+    engine = fake_engine(tmp_path / "ocr-bin")
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine)
+    assert run(config).exit_code == 0
+    real, parsed = publish_mod.parse_frontmatter, []
+
+    def counted(text: str) -> tuple[dict[str, Any], str]:
+        parsed.append("withheld by label rule" in text)
+        return real(text)
+
+    monkeypatch.setattr(publish_mod, "parse_frontmatter", counted)
+    assert run(config).commit_sha is None
+    withheld = publish_mod._withheld_reason(".png")
+    assert _quarantine_reason(config, SITE_PLAN) == withheld and not any(parsed)
+    page = (config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)).read_text(encoding="utf-8")
+    for reason in (withheld, "no converter for .png", 'a "quoted" naïve — reason: x', "true", "12"):
+        text = render_frontmatter({"status": "refused", "reason": reason}) + "body\n"
+        assert publish_mod._reason_line(text) == real(text)[0]["reason"] == reason
+    assert publish_mod._reason_line(page) == real(page)[0]["reason"] == withheld
+    assert publish_mod._reason_line("---\nstatus: refused\n---\nbody\n") is None
 
 
 def _msg_page_then_a_rule(tmp_path: Path, local_source_dir: Path) -> tuple[Config, str]:
