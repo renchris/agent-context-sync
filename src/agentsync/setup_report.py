@@ -3384,6 +3384,16 @@ def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[
     return [(run_id, fields, lines) for run_id, (fields, lines) in runs.items()]
 
 
+_AGENTSYNC_NOTE_WORDS = {"waited-for-a-background-sync": "waited for another sync to end"}
+"""install.log's agentsync-step note -> the report's words (B13 round 9 K35): the lock does not say who
+started the sync step 2 waited for (H33), a background job or one typed in a terminal, so "background" claimed
+one. The token stays, in install.log and for its readers; a note not here is shown as it is."""
+
+
+def _agentsync_note(note: str) -> str:
+    return _AGENTSYNC_NOTE_WORDS.get(note, note)
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
     rows = [("step", "seconds", "result")]
     for name, v in steps:
@@ -3404,7 +3414,8 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
                 counts = f"{synced} already synced"
             elif unread is not None:
                 counts = f"could not read which folders are synced: {unread}"
-        note = ": ".join(part for part in (v.get("note", ""), counts) if part)
+        said = _agentsync_note(v.get("note", "")) if name == "agentsync" else v.get("note", "")
+        note = ": ".join(part for part in (said, counts) if part)
         if note:
             result += f" ({note})"
         rows.append((name, v.get("seconds", "?"), result))
@@ -7094,7 +7105,8 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: dateti
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts.
     steps = " · ".join(
-        f"{k} {v.get('seconds', '?')}s" + (f" ({v['note']})" if k == "agentsync" and v.get("note") else "")
+        f"{k} {v.get('seconds', '?')}s"
+        + (f" ({_agentsync_note(v['note'])})" if k == "agentsync" and v.get("note") else "")
         for k, v in last.steps
         if k != "report"
     )

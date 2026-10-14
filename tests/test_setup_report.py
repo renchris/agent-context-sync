@@ -1888,8 +1888,14 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
     r.install_runs = runs
     assert setup_report._install_line(r, runs, scoped=False) == (
         "- install.sh: 1 install run; the last exit 0 after 60s "
-        "(agentsync 59s (waited-for-a-background-sync) · config 1s)"
+        "(agentsync 59s (waited for another sync to end) · config 1s)"
     )
+    # B13 round 9 K35: the lock does not say who started the sync (H33), so neither line says "background";
+    # install.log keeps its token, and a note the map does not know is shown as it is
+    table = "\n".join(setup_report._step_table(list(runs[-1].steps)))
+    assert "| done (waited for another sync to end) |" in table and "background" not in table, table
+    assert re.search(r"\| done \(created\) +\|", table), table
+    assert setup_report._agentsync_note("wait-ran-out-after-120s") == "wait-ran-out-after-120s"
 
 
 @pytest.mark.parametrize(
