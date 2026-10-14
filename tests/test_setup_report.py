@@ -8371,6 +8371,48 @@ def test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt() -> N
     assert len(setup_report.parse_friction(headed).attempts) == 2
 
 
+def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Path]) -> None:
+    """B13 round 8 J18: a copy the installer stopped leaves step 1's pull and no step 2 reinstall, so doctor
+    warns install.commit with "fix: re-run install.sh", and the Summary counted it unexpected, while the
+    report's own NEXT says to paste the current prompt (whose step 2 reinstalls). On a stopped copy it is
+    expected, in the Summary and the Doctor section alike; on any other attempt it stays unexpected, and an
+    install.commit that reads ok adds nothing."""
+    (fake_mac["setup"] / "install.log").unlink()
+    stopped = (
+        "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7 or older\nAgent: Contoso Bot\n"
+        "2026-09-29T09:58:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is v7 or "
+        "older and this installer is for setup prompt v16: the pasted copy is not the current one; setup "
+        "stopped (exit 2) | copy the prompt again from README.md on the main branch\n"
+        "2026-09-29T09:58:00Z | end | finished\n"
+    )
+    warn = (
+        "[warn] install.commit — installed from 568024c88207, but the checkout at /src/x is at a350196b9f87 "
+        "(fix: re-run install.sh (/src/x/scripts/install.sh))"
+    )
+    lines = ["[ok  ] python — fine", warn]
+    why = "the installer stopped this copy in step 1, before step 2 reinstalls agentsync"
+    write_friction(fake_mac, stopped)
+    text, summary = summary_of(fake_mac, doctor=lambda config: lines)
+    assert f"- doctor: 0 FAIL, 1 warn (2 checks) · expected 1: install.commit ({why}) · unexpected 0" in (
+        summary
+    ), summary
+    doctor_part = section(text, "Doctor")
+    assert (
+        f"[warn] install.commit — installed from 568024c88207, but the checkout at /src/x is at a350196b9f87 "
+        f"(expected: {why})" in doctor_part
+    ), doctor_part
+    assert "re-run install.sh" not in doctor_part
+    # the doctor shows install.commit ok: nothing is expected
+    ok = ["[ok  ] python — fine", "[info] install.commit — installed from a350196b9f87, the checkout's HEAD"]
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ok)
+    assert "expected 1" not in summary and "install.commit (" not in summary
+    # an attempt the installer did not stop: the same warn is unexpected, with its fix
+    write_friction(fake_mac, V11_HAPPY)
+    text, summary = summary_of(fake_mac, doctor=lambda config: lines)
+    assert "· unexpected 1: install.commit warn" in summary and why not in text
+    assert "(fix: re-run install.sh" in section(text, "Doctor")
+
+
 def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -8406,6 +8448,21 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
     assert link["title"][0].startswith("Setup report: Stopped at step 1 (preflight) · "), link["title"]
     assert link["outcome"] == ["Failed at step 1 (preflight)"]
+    # B13 round 8 J36: the open attempt's WARNING told this session, which may still be waiting, to run
+    # install.sh --report-only, whose end line turns "stopped" into "failed at step 1". It names no command.
+    [warning] = [ln for ln in summary.splitlines() if ln.startswith("- WARNING: attempt 1 ")]
+    assert warning == (
+        '- WARNING: attempt 1 has no "end | finished" line: it stopped at step 1, where the prompt waits for '
+        "the folder answer, and may still be waiting (no report is due then). It goes on once the folder "
+        "answer is given, and step 3's last command `~/src/agent-context-sync/scripts/install.sh "
+        "--report-only` closes it. Do not run that command before then: its end line would turn this "
+        'outcome into "failed at step 1".'
+    ), warning
+    assert "if the session stopped early, run that command" not in summary
+    write_friction(fake_mac, head + wait + "2026-10-13T00:53:00Z | end | finished\n")
+    _text, closed = summary_of(fake_mac)
+    assert closed.strip().startswith("- **outcome: failed at step 1** ("), "the WARNING's words stay true"
+    assert "WARNING" not in closed
     v5 = setup_report.Outcome("stopped", 1, (), 5, "waiting for the folder answer")
     assert v5.title_label == "Stopped at step 1 (preflight and code)", v5.title_label
     other = head + wait.replace(

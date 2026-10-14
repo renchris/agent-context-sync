@@ -2006,14 +2006,26 @@ def it_draft_fields(text: str) -> tuple[list[str], list[str]]:
     return [f for f in IT_PERSON_FIELDS if f in body], [f for f in IT_ADMIN_FIELDS if f in body]
 
 
-def expected_warn(name: str, detail: str, *, agents_installed: bool) -> str | None:
+_STOPPED_COPY_WARN = "the installer stopped this copy in step 1, before step 2 reinstalls agentsync"
+"""Why ``install.commit`` warns on a stopped copy (:func:`expected_warn`): step 1 pulls the checkout and its
+``--log-start`` then stops the copy, so step 2's reinstall never runs (B13 round 8 J18)."""
+
+
+def expected_warn(
+    name: str, detail: str, *, agents_installed: bool, stopped_copy: bool = False
+) -> str | None:
     """Why a doctor warn line is expected, or None: the ad hoc launcher's signature and requirement (every
-    build without a Developer ID: a Developer ID build is IT's, docs/deploy/mdm), and a LaunchAgent not
-    installed when this setup has not installed them yet (no agent step, skipped, or simulated)."""
+    build without a Developer ID: a Developer ID build is IT's, docs/deploy/mdm), a LaunchAgent not
+    installed when this setup has not installed them yet (no agent step, skipped, or simulated), and an
+    installed build older than the checkout when the installer stopped the latest attempt's copy of the
+    prompt (``stopped_copy``, :func:`_stopped_before_the_list`): the report's own NEXT says to paste the
+    current prompt, whose step 2 reinstalls, so doctor's "re-run install.sh" was the other way round."""
     if name in ("launcher.signature", "launcher.requirement") and "ad hoc" in detail:
         return "ad hoc launcher"
     if name.startswith("launchd.") and "is not installed" in detail and not agents_installed:
         return "LaunchAgents not installed yet"
+    if name == "install.commit" and stopped_copy and ", but the checkout at " in detail:
+        return _STOPPED_COPY_WARN
     return None
 
 
@@ -2267,6 +2279,7 @@ class _Facts:
     doctor_problems: list[tuple[str, str, str]] = dataclasses.field(
         default_factory=list
     )  # (tag, name, detail)
+    copy_stopped: bool = False  # the installer stopped the latest attempt's copy (_stopped_before_the_list)
     baseline: tuple[int, int] | None = None  # (sources with a complete baseline, sources) from status
     background: list[str] = dataclasses.field(default_factory=list)
     shadow: str | None = None
@@ -3744,7 +3757,9 @@ def _doctor(r: _Run) -> list[str]:
                 detail = raw.split(" — ", 1)[1] if " — " in raw else raw
                 r.facts.doctor_problems.append((m.group(1), m.group(2), detail))
                 why = (
-                    expected_warn(m.group(2), detail, agents_installed=installed)
+                    expected_warn(
+                        m.group(2), detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped
+                    )
                     if m.group(1) == "warn"
                     else None
                 )
@@ -6455,7 +6470,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     yours: list[str] = []
     unexpected: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
-        why = expected_warn(name, detail, agents_installed=installed) if tag == "warn" else None
+        why = (
+            expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
+            if tag == "warn"
+            else None
+        )
         if why is not None:
             expected.setdefault(why, []).append(name)
         elif tag == "warn" and _yours_warn(name, detail, r.facts.loop_checks):
@@ -6989,6 +7008,17 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"this report may be stale: it was written before prompt step {step}, or the agent stopped "
                 f"early. Run `{AGENTSYNC_BIN} setup-report` again after step {step}."
             )
+        elif outcome.kind == "stopped":
+            # stopped for the folder answer, as the prompt says: the session may still be waiting, and an
+            # end line written now would turn "stopped" into "failed at step 1" (B13 round 8 J36), so this
+            # WARNING names no command to run
+            out.append(
+                f'- WARNING: attempt {att.number} has no "end | finished" line: it stopped at step '
+                f"{outcome.step}, where the prompt waits for the folder answer, and may still be waiting (no "
+                f"report is due then). It goes on once the folder answer is given, and step {step}'s last "
+                f"command `{INSTALL_SH} --report-only` closes it. Do not run that command before then: its "
+                f'end line would turn this outcome into "failed at step {outcome.step}".'
+            )
         else:
             # setup-report closes no attempt: only install.sh --report-only writes the end line, so the
             # WARNING names it, and keeps it to step 3's last command or an early stop: run mid-session it
@@ -7432,6 +7462,12 @@ def build_report(
         r.friction = read_friction(r.friction_path)
     except Exception as exc:
         r.friction_error = f"{type(exc).__name__}: {exc}"
+    fr = r.friction
+    if fr is not None and fr.attempts:  # before doctor: its install.commit warn reads it (B13 round 8 J18)
+        latest = len(fr.attempts) - 1
+        r.facts.copy_stopped = _stopped_before_the_list(
+            fr.attempts[latest], runs_for_attempt(fr, latest, r.install_runs)
+        )
     header: list[str] = [f"- generated at: {moment.strftime('%Y-%m-%dT%H:%M:%SZ')}"]
     header.append(  # the build's prompt too, so any report says which prompt it was built for (H23)
         f"- agentsync: {__version__}, setup prompt v{PROMPT_VERSION} (python {platform.python_version()}, "
