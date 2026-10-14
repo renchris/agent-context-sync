@@ -6429,17 +6429,22 @@ def _prompt_copy_note(attempt: Attempt | None) -> str:
     if event is None or stop is None:  # the header's fixed words are the installer's too: only its stop
         return f"{stated} (the installer stopped this copy: it named no version)" if stated else ""
     theirs = f"the installer's v{int(stop.group(1))}"
+    # the installer's line names the other reading after its reason, and so does this (B13 round 8 J9, round
+    # 9 K22): it cannot tell a stale or a stray copy from an agent that changed the --log-start value
+    changed = ", or the --log-start value was changed"
     if stop.group(2).startswith("the pasted copy"):
-        return f"{stated} (older than {theirs}: the pasted copy was not the current README)"
+        return f"{stated} (older than {theirs}: the pasted copy was not the current README{changed})"
     # A newer copy: the error line says "this checkout is older than the prompt" whatever the cause; only the
     # fix column (install.sh's newer_copy_fix) tells the checkout from the copy (B13 round 6 G20). Its fixed
     # words are matched and this function's own are shown, never the column.
     if "so a copy newer than it came from another branch or a fork" in event.fix:  # follows canonical main
         why = "this Mac's checkout follows main, so the pasted copy came from another branch or a fork"
-        return f"{stated} (newer than {theirs}: {why})"
+        return f"{stated} (newer than {theirs}: {why}{changed})"
     if event.fix.startswith("point this Mac's checkout at main of"):  # another remote or branch
-        return f"{stated} (newer than {theirs}: this Mac's checkout follows another remote or branch)"
-    return f"{stated} (newer than {theirs})"  # no upstream, or an installer whose fix names no cause
+        return (
+            f"{stated} (newer than {theirs}: this Mac's checkout follows another remote or branch{changed})"
+        )
+    return f"{stated} (newer than {theirs}{changed})"  # no upstream, or an installer whose fix names no cause
 
 
 def _doctor_fails(r: _Run) -> list[str]:

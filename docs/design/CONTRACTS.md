@@ -8115,6 +8115,8 @@ def prompt_layout(version: int | None) -> PromptLayout: ...  # the newest entry 
   reasons applies are read from its own stop line in the attempt (`_PROMPT_STOP_RE`), the rule
   `friction_attempt_stopped` goes by. A header of `vN or older` with no such line (a log cut short) reads
   `(the installer stopped this copy: it named no version)`.
+  Amended 2026-10-14, §16.80 K22: each stopped copy's note ends with the stop line's second reading, `, or the
+  --log-start value was changed`, inside its bracket.
 - The number alone adds nothing: `- prompt: v7 · run: ...` for any other attempt, as before v8. The line
   first compared the attempt's number with this build's `PROMPT_VERSION`, and both directions were false.
   An installer before v8 wrote its own number as the `Prompt:` line, so a Mac set up with the then-current
@@ -17261,6 +17263,16 @@ inside the 120 s window reads `failed at step 1 (a changed --log-start value, or
 23s later, said v17)`. The finder's 15 s window was not built: no gap tells an agent's slow rerun from a person's
 quick copy, and it would bring back J9's false failure for a newer copy. Test:
 `test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure` (1 s, 23 s and 2m01s rows).
+
+**The Summary's prompt line names both readings of a stop** (K22; dated line at §16.28's prompt-line bullet). The
+installer's stop line has said `..., or the --log-start value was changed` since J9, while the Summary named one
+cause. Each of `_prompt_copy_note`'s four stop notes ends with the same words inside its bracket: `v16 (older than
+the installer's v17: the pasted copy was not the current README, or the --log-start value was changed)`, and the
+three newer-copy notes alike (the bare one reads `(newer than the installer's vN, or the --log-start value was
+changed)`). The reason is kept, not dropped in favor of the friction line: it is the Summary's "copy it again" cue.
+The quotes in docs/deploy/setup-feedback.md follow. Tests:
+`test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary`, the setup-feedback quote test in
+`tests/test_deploy_pack.py`.
 
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.

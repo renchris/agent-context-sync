@@ -756,7 +756,10 @@ V5_HAPPY = (
 """Setup prompt v5 run through as its README block asks: one Attempt header, start/end per step, the folder
 question, the two Allow clicks, the closing line. With install.log's rc 0 this is fully one command."""
 
-OLDER_COPY = "(older than the installer's v8: the pasted copy was not the current README)"
+CHANGED = ", or the --log-start value was changed"
+"""What the Summary's prompt note adds after a stopped copy's reason, as install.sh's line does (B13 round 9
+K22)."""
+OLDER_COPY = f"(older than the installer's v8: the pasted copy was not the current README{CHANGED})"
 """What the Summary's prompt line adds for an attempt a v8 installer stopped: its copy was an older one."""
 
 
@@ -3585,12 +3588,13 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7 or older, said Fabrikam", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
-        ("v9", 8, "v9 (newer than the installer's v8)", "this checkout is older than the prompt"),
+        ("v9", 8, f"v9 (newer than the installer's v8{CHANGED})", "this checkout is older than the prompt"),
         # B13 round 8 J9: install.sh's line names the other reading after its reason; the notes are the same
+        # and name it too (B13 round 9 K22)
         (
             "v9",
             8,
-            "v9 (newer than the installer's v8)",
+            f"v9 (newer than the installer's v8{CHANGED})",
             "this checkout is older than the prompt, or the --log-start value was changed",
         ),
         (
@@ -3602,7 +3606,7 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         (
             "v9",
             19,
-            "v9 (older than the installer's v19: the pasted copy was not the current README)",
+            f"v9 (older than the installer's v19: the pasted copy was not the current README{CHANGED})",
             "the pasted copy is not the current one",
         ),
     ):
@@ -3650,7 +3654,9 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- prompt: ")]
         cause = f": {said}" if said else ""
-        assert line.startswith(f"- prompt: v15 (newer than the installer's v14{cause}) · run: "), line
+        assert line.startswith(f"- prompt: v15 (newer than the installer's v14{cause}{CHANGED}) · run: "), (
+            line
+        )
         assert "is older than the pasted copy" not in text and "contoso/agent-context-sync" not in line
     # The header's fixed words with no stop line (a log cut short): only the installer's stop writes them.
     write_friction(fake_mac, "Attempt: 2026-09-29T09:58:00Z\nPrompt: v7 or older\nAgent: x\n")

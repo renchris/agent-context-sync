@@ -385,7 +385,8 @@ version, and the installer wrote its own number into the log.
 - A copy whose step 3 does not name this stop as one with no report (v9 and older, and a v10 copy taken before its
   step 3 named it) still goes on to its own report; a later copy stops without one, as the installer's stop
   message says. That report's Summary says
-  `prompt: v7 or older (older than the installer's v18: the pasted copy was not the current README)`, its outcome
+  `prompt: v7 or older (older than the installer's v18: the pasted copy was not the current README, or the --log-start value was changed)`
+  (the second reading, as the stop line names it, since 2026-10-14), its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. That run writes the report to `~/agent-context/setup/stopped-copy-report.md`,
   whose first line says not to send it, so `setup-report.md` and `bring-back.md` keep the bytes of the last attempt
@@ -408,9 +409,9 @@ version, and the installer wrote its own number into the log.
   the same prompt; a fresh copy would stop at the same place. When git cannot say which, the fix names both.
   Since 2026-10-13 the agentsync report's Summary says which cause the fix column names, in its own words
   ([CONTRACTS §16.64](../design/CONTRACTS.md) G20), and never shows the column: `prompt: vM (newer than the
-  installer's vN: this Mac's checkout follows main, so the pasted copy came from another branch or a fork)` for a
+  installer's vN: this Mac's checkout follows main, so the pasted copy came from another branch or a fork, or the --log-start value was changed)` for a
   checkout on main of the repository; `prompt: vM (newer than the installer's vN: this Mac's checkout follows
-  another remote or branch)` when the checkout is the cause; and the bare `(newer than the installer's vN)` when
+  another remote or branch, or the --log-start value was changed)` when the checkout is the cause; and the bare `(newer than the installer's vN, or the --log-start value was changed)` when
   the fix names both (a checkout of this repository that follows no upstream branch, or one whose remote git
   cannot read), the installer is too old to name a cause, or the column is empty. The shell report (`install.sh --report-only` without agentsync) has no such clause, so read its friction
   log's fix column.
