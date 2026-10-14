@@ -17341,6 +17341,17 @@ content is shown; the line is left out when both counts are 0 or there is no che
 built: it would copy section 3's rule into Python. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`.
 
+**A CloudStorage listing that finishes late is used** (K76, J69's step 5). A listing past `_LISTING_S` (3 s) was
+thrown away, so with no list of step 1 in install.out the report was private only. The listing now also hands its
+result to a queue the report keeps, and `build_report` looks once more (`_late_listing`, at most 0.5 s and inside
+the budget less the reserve and the Loop line's floor) after Doctor and before the friction section and the
+Summary: those are the first parts that redact a line and then cut it (`_item_line`), and a name registered after
+the cut stays in clear as a fragment the final pass cannot match, so the finder's "before `_redact_lines`" was
+not built. A listing that finished by then registers its folders after every other value (no number moves),
+clears `listing_unread`, and the Environment line reads `- redaction: the CloudStorage listing finished after 3.0s
+and was used for redaction`; the Configuration count stays "not read". A listing that ends within 3 s, or never,
+reads as before. Test: `test_a_listing_that_finishes_late_is_used_before_any_line_is_cut`.
+
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 

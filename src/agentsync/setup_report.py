@@ -105,6 +105,7 @@ import os
 import platform
 import plistlib
 import pwd
+import queue
 import re
 import shutil
 import socket
@@ -2444,6 +2445,9 @@ class _Run:
         self.friction_path = default_friction_path()
         self.friction_error: str | None = None
         self.listing_note: str | None = None
+        # the CloudStorage listing's result, when it did not finish within _LISTING_S: build_report looks
+        # once more before the first part that redacts and then cuts (_late_listing, B13 round 9 K76)
+        self.listing_late: queue.Queue[list[tuple[str, int, str]]] | None = None
         # The app names before a registered CloudStorage organisation ("Dropbox" of "Dropbox-<org-2>"): not
         # names, so the residue check skips them.
         self.provider_heads: frozenset[str] = frozenset()
@@ -2924,11 +2928,20 @@ def _build_redactor(r: _Run) -> Redactor:
             red.add("folder", c, fuzzy=True)
     # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
     listing_ok = True
+    late: queue.Queue[list[tuple[str, int, str]]] = queue.Queue(maxsize=1)
+
+    def listing() -> list[tuple[str, int, str]]:
+        found = cloud_folder_names()
+        late.put(found)  # read by _late_listing when the call below stopped waiting for it
+        return found
+
     try:
-        listed = r.call(cloud_folder_names, timeout=_LISTING_S)
+        listed = r.call(listing, timeout=_LISTING_S)
     except Exception as exc:
         listed, listing_ok = [], False
         r.listing_note = f"could not list ~/Library/CloudStorage at depth 2-3 for redaction: {exc}"
+        if isinstance(exc, TimeoutError):
+            r.listing_late = late
     configured = sum(1 for _sid, _provider, comps in cloud_sources for c in comps if _agent_words(c))
     configured += sum(1 for path in project_paths if _agent_words(path.name))
     agent_listed = sum(1 for _provider, _depth, name in listed if _agent_words(name))
@@ -2945,11 +2958,7 @@ def _build_redactor(r: _Run) -> Redactor:
                 out_path.read_text(encoding="utf-8", errors="replace"), home_path()
             )
     red.listing_unread = not listing_ok and not has_list
-    for provider, depth, name in [*listed, *printed]:
-        if name in _GENERIC_FOLDERS or _agent_words(name):
-            continue
-        shared = provider.startswith("OneDrive-SharedLibraries-")
-        red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
+    _add_listed(red, [*listed, *printed])
     for path in project_paths:
         for value in _project_values(path):
             red.add("folder", value, ignore_case=True)
@@ -7810,6 +7819,38 @@ def local_work_line() -> str | None:
     )
 
 
+def _add_listed(red: Redactor, entries: Iterable[tuple[str, int, str]]) -> None:
+    """Register the folders a CloudStorage listing or step 1's list gave: a SharedLibraries entry at depth 2
+    is a library, any other a folder; a generic folder name or one of the agent's words is left out."""
+    for provider, depth, name in entries:
+        if name in _GENERIC_FOLDERS or _agent_words(name):
+            continue
+        shared = provider.startswith("OneDrive-SharedLibraries-")
+        red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
+
+
+_LATE_LISTING_S = 0.5  # how long build_report waits, at most, for a listing that missed _LISTING_S
+
+
+def _late_listing(r: _Run) -> bool:
+    """Whether a CloudStorage listing that did not finish within :data:`_LISTING_S` has finished since, looked
+    for once (at most :data:`_LATE_LISTING_S`, inside the budget) before the friction section and the
+    Summary, the first parts that redact a line and then cut it (``_item_line``): a name registered later
+    than that is cut while still in clear, past the final pass's reach. Its folders are registered after
+    every other value, so no number moves, and the report is no longer private only for it; the Configuration
+    count stays "not read" (B13 round 9 K76, J69's step 5)."""
+    if r.listing_late is None or r.red is None:
+        return False
+    wait = min(_LATE_LISTING_S, r.remaining() - _RESERVE_S - _LOOP_FLOOR_S)
+    try:
+        listed = r.listing_late.get(timeout=wait) if wait > 0 else r.listing_late.get_nowait()
+    except queue.Empty:
+        return False
+    _add_listed(r.red, listed)
+    r.red.listing_unread = False
+    return True
+
+
 def build_report(
     config_path: Path | None = None,
     *,
@@ -7873,6 +7914,15 @@ def build_report(
         ("Agent friction log", _friction_section),
     )
     for title, fn in order:
+        if title == "Agent friction log" and _late_listing(r):  # before the first redact-then-cut (K76)
+            said = f"- redaction: {r.listing_note}"
+            bodies["Environment"] = [
+                f"- redaction: the CloudStorage listing finished after {_LISTING_S:.1f}s and was used for "
+                "redaction"
+                if line == said
+                else line
+                for line in bodies["Environment"]
+            ]
         bodies[title] = _section(title, functools.partial(fn, r))
     try:  # the Loop line's hook is a slow call: in its own pass, so ``took`` counts it
         r.loop_line = _loop_line(r)

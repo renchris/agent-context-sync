@@ -9395,6 +9395,61 @@ def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_pr
     )
 
 
+def test_a_listing_that_finishes_late_is_used_before_any_line_is_cut(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 9 K76 (J69's step 5): a CloudStorage listing past its 3 s was thrown away, so with no list of
+    step 1 in install.out the report was private only. The report looks once more before the friction
+    section and the Summary, the first parts that redact a line and then cut it: a listing that finished by
+    then is used, and a friction line cut inside the folder's name shows no part of it. One that never
+    finishes still makes the report private only."""
+    cs = fake_mac["home"] / "Library" / "CloudStorage"
+    (cs / f"OneDrive-{ORG}" / "Northwind Merger").mkdir()
+    long_what = "the person read " + "x" * 196 + " then Northwind Merger"  # cut at 220, inside the name
+    write_friction(
+        fake_mac,
+        V11_HAPPY.replace(
+            "2026-09-29T10:01:10Z | end",
+            "2026-09-29T10:00:00Z | step 1 | deviation | the person picked Northwind Merger later | -\n"
+            f"2026-09-29T10:00:30Z | step 1 | deviation | {long_what} | -\n"
+            "2026-09-29T10:01:10Z | end",
+        ),
+    )
+    real = setup_report.cloud_folder_names
+    finish = threading.Event()
+
+    def late(*args: Any, **kwargs: Any) -> list[tuple[str, int, str]]:
+        finish.wait(
+            5
+        )  # past the listing's time; the doctor hook, which runs before the friction part, ends it
+        return real(*args, **kwargs)
+
+    def doctor(_config: object) -> list[str]:
+        finish.set()
+        return ["[ok  ] python — fine"]
+
+    monkeypatch.setattr(setup_report, "_LISTING_S", 0.3)
+    monkeypatch.setattr(setup_report, "cloud_folder_names", late)
+    text = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(doctor=doctor))[0]
+    assert "Nort" not in text, [ln for ln in text.splitlines() if "Nort" in ln]
+    assert re.search(r"picked <folder-\d+> later", text), text
+    assert "Private only:" not in text and text.rstrip("\n").splitlines()[-1].startswith(
+        setup_report.ISSUE_URL
+    )
+    assert (
+        "- redaction: the CloudStorage listing finished after 0.3s and was used for redaction\n"
+        in section(text, "Environment")
+    )
+    # a listing that never finishes: J69's private-only report, as before
+    finish.clear()
+    text = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=lambda _c: ["[ok  ] python — fine"])
+    )[0]
+    finish.set()
+    assert "Private only: the listing of ~/Library/CloudStorage for redaction did not finish" in text, text
+    assert "- redaction: could not list ~/Library/CloudStorage at depth 2-3 for redaction: " in text
+
+
 def test_a_configured_generic_folder_leaves_the_report_public(fake_mac: dict[str, Path]) -> None:
     """B13 round 6 G48: a configured Documents, Desktop or Pictures folder is a report word, so it made the
     report private only, while the shell report kept the public option; every OneDrive has those folders, so
