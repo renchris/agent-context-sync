@@ -4,6 +4,7 @@ no cleanup code runs), so the next cycle's ``recover`` sees exactly what a dead 
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import dataclasses
 import errno
@@ -3037,6 +3038,20 @@ def test_an_online_only_image_a_label_rule_refuses_keeps_its_stub_whatever_this_
         fm, _body = _image_page(config, SITE_PLAN)
         assert (fm["reason"], _quarantine_reason(config, SITE_PLAN)) == (reason, reason), f"run {n}"
         assert rep.refused_unread == 0, f"run {n}"  # a stub that stands is not published again
+
+
+def test_the_stub_render_meta_keeps_its_own_docstring() -> None:
+    """B13 round 9 K52: J47's two constants landed between ``_STUB_RENDER_META`` and its attribute docstring,
+    so the docstring, which says what the meta key holds, documented ``_WITHHELD_WORDS`` instead."""
+    tree = ast.parse(Path(cycle_mod.__file__).read_text(encoding="utf-8"))
+    after = {
+        node.targets[0].id: nxt
+        for node, nxt in itertools.pairwise(tree.body)
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+    }
+    doc = after["_STUB_RENDER_META"]
+    assert isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
+    assert str(doc.value.value).startswith("The ``publish.STUB_RENDER`` the stub pages were last re-rendered")
 
 
 def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
