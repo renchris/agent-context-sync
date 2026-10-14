@@ -3571,20 +3571,16 @@ def test_the_proxy_row_gives_one_rule_for_both_reports() -> None:
 
 
 def test_the_banner_re_render_names_the_tombstones_it_covers() -> None:
-    """B13 round 7 H68: `Cycle._rerender_stubs` walks the tombstones of the sources in sources.toml only (a
-    retired one's too), so a source deleted from sources.toml keeps its old tombstones until they are reaped;
-    data-governance.md said every intact tombstone is rendered again."""
+    """B13 round 7 H68 narrowed data-governance.md to the tombstones of sources in sources.toml, which was all
+    `Cycle._rerender_stubs` walked. B13 round 8 J74: it walks every source that holds a tombstone output, a
+    source deleted from sources.toml included, so the page says every intact tombstone again."""
     from agentsync import cycle  # noqa: PLC0415
 
     walk = inspect.getsource(cycle._Cycle._rerender_stubs)
-    assert "for src in self.config.sources:" in walk and "self._rerender_tombstones(src.id)" in walk
+    assert "o.status is OutputStatus.TOMBSTONE" in walk and "self._rerender_tombstones(sid)" in walk
     page = _page("docs/deploy/data-governance.md")
-    assert "from what it stored: an intact tombstone, and" not in page
-    assert "an intact tombstone of a source still in `sources.toml` (a retired one's too)" in page
-    assert (
-        "A source deleted from `sources.toml` keeps its tombstones in the old layout until they are reaped"
-        in page
-    )
+    assert "from what it stored: an intact tombstone, and the intact stub of a live source." in page
+    assert "of a source still in" not in page and "keeps its tombstones in the old layout" not in page
 
 
 def test_the_send_step_counts_the_values_the_link_fills() -> None:

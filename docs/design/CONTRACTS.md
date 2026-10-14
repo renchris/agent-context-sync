@@ -16548,6 +16548,8 @@ each source in sources.toml, a retired one's included (§16.66 G77), and sets th
 tombstone of a source deleted from sources.toml (allowed once its rows are all tombstones) keeps the old layout until
 it is reaped. data-governance.md said "an intact tombstone"; it now says one of a source still in `sources.toml` and
 names the exception. Test: `test_the_banner_re_render_names_the_tombstones_it_covers`.
+**Amended 2026-10-14, §16.78 J74:** the tombstone pass now walks every source that holds a tombstone output, a
+source deleted from `sources.toml` included, and data-governance.md says "an intact tombstone" again, unqualified.
 
 **The Send step counts five values** (H71). The issue link fills `setup_report.ISSUE_FIELDS`, five since
 `loop_stage` joined it (2026-10-05), and the field table lists five; the Send step still said "the Summary's four

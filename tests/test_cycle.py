@@ -1533,6 +1533,64 @@ def test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_wi
     assert run(sample_config).commit_sha is None
 
 
+def test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_banner_first(
+    tmp_path: Path,
+) -> None:
+    """B13 round 8 J74: the one-time re-render walked the tombstones of the sources in sources.toml only, and
+    a source whose rows are all tombstones may be deleted from it, so its tombstones from before the banner
+    came first (Q9) kept the title above the banner until they were reaped. Every source that holds a
+    tombstone is walked now; a tombstone needs nothing of its source."""
+    main, other = tmp_path / "main", tmp_path / "other"
+    for root, name in ((main, "note.txt"), (other, "Contoso Retired Memo.txt")):
+        root.mkdir()
+        (root / "README.txt").write_text("sentinel\n", encoding="utf-8")
+        (root / name).write_text("A memo for the closed project.\n", encoding="utf-8")
+    base = config_text(tmp_path / "docs", tmp_path / "state", tmp_path / "cache", main)
+    block = f'\n[[source]]\nid = "contoso-docs"\nkind = "local"\npath = "{other}"\nsentinel = "README.txt"\n'
+    path = tmp_path / "agent-context" / "sources.toml"
+    path.parent.mkdir(parents=True)
+    gone_db = tmp_path / "state" / "manifest.sqlite"
+
+    def configured(text: str) -> Config:
+        path.write_text(text, encoding="utf-8")
+        return parse_config(text, config_path=path)
+
+    assert run(configured(base + block)).exit_code == 0
+    retired = block.replace('kind = "local"', 'kind = "local"\nstate = "retired"\nretired_reason = "closed"')
+    assert run(configured(base + retired)).commit_sha is not None
+    repo, at = tmp_path / "docs", "mirror/contoso-docs/contoso-retired-memo.txt.md"
+    text = (repo / at).read_text(encoding="utf-8")
+    fm, body = page(repo, at)
+    heading = body.split("\n")[2]
+    assert fm["status"] == "deleted" and heading.startswith("# [RETIRED] ")
+    assert body.startswith(f"{UNTRUSTED_BANNER}\n\n{heading}\n")
+    old = text.replace(f"{UNTRUSTED_BANNER}\n\n{heading}\n", f"{heading}\n\n{UNTRUSTED_BANNER}\n")
+    (repo / at).write_text(old, encoding="utf-8")  # the layout before Q9, with its row's hashes
+    with Manifest(gone_db) as m:
+        [out] = [o for o in m.iter_outputs(source_id="contoso-docs") if o.output_path == at]
+        m.replace_outputs(
+            "contoso-docs",
+            out.stable_id,
+            [
+                dataclasses.replace(o, page_sha256=hashlib.sha256(old.encode()).hexdigest())
+                if o.output_path == at
+                else o
+                for o in m.outputs_for("contoso-docs", out.stable_id)
+            ],
+        )
+        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+    git(repo, "commit", "-qam", "a tombstone from before Q9")
+    gone = configured(base)  # the source's block deleted from sources.toml
+    report = run(gone)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    assert (ChangeOp.MODIFIED, at) in [(c.op, c.path) for c in report.changes]
+    assert (repo / at).read_text(encoding="utf-8") == text, "banner first, its own title"
+    with Manifest(gone_db) as m:
+        [out] = [o for o in m.iter_outputs(source_id="contoso-docs") if o.output_path == at]
+    assert out.page_sha256 == hashlib.sha256(text.encode()).hexdigest()
+    assert run(gone).commit_sha is None
+
+
 @pytest.mark.parametrize("history", ["content kept", "squashed"])
 def test_a_tombstone_with_no_last_commit_is_rendered_again_with_the_commit_that_holds_its_content(
     sample_config: Config, local_source_dir: Path, history: str

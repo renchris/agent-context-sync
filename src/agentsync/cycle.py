@@ -1895,7 +1895,8 @@ class _Cycle:
         name (B13 round 5 F63). A redacted item's stub too (B13 round 6 G76): the publisher redacts the
         re-plan itself (``_shown_name``, ``_shown_path``, ``_alloc_rel``), as it did the first one, and the
         secret scan's "survives redaction" check stands behind it. And every intact tombstone page, from its
-        own frontmatter (``_rerender_tombstones``, B13 round 6 G77). A page is written only where the plan
+        own frontmatter (``_rerender_tombstones``, B13 round 6 G77), a deleted source's too (B13 round 8
+        J74). A page is written only where the plan
         differs from the intact page there (as ``_stub_stands`` compares); no verdict or count moves. The
         meta key is written after the last row, so an interrupted run tries again, and only on a run that
         covers every live source."""
@@ -1925,8 +1926,14 @@ class _Cycle:
                     continue
                 self.stub_pages.update(p.output_path for p in pages)
                 rewritten += 1
-        for src in self.config.sources:  # a retired source's too: a tombstone needs nothing of its source
-            rewritten += self._rerender_tombstones(src.id)
+        # Every source that holds a tombstone, a retired one's and one deleted from sources.toml too
+        # (allowed once its rows are all tombstones; they stay until reaped): a tombstone needs nothing of
+        # its source (B13 round 8 J74).
+        ids = {s.id for s in self.config.sources} | {
+            o.source_id for o in self.manifest.iter_outputs() if o.status is OutputStatus.TOMBSTONE
+        }
+        for sid in sorted(ids):
+            rewritten += self._rerender_tombstones(sid)
         self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
         if rewritten:
             log.info("%d stub or tombstone page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
