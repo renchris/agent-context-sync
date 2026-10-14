@@ -1400,6 +1400,14 @@ words, and ends the agent at its first colon (the prompt says to write none insi
 install.sh's awk reads the line in the C locale (B13 round 5 F54)."""
 
 
+_SHELL_STEP1_RE = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z \| step 1 \| (?P<kind>[^|]*?) ?\|"
+)
+"""A step 1 line as install.sh's awk reads one (its ``STEP1_ERROR_RE`` and ``<stamp> | step 1 |``): a UTC
+stamp, lower-case ``step 1``, single spaces. The two L26 rules read only these, so both readers split a log
+alike (B13 round 10 L26's review: ``Step 1`` or a ``+00:00`` time parsed here and not there)."""
+
+
 def parse_friction(text: str) -> Friction:
     """Parse friction.md into attempts. An attempt starts at each ``Attempt: <time>`` line; lines before the
     first one (a v4 log) form an attempt of their own, and a second ``Prompt:`` line in one attempt starts
@@ -1422,12 +1430,18 @@ def parse_friction(text: str) -> Friction:
     is more than the gap after the attempt's latest time, whether or not the attempt has an end line: a
     session that stopped at the folder question leaves none (B13 round 4 Q21). Any other line
     stays in its attempt (a line logged late in the same session must not become the latest attempt), and
-    :func:`stopping_error` does not judge it. When the step 1 error that starts a header-less attempt, or
-    that is the log's first line, has those words, the attempt states that version and agent
-    (:attr:`Attempt.stated`) and the line's what-text is the rest; an attempt with a header, a line that
-    stays in its attempt, and a first line of any other step or kind are never read that way."""
+    :func:`stopping_error` does not judge it. When an attempt with no header and no stated words holds a step
+    1 error with those words, at any place in it, the attempt states that version and agent
+    (:attr:`Attempt.stated`) and the line's what-text is the rest: a stopping session may log a deviation or
+    a prompt line before its error (B13 round 10 L26; it was read only when the error was the attempt's
+    first line). An attempt with a header, and a line of any other step or kind, are never read that way.
+    When a step 1 error opens a header-less attempt, the unbroken run of step 1 lines just before it, each
+    dated more than :data:`_NEW_SESSION_GAP` after the previous attempt's end line, is that session's too and
+    moves with it (L26: it was counted in the attempt that had finished); a late line no such error follows
+    stays where it is."""
     attempts: list[Attempt] = []
     cur: dict[str, object] | None = None
+    shell_step1: dict[int, str] = {}  # line number -> kind, for the lines install.sh reads as step 1's
 
     def orphan(event: FrictionEvent) -> bool:
         if cur is None or event.kind != "error" or event.step != 1 or event.at is None:
@@ -1474,6 +1488,28 @@ def parse_friction(text: str) -> Friction:
                 )
             )
 
+    def late_run() -> list[FrictionEvent]:
+        """Pop the open attempt's trailing step 1 lines dated more than the gap after its end line."""
+        if cur is None:
+            return []
+        events = cast("list[FrictionEvent]", cur["events"])
+        closed = [e.at for e in events if e.kind == "finished" and e.at]
+        if not closed:
+            return []
+        end, k = max(closed), len(events)
+        while (
+            k > 0
+            and events[k - 1].line in shell_step1
+            and (at := events[k - 1].at) is not None
+            and at - end > _NEW_SESSION_GAP
+        ):
+            k -= 1
+        moved = events[k:]
+        del events[k:]
+        if moved:
+            cur["last"] = max(cast(int, cur["first"]), moved[0].line - 1)
+        return moved
+
     def begin(line_no: int, started: datetime | None) -> dict[str, object]:
         close()
         return {
@@ -1487,6 +1523,8 @@ def parse_friction(text: str) -> Friction:
         }
 
     for n, line in enumerate(text.splitlines(), start=1):
+        if (strict := _SHELL_STEP1_RE.match(line)) is not None:
+            shell_step1[n] = strict.group("kind")
         attempt = _ATTEMPT_RE.match(line)
         if attempt is not None:
             cur = begin(n, parse_time(attempt.group(1)))
@@ -1506,12 +1544,14 @@ def parse_friction(text: str) -> Friction:
             cast("dict[str, str]", cur["header"]).setdefault(name, key.group(2).strip("*").strip())
         parsed = _parse_event(n, event.group(1), event.group(2)) if event is not None else None
         if cur is None or (parsed is not None and orphan(parsed)):
-            cur = begin(n, None)
-            # the orphan is a step 1 error; so must a log's first line be, to be read (B13 round 4 Q22, Q38,
-            # Q67)
-            step1 = parsed is not None and parsed.step == 1 and parsed.kind == "error"
-            stated = _STEP1_STATED_RE.match(parsed.what) if parsed is not None and step1 else None
-            if parsed is not None and stated is not None:
+            moved = late_run()
+            cur = begin(moved[0].line if moved else n, None)
+            cast("list[FrictionEvent]", cur["events"]).extend(moved)
+        # only a step 1 error is read for the words, wherever it sits in an attempt with no header (B13 round
+        # 4 Q22, Q38, Q67; round 10 L26)
+        if parsed is not None and shell_step1.get(n) == "error" and not cur["header"]:
+            stated = None if cur["stated"] else _STEP1_STATED_RE.match(parsed.what)
+            if stated is not None:
                 cur["stated"] = {"Prompt": f"v{int(stated.group(1))}", "Agent": stated.group(2).strip()}
                 parsed = dataclasses.replace(parsed, what=parsed.what[stated.end() :])
         if parsed is not None:

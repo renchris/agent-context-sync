@@ -2609,9 +2609,11 @@ def test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer(
         [],  # no friction log
         [("1", "error", "git pull failed: could not resolve host")],  # states no prompt or agent
         [("2", "error", "prompt v15, Contoso Agent: install.sh failed")],  # not step 1
-        # B13 round 9 K14: the stated line is not the first, or a line of another step follows it
-        [("1", "prompt", "the person ran it"), ("1", "error", "prompt v15, Contoso Agent: git pull failed")],
+        # B13 round 9 K14: a line of another step follows the stated line (round 10 L26: a step 1 line before
+        # it no longer leaves the outcome uncomputed, in either reader:
+        # test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers)
         [("1", "error", "prompt v15, Contoso Agent: git pull failed"), ("2", "error", "install.sh failed")],
+        [("2", "prompt", "the person ran it"), ("1", "error", "prompt v15, Contoso Agent: git pull failed")],
     ],
 )
 def test_the_shell_report_computes_no_other_outcome(
@@ -2666,6 +2668,85 @@ def test_the_shell_report_computes_a_step_1_failure_past_its_first_line(
     assert outcome.endswith(" · agent: Contoso Agent"), outcome
     fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
     assert fields["prompt_version"] == ["v15"] and fields["agent"] == ["Contoso Agent"]
+
+
+@pytest.mark.parametrize(
+    ("log", "own", "begin"),
+    [
+        (  # probe a2: a header-less deviation, then the stated error
+            "2026-10-14T17:40:00Z | step 1 | deviation | prompt v18, Contoso Agent: asked first | -\n"
+            "2026-10-14T17:42:00Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            None,
+            "2026-10-14T17:40:00Z",
+        ),
+        (  # a step 1 deviation past the gap after a finished attempt, then the stated error
+            "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
+            "2026-10-14T17:10:00Z | step 2 | deviation | a | -\n2026-10-14T17:20:00Z | end | finished\n"
+            "2026-10-14T17:40:00Z | step 1 | deviation | waited | -\n"
+            "2026-10-14T17:42:00Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            ["deviation", "finished"],
+            "2026-10-14T17:40:00Z",
+        ),
+        (  # a step 1 prompt line with no prefix past the gap, then the stated error
+            "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
+            "2026-10-14T17:10:00Z | step 2 | deviation | a | -\n2026-10-14T17:20:00Z | end | finished\n"
+            "2026-10-14T17:31:00Z | step 1 | prompt | the pull asked to install tools | -\n"
+            "2026-10-14T17:32:00Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            ["deviation", "finished"],
+            "2026-10-14T17:31:00Z",
+        ),
+        (  # a "Step 1" line install.sh's awk does not read as step 1's stays put in both (a reviewer's find)
+            "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
+            "2026-10-14T17:20:00Z | end | finished\n"
+            "2026-10-14T17:31:00Z | Step 1 | deviation | waited | -\n"
+            "2026-10-14T17:42:00Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            ["finished", "deviation"],
+            "2026-10-14T17:42:00Z",
+        ),
+        (  # a late step 1 line inside the gap stays with the finished attempt; the error still opens its own
+            "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
+            "2026-10-14T17:20:00Z | end | finished\n"
+            "2026-10-14T17:25:00Z | step 1 | click | late | -\n"
+            "2026-10-14T17:42:00Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            ["finished", "click"],
+            "2026-10-14T17:42:00Z",
+        ),
+    ],
+)
+def test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers(
+    env: dict[str, str], log: str, own: list[str] | None, begin: str
+) -> None:
+    """B13 round 10 L26: a stopping session may log a deviation or a prompt line before its stated step 1
+    error. Both readers took the version and agent only from an error that was the attempt's first line, so
+    the attempt read "prompt: not stated" (the shell computed no outcome); and the lines before the error,
+    logged after the earlier attempt finished, were counted in that finished attempt. The words come from the
+    first stated step 1 error at any place in a header-less attempt, and the unbroken run of step 1 lines
+    before it, each past the gap after the end line, moves with it."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    (setup / "install.log").write_text(
+        "2026-10-14T16:50:00Z run=20261014T165000Z-41 start install.sh compat=18 args=\n"
+        "2026-10-14T16:51:00Z run=20261014T165000Z-41 end rc=0 seconds=60\n"
+    )
+    friction_path(env).write_text(log, encoding="utf-8")
+    fr = setup_report.parse_friction(log)
+    latest = fr.latest
+    assert latest is not None and latest.stated == {"Prompt": "v18", "Agent": "Contoso Agent"}, latest
+    assert setup_report.compute_outcome(latest, []).text == "failed at step 1"
+    assert latest.begin is not None and latest.begin.strftime("%Y-%m-%dT%H:%M:%SZ") == begin
+    assert all(e.step == 1 for e in latest.events)
+    if own is not None:  # the finished attempt counts only its own lines
+        assert len(fr.attempts) == 2 and [e.kind for e in fr.attempts[0].events] == own, fr.attempts[0]
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    outcome = _summary(text)[2]
+    assert outcome.startswith(
+        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v18 "
+        "(from the step 1 error line) · "
+    ), outcome
+    assert outcome.endswith(" · agent: Contoso Agent"), outcome
+    [line] = [ln for ln in text.splitlines() if ln.startswith("- install.sh: ")]
+    assert f"no install run during this attempt (began {begin})" in line, line
 
 
 def _run_line(text: str) -> str:

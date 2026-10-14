@@ -15480,6 +15480,8 @@ alone is not one, as install.sh's awk has it. The `cur["started"]` clause that s
 is set only by an Attempt: line, which clears the stated words the rule needs) and is gone; behaviour is unchanged,
 so the test pins it rather than failing without the change. Test:
 `test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt`.
+Amended 2026-10-14, §16.86 L26: the error still stays in that attempt, and now states its words: an attempt with no
+header reads them from its first stated step 1 error, wherever it sits.
 
 **G56: the withheld legend names a .msg not on this Mac.** The same defect as lane E's G62 (§16.66), which landed
 first in `1a37b7ec` with this item's fix (the legend, setup-feedback.md's Quarantine row, the `_LABEL_WITHHELD` and
@@ -17466,6 +17468,8 @@ the agent from that first line only, which is what `compute_outcome` and `Attemp
 first line that is not the stated error, or any line of another step, still leaves it to the agentsync report.
 Tests: `test_the_shell_report_computes_a_step_1_failure_past_its_first_line`,
 `test_the_shell_report_computes_no_other_outcome`.
+Amended 2026-10-14, §16.86 L26: the stated error need not be first: an attempt with no header whose timed lines
+are all step 1 lines is computed from its first stated step 1 error, as `parse_friction` now reads it.
 
 **The newer-prompt note names no cause** (K26; amends §16.75 J21). `: step 1's pull did not update it` is dropped:
 a step 1 error can come from the Xcode or the not-a-checkout stop, before any pull ran. The note reads `; newer than
@@ -18069,6 +18073,25 @@ K10's escaped form to `/contoso-gh`. Tests: `test_a_rewrite_path_of_tool_words_i
 keeps the two lists equal), `test_a_git_url_rewrite_host_and_path_are_redacted`,
 `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`,
 `test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports`.
+
+**A stopping session's step 1 lines are its own** (L26; dated lines at §16.64 G51 and §16.81 K14). A stopping
+session may log a deviation or a prompt line before its stated step 1 error. Both readers took the words only from
+an error that was the attempt's first line, so `prompt: not stated · agent: not stated` (the shell computed no
+outcome); and lines logged after an earlier attempt's end line, before the error that opened the new attempt, were
+counted in the finished attempt. The finder's "any line after an end line opens an attempt" was not built: it drops
+the gap and the step-1-error trigger that the late-line tests pin (a step 3 line after `--report-only`, a late click
+in step 1). Built, the same way in both readers: (1) an attempt with no header and no words takes them from its
+first step 1 error that states `prompt vN, <agent>: `, at any place, and that line's what-text is the rest
+(`parse_friction`, reading only the lines install.sh's awk reads as step 1's, `_SHELL_STEP1_RE`: a UTC stamp and
+lower-case `step 1`; install.sh's `track()` sets `PV`/`AG`; `friction_step1_stated` prints the first stated step 1
+error's words when the attempt has no header and every timed line but the end line is a step 1 line); (2) when a
+step 1 error opens a header-less attempt, the unbroken run of step 1 lines just before it, each more than
+`_NEW_SESSION_GAP` after the end line, moves into it (`parse_friction`'s `late_run`; `friction_attempt_begin`
+begins the attempt at the run's first line). A late line no such error follows stays where it was. An `Attempt:`
+line alone is no header (G51), so a stated error after it now states its words too. Tests:
+`test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers`,
+`test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt`, and the late-line contract table,
+unchanged.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

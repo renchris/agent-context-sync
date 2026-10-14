@@ -517,7 +517,8 @@ NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # parse_friction keeps (Prompt, Agent, Outcome, Run: HD, which an Attempt: line clears) always, since a prefixed line is written only before --log-start, so after a header it is
 # always another session's (B13 round 5 F23); after a header-less attempt, a version or agent that differs
 # from its words, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
-# restate(LINE) gives an attempt a step 1 error opened the words that line states.
+# restate(LINE) gives an attempt a step 1 error opened the words that line states; an attempt with no header and
+# no words takes them from its first step 1 error that states them, wherever it sits (B13 round 10 L26).
 # A second Prompt: line in one attempt opens another, as in parse_friction, for any log version (B13 round 6
 # G81): track() then reads it as a time-less Attempt: line (PS: a Prompt: line seen in this attempt) and sets
 # NH, which each reader takes right after track() as it takes an Attempt: line, and clears.
@@ -564,7 +565,7 @@ FRICTION_AWK='
 			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }
 			else if (line ~ s1 && (HD || PV != "" || AG != "") && stated(line)) {
 				if (HD || (PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
-			}
+			} else if (line ~ s1 && stated(line)) { PV = SV; AG = SA } # no header and no words yet: the error states them (L26)
 			if (new) { HD = 0; PS = 0; PV = SV; AG = SA; LT = substr(line, 1, 20) }
 			else if (LT == "" || secs(line) > secs(LT)) LT = substr(line, 1, 20)
 			return new
@@ -1868,23 +1869,26 @@ friction_attempt_begin() {
 	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
 		{ q = track($0) }
-		NH { NH = 0; b = ""; ended = ""; next }
-		/^Attempt:/ { b = substr($0, 10, 20); if (b !~ (stamp "$")) b = ""; ended = ""; next }
-		q { b = substr($0, 1, 20); ended = ""; next }
-		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = substr($0, 1, 20); ended = ""; restate($0); next }
+		NH { NH = 0; b = ""; ended = ""; late = ""; next }
+		/^Attempt:/ { b = substr($0, 10, 20); if (b !~ (stamp "$")) b = ""; ended = ""; late = ""; next }
+		q { b = (late != "" && ended != "") ? late : substr($0, 1, 20); ended = ""; late = ""; next }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = late != "" ? late : substr($0, 1, 20); ended = ""; late = ""; restate($0); next }
 		$0 !~ (stamp " [|]") { next }
 		b == "" { b = substr($0, 1, 20) }
-		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20) }
+		# the unbroken run of step 1 lines past the gap after the end line, which an opening step 1 error takes
+		# with it (parse_friction, B13 round 10 L26)
+		ended != "" { if ($0 ~ (stamp " [|] step 1 [|]") && secs($0) - secs(ended) > gap) { if (late == "") late = substr($0, 1, 20) } else late = "" }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); late = "" }
 		END { print b }' "$f" 2>/dev/null || true
 }
 # The one outcome the shell report computes (B13 round 7 H24): "<N><TAB><agent as written>" when every timed
 # line of the friction log's latest attempt (friction_attempt_begin's) but its end line is a step 1 line, the
-# first of them is a step 1 error that states "prompt vN, <agent>:", and that one is not the line --log-start
-# writes for a copy it stopped. Nothing otherwise. With no install run and an error among events that are all
+# attempt has no header, and its first step 1 error that states "prompt vN, <agent>:" (at any place: a stopping
+# session may log a deviation first, B13 round 10 L26) is not the line --log-start writes for a copy it
+# stopped. Nothing otherwise. With no install run and an error among events that are all
 # step 1's, the agentsync report calls that attempt "failed at step 1" whichever error it picks
-# (compute_outcome), and takes the version and the agent from the line that opens a header-less attempt, the
-# same first line; a later line's words are never read, and a line of another step leaves it to that report,
-# so the two cannot drift. A second step 1 error, or a step 1 prompt or question line, after the stated one no
+# (compute_outcome), and takes the version and the agent from the same line, its first stated step 1 error;
+# a line of another step leaves it to that report, so the two cannot drift. A second step 1 error, or a step 1 prompt or question line, after the stated one no
 # longer leaves the outcome uncomputed (B13 round 9 K14: it was the attempt's only line).
 friction_step1_stated() {
 	local f
@@ -1900,9 +1904,9 @@ friction_step1_stated() {
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
 		$0 !~ (stamp " [|]") { next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
-		first == "" { first = $0 }
+		first == "" && $0 ~ s1 && stated($0) { first = $0 }
 		$0 !~ (stamp " [|] step 1 [|]") { other = 1 }
-		END { if (!other && first ~ s1 && !index(first, mark) && stated(first)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
+		END { if (!HD && !other && first != "" && !index(first, mark) && stated(first)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
 }
 # Whether the friction log's latest attempt has no install run of its own, by the test fallback_install_line
 # makes: a --report-only run, and no install log, no install run in it, or a last one that started before the

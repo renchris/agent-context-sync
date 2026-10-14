@@ -314,8 +314,12 @@ prefix. After a header-less attempt with stated words (round 4), it
 does so only when its version or agent differs from them, or it comes more than 10 minutes after that attempt's
 latest time. Such an attempt is listed as "no Attempt: line, since another session logged it after the previous
 attempt, which has no end line". When such an error is the log's first line its words are read too, and the attempt
-is "no Attempt: line, since its session stopped before `install.sh --log-start`". A step 1 error without those words, a line of
-another step or kind, and a late line that stays in its attempt are never read that way. Any
+is "no Attempt: line, since its session stopped before `install.sh --log-start`". Since round 10 (L26) an attempt
+with no header and no words yet reads them from its first step 1 error that states them, wherever it sits: a
+stopping session may log a deviation or a prompt line first. When a step 1 error opens such an attempt, the step 1
+lines just before it, each more than 10 minutes after the earlier attempt's end line, are that session's and move
+with it; a late line no such error follows stays where it is. A step 1 error without those words and a line of
+another step or kind are never read that way. Any
 other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
 written more than 10 minutes after the last attempt's end line, with no run in install.log since (`--report-only`
 is not logged there), says so in a note: a session whose step 1 stopped before `--log-start` and logged nothing is

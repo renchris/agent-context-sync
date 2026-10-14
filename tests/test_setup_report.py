@@ -9195,10 +9195,13 @@ def test_a_stored_as_note_whose_two_forms_redact_alike_is_shown_once() -> None:
 def test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt() -> None:
     """B13 round 6 G51: an ``Attempt:`` line alone is no header, so a step 1 error that states its words right
     after it stays in that attempt (install.sh's awk reads it so too); a Prompt: line makes it another
-    session's. The clause that tested the Attempt: line was dead and is gone; this pins the behaviour."""
+    session's. The clause that tested the Attempt: line was dead and is gone; this pins the behaviour.  B13
+    round 10 L26: an attempt with no header reads a stated step 1 error's words wherever the error sits, so
+    this one states them too (it stays in its attempt as before)."""
     err = "2026-10-06T10:01:00Z | step 1 | error | prompt v12, Contoso Bot: git pull failed | -\n"
     [only] = setup_report.parse_friction(f"Attempt: 2026-10-06T10:00:00Z\n{err}").attempts
-    assert only.stated == {} and only.events[0].what == "prompt v12, Contoso Bot: git pull failed"
+    assert only.stated == {"Prompt": "v12", "Agent": "Contoso Bot"}
+    assert only.events[0].what == "git pull failed"
     headed = f"Attempt: 2026-10-06T10:00:00Z\nPrompt: v12\n{err}"
     assert len(setup_report.parse_friction(headed).attempts) == 2
 
