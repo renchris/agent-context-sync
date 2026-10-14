@@ -4668,8 +4668,8 @@ def _reread_finished(
             "an engine" if "ocr_ms" in looked.counts else "no engine, so a finished scan says nothing of OCR"
         )
         scan = (
-            f"Run {looked.run_id} is the newest run that records what its re-read looked for, and `finished` "
-            f"is measured against it; it had {had}."
+            f"Run {looked.run_id}, the newest run that records what its re-read looked for, is what "
+            f"`finished` is measured against; it had {had}."
         )
     if state == "ready":
         files = f"The files a re-read would look at are {counted}."
@@ -4681,12 +4681,14 @@ def _reread_finished(
         )
         files = f"{why} The files from before OCR that a re-read looks at with an engine are {counted}."
     rule = " A label rule is on, so no image is read and none is counted." if label_rule else ""
-    # short sentences, the same facts (B13 round 7 H5)
+    # short sentences, the same facts (B13 round 7 H5). "From before OCR" covers the early OCR build's pages,
+    # so the clause that named it on every Mac ("from the early OCR build or not") is gone; the term is said
+    # where `counted` uses it (B13 round 8 J3, J15)
     return (
         f"- re-read, per source: finished in all {len(sources)} local or inbox source(s) with a record "
-        f"({named}). Every count is 0, so the table is left out. No file on this Mac from before OCR is "
-        f"waiting to be read again, from {_FIELD_BUILD} or not, none failed once, none was given up (under "
-        f"any engine or version), and no read was cut off when a cycle died. {scan} {files}{rule}"
+        f"({named}), and every count is 0, so the table is left out. Nothing from before OCR is waiting to "
+        "be read again: none failed even once, none was given up under any engine or version, and no read "
+        f"was cut off when a cycle died. {scan} {files}{rule}"
     )
 
 
@@ -4849,10 +4851,18 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
         *_lines(lambda: _ocr_time(r, m)),
     ]
-    # the term is said once, where the part first uses it (B13 round 7 H5)
+    # the term is said once, where the part first uses it (B13 round 7 H5). Where a bracket of its own
+    # follows the term (a document cell's "(1 online-only)", the re-read table's "(fourth column)") the
+    # gloss goes inside it, so two brackets never sit side by side (B13 round 8 J41)
     first = next((i for i, line in enumerate(lines) if _FIELD_BUILD in line), None)
     if first is not None:
-        lines[first] = lines[first].replace(_FIELD_BUILD, f"{_FIELD_BUILD} {_FIELD_BUILD_SAID}", 1)
+        head, after = lines[first].split(_FIELD_BUILD, 1)
+        close = after.find(")")
+        if after.startswith(" (") and close > 0:
+            after = f"{after[:close]}; that build was never released{after[close:]}"
+            lines[first] = f"{head}{_FIELD_BUILD}{after}"
+        else:
+            lines[first] = lines[first].replace(_FIELD_BUILD, f"{_FIELD_BUILD} {_FIELD_BUILD_SAID}", 1)
     return lines
 
 

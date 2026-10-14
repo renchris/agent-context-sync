@@ -5776,6 +5776,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "early OCR build (an OCR build that was never released)\n" in ocr_part
     ), "the term's first mention says what it is (B13 round 7 H5)"
     assert ocr_part.count("(an OCR build that was never released)") == 1 and "field build" not in ocr_part
+
     assert (
         "- Word (.docx) files with a page: 0 with an OCR identity, 1 without an OCR identity (1 "
         "online-only)\n" in ocr_part
@@ -5848,6 +5849,24 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     ), "the record's id is no row of this manifest"
     for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
         assert raw not in text, raw
+
+
+def test_the_early_ocr_builds_gloss_never_sits_beside_an_online_only_bracket(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 8 J41: the term's gloss went in right after its first mention, and a document cell of the
+    early OCR build with online-only files has a bracket there: "1 from the early OCR build (an OCR build
+    that was never released) (1 online-only)". The gloss goes at the end of that line instead, once."""
+    seed = Seed(fake_mac["config"])
+    _one, _inbox, two = seed.ids()
+    seed.item(
+        two, "merger deck.pptx", version="1.0.0+python-pptx-1.0.2+ocr-off", dataless=True, state="dataless"
+    )
+    seed.close()
+    ocr_part = status_parts(fake_mac)[1]["OCR"]
+    [line] = [ln for ln in ocr_part.splitlines() if ln.startswith("- deck (.pptx) files with a page: ")]
+    assert line.endswith("1 from the early OCR build (1 online-only; that build was never released)"), line
+    assert ") (" not in ocr_part and ocr_part.count("never released") == 1, ocr_part
 
 
 def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_is_now(
@@ -8005,17 +8024,31 @@ def test_an_all_zero_re_read_table_is_one_line(
     part = status_parts(fake_mac)[1]["OCR"]
     names = list(reread_rows(part))
     assert len(names) == len(ids) and "Every count is 0, so the table is left out" not in part
-    # short sentences, the same facts, and "field build" said in words (B13 round 7 H5)
+    # short sentences, the same facts, and "field build" said in words (B13 round 7 H5); the clause that
+    # named the early OCR build on every Mac is gone, and the term is glossed where the files list uses it
+    # (B13 round 8 J3, J15)
     assert (
         f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record "
-        f"({', '.join(names)}). Every count is 0, so the table is left out. No file on this Mac from before "
-        "OCR is waiting to be read again, from the early OCR build (an OCR build that was never released) "
-        "or not, none failed once, none was given up (under any engine or version), and no read was cut "
-        "off when a cycle died. Run 6 is the newest run that records what its re-read looked for, and "
-        "`finished` is measured against it; it had an engine. The files a re-read would look at are images "
-        "with the no-converter stub, scanned PDFs whose stub says OCR was not run and documents whose page "
-        "has no OCR identity or comes from the early OCR build.\n" in finished
+        f"({', '.join(names)}), and every count is 0, so the table is left out. Nothing from before OCR is "
+        "waiting to be read again: none failed even once, none was given up under any engine or version, "
+        "and no read was cut off when a cycle died. Run 6, the newest run that records what its re-read "
+        "looked for, is what `finished` is measured against; it had an engine. The files a re-read would "
+        "look at are images with the no-converter stub, scanned PDFs whose stub says OCR was not run and "
+        "documents whose page has no OCR identity or comes from the early OCR build (an OCR build that was "
+        "never released).\n" in finished
     ), finished
+    assert "or not, none failed once" not in finished and "or not," not in finished
+    # The newest run that says what its re-read looked for had no engine: the line never claims one.
+    seed = Seed(cfg)
+    seed.m.set_meta("reread:" + ids[1], json.dumps([{"done": True, "for": now, "tried": []}]))
+    seed.run(7, {"converted": 0, "reread_for": int(now[:8], 16)})
+    seed.close()
+    noengine = status_parts(fake_mac)[1]["OCR"]
+    assert (
+        "Run 7, the newest run that records what its re-read looked for, is what `finished` is measured "
+        "against; it had no engine, so a finished scan says nothing of OCR." in noengine
+    ), noengine
+    assert "it had an engine" not in noengine
     # A scan that is not finished keeps the table too, with every count 0.
     seed = Seed(cfg)
     seed.m.set_meta("reread:" + ids[1], json.dumps([{"done": False, "for": now, "tried": []}]))
