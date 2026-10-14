@@ -1474,9 +1474,11 @@ redaction_pairs() {
 			# A URL rewrite's base (B13 round 7 H20), a URL or git's scp form (git@host:path): its base after
 			# the scheme and user and its host, as the Python report registers them, in their written and lower
 			# case forms (git prints the host as configured, a resolver error in lower case); an scp base's
-			# path too, a whole word, unless it is a server's generic layout (git, scm, repos), since the Python
-			# report reads git@host as an email address first. GitHub's own host is skipped, so the repository
-			# locator and the issue link stay.
+			# path too, unless it is a server's generic layout (git, scm, repos) or words the report prints, since
+			# the Python report reads git@host as an email address first. The path is matched with an end boundary
+			# only, no letter or digit after it, as in Python (pair flag e): its own ":" marks the start, and before a ":" in any URL is the last letter of a host, which a
+			# whole-word match refused, so the pair never matched (B13 round 8 J37). GitHub's own host is
+			# skipped, so the repository locator and the issue link stay.
 			rw=1
 			u="${u#rw=}"
 			case "$u" in *://*) h="${u#*://}" sep="/" ;; *) h="$u" sep=":" ;; esac
@@ -1493,7 +1495,7 @@ redaction_pairs() {
 			b=" git scm repo repos mirror mirrors src source code " # setup_report._GENERIC_PATH_WORDS
 			if [ "$sep" = : ]; then
 				for w in $(printf '%s' "$tail" | LC_ALL=C tr -c 'A-Za-z0-9' ' ' | LC_ALL=C tr '[:upper:]' '[:lower:]'); do
-					case "$b" in *" $w "*) ;; *) k=1 ;; esac
+					case "$b" in *" $w "*) ;; *) report_word "$w" || k=1 ;; esac
 				done
 			fi
 			[ -n "$k" ] || tail=""
@@ -1511,7 +1513,11 @@ redaction_pairs() {
 			seen="$seen$v "
 			n=$((n + 1))
 			case "$v" in
-			"$tail") add_pair "$v" "<proxy-$n>" w ;;
+			"$tail")
+				# flag e: no letter or digit may follow, as in Python; a ".git" or a "-tools" may
+				add_pair "$v" "<proxy-$n>" e
+				add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<proxy-$n>" e
+				;;
 			"$pac" | *.*)
 				add_pair "$v" "<proxy-$n>"
 				[ -z "$rw" ] || add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<proxy-$n>"
@@ -1636,14 +1642,14 @@ redact_stream() {
 			if (split(rows[k], f, "\t") < 2) continue
 			v = f[1]
 			if (!index($0, v)) continue # every plain piece is a piece of the input line
-			n = length(v); word = (f[3] == "w"); tail = (f[3] == "t"); m = 0
+			n = length(v); word = (f[3] == "w"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
 				s = seg[j]; acc = ""
 				while ((i = index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
-					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/)) {
+					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (alnum && post ~ /[A-Za-z0-9]/)) {
 						acc = acc substr(s, 1, i + n - 1)
 					} else {
 						keep(acc substr(s, 1, i - 1), 0); acc = ""

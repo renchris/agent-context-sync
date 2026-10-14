@@ -6245,6 +6245,12 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         "Could not resolve hostname scp.northwind-two.invalid | -\n"
         "2026-10-10T00:00:03Z | step 1 | error | Could not resolve host: mirror.northwind-four.invalid; "
         "/usr/bin/git and https://github.com/astral-sh/uv stay | -\n"
+        # B13 round 8 J37: the scp path after another host; its pair was a whole word, which a host's last
+        # letter before the ":" always refused
+        "2026-10-10T00:00:04Z | step 1 | error | git pull "
+        "git@mirror2.example.invalid:northwind-scp/x.git | -\n"
+        "2026-10-10T00:00:05Z | step 1 | error | saw git@mirror3.example.invalid:northwind-scp.git and "
+        "x:northwind-scp-tools | -\n"
     )
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
@@ -6259,6 +6265,10 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         text
     )
     assert "/usr/bin/git and https://github.com/astral-sh/uv stay" in text, "a generic path is no value"
+    assert re.search(r"git pull git@mirror2\.example\.invalid<proxy-\d+>/x\.git \|", text), text
+    assert re.search(r"saw git@mirror3\.example\.invalid<proxy-\d+>\.git and x<proxy-\d+>-tools \|", text), (
+        text
+    )
     assert "- URL rewrite in git's config: set (4)\n" in text
     (home / ".gitconfig").unlink()
     assert install_sh(env, "--report-only").returncode == 0

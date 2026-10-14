@@ -16166,6 +16166,9 @@ from the Python report's. All are `<proxy-N>`, registered after git's proxies an
 existing `<proxy-N>` is renumbered and no placeholder class or legend changes. The Environment line adds a count, `URL rewrite in git's config: set (N)` or `not set`. Tests:
 `tests/test_setup_report.py::test_a_git_url_rewrite_host_and_path_are_redacted` (with no git on PATH),
 `tests/test_install_oneshot.py::test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`.
+Amended 2026-10-14, §16.75 J37: the shell matches the scp path with an end boundary only (pair flag `t`; its
+leading `:` marks the start), in its written and lower-case forms, and skips the report's own words as Python does;
+as a whole word it never matched, since a host's last letter comes before the `:`.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
