@@ -8283,6 +8283,13 @@ Amended 2026-10-14, §16.85 K59 (by §16.74 J52, J54): an image is no longer cou
 `ready`. Its suffix is in the withheld set for a row when its stub page's `reason:` reads `withheld by label rule:
 the label of a <suffix> file cannot be read` (`_Mirror.read_image_pages`); a page that says `no converter for` keeps
 the row `no converter`; only a page the report could not read goes by the OCR probe.
+Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the page decides as `policy.page_says_withheld` reads it (its
+`reason:`, its summary less `refused: `, or the body marker), not by its `reason:` alone, so a page from before its
+`reason:` said withheld (§16.66 G29) is withheld under `reason: no converter for <suffix>`, as its
+`_sync/QUARANTINE.tsv` row is since §16.90 L54; a page that says `no converter for` and nowhere withheld keeps `no converter`; a
+stub with no page, a symlink, a non-file, a page outside the docs folder, one that does not parse, one past the
+page-read time (a quarter of the time left, at most `_PAGES_S`, 0.75 s) or one saying neither is unread and goes by
+the OCR probe. There is no page count cap.
 
 **OCR.**
 
@@ -16729,6 +16736,11 @@ the `reason:` of each image stub whose row says `no converter for <image suffix>
 under docs_repo, no symlink, inside the evidence time) and `reason_class` / `refused_type` take the row's ids; only a
 page it cannot read goes by the OCR probe, and the legend counts those. `(the page says so)` is gone. Test:
 `test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe`.
+Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the pages are read for a quarter of the evidence time left and
+at most `_PAGES_S` (0.75 s), with no count cap, and a page says withheld as `policy.page_says_withheld` reads it
+(`reason:`, summary or body), not by its `reason:` alone; the legend counts the unread stubs in both probe states
+(`counted as withheld because OCR is ready now`, `under no converter because OCR is not ready now`) and, when the
+manifest query for their pages fails, says every image stub went by the probe.
 
 **A listing that did not finish takes step 1's list, or the report is private** (J69). Both readers register the
 folders install.out's `--list-folders` runs printed (`listed_folder_names`; the shell's awk), after the listing.
@@ -17736,6 +17748,9 @@ the page decides, so an engine added or removed later changes nothing, and that 
 probe; the table carries a dated line. Test: `test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe`
 (drives `withheld_for` both ways); `test_setup_feedback_states_the_report_rules_of_round_3` now pins the old
 sentence's absence.
+Amended 2026-10-14, §16.91 L57 (by §16.80 K48): the page decides through `policy.page_says_withheld` (its `reason:`,
+its summary or its body), not its `reason:` alone, and a page that says neither goes by the probe too; the guide's
+row and the class table say so.
 
 **A Mac at `STUB_RENDER` 5 runs J74's wider tombstone pass** (K70; dated lines at §16.66's "`STUB_RENDER` is 4",
 §16.71 H77 and §16.78 J74). J74 made `Cycle._rerender_stubs` walk the source of every TOMBSTONE output, a source deleted from
@@ -17899,4 +17914,19 @@ load skip is added.
 
 ### 16.91 Round 10: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 10 lane D)
 
-Reserved for round 10 lane D of B13.
+Docs, dated lines and tests that lagged round 9's code and contract text (`docs/plans/bring-back-ocr.md`, "B13
+round 10"; specs `round10/items/L<n>.md`, the verifier's corrected fix built). Each item is pinned by a test that
+fails on the text it replaced. A dated line this round writes for an older round's change reads `Amended
+2026-10-14, §16.91 L<n> (by §16.8N K<n>)`.
+
+**An image stub page is read as the cycle reads it, in the guide and the class table** (L52, L57, L70: one defect;
+dated lines at §16.28's class table, §16.74 J52 and §16.85 K59). Since §16.80 K48 and K58 `_Mirror.read_image_pages`
+classes a page by `policy.page_says_withheld` (its `reason:`, its summary less `refused: `, or the body marker), for
+a quarter of the time left and at most `_PAGES_S`, and `_unread_pages` adds a legend clause in both probe states
+and for a failed query. The guide's Quarantine-by-reason row said the `reason:` decides, that a `no converter for`
+page keeps `no converter` and that `_sync/QUARANTINE.tsv` agrees, and listed three unread cases; round 9's guide
+test pinned those sentences. The row now gives the three routes, the pre-G29 page (withheld in the TSV too since
+§16.90 L54, `Publisher.write_quarantine`; only a stub whose page could not be read can disagree with it), every
+case that goes by the probe, and the legend's words. Test:
+`test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe` (classes a pre-G29 page through
+`page_says_withheld`, and reads the legend's words from `_unread_pages`).

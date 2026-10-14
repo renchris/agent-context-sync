@@ -4228,18 +4228,49 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
     mirror.images_by_probe = True
     assert ".png" not in mirror.withheld_for(reason, "s", "no-converter")  # and over one that is ready
     assert ".png" in mirror.withheld_for(reason, "s", "unread")  # no page read: the probe decides
-    page = _page("docs/deploy/setup-feedback.md")
+    page = " ".join(_page("docs/deploy/setup-feedback.md").split())
     assert (
         "Without an OCR engine no image converter exists whatever the policy says, so an image keeps"
         not in page
     )
-    assert "So is an image whose stub page's `reason:` says it is withheld." in page
     assert "an OCR engine added or removed since then does not change the class" in page
-    assert "An image whose page says `no converter for` keeps the `no converter` class" in page
+    # B13 round 10 L52, L57, L70 (one defect): since round 9 K48 a page says withheld as the cycle reads it,
+    # so a page from before G29, `reason: no converter for .png` under a withheld summary or body, is withheld
+    # (and in QUARANTINE.tsv since round 10 L54); K58 named the unread stubs in the legend in both probe
+    # states
+    from agentsync import policy  # noqa: PLC0415
+
+    banner = "> banner\n\n# a.png\n\n"
+    assert policy.page_says_withheld(reason, f"{policy.REFUSED_PREFIX}{policy._WITHHELD_WORDS}: x", "")
+    assert policy.page_says_withheld(reason, None, banner + policy._WITHHELD_BODY)
+    assert not policy.page_says_withheld(reason, None, banner + "the file has no converter")
+    assert "So is an image whose stub page's `reason:` says it is withheld." not in page
+    assert "An image whose page says `no converter for` keeps the `no converter` class" not in page
+    assert "(missing, a symlink, or past the report's read bound)" not in page
     assert (
-        "Only an image stub whose page the report could not read (missing, a symlink, or past the report's "
-        "read bound) goes by whether the OCR part's `helper:` reads `ready` now" in page
+        f"its `reason:`, or its summary less any leading `{policy.REFUSED_PREFIX}`, starts "
+        f"`{policy._WITHHELD_WORDS}`, or its body under the heading says its content "
+        "is withheld (content policy)" in page
     )
+    assert (
+        "the report classes it withheld, and so does `_sync/QUARANTINE.tsv`, which writes the withheld reason"
+        in page
+    )
+    assert (
+        "An image whose page says `no converter for` and nowhere says withheld keeps the `no converter` class"
+        in page
+    )
+    assert "one that does not parse, one past the report's page-read time" in page
+    assert f"at most {setup_report._PAGES_S} s), and one that says neither" in page
+    mirror.pages_unread, mirror.pages_failed = 1, False
+    ready = setup_report._unread_pages(mirror)
+    mirror.images_by_probe = False
+    off = setup_report._unread_pages(mirror)
+    mirror.pages_failed = True
+    failed = setup_report._unread_pages(mirror)
+    assert f"`{ready.replace(' 1 image', ' N image')}`" in page
+    assert f"`... {off.partition('counted ')[2]}`" in page
+    assert f"(`{failed.partition(': ')[2]}`)" in page and "every image stub is counted" in failed
     table = " ".join(
         _contracts_section("| `withheld by label rule` | starts `no converter for `", "**OCR.**").split()
     )
@@ -4248,6 +4279,19 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
         in table
     )
     assert f"`{setup_report._WITHHELD_IMAGE_REASON.format('<suffix>')}`" in table
+    assert (
+        "Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the page decides as `policy.page_says_withheld`"
+        in (table)
+    )
+    j52 = " ".join(_contracts_section("**An image stub is classed as its page says** (J52", "\n\n").split())
+    assert "Amended 2026-10-14, §16.91 L52 (by §16.80 K48, K58): the pages are read for a quarter" in j52
+    k59 = " ".join(
+        _contracts_section("**An image's class follows its stub page in the guide", "\n\n").split()
+    )
+    assert (
+        "Amended 2026-10-14, §16.91 L57 (by §16.80 K48): the page decides through `policy.page_says_withheld`"
+        in k59
+    )
 
 
 def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() -> None:
