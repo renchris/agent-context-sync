@@ -3753,8 +3753,8 @@ def test_the_installers_stop_line_keeps_both_remedies_in_the_report(fake_mac: di
     item line cut every fix at 160 characters, which hid the second. The installer's stop line keeps its
     fix to 400 (640 since B13 round 10 L41: test_every_newer_copy_stop_line_keeps_its_second_remedy...)."""
     clause = (
-        '; or, if the first line of the prompt says "setup prompt v9", the --log-start value was changed: '
-        "run step 1's command again once, exactly as the prompt writes it"
+        '; or, if the first line of the prompt says "setup prompt v9": run step 1\'s command again once, '
+        "exactly as the prompt writes it"
     )
     write_friction(fake_mac, STOPPED_V8.replace("on the main branch\n", f"on the main branch{clause}\n"))
     text, _summary = summary_of(fake_mac)
@@ -3811,14 +3811,14 @@ def test_every_newer_copy_stop_line_keeps_its_second_remedy_in_the_summary(fake_
     ):
         assert words in script, ("the words are install.sh's", words)
     said, ours = int(compat.group(1)) + 1, compat.group(1)
+    # the second remedy as install.sh writes it since B13 round 10 L20, with no cause
     clause = (
-        f'; or, if the first line of the prompt says "setup prompt v{ours}", the --log-start value was '
-        "changed: run step 1's command again once, exactly as the prompt writes it"
+        f'; or, if the first line of the prompt says "setup prompt v{ours}": run step 1\'s command again '
+        "once, exactly as the prompt writes it"
     )
-    assert (
-        "the --log-start value was changed: run step 1's command again once, exactly as the prompt" in script
-    )
-    assert max(len(fix + clause) for fix in fixes) > 560, "the longest form is measured, not a stand-in"
+    assert '": run step 1\'s command again once, exactly as the prompt writes it"' in script
+    # past the 400 that cut the second remedy (L41), measured, not a stand-in
+    assert max(len(fix + clause) for fix in fixes) > 500, "the longest form is measured, not a stand-in"
     for fix in fixes:
         write_friction(
             fake_mac,

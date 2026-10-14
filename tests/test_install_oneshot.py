@@ -4927,10 +4927,11 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
 
 
 SECOND_REMEDY = (
-    f'; or, if the first line of the prompt says "setup prompt v{COMPAT}", the --log-start value was '
-    "changed: run step 1's command again once, exactly as the prompt writes it"
+    f'; or, if the first line of the prompt says "setup prompt v{COMPAT}": run step 1\'s command again once, '
+    "exactly as the prompt writes it"
 )
-"""The stop line's second remedy, after its first (B13 round 9 K18); the NEXT carries only the first."""
+"""The stop line's second remedy, after its first (B13 round 9 K18); the NEXT carries only the first. Its
+cause is in the error column alone (B13 round 10 L20)."""
 
 
 def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: dict[str, str]) -> None:
@@ -5410,6 +5411,12 @@ def test_the_shell_stopped_copy_warn_is_the_reports() -> None:
     assert w == setup_report._STOPPED_COPY_WARN
 
 
+def test_the_shell_stopped_copy_beyond_is_the_reports() -> None:
+    """B13 round 10 L39: the shim's Doctor header ends in K24's words, kept equal to the report's."""
+    [b] = re.findall(r'(?m)^STOPPED_COPY_BEYOND="(.*)" #', INSTALL_SH.read_text())
+    assert b == setup_report._STOPPED_COPY_BEYOND
+
+
 STOPPED_WARN = setup_report._STOPPED_COPY_WARN
 _COMMIT_WARN = (
     "[warn] install.commit — installed from 0123456789ab, but the checkout at ~/src/agent-context-sync is at "
@@ -5419,6 +5426,8 @@ _DOCTOR_HEAD = "42 check(s): 39 ok, 0 info, 3 warn, 0 FAIL. Only the lines that 
 _EXPECTED_NOTE = (
     " expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do."
 )
+_STOPPED_NOTE = _EXPECTED_NOTE.removesuffix(".") + setup_report._STOPPED_COPY_BEYOND + "."
+"""The header beside a stopped-copy reason, in K24's words (B13 round 10 L19, L39)."""
 
 
 def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
@@ -5457,7 +5466,7 @@ def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
             [_COMMIT_WARN],
             "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
             f"({STOPPED_WARN}) · unexpected 0",
-            _DOCTOR_HEAD + " 1" + _EXPECTED_NOTE,
+            _DOCTOR_HEAD + " 1" + _STOPPED_NOTE,
             [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
         ),
         (  # beside an ad hoc launcher's expected warn and another unexpected one
@@ -5471,18 +5480,35 @@ def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
             ],
             "- doctor: 0 FAIL, 3 warn (42 checks) · expected 2: launcher.signature (ad hoc launcher); "
             f"install.commit ({STOPPED_WARN}) · unexpected 1: launchd.poll warn",
-            _DOCTOR_HEAD + " 2" + _EXPECTED_NOTE,
+            _DOCTOR_HEAD + " 2" + _STOPPED_NOTE,
             [
                 "[warn] launcher.signature — ad hoc (expected: ad hoc launcher)",
                 _COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})",
                 "[warn] launchd.poll — x",
             ],
         ),
-        (  # a renderer with J18 already
+        (  # a renderer with J18 already, before K24: only its header gains K24's words (B13 round 10 L19)
             "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
             f"({STOPPED_WARN}) · unexpected 0",
             _DOCTOR_HEAD + " 1" + _EXPECTED_NOTE,
             [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+            None,
+            _DOCTOR_HEAD + " 1" + _STOPPED_NOTE,
+            None,
+        ),
+        (  # a renderer with K24 already: left as it is
+            "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
+            f"({STOPPED_WARN}) · unexpected 0",
+            _DOCTOR_HEAD + " 1" + _STOPPED_NOTE,
+            [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+            None,
+            None,
+            None,
+        ),
+        (  # another expected warn only: no stopped-copy reason, so no K24 words
+            "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: launcher.signature (ad hoc launcher)",
+            _DOCTOR_HEAD + " 1" + _EXPECTED_NOTE,
+            ["[warn] launcher.signature — ad hoc (expected: ad hoc launcher)"],
             None,
             None,
             None,
@@ -5526,14 +5552,69 @@ def test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected(
     assert got_fenced == (want_fenced or fenced)
 
 
+_OLDER = f"older than the installer's v{COMPAT}: the pasted copy was not the current README"
+_CHANGED = ", or the --log-start value was changed"
+
+
+@pytest.mark.parametrize(
+    ("line", "want"),
+    [
+        (f"- prompt: v{COMPAT - 1} ({_OLDER})", f"- prompt: v{COMPAT - 1} ({_OLDER}{_CHANGED})"),
+        (
+            f"- prompt: v{COMPAT + 1} (newer than the installer's v{COMPAT}: it follows main)",
+            f"- prompt: v{COMPAT + 1} (newer than the installer's v{COMPAT}: it follows main{_CHANGED})",
+        ),
+        (
+            f"- prompt: v{COMPAT + 1} (newer than the installer's v{COMPAT})",
+            f"- prompt: v{COMPAT + 1} (newer than the installer's v{COMPAT}{_CHANGED})",
+        ),
+        (  # a renderer that joins its notes with "; "
+            f"- prompt: v{COMPAT - 1} (from the step 1 line; {_OLDER})",
+            f"- prompt: v{COMPAT - 1} (from the step 1 line; {_OLDER}{_CHANGED})",
+        ),
+        (f"- prompt: v{COMPAT - 1} ({_OLDER}{_CHANGED})", None),  # a renderer with K22 already
+        ("- prompt: v7 or older (the installer stopped this copy: it named no version)", None),
+    ],
+)
+def test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version(
+    env: dict[str, str], tmp_path: Path, line: str, want: str | None
+) -> None:
+    """B13 round 10 L18 and L24: a stopped copy is rendered by the installed agentsync, which step 2 never
+    updated. One older than K22 gave its Summary prompt line one reason for the stop, beside the stop line's
+    two, and its Run metadata named its own prompt version beside the Summary's comparison with this
+    installer's. The installer gives the prompt line the second reason, and says whose version the metadata
+    names; a line in K22's words, the no-version form, a prompt line outside the Summary and a matching
+    version are left."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    meta_old = f"- agentsync: 0.1.0, setup prompt v{COMPAT - 1} (python 3.11.9, /usr/bin/python3)"
+    meta_same = f"- agentsync: 0.1.0, setup prompt v{COMPAT} (python 3.11.9, /usr/bin/python3)"
+    old = tmp_path / "old-report.md"
+    old.write_text(
+        _old_doctor_report(line, _DOCTOR_HEAD, ["[warn] launchd.poll — x"]).replace(
+            "## Redaction", f"### Run metadata\n\n{meta_old}\n{meta_same}\n{line}\n\n## Redaction"
+        )
+    )
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    lines = side.read_text().splitlines()
+    meta = lines.index("### Run metadata")
+    assert lines[lines.index("## Summary") + 2] == (want or line)
+    assert lines[meta + 4] == line, "a prompt line outside the Summary is left as it is"
+    assert lines[meta + 2 : meta + 4] == [
+        f"- agentsync: 0.1.0, setup prompt v{COMPAT - 1} (the installed agentsync, which renders this "
+        "report; the checkout's installer, which stopped this copy, is for setup prompt "
+        f"v{COMPAT}, and the fresh copy's step 2 reinstalls agentsync) (python 3.11.9, /usr/bin/python3)",
+        meta_same,
+    ]
+
+
 def test_a_stopped_lines_fix_names_the_remedy_of_both_readings(env: dict[str, str]) -> None:
     """B13 round 9 K18: the line --log-start writes for a copy it stops names two causes (an older or newer
     copy, or a changed --log-start value), but its fix column gave only the first one's remedy; the second was
     in the message to the agent only. Both remedies now, the first one's first, where the report reads it."""
-    clause = (
-        f'; or, if the first line of the prompt says "setup prompt v{COMPAT}", the --log-start value was '
-        "changed: run step 1's command again once, exactly as the prompt writes it"
-    )
+    clause = SECOND_REMEDY
     for said, first in (
         (f"prompt v{COMPAT - 1}, Contoso Agent", "copy the prompt again from "),
         (f"prompt v{COMPAT + 1}, Contoso Agent", ""),  # newer_copy_fix's remedy, which this checkout decides
@@ -5545,6 +5626,8 @@ def test_a_stopped_lines_fix_names_the_remedy_of_both_readings(env: dict[str, st
         ]
         fix = stop.split(" | ")[-1]
         assert fix.startswith(first) and fix.endswith(clause) and not fix.startswith("; or"), (said, fix)
+        # the cause is in the error column, once: the fix column named it again (B13 round 10 L20)
+        assert stop.count("the --log-start value was changed") == 1, stop
 
 
 def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str], tmp_path: Path) -> None:

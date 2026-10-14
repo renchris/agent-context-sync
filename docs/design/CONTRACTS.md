@@ -17329,12 +17329,16 @@ changed)`). The reason is kept, not dropped in favor of the friction line: it is
 The quotes in docs/deploy/setup-feedback.md follow. Tests:
 `test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary`, the setup-feedback quote test in
 `tests/test_deploy_pack.py`.
+Amended 2026-10-14, §16.87 L18: a stopped report an older agentsync rendered gets the same words from
+`stopped_report_note`.
 
 **A stopped copy's Doctor intro points at its NEXT line** (K24). When an expected warn carries the stopped-copy
 reason (`the installer stopped this copy in step 1, before step 2 reinstalls agentsync`), the Doctor intro ends
 `nothing for this setup to do beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step
 2).` Other expected warns (the ad hoc launcher, LaunchAgents not yet installed) keep `nothing for this setup to
 do.`; the key is the reason attached, not `copy_stopped` alone. Test: `test_a_stopped_copys_install_commit_warn_is_expected`.
+Amended 2026-10-14, §16.87 L39 (and L19): the words are `_STOPPED_COPY_BEYOND`, and `stopped_report_note` gives
+them to a stopped report an older agentsync rendered.
 
 **The Loop line names the config in words** (K43). The empty-folder wait read `that source's exclude in
 sources.toml` beside `the docs repo's _sync/STATE.md`. `_eval_by_name` writes the config's path as `the config
@@ -17511,13 +17515,16 @@ and its real-agentsync twin.
 names two causes but its fix column gave only the first one's remedy. The second follows it: `; or, if the first
 line of the prompt says "setup prompt vN", the --log-start value was changed: run step 1's command again once,
 exactly as the prompt writes it`, in all three branches (older, no version, newer), after the first, where
-`_prompt_stop_note` reads it. The NEXT of the stopped copy's `--report-only` (`friction_attempt_stopped`) keeps
+`_prompt_copy_note` reads it. The NEXT of the stopped copy's `--report-only` (`friction_attempt_stopped`) keeps
 the first remedy only, so it names the version once. The agentsync report's item line keeps that line's fix to 400
 characters (160 for any other). Tests: `test_a_stopped_lines_fix_names_the_remedy_of_both_readings`,
 `test_the_installers_stop_line_keeps_both_remedies_in_the_report`,
 `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`.
 Amended 2026-10-14, §16.86 L41: the item line keeps the installer's stop-line fix to 640 characters; 400 cut the
 second remedy from every newer-copy stop.
+Amended 2026-10-14, §16.87 L20: the second remedy names no cause (`...says "setup prompt vN": run step 1's command
+again once, ...`); the error column states it once. Amended 2026-10-14, §16.87 L43: `_prompt_copy_note`, not
+`_prompt_stop_note`, reads the fix column.
 
 **A stopped copy rendered before J18 calls its commit warn expected** (K21). J18 is in the agentsync report only,
 and a stopped copy is rendered by the installed agentsync, which step 2 never updated. `stopped_report_note`, which
@@ -17528,6 +17535,9 @@ unexpected list to an `expected N:` part. `STOPPED_COPY_WARN` is `setup_report._
 them equal). A report already in J18's words, or another install.commit warn, is left as it is. Tests:
 `test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected`,
 `test_the_shell_stopped_copy_warn_is_the_reports`.
+Amended 2026-10-14, §16.87 L39 (and L19): the header beside the stopped-copy reason ends in K24's words, from the
+shim's note, a counted note or a renderer that labeled the warn itself; §16.87 L18 and L24 rewrite the Summary's
+prompt line and the Run metadata's prompt version of the same report.
 
 **The agentsync step's note reads as words** (K35; amends §16.68 H33). The report showed install.log's token
 `waited-for-a-background-sync` as prose in the Summary and the Installer table, which brought back the claim H33
@@ -18100,7 +18110,34 @@ unchanged.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 
-Reserved for round 10 lane RB of B13.
+The installer's findings of the v18 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 10"). Each item has a test that fails without it. Where an item changes what an older section states,
+that section has a dated line (`Amended 2026-10-14, §16.87 L<n>`) and its text is otherwise as it was.
+
+**The stop line names its cause once** (L20 and L43; amends §16.81 K18). The fix column's second remedy repeated
+`the --log-start value was changed`, which the error column just before it already says, so the stop line said it
+twice and the stopped report five times. The second remedy reads `; or, if the first line of the prompt says "setup
+prompt vN": run step 1's command again once, exactly as the prompt writes it`. The error column (`_PROMPT_STOP_RE`
+reads it), the message to the agent (its only source for the second reading) and `friction_attempt_stopped`'s cut
+are unchanged. K18's comment and paragraph named `setup_report._prompt_stop_note`, which does not exist; the
+function that reads the fix column is `_prompt_copy_note` (L43). Test:
+`test_a_stopped_lines_fix_names_the_remedy_of_both_readings` (the phrase once on the line).
+
+**A stopped report rendered by an older agentsync reads as this installer's** (L18, L19, L24 and L39; L19 and L39
+one defect; amends §16.81 K21, §16.80 K22 and K24). A stopped copy is rendered by the installed agentsync, which
+step 2 never updated, so K22's and K24's words reached no field report, and K21's own shim wrote the bare `nothing
+for this setup to do.` beside the stopped-copy reason. `stopped_report_note` now also: (a) gives K24's words to the
+Doctor header (`STOPPED_COPY_BEYOND`, equal to `setup_report._STOPPED_COPY_BEYOND`) whenever the Doctor part holds a
+warn ending `(expected: <STOPPED_COPY_WARN>)`, whichever renderer annotated it, on the shim's new note and on a
+counted one, never twice; (b) adds `, or the --log-start value was changed` inside the copy note of a `## Summary`
+`- prompt: ` line (`(older ...` or `(newer than the installer's vN...`, or a `; `-joined one) that lacks it, and
+leaves the `v7 or older` form and any line outside the Summary; (c) after an older build's Run metadata `setup
+prompt vN`, when N is not this installer's version, inserts `(the installed agentsync, which renders this report;
+the checkout's installer, which stopped this copy, is for setup prompt vM, and the fresh copy's step 2 reinstalls
+agentsync)`, before its `(python ...)` bracket. Tests:
+`test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected` (K24's renderer left alone, another
+expected warn keeps the bare words), `test_the_shell_stopped_copy_beyond_is_the_reports`,
+`test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version`.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 

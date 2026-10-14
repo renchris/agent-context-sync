@@ -2176,6 +2176,12 @@ def it_draft_fields(text: str) -> tuple[list[str], list[str]]:
 
 
 _STOPPED_COPY_WARN = "the installer stopped this copy in step 1, before step 2 reinstalls agentsync"
+# "nothing for this setup to do" sat beside a reason that says step 2 has not run (B13 round 9 K24);
+# install.sh's STOPPED_COPY_BEYOND gives these words to an older renderer's stopped report (a test keeps them
+# equal; B13 round 10 L39)
+_STOPPED_COPY_BEYOND = (
+    " beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)"
+)
 """Why ``install.commit`` warns on a stopped copy (:func:`expected_warn`): step 1 pulls the checkout and its
 ``--log-start`` then stops the copy, so step 2's reinstall never runs (B13 round 8 J18)."""
 
@@ -4054,11 +4060,9 @@ def _doctor(r: _Run) -> list[str]:
     summary = f"{sum(tags.values())} check(s): " + ", ".join(
         f"{tags.get(t, 0)} {t}" for t in ("ok", "info", "warn", "FAIL")
     )
-    # "nothing for this setup to do" sat beside a reason that says step 2 has not run (B13 round 9 K24)
-    beyond = " beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)"
     note = (
         f" {annotated} expected warn(s) end in (expected: <why>) instead of their fix: nothing for this "
-        f"setup to do{beyond * stopped_note}."
+        f"setup to do{_STOPPED_COPY_BEYOND * stopped_note}."
         if annotated
         else ""
     )

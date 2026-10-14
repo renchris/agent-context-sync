@@ -1755,9 +1755,8 @@ def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, sh
         1,
         "error",
         f'copy the prompt again from {source}; or, if the first line of the prompt says "setup prompt '
-        f"v{PROMPT[0]}\", the --log-start value was changed: run step 1's command again once, exactly as the "
-        "prompt writes it",
-    ), "both readings' remedies (B13 round 9 K18)"
+        f"v{PROMPT[0]}\": run step 1's command again once, exactly as the prompt writes it",
+    ), "both readings' remedies (B13 round 9 K18), the cause in the error column only (B13 round 10 L20)"
     assert event.what == (
         f"install.sh --log-start: the pasted setup prompt is v7 or older and this installer is for setup "
         f"prompt v{PROMPT[0]}: the pasted copy is not the current one, or the --log-start value was changed; "

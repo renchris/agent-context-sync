@@ -428,9 +428,11 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 				newer_copy_fix
 				fix="$FIX"
 			fi
-			# The fix column names the second reading's remedy too, in the words of the message below, after the
-			# first's, where setup_report._prompt_stop_note still finds that one (B13 round 9 K18).
-			fix="$fix; or, if the first line of the prompt says \"setup prompt v$SETUP_PROMPT_COMPAT\", the --log-start value was changed: run step 1's command again once, exactly as the prompt writes it"
+			# The fix column names the second reading's remedy too, after the first's, where
+			# setup_report._prompt_copy_note still finds that one (B13 round 9 K18). It names the remedy without
+			# its cause: the error column just before it already says the --log-start value may have changed,
+			# and the stop line said it twice (B13 round 10 L20).
+			fix="$fix; or, if the first line of the prompt says \"setup prompt v$SETUP_PROMPT_COMPAT\": run step 1's command again once, exactly as the prompt writes it"
 			# The line names both readings, as the message below does: a current copy whose agent changed the
 			# value is stopped the same way, and only this line reaches the report (B13 round 8 J9). The words
 			# come after the reason, where setup_report._PROMPT_STOP_RE still reads the line.
@@ -2777,6 +2779,11 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # moves "install.commit warn" from its unexpected list to its expected one. Only that old wording is changed: a
 # newer renderer never lists the warn as unexpected for a stopped copy, and on_exit runs this only for one.
 STOPPED_COPY_WARN="the installer stopped this copy in step 1, before step 2 reinstalls agentsync" # setup_report._STOPPED_COPY_WARN (a test keeps them equal)
+# A Doctor header beside that reason ends "nothing for this setup to do" plus these words, whichever renderer wrote
+# it: the shim's own note and a renderer from J18 up to K24 wrote the bare words (B13 round 10 L19, L39).
+STOPPED_COPY_BEYOND=" beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)" # setup_report._STOPPED_COPY_BEYOND (a test keeps them equal)
+# An older renderer's Summary prompt line gives one reason for the stop and its Run metadata names its own prompt
+# version: the stop line names two reasons (B13 round 9 K18) and this installer's version (B13 round 10 L18, L24).
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -2787,7 +2794,8 @@ stopped_report_note() { # KEPT-REPORT-PATH
 			LC_ALL=C awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
 				-v gone="(an earlier run's bring-back and issue link lines are left out of this report)" \
 				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
-				-v w="$STOPPED_COPY_WARN" '
+				-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
+				-v changed=", or the --log-start value was changed" '
 				function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
 				function old(line) { return index(line, "[warn] install.commit \342\200\224 ") == 1 && index(line, ", but the checkout at ") > 0 && index(line, " (fix: ") > 0 }
 				function doctor_line(line,    k, p, i, j, a, m, items, rest, e, done) { # the Summary\047s, as c6aa4485 writes it
@@ -2806,10 +2814,22 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					for (i = 2; i <= k; i++) line = line " \302\267 " p[i]
 					return line
 				}
+				function ends(line, tail) { return length(line) >= length(tail) && substr(line, length(line) - length(tail) + 1) == tail }
+				function prompt_line(line,    i, j, r, q) { # the copy note gains the stop line\047s second reason
+					if (index(line, "- prompt: ") != 1 || index(line, changed)) return line
+					if (!(i = index(line, " (older than the installer\047s v"))) i = index(line, " (newer than the installer\047s v")
+					if (!i && !(i = index(line, "; older than the installer\047s v"))) i = index(line, "; newer than the installer\047s v")
+					if (!i) return line
+					r = substr(line, i + 2)
+					if (!(j = index(r, ")"))) return line
+					q = i + 1 + j
+					return substr(line, 1, q - 1) changed substr(line, q)
+				}
 				FNR == 1 { sec = "" }
 				NR == FNR {
 					if (index($0, "## ") == 1) sec = $0
 					if (sec == "## Doctor" && old($0)) c++
+					if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
 					if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
 					if (index($0, "- install.sh: no run during this attempt") == 1) norun = 1
 					if (!at && index($0, "<details><summary>the last ") == 1 && index($0, " line(s) of ") > 0) { at = FNR; inside = 1; next }
@@ -2827,6 +2847,10 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					}
 				}
 				index($0, "## ") == 1 { sec = $0 }
+				sec == "## Summary" { $0 = prompt_line($0) }
+				index($0, "- agentsync: ") == 1 && match($0, /, setup prompt v[0-9]+ \(/) && substr($0, RSTART + 16, RLENGTH - 18) != compat {
+					$0 = substr($0, 1, RSTART + RLENGTH - 3) " (the installed agentsync, which renders this report; the checkout\047s installer, which stopped this copy, is for setup prompt v" compat ", and the fresh copy\047s step 2 reinstalls agentsync)" substr($0, RSTART + RLENGTH - 2)
+				}
 				c && sec == "## Doctor" && old($0) { $0 = substr($0, 1, index($0, " (fix: ") - 1) " (expected: " w ")" }
 				c && sec == "## Doctor" && $0 ~ /^[0-9]+ check\(s\): .*\. Only the lines that are not ok:/ {
 					if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do."
@@ -2834,6 +2858,9 @@ stopped_report_note() { # KEPT-REPORT-PATH
 						e = substr($0, RSTART + 1) + 0
 						$0 = substr($0, 1, RSTART) (e + c) substr($0, RSTART + 1 + length(e ""))
 					}
+				}
+				(c || st) && sec == "## Doctor" && $0 ~ /^[0-9]+ check\(s\): .*\. Only the lines that are not ok:/ && !index($0, b) && ends($0, "nothing for this setup to do.") {
+					$0 = substr($0, 1, length($0) - 1) b "."
 				}
 				c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0) }
 				index($0, "Send it: ") == 1 || index($0, u) == 1 { next }
