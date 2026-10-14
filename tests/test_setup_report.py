@@ -3547,8 +3547,9 @@ def test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failur
     again = "Attempt: {at}\nPrompt: v{version}\nAgent: {agent}\n"
     rerun = "stopped at step 1 (rerun: --log-start said {said}; the next attempt, {gap} later, said v{to})"
     both = (
-        "failed at step 1 (a changed --log-start value, or a fresh copy: the next attempt, {gap} later, said "
-        "v{to})"
+        # the stopped attempt's own causes, then the next attempt (B13 round 10 L21)
+        "failed at step 1 (an older copy, or a changed --log-start value; the next attempt, {gap} later, "
+        "said v{to})"
     )
     for said, why, at, version, agent, earlier in (
         (

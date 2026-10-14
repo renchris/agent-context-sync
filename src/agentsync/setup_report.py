@@ -6608,7 +6608,9 @@ def _rerun_note(fr: Friction, index: int) -> tuple[str, str] | None:
     note, where "failed at step 1" blamed the checkout or the copy for a slip the next command put right. An
     older copy ("the pasted copy is not the current one") reads both ways: an agent's corrected value, or the
     person's fresh copy from the README pasted into a new session, which the window cannot tell apart. It
-    stays ``failed`` and its note names both readings. Versions and seconds only are shown."""
+    stays ``failed`` and its note names the stop's two causes, as the Summary's prompt note does, then the
+    next attempt: the bracket is this attempt's, so a fresh copy, which only the next one can be, is never
+    named as its cause (B13 round 10 L21). Versions and seconds only are shown."""
     if index + 1 >= len(fr.attempts):
         return None
     att, after = fr.attempts[index], fr.attempts[index + 1]
@@ -6624,7 +6626,7 @@ def _rerun_note(fr: Friction, index: int) -> tuple[str, str] | None:
         return None
     later = f"the next attempt, {_secs(gap.total_seconds())} later, said v{after.version}"
     if stop.group(2).startswith("the pasted copy"):
-        return "failed", f"a changed --log-start value, or a fresh copy: {later}"
+        return "failed", f"an older copy, or a changed --log-start value; {later}"
     return "stopped", f"rerun: --log-start said {said}; {later}"  # a "vN or older" copy is an older one
 
 

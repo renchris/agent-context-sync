@@ -292,7 +292,7 @@ install.log (a `--list-folders` run is not an install run):
   show it. A copy fetched again from the README and pasted into a new session stays `failed at step 1`. Since
   2026-10-14 (round 9, K11) the stop of an older copy (`the pasted copy is not the current one`) is never read as a
   rerun, since a person can paste a fresh copy inside the 120 s (a rehearsal did in 23 s): it stays failed and, inside
-  the window, reads `failed at step 1 (a changed --log-start value, or a fresh copy: the next attempt, 23s later,
+  the window, reads `failed at step 1 (an older copy, or a changed --log-start value; the next attempt, 23s later,
   said v18)`.
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that

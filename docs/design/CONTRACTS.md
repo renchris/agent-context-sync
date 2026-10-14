@@ -17310,6 +17310,8 @@ inside the 120 s window reads `failed at step 1 (a changed --log-start value, or
 23s later, said v17)`. The finder's 15 s window was not built: no gap tells an agent's slow rerun from a person's
 quick copy, and it would bring back J9's false failure for a newer copy. Test:
 `test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure` (1 s, 23 s and 2m01s rows).
+Amended 2026-10-14, §16.86 L21: the bracket reads `failed at step 1 (an older copy, or a changed --log-start value;
+the next attempt, 23s later, said v17)`.
 
 **The Summary's prompt line names both readings of a stop** (K22; dated line at §16.28's prompt-line bullet). The
 installer's stop line has said `..., or the --log-start value was changed` since J9, while the Summary named one
@@ -17983,6 +17985,14 @@ scanned PDFs with a stub: none`, as K5 shortened the re-read line. The images-no
 every state (the finder dropped it): it is the measurement of the open decision O2's cost, and research cites its 0
 as the evidence. Tests: `test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line`,
 `test_ocr_part_counts_images_documents_rereads_and_time`.
+
+**An older copy's failed bracket names its own causes** (L21; dated line at §16.80 K11). `failed at step 1 (a
+changed --log-start value, or a fresh copy: the next attempt, 26s later, said v18)` sat on the stale attempt as if
+"a fresh copy" were its cause, though only the next attempt can be the fresh copy. The bracket keeps the stopped
+attempt as its subject, as every `failed at step N (...)` bracket does, and names the stop's two causes in the
+Summary prompt note's order, then the next attempt: `failed at step 1 (an older copy, or a changed --log-start
+value; the next attempt, 26s later, said v18)`. Test:
+`test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 
