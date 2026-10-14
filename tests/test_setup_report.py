@@ -6910,6 +6910,34 @@ def test_every_unreadable_reason_is_a_class_the_repeat_conversions_note_names() 
     assert set(setup_report._UNREADABLE_CLASSES) <= set(setup_report.QUARANTINE_CLASSES)
 
 
+def test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 9 K6: on a Mac whose runs are all this build's, the OCR time line said "(a run of an earlier
+    build did not)" beside "4 recorded these counts" of 4, and the converter cache line "(a count that also
+    holds for runs of an earlier build)" though no such run exists."""
+    seed = Seed(fake_mac["config"])
+    for run in (1, 2, 3, 4):
+        seed.run(run, {"converted": 1, "ocr_ms": 1000, "ocr_budget_s": 180})
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    assert "- OCR time: of the last 4 run(s), 4 recorded these counts and 4 had an engine;" in parts["OCR"], (
+        parts["OCR"]
+    )
+    assert "earlier build" not in parts["Repeat conversions"], parts["Repeat conversions"]
+    assert "by the run before it\n" in parts["Repeat conversions"] + "\n"
+    # the run before the newest is an earlier build's: the cache line's bracket comes back
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("UPDATE runs SET counts_json = '{}' WHERE run_id = 3")
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    assert (
+        "by the run before it (a count that also holds for runs of an earlier build)"
+        in parts["Repeat conversions"]
+    )
+    assert "3 recorded these counts (a run of an earlier build did not) and 3 had an engine" in parts["OCR"]
+
+
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])

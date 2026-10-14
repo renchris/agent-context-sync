@@ -5008,9 +5008,11 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
         if newest is not None
         else "- waiting for OCR: no run that had an engine is recorded"
     )
+    # the bracket explains a gap, so it is said only where one is (B13 round 9 K6)
+    gap = " (a run of an earlier build did not)" if len(recorded) < len(runs) else ""
     out = [
-        f"- OCR time: of the last {len(runs)} run(s), {len(recorded)} recorded these counts (a run of an "
-        f"earlier build did not) and {len(engine)} had an engine; {total('ocr_over')} used up the cycle's "
+        f"- OCR time: of the last {len(runs)} run(s), {len(recorded)} recorded these counts{gap} and "
+        f"{len(engine)} had an engine; {total('ocr_over')} used up the cycle's "
         f"OCR time; {total('ocr_down')} ended with the helper not working; the helper ran "
         f"{total('ocr_ms') / 1000:.0f}s in all",
         waiting,
@@ -5717,6 +5719,9 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
+    # said only when one of the two runs it counts for is an earlier build's, one that recorded no
+    # conversions (B13 round 9 K6): on a Mac that only ran this build it explained nothing
+    earlier = any(x.run_id in again and "converted" not in x.counts for x in runs)
     total = 0
     for last_used, files in m.rows(
         "SELECT last_used_run, COUNT(*) FROM cache WHERE last_used_run > created_run GROUP BY 1"
@@ -5728,8 +5733,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "",
         f"- converter cache: {total} conversion(s) were used again by a later run than the one that made "
         f"them (the same bytes converted again, by the same file or by a copy of it); {again[newest]} of "
-        f"them last by the newest run ({newest}), {again[newest - 1]} by the run before it (a count that "
-        "also holds for runs of an earlier build)",
+        f"them last by the newest run ({newest}), {again[newest - 1]} by the run before it"
+        + (" (a count that also holds for runs of an earlier build)" if earlier else ""),
     ]
     return out
 

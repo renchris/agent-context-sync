@@ -17228,6 +17228,12 @@ docs/deploy/setup-feedback.md quotes, is kept. The finders' `done ... (run N, th
 was not built: the run is the newest that says what its re-read looked for, which may have had no engine. Tests:
 `test_an_all_zero_re_read_table_is_one_line`, `test_an_all_zero_re_read_line_keeps_each_caveat_in_a_sentence_of_its_own`.
 
+**The earlier-build brackets are said where an earlier build's run is** (K6). The OCR time line's `(a run of an
+earlier build did not)` follows `N recorded these counts` only when fewer runs recorded them than ran; the converter
+cache line's `(a count that also holds for runs of an earlier build)` only when the newest run or the one before it,
+the two runs it counts for, recorded no conversions. Test:
+`test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is`.
+
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 
