@@ -1660,9 +1660,8 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
         getattr(args, "config", None), hooks=_report_hooks(), friction_path=friction
     )
     link = f"{setup_report.ISSUE_LINK_LABEL} {setup_report.issue_link(text) or setup_report.ISSUE_URL}"
-    if (
-        red.private_only
-    ):  # the report says to send it privately: no public issue (B13 round 6 G47, round 8 J69)
+    # the report says to send it privately: no public issue (B13 round 6 G47, round 8 J69)
+    if red.private_only:
         link = ""
     try:
         setup_report.write_report(out, text)

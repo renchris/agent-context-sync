@@ -3105,3 +3105,17 @@ def test_status_counts_refused_files_apart_from_quarantined_ones(
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
     (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source (local, live): ")]
     assert f" · quarantined {quarantined} · refused {refused} · deferred " in line, line
+
+
+def test_no_one_word_condition_is_wrapped_only_for_its_trailing_comment() -> None:
+    """B13 round 9 K57: J69's ``if red.private_only:`` read ``if (`` / ``red.private_only`` / ``):  # ...``,
+    since ruff's formatter wraps a condition whose trailing comment runs past the line length. Such a comment
+    goes on its own line above the ``if``; a condition that is multi-line on its own keeps its parentheses."""
+    wrapped = re.compile(r"^[ \t]*(?:el)?if \(\n[ \t]+[\w.]+\n[ \t]*\):[ \t]*#", re.MULTILINE)
+    src = Path(__file__).parents[1] / "src" / "agentsync"
+    hits = [
+        f"{p.relative_to(src)}: {m[0]!r}"
+        for p in sorted(src.rglob("*.py"))
+        for m in wrapped.finditer(p.read_text("utf-8"))
+    ]
+    assert hits == []
