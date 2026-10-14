@@ -1696,7 +1696,7 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None:
 _UNREAD_WHY = {
     "no-tool": "no agentsync was installed",
     "timeout": "the reader took over 10 s",
-    "failed": "the installed agentsync could not load it",
+    "failed": "the installed agentsync failed while reading it",  # neither blamed (B13 round 10 L37)
 }
 """install.sh's ``marks=`` word on a list run that could not read the config -> the report's words for it."""
 _UNREAD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
@@ -3567,7 +3567,7 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
             # what the list read of the config, which "(listed-6)" alone hid: a list that marked two folders
             # and one that could not read the config were the same row (B13 round 8 J10, J31). Fixed words
             # and a count only, never the log's own marks= text. The clause names sources.toml, which the
-            # words' "could not load it" refer back to, as the Summary's note does (B13 round 10 L22, L45).
+            # words' "it" refers back to, as the Summary's note does (B13 round 10 L22, L45).
             synced, unread = _count(v, "synced"), _unread_words(v)
             if synced is not None:
                 counts = f"{synced} already synced"

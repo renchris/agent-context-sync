@@ -4423,9 +4423,9 @@ def test_the_summary_says_why_a_folder_list_could_not_read_the_config(
     whys = {
         " marks=no-tool": "no agentsync was installed",
         " marks=timeout": "the reader took over 10 s",
-        " marks=failed": "the installed agentsync could not load it",
-        " marks=failed:ConfigError": "the installed agentsync could not load it and raised ConfigError",
-        " marks=failed:<org-1>": "the installed agentsync could not load it",
+        " marks=failed": "the installed agentsync failed while reading it",
+        " marks=failed:ConfigError": "the installed agentsync failed while reading it and raised ConfigError",
+        " marks=failed:<org-1>": "the installed agentsync failed while reading it",
         " marks=older:provider_link_resolved": (
             "the installed agentsync was older than the installer and had no provider_link_resolved"
         ),
@@ -9495,14 +9495,14 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
         f"{unread}the installed agentsync was older than the installer and had no is_under)"
     )
     assert cell(f"{head} synced=unreadable marks=failed:ConfigError") == (
-        f"{unread}the installed agentsync could not load it and raised ConfigError)"
+        f"{unread}the installed agentsync failed while reading it and raised ConfigError)"
     )
     for fields in ("marks=older:is_under", "marks=failed:ConfigError", "marks=timeout"):
         assert cell(f"{head} synced=unreadable {fields}").count(":") == 1, fields
     assert cell(f"{head} synced=unreadable") == f"{unread}the installed agentsync could not run the reader)"
     # the log's own text is never shown: a marks= detail that is no identifier, a synced= that is no count
     assert cell(f"{head} synced=unreadable marks=failed:Bad-Name!x") == (
-        f"{unread}the installed agentsync could not load it)"
+        f"{unread}the installed agentsync failed while reading it)"
     )
     assert cell(f"{head} synced=Contoso") == "done (listed-6)"
     assert cell(f"{head} synced=1234567") == "done (listed-6)"

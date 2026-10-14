@@ -3640,6 +3640,25 @@ def _page(relative: str) -> str:
     return " ".join((ROOT / relative).read_text(encoding="utf-8").split())
 
 
+def test_step_1s_failed_config_exception_reads_the_installers_words() -> None:
+    """B13 round 10 L11 (lane RB) and lane P's v19: for a config the installed agentsync failed while reading,
+    install.sh's NEXT keeps the words the prompt's second exception reads ("whose folders could not be read")
+    and says the installed agentsync failed while reading it, with no claim that step 2 keeps the folders;
+    the prompt tells the agent not to say step 2 keeps them when the NEXT says so."""
+    readme = _page("README.md")
+    assert "this Mac has a config whose folders could not be read" in readme
+    assert (
+        "If that NEXT: line says the installed agentsync failed while reading the config, show me that line "
+        "in its own words and do not say step 2 keeps my folders" in readme
+    )
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [clause] = re.findall(
+        r'(?m)^\t\tkept="(; this Mac has a config .*?failed while reading it.*)"$', installer
+    )
+    assert clause.startswith("; this Mac has a config ($CONFIG) whose folders could not be read: ")
+    assert "the installed agentsync failed while reading it" in clause and "keeps" not in clause
+
+
 def test_data_governance_states_the_secret_scan_and_msg_rules_the_code_runs() -> None:
     """B13 round 4 Q58 and Q69: the governance page limited the built-in secret patterns to files once held
     back (since R76 they read every page), said nothing of an archive copy the rescan matches (R74), called a

@@ -483,6 +483,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:
   if it was set up before, <install.sh> with no --source-local keeps whatever that config syncs, and each
   --source-local only adds`, and after a reader timeout `; or re-run <install.sh> --list-folders to mark them`.
+  When the installed agentsync failed while reading it (`marks=failed`, a config that does not load or a broken
+  install), it adds instead `; this Mac has a config (<config>) whose folders could not be read: the installed
+  agentsync failed while reading it (it raised <Class>), and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, and if that
+  version cannot load it either, step 2 stops at its config step and nothing is kept or added until the config is
+  fixed`: step 2's reinstall reads a config an older agentsync rejected for a newer key (B13 round 10 L11).
   Since v18 step 1 treats that list like the one above: it runs the offered re-run once, says the list could not
   read the folders, and asks only whether to add one; an agent that cannot ask adds none and runs step 2 with no
   `--source-local`, which is not a deviation. If step 2 then says no folder is synced yet (the config held none),

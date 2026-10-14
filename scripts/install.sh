@@ -3287,10 +3287,12 @@ list_folders() {
 				why="the installed agentsync is older than this installer: it has no $lacks"
 				marks="older:$lacks"
 			else
-				why="the installed agentsync could not load it"
 				# the class of the error, never its text
 				lacks="$(LC_ALL=C tail -1 "$tmp/rerr" | LC_ALL=C sed -En 's/^([A-Za-z_]+[.])*([A-Za-z]+(Error|Exception)):.*$/\2/p')"
 				marks="failed${lacks:+:$lacks}"
+				# words that blame neither the config nor agentsync: a SyntaxError in agentsync's own module and a
+				# config that is not UTF-8 (a UnicodeDecodeError, not a ConfigError) both end here (B13 round 10 L37)
+				why="the installed agentsync failed while reading it${lacks:+ and raised $lacks}"
 			fi
 		fi
 		case "$synced/$unlisted" in
@@ -3322,10 +3324,22 @@ list_folders() {
 	# A config whose folders could not be read is still there: the NEXTs that ask for a folder or a sign-in
 	# say so as information, never a count, since none was read (B13 round 8 J17)
 	kept=""
-	if [ -n "$unread" ]; then
+	case "$unread" in
+	"") ;;
+	*" marks=failed"*)
+		# A config the installed agentsync failed on: step 2 reinstalls agentsync, which may read it (an older one
+		# that rejects a newer key) or may stop at its config step, where neither "keeps" nor "only adds" holds
+		# (B13 round 10 L11). status prints the error itself. The clause opens as the others do, the words the
+		# prompt's step 1 exception reads.
+		lacks="${unread##* marks=failed}"
+		lacks="${lacks#:}"
+		kept="; this Mac has a config ($CONFIG) whose folders could not be read: the installed agentsync failed while reading it${lacks:+ (it raised $lacks)}, and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, and if that version cannot load it either, step 2 stops at its config step and nothing is kept or added until the config is fixed"
+		;;
+	*)
 		kept="; this Mac has a config ($CONFIG) whose folders could not be read: if it was set up before, $SELF with no --source-local keeps whatever that config syncs, and each --source-local only adds"
 		case "$unread" in *" marks=timeout") kept="$kept; or re-run $SELF --list-folders to mark them" ;; esac
-	fi
+		;;
+	esac
 	rc=0
 	if [ -n "$denied" ]; then
 		rc=4

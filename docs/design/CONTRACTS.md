@@ -16839,6 +16839,9 @@ time. No count: none was read, and the config may hold the inbox alone. Whether 
 "already synced on this Mac:" exception is lane P's (told). Tests: `test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
 `test_list_folders_with_no_provider_says_an_unread_config_is_there`,
 `test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`.
+Amended 2026-10-14, §16.87 L11: after `marks=failed` the clause goes on `: the installed agentsync failed while
+reading it (it raised <Class>), and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first,
+...` and claims no keep.
 
 **With several folders, the docs repo line prints beside the sources line** (J13). The first add-source call's
 `docs repo` line, and its `time machine:` lines, are held in a temp file and printed directly above the last call's
@@ -17311,6 +17314,8 @@ unchanged. Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_t
 `tests/test_install_oneshot.py`.
 Amended 2026-10-14, §16.86 L22, L45: the cell reads `could not read which folders sources.toml syncs, because
 <why>`, so "could not load it" refers to the file.
+Amended 2026-10-14, §16.87 L37: the `failed` words read `the installed agentsync failed while reading it`, and
+install.sh's warning now names the class too (`... failed while reading it and raised SyntaxError`).
 
 **An older copy's stop followed within two minutes stays a failure** (K11; dated line at §16.74 J9). A rehearsal
 copied a fresh prompt into a new session 23 s after the installer stopped a stale copy, and the report called the
@@ -18196,6 +18201,25 @@ author line). Tests: `test_the_bring_back_header_names_only_what_the_file_holds`
 only, both, a patch not repeated), `test_report_only_writes_one_bring_back_file`. Landed beside §16.86 L25 (lane RA), which
 built the same author rule and adds "Section 3 sends no patch this time: ..." when only `not repeated:` lines
 remain; the two are one function.
+
+**A config the installed agentsync failed on: neutral words, and no keep claimed** (L11 and L37; amends §16.75
+J17 and §16.80 K23). L37: step 1's warning and the report said `the installed agentsync could not load it` for
+every failure but a timeout or a missing import, which blames the config; a SyntaxError in agentsync's own module
+ends there too. Both read `the installed agentsync failed while reading it`, and install.sh adds `and raised
+<Class>` as the report does (K23's one colon, no bracket). Not split on ConfigError: a config that is not UTF-8
+raises UnicodeDecodeError, which the split would call agentsync's failure. L11: after `marks=failed` the NEXT said
+a run with no `--source-local` keeps whatever the config syncs and each `--source-local` only adds, but step 2's
+`init --config` (and `add-source`) then stop on that config. The clause keeps its opening words, which the prompt's
+step 1 exception reads, and goes on `: the installed agentsync failed while reading it (it raised <Class>), and
+~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, and if that version cannot load it
+either, step 2 stops at its config step and nothing is kept or added until the config is fixed`; `no-tool`,
+`older:*` and `timeout` keep J17's clause. Not sent from step 1 to the report: step 2's reinstall reads a config an
+older agentsync rejected for a newer key. The prompt words went to lane P (§16.88). docs/deploy/setup-feedback.md
+says so. Tests: `test_step_1_says_nothing_is_kept_of_a_config_the_installed_agentsync_failed_on` (the real
+agentsync: a duplicate source id stops step 2 with exit 1; an older build that rejects the config is reinstalled
+and step 2 keeps it byte for byte), `test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
+`test_step_1s_failed_config_exception_reads_the_installers_words` (pins v19's words to the clause), the
+`_unread_words` cases in `tests/test_setup_report.py`.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 

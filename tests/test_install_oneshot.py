@@ -3745,7 +3745,9 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
     cp = install_sh(env, "--list-folders")
     # a new Mac's exit and NEXT, which adds that a config is there (B13 round 8 J17)
-    assert cp.returncode == 3 and cp.stdout.splitlines() == [_unread_next(env, head=only)], "an unread config"
+    assert cp.returncode == 3 and cp.stdout.splitlines() == [
+        _unread_next(env, head=only, failed="ConfigError")
+    ]
     assert cp.stderr.startswith(f"warning: could not read which folders {cfg} already syncs ")
     # B13 round 7 H17, H28; and why, as the class of the reader's error (H8, H16)
     unread = r" result=failed note=(not-signed-in|no-folders) synced=unreadable marks=failed:ConfigError$"
@@ -3791,10 +3793,21 @@ def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, s
     assert len(lines) == 204 and sum(ln.startswith("[synced] ") for ln in lines) == 2
 
 
-def _unread_next(env: dict[str, str], *, timeout: bool = False, head: str = LIST_NEXT) -> str:
+def _unread_next(
+    env: dict[str, str], *, timeout: bool = False, head: str = LIST_NEXT, failed: str | None = None
+) -> str:
     """The NEXT of a list whose reader could not read the config: ``head``, the one it would be on a new Mac,
-    and what it adds since B13 round 8 J17."""
+    and what it adds since B13 round 8 J17. ``failed``: the class the installed agentsync raised, whose
+    clause claims nothing is kept (B13 round 10 L11)."""
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    if failed is not None:
+        return (
+            f"{head}; this Mac has a config ({cfg}) whose folders could not be read: the installed "
+            f"agentsync failed while reading it{f' (it raised {failed})' if failed else ''}, and "
+            "~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, and if that "
+            "version cannot load it either, step 2 stops at its config step and nothing is kept or added "
+            "until the config is fixed"
+        )
     also = f"; or re-run {INSTALL_SH} --list-folders to mark them" if timeout else ""
     return (
         f"{head}; this Mac has a config ({cfg}) whose folders could not be read: if it was set up before, "
@@ -3816,11 +3829,17 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
         cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stderr
-    assert cp.stdout == f"{cs}/OneDrive-Contoso/FY26 Projects\n{_unread_next(env)}\n"
-    # B13 round 7 H14, H16 and H27: the warning says which of the two it was, in fixed words
+    # B13 round 10 L11: a config the installed agentsync failed on is not said to be kept by step 2
+    failed = "ConfigError" if broken == "a config that does not load" else None
+    assert cp.stdout == f"{cs}/OneDrive-Contoso/FY26 Projects\n{_unread_next(env, failed=failed)}\n"
+    assert failed is None or "keeps" not in cp.stdout
+    # B13 round 7 H14, H16 and H27: the warning says which of the two it was, in fixed words; round 10 L37:
+    # words that blame neither the config nor agentsync, and the class
     why = {
         "no installed agentsync": "no agentsync is installed",
-        "a config that does not load": "the installed agentsync could not load it",
+        "a config that does not load": (
+            "the installed agentsync failed while reading it and raised ConfigError"
+        ),
     }[broken]
     assert cp.stderr == (
         f"warning: could not read which folders {cfg} already syncs ({why}), so none is marked below\n"
@@ -3830,6 +3849,56 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
     # and why, in a fixed word with at most the class of the reader's error (H8, H16)
     marks = {"no installed agentsync": "no-tool", "a config that does not load": "failed:ConfigError"}[broken]
     assert install_log(env)[-2].endswith(f" result=done note=listed-1 synced=unreadable marks={marks}")
+
+
+@pytest.mark.parametrize("case", ["a duplicate source id", "an older agentsync that rejects a key"])
+def test_step_1_says_nothing_is_kept_of_a_config_the_installed_agentsync_failed_on(
+    real_env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 10 L11: for marks=failed step 1 said a run with no --source-local keeps whatever the config
+    syncs, and that each --source-local only adds. A config that cannot load stops step 2 at its config step,
+    where neither holds; one an older agentsync rejected (a newer key) loads once step 2 reinstalls. The NEXT
+    names the class and status, and says both outcomes; the two step 2 runs show each."""
+    env = real_env
+    alpha = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    alpha.mkdir(parents=True)
+    first = install_sh(env, str(wheel), "--source-local", str(alpha))
+    assert first.returncode == 0, first.stdout + first.stderr
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    before = cfg.read_text(encoding="utf-8")
+    if case == "a duplicate source id":
+        cfg.write_text(before + "\n[[source]]" + before.split("[[source]]")[-1], encoding="utf-8")
+    else:  # the installed build's load_config rejects the config, as one from before a key it holds would
+        py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+        shim = (
+            "import sys, agentsync.config as _c\n"
+            'def _old(*a, **k):\n    raise _c.ConfigError("unknown key(s) in [convert]: ocr")\n'
+            '_c.load_config = _old\nexec(compile(sys.argv.pop(1), "<string>", "exec"))\n'
+        )
+        py.unlink()
+        _write_exe(
+            py,
+            "#!/bin/bash\n"
+            '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+            'code="$3"\nshift 3\n'
+            f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+        )
+    cp = install_sh(env, "--list-folders")
+    assert install_log(env)[-2].endswith(" synced=unreadable marks=failed:ConfigError"), install_log(env)[-2]
+    assert last_line(cp).endswith(
+        "whose folders could not be read: the installed agentsync failed while reading it (it raised "
+        "ConfigError), and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, "
+        "and if that version cannot load it either, step 2 stops at its config step and nothing is kept "
+        "or added until the config is fixed"
+    ), last_line(cp)
+    assert "keeps whatever" not in cp.stdout and "only adds" not in cp.stdout
+    second = install_sh(env, str(wheel))
+    if case == "a duplicate source id":
+        assert second.returncode == 1, second.stdout + second.stderr
+        assert "duplicate source id" in second.stdout + second.stderr
+    else:
+        assert second.returncode == 0, second.stdout + second.stderr
+        assert cfg.read_text(encoding="utf-8") == before, "the reinstalled agentsync keeps the config"
 
 
 def test_list_folders_with_no_provider_says_an_unread_config_is_there(env: dict[str, str]) -> None:
