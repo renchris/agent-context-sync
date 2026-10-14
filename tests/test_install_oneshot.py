@@ -1850,6 +1850,13 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
         "Private: copy this file back as it is, and never paste it into the public issue form."
     )
     assert "Sections 2 and 3 are not: they name real folders and files" in text
+    # B13 round 8 J65: a person's own kept commit brings its From: line, which the header now names
+    assert " ".join(text.split("\n## 1. Setup report", 1)[0].split()).endswith(
+        "review them before sending. Section 3 holds one patch per kept commit, and each starts with its "
+        "author's name and email and the commit's date and message; a commit of your own carries your git "
+        "name and email (or, if git never had them set, a name and address git filled in from this Mac's "
+        "account), so check those lines too."
+    )
     assert "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~" in text.split("## 3. Local work", 1)[1]
     assert f"bring back: {back} (one file: report, fix request, local work)" in cp.stdout
 

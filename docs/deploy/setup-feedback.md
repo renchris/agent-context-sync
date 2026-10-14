@@ -111,9 +111,11 @@ words) is yours to remove. The CLI always redacts.
   bring-back.md. Send that one privately.
 - **Privately (no public post needed):** copy `~/agent-context/bring-back.md` back to the machine you administer
   this setup from (AirDrop, a USB stick, a shared folder you already use). It is the one file the prompt's last
-  step names: section 1 is the redacted setup report, section 2 the agent's fix request and section 3 the patch
-  of any local work step 1 kept. Sections 2 and 3 are not redacted and name real folders and files, so review
-  them first, and never paste this file into the public form: the public route takes `setup-report.md` alone.
+  step names: section 1 is the redacted setup report, section 2 the agent's fix request and section 3 the patches
+  of any local work step 1 kept, one per commit. Sections 2 and 3 are not redacted and name real folders and
+  files, so review them first, and never paste this file into the public form: the public route takes
+  `setup-report.md` alone. A person's own kept commit keeps its `From:` line (their git name and email, whose
+  domain can name the organisation, or a name and address git filled in from the Mac's account) and its message.
   Section 2 is the whole file, every session's part in the order written: `fix-request.md` is kept from
   session to session and nothing in it is deleted. Since prompt v9 each session writes under a heading of its
   own, which names the prompt's version and the date and time, and rewrites only its own part. Since prompt v11

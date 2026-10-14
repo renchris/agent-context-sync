@@ -6307,6 +6307,9 @@ opened by its name from a descriptor on the folder that holds it, not by its ful
   patch and hide over-redaction bugs. **Amended (2026-10-07, §16.30):** section 3 is no longer every patch
   in the folder: one last written at or before an earlier attempt's report is named by a `not repeated:`
   line and not sent again ("The bring-back sends local work once").
+  Amended 2026-10-14, §16.75 J65: the line goes on "Section 3 holds one patch per kept commit, and each starts
+  with its author's name and email and the commit's date and message; ...", since v16's keep sends a person's
+  own commit with its `From:` line, which stays unredacted so the triage can tell it from the keep's.
 
 **Setup prompt (still v7: wording only, nothing new for the installer to do; §16.28 "Setup prompt v8" ends
 that practice: the version now moves with every change of the text).** Step 1 ends: if the agent
@@ -16410,6 +16413,8 @@ changes. Tests: `tests/test_deploy_pack.py` (`test_readme_keeps_a_local_commit_a
 `test_the_keep_command_leaves_a_main_with_commits_of_its_own_as_it_is`,
 `test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`,
 `test_readme_keeps_local_work_then_runs_step_1_again`, `test_step1_keeps_local_changes_on_a_branch_and_updates`).
+Amended 2026-10-14, §16.75 J65: such a patch starts with the commit's author's name and email; bring-back.md's
+header and setup-feedback.md now say so.
 
 **The git stop's quote is sentences, and its rewrite query is anchored** (H21, H25; amends §16.67's G73 paragraph).
 The quote was one 106-word sentence, 86 words of it one parenthesis nesting three sources, with the one action

@@ -2383,7 +2383,12 @@ write_bring_back() {
 		printf '# agentsync: the one file to bring back\n\n'
 		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
 		printf 'Section 1 is redacted. Sections 2 and 3 are not: they name real folders and files, so review\n'
-		printf 'them before sending.\n\n'
+		printf 'them before sending.\n'
+		# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
+		# tell it from the agentsync commit of the keep (B13 round 8 J65)
+		printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
+			"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
+			"set, a name and address git filled in from this Mac's account), so check those lines too." ""
 		printf '## 1. Setup report\n\n'
 		embed "$REPORT_PATH" markdown
 		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
