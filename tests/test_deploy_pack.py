@@ -4315,6 +4315,18 @@ def test_the_first_sync_row_names_every_clause_the_summary_adds() -> None:
     assert "copied from the sync's own line in install.out when that line describes the same sync" in row
 
 
+def test_h31s_stderr_line_quotes_the_cli() -> None:
+    """B13 round 9 K53: round 8's J11 made the CLI's lock-busy line `skipped: lock held by <holder>`, while
+    §16.68 H31, whose test J11 changed, still quoted `skipped: lock held (...)` with no dated line."""
+    cli = (ROOT / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
+    assert '_err(f"skipped: lock held by {exc.holder}")' in cli
+    h31 = " ".join(
+        _contracts_section("**H31: install.sh's first sync waits for the lock quietly", "\n\n").split()
+    )
+    assert "Amended 2026-10-14, §16.85 K53 (by §16.77 J11): the stderr line H31 leans on" in h31
+    assert "reads `skipped: lock held by <full holder>` (from `LockHeldError.holder`)" in h31
+
+
 def test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block() -> None:
     """B13 round 8 J68: v16's re-wrap left a line holding only "If", and v15 had left a 132-column line, in a
     block a person reads in a ```text fence, which keeps its line breaks. A command line is as long as its

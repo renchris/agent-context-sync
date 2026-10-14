@@ -16011,6 +16011,10 @@ WARNING (in H33's words). Tests:
 `test_install_oneshot.py::test_first_sync_lock_busy_is_skipped_not_failed`.
 Amended 2026-10-14, §16.83 K37: `_describe_holder` names a cycle's label as `pid N (a sync, its pass: poll) since
 ...`, so the stderr line, the lock-wait WARNING and doctor no longer show the bare label.
+Amended 2026-10-14, §16.85 K53 (by §16.77 J11): the stderr line H31 leans on now reads `skipped: lock held by
+<full holder>` (from `LockHeldError.holder`), no longer `skipped: lock held (...)`; the holder is
+`_describe_holder`'s, not the WARNING's `another sync (its pass: <label>)` (since §16.83 K37 it reads `pid N (a
+sync, its pass: poll) since ...`).
 
 **H33: a terminal's sync is not called the background one (`scripts/install.sh`, `agentsync.cli`).** A sync typed
 in a terminal holds the lock as `poll` or `reconcile`, as the job does, and the installer reads only the lock.
@@ -17439,3 +17443,11 @@ reads the sentence form, and asserts the J39 and J50 claims and at least 46 in a
 "§A's X" too, and a dated line may name several items ("(by §16.82 K12, K13)"). Measured on contact: §16.82 K12, K13
 amend §16.76's J7 and J8 paragraph and wrote no dated line there; it now has `Amended 2026-10-14, §16.85 K80 (by
 §16.82 K12, K13)`. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`.
+
+**H31's stderr line has J11's words** (K53; dated line at §16.68 H31). §16.77 J11 made the CLI's lock-busy line
+`skipped: lock held by <holder>` and wrote its dated line only at §16.39; §16.68 H31, whose test J11 changed, still
+quoted `skipped: lock held (...)` as the line that carries the holder's detail. Its paragraph keeps its words and
+now has the dated line; the code is unchanged (`cli.py` writes `skipped: lock held by {exc.holder}`). The §16.39
+text that spells the old form already has J11's line. Test:
+`test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there` (reads this claim) and
+`test_h31s_stderr_line_quotes_the_cli`.
