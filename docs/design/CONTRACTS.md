@@ -17082,3 +17082,27 @@ replaced is §16.49's "The finish" (R11, R30), where the line is, and §16.72's 
 amended by a line, not rewritten, as for every older section. Test:
 `test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend`, which holds the targets as (section, a phrase
 only the target holds, items), since §16.72 names paragraphs, not items, and no heading scan can find them.
+
+### 16.80 Round 9: setup report (2026-10-14, wave B13 round 9 lane RA)
+
+Reserved for round 9 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 9").
+
+### 16.81 Round 9: installer and the shell report (2026-10-14, wave B13 round 9 lane RB)
+
+Reserved for round 9 lane RB of B13.
+
+### 16.82 Round 9: setup prompt v18 (2026-10-14, wave B13 round 9 lane P)
+
+Reserved for round 9 lane P of B13.
+
+### 16.83 Round 9: sync, status, locks and doctor (2026-10-14, wave B13 round 9 lane B)
+
+Reserved for round 9 lane B of B13.
+
+### 16.84 Round 9: stubs, front matter and purge (2026-10-14, wave B13 round 9 lane E)
+
+Reserved for round 9 lane E of B13.
+
+### 16.85 Round 9: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 9 lane D)
+
+Reserved for round 9 lane D of B13.

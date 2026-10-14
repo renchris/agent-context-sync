@@ -721,12 +721,14 @@ for rounds 5 and 6; round 7's scratch goes in the operator's `b13-r7` cleanup (r
 
 | Lane | Landed |
 |---|---|
-| E | `042cbe35..ba661677` |
+| E | `042cbe35^..ba661677`, 6 commits |
 | RB | `77151d37` (H7), `54cb9a0c`, `7cfed4d2`, `c1a24093`, `a350196b` |
 | P | `77151d37..69c873d2` (v16) |
 | RA | `69c873d2..0bc75885`, 15 commits |
-| D | `85d7e292..1d8d4c95`, 11 commits |
-| B | `3ece9aed..265a121d` |
+| D | `85d7e292^..1d8d4c95`, 11 commits |
+| B | `3ece9aed^..265a121d`, 10 commits |
+
+Ranges are git `A..B`, A excluded; corrected by round 9 K71.
 
 Learnings: every lane's `git push` stopped at the "ask" rule on `git push` and waited hours for the operator's Yes;
 only the first of several queued pushes lands, the rest rebase and ask again. A load spike near 1000 killed one
@@ -762,12 +764,14 @@ to `lanes/COMMON.md`.
 
 | Lane | Landed |
 |---|---|
-| P | `b5798d0d..b9f4c98b` (v17) |
+| P | `b5798d0d..b9f4c98b`, 2 commits (v17) |
 | D | `b9f4c98b..27f9c1a0`, 11 commits |
-| B | `3ed3541e..1713a687` |
+| B | `3ed3541e^..1713a687`, 6 commits |
 | RB | `1713a687..affa5833`, 15 commits |
 | E | `affa5833..8285d7c5`, 8 commits |
-| RA | `aa809aa7..e440422c`, 11 commits |
+| RA | `aa809aa7^..e440422c`, 11 commits |
+
+Ranges are git `A..B`, A excluded (round 9 K71).
 
 Learnings: a lane whose push waits at the "ask" prompt is rejected once another lane lands first, then rebases,
 re-runs the gate and asks again, so each queued push after the first costs the operator another Yes. Left in place: branch
@@ -775,6 +779,23 @@ re-runs the gate and asks again, so each queued push after the first costs the o
 
 Round 9: the round 8 workflow on `e440422c` with prompt v17 (run `wf_0f6ec280-91a`, outputs `round9/`); scenario F
 expects the wait to point at `_sync/STATE.md`, never at `sync -v`, plus a six-folder variant for the alarm (J32).
+
+### B13 round 9: v17 rehearsal, cross-lane review, harvest (2026-10-14)
+
+Run `wf_0f6ec280-91a` on `e440422c` (93 agents, 0 errors). All six scenarios pass their EXPECTED; the field Mac's
+path (scenario B) is clean again: v10 build pulled to v17, step 1 marked both folders synced, no stop, "fully one
+command". 82 findings, 80 confirmed (4 turn, 10 wrong, 66 small), 2 refuted; 9 need prompt text, so the next prompt
+is v18. The turns are two defects: an unattended agent still stops for a folder answer when step 1 cannot read an
+existing config (K9, K20 and K32, one defect), and a checkout whose `.git` is empty gets the proxy advice (K25).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80 over rounds 2 and 4 to 9; turns 3, 0, 0, 1, 5, 2, 4; wrongs 23,
+15, 20, 15, 15, 12, 10. Wrongs fall slowly; the total does not. Neither paste rule in the operator's open stop
+question is met this round (it has turns and wrongs).
+
+Lanes (`--account auto`, CONTRACTS §16.80 to §16.85, brief `lanes/COMMON8.md`): RA 20 (setup_report.py), RB 16
+(install.sh), P 11 (prompt v18), B 9 (cli, loop, lock, doctor), E 8 (stubs, front matter, purge), D 12 (docs/deploy,
+CONTRACTS). Lead: K39 and K44 (round 10's scenario E and F wording), K71 (exact ranges in the landed tables), K81
+(round 7's local branch; round 8's scratch goes to the operator).
 
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
