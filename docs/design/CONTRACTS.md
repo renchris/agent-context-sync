@@ -17378,6 +17378,9 @@ lane D's; dated lines at §16.74 J20 and §16.75 J37). Three findings on the pat
   was not built either: J37 redacts the path after any host on purpose.
 Tests: `test_a_git_url_rewrite_host_and_path_are_redacted`, `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`,
 `test_the_two_reports_number_each_proxy_value_alike` (numbers unchanged).
+Amended 2026-10-14, §16.86 L69: K77 is built as a word list: `gh` and other tool and host-kind words are generic
+path words, so a `/gh/` path is no value and `/opt/homebrew/bin/gh` stays in clear; the tool-path skip above stays
+rejected for its measured leak.
 
 **The public report says step 1 kept local work, in counts** (K30). Only bring-back.md section 3, which is
 private, said the keep command ran; the report read "fully one command". Both readers add one line, under Run
@@ -18054,6 +18057,18 @@ again from the bytes its page was made from", which a label-rule re-screen of un
 the run just before had converted too (the sign of a loop; a copy of a file is a new file and is not counted, nor
 is a file re-screened for a label-rule change)", and `_repeat_part`'s docstring names the action key. Test:
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned bullet).
+
+**A rewrite path of tool words is no value** (L69; dated line at §16.80 K10). K77's measured leak is the tool-path
+skip's, which spares a match by where it sits; a word list spares a path only when every word in it is on the
+list, so a company's own word keeps it a value. `_GENERIC_PATH_WORDS` and install.sh's mirror list gain `gh`,
+`gitlab`, `bitbucket`, `homebrew`, `npm`, `node`, `pypi`, `artifactory` and `vendor` (`nexus`, a common
+company-name word, is left off). A `/gh/` or `/homebrew/` rewrite path registers nothing, so
+`/opt/homebrew/bin/gh` and `~/.config/gh` stay in clear; `/contoso-eng/gh` and `/gh/contoso` are still
+registered and redacted. K2/K27's separator test moves to `/cx`, still two letters under the shell's floor, and
+K10's escaped form to `/contoso-gh`. Tests: `test_a_rewrite_path_of_tool_words_is_no_value_in_both_reports` (also
+keeps the two lists equal), `test_a_git_url_rewrite_host_and_path_are_redacted`,
+`test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`,
+`test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

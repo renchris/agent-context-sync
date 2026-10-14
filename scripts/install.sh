@@ -1569,7 +1569,7 @@ redaction_pairs() {
 			[ "$sep" = / ] || [ "$auth$tail" = "$auth" ] || pac="$auth$tail"
 			u="rw://$auth/"
 			k=""
-			b=" git scm repo repos mirror mirrors src source code " # setup_report._GENERIC_PATH_WORDS
+			b=" git scm repo repos mirror mirrors src source code gh gitlab bitbucket homebrew npm node pypi artifactory vendor " # setup_report._GENERIC_PATH_WORDS
 			# a word of the report's own (docs, tools) is no company word either, as in the Python report: a
 			# /docs path would cut ~/agent-context/docs (B13 round 8 J20)
 			for w in $(printf '%s' "$tail" | LC_ALL=C tr -c 'A-Za-z0-9' ' ' | LC_ALL=C tr '[:upper:]' '[:lower:]'); do

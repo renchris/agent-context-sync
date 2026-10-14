@@ -6656,7 +6656,7 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         "insteadof=https://github.com/x/\n"
         '[url "https://mirror.northwind-five.invalid/docs/"]\n'  # a report word: no value (round 8 J20)
         "\tinsteadOf = https://github.com/y/\n"
-        # B13 round 9 K46: a base that ends at a repository name; K77: a path that is no report word
+        # B13 round 9 K46: a base that ends at a repository name; K77 (round 10 L69): a path of generic words
         '[url "https://mirror.northwind-six.invalid/northwind-mirror"]\n\tinsteadOf = https://github.com/z/\n'
         '[url "https://dev.example.invalid/gh/"]\n\tinsteadOf = https://github.com/w/\n'
     )
@@ -6704,13 +6704,14 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     assert "read ~/agent-context/docs/index.md |" in text and "agent-context<proxy" not in text, (
         "a report-word path is no value"
     )
-    # B13 round 9 K46: .git, -tools and _x may follow a rewrite path; K77 (not built): a tool path is redacted
+    # B13 round 9 K46: .git, -tools and _x may follow a rewrite path; K77, built in round 10 as L69: gh is a
+    # generic path word, so a /gh/ path is no value and a local tool path stays in clear
     assert re.search(
         r"saw https://<proxy-(\d+)>/<proxy-(\d+)>\.git and \.\.\./<proxy-\2>-tools and /<proxy-\2>_x \|", text
     ), text
     assert re.search(
-        r"\| https://<proxy-\d+>/<proxy-(\d+)>/tools\.git/; /opt/homebrew/bin/<proxy-\1> auth status; "
-        r"~/\.config/<proxy-\1>/hosts\.yml; gh run list; high; /<proxy-\1>/x \|",
+        r"\| https://<proxy-\d+>/gh/tools\.git/; /opt/homebrew/bin/gh auth status; "
+        r"~/\.config/gh/hosts\.yml; gh run list; high; /gh/x \|",
         text,
     ), text
     assert "- URL rewrite in git's config: set (7)\n" in text
@@ -6725,12 +6726,13 @@ def test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports(env: di
     anchors the start and keeps a two-letter path over the shell's 3-character floor, and is written back
     before the placeholder, in both reports alike."""
     home = Path(env["HOME"])
-    bases = ("https://mirror.contoso-git.invalid/gh/", "git@scp.contoso-two.invalid:contoso-scp/")
+    # a two-letter path that is no generic word (gh is one since B13 round 10 L69), over the shell's floor
+    bases = ("https://mirror.contoso-git.invalid/cx/", "git@scp.contoso-two.invalid:contoso-scp/")
     (home / ".gitconfig").write_text(
         "".join(f'[url "{b}"]\n\tinsteadOf = https://github.com/\n' for b in bases)
     )
     said = (
-        "git clone https://mirror.contoso-git.invalid/gh/example/agent-context-sync.git/: Could not resolve "
+        "git clone https://mirror.contoso-git.invalid/cx/example/agent-context-sync.git/: Could not resolve "
         "host: mirror.contoso-git.invalid; git pull git@scp.contoso-two.invalid:contoso-scp/x.git; "
         "a high mark"
     )
@@ -6757,7 +6759,43 @@ def test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports(env: di
     assert red.redact("git pull git@scp.contoso-two.invalid:contoso-scp/x.git") == (
         "git pull <email-1>:<proxy-5>/x.git"
     ), "git@host is an email address first; the scp path keeps its colon"
-    assert red.redact("a high mark; x/ghs; /GH/y") == "a high mark; x/ghs; /<proxy-2>/y"
+    assert red.redact("a high mark; x/cxs; /CX/y") == "a high mark; x/cxs; /<proxy-2>/y"
+
+
+def test_a_rewrite_path_of_tool_words_is_no_value_in_both_reports(env: dict[str, str]) -> None:
+    """B13 round 10 L69 (round 9 K77 built as a word list): a ``/gh/`` rewrite path redacted the tool path
+    ``/opt/homebrew/bin/gh``. Tool and host-kind words are generic path words in both readers, one list; a
+    path of them alone registers nothing, and a path with one company word is still registered and
+    redacted."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    listed = re.search(
+        r'^\s*b=" ([^"]*) " # setup_report\._GENERIC_PATH_WORDS$', INSTALL_SH.read_text(), re.M
+    )
+    assert listed is not None and set(listed.group(1).split()) == setup_report._GENERIC_PATH_WORDS
+    assert "nexus" not in setup_report._GENERIC_PATH_WORDS, "a common company-name word"
+    for base, tail in (
+        ("https://a.contoso-git.invalid/gh/", ""),
+        ("https://b.contoso-git.invalid/homebrew/", ""),
+        ("https://c.contoso-git.invalid/contoso-eng/gh/", "/contoso-eng/gh"),
+        ("https://d.contoso-git.invalid/gh/contoso/", "/gh/contoso"),
+    ):
+        found = setup_report._rewrite_values(base)
+        assert found is not None and found[2] == tail, (base, found)
+    home = Path(env["HOME"])
+    (home / ".gitconfig").write_text(
+        '[url "https://a.contoso-git.invalid/gh/"]\n\tinsteadOf = https://github.com/a/\n'
+        '[url "https://c.contoso-git.invalid/contoso-eng/gh/"]\n\tinsteadOf = https://github.com/c/\n'
+    )
+    said = "/opt/homebrew/bin/gh auth status; ~/.config/gh/hosts.yml; https://c.contoso-git.invalid/contoso-eng/gh/x"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "contoso" not in text.lower(), [ln for ln in text.splitlines() if "contoso" in ln.lower()]
+    assert re.search(
+        r"/opt/homebrew/bin/gh auth status; ~/\.config/gh/hosts\.yml; https://<proxy-\d+>/<proxy-\d+>/x \|",
+        text,
+    ), text
 
 
 SCUTIL_PROXY = """<dictionary> {

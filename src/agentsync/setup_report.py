@@ -2741,8 +2741,14 @@ def _git_rewrite_bases() -> list[str]:
     return bases
 
 
-_GENERIC_PATH_WORDS = frozenset({"git", "scm", "repo", "repos", "mirror", "mirrors", "src", "source", "code"})
-"""Path words a git server's own layout uses: a rewrite path of these alone names no company (H20)."""
+_GENERIC_PATH_WORDS = frozenset(
+    {"git", "scm", "repo", "repos", "mirror", "mirrors", "src", "source", "code"}
+    | {"gh", "gitlab", "bitbucket", "homebrew", "npm", "node", "pypi", "artifactory", "vendor"}
+)
+"""Path words a git server's own layout uses: a rewrite path of these alone names no company (H20). The second
+set is tools and kinds of host (B13 round 10 L69): a ``/gh/`` rewrite path redacted ``/opt/homebrew/bin/gh``
+and ``~/.config/gh``. A path with one word off the list is still a value, so a company's ``/contoso-eng/gh``
+is redacted; ``nexus``, a common company-name word, is left off. install.sh keeps the same list."""
 
 
 def _rewrite_values(base: str) -> tuple[str, str, str] | None:
