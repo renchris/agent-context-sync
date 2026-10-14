@@ -8381,7 +8381,11 @@ needs no run record, so it also speaks for the runs of an earlier build; it is b
 copy of a file counts there and the line says so. **Amended 2026-10-12, §16.45 R2:** a column `of them unreadable (stub, kept,
 not retried)` follows `of them failed`, and when a run shown has one, a note under the table says such a file
 is in Quarantine by reason under its stub's class (`encrypted`, `not the type its name says`, `empty`, a
-`no text` class), never `conversion failed`.
+`no text` class), never `conversion failed`. **Amended 2026-10-14, §16.74 J30:** the column reads `the same file
+from the same bytes and converter options as an earlier run` (a label rule is one of the converter's options, so a
+re-screen for a label-rule change is a new conversion there; one for a secret rule keeps the key and is counted),
+and when a run shown re-screened files, a note under the table gives each such run's count and how many came out the
+same.
 
 **Background runs.** After the two job lines, for each job with a plist in this home folder: whether it is
 what this build would write (`launchd.render_plist` of `poll_spec` or `reconcile_spec`; doctor's line says
@@ -15948,7 +15952,8 @@ the name, `policy_refusal`, a withheld online-only `.msg`); a stub that stands o
 nothing and counts nothing. The line then ends `; Q refused without a read (no converter for the type, or a rule
 that needs no bytes)`, only when Q > 0, with no bare `converted`, `deferred` or `read again` (install.sh's awk and
 `setup_report._SPLIT_RE` read the line as before). It names no label rule: a type with no converter is refused the
-same way. Tests: `test_cli.py::test_the_sync_line_counts_the_files_refused_without_a_read`,
+same way. Amended 2026-10-14, §16.74 J39: the setup report's first-sync clause reads the count too, after the split
+as on this line, and names it in its source tag. Tests: `test_cli.py::test_the_sync_line_counts_the_files_refused_without_a_read`,
 `test_cli.py::test_a_type_with_no_converter_is_counted_refused_without_a_read_and_no_rule_is_named`.
 Amended 2026-10-14, §16.77 J29: a refusal with no byte read whose stub says a label rule withheld it is counted
 in `SourceReport.withheld_unread`, not `refused_unread`, and the line names the rule for those in a clause of its
@@ -16100,7 +16105,8 @@ attempt's prompt (header or stated) is above `PROMPT_VERSION` and the installer'
 (`_prompt_copy_note`, unchanged) is absent, the prompt line adds `(newer than this report's agentsync, for prompt
 vN)`. It names no cause: a header comes from `--log-start`, after a pull that worked (step 2 may have failed before
 the reinstall), and a header-less step 1 error may be xcode-select's, before any pull (the verifier's measurement
-of the finder's "its pull did not update it"). The run metadata's agentsync line names the build's prompt
+of the finder's "its pull did not update it"). Amended 2026-10-14, §16.74 J40: the note reads `newer than this
+report's agentsync, which is for prompt vN`, and every note after the version shares one bracket, joined by "; ". The run metadata's agentsync line names the build's prompt
 (`agentsync: <version>, setup prompt vN (python …)`), so any report shows the comparison. The issue form's version and
 the title keep the attempt's. Test: `tests/test_setup_report.py::test_a_prompt_newer_than_the_reports_agentsync_says_so`.
 
@@ -16181,6 +16187,9 @@ environment's hosts, the system proxy's where its Enable flag is 1, the PAC URL'
 the PAC value, git's proxies, each rewrite's host, value and path, and the LaunchAgent's, one number for a value in
 any case, and none for a value that names no proxy (`direct`, `none`, `off`); a system proxy host whose flag is 0,
 or a per-interface one or PAC URL, which Python never reads, comes last.
+Amended 2026-10-14, §16.74 J20: a URL base after its scheme is no longer a value, which gave the host a second
+`<proxy-N>`; a URL path, like an scp path, is a value of its own only when it has a company word, both readers match
+the path with flag `e` (§16.75 J37), and the `<proxy-N>` legend names a rewrite.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
@@ -16579,7 +16588,79 @@ targets and Q77 missing.
 
 ### 16.74 Round 8: setup report (2026-10-14, wave B13 round 8 lane RA)
 
-Reserved for round 8 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 8").
+Lane RA's round 8 items: J1, J2, J3, J9, J10, J14, J15, J16, J18, J20, J23, J30, J31, J36, J39, J40, J41, J43, J52,
+J54, J69, J75, all built. J1 and J20, J3 and J15, J10 and J31, J23 and J40, J52 and J54 are one defect each, built
+once. Each test fails on the code before it.
+
+**A git URL rewrite's host is one placeholder** (J1, J20, J2; dated line at §16.69 H20). Its base after the scheme
+was a value beside its host, so git's error read `https://<proxy-2>/...: Could not resolve host: <proxy-1>`, numbered
+the other way round by the shell. Both readers now register the host (a port goes with it, `<proxy-1>:8443`), then
+the path only when a word in it is neither in `_GENERIC_PATH_WORDS` nor a report word (the shell's `report_word`):
+`/scm/` and `/tools/` stay, `/contoso-team` is `<proxy-2>`. The shell's host-first order and its path flag `e` are
+§16.75 J78's and J37's, which landed beside this; an scp base keeps its `host:path` value. J1's verifier's composite replacement was not needed: this fix gives one
+number to the host and over-redacts nothing a report word covers. Both legends, the module docstring and
+docs/deploy/setup-feedback.md name `a git URL rewrite's host and its company-named path`. Tests:
+`test_a_git_url_rewrite_host_and_path_are_redacted`, `test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`.
+
+**A changed `--log-start` value the session ran again is a rerun** (J9). install.sh's stop line adds `, or the
+--log-start value was changed` after its reason, where `_PROMPT_STOP_RE` still reads it. An earlier attempt whose
+step 1 error is that stop reads `stopped at step 1 (rerun: --log-start said v61; the next attempt, 18s later, said
+v16)` when the next attempt names the stopping installer's version (not this build's), the same agent, and starts
+within 120 s. A copy fetched again into a new session stays `failed at step 1`. A rerun is never the latest attempt,
+so no Summary copy note needed suppressing. Test: `test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure`.
+
+**The prompt line has one bracket** (J23, J40; dated line at §16.69 H23). `_prompt_line_note` joins the stated
+source, the installer's stop note and the newer-than-this-build note with "; " in one bracket; no cause is added.
+Test: `test_a_prompt_newer_than_the_reports_agentsync_says_so`.
+
+**The Installer table's list row says what the list read** (J10, J31, J16). `done (listed-6: 2 already synced)`, or
+`done (listed-6: could not read which folders are synced: <why>)` from `_unread_words`, which `unread_why` now
+calls; fixed words and one identifier only. Those words carry no bracket of their own, in the Summary's note
+and install.sh's warning: one defect with §16.75 J27, whose wording (`could not load it: a ConfigError`, `older than
+the installer: it had no is_under`) both use.
+Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
+`test_the_summary_says_why_a_folder_list_could_not_read_the_config`.
+
+**The all-zero re-read line** (J3, J15, J41). The clause naming the early OCR build on every Mac is gone ("from before
+OCR" covers it) and the run sentence is one clause; every branch stays. Where a bracket follows the term's first
+mention (`(1 online-only)`, `(fourth column)`), its gloss goes inside it: `(1 online-only; that build was never
+released)`. Tests: `test_an_all_zero_re_read_table_is_one_line`,
+`test_the_early_ocr_builds_gloss_never_sits_beside_an_online_only_bracket`.
+
+**Agent friction of three zero counts ends there** (J14). Test: `test_v5_happy_path_is_fully_one_command`.
+
+**A waiting attempt's WARNING names no command** (J36). An open attempt whose outcome is `stopped` says it may still
+be waiting for the folder answer and not to run `install.sh --report-only` before then. Test:
+`test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
+
+**A stopped copy's `install.commit` warn is expected** (J18). `expected_warn(..., stopped_copy=)`, from
+`_Facts.copy_stopped` (`_stopped_before_the_list` of the latest attempt, set before doctor runs), so the Summary and
+the Doctor section agree and the "re-run install.sh" fix is dropped. Test:
+`test_a_stopped_copys_install_commit_warn_is_expected`.
+
+**The first-sync line carries the refused-without-a-read count** (J39; dated line at §16.68 H32). Test:
+`test_first_sync_clause_carries_the_read_again_count`.
+
+**Repeat conversions says it counts options** (J30; dated line at §16.28 Repeat conversions). Test:
+`test_repeat_conversions_part_reads_the_run_records_and_the_cache`.
+
+**An image stub is classed as its page says** (J52, J54). While a label rule is on, `_Mirror.read_image_pages` reads
+the `reason:` of each image stub whose row says `no converter for <image suffix>` (at most 400 pages, the first 8 KB,
+under docs_repo, no symlink, inside the evidence time) and `reason_class` / `refused_type` take the row's ids; only a
+page it cannot read goes by the OCR probe, and the legend counts those. `(the page says so)` is gone. Test:
+`test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe`.
+
+**A listing that did not finish takes step 1's list, or the report is private** (J69). Both readers register the
+folders install.out's `--list-folders` runs printed (`listed_folder_names`; the shell's awk), after the listing.
+When the Python listing raised and install.out holds no list, `Redactor.listing_unread` makes the report private
+only (`Redactor.private_only`: a Private only line, the private Send line, no link; the CLI drops its link too). Not
+built: registering the names of a step 1 friction line in the shell, since the prompt has not logged the folder
+question since v6. Tests: `test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private`,
+`test_the_shell_report_registers_the_folders_step_1s_list_printed`.
+
+**Small fixes** (J43, J75). `_HELD_PATH_NORMS` spells `agentcontextsync.git` as `_norm` keeps the dot (test:
+`test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole`); six comments say a generic proxy host is
+matched after `//` or `@` or before a port (comments only).
 
 ### 16.75 Round 8: installer and the shell report (2026-10-14, wave B13 round 8 lane RB)
 
