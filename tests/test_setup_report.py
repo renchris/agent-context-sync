@@ -836,7 +836,8 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
         "- expected turns: the folder question F8 · Allow click F7 (step 2) · Allow click F11 (step 3)"
         in (summary)
     ), "expected turns on their own line (K10)"
-    assert "- agent friction: 0 deviation, 0 prompt, 0 error; none of these changes the outcome" in summary
+    # B13 round 8 J14: three zero counts need no "none of these changes the outcome by itself"
+    assert "- agent friction: 0 deviation, 0 prompt, 0 error" in summary.splitlines()
     assert "- friction (attempt 1): 12 event line(s): 4 start, 4 end, 1 question, 2 click, 1 finished" in (
         summary
     ), "every event line counted once, the finished line too (L9)"
@@ -3937,6 +3938,14 @@ def test_the_summary_says_why_a_folder_list_could_not_read_the_config(
         assert setup_report.unread_synced(runs) is None, "nothing was kept: the question was needed"
     write_friction(fake_mac, V11_HAPPY)
     note = "- note: step 1's folder list could not read which folders sources.toml already syncs ("
+    # B13 round 8 J16: the words sat in the note's bracket with a bracket of their own, "(... (ConfigError))"
+    for marks in (" marks=failed:ConfigError", " marks=older:provider_link_resolved"):
+        set_up_log(fake_mac, new_mac, listed="", list_step=f"done note=listed-6 synced=unreadable{marks}")
+        lines = section(report(tmp_path, fake_mac["config"])[1], "Summary").splitlines()
+        assert f"{note}{whys[marks]}), so it marked none" in lines, marks
+        inner = whys[marks]
+        assert "(" not in inner and ")" not in inner, inner
+    set_up_log(fake_mac, new_mac, listed="", list_step="done note=listed-6 synced=unreadable")
     summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
     assert (
         f"{note}the installed agentsync could not run the reader), so it marked none" in summary.splitlines()
@@ -8348,6 +8357,41 @@ def test_the_installer_table_shows_the_config_steps_folder_counts() -> None:
     assert row("seconds=3 rc=0 result=done note=add-source kept=2").endswith("| done (add-source) |")
 
 
+def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> None:
+    """B13 round 8 J10, J31: ``list-folders | done (listed-6)`` for a list that marked two folders and for one
+    that could not read the config: the row dropped the synced= and marks= install.sh logs beside the note.
+    It shows them now, in the Summary's fixed words (never the log's own marks= text); a list from an
+    installer that logged no synced= is as before."""
+
+    def cell(fields: str) -> str:
+        v = dict(field.split("=", 1) for field in fields.split())
+        return setup_report._step_table([("list-folders", v)])[-1].split("|")[3].strip()
+
+    head = "seconds=2 rc=0 result=done note=listed-6"
+    unread = "done (listed-6: could not read which folders are synced: "
+    assert cell(f"{head} synced=2") == "done (listed-6: 2 already synced)"
+    assert cell(f"{head} synced=0") == "done (listed-6: 0 already synced)"
+    assert cell(head) == "done (listed-6)"
+    assert cell(f"{head} synced=unreadable marks=no-tool") == f"{unread}no agentsync was installed)"
+    assert cell(f"{head} synced=unreadable marks=timeout") == f"{unread}the reader took over 10 s)"
+    assert cell(f"{head} synced=unreadable marks=older:is_under") == (
+        f"{unread}the installed agentsync was older than the installer: it had no is_under)"
+    )
+    assert cell(f"{head} synced=unreadable marks=failed:ConfigError") == (
+        f"{unread}the installed agentsync could not load it: a ConfigError)"
+    )
+    assert cell(f"{head} synced=unreadable") == f"{unread}the installed agentsync could not run the reader)"
+    # the log's own text is never shown: a marks= detail that is no identifier, a synced= that is no count
+    assert cell(f"{head} synced=unreadable marks=failed:Bad-Name!x") == (
+        f"{unread}the installed agentsync could not load it)"
+    )
+    assert cell(f"{head} synced=Contoso") == "done (listed-6)"
+    assert cell(f"{head} synced=1234567") == "done (listed-6)"
+    # only the list step reads synced=: another step that logged one is as before
+    config = setup_report._step_table([("config", {"result": "done", "note": "created", "synced": "2"})])[-1]
+    assert config.split("|")[3].strip() == "done (created)"
+
+
 def test_the_on_origin_main_line_dates_the_checkouts_last_fetch(tmp_path: Path) -> None:
     """B13 round 6 G27: "on origin/main: yes (as of the checkout's last fetch)" gave no date, and on a run
     whose pull had just failed that fetch was an earlier session's. One lstat of FETCH_HEAD, with real git:
@@ -8521,6 +8565,16 @@ def test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole(
         red.add("folder", value, fuzzy=True)
         shown = red.redact(f"~/OneDrive-x/{value}/notes; ~/agent-context/setup/; ~/src/agent-context-sync/x")
         assert "Contoso" not in shown and "~/agent-context/setup/; ~/src/agent-context-sync/x" in shown, shown
+    # B13 round 8 J43: the held list spelled the .git name without the dot _norm keeps, so a value of that
+    # name was never the held path: ~/src/agent-context-sync.git/ was cut to ~/src/<folder-1>/
+    red = setup_report.Redactor()
+    red.add("org", org, fuzzy=True)
+    red.add("folder", "agent-context-sync.git", fuzzy=True)
+    red.add("folder", "agent-context-sync.git Contoso", fuzzy=True)
+    shown = red.redact("~/src/agent-context-sync.git/x; ~/OneDrive-x/agent-context-sync.git Contoso/notes")
+    assert shown.startswith("~/src/agent-context-sync.git/x; ") and "Contoso" not in shown, shown
+    assert all(setup_report._norm(n) == n for n in setup_report._HELD_PATH_NORMS)
+    assert setup_report._norm("agent-context-sync.git") in setup_report._HELD_PATH_NORMS
     assert "Private only:" in text
 
 

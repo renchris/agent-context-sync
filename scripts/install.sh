@@ -1082,7 +1082,8 @@ generic_folder() {
 	return 1
 }
 # A proxy host with no dot that names no one and that the report prints as a word of its own (HTTPS_PROXY,
-# network.proxy): setup_report._GENERIC_PROXY_HOSTS (a test keeps them equal). Matched only where a URL names it.
+# network.proxy): setup_report._GENERIC_PROXY_HOSTS (a test keeps them equal). Matched only after // or @, or as
+# host:port with its own port.
 generic_proxy_host() {
 	case "$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
 	proxy | webproxy | wpad | localhost | gateway | firewall | squid | cache | http | https) return 0 ;;
@@ -1477,7 +1478,7 @@ redaction_pairs() {
 			u="${u#pacv=}"
 			pac="${u#*://}"
 			u=""
-			# A PAC URL that is only a generic host ("http://wpad") is that host, matched inside a URL only.
+			# A PAC URL that is only a generic host ("http://wpad") is that host, matched only after // or @ or as host:port.
 			case "$pac" in */*) ;; *) ! generic_proxy_host "${pac%%:*}" || pac="" ;; esac
 			;;
 		rw=*)
@@ -1545,7 +1546,8 @@ redaction_pairs() {
 				[ -z "$rw" ] || add_pair "$key" "<proxy-$m>"
 				;;
 			*)
-				# A host with no dot (B13 R42, R67): a generic word (proxy, wpad) only where a URL names it, so
+				# A host with no dot (B13 R42, R67): a generic word (proxy, wpad) only after // or @ or as host:port
+				# with its own port, so
 				# the report's HTTPS_PROXY and network.proxy stay; any other (contosogw) can name the company and
 				# is a whole word, as git and curl print it ("Could not resolve proxy: contosogw").
 				if generic_proxy_host "$v"; then

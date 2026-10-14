@@ -518,9 +518,10 @@ names no other (B13 round 6 G45, G75): with those of this Mac's entries and sour
 report's own words (``~/agent-<org-1>``). agentsync's own path names (``~/agent-context``,
 ``~/src/agent-context-sync``) are held whole for an organisation matched everywhere too (B13 round 7 H74)."""
 
-_HELD_PATH_NORMS = frozenset({"agentcontext", "agentcontextsync", "agentcontextsyncgit"})
+_HELD_PATH_NORMS = frozenset({"agentcontext", "agentcontextsync", "agentcontextsync.git"})
 """agentsync's own path names as :func:`_norm` gives them: a value that is one of them is the held path
-itself, and any longer value that begins with them is matched before the path is held (B13 round 7 H74)."""
+itself, and any longer value that begins with them is matched before the path is held (B13 round 7 H74).
+:func:`_norm` keeps a dot, so the ``.git`` name is spelled with one (B13 round 8 J43)."""
 
 _REPORT_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
 _URL_RE = re.compile(r"\b[A-Za-z]+://\S*|\bgithub\.com[:/]\S*")
@@ -854,7 +855,8 @@ class Redactor:
         # placeholders of one-word folder, library or organisation values matched anywhere that are report
         # words: one shown means the report's own text may give the value back (B13 round 5 F92)
         self._word_named: set[str] = set()
-        # _bare(value).lower() -> placeholder of a host matched only inside a URL (``add(url=True)``): apart,
+        # _bare(value).lower() -> placeholder of a host matched only where a URL names it, after // or @ or
+        # before :<port> (``add(url=True)``): apart,
         # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
         self._url_hosts: dict[str, str] = {}
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
@@ -1614,23 +1616,31 @@ _UNREAD_WHY = {
 _UNREAD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 
 
+def _unread_words(fields: dict[str, str]) -> str | None:
+    """Why a ``--list-folders`` step that logged ``synced=unreadable`` could not read the folders the config
+    syncs, in the report's words; None when it logged no such thing. install.sh logs ``marks=<why>`` beside
+    it (B13 round 7 H8, H16); a log without one (an installer from the hours between) gets the general
+    words. Only fixed words and one Python identifier of the log are shown. The words carry no bracket of
+    their own: the Summary's note and the Installer table print them inside one (B13 round 8 J16, J27)."""
+    if fields.get("synced") != "unreadable":
+        return None
+    kind, _, detail = fields.get("marks", "").partition(":")
+    name = detail if _UNREAD_NAME_RE.fullmatch(detail) else ""
+    if kind == "older":
+        # a colon, not a parenthesis: the caller puts this in one (B13 round 8 J27)
+        lacks = f": it had no {name}" if name else ""
+        return f"the installed agentsync was older than the installer{lacks}"
+    why = _UNREAD_WHY.get(kind, "the installed agentsync could not run the reader")
+    return f"{why}: a {name}" if kind == "failed" and name else why
+
+
 def unread_why(runs: Sequence[InstallRun]) -> str | None:
-    """Why the first ``--list-folders`` run of ``runs`` that logged ``synced=unreadable`` could not read the
-    folders the config syncs, in the report's words; None when no list run logged it. install.sh logs
-    ``marks=<why>`` beside it (B13 round 7 H8, H16); a log without one (an installer from the hours between)
-    gets the general words. Only fixed words and one Python identifier of the log are shown."""
+    """:func:`_unread_words` of the first ``--list-folders`` run of ``runs`` that logged
+    ``synced=unreadable``; None when no list run logged it."""
     for run in runs:
-        listed = (run.step("list-folders") or {}) if run.list_only else {}
-        if listed.get("synced") != "unreadable":
-            continue
-        kind, _, detail = listed.get("marks", "").partition(":")
-        name = detail if _UNREAD_NAME_RE.fullmatch(detail) else ""
-        if kind == "older":
-            # a colon, not a parenthesis: the caller puts this in one (B13 round 8 J27)
-            lacks = f": it had no {name}" if name else ""
-            return f"the installed agentsync was older than the installer{lacks}"
-        why = _UNREAD_WHY.get(kind, "the installed agentsync could not run the reader")
-        return f"{why}: a {name}" if kind == "failed" and name else why
+        why = _unread_words((run.step("list-folders") or {}) if run.list_only else {})
+        if why is not None:
+            return why
     return None
 
 
@@ -2593,7 +2603,8 @@ _GENERIC_PROXY_HOSTS = frozenset(
 )
 """Proxy host names with no dot that name no one and that the report prints as words of its own
 (``HTTPS_PROXY``, ``network.proxy``, "Could not resolve proxy:"): registered bare, ``proxy`` turned them into
-``HTTPS_<proxy-1>`` and nested placeholders (B13 R42, R67). Such a host is matched only where a URL names it.
+``HTTPS_<proxy-1>`` and nested placeholders (B13 R42, R67). Such a host is matched only after ``//`` or
+``@`` or before ``:<port>``.
 Any other host with no dot (``contosogw``) can carry the company's name and is matched bare, as git and curl
 print it ("Could not resolve proxy: contosogw"). ``scripts/install.sh`` holds the same list."""
 
@@ -2824,7 +2835,8 @@ def _build_redactor(r: _Run) -> Redactor:
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
     # after its scheme is one value, so the printed URL and a quote without the scheme both read <proxy-N>.
     pac = r.system_proxy.pac_url if r.system_proxy is not None else None
-    # A PAC URL that is only a generic host ("http://wpad") is that host, matched inside a URL only (above).
+    # A PAC URL that is only a generic host ("http://wpad") is that host, matched only after // or @ or before
+    # :<port> (above).
     pac_value = pac.split("://", 1)[-1] if pac else None
     if pac_value and ("/" in pac_value or pac_value.split(":")[0].lower() not in _GENERIC_PROXY_HOSTS):
         red.add("proxy", pac_value, ignore_case=True)
@@ -3263,6 +3275,15 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
         # the config step's folder counts, which "(add-source)" alone hid: a run that added no folder read as
         # one that did (B13 round 7 H10); install.sh's note stays, the first-sync label reads it
         counts = f"kept {kept}, added {added}" if kept is not None and added is not None else ""
+        if name == "list-folders":
+            # what the list read of the config, which "(listed-6)" alone hid: a list that marked two folders
+            # and one that could not read the config were the same row (B13 round 8 J10, J31). Fixed words
+            # and a count only, never the log's own marks= text.
+            synced, unread = _count(v, "synced"), _unread_words(v)
+            if synced is not None:
+                counts = f"{synced} already synced"
+            elif unread is not None:
+                counts = f"could not read which folders are synced: {unread}"
         note = ": ".join(part for part in (v.get("note", ""), counts) if part)
         if note:
             result += f" ({note})"
@@ -6345,6 +6366,8 @@ def _agent_friction_line(att: Attempt, stop: FrictionEvent | None) -> str:
         text += f"; {uncounted} line(s) without a prompt kind (untyped or v4), shown, not counted"
     if stop is not None:
         return text + f"; F{stop.line} stopped the run (the outcome says so)"
+    if not lines and not uncounted:
+        return text  # three zero counts: there is no line for "none of these" to mean (B13 round 8 J14)
     return text + "; none of these changes the outcome by itself"
 
 
