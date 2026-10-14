@@ -16410,6 +16410,9 @@ the page, and an engine that arrived after the stub left the two disagreeing for
 engine flaps would turn each flap into a page commit, so it is not done. Pinned by
 `tests/test_cycle.py::test_quarantine_tsv_keeps_the_wording_of_the_published_stub_whatever_this_runs_ocr` (engine
 on, on, off, off, on; and off, then on: one commit, page and TSV equal after every run).
+Amended 2026-10-14, §16.90 L54: the TSV writes the withheld reason whenever the page says withheld as
+`policy.page_says_withheld` reads it (reason, summary or body), so a page from before G29 whose `reason:` says `no
+converter` is withheld in the TSV as in the setup report; `_stub_reason` is `_stub_says`.
 
 **The no-converter docstrings (H56).** `NO_CONVERTER_PREFIX` says its stub's stored reason keeps the prefix while a
 withheld stub's page, `reason:` and TSV row show `withheld by label rule: ...`; `label_withheld_suffixes()` says an
@@ -17057,6 +17060,8 @@ read the page of each withheld-eligible stub, and `yaml.safe_load` cost about 1.
 poll. `_stub_reason` decodes the page's own `reason:` line as `render_frontmatter` wrote it (one JSON string) and
 parses YAML only when that fails, so it gives what the YAML read gives for any wording. Test:
 `test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`.
+Amended 2026-10-14, §16.90 L54: `_stub_reason` is `Publisher._stub_says`, which also decodes the
+`summary:` line (`publish._withheld_on_page`), still with no YAML parse.
 
 **J74: the banner re-render reaches a deleted source's tombstones (`agentsync.cycle`).** Dated line at §16.73 H68:
 the tombstone pass walks the configured ids and the source of every TOMBSTONE output, each once, and
@@ -17245,6 +17250,8 @@ earlier build did not)` follows `N recorded these counts` only when fewer runs r
 cache line's `(a count that also holds for runs of an earlier build)` only when the newest run or the one before it,
 the two runs it counts for, recorded no conversions. Test:
 `test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is`.
+Amended 2026-10-14, §16.90 L42: only a finished run counts as an earlier build's; a run still running or one crash
+recovery closed (both `{}`) is named as such.
 
 **The list row's unread words have one colon** (K23, K36, one defect; dated lines at §16.74 J10 and §16.75 J27).
 `done (listed-6: could not read which folders are synced: the installed agentsync could not load it: a
@@ -17665,6 +17672,8 @@ withheld=)` the page's own decision (`_page_withheld`, as §16.78 J47's re-rende
 that planned the stub decides; a run with an engine still upgrades a `no converter` page once, and a later run with
 none does not revert it. Test:
 `test_cycle.py::test_an_online_only_image_a_label_rule_refuses_keeps_its_stub_whatever_this_runs_ocr`.
+Amended 2026-10-14, §16.90 L47: `_page_withheld` reads the page's `reason:` and `summary:` lines without a YAML
+parse (`publish._withheld_on_page`), which cost about 1 s per 2000 such stubs on every poll with no engine.
 
 **K51: a purge keeps another source's STATE.md line that names the same rel path (`agentsync.governance`).**
 §16.78 J48 scrubbed STATE.md with the log scrubber, which cuts a bare rel path under any heading, so purging one
@@ -17687,6 +17696,9 @@ read every frame of a recording again on its next conversion for a legend change
 until its recording is converted again. Tests:
 `test_recording_grammar.py::test_how_to_read_defines_every_tag_a_window_line_carries`,
 `test_deploy_pack.py::test_the_readme_says_what_a_recording_page_reads_of_speech_and_which_decks_get_ocr`.
+Amended 2026-10-14, §16.90 L51: a page keeps the legend it has until its bytes, converter version or options
+change; the index revision is in the options, so a new conversion of the same bytes (a copy, a repair rebuild)
+gets the new legend from no cache entry.
 
 **K74: a DEL or C1 character in a title or a file name is written as an escape (`agentsync.frontmatter`).**
 `_render_scalar` wrote strings with `json.dumps`, which leaves DEL, U+0080-009F, U+FFFE/FFFF and lone surrogates
@@ -17840,7 +17852,50 @@ Reserved for round 10 lane B of B13.
 
 ### 16.90 Round 10: stubs, OCR timing and recordings (2026-10-14, wave B13 round 10 lane E)
 
-Reserved for round 10 lane E of B13.
+Lane E's round 10 items: L42, L47, L51, L54, L75 built. L47 and L54 are one change (one reader of a stub page's
+lines); L75 is a test fix.
+
+**L42: a running or crash-closed run is no earlier build's (`agentsync.setup_report`; amends §16.80 K6).** A run
+still running has `counts_json` `{}` until `finish_run`, and crash recovery closes a run with `{}` as `aborted`, so
+a report taken during a cycle said `(a run of an earlier build did not)` and `(a count that also holds for runs of
+an earlier build)` on a Mac that only ran this build. `_UNFINISHED` holds `running` and `aborted`: only a finished
+run without `converted` is an earlier build's. The OCR time bracket names what is there, joined by `; `: `a run of
+an earlier build did not`, `a run still running has none yet`, `a run crash recovery closed has none`; the converter
+cache line adds `; the newest run is still running, so its count can still grow` when it is. An aborted run of an
+earlier build no longer counts as one; nothing could tell it from this build's (both are `{}`). Test:
+`test_setup_report.py::test_a_running_or_crash_closed_run_is_no_earlier_builds`.
+
+**L47, L54: a withheld stub is read from its own lines, by the one test (`agentsync.publish`, `agentsync.cycle`;
+amends §16.84 K50 and §16.71 H52).** `publish._withheld_on_page` decodes a stub page's `reason:` and `summary:`
+lines as `render_frontmatter` wrote them (one JSON string each) and gives them, with the body, to
+`policy.page_says_withheld`; YAML parses only a page whose reason line is missing or a line does not decode.
+`_reason_line` is that reader for `reason:` alone. L47: K50's `_page_withheld` ran `parse_mirror_page` for every
+online-only image stub a label rule may withhold on each pass with no OCR engine, about 1 s per 2000 stubs a poll,
+the cost §16.78 J55 had taken out of the TSV; it reads the lines first now (`_pages_intact` has matched the page to
+its hash, so the validation the parse did is not needed). L54: `write_quarantine` read the `reason:` alone while the
+cycle and the setup report read `page_says_withheld` (reason, summary or body), so a page from before §16.66 G29,
+whose `reason:` still says `no converter for .png`, was `no converter` in the TSV and withheld in the report, for
+good on a paused source, which the stub re-render never reaches. The TSV writes the withheld reason whenever the
+page says withheld; `Publisher._stub_reason` is `_stub_says`, the reason and that verdict from one read. A Mac with
+such a page makes one TSV-only commit the first time. Tests:
+`test_cycle.py::test_a_run_with_no_engine_reads_an_online_only_images_stub_without_a_yaml_parse`,
+`test_cycle.py::test_a_stub_pages_lines_say_withheld_as_its_yaml_parse_does`,
+`test_cycle.py::test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_the_report_does`.
+
+**L51: the recording index revision is in the cache options (`agentsync.convert.recording`; amends §16.84 K63).**
+K63 changed How to read without moving the action key, so a copy of bytes converted under the old legend, or a
+repair rebuild, was served the old index from the converter cache. `_INDEX_REVISION` (2) is in
+`RecordingConverter.options()` only, never in `_picture_options()`: it moves the whole file's action key, while
+`_key()`, `_speech_key`, `version()` and `outdated_key` stay, so no frame or speech is read again and no page is
+re-read by itself, as §16.66 G59 did for the deck emitter. Raise it whenever a fixed wording of the index page
+changes. Test: `test_convert_recording.py::test_a_copy_of_bytes_converted_under_an_older_legend_gets_the_new_one`.
+
+**L75: the group-stop test's child takes SIGINT whatever pytest's launch ignored (`tests/test_ocr.py`).**
+`test_a_stop_of_the_whole_process_group_leaves_no_compiler_running[SIGINT]` timed out at 120 s in a loaded gate.
+The cause was not load: a pytest started with SIGINT ignored (a `cmd &` launch) passes SIG_IGN to the child, which
+then ignored the group's SIGINT and waited out `_BUILD_TIMEOUT_S`. Under `trap '' INT` it failed every time at
+120 s; §16.78 J80's raise from 30 s was for this. The child sets the default SIGINT handler before it builds; no
+load skip is added.
 
 ### 16.91 Round 10: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 10 lane D)
 
