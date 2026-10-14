@@ -1533,13 +1533,15 @@ def test_a_tombstone_from_before_the_banner_came_first_is_rendered_again_once_wi
     assert run(sample_config).commit_sha is None
 
 
+@pytest.mark.parametrize("mark", ["", "5"])
 def test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_banner_first(
-    tmp_path: Path,
+    tmp_path: Path, mark: str
 ) -> None:
     """B13 round 8 J74: the one-time re-render walked the tombstones of the sources in sources.toml only, and
     a source whose rows are all tombstones may be deleted from it, so its tombstones from before the banner
     came first (Q9) kept the title above the banner until they were reaped. Every source that holds a
-    tombstone is walked now; a tombstone needs nothing of its source."""
+    tombstone is walked now; a tombstone needs nothing of its source.  B13 round 9 K70: J74 left
+    ``STUB_RENDER`` at 5, so a Mac that had run round 7's build (mark 5) never ran the wider walk; it is 6."""
     main, other = tmp_path / "main", tmp_path / "other"
     for root, name in ((main, "note.txt"), (other, "Contoso Retired Memo.txt")):
         root.mkdir()
@@ -1578,7 +1580,8 @@ def test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_ban
                 for o in m.outputs_for("contoso-docs", out.stable_id)
             ],
         )
-        m.set_meta(cycle_mod._STUB_RENDER_META, "")  # an install from before the stub rendering version
+        # "": an install from before the stub rendering version; "5": one that ran round 7's walk (H77)
+        m.set_meta(cycle_mod._STUB_RENDER_META, mark)
     git(repo, "commit", "-qam", "a tombstone from before Q9")
     gone = configured(base)  # the source's block deleted from sources.toml
     report = run(gone)
@@ -1587,6 +1590,7 @@ def test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_ban
     assert (repo / at).read_text(encoding="utf-8") == text, "banner first, its own title"
     with Manifest(gone_db) as m:
         [out] = [o for o in m.iter_outputs(source_id="contoso-docs") if o.output_path == at]
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish_mod.STUB_RENDER)
     assert out.page_sha256 == hashlib.sha256(text.encode()).hexdigest()
     assert run(gone).commit_sha is None
 

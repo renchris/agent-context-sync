@@ -311,7 +311,7 @@ _ALARM_MAX = 6000
 an alarm names up to five, each in full (five relative paths at macOS's 1024-character limit fit); at
 :data:`_REASON_MAX` five nested OneDrive paths lost their last names and the ``(+N more ...)`` tail (B13 round
 7 H48). Errors, skipped reasons and lint messages keep 300."""
-STUB_RENDER = 5
+STUB_RENDER = 6
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
 re-renders the stubs it can rebuild without reading a byte, once per version (``Cycle._rerender_stubs``).
@@ -320,7 +320,8 @@ Q75). 3: a withheld .msg says it is a binary one, whose label cannot be read, an
 converter (B13 round 5 F33, F36). 4: a withheld stub's ``reason:`` says it is withheld by the label rule,
 a redacted item's stub is rendered again too, and so is every intact tombstone page (B13 round 6 G29, G76,
 G77). 5: a tombstone with no ``last_commit`` gets the newest commit on its path that holds content, and the
-recovery line of one that has none names no position (B13 round 7 H77)."""
+recovery line of one that has none names no position (B13 round 7 H77). 6: the tombstones of a source deleted
+from sources.toml are rendered again too (B13 round 8 J74, round 9 K70)."""
 _CHANGELOG_HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) · run (\d+) · (.*)$")
 _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 _UNIT_REMOVED = "unit-removed"

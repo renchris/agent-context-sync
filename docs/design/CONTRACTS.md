@@ -15743,6 +15743,9 @@ with no engine no longer rewrites an image's TSV row as `no converter`; the row 
 the tombstone layout.
 **Amended 2026-10-14, §16.79 J73 (by §16.71 H77):** `STUB_RENDER` is 5: H77's tombstone line bumped it once more, so
 an install at 4 renders once more.
+**Amended 2026-10-14, §16.85 K70 (by §16.78 J74):** `STUB_RENDER` is 6: J74 widened the tombstone pass to the
+sources deleted from sources.toml and kept 5, so an install that had run H77's build (at 5) never ran the wider pass
+and kept those tombstones' title above the banner until they were reaped.
 
 **A redacted stub is rendered again (G76; amends §16.51 Q75, §16.60 F94).** `Cycle._stub_again` no longer skips a
 redacted item: the publisher redacts the re-plan from the stored redaction (`_shown_name`, `_shown_path`,
@@ -16399,6 +16402,8 @@ status: deleted", true after repair and unarchive commits too. `STUB_RENDER` is 
 install at 4 renders once more. Dated lines at §16.60 F68 and §16.66 G77. Pinned by
 `tests/test_cycle.py::test_a_tombstone_with_no_last_commit_is_rendered_again_with_the_commit_that_holds_its_content`
 (content kept; squashed to one root commit).
+Amended 2026-10-14, §16.85 K70 (by §16.78 J74): `STUB_RENDER` is 6, so an install at 5 renders once more for J74's
+wider tombstone pass.
 
 **A timing test reads the load when it starts (H78).** `tests/conftest.py` skips a `timing` test in
 `pytest_runtest_setup`, not once at collection: under `-n auto` each worker collects at startup, so a long run whose
@@ -16996,6 +17001,8 @@ the tombstone pass walks the configured ids and the source of every TOMBSTONE ou
 data-governance.md says "an intact tombstone" again. Tests:
 `test_cycle.py::test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_banner_first`,
 `test_deploy_pack.py::test_the_banner_re_render_names_the_tombstones_it_covers`.
+Amended 2026-10-14, §16.85 K70: J74 did not bump `STUB_RENDER`, so the pass ran only where the stored mark was
+behind 5; it is 6 now, and an install at 5 renders once more.
 
 **J28: a rule change that leaves a refusal as it was rewrites no stub (`agentsync.cycle`).** Any `[policy]` edit
 changes every guarded converter's options hash, so a second label id added while the rule stayed on republished
@@ -17321,3 +17328,14 @@ the page decides, so an engine added or removed later changes nothing, and that 
 probe; the table carries a dated line. Test: `test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe`
 (drives `withheld_for` both ways); `test_setup_feedback_states_the_report_rules_of_round_3` now pins the old
 sentence's absence.
+
+**A Mac at `STUB_RENDER` 5 runs J74's wider tombstone pass** (K70; dated lines at §16.66's "`STUB_RENDER` is 4",
+§16.71 H77 and §16.78 J74). J74 made `Cycle._rerender_stubs` walk the source of every TOMBSTONE output, a source deleted from
+sources.toml included, and data-governance.md says every intact tombstone is rendered again; but the pass runs once
+per `STUB_RENDER` and J74 left it at 5, H77's number, so an install that had synced on a round 7 or later build
+skipped it and kept a deleted source's tombstones from before the banner (§16.51 Q9) in the old layout until they
+were reaped. `STUB_RENDER` is 6. The bump runs the whole pass once more; a page is written only where the planned
+page differs from the intact one, and J47/J53 already read an image stub's withheld wording from its page, so
+unchanged stubs make no commit. Test:
+`test_cycle.py::test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_banner_first` (now also
+from a stored mark of 5, and the mark ends at `STUB_RENDER`).
