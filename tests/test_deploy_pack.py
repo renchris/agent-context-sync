@@ -3742,6 +3742,22 @@ def test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words() ->
         assert f"reads `{getattr(setup_report, name)}`" in para, name
 
 
+def test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values() -> None:
+    """B13 round 8 J63: since round 7 H20 both reports register each git URL rewrite's host and base as a
+    `<proxy-N>` and count the rewrites on the Environment line; the guide's `<proxy-N>` row and machine
+    sections, and the Python report's own legend and module docstring, named only proxy hosts and the PAC URL.
+    (The shell legend is pinned in `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.)"""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert "git URL rewrite (insteadOf) host or base" in setup_report._LEGEND["proxy"]
+    doc = " ".join((setup_report.__doc__ or "").split())
+    assert "the host and the base after its scheme and user of each git URL rewrite (``insteadOf``" in doc
+    page = _page("docs/deploy/setup-feedback.md")
+    assert 'of each git URL rewrite (`[url "<base>"] insteadOf`, never `pushInsteadOf`' in page
+    assert "github.com is never replaced" in page
+    assert "how many URL rewrites it has (a count, never a host)" in page
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is

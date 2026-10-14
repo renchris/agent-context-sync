@@ -1812,8 +1812,9 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     )
     assert (
         "proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a "
-        "URL or host:port names it) and the system PAC URL after its scheme (<proxy-N>)" in flat
-    ), "a clause with a verb, and the rule the matcher applies (B13 round 6 G4)"
+        "URL or host:port names it), a git URL rewrite's host and base (insteadOf; github.com kept) and the "
+        "system PAC URL after its scheme (<proxy-N>)" in flat
+    ), "a clause with a verb, the rule the matcher applies (B13 round 6 G4), and URL rewrites (round 8 J63)"
     legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
     assert max(map(len, legend)) <= 115 and legend[-1].startswith("Read the report before sending it: a")
 

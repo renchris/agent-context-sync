@@ -66,7 +66,8 @@ hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), 
 (``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names (``<host>``), the
 MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches inside it),
 proxy hosts, those in git's config files included, and the LaunchAgent's own (``launchctl setenv``) proxy,
-and the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
+the host and the base after its scheme and user of each git URL rewrite (``insteadOf``; github.com kept), and
+the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
 ``/var/folders/<x>/<y>``: ``<tmp>``). A dotless generic host (``proxy``, ``wpad``, ``gateway``:
 :data:`_GENERIC_PROXY_HOSTS`) is replaced only where a URL names it (after ``//`` or ``@``, or before
 ``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable; any other dotless host is matched bare.
@@ -609,7 +610,10 @@ _LEGEND = {
     "serial": "<serial> serial number",
     "host": "<host> this Mac's host or computer name",
     "mdmhost": "<mdmhost> MDM server's host",
-    "proxy": "<proxy-N> proxy host, or the system PAC URL after its scheme",
+    "proxy": (
+        "<proxy-N> proxy host, git URL rewrite (insteadOf) host or base, or the system PAC URL after its "
+        "scheme"
+    ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
 }
 _FIXED_PLACEHOLDERS = frozenset(

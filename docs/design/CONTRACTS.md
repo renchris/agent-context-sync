@@ -16602,3 +16602,14 @@ unlisted folders) as `_AGENTS_SHOWN` and `_STATE_SHOWN`; the guide said every pa
 the `_eval` folder and the config file. It now quotes all three phrases. Test:
 `test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words`, which reads the constants
 `_eval_by_name` substitutes from its source.
+
+**Both legends and the guide name git's URL rewrites as `<proxy-N>` values** (J63). Since §16.69 H20 both reports
+register each `[url "<base>"] insteadOf` base's host, its base after the scheme and user, and an scp base's path
+that is not only a server's generic words, as `<proxy-N>` (github.com never), and print `URL rewrite in git's config:
+set (N)`. The guide's `<proxy-N>` row, its machine-sections row, the shell report's legend
+(`fallback_redaction`), the Python report's `_LEGEND["proxy"]` and its module docstring named only proxy hosts and
+the PAC URL, so a `<proxy-2>/<org>/` from a rewrite had no legend entry. All five now name the rewrites (the shell
+legend rewrapped to its 115 columns). H20's "no legend changes" meant no new placeholder class; there is still none.
+The legend words only add to the words a folder name is checked against for Private only (more private, never
+less). Tests: `test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values` and
+`tests/test_install_oneshot.py::test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
