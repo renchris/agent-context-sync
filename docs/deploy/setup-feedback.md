@@ -311,8 +311,9 @@ The outcome judges only the install. How far the loop got after it is the Summar
 `baseline drafted`, `baseline confirmed`, `before run`, `topics N` (N curated pages) or `after run`, computed from
 status's loop line; the NEXT line is the one `agentsync status` would print, with every path cut to its last part
 except agentsync's own fixed `~/.local/bin/agentsync`, which holds no name, matches doctor's fixes and the status
-lines in the same report, and stays runnable when ~/.local/bin is not on PATH; the draft baseline's folder reads `the docs repo's _eval folder`, and
-the config file its name. So a setup that synced and stopped before drafting the baseline
+lines in the same report, and stays runnable when ~/.local/bin is not on PATH; the draft baseline's folder reads `the docs repo's _eval folder`,
+the docs repo's AGENTS.md (named by rules 4, 6 and 8) reads `the docs repo's AGENTS.md`, its _sync/STATE.md (named
+by the waits for empty and unlisted folders) reads `the docs repo's _sync/STATE.md`, and the config file its name. So a setup that synced and stopped before drafting the baseline
 questions reads "fully one command" with `Loop: synced; NEXT: draft the baseline questions: ...`. When
 something waits on the person, the line ends with every `WAITING ON YOU:` line the loop printed: first the one
 the loop stopped on, then the others in the loop's order; when the command printed that one after others, a

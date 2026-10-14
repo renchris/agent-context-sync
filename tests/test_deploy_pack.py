@@ -3724,6 +3724,24 @@ def test_the_guide_maps_each_prompts_steps_to_the_forms_options() -> None:
     assert "1 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4" in para
 
 
+def test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words() -> None:
+    """B13 round 8 J62: since round 7 H3 and H36 the Loop line shows the docs repo's AGENTS.md and
+    _sync/STATE.md in words, as it does the _eval folder; the guide named only the _eval folder.  Every
+    constant `_eval_by_name` substitutes is quoted, so the next one cannot leave the guide behind."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    replaced = re.findall(
+        r"line\.replace\([^,]+, (_[A-Z]+_SHOWN)\)", inspect.getsource(setup_report._eval_by_name)
+    )
+    assert set(replaced) == {"_EVAL_SHOWN", "_AGENTS_SHOWN", "_STATE_SHOWN"}
+    page = _page("docs/deploy/setup-feedback.md")
+    para = page[
+        page.index("The outcome judges only the install.") : page.index("The run type is computed too")
+    ]
+    for name in replaced:
+        assert f"reads `{getattr(setup_report, name)}`" in para, name
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is

@@ -16595,3 +16595,10 @@ against its own field table. It now says the form has v6's four options plus v7'
 take the option of the same number and name, and step 2 (`install`) takes `Failed at step 2 (install and start)`;
 the v5 mapping is unchanged. Test: `test_the_guide_maps_each_prompts_steps_to_the_forms_options`, which reads each
 label from `form_label`.
+
+**The Loop line paragraph names AGENTS.md and STATE.md in words** (J62). Since §16.69 H3 and H36 `_eval_by_name`
+shows the docs repo's AGENTS.md (rules 4, 6 and 8's baseline NEXT) and _sync/STATE.md (the waits for empty and
+unlisted folders) as `_AGENTS_SHOWN` and `_STATE_SHOWN`; the guide said every path is cut to its last part except
+the `_eval` folder and the config file. It now quotes all three phrases. Test:
+`test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words`, which reads the constants
+`_eval_by_name` substitutes from its source.
