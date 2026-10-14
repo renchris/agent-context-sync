@@ -1022,8 +1022,8 @@ def test_a_stop_of_the_whole_process_group_leaves_no_compiler_running(
     try:
         compiler = compiler_pid(pidfile, proc)
         os.killpg(proc.pid, sig)
-        proc.wait(timeout=30)
-        assert gone(compiler), f"the compiler outlived a {sig.name} to the build's process group"
+        proc.wait(timeout=120)  # returns once it exits; 30 s ran out under load (B13 round 8 J80)
+        assert gone(compiler, within=30), f"the compiler outlived a {sig.name} to the build's process group"
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)

@@ -148,6 +148,24 @@ def roomy_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_report, "TIME_BUDGET_S", 120.0)
 
 
+@pytest.fixture
+def roomy_calls(roomy_budget: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``roomy_budget`` and per-call bounds no load reaches, for a test that checks what a section says: under
+    load the 4 s Status build, the listing and the evidence reads ran out and printed "not measured (time
+    limit)" (B13 round 8 J80). Apart from ``roomy_budget``, so a test of a real bound (the checks run in
+    Doctor, not under Status's 4 s; H8-1's listing) keeps it."""
+    for name in (
+        "_LISTING_S",
+        "_PROXY_S",
+        "_STATUS_S",
+        "_LOOP_NEXT_S",
+        "_FOLDERS_S",
+        "_PROBE_S",
+        "EVIDENCE_BUDGET_S",
+    ):
+        monkeypatch.setattr(setup_report, name, 60.0)
+
+
 @pytest.mark.timing
 def test_the_report_finishes_inside_its_time_budget(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     rc, _text, elapsed = report(tmp_path, fake_mac["config"])
@@ -1433,6 +1451,7 @@ def test_a_shadowing_agentsync_on_path_is_flagged(
     ]
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_fingerprints_commits_and_listed_folders_are_redacted(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -1656,6 +1675,25 @@ def test_checks_render_once_from_one_offline_status_build(
     assert re.search(r"\d+ check\(s\): \d+ ok", section(text, "Doctor"))
 
 
+@pytest.mark.usefixtures("roomy_calls")
+def test_roomy_calls_lets_a_status_build_slower_than_its_bound_say_its_lines(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 8 J80: content tests failed under load on the report's per-call bounds (Status's 4 s, the
+    listing's 3 s, the evidence reads), which ``roomy_budget`` left as literals. They are module constants
+    now, and ``roomy_calls`` widens them, so a Status build slower than the real bound still says its
+    lines."""
+
+    def slow(_config: Path) -> list[str]:
+        time.sleep(4.5)  # past the real 4 s Status bound
+        return ["loop: skill current; a slow-status line"]
+
+    _text, _summary = summary_of(fake_mac, status=slow)
+    status = section(_text, "Status")
+    assert "This section failed" not in status and "a slow-status line" in status
+
+
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_broken_governance_table_still_renders_every_check(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -2708,6 +2746,7 @@ def test_every_configured_source_id_is_a_placeholder(fake_mac: dict[str, Path]) 
     assert "sources: 5 (by kind: inbox 3, local 2" in section(text, "Configuration")
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_project_path_under_the_home_folder_is_redacted(fake_mac: dict[str, Path]) -> None:
     """A source folder outside ~/Library/CloudStorage: the path from the project's folder down is one
     placeholder and the project's name another, so a sibling path does not show it either. Ordinary words in
@@ -3318,7 +3357,7 @@ V8_BUSY_LINES = (
 and a step 2 error logged after install.sh exited 0, which is agent friction (v6 and v7 alike)."""
 
 
-@pytest.mark.usefixtures("clean_doctor", "roomy_budget")
+@pytest.mark.usefixtures("clean_doctor", "roomy_calls")
 def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_the_copy(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -4307,6 +4346,7 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
     assert pick(None, [breaker]) == breaker
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -5247,6 +5287,7 @@ def test_expected_doctor_warns_are_annotated_not_their_fix(fake_mac: dict[str, P
     assert "unexpected 1: network.proxy warn" in summary
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_ocr_not_built_is_an_info_line_and_an_ocr_warn_is_unexpected(fake_mac: dict[str, Path]) -> None:
     """Doctor's ``ocr`` line when the helper is not built is INFO: shown, never counted as a problem, so
     ``expected_warn`` needs no entry for it.  An ``ocr`` warn means OCR is broken: unexpected, with its fix,
@@ -5904,6 +5945,7 @@ def test_an_image_of_a_graph_source_is_not_on_this_mac(fake_mac: dict[str, Path]
     assert "tailspin-drive" not in text
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_backlog_read_over_many_runs_is_reported_as_files_waiting_not_as_a_sum(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -6208,6 +6250,7 @@ def test_like_a_type_is_as_long_as_the_longest_listed_type() -> None:
     assert longest == setup_report._SHAPE_LONG, "no listed type would read `too long for a type`"
 
 
+@pytest.mark.usefixtures("roomy_calls")
 def test_a_source_with_unlisted_suffixes_counts_them_by_shape(fake_mac: dict[str, Path]) -> None:
     """The shapes count distinct suffixes and add up to D; the files add up to N; no tail is printed."""
     seed = Seed(fake_mac["config"])
@@ -6706,6 +6749,7 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     assert "; 50 of 60 checked;" in capped
 
 
+@pytest.mark.timing
 def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_time(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -6785,6 +6829,7 @@ class Clock:
         return time.monotonic() + self.ahead
 
 
+@pytest.mark.timing
 def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

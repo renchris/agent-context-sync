@@ -384,6 +384,9 @@ at every run, with a PROGRAM_REFUSED line in the job's error log)."""
 
 _RESERVE_S = 1.0
 _LOOP_NEXT_S = 4.0  # the Summary's Loop line: the ``loop_next`` hook's own limit
+_LISTING_S = 3.0  # the cloud folder listing (B13 round 8 J80: a constant, so a test can widen it)
+_PROXY_S = 4.0  # the LaunchAgent job's proxy read
+_STATUS_S = 4.0  # the offline Status build the report reads its lines from
 _LOOP_FLOOR_S = 1.0  # held back from Doctor's share, so the hook gets at least 2 s past a slow doctor
 _TAIL_BYTES = 64 * 1024
 _LEVEL_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL)\b|^(?:error|fatal):|^Traceback ")
@@ -2794,7 +2797,7 @@ def _build_redactor(r: _Run) -> Redactor:
     # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
     listing_ok = True
     try:
-        listed = r.call(cloud_folder_names, timeout=3.0)
+        listed = r.call(cloud_folder_names, timeout=_LISTING_S)
     except Exception as exc:
         listed, listing_ok = [], False
         r.listing_note = f"could not list ~/Library/CloudStorage at depth 2-3 for redaction: {exc}"
@@ -2843,7 +2846,7 @@ def _build_redactor(r: _Run) -> Redactor:
     if r.hooks.job_proxy is not None:
         with contextlib.suppress(Exception):
             job = r.hooks.job_proxy
-            for host in _proxy_hosts(r.call(lambda: job(r.config), timeout=4.0)):
+            for host in _proxy_hosts(r.call(lambda: job(r.config), timeout=_PROXY_S)):
                 _add_proxy_host(red, host)
     # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
     # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
@@ -3756,7 +3759,7 @@ def _status(r: _Run) -> list[str]:
         return ["Not run: no status hook."]
     config = r.config
     status_fn = r.hooks.status
-    lines = r.call(lambda: status_fn(config), timeout=4.0)
+    lines = r.call(lambda: status_fn(config), timeout=_STATUS_S)
     baselines = [m.group(1) for m in (_BASELINE_RE.match(ln) for ln in lines) if m is not None]
     if baselines:
         r.facts.baseline = (baselines.count("complete"), len(baselines))
