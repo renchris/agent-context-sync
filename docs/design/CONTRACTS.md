@@ -16837,7 +16837,62 @@ label on a run with no label rule and breaks the test it asked to keep (a no-rul
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 
-Reserved for round 8 lane E of B13.
+Lane E's round 8 items: J28, J46, J47, J48, J50, J53, J55, J74, J80, all built. J46 and J48 are one change, and so
+are J47 and J53.
+
+**J46, J48: a purge cuts the purged file's name from STATE.md and its carried lines (`agentsync.governance`).**
+STATE.md names a source's file by its rel path under the source's `## <id>` heading, and §16.68 H73's manifest meta
+`state_md_lines` carries those lines for a source a run did not select. The purge scrubbed both with its paired
+scrubber, which needs the source id on the same line, so the line stayed in STATE.md after a VERIFIED purge and the
+next `reconcile --source <other>` printed it again from the meta. agentsync's own ignored files (`_sync/STATE.md`,
+`_manifest/cache/`) now take the log scrubber (a bare rel path, also as STATE.md quotes it: whitespace runs
+collapsed); a user's ignored files keep the paired one. `_manifest_apply` marks each carried line that names a
+purged file of its own source `[purged]`, inside its transaction (secure_delete, then VACUUM); another source's line
+stays, and a value it cannot read is deleted. Test:
+`test_loop.py::test_a_purge_leaves_the_purged_files_name_in_neither_state_md_nor_its_carried_lines`.
+
+**J50: a purge removes a CHANGELOG line written before H37 (`agentsync.governance`).** Dated line at §16.68 H37.
+Tests: `test_review_fixes.py::test_a_purge_removes_a_changelog_line_written_before_backticks_were_kept`,
+`test_review_fixes.py::test_a_purge_keeps_the_lines_of_a_live_file_named_like_the_old_quoted_form`.
+
+**J47, J53: the stub re-render keeps the wording its page has (`agentsync.cycle`, `agentsync.publish`).** The
+re-render once per `STUB_RENDER` planned an image stub a label rule may withhold with that run's OCR state, so a run
+whose engine missed its `--version` turned "withheld by label rule" into "no converter for .png" (page and
+QUARANTINE.tsv), and the meta written after it kept it until the next bump. `_rerender_stubs` now passes
+`plan_pages(..., withheld=)` the page's own decision: the body's "its content is withheld (content policy)" below the
+heading (every withheld body has it; the heading holds the file's name), or a `reason:` or summary that says withheld
+by label rule. A page from before §16.62 G29 (`reason: no converter for .png`, withheld body) stays withheld, and a
+"no converter" page stays so on a run with an engine, as §16.71 H52 says the run that planned the stub decides.
+Normal planning and a .msg are unchanged. Tests:
+`test_cycle.py::test_the_stub_re_render_keeps_the_wording_the_page_has_whatever_this_runs_ocr`,
+`test_cycle.py::test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_said_so`.
+
+**J55: QUARANTINE.tsv reads a stub's `reason:` without a YAML parse (`agentsync.publish`).** Since H52 every run
+read the page of each withheld-eligible stub, and `yaml.safe_load` cost about 1.2 s per 2000 image stubs on every
+poll. `_stub_reason` decodes the page's own `reason:` line as `render_frontmatter` wrote it (one JSON string) and
+parses YAML only when that fails, so it gives what the YAML read gives for any wording. Test:
+`test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`.
+
+**J74: the banner re-render reaches a deleted source's tombstones (`agentsync.cycle`).** Dated line at §16.73 H68:
+the tombstone pass walks the configured ids and the source of every TOMBSTONE output, each once, and
+data-governance.md says "an intact tombstone" again. Tests:
+`test_cycle.py::test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_banner_first`,
+`test_deploy_pack.py::test_the_banner_re_render_names_the_tombstones_it_covers`.
+
+**J28: a rule change that leaves a refusal as it was rewrites no stub (`agentsync.cycle`).** Any `[policy]` edit
+changes every guarded converter's options hash, so a second label id added while the rule stayed on republished
+each labelled file's refused stub over a one-line `options_hash:` diff (a commit, `1m`, a re-screen counted as
+changed) while unchanged pages kept their old hash. `_after_fetch` settles a re-screened refusal whose stub, planned
+again, equals the live page but for `options_hash:`, as the H2 cutoff settles a page: the key moves, the verdict is
+REFUSED, and it counts as re-screened unchanged. A refusal that reads otherwise is still published; `STUB_RENDER` is
+unchanged. Test: `test_e2e.py::test_a_rule_change_that_leaves_a_label_refusal_as_it_was_rewrites_no_stub`.
+
+**J80: content tests get room on the report's per-call bounds (tests; `agentsync.setup_report` constants).** The
+Status, listing and proxy bounds are module constants (`_STATUS_S`, `_LISTING_S`, `_PROXY_S`), with no change in
+behavior. The `roomy_calls` fixture widens them and the loop, folder, probe and evidence bounds on top of
+`roomy_budget`, apart from it so the tests of a real bound keep theirs; the two time-contract tests are marked
+`timing`, and the OCR group-stop test waits 120 s for the build to exit. Test:
+`test_setup_report.py::test_roomy_calls_lets_a_status_build_slower_than_its_bound_say_its_lines`.
 
 ### 16.79 Round 8: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 8 lane D)
 
