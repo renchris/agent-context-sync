@@ -83,8 +83,10 @@ _NOT_DETECTED = (
 )
 _TIMES_FACT = "times are media time from the first frame; screen times move in 2 s steps"
 _HOW_TO_READ = (
-    "- `SCREEN:` a content row on screen when the state began; `SCREEN+:` / `SCREEN-:` a row came or went",
-    "- `TILE:` the text of a name label or a camera picture: on-screen text, not proof of who spoke",
+    "- `SAID vN:` speech of voice N (N numbers a voice, not a person); `SCREEN:` a content row on screen "
+    "when the state began; `SCREEN+:` / `SCREEN-:` a row came or went",
+    "- `TILE:` the text of a name label or a camera picture; `SPEAKING:` the one label the meeting app lit; "
+    "both are on-screen text, not proof of who spoke",
     "- `KEYFRAME:` the state's picture, tHHMMSS.jpg in the window's .files/ folder; a revisit names the "
     "earlier state's picture and the window that holds it",
     "- `NOTE:` a fact stated in fixed wording; a line ending in [?] was read at low confidence",

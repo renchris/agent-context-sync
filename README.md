@@ -218,7 +218,8 @@ AVFoundation and the same Vision OCR as images. It becomes a folder of pages nex
   and how to read the folder;
 - one page per five minutes, `01-t000000.md`, `02-t000500.md` and so on: each screen state (a slide, a shared
   window, the camera view) under a heading with its times, then one line per row of on-screen text, each starting
-  with its media time and a tag (`SCREEN:`, `TILE:`, `SPEAKING:`, `SAID v<N>:`, `KEYFRAME:`, `NOTE:`);
+  with its media time and a tag (`SCREEN:`, `SCREEN+:` and `SCREEN-:` for a row on screen, added or removed,
+  `TILE:`, `SPEAKING:`, `SAID v<N>:`, `KEYFRAME:`, `NOTE:`);
 - keyframes: one or two JPEG pictures of each screen state, in the window page's `.files/` folder, so an agent can
   look at a chart or a face the text does not cover.
 

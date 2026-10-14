@@ -48,6 +48,7 @@ from collections.abc import Callable
 
 import pytest
 
+from agentsync.convert import recording_page
 from agentsync.policy import UNTRUSTED_BANNER
 
 HMS = r"\d{2}:[0-5]\d:[0-5]\d"
@@ -1156,3 +1157,19 @@ def test_gaps_and_bounds_may_print_its_showing_line() -> None:
         )
         == []
     )
+
+
+def test_how_to_read_defines_every_tag_a_window_line_carries() -> None:
+    """B13 round 9 K63: the index's How to read named SPEAKING and SAID only inside its rg lines, so an agent
+    reading the mirror alone was never told that N in ``SAID vN`` numbers a voice or that SPEAKING is the
+    label the meeting app lit. Every tag of spec 3.3 a window line carries is defined there (TERM and VOICE
+    are index lines with their own blocks), and SPEAKING keeps D2's "not proof of who spoke"."""
+    legend = recording_page._HOW_TO_READ
+    defined = {
+        m for ln in legend for m in re.findall(r"`(SAID vN|SCREEN[+-]?|TILE|SPEAKING|KEYFRAME|NOTE):`", ln)
+    }
+    assert defined == {"SAID vN", "SCREEN", "SCREEN+", "SCREEN-", "TILE", "SPEAKING", "KEYFRAME", "NOTE"}
+    (said,) = [ln for ln in legend if "`SAID vN:`" in ln]
+    assert "N numbers a voice, not a person" in said
+    (speaking,) = [ln for ln in legend if "`SPEAKING:`" in ln]
+    assert "the one label the meeting app lit" in speaking and "not proof of who spoke" in speaking

@@ -4362,7 +4362,10 @@ def test_the_readme_says_what_a_recording_page_reads_of_speech_and_which_decks_g
 
     readme = " ".join(_page("README.md").split())
     assert "No speech is read yet" not in readme
-    assert "(`SCREEN:`, `TILE:`, `SPEAKING:`, `SAID v<N>:`, `KEYFRAME:`, `NOTE:`)" in readme
+    assert (  # B13 round 9 K63: SCREEN+ and SCREEN- too
+        "(`SCREEN:`, `SCREEN+:` and `SCREEN-:` for a row on screen, added or removed, `TILE:`, `SPEAKING:`, "
+        "`SAID v<N>:`, `KEYFRAME:`, `NOTE:`)"
+    ) in readme
     assert (
         "A `SPEAKING:` line is the name label the meeting app lit on screen. It is read from the picture, "
         "needs "
