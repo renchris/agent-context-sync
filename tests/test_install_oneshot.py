@@ -136,7 +136,14 @@ case "$sub" in
   init) setup; inbox; hint "agentsync doctor" ;;
   add-source)
     [ -z "${STUB_ADD_SOURCE_RC:-}" ] || { echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
-    setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor" ;;
+    [ "$pos" != "${STUB_ADD_SOURCE_FAIL:-}" ] || { echo "add-source failed (stub)" >&2; exit 1; }
+    setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor"
+    if [ -n "${STUB_ADD_SOURCE_SUMMARY:-}" ]; then  # the lines cli._ensure_setup ends every call on
+      echo "added source '${pos##*/}'"
+      echo "docs repo $(dirname "$cfg")/docs (exists, no remote; scaffold up to date)"
+      [ -f "$cfg.tm" ] || { echo "time machine: excluded the cache (stub)"; : > "$cfg.tm"; }  # the first call
+      echo "sources: ${pos##*/}"
+    fi ;;
   doctor|status)
     if [ "$sub" = status ] && [ "${AGENTSYNC_NO_NEXT_HINT:-}" != 1 ]; then  # install.sh's closing status
       printf '%s\\n' "${STUB_STATUS_OUT:-NEXT: draft the baseline questions (stub)}"
@@ -3747,7 +3754,7 @@ def test_several_folders_print_the_docs_repo_and_sources_lines_once(
     assert sources == f"sources: {', '.join(ids)}", "the last call's line: every folder is in it"
     added = [i for i, ln in enumerate(out) if ln.startswith("added source ")]
     assert len(added) == 3, "every other line of every call is still printed"
-    assert added[0] < out.index(repo) < added[1] and added[2] < out.index(sources)
+    assert added[2] < out.index(repo) < out.index(sources), "beside the sources line (B13 round 8 J13)"
     assert "folders: 3 added (none was synced before)" in out
 
     # The field's command: two folders, both already in the config. One block, where there were two.
@@ -3762,6 +3769,56 @@ def test_several_folders_print_the_docs_repo_and_sources_lines_once(
     one = install_sh(env, str(wheel), "--source-local", str(gamma))
     assert one.returncode == 0, one.stdout + one.stderr
     assert [len(lines) for lines in _summary_lines(one)] == [1, 1]
+
+
+def test_several_folders_print_the_docs_repo_line_beside_the_sources_line(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 8 J13: the first call's ``docs repo`` line (and its ``time machine:`` lines) came out where
+    that call printed it, between the first and the second folder's lines, and read as the first folder's
+    result. It is held and printed directly above the last call's ``sources:`` line. A later call that fails
+    still has it printed, before its error, as it was before; one folder holds nothing."""
+    other = folder.parent / "Other"
+    other.mkdir()
+    e = {**env, "STUB_ADD_SOURCE_SUMMARY": "1"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder), "--source-local", str(other))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    first = out.index("added source 'FY26 Projects'")
+    assert out[first : first + 5] == [
+        "added source 'FY26 Projects'",
+        "added source 'Other'",
+        f"docs repo {Path(env['HOME'])}/agent-context/docs (exists, no remote; scaffold up to date)",
+        "time machine: excluded the cache (stub)",
+        "sources: Other",
+    ], out
+    assert sum(ln.startswith(("docs repo ", "time machine: ")) for ln in out) == 2
+
+    failed = install_sh(
+        {**e, "STUB_ADD_SOURCE_FAIL": str(other)},
+        str(wheel),
+        "--source-local",
+        str(folder),
+        "--source-local",
+        str(other),
+    )
+    assert failed.returncode == 1, failed.stdout + failed.stderr
+    out = failed.stdout.splitlines()
+    assert sum(ln.startswith("docs repo ") for ln in out) == 1 and out.index(
+        "added source 'FY26 Projects'"
+    ) < (
+        out.index(
+            f"docs repo {Path(env['HOME'])}/agent-context/docs (exists, no remote; scaffold up to date)"
+        )
+    )
+    assert not any(ln.startswith("sources: ") for ln in out)
+    assert f"error: agentsync add-source {other} failed (see the error above)" in failed.stderr
+
+    one = install_sh(e, str(wheel), "--source-local", str(folder))
+    out = one.stdout.splitlines()
+    assert one.returncode == 0 and out[out.index("added source 'FY26 Projects'") + 1].startswith(
+        "docs repo "
+    ), out
 
 
 def test_a_failed_add_source_still_fails_the_run_through_the_filter(

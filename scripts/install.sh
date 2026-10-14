@@ -136,7 +136,7 @@
 #      under its own umask, the cache, the logs), so step 5 does not stop on a docs_repo.permissions [FAIL]
 #      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run).
 #      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
-#      from the first call and "sources: ..." from the last
+#      from the first call, printed beside "sources: ..." from the last
 #   5. status: first the pandoc that status checks ([convert] pandoc_path, else the one bundled with the
 #      tool) is started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
 #      program: on Apple silicon macOS prepares each new copy at its first start (10 to 67 s measured, under
@@ -2597,6 +2597,7 @@ on_exit() {
 	[ -z "$DOCTOR_LOG" ] || rm -f "$DOCTOR_LOG"
 	[ -z "$SYNC_OUT" ] || rm -f "$SYNC_OUT"
 	[ -z "$LOOP_OUT" ] || rm -f "$LOOP_OUT"
+	[ -z "${HELD:-}" ] || rm -f "$HELD" # step 4 held line file, when the run ended inside the loop (J13)
 	[ -z "$NEXT_MSG" ] || say "NEXT: $NEXT_MSG$suffix"
 	stop_capture
 	exit "$rc"
@@ -3340,18 +3341,39 @@ KEPT=0 # the folders synced before this step, and below the ones it added: both 
 # With several folders that block came once per folder (field reports 2026-10-06 and 2026-10-07: 16 source
 # ids, twice). Call I of N keeps the "docs repo" line only as the first call, the one that can say "created"
 # and count the first files written, and the "sources:" line only as the last, the one that lists every
-# folder. With one folder nothing is dropped. Every other line passes, stderr is not read, and the call's
-# exit status is the pipeline's (pipefail). LC_ALL=C: a byte that is no character must not fail the filter.
-add_source_filter() { # I N
-	LC_ALL=C awk -v i="$1" -v n="$2" '(/^docs repo / && i > 1) || (/^sources: / && i < n) { next } { print }'
+# folder. The first call's "docs repo" line, and its "time machine:" lines, which come between the two, are
+# held in the file HELD and printed directly above the last call's "sources:" line: printed where they came,
+# they sat between the first and the second folder's lines and read as the first folder's result (B13 round 8
+# J13). A failed call prints what is held before its error, as it was printed before, and the file is emptied
+# once printed, so nothing comes twice. With one folder nothing is held or dropped. Every other line passes,
+# stderr is not read, and the call's exit status is the pipeline's (pipefail). LC_ALL=C: a byte that is no
+# character must not fail the filter.
+add_source_filter() { # I N HELD
+	LC_ALL=C awk -v i="$1" -v n="$2" -v held="$3" '
+		n > 1 && (/^docs repo / || (/^time machine: / && i == 1)) { if (i == 1) print > held; next }
+		/^sources: / && i < n { next }
+		/^sources: / && n > 1 {
+			close(held)
+			while ((getline l < held) > 0) print l
+			close(held)
+			printf "" > held
+			close(held)
+		}
+		{ print }'
 }
 if [ "${#FOLDERS[@]}" -gt 0 ]; then
 	nth=0
+	HELD=""
+	[ "${#FOLDERS[@]}" -eq 1 ] || HELD="$(mktemp)"
 	for f in "${FOLDERS[@]}"; do
 		nth=$((nth + 1))
-		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" ||
-			fail "agentsync add-source $f failed (see the error above)"
+		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" || {
+			HELD_RC=$?
+			[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
+			(exit "$HELD_RC") || fail "agentsync add-source $f failed (see the error above)"
+		}
 	done
+	[ -z "$HELD" ] || rm -f "$HELD"
 else
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || fail "agentsync init failed (see the error above)"
 	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists (inbox ensured)"
