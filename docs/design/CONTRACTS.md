@@ -17110,6 +17110,10 @@ legend rewrapped to its 115 columns). H20's "no legend changes" meant no new pla
 The legend words only add to the words a folder name is checked against for Private only (more private, never
 less). Tests: `test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values` and
 `tests/test_install_oneshot.py::test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+Amended 2026-10-14, §16.85 K72 (by §16.74 J20): a URL rewrite's base after its scheme is no longer a value. Both
+reports register the host (a port goes with it), an scp base's `host:path`, and a URL or scp path only when a word in
+it is neither one of a git server's generic words nor a report word. The legends and the guide now name `a git URL
+rewrite's host and its company-named path`.
 
 **The prompt-version section reads a prompt newer than the report's agentsync** (J64). §16.69 H23's clause `(newer
 than this report's agentsync, for prompt vN)` (`_newer_than_me_note`) was in no guide text, and the section quoted
@@ -17451,3 +17455,11 @@ now has the dated line; the code is unchanged (`cli.py` writes `skipped: lock he
 text that spells the old form already has J11's line. Test:
 `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there` (reads this claim) and
 `test_h31s_stderr_line_quotes_the_cli`.
+
+**J63's rewrite values follow J20** (K72; dated line at §16.79 J63). §16.79 J63, written before §16.74 J20, says in
+the present tense that both reports register a `[url "<base>"] insteadOf` base "after the scheme and user" as a
+`<proxy-N>`. Since J20 `_rewrite_values` (and install.sh's reader) give a URL base its host, a port beside it, and a
+path only when a word in it is neither a git server's generic word nor a report word; J20's dated line went only to
+§16.69 H20. J63's text stays; a dated line after it points to J20. No code, legend or guide change: all three
+already match J20. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there` (reads this
+claim).
