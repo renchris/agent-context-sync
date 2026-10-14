@@ -17509,6 +17509,8 @@ the first remedy only, so it names the version once. The agentsync report's item
 characters (160 for any other). Tests: `test_a_stopped_lines_fix_names_the_remedy_of_both_readings`,
 `test_the_installers_stop_line_keeps_both_remedies_in_the_report`,
 `test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`.
+Amended 2026-10-14, §16.86 L41: the item line keeps the installer's stop-line fix to 640 characters; 400 cut the
+second remedy from every newer-copy stop.
 
 **A stopped copy rendered before J18 calls its commit warn expected** (K21). J18 is in the agentsync report only,
 and a stopped copy is rendered by the installed agentsync, which step 2 never updated. `stopped_report_note`, which
@@ -18026,6 +18028,15 @@ has no end line`, `since its session stopped before `install.sh --log-start``, `
 `_stated_note` keeps its brackets: the Summary's prompt line strips them. The labels quoted in §16.28 and
 §16.52 have dated lines. Tests: `test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attempt`
 and the friction tests that pin the attempt line.
+
+**The Summary keeps a newer-copy stop's second remedy** (L41; dated line at §16.81 K18). K18 kept the installer's
+stop-line fix to 400 characters, but install.sh's `newer_copy_fix` writes 431 to about 583 with the second remedy
+(the longest when git cannot say which branch the checkout follows), so every newer-copy item lost "exactly as the
+prompt writes it"; K18's test passed because its fix was a 50-character stand-in. The cut is 640 for a line that
+matches `_PROMPT_STOP_RE` (160 for any other): still a bound, since an agent's line can copy the stop's words, and
+the fix holds no checkout path or remote URL, only fixed words, the canonical repository and a version. Test:
+`test_every_newer_copy_stop_line_keeps_its_second_remedy_in_the_summary`, whose fix columns are built from
+install.sh's own words for each branch of `newer_copy_fix`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

@@ -3738,7 +3738,7 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
 def test_the_installers_stop_line_keeps_both_remedies_in_the_report(fake_mac: dict[str, Path]) -> None:
     """B13 round 9 K18: the stop line's fix column now names the remedy of each of its two readings; the
     item line cut every fix at 160 characters, which hid the second. The installer's stop line keeps its
-    fix to 400."""
+    fix to 400 (640 since B13 round 10 L41: test_every_newer_copy_stop_line_keeps_its_second_remedy...)."""
     clause = (
         '; or, if the first line of the prompt says "setup prompt v9", the --log-start value was changed: '
         "run step 1's command again once, exactly as the prompt writes it"
@@ -3754,6 +3754,70 @@ def test_the_installers_stop_line_keeps_both_remedies_in_the_report(fake_mac: di
     assert "exactly as the prompt writes it" not in text.split("## Agent friction log", 1)[0], (
         "any other line's fix is cut as before"
     )
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_every_newer_copy_stop_line_keeps_its_second_remedy_in_the_summary(fake_mac: dict[str, Path]) -> None:
+    """B13 round 10 L41: K18's test put the second remedy after a 50-character stand-in fix, so it passed;
+    install.sh's own newer-copy fixes are 431 to about 583 characters with it, and the 400 cut dropped it from
+    the Summary's item in every newer-copy case. The fix columns here are built from install.sh's own words,
+    for each branch of ``newer_copy_fix``."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    found = re.search(r'^CANON_REPO="([^"]*)"', script, re.M)
+    compat = re.search(r"^SETUP_PROMPT_COMPAT=(\d+)", script, re.M)
+    assert found is not None and compat is not None
+    canon = found.group(1)
+    copy = (
+        f"copy the prompt again from README.md on the main branch of {canon} "
+        '("Set up on a new Mac: one prompt") and paste it into a new session'
+    )
+    other = (
+        "(it follows another remote or branch, so a fresh copy of the prompt would stop here again), or move "
+        "the checkout aside so step 1 clones it, then paste the same prompt into a new session"
+    )
+    fixes = [
+        f"{copy}: this Mac's checkout follows that branch, so a copy newer than it came from another branch "
+        "or a fork",
+        f"point this Mac's checkout at main of {canon} {other}",
+    ]
+    for how in (
+        "git could not say which branch it follows",
+        "it is on no branch",
+        "it follows no upstream branch",
+    ):
+        fixes.append(
+            f"{copy}; if that copy stops here too, this Mac's checkout does not follow main of {canon} "
+            f"({how}): point it there, or move it aside so step 1 clones it, then paste the prompt again"
+        )
+    for words in (
+        "this Mac's checkout follows that branch, so a copy newer than it came from another branch or a fork",
+        other,
+        "if that copy stops here too, this Mac's checkout $follows",
+        "point it there, or move it aside so step 1 clones it, then paste the prompt again",
+        "git could not say which branch it follows",
+    ):
+        assert words in script, ("the words are install.sh's", words)
+    said, ours = int(compat.group(1)) + 1, compat.group(1)
+    clause = (
+        f'; or, if the first line of the prompt says "setup prompt v{ours}", the --log-start value was '
+        "changed: run step 1's command again once, exactly as the prompt writes it"
+    )
+    assert (
+        "the --log-start value was changed: run step 1's command again once, exactly as the prompt" in script
+    )
+    assert max(len(fix + clause) for fix in fixes) > 560, "the longest form is measured, not a stand-in"
+    for fix in fixes:
+        write_friction(
+            fake_mac,
+            f"Attempt: 2026-09-29T11:00:00Z\nPrompt: v{said}\nAgent: Claude Code, claude-opus-5-5\n"
+            "2026-09-29T11:00:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is "
+            f"v{said} and this installer is for setup prompt v{ours}: this checkout is older than the "
+            f"prompt, or the --log-start value was changed; setup stopped (exit 2) | {fix}{clause}\n"
+            "2026-09-29T11:00:00Z | end | finished\n",
+        )
+        text, _summary = summary_of(fake_mac)
+        above = text.split("## Agent friction log", 1)[0]
+        assert "exactly as the prompt writes it" in above, (len(fix + clause), fix)
 
 
 STOPPED_V8 = (
