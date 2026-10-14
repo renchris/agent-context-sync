@@ -16188,6 +16188,23 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   `test_the_shell_report_states_a_step_1_failure_and_fills_its_link`,
   `test_the_shell_report_computes_no_other_outcome`,
   `test_the_shell_report_computes_no_outcome_once_the_attempt_ran_install`.
+- **A list that could not read the config: built once, by lane RA; this lane adds why** (H8, with H16's log
+  note). H8 is the defect of H17 and H28: the log line of a list whose reader failed was a new Mac's, so the
+  report called the answered folder question an expected turn and the attempt `fully one command`. Lane RA
+  built it (§16.69, `3594c5da`: `synced=unreadable`, `unread_synced`, the outcome reason, the expected-turns
+  text and the Item), with the two conditions H8's verifier required (the deciding list logged it, and the
+  first install run kept a folder), so this lane builds no second copy. Two things were left, and are here.
+  The log line now reads `synced=unreadable marks=<why>`: `no-tool`, `timeout`, `older:<name>` (the identifier
+  the installed agentsync lacks), `failed`, or `failed:<Class>` (the class of the reader's error when its last
+  stderr line names one; never the line). And `setup_report.unread_why(runs)` turns that into fixed words for a
+  Summary note, `- note: step N's folder list could not read which folders sources.toml already syncs (<why>),
+  so it marked none`, written whenever a list run of the attempt logged `synced=unreadable`: §16.69's Item
+  appears only when an install run then kept a folder, so a list on a Mac with nothing to keep, or a session
+  that stopped at the question, showed the failed reader nowhere but in the agent's own words. Of `marks=`
+  only its fixed words and one identifier are shown; a line without it reads `the installed agentsync could not
+  run the reader`. `test_the_summary_says_why_a_folder_list_could_not_read_the_config`,
+  `test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader`,
+  `test_list_folders_marks_nothing_when_the_config_cannot_be_read`.
 
 ### 16.71 Round 7: converters and the .msg re-read (2026-10-13, wave B13 round 7 lane E)
 

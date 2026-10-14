@@ -224,7 +224,8 @@
 # it; the source, launchd=simulated under the test seam, the arguments), one line per step (UTC start, step, seconds,
 # exit status, done / skipped / failed: uv, agentsync, launcher, helpers, config, status, first-sync, agent,
 # wait; or list-folders alone, whose line ends with synced=N when it read the config: the folders already
-# synced, 0 included, or synced=unreadable when a config is there and it could not be read; the config line ends with kept=N added=M when agentsync could count them: the folders
+# synced, 0 included, or "synced=unreadable marks=<why>" when a config is there and it could not be read (why: no-tool, timeout,
+# older:<the name the installed agentsync lacks>, failed or failed:<the class of its error>); the config line ends with kept=N added=M when agentsync could count them: the folders
 # synced before the step and the ones it added), then the report step's line, then one "end" line (exit
 # status, total seconds, the report included). The report is written while a provisional end line is the log's
 # last line, so it reads a
@@ -2670,7 +2671,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks synced="" unlisted="" unread=""
+	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -2714,7 +2715,9 @@ list_folders() {
 		# and cannot run the reader is not a missing one. Of what the reader wrote, only the name of an import an
 		# older agentsync lacks is used: an error line can quote the config.
 		why="no agentsync is installed"
+		marks="no-tool"
 		if [ -n "$py" ]; then
+			marks="failed"
 			rc=0
 			synced_folders "$py" "$tmp/shown" >"$tmp/marked" 2>"$tmp/rerr" || rc=$?
 			lacks="$(LC_ALL=C sed -n "s/.*cannot import name '\([A-Za-z_][A-Za-z0-9_]*\)'.*/\1/p" "$tmp/rerr" | LC_ALL=C tail -1)"
@@ -2723,16 +2726,23 @@ list_folders() {
 				unlisted="$(sed -n 2p "$tmp/marked")"
 			elif [ "$rc" -eq 124 ] || [ "$rc" -eq 143 ]; then
 				why="the reader took over 10 s"
+				marks="timeout"
 			elif [ -n "$lacks" ]; then
 				why="the installed agentsync is older than this installer (it has no $lacks)"
+				marks="older:$lacks"
 			else
 				why="the installed agentsync could not load it"
+				# the class of the error, never its text
+				lacks="$(LC_ALL=C tail -1 "$tmp/rerr" | LC_ALL=C sed -En 's/^([A-Za-z_]+[.])*([A-Za-z]+(Error|Exception)):.*$/\2/p')"
+				marks="failed${lacks:+:$lacks}"
 			fi
 		fi
 		case "$synced/$unlisted" in
 		/* | */ | *[!0-9/]*)
 			synced=""
-			unread=1 # logged as synced=unreadable, never in $synced, which stays a number
+			# logged as synced=unreadable, never in $synced, which stays a number; marks= says why in a fixed
+			# word, with at most the name an older agentsync lacks or the class of its error (B13 round 7 H8, H16)
+			unread=" synced=unreadable marks=$marks"
 			warn "could not read which folders $CONFIG already syncs ($why), so none is marked below"
 			;;
 		esac
@@ -2757,11 +2767,11 @@ list_folders() {
 	if [ -n "$denied" ]; then
 		rc=4
 		NEXT_MSG="$term was denied access to files managed by $denied: allow it in System Settings > Privacy & Security > Files and Folders (turn on $denied under $term; a click, not a command), then re-run: $RERUN"
-		step_end failed "$rc" "denied${synced:+ synced=$synced}${unread:+ synced=unreadable}"
+		step_end failed "$rc" "denied${synced:+ synced=$synced}$unread"
 	elif [ -n "$asking" ]; then
 		rc=4
 		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN"
-		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}${unread:+ synced=unreadable}"
+		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}$unread"
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
 		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
 		if [ "$providers" -eq 0 ]; then
@@ -2775,14 +2785,14 @@ list_folders() {
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN"
-		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}${unread:+ synced=unreadable}"
+		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}$unread"
 	elif [ "$total" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
-		step_end failed "$rc" "no-folders${synced:+ synced=$synced}${unread:+ synced=unreadable}"
+		step_end failed "$rc" "no-folders${synced:+ synced=$synced}$unread"
 	else
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"
-		step_end "done" 0 "listed-$total${synced:+ synced=$synced}${unread:+ synced=unreadable}"
+		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread"
 	fi
 	return "$rc"
 }

@@ -3089,7 +3089,8 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 3 and cp.stdout.splitlines() == [only], "a config nobody can read: a new Mac"
     assert cp.stderr.startswith(f"warning: could not read which folders {cfg} already syncs ")
-    unread = r" result=failed note=(not-signed-in|no-folders) synced=unreadable$"  # B13 round 7 H17, H28
+    # B13 round 7 H17, H28; and why, as the class of the reader's error (H8, H16)
+    unread = r" result=failed note=(not-signed-in|no-folders) synced=unreadable marks=failed:ConfigError$"
     assert re.search(unread, install_log(env)[-2]), install_log(env)[-2]
 
 
@@ -3155,7 +3156,9 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
     )
     # no count, since it was not read, but the log says it could not be, apart from a new Mac's list: the
     # report then knows the folder question was agentsync's doing (B13 round 7 H17, H28)
-    assert install_log(env)[-2].endswith(" result=done note=listed-1 synced=unreadable"), install_log(env)[-2]
+    # and why, in a fixed word with at most the class of the reader's error (H8, H16)
+    marks = {"no installed agentsync": "no-tool", "a config that does not load": "failed:ConfigError"}[broken]
+    assert install_log(env)[-2].endswith(f" result=done note=listed-1 synced=unreadable marks={marks}")
 
 
 def _older_tool_python(env: dict[str, str], *missing: str) -> Path:
@@ -3230,11 +3233,18 @@ def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(e
         f"{head}the installed agentsync is older than this installer (it has no is_under)), so none is "
         "marked below\n"
     )
+    assert install_log(env)[-2].endswith(" note=listed-1 synced=unreadable marks=older:is_under")
     py = _tool_python(env)
     _write_exe(py, "#!/bin/sh\nexec sleep 30\n")
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stdout) == (0, unmarked)
     assert cp.stderr == f"{head}the reader took over 10 s), so none is marked below\n"
+    assert install_log(env)[-2].endswith(" note=listed-1 synced=unreadable marks=timeout")
+    # what the report makes of the first of those lines (it reads the log these runs wrote)
+    runs = setup_report.read_install_runs(Path(env["HOME"]) / "agent-context" / "setup" / "install.log")
+    assert setup_report.unread_why(runs) == (
+        "the installed agentsync was older than the installer (it had no is_under)"
+    )
 
 
 def _install_sh_python(function: str) -> ast.Module:

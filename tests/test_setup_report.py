@@ -3863,6 +3863,44 @@ def test_a_finished_list_says_by_itself_whether_the_folder_question_was_asked(
     assert _line(summary, "- expected turns: ").startswith(f"- expected turns: {ASKED} · ")
 
 
+def test_the_summary_says_why_a_folder_list_could_not_read_the_config(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 7 H8, H16: install.sh logs ``marks=<why>`` beside ``synced=unreadable``, and the Summary has
+    a note for it whatever followed. The Item of H17 is there only when an install run then kept a folder,
+    so a list on a Mac with nothing to keep, or a session that stopped at the question, showed the failed
+    reader nowhere but in the agent's own words. Of the log's ``marks=`` the note shows fixed words and at
+    most one identifier."""
+    whys = {
+        " marks=no-tool": "no agentsync was installed",
+        " marks=timeout": "the reader took over 10 s",
+        " marks=failed": "the installed agentsync could not load it",
+        " marks=failed:ConfigError": "the installed agentsync could not load it (ConfigError)",
+        " marks=failed:<org-1>": "the installed agentsync could not load it",
+        " marks=older:provider_link_resolved": (
+            "the installed agentsync was older than the installer (it had no provider_link_resolved)"
+        ),
+        " marks=older:a-b": "the installed agentsync was older than the installer",
+        "": "the installed agentsync could not run the reader",  # an installer that logged no marks=
+    }
+    new_mac = ("--source-local a", "done note=created kept=0 added=1")
+    for marks, why in whys.items():
+        step = f"done note=listed-6 synced=unreadable{marks}"
+        runs = setup_report.read_install_runs(set_up_log(fake_mac, new_mac, listed="", list_step=step))
+        assert setup_report.unread_why(runs) == why, marks
+        assert setup_report.unread_synced(runs) is None, "nothing was kept: the question was needed"
+    write_friction(fake_mac, V11_HAPPY)
+    note = "- note: step 1's folder list could not read which folders sources.toml already syncs ("
+    summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+    assert (
+        f"{note}the installed agentsync could not run the reader), so it marked none" in summary.splitlines()
+    )
+    for step in ("done note=listed-6", "done note=listed-6 synced=2", "failed note=denied"):
+        runs = setup_report.read_install_runs(set_up_log(fake_mac, new_mac, listed="", list_step=step))
+        assert setup_report.unread_why(runs) is None, step
+        assert note not in section(report(tmp_path, fake_mac["config"])[1], "Summary")
+
+
 def test_loop_stage_and_next_text() -> None:
     stage = setup_report.loop_stage
     assert stage(None, None, False) == "installed"

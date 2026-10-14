@@ -1598,6 +1598,34 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None:
     return None
 
 
+_UNREAD_WHY = {
+    "no-tool": "no agentsync was installed",
+    "timeout": "the reader took over 10 s",
+    "failed": "the installed agentsync could not load it",
+}
+"""install.sh's ``marks=`` word on a list run that could not read the config -> the report's words for it."""
+_UNREAD_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+def unread_why(runs: Sequence[InstallRun]) -> str | None:
+    """Why the first ``--list-folders`` run of ``runs`` that logged ``synced=unreadable`` could not read the
+    folders the config syncs, in the report's words; None when no list run logged it. install.sh logs
+    ``marks=<why>`` beside it (B13 round 7 H8, H16); a log without one (an installer from the hours between)
+    gets the general words. Only fixed words and one Python identifier of the log are shown."""
+    for run in runs:
+        listed = (run.step("list-folders") or {}) if run.list_only else {}
+        if listed.get("synced") != "unreadable":
+            continue
+        kind, _, detail = listed.get("marks", "").partition(":")
+        name = detail if _UNREAD_NAME_RE.fullmatch(detail) else ""
+        if kind == "older":
+            lacks = f" (it had no {name})" if name else ""
+            return f"the installed agentsync was older than the installer{lacks}"
+        why = _UNREAD_WHY.get(kind, "the installed agentsync could not run the reader")
+        return f"{why} ({name})" if kind == "failed" and name else why
+    return None
+
+
 def unread_synced(runs: Sequence[InstallRun]) -> int | None:
     """N when the list that decides :func:`synced_before` finished with ``synced=unreadable`` (a config was
     there and could not be read) and the attempt's first install run then logged it kept N > 0 folders: this
@@ -6912,6 +6940,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 unread=unread_synced(runs),
             )
         )
+        why_unread = unread_why(runs)
+        if why_unread is not None:  # whatever followed: with no folder kept, or a stop, no Item names it
+            out.append(
+                f"- note: step {att.layout.folder_question_step}'s folder list could not read which folders "
+                f"sources.toml already syncs ({why_unread}), so it marked none"
+            )
         out.append(_agent_friction_line(att, stop))
         extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
         out.append(
