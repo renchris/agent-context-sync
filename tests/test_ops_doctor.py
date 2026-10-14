@@ -1481,7 +1481,7 @@ def test_lock_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> 
     lk.acquire()
     try:
         r = by_name(run_checks(sample_config))["lock"]
-        assert r.ok and f"pid {os.getpid()} (reconcile)" in r.detail
+        assert r.ok and f"pid {os.getpid()} (a sync, its pass: reconcile)" in r.detail
         lk.beat("convert", now_iso="2000-01-01T00:00:00Z")
         r = by_name(run_checks(sample_config))["lock"]
         assert not r.ok and r.severity is Severity.WARN and "silent for" in r.detail

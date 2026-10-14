@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from agentsync.errors import LockHeldError
-from agentsync.model import PassKind
+from agentsync.model import CycleMode, PassKind
 from agentsync.ops import lock as lockmod
 from agentsync.ops.lock import (
     EMPTY_BODY_HOLDER,
@@ -187,7 +187,7 @@ def test_second_instance_in_same_process_is_refused(tmp_path: Path) -> None:
     try:
         with pytest.raises(LockHeldError) as ei:
             SingleWriterLock(path, "poll").acquire()
-        assert f"pid {os.getpid()} (reconcile)" in ei.value.holder
+        assert f"pid {os.getpid()} (a sync, its pass: reconcile)" in ei.value.holder
         assert "last beat" in ei.value.holder
         assert str(ei.value).startswith("lock held: ")
         assert ei.value.who == "reconcile"  # N24: the CLI's WARNING names the holder by its label alone
@@ -265,7 +265,7 @@ def test_other_process_holding_then_killed_is_broken_as_stale(
         assert SingleWriterLock.is_held(path)
         with pytest.raises(LockHeldError) as ei:
             SingleWriterLock(path, "poll").acquire()
-        assert f"pid {proc.pid} (reconcile)" in ei.value.holder
+        assert f"pid {proc.pid} (a sync, its pass: reconcile)" in ei.value.holder
         assert "stage 'fetch local-fixture'" in ei.value.holder
         holder = SingleWriterLock.read_holder(path)
         assert holder is not None and holder["pid"] == proc.pid and holder["label"] == "reconcile"
@@ -396,7 +396,7 @@ def test_is_held_and_describe(tmp_path: Path) -> None:
     lk.acquire()
     try:
         assert SingleWriterLock.is_held(path) is True
-        assert f"pid {os.getpid()} (poll)" in SingleWriterLock.describe(path)
+        assert f"pid {os.getpid()} (a sync, its pass: poll)" in SingleWriterLock.describe(path)
         # the probe must not steal or disturb the lock
         assert lk.held and SingleWriterLock.is_held(path)
     finally:
@@ -555,5 +555,23 @@ def test_the_holder_description_names_no_host() -> None:
     body = LockInfo(123, 1, "2026-10-05T08:59:00Z", "poll").render()
     holder = {"pid": 123, "host": "contoso-mbp", "last_beat_at": "2026-10-05T08:59:30Z", "stage": "acquired"}
     out = lockmod._describe_holder(body, holder)
-    assert out.startswith("pid 123 (poll) since 2026-10-05T08:59:00Z, last beat 2026-10-05T08:59:30Z"), out
+    assert out.startswith(
+        "pid 123 (a sync, its pass: poll) since 2026-10-05T08:59:00Z, last beat 2026-10-05T08:59:30Z"
+    ), out
     assert out.endswith(", stage 'acquired'") and "contoso-mbp" not in out and " on " not in out, out
+
+
+def test_a_cycle_holder_reads_as_a_sync_and_its_pass() -> None:
+    """B13 round 9 K37: a sync typed in a terminal holds the lock as ``poll``, as the background job does, so
+    the bare ``pid N (poll)`` on the skip line, the lock-wait WARNING and doctor read as the job. A cycle's
+    label is named as a sync's pass, as the CLI's skip WARNING already says it (round 7 H33); another
+    holder's label, and the four-field body an older build parses, are as they were."""
+    for mode in CycleMode:
+        body = LockInfo(123, 1, "2026-10-05T08:59:00Z", mode.value).render()
+        assert len(body.split()) == 4 and LockInfo.parse(body) is not None
+        out = lockmod._describe_holder(body, None)
+        assert out == f"pid 123 (a sync, its pass: {mode.value}) since 2026-10-05T08:59:00Z", out
+        assert lockmod._holder_identity(body) == mode.value, "the report's Recent errors merge on the label"
+    for label in ("exclude-empty", "governance"):
+        body = LockInfo(123, 1, "2026-10-05T08:59:00Z", label).render()
+        assert lockmod._describe_holder(body, None) == f"pid 123 ({label}) since 2026-10-05T08:59:00Z"

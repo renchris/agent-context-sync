@@ -421,7 +421,8 @@ def test_the_lock_wait_warning_keeps_a_fixed_stage_word_and_redacts_a_source_sta
     """B13 round 6 G36: the lock-wait WARNING quotes the holder's stage with ``%r``, and the quoted-value rule
     made ``stage 'acquired'`` read ``stage '<path>'``. A fixed stage word names no item and stays; a stage
     built from a source id is still redacted, and so is a fixed word quoted anywhere but after ``stage``."""
-    head = f"{LOG_HEAD}cycle: another sync is running (lock held: pid 123 (poll) since 2026-10-05T08:59:00Z, "
+    head = f"{LOG_HEAD}cycle: another sync is running (lock held: pid 123 (a sync, its pass: poll) since "
+    head += "2026-10-05T08:59:00Z, "
     tail = "); waiting for it to finish (30s of at most 300s)"
     for stage in (
         "acquired",

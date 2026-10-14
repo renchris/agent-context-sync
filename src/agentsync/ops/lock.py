@@ -40,7 +40,7 @@ from pathlib import Path
 from types import TracebackType
 
 from agentsync.errors import LockHeldError
-from agentsync.model import PassKind
+from agentsync.model import CycleMode, PassKind
 
 log = logging.getLogger(__name__)
 
@@ -254,13 +254,17 @@ def _holder_identity(body: str) -> str:
 def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     """Human description of a lock holder for LockHeldError, the cycle's lock-wait WARNING and doctor.  The
     sidecar's host is left out: the lock is a local flock, so the holder is always this Mac, and its name is
-    shown in the terminal and in chat for nothing (B13 round 6 G36; the sidecar keeps it)."""
+    shown in the terminal and in chat for nothing (B13 round 6 G36; the sidecar keeps it).  A cycle's label is
+    its pass, which a sync typed in a terminal holds as well as the background job, so it reads ``pid N (a
+    sync, its pass: poll)``, as the CLI's skip WARNING already does (round 7 H33); the bare ``(poll)`` read as
+    the job (B13 round 9 K37).  The body keeps its four fields, which an older build parses."""
     info = LockInfo.parse(body)
     if info is None:
         if not body.strip():  # held with no body: install.sh's reinstall (lockf), a probe, a starting cycle
             return EMPTY_BODY_HOLDER
         return f"{body.strip()!r} (unparseable lock body)"
-    out = f"pid {info.pid} ({info.label}) since {info.started_at}"
+    label = f"a sync, its pass: {info.label}" if info.label in {m.value for m in CycleMode} else info.label
+    out = f"pid {info.pid} ({label}) since {info.started_at}"
     if holder is not None and holder.get("pid") == info.pid:
         beat = holder.get("last_beat_at")
         stage = holder.get("stage")
