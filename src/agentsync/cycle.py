@@ -1950,7 +1950,9 @@ class _Cycle:
         (H52); the re-render runs once per STUB_RENDER, so taking this run's state instead turned the wording
         for good on a run whose engine missed its ``--version``. The body marker is in every withheld page's
         body since its first wording, before its ``reason:`` said so (G29). A .msg is withheld whatever
-        OCR."""
+        OCR. ``_stub_stands`` takes it too, on a run that cannot read images (round 9 K50): an online-only
+        image a label rule refuses is pending work every pass, and planning its stub with this run's missing
+        engine flipped the page to "no converter" and back, a commit each way."""
         suffix = Path(row.name).suffix.lower()
         if suffix == ".msg" or not self.publisher._withheld_eligible(row.state_reason, suffix):
             return None
@@ -4232,8 +4234,9 @@ class _Cycle:
         outs = self.manifest.outputs_for(row.source_id, row.stable_id)
         if _same_stub(outs, row, refused) is None or not _pages_intact(self.repo, outs):
             return False
+        withheld = None if self.publisher.images_readable else self._page_withheld(row)
         try:
-            pages = self.publisher.plan_pages(src, row, refused)
+            pages = self.publisher.plan_pages(src, row, refused, withheld=withheld)
         except SidecarPathError:
             return False
         have = [(o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE]

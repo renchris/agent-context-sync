@@ -2995,6 +2995,50 @@ def test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_s
     assert run(config).commit_sha is None
 
 
+@pytest.mark.parametrize(
+    ("first", "expected"),
+    [(True, publish_mod._withheld_reason(".png")), (False, "no converter for .png")],
+    ids=["planned withheld", "planned with no engine"],
+)
+def test_an_online_only_image_a_label_rule_refuses_keeps_its_stub_whatever_this_runs_ocr(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, first: bool, expected: str
+) -> None:
+    """B13 round 9 K50: an online-only image a label rule refuses is pending work every pass, and the check
+    that its stub already stands planned it with this run's OCR state, so a run whose engine missed turned
+    "withheld by label rule" into "no converter for .png" (page and QUARANTINE.tsv, a commit) and the next
+    run with an engine turned it back (another commit). On a run that cannot read images the page's own
+    wording decides, as for the re-render (J47); a run with an engine still upgrades a "no converter" page
+    once, and a later run with none does not revert it."""
+    engine = fake_engine(tmp_path / "ocr-bin")
+    photo = picture(local_source_dir / SITE_PLAN, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+
+    def use(ready: bool) -> None:
+        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine if ready else None)
+
+    use(first)
+    assert run(config).commit_sha is not None
+    online, real = {photo.stat().st_ino}, materialise.is_dataless
+
+    def is_dataless(st: Any) -> bool:
+        return st.st_ino in online or real(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", is_dataless)
+    monkeypatch.setattr(al, "is_dataless", is_dataless)
+    photo.chmod(0o600)  # an eviction changes the file's flags, so its change time
+    withheld = publish_mod._withheld_reason(".png")
+    runs = [(first, expected), (first, expected), (False, expected), (True, withheld), (False, withheld)]
+    for n, (ready, reason) in enumerate(runs, start=2):
+        use(ready)
+        report = run(config)
+        [rep] = report.sources
+        moved = n == 5 and not first  # the one upgrade, by the first run with an engine
+        assert report.exit_code == 0 and (report.commit_sha is not None) == moved, f"run {n}"
+        fm, _body = _image_page(config, SITE_PLAN)
+        assert (fm["reason"], _quarantine_reason(config, SITE_PLAN)) == (reason, reason), f"run {n}"
+        assert rep.refused_unread == 0, f"run {n}"  # a stub that stands is not published again
+
+
 def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
