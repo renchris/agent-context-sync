@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
+from agentsync import lints
+from agentsync.config import Config
 from agentsync.curate import refresh_queue
 from agentsync.frontmatter import (
     MIRROR_KEY_ORDER,
@@ -21,6 +24,7 @@ from agentsync.frontmatter import (
 from agentsync.model import PageStatus
 from agentsync.paths import DocsLayout
 from agentsync.policy import CONTENT_TRUST_KEY, CONTENT_TRUST_VALUE
+from test_e2e import porcelain, run
 
 H = "a" * 64
 
@@ -164,3 +168,60 @@ def test_refresh_queue_reads_rendered_pages(tmp_path: Path) -> None:
         "SOURCE-DELETED\ttopics/p.md\tmirror/s/gone.md",
         "STALE\ttopics/p.md\tmirror/s/stale.md",
     ]
+
+
+_UNSAFE = ["Contoso\x92s", "note\x7fone", "a\x85b", "a\u2028b", "a\u2029b", "x\ufffey", "lone \udc80 half"]
+
+
+@pytest.mark.parametrize("text", _UNSAFE)
+def test_a_character_yaml_refuses_or_folds_reads_back_as_written(text: str) -> None:
+    """B13 round 9 K74: ``json.dumps`` writes DEL, a C1 control, U+FFFE/FFFF and a lone surrogate raw, which
+    YAML refuses, and U+0085, U+2028 and U+2029, which YAML folds to a space. Each is written ``\\uXXXX`` now,
+    and both the YAML reader and the ``reason:`` line's JSON read give the string back."""
+    rendered = render_frontmatter({"source_title": text, "part": {"name": text}})
+    fm, _body = parse_frontmatter(rendered + "body\n")
+    assert (fm["source_title"], fm["part"]) == (text, {"name": text})
+    line = rendered.splitlines()[1]
+    assert json.loads(line.removeprefix("source_title: ")) == text
+    assert line.isascii()
+
+
+def test_a_plain_title_renders_as_it_did() -> None:
+    """K74 changes the bytes of a page only where it holds such a character."""
+    fields = {"source_title": 'Q3 "plan" \\ 日本 😀', "source_path": "projects/Q3 plan.docx"}
+    assert render_frontmatter(fields) == (
+        '---\nsource_title: "Q3 \\"plan\\" \\\\ 日本 😀"\nsource_path: "projects/Q3 plan.docx"\n---\n'
+    )
+
+
+_EML = (
+    "From: Alex Example <alex@contoso.example>\r\n"
+    "To: Sam Example <sam@contoso.example>\r\n"
+    "Subject: =?iso-8859-1?Q?Contoso=92s_Q3_plan?=\r\n"
+    "Date: Mon, 12 Oct 2026 10:00:00 +0000\r\n"
+    "Message-ID: <q3-plan-1@contoso.example>\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=iso-8859-1\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "\r\n"
+    "Hello, here is the plan=92s summary.\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [("q3-plan.eml", _EML.encode("ascii")), ("note\x7fone.md", b"# Hello\n\nbody text\n")],
+    ids=["a C1 control in a mail subject", "DEL in a file name"],
+)
+def test_a_control_character_in_a_title_or_name_holds_no_sync(
+    sample_config: Config, local_source_dir: Path, name: str, data: bytes
+) -> None:
+    """B13 round 9 K74: one page whose title or file name held such a character failed the land gate's
+    FRONTMATTER check, which is repo-wide, so no source's work was committed, on any run, until the item
+    was renamed. It syncs now, and a second run changes nothing."""
+    (local_source_dir / "projects" / name).write_bytes(data)
+    first = run(sample_config)
+    assert (first.exit_code, first.commit_sha is not None) == (0, True)
+    assert [f for f in lints.run_land_gate(sample_config.docs_repo, []) if f.blocking] == []
+    second = run(sample_config)
+    assert (second.exit_code, second.commit_sha, porcelain(sample_config.docs_repo)) == (0, None, "")

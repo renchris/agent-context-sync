@@ -24,6 +24,10 @@ _BARE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@+/-]*$")
 _YAML_SPECIAL = frozenset({"true", "false", "yes", "no", "on", "off", "null", "~", "y", "n"})
 
 FENCE = "---"
+_YAML_RAW_UNSAFE = re.compile("[\x7f-\x9f\u2028\u2029\ud800-\udfff\ufffe\uffff]")
+"""What ``json.dumps`` leaves raw and YAML refuses (DEL, C1 controls, U+FFFE/FFFF, a lone surrogate) or
+folds to a space (U+0085, U+2028, U+2029): one in a title or a file name made a page no YAML reader parses,
+and the land gate held every source's commit, every run (B13 round 9 K74)."""
 
 
 class FrontmatterError(AgentSyncError):
@@ -41,6 +45,13 @@ Scalar = str | int | float | bool | Bare
 FrontmatterValue = Scalar | Mapping[str, Scalar] | None
 
 
+def _quote(text: str) -> str:
+    """``text`` as one double-quoted scalar that YAML and JSON both read back as ``text``: ``json.dumps``,
+    then each character of :data:`_YAML_RAW_UNSAFE` as ``\\uXXXX``, an escape both read (none of them can sit
+    inside an escape ``json.dumps`` writes)."""
+    return _YAML_RAW_UNSAFE.sub(lambda m: f"\\u{ord(m[0]):04x}", json.dumps(text, ensure_ascii=False))
+
+
 def _render_scalar(v: Scalar) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -48,9 +59,9 @@ def _render_scalar(v: Scalar) -> str:
         return repr(v)
     if isinstance(v, Bare):
         if not _BARE_RE.match(v.value) or v.value.lower() in _YAML_SPECIAL:
-            return json.dumps(v.value, ensure_ascii=False)
+            return _quote(v.value)
         return v.value
-    return json.dumps(v, ensure_ascii=False)
+    return _quote(v)
 
 
 def render_frontmatter(fields: Mapping[str, FrontmatterValue]) -> str:
