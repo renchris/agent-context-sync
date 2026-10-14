@@ -16600,6 +16600,10 @@ step 1 deviation"; the guide's bullet and agent-friction sentence say so.
 **Amended 2026-10-14, §16.85 K66 (by §16.74 J9):** an attempt whose step 1 error is install.sh's `--log-start`
 stop, followed within 120 s by an attempt of the same agent naming the stopping installer's version, reads `stopped
 at step 1 (rerun: ...)` despite its error and end line; the guide's bullet says so.
+**Amended 2026-10-14, §16.91 L59 (by §16.80 K11):** only the stop of a copy newer than the installer (`this
+checkout is older than the prompt`) is that rerun; an older or unstated copy's stop (`the pasted copy is not the
+current one`) stays `failed at step 1`, with a note naming both readings, since a fresh copy pasted inside the
+window looks the same.
 
 **A label-escalation entry stays queued while its file is published, in both guides** (H58, H63). Since §16.62
 G30, `governance.KEPT_REASONS` holds `label-escalation` as well as `upstream-deleted`: a run of the queue skips such
@@ -17792,6 +17796,9 @@ and its end line, which the guide's "Stopped at step 1" bullet says keep an atte
 named the rerun. The bullet now ends on the exception, its conditions, its words and where it shows (never the
 latest attempt, so never the outcome line or the form), and the prompt-version bullet points to it. Test:
 `test_setup_feedback_states_the_report_rules_of_round_6` (builds the note with `_rerun_note`).
+Amended 2026-10-14, §16.91 L59 (by §16.80 K11): only a stop of a copy newer than the installer (`this checkout is
+older than the prompt`) is a rerun; an older or unstated copy's stop stays failed, its outcome naming both
+readings. The prompt-version bullet says so now; it said any rerun reads stopped.
 
 **The Repeat conversions row quotes the options-aware column and the re-screen note** (K68). Since §16.74 J30 the
 table's column reads `the same file from the same bytes and converter options as an earlier run`, and a
@@ -17919,6 +17926,14 @@ round 10"; specs `round10/items/L<n>.md`, the verifier's corrected fix built). E
 fails on the text it replaced. A dated line this round writes for an older round's change reads `Amended
 2026-10-14, §16.91 L<n> (by §16.8N K<n>)`.
 
+
+**Only a newer copy's stop is a rerun, in every restatement** (L46, L59: one defect; dated lines at §16.73 H43 and
+§16.85 K66). Since §16.80 K11 `_rerun_note` reads a `--log-start` stop followed within the window as `stopped`
+only when the stop says `this checkout is older than the prompt`; after `the pasted copy is not the current one`
+the attempt stays `failed at step 1` with a note naming both readings. The guide's prompt-version bullet, §16.73
+H43's K66 line and §16.85 K66 said any rerun reads stopped. The bullet now names both stops, its pinned pointer to
+the rerun exception kept; the two contract texts carry dated lines. Test:
+`test_setup_feedback_states_the_report_rules_of_round_6`.
 **An image stub page is read as the cycle reads it, in the guide and the class table** (L52, L57, L70: one defect;
 dated lines at §16.28's class table, §16.74 J52 and §16.85 K59). Since §16.80 K48 and K58 `_Mirror.read_image_pages`
 classes a page by `policy.page_says_withheld` (its `reason:`, its summary less `refused: `, or the body marker), for

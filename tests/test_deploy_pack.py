@@ -3735,6 +3735,29 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     )
     assert '(the rerun exception under "Stopped at step 1")' in page
     assert "**Amended 2026-10-14, §16.85 K66 (by §16.74 J9):** an attempt whose step 1 error" in h43
+    # B13 round 10 L46, L59: the prompt-version bullet, H43's K66 line and §16.85 K66 said any rerun reads
+    # stopped; since K11 only the newer copy's stop does
+    flat = " ".join(page.split())
+    newer, older_why = "this checkout is older than the prompt", "the pasted copy is not the current one"
+    assert newer in stop and older_why in older
+    assert "An attempt the session ran again so reads stopped, not failed (the rerun" not in flat
+    assert (
+        f"(the stop reads `{newer}`), an attempt the session ran again so reads stopped, not failed "
+        '(the rerun exception under "Stopped at step 1"). After the stop of an older value, or of one that '
+        f"gives no version (`{older_why}`), it stays failed and its outcome names both readings" in flat
+    )
+    assert (
+        "**Amended 2026-10-14, §16.91 L59 (by §16.80 K11):** only the stop of a copy newer than the "
+        f"installer (`{newer}`) is that rerun; an older or unstated copy's stop (`{older_why}`) stays "
+        "`failed at step 1`" in h43
+    )
+    k66 = " ".join(
+        _contracts_section("**The guide's stopped rule has J9's rerun exception**", "\n\n").split()
+    )
+    assert (
+        "Amended 2026-10-14, §16.91 L59 (by §16.80 K11): only a stop of a copy newer than the installer "
+        f"(`{newer}`)" in k66
+    )
 
 
 def test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_published() -> None:

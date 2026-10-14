@@ -384,8 +384,11 @@ version, and the installer wrote its own number into the log.
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
 - The version leads the value, and is read in the shape the agent gave it (`Prompt v18: <agent>` and `prompt v18 -
   <agent>` are v18). The stop message shows no value that passes; its last sentence tells a current copy whose
-  agent changed the value to run step 1's command again as the prompt writes it. An attempt the session ran again
-  so reads stopped, not failed (the rerun exception under "Stopped at step 1").
+  agent changed the value to run step 1's command again as the prompt writes it. When the changed value named a
+  version newer than the installer's (the stop reads `this checkout is older than the prompt`), an attempt the
+  session ran again so reads stopped, not failed (the rerun exception under "Stopped at step 1"). After the stop of
+  an older value, or of one that gives no version (`the pasted copy is not the current one`), it stays failed and
+  its outcome names both readings, since a fresh copy pasted inside the window looks the same (round 9, K11).
 - A copy whose step 3 does not name this stop as one with no report (v9 and older, and a v10 copy taken before its
   step 3 named it) still goes on to its own report; a later copy stops without one, as the installer's stop
   message says. That report's Summary says
