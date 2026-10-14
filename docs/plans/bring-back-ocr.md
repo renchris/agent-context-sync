@@ -837,6 +837,28 @@ Lanes (`--account auto`, CONTRACTS §16.86 to §16.91, brief `lanes/COMMON9.md`)
 (install.sh), P 10 (prompt v19), B 12 (loop, cli, arm_local, lock, doctor), E 5 (OCR timing, stubs, recordings), D 12
 (docs/deploy, CONTRACTS). Lead: L76 (round 9's scratch and the v17 sandboxes go to the operator, `b13-r9` cleanup).
 
+### B13 round 10 landed (2026-10-14)
+
+All six lanes landed; CI green on `12147e30` (prompt v19). Notes `lanes/r10-<lane>.md`. Not built, with a measured
+reason: L61's `--git-dir` form (it skips git's ownership check; L6's ceiling is built instead). Lane RB sent L11's
+prompt words, built in v19. Trunk was red for about an hour between `93cedc51` and `12147e30`: two v19 tests passed
+locally but not on the CI runner's git; lane P fixed the tests.
+
+| Lane | Landed (lane commits; ranges can hold another lane's) |
+|---|---|
+| E | `54be463a^..e44f41ea`, 5 commits |
+| D | `2ad3579f^..1991d6a2`, 8 commits |
+| B | `340f048a^..761d6b59`, 7 commits |
+| RA | `5a7b7e5b^..eb7cf226`, 12 commits |
+| RB | `db842d45^..88e62d5c`, 8 commits |
+| P | `93cedc51` (v19), `12147e30` (CI test fix) |
+
+Learnings: a hook prompt on lane P flagged `git reset --hard` from text inside a heredoc; the lane had about 200
+lines uncommitted, so the operator answered No and the lane committed first. A lane's tests can pass locally and
+fail on the CI runner's git, so the lane that lands a test owns the read-back of CI on main.
+
+Round 11: the round 10 workflow on `12147e30` with prompt v19 (run `wf_5c8991f7-17f`, outputs `round11/`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
