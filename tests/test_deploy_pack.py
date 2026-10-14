@@ -3770,7 +3770,8 @@ def test_the_prompt_version_section_reads_a_prompt_newer_than_the_reports_agents
     note = setup_report._newer_than_me_note(attempt)
     assert note
     page = _page("docs/deploy/setup-feedback.md")
-    assert f"`prompt: vM{note.replace(own, 'vN')}` is a different case: no installer stop" in page
+    # since round 8 J40 the note is a bare clause the prompt line brackets (_prompt_line_note)
+    assert f"`prompt: vM ({note.replace(own, 'vN')})` is a different case: no installer stop" in page
     assert "Do not triage it as K18." in page
 
 

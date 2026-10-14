@@ -405,7 +405,7 @@ version, and the installer wrote its own number into the log.
 - Both lines come from the installer's own stop line in the attempt, so they name the installer that stopped
   the copy. A bare `prompt: v7` says only which version the attempt was logged under. An installer before v8
   wrote its own number there, so an old v7 attempt is not a stale copy, and it is not K18.
-- `prompt: vM (newer than this report's agentsync, for prompt vN)` is a different case: no installer stop. The
+- `prompt: vM (newer than this report's agentsync, which is for prompt vN)` is a different case: no installer stop. The
   agentsync that wrote the report is older than the pasted prompt: an earlier install left it, and this attempt
   did not replace it, so the report's step names and checks are that older build's. The clause names no cause:
   step 1's pull may have worked with a later step failing before the reinstall, or the attempt may have stopped
