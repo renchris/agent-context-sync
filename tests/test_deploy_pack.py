@@ -4120,23 +4120,39 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     at §A X ...)" claim in §16.68 to §16.71, §16.73 and §16.79 names an item X of section A whose paragraph,
     or a dated paragraph right after it, holds `Amended 2026-10-1N, §<home> <item>` (or `... (by §<home>
     <item>)`).  §16.72 names paragraphs, not items:
-    `test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend`."""
+    `test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend`.  B13 round 9 K80: the scan skipped
+    round 8's §16.74 to §16.78 (eight such claims, none checked) and could not read §16.78's sentence form,
+    "**J50: ...** Dated line at §16.68 H37."; it reads every round 7 to 9 section but §16.72 (§16.76 is read
+    but holds no claim, its targets being paragraphs:
+    `test_round_8s_prompt_items_have_dated_lines_at_the_text_they_amend`), and that sentence after a bold item
+    lead too, a possessive target ("§16.76's J7") and a dated line naming several items ("(by §16.82 K12,
+    K13)")."""
     from agentsync import publish  # noqa: PLC0415
 
     sections = dict(_contracts_numbered_sections())
     claims: list[tuple[str, list[str], str, str]] = []
     heading = r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*; (?:amends|corrects|dated lines? at) ([^)]*)\)"
-    for home in ("16.68", "16.69", "16.70", "16.71", "16.73", "16.79"):
+    tok = r"(?:§\d+\.\d+(?:'s)? )?[FGHQRJK]\d+\b"
+    # the "." inside "§16.68" ends no sentence, so the targets are tokens, not a [^.]* run
+    sentence = rf"^\*\*([A-Z]\d+)\b[^*]*\*\*.*?\bDated lines? at ({tok}(?:(?:, | and ){tok})*)"
+    homes = [f"16.{n}" for n in range(68, 86) if n != 72]
+    for home in homes:
         for para in re.split(r"\n\s*\n", sections[home]):
-            for items, targets in re.findall(heading, " ".join(para.split())):
+            flat = " ".join(para.split())
+            found = re.findall(heading, flat) + re.findall(sentence, flat)
+            for items, targets in found:
                 section = ""
-                for number, item in re.findall(r"(?:§(\d+\.\d+) )?([FGHQRJ]\d+)\b", targets):
+                for number, item in re.findall(r"(?:§(\d+\.\d+)(?:'s)? )?([FGHQRJK]\d+)\b", targets):
                     section = number or section
                     claims.append((home, re.findall(r"[A-Z]\d+", items), section, item))
-    assert ("16.71", ["H52"], "16.66", "G29") in claims and len(claims) >= 15, "the scan is broken"
+    assert ("16.71", ["H52"], "16.66", "G29") in claims, "the scan is broken"
+    assert ("16.74", ["J39"], "16.68", "H32") in claims and ("16.78", ["J50"], "16.68", "H37") in claims
+    assert len(claims) >= 46, "the scan is broken"
     for home, items, section, item in claims:
         at = "|".join(re.escape(f"§{home} {i}") for i in items)
-        marker = re.compile(rf"Amended 2026-10-1\d, (?:(?:{at})\b|§16\.\d+ [A-Z]\d+ \((?:by )?(?:{at})\))")
+        marker = re.compile(
+            rf"Amended 2026-10-1\d, (?:(?:{at})\b|§16\.\d+ [A-Z]\d+ \((?:by )?(?:{at})(?:, [A-Z]\d+)*\))"
+        )
         paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", sections[section])]
         held = [
             p

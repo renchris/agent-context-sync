@@ -16844,6 +16844,9 @@ a main with commits of its own through the keep command as before. Tests:
 `test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`,
 `test_the_keep_command_leaves_a_main_with_commits_of_its_own_as_it_is`,
 `test_readme_keeps_a_local_commit_and_moves_main_to_the_update`, `test_readme_step1_is_one_command`.
+Amended 2026-10-14, §16.85 K80 (by §16.82 K12, K13): since v18, after `git switch main` the recovery prints the
+count of commits the local-work branch keeps (`git rev-list --count origin/main..@{-1}`) and says what was kept by
+that count, and its upstream test is `test -n "$(git config --get branch.main.merge)"`, which prints no bare ref.
 
 **A folder that is not a checkout is its own stop, and the log and report key on the installer** (J19; amends
 §16.49's logging sentence and §16.61's "if ~/src/agent-context-sync does not exist"). A
@@ -17136,6 +17139,8 @@ overturned, so the three stood unmarked. Each now has a line `Amended 2026-10-14
 which reads every "(H<n>; amends|corrects §A X)" heading and every "(<item>; dated line(s) at §A X)" claim of §16.68
 to §16.71, §16.73 and this section and requires the line at the item (or in a dated paragraph right after it), and
 pins the `STUB_RENDER` line, whose correction sits in a paragraph body rather than a heading.
+Amended 2026-10-14, §16.85 K80: the test now reads every round 7 to 9 section but §16.72 (§16.68 to §16.85;
+§16.76 is read but holds no claim, K65's test), K items as targets, and the sentence "Dated line(s) at §A X" after a bold item lead, as §16.78 writes it.
 
 **Round 7's prompt items have dated lines at the text they amend** (J66; dated lines at §16.30's "Not by file name",
 §16.49 R30, §16.43 H3, §16.67 G73, G15 and G37, the v15 lines at §16.61 F24, §16.59 F17 and §16.49's step 2, and
@@ -17423,3 +17428,14 @@ install.log's. The guide's row said only "what it converted and read again". It 
 is copied (the same converted count; the first read also the same read-again count) and the tag; only the first-read
 part follows "read again" (the verifier's correction). Test:
 `test_the_first_sync_row_names_every_clause_the_summary_adds` (reads each part's words from `_first_sync_line`).
+
+**The dated-line scan reads round 8 and round 9** (K80; dated line at §16.79 J73). J73's test read the claims of
+§16.68 to §16.71, §16.73 and §16.79 only, so §16.74's and §16.75's six "(<item>; dated line at §A X)" claims were
+never checked, and §16.78 writes its two as a sentence after the bold lead ("**J50: ...** Dated line at §16.68
+H37."), which the heading pattern cannot read: deleting any of those eight lines left the suite green (measured:
+with §16.74 J39's line at §16.68 H32 removed the old test passes and the new one fails). The scan now covers §16.68
+to §16.85 but §16.72 (§16.76 finds no claim: its targets are paragraphs, K65's test), takes K items as targets,
+reads the sentence form, and asserts the J39 and J50 claims and at least 46 in all. It reads the possessive target
+"§A's X" too, and a dated line may name several items ("(by §16.82 K12, K13)"). Measured on contact: §16.82 K12, K13
+amend §16.76's J7 and J8 paragraph and wrote no dated line there; it now has `Amended 2026-10-14, §16.85 K80 (by
+§16.82 K12, K13)`. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`.
