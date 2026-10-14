@@ -735,6 +735,23 @@ content landed folded into `54cb9a0c`) and a pushed backup branch `origin/b13/r7
 Round 8: the round 7 workflow on `a350196b` with prompt v16 (run `wf_70c4dec6-8b1`, outputs `round8/`); scenario B
 now expects step 1 to mark the field Mac's folders synced (H7).
 
+### B13 round 8: v16 rehearsal, cross-lane review, harvest (2026-10-14)
+
+Run `wf_70c4dec6-8b1` on `a350196b` (92 agents, 0 errors). The field Mac's path is clean: a Mac at `4a42af9` pulled
+to v16 ran with no stop, step 1 marked both folders synced on the old build (H7 holds), outcome "fully one command".
+81 findings, 79 confirmed (2 turn, 12 wrong, 65 small), 2 refuted; 5 need prompt text, so the next prompt is v17.
+Both turns are rarer step 1 paths: an uncommitted edit on a branch with no tracking information loops (J7), and a
+folder at the checkout path that is not a git checkout gets the proxy advice (J19).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79 over rounds 2 and 4 to 8; turns 3, 0, 0, 1, 5, 2; wrongs 23, 15,
+20, 15, 15, 12. The count does not fall: each round's fixes bring new text and paths that the next review finds.
+The stop question is filed for the operator as a decision.
+
+Lanes (`--account auto`, CONTRACTS §16.74 to §16.79, brief `lanes/COMMON7.md`): RA 22 (setup_report.py), RB 18
+(install.sh), P 8 (prompt v17), B 7 (cli, loop, doctor), E 9 (cycle.py, publish.py, governance.py: purge and stub
+re-render), D 13 (docs/deploy, CONTRACTS). Lead: J32 (round 9's scenario F expects the STATE.md pointer, not
+`sync -v`), J81 (round 7's worktrees; the pushed backup branch and old scratch go to the operator).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

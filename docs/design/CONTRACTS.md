@@ -16452,3 +16452,27 @@ retired F78 test name at F78's dated line. Test: `test_a_round_6_item_that_amend
 which reads every "(G<n>; amends §A X, ...)" heading of §16.62 to §16.67, F, G, Q and R targets and several per
 heading, and requires a dated line naming the G item in the paragraph of the target item; it found all six
 targets and Q77 missing.
+
+### 16.74 Round 8: setup report (2026-10-14, wave B13 round 8 lane RA)
+
+Reserved for round 8 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 8").
+
+### 16.75 Round 8: installer and the shell report (2026-10-14, wave B13 round 8 lane RB)
+
+Reserved for round 8 lane RB of B13.
+
+### 16.76 Round 8: setup prompt v17 (2026-10-14, wave B13 round 8 lane P)
+
+Reserved for round 8 lane P of B13.
+
+### 16.77 Round 8: sync, status and doctor (2026-10-14, wave B13 round 8 lane B)
+
+Reserved for round 8 lane B of B13.
+
+### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
+
+Reserved for round 8 lane E of B13.
+
+### 16.79 Round 8: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 8 lane D)
+
+Reserved for round 8 lane D of B13.
