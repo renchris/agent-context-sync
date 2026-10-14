@@ -2113,13 +2113,16 @@ url_quote() {
 # The issue link the shell report ends with: bare, or, when the Summary (the redacted report in file $1, above
 # its friction log) holds the computed outcome line, with the title and the fields that line gives, as
 # setup_report.build_issue_url writes them (H24). The agent is read from the redacted line, since the link is
-# written after redaction, keeps only what _issue_link keeps (ASCII here) and at most 100 characters. The run
+# written after redaction, keeps only what _issue_link keeps and at most 100 characters: letters and digits
+# outside ASCII too, by the UTF-8 classes, so an accented name is not cut (B13 round 8 J77); a symbol Python
+# counts as a digit, such as a superscript two, is the gap left. A byte that is not UTF-8 is dropped first, and
+# where the UTF-8 filter fails the ASCII one runs instead. The run
 # type is computed again, not read from the redacted line, where a folder named after it would read as its
 # placeholder (B13 round 8 J22). Sets LINK and LINK_FIELDS (the fields it fills, for the Send it line).
 LINK=""
 LINK_FIELDS=""
 fallback_issue_link() { # REDACTED-BODY-FILE
-	local line n agent run fail="Failed at step 1 (preflight)"
+	local line n agent run v fail="Failed at step 1 (preflight)"
 	LINK="$ISSUE_URL"
 	LINK_FIELDS=""
 	line="$(LC_ALL=C awk -v p="$OUTCOME_LINE_HEAD" '$0 == "## Agent friction log" { exit } index($0, p) == 1 { print; exit }' "$1" 2>/dev/null || true)"
@@ -2129,7 +2132,18 @@ fallback_issue_link() { # REDACTED-BODY-FILE
 	case "$n" in "" | *[!0-9]*) return 0 ;; esac
 	agent="${line##* · agent: }"
 	[ "$agent" != "$line" ] || agent=""
-	agent="$(printf '%s' "$agent" | LC_ALL=C tr -cd 'A-Za-z0-9_ .:/()+,@<>-' | LC_ALL=C cut -c 1-100 | LC_ALL=C sed 's/^ *//; s/ *$//')"
+	# as " ".join(agent.split()): each blank Python splits on is one space (tab, the C0 separators, and the
+	# Unicode spaces such as U+00A0 and U+2009, byte by byte), then a run of them is one
+	agent="$(printf '%s' "$agent" | LC_ALL=C awk 'BEGIN {
+			n = split("\302\205 \302\240 \341\232\200 \342\200\200 \342\200\201 \342\200\202 \342\200\203 \342\200\204 \342\200\205 \342\200\206 \342\200\207 \342\200\210 \342\200\211 \342\200\212 \342\200\250 \342\200\251 \342\200\257 \342\201\237 \343\200\200", ws, " ")
+		}
+		{ for (i = 1; i <= n; i++) gsub(ws[i], " "); gsub(/[\011\013\014\015\034\035\036\037]/, " "); print }' | LC_ALL=C tr -s ' ')"
+	# iconv -c exits 1 at a last character cut short, after writing the rest: its status is not the filter's
+	v="$(printf '%s' "$agent" | { LC_ALL=C /usr/bin/iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true; } |
+		LC_ALL=en_US.UTF-8 sed 's/[^[:alnum:]_ .:/()+,@<>-]//g' 2>/dev/null | LC_ALL=en_US.UTF-8 cut -c 1-100)" ||
+		v="$(printf '%s' "$agent" | LC_ALL=C tr -cd 'A-Za-z0-9_ .:/()+,@<>-' | LC_ALL=C cut -c 1-100)"
+	agent="$v"
+	agent="$(printf '%s' "$agent" | LC_ALL=C sed 's/^ *//; s/ *$//')"
 	run="$(run_type_label)"
 	LINK="$ISSUE_URL&title=$(url_quote "Setup report: $fail · $run · v$n")&outcome=$(url_quote "$fail")"
 	LINK="$LINK&run_type=$(url_quote "$run")&prompt_version=v$n"

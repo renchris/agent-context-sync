@@ -2472,6 +2472,36 @@ def test_the_shell_run_type_reads_the_folder_home_resolves_to(tmp_path: Path) ->
     assert cp.stdout == "sandbox"
 
 
+@pytest.mark.parametrize(
+    "agent",
+    [
+        unicodedata.normalize("NFC", "Contoso Agént 2"),
+        unicodedata.normalize("NFD", "Contoso Agént 2"),
+        "Contoso\udcffBot 中 x",  # one byte that is not UTF-8 (written as it is)
+        "Contoso\tAgent  — Code",
+        "Contoso\u00a0Agent\u2009Code",  # spaces Python splits on
+        "Contoso Agént 中\udce4\udcb8",  # a last character cut short
+    ],
+)
+def test_the_shell_reports_link_keeps_an_agents_letters_outside_ascii(
+    env: dict[str, str], agent: str
+) -> None:
+    """B13 round 8 J77: the shell link's agent filter kept ASCII only, so "Cláude" read "Clude", while
+    ``_issue_link`` keeps every letter and digit. Both now give the same field, for a name with an accent
+    written either way, a byte that is not UTF-8 (which the agentsync report reads as U+FFFD, no letter) and a
+    run of blanks."""
+    said = f"prompt v15, {agent}: git pull failed"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    link = report_path(env).read_bytes().decode(errors="replace").splitlines()[-1]
+    got = urllib.parse.parse_qs(urllib.parse.urlsplit(link).query)["agent"]
+    read = agent.encode(errors="surrogateescape").decode(errors="replace")  # as the friction log is read
+    assert got == [re.sub(r"[^\w .:/()+,@<>-]", "", " ".join(read.split()))[:100].strip()]
+    assert re.sub(r"[^\w .:/()+,@<>-]", "", "x") == "x" and "[^\\w .:/()+,@<>-]" in Path(
+        setup_report.__file__
+    ).read_text(encoding="utf-8"), "the filter _issue_link applies"
+
+
 @pytest.mark.parametrize("ahead", [1, 0, -1])
 def test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer(
     env: dict[str, str], ahead: int
