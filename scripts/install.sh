@@ -2055,7 +2055,7 @@ fallback_install_line() { # RC
 	fi
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
-# The count-only line that says step 1 kept local work, as setup_report.local_work_line writes it (B13 round 9
+# The count-only line that says step 1 kept local work, as setup_report._local_work_line writes it (B13 round 9
 # K30): the checkout's local-work-* branches, read from its ref files (no git: without developer tools it offers
 # to install them), and the *.patch files under the setup folder's local-work at any depth, with the newest time.
 fallback_local_work_line() {

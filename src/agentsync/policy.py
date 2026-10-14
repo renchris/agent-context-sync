@@ -589,18 +589,18 @@ class Screening:
     label: SensitivityLabel | None = None
 
 
-WITHHELD_BODY = "its content is withheld (content policy)"  # every withheld stub's body (publish._plan_stub)
-WITHHELD_WORDS = "withheld by label rule"  # a withheld stub's summary since Q27, its reason: since G29
+_WITHHELD_BODY = "its content is withheld (content policy)"  # every withheld stub's body (publish._plan_stub)
+_WITHHELD_WORDS = "withheld by label rule"  # a withheld stub's summary since Q27, its reason: since G29
 
 
 def page_says_withheld(reason: str | None, summary: str | None, body: str) -> bool:
     """Whether a stub page says a label rule withheld its file: its ``reason:`` or its summary (less
-    :data:`REFUSED_PREFIX`) starts with :data:`WITHHELD_WORDS`, or its body below the banner and the heading
-    (which holds the file's name) has :data:`WITHHELD_BODY`, which every withheld page carried before its
+    :data:`REFUSED_PREFIX`) starts with :data:`_WITHHELD_WORDS`, or its body below the banner and the heading
+    (which holds the file's name) has :data:`_WITHHELD_BODY`, which every withheld page carried before its
     ``reason:`` said so (B13 round 6 G29). The one test the cycle's re-render and the setup report both
     read a page by (B13 round 8 J47, round 9 K48)."""
     said = [reason or "", (summary or "").removeprefix(REFUSED_PREFIX)]
-    return WITHHELD_BODY in body.split("\n\n", 2)[-1] or any(s.startswith(WITHHELD_WORDS) for s in said)
+    return _WITHHELD_BODY in body.split("\n\n", 2)[-1] or any(s.startswith(_WITHHELD_WORDS) for s in said)
 
 
 def is_refusal_reason(reason: str | None) -> bool:

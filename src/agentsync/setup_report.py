@@ -7780,7 +7780,7 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     )
 
 
-def local_work_line() -> str | None:
+def _local_work_line() -> str | None:
     """The Run metadata line that says step 1 kept local work, counts only (B13 round 9 K30: only the private
     bring-back.md said so, and the public report read "fully one command"): the ``local-work-*`` branches of
     the checkout, read from its ref files with no git process (an unset-up Mac's git offers to install the
@@ -7899,7 +7899,7 @@ def build_report(
     except Exception as exc:
         header.append(f"- install source: (failed: {type(exc).__name__}: {exc})")
     with contextlib.suppress(Exception):
-        header += [line for line in (local_work_line(),) if line]
+        header += [line for line in (_local_work_line(),) if line]
     # Cheap sections first, doctor last (it gets what is left of the budget, less the Loop line's floor), then
     # the friction log (the latest attempt's outcome counts doctor's FAILs); printed in heading order.
     bodies: dict[str, list[str]] = {}

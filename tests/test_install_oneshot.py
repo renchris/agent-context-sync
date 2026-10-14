@@ -6799,8 +6799,8 @@ def test_the_two_reports_number_each_proxy_value_alike(
 
 
 def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[str, str]) -> None:
-    """B13 round 9 K30, the shell twin: the line setup_report.local_work_line writes, from the same files (the
-    checkout's ref files and the setup folder's patches), with no patch name, subject or author."""
+    """B13 round 9 K30, the shell twin: the line setup_report._local_work_line writes, from the same files
+    (the checkout's ref files and the setup folder's patches), with no patch name, subject or author."""
     home = Path(env["HOME"])
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True, exist_ok=True)
