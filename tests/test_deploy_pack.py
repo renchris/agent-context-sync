@@ -3858,8 +3858,10 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     assert "four fields" not in page
     shell = page[page.index("Its Summary has an `- outcome:` line.") : page.index("Not for a report with")]
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    # B13 round 9 K64: since round 8 J22 the computed line carries the run type by the HOME rule and the link
-    # fills it (install.sh's LINK_FIELDS); only the uncomputed case leaves Run type to section 4's rule
+    # B13 round 9 K64: since round 8 J22 the computed line carries the run type and the link fills it
+    # (install.sh's LINK_FIELDS). B13 round 10 L56: that type is compute_run_type's, simulated included
+    # (round 9 K8), and the uncomputed case's own `- run:` line gives Run type; no case leaves it to section
+    # 4's rule
     assert "computes no run type" not in shell
     computed, bare = shell.split("Otherwise the line says no outcome is computed and the link is bare")
     fields = max(re.findall(r'LINK_FIELDS="([^"]+)"', installer), key=len)
@@ -3869,6 +3871,22 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     # B13 round 9 K8 and K26: the run type is compute_run_type's, the simulated one too, and the note names no
     # cause; not computed, a "- run:" line gives the run type
     assert "Sandbox with simulated launchd when the attempt's last run says `launchd=simulated`" in computed
+    assert "Run type from the `- run:` line below it" in bare and "section 4's rule" not in bare
+    j42 = " ".join(
+        _contracts_section("**The Send step names the fields the shell report leaves", "\n\n").split()
+    )
+    k64 = " ".join(
+        _contracts_section("**The guide says the shell report's computed line carries", "\n\n").split()
+    )
+    assert (
+        "Amended 2026-10-14, §16.91 L56 (by §16.81 K8): the computed line's run type is `compute_run_type`'s"
+        in j42
+    )
+    assert "no case leaves it to section 4's rule" in j42
+    assert (
+        'Amended 2026-10-14, §16.91 L56 (by §16.81 K8): "never simulated" and "keeps section 4\'s rule"'
+        in k64
+    )
     assert "step 1's pull did not update it" not in installer
     assert "the line's bracket also says so, naming no cause" in computed
     for label in ("Outcome", "Prompt version", "Agent tool and model"):

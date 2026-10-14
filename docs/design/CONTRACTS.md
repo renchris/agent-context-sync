@@ -17120,6 +17120,10 @@ Amended 2026-10-14, §16.85 K64 (by §16.75 J22): the computed outcome line carr
 Mac` by the HOME rule, never simulated) and `fallback_issue_link` fills Outcome, Run type, Prompt version and, when
 named, Agent; only the uncomputed case leaves Run type to section 4's rule. The guide says so, and J21's newer-prompt
 note.
+Amended 2026-10-14, §16.91 L56 (by §16.81 K8): the computed line's run type is `compute_run_type`'s, `Sandbox with
+simulated launchd` included when the attempt's `--list-folders` run says `launchd=simulated` (not an install run,
+so the line is still computed), and the uncomputed case is followed by its own `- run:` line, which gives Run type;
+no case leaves it to section 4's rule.
 
 **A step 1 stop may log approvals, questions, clicks and prompt lines beside its deviation** (J58; dated line at
 §16.73 H43). Since §16.69 H40 `compute_outcome` reads an attempt as stopped at step 1 when it has at least one step 1
@@ -17780,6 +17784,10 @@ leaves Run type to the person, and J42's test pinned that. The paragraph now spl
 names the four fields the link fills and J21's newer-than-this-installer note; the uncomputed one keeps section 4's
 rule; neither has a `Loop:` line. Test: `test_the_send_step_counts_the_values_the_link_fills` (reads the field list
 from install.sh's `LINK_FIELDS`).
+Amended 2026-10-14, §16.91 L56 (by §16.81 K8): "never simulated" and "keeps section 4's rule" were not so. The
+computed line takes `compute_run_type`'s type, `Sandbox with simulated launchd` when the attempt's `--list-folders`
+run says `launchd=simulated`, and the uncomputed one is followed by its own `- run:` line, which gives Run type; the
+link stays bare. The guide already said so.
 
 **Round 8's prompt items have dated lines at the text they amend** (K65; dated lines at §16.72's finish and keep
 paragraphs, §16.49's logging bullet, §16.61's missing-checkout paragraph, §16.76's opening and §16.79 J66). §16.76
@@ -17959,3 +17967,10 @@ case that goes by the probe, and the legend's words. Test:
 `_WITHHELD_WORDS` sit below `_STUB_RENDER_META`'s docstring in `agentsync.cycle`; §16.80 K48 moved them to
 `agentsync.policy`, made private later in round 9. Test:
 `test_k52s_withheld_constants_are_named_where_they_live`.
+
+**K64's run type is K8's** (L56; dated lines at §16.79 J42 and §16.85 K64). §16.85 K64 and its line at §16.79 J42
+said the shell report's computed line is "never simulated" and that the uncomputed case leaves Run type to section
+4's rule; since §16.81 K8 the computed line takes `compute_run_type`'s type, simulated included, and the uncomputed
+case has its own `- run:` line. The guide was already right; the test's comment said the old rule, and the test now
+pins that the uncomputed half names the `- run:` line and no section 4 rule. Test:
+`test_the_send_step_counts_the_values_the_link_fills`.
