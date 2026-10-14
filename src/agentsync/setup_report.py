@@ -3897,6 +3897,11 @@ def _unreadable_examples() -> str:
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif")
 """``ImageConverter.extensions`` (tests/test_setup_report.py holds the two equal): a file OCR alone reads."""
 _LABEL_WITHHELD = frozenset((".msg", *_IMAGE_SUFFIXES))
+_WITHHELD_IMAGE_REASON = "withheld by label rule: the label of a {} file cannot be read"
+"""``publish._withheld_reason`` for an image suffix (a test keeps them equal): the ``reason:`` of an image
+stub the run that planned it withheld (:meth:`_Mirror.read_image_pages`)."""
+_PAGE_READS = 400  # image stub pages read for their reason: (B13 round 8 J52), at most
+_PAGE_HEAD_BYTES = 8192  # of each, the start only: the front matter of a stub is a few hundred bytes
 """``convert.registry.label_withheld_suffixes()`` (a test holds the two equal): the files no converter reads
 while a ``[policy]`` label rule is on, because their label cannot be read (B13 round 3 R33): a binary .msg
 or a .msg not on this Mac (B13 round 4 Q78, round 5 F73) and an image."""
@@ -4118,10 +4123,16 @@ class _Mirror:
         self, db: Path, budget_s: float, *, latest: float | None = None, labels_active: bool = False
     ) -> None:
         self.db = db
-        # The suffixes reason_class and refused_type read as withheld by a label rule: .msg while one is on,
-        # and the images once the OCR part finds the engine ready (without it no image converter exists).
+        # The suffixes reason_class and refused_type read as withheld by a label rule: .msg while one is on.
+        # An image is withheld as its stub page says (image_pages, read by read_image_pages: the wording of
+        # the run that planned the stub, as _sync/QUARANTINE.tsv copies it since B13 round 7 H52), and only
+        # a stub whose page could not be read goes by this report's OCR probe (images_by_probe, set when the
+        # OCR part finds the engine ready; without it no image converter exists) (B13 round 8 J52, J54).
         self.labels_active = labels_active
         self.withheld: set[str] = {".msg"} if labels_active else set()
+        self.image_pages: dict[tuple[str, str], bool] = {}
+        self.images_by_probe = False
+        self.pages_unread = 0  # withheld-eligible image stubs whose page could not be read
         self.deadline = time.monotonic() + budget_s
         self.latest = latest
         self.steps = 0
@@ -4148,12 +4159,67 @@ class _Mirror:
                 raise _NoManifestError
             conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=ro", uri=True, timeout=0.5)
             conn.set_progress_handler(self._tick, _STEP_TICK)
-            conn.create_function("reason_class", 1, lambda r: quarantine_class(r, withheld=self.withheld))
-            conn.create_function("refused_type", 1, lambda r: _refused_type(r, withheld=self.withheld))
+            conn.create_function(
+                "reason_class", 3, lambda r, s, i: quarantine_class(r, withheld=self.withheld_for(r, s, i))
+            )
+            conn.create_function(
+                "refused_type", 3, lambda r, s, i: _refused_type(r, withheld=self.withheld_for(r, s, i))
+            )
             conn.create_function("refused_shape", 1, _refused_shape, deterministic=True)
             conn.create_function("version_class", 1, _version_class, deterministic=True)
             self._conn = conn
         return self._conn
+
+    def withheld_for(self, reason: str | None, source_id: object, stable_id: object) -> Collection[str]:
+        """The suffixes one row's ``no converter`` reason reads as withheld by a label rule: :attr:`withheld`,
+        and the row's image suffix when its stub page says withheld (or, with no page read, when the OCR
+        probe is ready)."""
+        text = " ".join((reason or "").split()).casefold()
+        tail = text[len(_NO_CONVERTER) :] if text.startswith(_NO_CONVERTER) else ""
+        if not self.labels_active or tail not in _IMAGE_SUFFIXES:
+            return self.withheld
+        page = self.image_pages.get((str(source_id), str(stable_id)))
+        return {*self.withheld, tail} if (self.images_by_probe if page is None else page) else self.withheld
+
+    def read_image_pages(self, docs: Path) -> None:
+        """While a label rule is on, read the ``reason:`` of each image stub page whose row says ``no
+        converter for <image suffix>``: whether it says withheld was decided by the run that planned the stub
+        (``Publisher.images_readable``), and the page and ``_sync/QUARANTINE.tsv`` keep that, so the report
+        classes the row by it, never by its own OCR probe, which disagreed with both whenever the engine came
+        or went after the stub (B13 round 8 J52, J54). At most :data:`_PAGE_READS` pages, the first
+        :data:`_PAGE_HEAD_BYTES` of each, under ``docs`` only, inside the evidence time; a page that is
+        missing, a symlink, past a cap or not one of the two wordings is counted in :attr:`pages_unread` and
+        goes by the probe. Only the class is kept: the reason's text is never shown."""
+        if not self.labels_active:
+            return
+        from agentsync.frontmatter import parse_frontmatter  # noqa: PLC0415 - lazy, only with a label rule
+
+        marks = ", ".join("?" for _ in _IMAGE_SUFFIXES)
+        found = self.rows(
+            "SELECT i.source_id, i.stable_id, lower(i.state_reason), (SELECT o.output_path FROM outputs o "
+            "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id ORDER BY o.built_run DESC "
+            f"LIMIT 1) FROM items i WHERE i.is_dir = 0 AND lower(i.state_reason) IN ({marks})",
+            [_NO_CONVERTER + suffix for suffix in _IMAGE_SUFFIXES],
+        )
+        root = docs.resolve()
+        for n, (sid, stable, reason, rel) in enumerate(found):
+            says: bool | None = None
+            if n < _PAGE_READS and isinstance(rel, str) and rel and self.left() > 0:
+                with contextlib.suppress(Exception):
+                    path = docs / rel
+                    if not path.is_symlink() and path.is_file() and path.resolve().is_relative_to(root):
+                        with path.open("rb") as fh:
+                            head = fh.read(_PAGE_HEAD_BYTES).decode("utf-8", errors="replace")
+                        shown = parse_frontmatter(head)[0].get("reason")
+                        suffix = str(reason)[len(_NO_CONVERTER) :]
+                        if shown == _WITHHELD_IMAGE_REASON.format(suffix):
+                            says = True
+                        elif isinstance(shown, str) and shown.casefold().startswith(_NO_CONVERTER):
+                            says = False
+            if says is None:
+                self.pages_unread += 1
+            else:
+                self.image_pages[(str(sid), str(stable))] = says
 
     def rows(self, sql: str, params: Sequence[object] = ()) -> list[tuple[Any, ...]]:
         """Every row of one statement; _OutOfTimeError once the time is used up, before or while it runs."""
@@ -4286,8 +4352,9 @@ def _stub_rows(m: _Mirror) -> list[tuple[str, str, str, int, int, int | None, in
     if isinstance(kept, list):
         return cast(list[tuple[str, str, str, int, int, int | None, int | None]], kept)
     rows = m.rows(
-        "SELECT source_id, state, reason_class(state_reason), dataless, COUNT(*), MIN(built), MAX(built) "
-        "FROM (SELECT i.source_id AS source_id, i.state AS state, i.state_reason AS state_reason, "
+        "SELECT source_id, state, reason_class(state_reason, source_id, stable_id), dataless, COUNT(*), "
+        "MIN(built), MAX(built) FROM (SELECT i.source_id AS source_id, i.stable_id AS stable_id, "
+        "i.state AS state, i.state_reason AS state_reason, "
         "i.dataless AS dataless, (SELECT MAX(o.built_run) FROM outputs o WHERE o.source_id = i.source_id "
         "AND o.stable_id = i.stable_id) AS built FROM items i WHERE i.is_dir = 0 AND "
         "(i.state IN ('quarantined', 'refused') OR (i.state_reason IS NOT NULL AND i.state != 'tombstone'))) "
@@ -4442,7 +4509,7 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
     image = _suffix_sql("i.name", _IMAGE_SUFFIXES)
     for sid, row_state, dataless, verdict, cls, page, files, size in m.rows(
         "SELECT i.source_id, i.state, i.dataless, COALESCE(i.last_verdict, ''), "
-        "reason_class(i.state_reason), "
+        "reason_class(i.state_reason, i.source_id, i.stable_id), "
         "EXISTS (SELECT 1 FROM outputs o WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
         "AND o.status = 'ok'), COUNT(*), COALESCE(SUM(i.size), 0) FROM items i "
         f"WHERE i.is_dir = 0 AND i.state != 'tombstone' AND {image} IS NOT NULL GROUP BY 1, 2, 3, 4, 5, 6"
@@ -4867,8 +4934,11 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     helper, state, label_rule = _ocr_helper(r, m)
-    if state == "ready" and m.labels_active:  # before any file count: Quarantine by reason reads it too
-        m.withheld |= _LABEL_WITHHELD
+    # before any file count: Quarantine by reason reads it too
+    if state == "ready" and m.labels_active:  # for a stub whose page cannot be read (B13 round 8 J52)
+        m.images_by_probe = True
+    if r.config is not None:
+        m.read_image_pages(r.config.docs_repo)
     lines = [
         *helper,
         *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
@@ -4901,11 +4971,11 @@ def _refused_types(m: _Mirror, labels: _Labels) -> list[str]:
     counted, so each line adds up to that source's ``no converter`` rows in the table."""
     grouped: dict[tuple[str, str], tuple[list[int], Counter[str]]] = {}
     for sid, kind, shape, files, online, distinct in m.rows(
-        "SELECT source_id, refused_type(state_reason), refused_shape(state_reason), COUNT(*), "
-        "SUM(dataless != 0), COUNT(DISTINCT CASE WHEN refused_type(state_reason) = 'other' "
-        "THEN lower(state_reason) END) "
+        "SELECT source_id, refused_type(state_reason, source_id, stable_id), refused_shape(state_reason), "
+        "COUNT(*), SUM(dataless != 0), COUNT(DISTINCT CASE WHEN refused_type(state_reason, source_id, "
+        "stable_id) = 'other' THEN lower(state_reason) END) "
         "FROM items WHERE is_dir = 0 AND state != 'tombstone' AND state_reason IS NOT NULL "
-        "AND refused_type(state_reason) IS NOT NULL GROUP BY 1, 2, 3"
+        "AND refused_type(state_reason, source_id, stable_id) IS NOT NULL GROUP BY 1, 2, 3"
     ):
         sums, shaped = grouped.setdefault((str(sid), str(kind)), ([0, 0, 0], Counter()))
         sums[0] += int(files)
@@ -4975,8 +5045,16 @@ def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 "",
                 "- `withheld by label rule`: a [policy] label rule is set and the label of a binary .msg or "
                 "an image cannot be read, or a .msg is not on this Mac and is not downloaded to tell, so no "
-                "converter reads them while it is set (the page says so); a message saved as .eml, or an "
-                "image exported as a PDF, is converted and its label screened",
+                "converter reads them while it is set; an image is counted here as its stub page says, which "
+                "keeps the wording of the run that wrote the stub (as _sync/QUARANTINE.tsv does)"
+                + (
+                    f", and {m.pages_unread} image stub(s) whose page could not be read by whether OCR is "
+                    "ready now"
+                    if m.pages_unread and m.images_by_probe
+                    else ""
+                )
+                + "; a message saved as .eml, or an image exported as a PDF, is converted and its label "
+                "screened",
             ]
             if any(cls == "withheld by label rule" for _s, _st, cls, *_rest in stubs)
             else []

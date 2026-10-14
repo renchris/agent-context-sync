@@ -54,10 +54,12 @@ def label_withheld_suffixes() -> frozenset[str]:
     ``cycle._no_converter``, B13 round 5 F73; or one the OS refused to hydrate, ``_process`` on
     ``DatalessRefusedError``) and every image (``ImageConverter.extensions``), which counts as withheld only
     while an OCR engine is ready (``Publisher.images_readable``; without one nothing converts an image
-    anyway, so its page, ``_sync/QUARANTINE.tsv`` and the setup report keep ``no converter for <suffix>``).
-    Their stub keeps the stored reason ``no converter for <suffix>``; the page (its ``reason:`` too),
-    ``_sync/QUARANTINE.tsv`` and the setup report word it as the label rule's (B13 round 3 R33, round 6
-    G29, G62); the TSV copies the ``reason:`` of the stub as published (B13 round 7 H52)."""
+    anyway). Their stub keeps the stored reason ``no converter for <suffix>``; the page (its ``reason:``
+    too), ``_sync/QUARANTINE.tsv`` and the setup report word it as the label rule's (B13 round 3 R33, round
+    6 G29, G62). For an image, the run that planned the stub decides the page's ``reason:`` (withheld only
+    when that run's engine was ready), the TSV copies it (B13 round 7 H52) and the setup report classes the
+    row by it, going by its own OCR probe only for a stub whose page it cannot read (B13 round 8 J52, J54):
+    an engine that comes or goes later changes none of the three until the stub is planned again."""
     from agentsync.convert.image import ImageConverter  # noqa: PLC0415 - lazy, as in Registry.default
     from agentsync.convert.msg import MsgConverter  # noqa: PLC0415
 
