@@ -4828,11 +4828,11 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
         # B13 round 8 J1, J20: the host is one placeholder in the URL and in git's resolver error, its port
         # stays, and the company-named path is a value of its own; scripts/install.sh writes the same line
         assert (
-            "git clone https://<proxy-1>:8443<proxy-2>/someone/agent-context-sync.git/: Could not resolve "
+            "git clone https://<proxy-1>:8443/<proxy-2>/someone/agent-context-sync.git/: Could not resolve "
             "host: <proxy-1> (exit 128)" in part
         ), part
         # git@host is an email address to the redactor; the scp base's path is a value of its own
-        assert re.search(r"git pull <email-\d+><proxy-\d+>/x\.git: ", part), part
+        assert re.search(r"git pull <email-\d+>:<proxy-\d+>/x\.git: ", part), part
     assert "URL rewrite in git's config: set (3)" in section(text, "Environment")
     assert text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL), "GitHub's host is kept"
     # a path of a server's generic words is no value of its own: it would cut /usr/bin/git (a reviewer's
@@ -4867,7 +4867,7 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
         (
             "https://dev.example.invalid/northwind-team/",
             "https://dev.example.invalid/northwind-team/jdoe/x: Could not resolve host: dev.example.invalid",
-            "https://<proxy-1><proxy-2>/jdoe/x: Could not resolve host: <proxy-1>",
+            "https://<proxy-1>/<proxy-2>/jdoe/x: Could not resolve host: <proxy-1>",
         ),
     ):
         red = setup_report.Redactor()
@@ -4878,7 +4878,7 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
         if value.lower() != host.lower():
             red.add("proxy", value, ignore_case=True)
         if tail:
-            red.add("proxy", tail, ignore_case=True)
+            red.add("proxy", tail, ignore_case=True, keep_lead=True)
         assert red.redact(said) == shown, (base, red.redact(said))
     # B13 round 8 J2: the legend says a rewrite is a <proxy-N> too
     legend = section(text, "Redaction")

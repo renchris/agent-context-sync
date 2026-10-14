@@ -1595,9 +1595,12 @@ redaction_pairs() {
 			esac
 			case "$v" in
 			"$tail")
-				# flag e: no letter or digit may follow, as in Python; a ".git" or a "-tools" may
-				add_pair "$v" "<proxy-$m>" e
-				add_pair "$key" "<proxy-$m>" e
+				# flag e: no letter or digit may follow, as in Python; a ".git" or a "-tools" may. Matched with
+				# its own "/" or ":", which anchors the start and keeps a two-letter path over add_pair's floor,
+				# and that separator is written back before the placeholder, so the host and the path read as two
+				# (https://<proxy-1>/<proxy-2>/...; B13 round 9 K2, K27), as setup_report's keep_lead
+				add_pair "$v" "${v:0:1}<proxy-$m>" e
+				add_pair "$key" "${key:0:1}<proxy-$m>" e
 				;;
 			"$pac" | *.*)
 				add_pair "$v" "<proxy-$m>"

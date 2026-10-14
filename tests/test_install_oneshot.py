@@ -6336,17 +6336,17 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     # B13 round 8 J1, J20: the host is one placeholder in the URL and in git's resolver error, numbered as
     # the Python report numbers it, so both write this line the same way
     assert (
-        "git clone https://<proxy-1>:8443<proxy-2>/someone/agent-context-sync.git/: Could not resolve host: "
+        "git clone https://<proxy-1>:8443/<proxy-2>/someone/agent-context-sync.git/: Could not resolve host: "
         "<proxy-1> |" in text
     ), text
     assert re.search(r"git pull git@<proxy-\d+>/x\.git: Could not resolve hostname <proxy-\d+> \|", text), (
         text
     )
     assert "/usr/bin/git and https://github.com/astral-sh/uv stay" in text, "a generic path is no value"
-    assert re.search(r"git pull git@mirror2\.example\.invalid<proxy-\d+>/x\.git \|", text), text
-    assert re.search(r"saw git@mirror3\.example\.invalid<proxy-\d+>\.git and x<proxy-\d+>-tools \|", text), (
-        text
-    )
+    assert re.search(r"git pull git@mirror2\.example\.invalid:<proxy-\d+>/x\.git \|", text), text
+    assert re.search(
+        r"saw git@mirror3\.example\.invalid:<proxy-\d+>\.git and x:<proxy-\d+>-tools \|", text
+    ), text
     assert "read ~/agent-context/docs/index.md |" in text and "agent-context<proxy" not in text, (
         "a report-word path is no value"
     )
@@ -6354,6 +6354,47 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     (home / ".gitconfig").unlink()
     assert install_sh(env, "--report-only").returncode == 0
     assert "- URL rewrite in git's config: not set\n" in report_path(env).read_text()
+
+
+def test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports(env: dict[str, str]) -> None:
+    """B13 round 9 K2, K27: a rewrite path was matched with its leading "/" or ":" and replaced with it, so
+    host and path ran together (``https://<proxy-1><proxy-2>/...``). The separator is still matched, which
+    anchors the start and keeps a two-letter path over the shell's 3-character floor, and is written back
+    before the placeholder, in both reports alike."""
+    home = Path(env["HOME"])
+    bases = ("https://mirror.contoso-git.invalid/gh/", "git@scp.contoso-two.invalid:contoso-scp/")
+    (home / ".gitconfig").write_text(
+        "".join(f'[url "{b}"]\n\tinsteadOf = https://github.com/\n' for b in bases)
+    )
+    said = (
+        "git clone https://mirror.contoso-git.invalid/gh/example/agent-context-sync.git/: Could not resolve "
+        "host: mirror.contoso-git.invalid; git pull git@scp.contoso-two.invalid:contoso-scp/x.git; "
+        "a high mark"
+    )
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    line = next(ln for ln in report_path(env).read_text().splitlines() if "| step 1 | error |" in ln)
+    shown = line.split(" | ")[3]
+    assert shown == (
+        "git clone https://<proxy-1>/<proxy-2>/example/agent-context-sync.git/: Could not resolve host: "
+        "<proxy-1>; git pull git@<proxy-4>/x.git; a high mark"
+    ), shown
+    # the agentsync report registers the same values in the same order and writes the same URL
+    red = setup_report.Redactor()
+    for base in bases:
+        found = setup_report._rewrite_values(base)
+        assert found is not None
+        host, value, tail = found
+        setup_report._add_proxy_host(red, host)
+        if value.lower() != host.lower():
+            red.add("proxy", value, ignore_case=True)
+        if tail:
+            red.add("proxy", tail, ignore_case=True, keep_lead=True)
+    assert red.redact(said.split("; git pull", maxsplit=1)[0]) == shown.split("; git pull", maxsplit=1)[0]
+    assert red.redact("git pull git@scp.contoso-two.invalid:contoso-scp/x.git") == (
+        "git pull <email-1>:<proxy-5>/x.git"
+    ), "git@host is an email address first; the scp path keeps its colon"
+    assert red.redact("a high mark; x/ghs; /GH/y") == "a high mark; x/ghs; /<proxy-2>/y"
 
 
 SCUTIL_PROXY = """<dictionary> {

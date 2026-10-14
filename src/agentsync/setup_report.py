@@ -869,6 +869,9 @@ class Redactor:
         # before :<port> (``add(url=True)``): apart,
         # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
         self._url_hosts: dict[str, str] = {}
+        # _bare(value).lower() of a value that starts with a separator its placeholder writes back
+        # (``add(keep_lead=True)``, a git URL rewrite's path: B13 round 9 K2, K27)
+        self._lead_kept: set[str] = set()
         self._kind_of: dict[str, str] = {}  # placeholder -> kind
         self._numbers: Counter[str] = Counter()
         self._pattern_values: dict[tuple[str, str], str] = {}
@@ -954,6 +957,7 @@ class Redactor:
         ignore_case: bool = False,
         fuzzy: bool = False,
         url: bool = False,
+        keep_lead: bool = False,
     ) -> None:
         """Register ``value`` as a ``kind`` (home, user, name, org, library, folder, source, email, serial,
         host, mdmhost, proxy); a value already registered (or a variant of a fuzzy one) keeps its first
@@ -961,10 +965,15 @@ class Redactor:
         Values under 2 characters are ignored (they would match inside ordinary words). ``fuzzy`` implies
         ``ignore_case`` and adds the space/hyphen/underscore/CamelCase variants (not for a value whose
         normalized form is under 3 characters). ``url``: a host matched, in any case, only where a URL names
-        it, after ``//`` or ``@`` or before ``:<port>`` (a proxy host that is a word the report prints)."""
+        it, after ``//`` or ``@`` or before ``:<port>`` (a proxy host that is a word the report prints).
+        ``keep_lead``: the value's first character (the ``/`` or ``:`` of a git URL rewrite's path, which
+        anchors its start) is written back before the placeholder, so ``https://<proxy-1>/<proxy-2>/`` reads
+        as a host and a path, not one token (B13 round 9 K2, K27)."""
         value = (value or "").strip()
         if len(value) < 2 or value in ("~", "/"):
             return
+        if keep_lead:
+            self._lead_kept.add(_bare(value).lower())
         joined = fuzzy and len(_tokens(value)) >= 2 and _norm(value) in report_words()
         if joined and _norm(value) in self._joined:
             return
@@ -1143,6 +1152,8 @@ class Redactor:
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1
             self._used.add(placeholder)
+        if placeholder != text and self._lead_kept and _bare(text).lower() in self._lead_kept:
+            return text[0] + placeholder
         return placeholder
 
     def redact(self, text: str) -> str:
@@ -2955,7 +2966,7 @@ def _build_redactor(r: _Run) -> Redactor:
         if value.lower() != host.lower():
             red.add("proxy", value, ignore_case=True)
         if tail:
-            red.add("proxy", tail, ignore_case=True)
+            red.add("proxy", tail, ignore_case=True, keep_lead=True)
     # The LaunchAgent's own proxy (``launchctl setenv``), which network.proxy.job prints where it differs from
     # this shell's: last, so it renumbers no other <proxy-N> (B13 R68).
     if r.hooks.job_proxy is not None:
