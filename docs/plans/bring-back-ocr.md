@@ -716,11 +716,12 @@ and 6 `/tmp` scratch goes to the operator, since deletion is refused to agents).
 
 All six lanes landed and none left an item not built; CI green on `a350196b` (prompt v16). Notes `lanes/r7-<lane>.md`.
 The regression fix (H7) is `77151d37`: step 1 marks synced folders again with any installed agentsync from
-2026-09-29 on, which covers the corporate Mac's `4a42af9` (2026-10-08). The operator ran the `/tmp` scratch cleanup.
+2026-09-29 on, which covers the corporate Mac's `4a42af9` (2026-10-08). The operator ran the `/tmp` scratch cleanup
+for rounds 5 and 6; round 7's scratch goes in the operator's `b13-r7` cleanup (round 8 J81).
 
 | Lane | Landed |
 |---|---|
-| E | `568024c8..ba661677` |
+| E | `042cbe35..ba661677` |
 | RB | `77151d37` (H7), `54cb9a0c`, `7cfed4d2`, `c1a24093`, `a350196b` |
 | P | `77151d37..69c873d2` (v16) |
 | RA | `69c873d2..0bc75885`, 15 commits |
