@@ -15662,9 +15662,14 @@ identity, `mark_for_rescreen` and the setup report's class key on it. The text n
 OCR state, as the page does when it is planned, so a run with no engine writes an image's TSV row as `no converter`. Pinned by
 `tests/test_cycle.py::test_a_withheld_stub_says_so_in_its_reason_and_in_quarantine_tsv`. Amends §16.42 R33's
 "only the words say why" and §16.60 F33: the stub's `reason:` is among those words.
+**Amended 2026-10-14, §16.79 J73 (by §16.71 H52):** `write_quarantine` no longer reads this run's OCR state: for a
+row a label rule may withhold it copies the `reason:` of the stub as published (`Publisher._stub_reason`), so a run
+with no engine no longer rewrites an image's TSV row as `no converter`; the row says what the page says.
 
 **`STUB_RENDER` is 4 (G29, G76, G77).** One bump for the three: a withheld stub's `reason:`, a redacted stub, and
 the tombstone layout.
+**Amended 2026-10-14, §16.79 J73 (by §16.71 H77):** `STUB_RENDER` is 5: H77's tombstone line bumped it once more, so
+an install at 4 renders once more.
 
 **A redacted stub is rendered again (G76; amends §16.51 Q75, §16.60 F94).** `Cycle._stub_again` no longer skips a
 redacted item: the publisher redacts the re-plan from the stored redaction (`_shown_name`, `_shown_path`,
@@ -15696,6 +15701,9 @@ without one it is fetched and read. Marking happens only when the policy fingerp
 local `.msg` was already read after a lift (the `no converter` re-read reaches it); only a Graph one was stuck.
 Pinned by `tests/test_cycle.py::test_a_msg_withheld_by_its_name_is_read_once_the_label_rule_is_lifted` (a Graph
 source; online-only as a guard).
+**Amended 2026-10-14, §16.79 J73 (by §16.71 H47):** while the new policy keeps a label rule on, only such a row with
+no byte read (no content hash) is marked (`mark_for_rescreen(..., unread_only=)`); once the rule is lifted every such
+row is marked, as here.
 
 **The deck emitter is 1.0.1 (G59; amends §16.60 F77).** F77's template rendering kept `pptx._EMITTER_VERSION` at
 1.0.0, so the action key of bytes round 4 cached did not move: a copy under another name, a page the repair path
@@ -16230,6 +16238,8 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
 Builds round 7's `.msg` re-screen, QUARANTINE.tsv, tombstone and convert-docstring items, and the timing-test skip
 (`docs/plans/bring-back-ocr.md`, "B13 round 7"; specs `round7/items/H<n>.md`, the verifier's corrected fix built).
 As in §16.66, a line that corrects §16.66 is here; the dated lines are the two H77's spec names.
+**Amended 2026-10-14, §16.79 J73:** since §16.73 H54 a correction of an older item also gets a dated line beside
+it; H52's, H47's and H77's "is 4" now have theirs at §16.66 G29, G52 and the `STUB_RENDER` paragraph.
 
 **A policy tweak that keeps the label rule reads no withheld `.msg` again (H47; corrects §16.66 G52).**
 `Manifest.mark_for_rescreen` takes `unread_only`, and `_check_policy_change` sets it while the new policy has a label
@@ -16656,3 +16666,12 @@ which ends `: it would show that name. Nothing is sent automatically.`, the shel
 `fallback_redaction`'s line never had that clause (`git log -S` finds none). Documentation only: install.sh keeps
 its line, and §16.69 H17's quote stays as the record of what round 7 built. Test:
 `test_the_contracts_quote_the_shell_reports_list_and_send_lines_as_written`, which reads both lines in install.sh.
+
+**Round 7's corrections of §16.66 have dated lines there** (J73; dated lines at §16.66 G29, G52 and its
+`STUB_RENDER` paragraph, and §16.71's opening). §16.71 H47 narrowed G52's marking, H52 made G29's last sentence false
+and H77 made `STUB_RENDER` 5, but §16.71's opening kept §16.66's in-section-only convention, which §16.73 H54 had
+overturned, so the three stood unmarked. Each now has a line `Amended 2026-10-14, §16.79 J73 (by §16.71 H<n>)`, and
+§16.71's opening a line saying so. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`,
+which reads every "(H<n>; amends|corrects §A X)" heading and every "(<item>; dated line(s) at §A X)" claim of §16.68
+to §16.71, §16.73 and this section and requires the line at the item (or in a dated paragraph right after it), and
+pins the `STUB_RENDER` line, whose correction sits in a paragraph body rather than a heading.

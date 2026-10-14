@@ -3809,6 +3809,49 @@ def test_the_contracts_quote_the_shell_reports_list_and_send_lines_as_written() 
     assert "**Amended 2026-10-14, §16.79 J67:** not quite the shell report's words" in s69
 
 
+def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() -> None:
+    """B13 round 8 J73: §16.71 H47 and H52 corrected §16.66 G52 and G29, and H77 its "`STUB_RENDER` is
+    4", with no dated line at any of them, the defect class H54 fixed for round 6, whose test reads only G
+    headings.  Every "(H<n>[, H<m>]; amends|corrects §A X ...)" heading and every "(<item>; dated line(s)
+    at §A X ...)" claim in §16.68 to §16.71, §16.73 and §16.79 names an item X of section A whose paragraph,
+    or a dated paragraph right after it, holds `Amended 2026-10-1N, §<home> <item>` (or `... (by §<home>
+    <item>)`).  §16.72 names paragraphs, not items:
+    `test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend`."""
+    from agentsync import publish  # noqa: PLC0415
+
+    sections = dict(_contracts_numbered_sections())
+    claims: list[tuple[str, list[str], str, str]] = []
+    heading = r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*; (?:amends|corrects|dated lines? at) ([^)]*)\)"
+    for home in ("16.68", "16.69", "16.70", "16.71", "16.73", "16.79"):
+        for para in re.split(r"\n\s*\n", sections[home]):
+            for items, targets in re.findall(heading, " ".join(para.split())):
+                section = ""
+                for number, item in re.findall(r"(?:§(\d+\.\d+) )?([FGHQRJ]\d+)\b", targets):
+                    section = number or section
+                    claims.append((home, re.findall(r"[A-Z]\d+", items), section, item))
+    assert ("16.71", ["H52"], "16.66", "G29") in claims and len(claims) >= 15, "the scan is broken"
+    for home, items, section, item in claims:
+        at = "|".join(re.escape(f"§{home} {i}") for i in items)
+        marker = re.compile(rf"Amended 2026-10-1\d, (?:(?:{at})\b|§16\.\d+ [A-Z]\d+ \((?:by )?(?:{at})\))")
+        paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", sections[section])]
+        held = [
+            p
+            + (
+                " " + paragraphs[n + 1]
+                if n + 1 < len(paragraphs) and "Amended" in paragraphs[n + 1][:12]
+                else ""
+            )
+            for n, p in enumerate(paragraphs)
+            if re.search(rf"\b{item}\b", p)
+        ]
+        assert any(marker.search(p) for p in held), f"§{section} {item} has no dated line for §{home} {items}"
+    render = next(p for p in re.split(r"\n\s*\n", sections["16.66"]) if p.startswith("**`STUB_RENDER` is 4"))
+    assert "**Amended 2026-10-14, §16.79 J73 (by §16.71 H77):** `STUB_RENDER` is 5" in " ".join(
+        render.split()
+    )
+    assert publish.STUB_RENDER >= 5
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is
