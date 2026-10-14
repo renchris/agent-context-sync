@@ -1467,6 +1467,7 @@ class _SourceAcc:
     unreadable: int = 0
     conversion_failed: int = 0
     refused: int = 0
+    withheld_read: int = 0
     refused_unread: int = 0
     withheld_unread: int = 0
     breaker_tripped: bool = False
@@ -1501,6 +1502,7 @@ class _SourceAcc:
             unreadable=self.unreadable,
             conversion_failed=self.conversion_failed,
             refused=self.refused,
+            withheld_read=self.withheld_read,
             refused_unread=self.refused_unread,
             withheld_unread=self.withheld_unread,
         )
@@ -4565,6 +4567,9 @@ class _Cycle:
             # source line and STATE.md say, so it is not in R (B13 round 7 H49)
             elif result.status is ConversionStatus.REFUSED and duplicate is None:
                 acc.refused += 1
+                # of R, a stub that says a label rule withheld it, by the page's own test (B13 round 10 L33)
+                if self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
+                    acc.withheld_read += 1
             self._tally_converted(result, prior)
             if rescreen:
                 self._tally["rescreened"] += 1

@@ -404,7 +404,7 @@ def test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread(
     out = capsys.readouterr().out.splitlines()
     assert out[-1] == (
         "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (a file whose label cannot "
-        "be read: an image, a binary .msg or a .msg not on this Mac); 1 refused without a read (no converter "
+        "be read: an image or a .msg not on this Mac); 1 refused without a read (no converter "
         "for the type, or a rule that needs no bytes)"
     )
     said = sum(int(n) for n in re.findall(r"(\d+) (?:refused|withheld)\b", out[-1]))
@@ -413,7 +413,7 @@ def test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread(
     cli._print_report(dataclasses.replace(report, sources=(dataclasses.replace(alpha, refused_unread=0),)))
     assert capsys.readouterr().out.splitlines()[-1] == (
         "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (a file whose label cannot "
-        "be read: an image, a binary .msg or a .msg not on this Mac)"
+        "be read: an image or a .msg not on this Mac)"
     )
 
 

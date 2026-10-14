@@ -2685,7 +2685,7 @@ def test_the_sync_line_does_not_say_a_local_image_needs_the_file_for_its_label(
 ) -> None:
     """B13 round 9 K33: the W clause said "(its label cannot be read without the file)" for a .png on this
     Mac, whose stub says the label of a .png cannot be read: having the file does not help. It names the
-    cause an image, a binary .msg and a .msg not on this Mac share."""
+    cause an image and a .msg not on this Mac share (B13 round 10 L50: a binary .msg on this Mac is read)."""
     _use_ocr(monkeypatch, tmp_path)
     picture(local_source_dir / "Contoso floor.png", "Loading dock")
     report = run(config_with(tmp_path, local_source_dir, LABEL_RULE))
@@ -2695,6 +2695,34 @@ def test_the_sync_line_does_not_say_a_local_image_needs_the_file_for_its_label(
     line = capsys.readouterr().out.splitlines()[-1]
     assert "; 1 withheld unread by the label rule (" in line, line
     assert "without the file" not in line and "an image" in line, line
+
+
+def test_the_sync_line_counts_every_stub_the_label_rule_withheld(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 10 L33, L50: under a label rule a binary .msg on this Mac is read, then refused, so its stub
+    says "withheld by label rule" while the line counted it only in R, and the W parenthesis named "a binary
+    .msg", which W never holds. The split now names the K of R the label rule withheld, and K + W are the
+    pages that say so."""
+    _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / "Contoso floor.png", "Loading dock")
+    (local_source_dir / KICKOFF_MSG).parent.mkdir(parents=True, exist_ok=True)
+    (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(subject="Contoso kickoff", plain="Agenda.\n"))
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    report = run(config)
+    [rep] = report.sources
+    assert (rep.withheld_unread, rep.withheld_read, rep.refused) == (1, 1, 1), rep
+    reasons = [_mirror_page(config, rel)[0]["reason"] for rel in ("Contoso floor.png", KICKOFF_MSG)]
+    assert all(r.startswith("withheld by label rule") for r in reasons), reasons
+    assert rep.withheld_unread + rep.withheld_read == len(reasons), reasons
+    capsys.readouterr()
+    cli._print_report(report)
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert "1 refused, 1 of them withheld by the label rule" in line, line
+    assert "; 1 withheld unread by the label rule (" in line and "a binary .msg" not in line, line
 
 
 def test_without_an_engine_an_image_under_a_label_rule_is_counted_with_no_converter(
@@ -3693,7 +3721,10 @@ def test_a_file_refused_after_its_read_is_named_in_the_sync_lines_split(
     cli._print_report(report)
     last = capsys.readouterr().out.splitlines()[-1]
     assert last.startswith(f"converted {rep.converted}, deferred 0 online-only")
-    assert "(of the converted: 0 unreadable, 0 failed, 1 refused)" in last, last
+    # B13 round 10 L33: its stub says a label rule withheld it, and the split says so of the one refused
+    assert (
+        "(of the converted: 0 unreadable, 0 failed, 1 refused, 1 of them withheld by the label rule)" in last
+    )
 
 
 def test_the_limit_marks_are_the_converters_own_wording() -> None:

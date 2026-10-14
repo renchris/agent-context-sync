@@ -416,6 +416,10 @@ class SourceReport:
     # of ``converted``: REFUSED after a read (a label rule, a .msg whose label cannot be read; B13 round 6
     # G35). An inbox duplicate is quarantined, not refused (round 7 H49)
     refused: int = 0
+    # of ``refused``: those whose stub says a label rule withheld it (a binary .msg on this Mac, read, then
+    # refused on its compound-file head): named in the sync line's split, never in ``withheld_unread``, so the
+    # line's withheld counts add up to the stubs that say so (B13 round 10 L33)
+    withheld_read: int = 0
     # refused with no byte read (no converter for the name, a rule that needs no bytes, a withheld online-only
     # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32); not one whose stub says
     # a label rule withheld it, which ``withheld_unread`` counts (B13 round 8 J29)

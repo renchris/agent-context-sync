@@ -408,8 +408,9 @@ def _config(args: argparse.Namespace) -> Config:
 
 
 _OVER_BUDGET = "exceeds the per-cycle budget ("
-# why the sync line's W files were withheld unread: the cause the three stub kinds share (B13 round 9 K33)
-_WITHHELD_WHY = "a file whose label cannot be read: an image, a binary .msg or a .msg not on this Mac"
+# why the sync line's W files were withheld unread: the cause the stub kinds W holds share (B13 round 9 K33;
+# round 10 L50: a binary .msg on this Mac is read, so it is in R, named by the split's K clause)
+_WITHHELD_WHY = "a file whose label cannot be read: an image or a .msg not on this Mac"
 
 
 def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None:
@@ -423,18 +424,21 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     refused)`` when some of the N are UNREADABLE stubs (U), conversions that failed (F; §16.45 R2) or files
     refused after their bytes were read (R: a label rule, a .msg whose label cannot be read; B13 round 6 G35,
     which also prints the split for F or R alone; an inbox duplicate is quarantined, never in R: round 7 H49),
-    as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side (B13
+    with ``, K of them withheld by the label rule`` after R when K of the R have a stub that says so (a binary
+    .msg on this Mac, read and then refused: B13 round 10 L33), as ``; of the converted: ...`` after the Q28
+    clause, so two parentheses never stand side by side (B13
     round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
     [policy] or secret-rule re-screen runs the converter on the same bytes, so it is in N, and counted again
     in S (F35), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
     when Q files were refused with no byte read: those are in each source line's ``refused=`` but not in N, so
     with R and W the line's refusals add up to the sources' (B13 round 7 H32). Before it, ``; W withheld
-    unread by the label rule (a file whose label cannot be read: an image, a binary .msg or a .msg not on this
-    Mac)`` counts the files refused with no byte read whose stub says a label rule withheld them, by the
-    page's own test. They are not in Q (W and Q are disjoint), and R + W + Q add up to the sources'
-    ``refused=`` (B13 round 8 J29: the one clause named no label rule, so a withheld image read as a type with
-    no converter; round 9 K54). The parenthesis names the cause all three stub kinds share: "without the file"
-    was false for an image on this Mac (round 9 K33). With ``run_budget`` (``sync --materialise-budget``) the
+    unread by the label rule (a file whose label cannot be read: an image or a .msg not on this Mac)`` counts
+    the files refused with no byte read whose stub says a label rule withheld them, by the page's own test, so
+    K + W are the stubs that say so. They are not in Q (W and Q are disjoint), and R + W + Q add up to the
+    sources' ``refused=`` (B13 round 8 J29: the one clause named no label rule, so a withheld image read as a
+    type with no converter; round 9 K54). The parenthesis names the cause the stub kinds W holds share:
+    "without the file" was false for an image on this Mac (round 9 K33), and a binary .msg on this Mac is
+    never in W (round 10 L50). With ``run_budget`` (``sync --materialise-budget``) the
     per-file "exceeds the per-cycle budget" alarms are
     one count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
@@ -497,6 +501,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     if unreadable or failed or refused:
         # refused after failed, so an older reader's "U unreadable, F failed" still matches
         split = f"of the converted: {unreadable} unreadable, {failed} failed, {refused} refused"
+        # no bracket of its own, so the split stays one parenthesis (B13 round 10 L33)
+        if withheld_read := sum(s.withheld_read for s in report.sources):
+            split += f", {withheld_read} of them withheld by the label rule"
         of_them = f"; {split}" if report.read_again and report.read_first else f" ({split})"
     # No bare "converted", "deferred" or "read again" in it: install.sh's awk adds the number after each.
     rescreened = (
@@ -507,8 +514,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     )
     # No bare "converted", "deferred" or "read again" in it either, and nothing when Q is 0 (B13 round 7 H32).
     # A file whose stub says a label rule withheld it is counted apart, by the page's own test, so the line
-    # names the cause its page names (B13 round 8 J29), the one an image, a binary .msg and a .msg not on this
-    # Mac share (round 9 K33); setup_report reads only the prefix up to "label rule".
+    # names the cause its page names (B13 round 8 J29), the one an image and a .msg not on this Mac share
+    # (round 9 K33; round 10 L50); setup_report reads only the prefix up to "label rule".
     withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
     unread_tail = "".join(
