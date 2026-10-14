@@ -16652,6 +16652,16 @@ carry local times. Tests: `tests/test_cli.py` (`test_log_lines_carry_their_time_
 `TZ=America/Chicago`), `tests/test_setup_report.py` (`test_a_logger_named_like_a_document_keeps_its_time_and_level`,
 both heads).
 
+**J35: `already configured` says why another path is the same folder (`agentsync.cli`).** `add-source` matches a
+folder a source already has by more than its bytes (`_same_folder`: a provider link read through to its real name,
+case and Unicode folded, `samefile`), and its line printed only the stored path, so a folder typed by its real
+name read back as a different path with no reason. When the typed path (made absolute as the `added source`
+branch does) is not the stored one, the line ends `: <typed> is the same folder by another name or path`, after
+the config path, so `has path <stored> in ` still holds. It names no cause: a link, a case or Unicode form and
+`/tmp` against `/private/tmp` all reach this line, and the finder's "read through the CloudStorage link" is true
+only of the first. Typed as stored, the line is unchanged. Test: `tests/test_cli.py`
+(`test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folder`).
+
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 
 Reserved for round 8 lane E of B13.

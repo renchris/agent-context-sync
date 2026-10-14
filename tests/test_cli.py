@@ -2588,9 +2588,14 @@ def test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folde
     after = initialised.config_path.read_text(encoding="utf-8")
     capsys.readouterr()
     assert cli.main(["add-source", str(real), "--config", cfg]) == cli.EXIT_OK
-    assert f"already configured: source {added.id!r} (local, live) has path {added.path} in " in (
-        capsys.readouterr().out
-    )
+    out = capsys.readouterr().out
+    assert f"already configured: source {added.id!r} (local, live) has path {added.path} in " in out
+    # B13 round 8 J35: the line says why a path other than the one typed is that folder, naming no one cause
+    assert out.splitlines()[0].endswith(f": {real} is the same folder by another name or path"), out
+    # typed as stored, the line names no other path
+    assert cli.main(["add-source", str(added.path), "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.startswith("already configured: ") and "same folder" not in out.splitlines()[0], out
     assert initialised.config_path.read_text(encoding="utf-8") == after, "no second source on that folder"
     # only a provider entry's own link is read: one out of CloudStorage is not followed, nor is a link inside
     # a domain, and a folder outside CloudStorage is not the same folder

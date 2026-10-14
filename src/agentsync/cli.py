@@ -703,10 +703,16 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             fresh = False
         config = _ensure_inbox(config)
     known = next((s for s in config.sources if s.path is not None and _same_folder(s.path, path)), None)
+    typed = expand(raw)
+    typed = typed if typed.is_absolute() else Path.cwd() / typed
     if known is not None:
+        # The folder as typed when it is not the stored path (a provider link, another case or Unicode form,
+        # /tmp as /private/tmp), so the line says why two paths are one folder; after the config path, which
+        # "has path <stored> in " ends with, and naming no cause, since several reach here (B13 round 8 J35).
+        same = "" if typed == known.path else f": {typed} is the same folder by another name or path"
         _out(
             f"already configured: source {known.id!r} ({known.kind.value}, {known.state.value}) has path "
-            f"{known.path} in {config.config_path}"
+            f"{known.path} in {config.config_path}{same}"
         )
     else:
         sid = derive_source_id(path, {s.id for s in config.sources})
@@ -723,8 +729,6 @@ def _cmd_add_source(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         # The folder as typed when the stored form differs (a link resolved, /tmp as /private/tmp), as the
         # inbox line says it (Q36; B13 round 5 F49): the table below names only the stored one.
-        typed = expand(raw)
-        typed = typed if typed.is_absolute() else Path.cwd() / typed
         note = "" if typed == path else f" ({typed}, stored as {path})"
         _out(f"added source {sid!r} to {config.config_path}{note}:")
         _out(table.strip("\n"))
