@@ -933,7 +933,10 @@ def test_lock_held_warning_names_the_holder_and_repeats_verbatim(
             err = capsys.readouterr().err.splitlines()
             texts += [ln.split(" WARNING ", 1)[1] for ln in err if " WARNING agentsync.cli: skipped" in ln]
             # the detail that changes from skip to skip stays on the stderr line, which has no level word
-            assert any(ln.startswith("skipped: lock held (") and f"stage {stage!r}" in ln for ln in err), err
+            (skip,) = [ln for ln in err if ln.startswith("skipped: lock held")]
+            assert skip.startswith("skipped: lock held by pid ") and f"stage {stage!r}" in skip, err
+            # B13 round 8 J11, J25: the line says "lock held" once, not "lock held (lock held: pid ...)"
+            assert skip.count("lock held") == 1, skip
     finally:
         lock.release()
     # B13 round 7 H33: a cycle's label is its pass, not who started it (a sync typed in a terminal holds the
@@ -1001,7 +1004,7 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
         capsys.readouterr()
         assert cli.main(["sync", "--mode", "poll", "--config", str(initialised.config_path)]) == 75
         err = capsys.readouterr().err.splitlines()
-        assert [ln for ln in err if ln.startswith("skipped: lock held (")] and not [
+        assert [ln for ln in err if ln.startswith("skipped: lock held by ")] and not [
             ln for ln in err if "WARNING agentsync.cli: skipped" in ln
         ], err
     finally:

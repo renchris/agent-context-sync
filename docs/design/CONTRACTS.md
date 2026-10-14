@@ -11308,6 +11308,8 @@ holder (...)`.
 **Amended 2026-10-13, §16.68 H33:** a cycle label (`poll`, `reconcile`, `dry_run`) is now rendered `another sync
 (its pass: <label>)` in the WARNING, since a sync typed in a terminal holds the lock as `poll` too; `who` itself
 is unchanged, and the text is still one constant per label, so Recent errors still merges it.
+Amended 2026-10-14, §16.77 J11: the stderr line reads `skipped: lock held by <full holder>` (from
+`LockHeldError.holder`), no longer `skipped: lock held (lock held: <full holder>)`; `str(exc)` is unchanged.
 
 Why the label alone: the setup report's Recent errors keeps only lines with a level word, so the holder was
 on a line it drops, and it merges only lines that read the same after their time (§16.36). The beat and its
@@ -16620,6 +16622,17 @@ is the one §16.53 and G33 settled. Outside install.sh the fix is unchanged; an 
 `sync -v`, since a plain sync may run a delta. Tests: `tests/test_ops_doctor.py`
 (`test_heartbeat_incomplete_follows_the_loop_checks`), `tests/test_loop.py`
 (`test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it`).
+
+**J11, J25: the lock-busy skip line says "lock held" once (`agentsync.cli`).** One defect from two finders, built
+once. A run refused the lock (exit 75) wrote `skipped: lock held (lock held: pid ...; waited 600s)`, since
+`str(LockHeldError)` already starts `lock held: `. It now writes `skipped: lock held by {exc.holder}`: `skipped:
+lock held by pid <n> (poll) since ..., stage 'acquired'; waited 600s`, or `skipped: lock held by an unrecorded
+holder (...)`. The wait's `; waited Ns` tail stays, since it is part of the re-raised holder. `str(exc)`, the
+WARNING `skipped: lock held by <who>` and the report's Recent errors merge are unchanged; nothing parses the stderr
+line. J25's verifier kept the `skipped: lock held (` prefix; J11's form is built because it reads as the WARNING
+and the `EXIT_LOCK_HELD` comment already do. Tests: `tests/test_cli.py`
+(`test_lock_held_warning_names_the_holder_and_repeats_verbatim`,
+`test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`).
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 

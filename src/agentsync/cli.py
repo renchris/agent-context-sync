@@ -2142,7 +2142,8 @@ def _main(argv: Sequence[str] | None) -> int:
     try:
         return handler(args)
     except LockHeldError as exc:
-        _err(f"skipped: lock held ({exc})")
+        # .holder, not str(exc): that already starts "lock held: " (B13 round 8 J11, J25)
+        _err(f"skipped: lock held by {exc.holder}")
         if not quiet_lock_wait():  # install.sh's first sync: the line above says it on the same stderr (H31)
             _log.warning("skipped: lock held by %s", _lock_holder(exc.who))
         return EXIT_LOCK_HELD

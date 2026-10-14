@@ -3537,7 +3537,7 @@ else
 		NEXT_MSG="$term was denied access to files managed by $(provider_name): allow it in System Settings > Privacy & Security > Files and Folders (turn on $(provider_name) under $term; a click, not a command), then re-run: $SELF$ORIG_ARGS"
 		exit 1
 	elif [ "$SYNC_RC" -eq 75 ]; then
-		# agentsync's own "skipped: lock held (...)" line above names the holder; this one only closes the step
+		# agentsync's own "skipped: lock held by ..." line above names the holder; this one only closes the step
 		# (B13 round 7 H31: a third line said the same news again).
 		say "$SYNC_LABEL: skipped, lock busy"
 		step_end skipped 75 lock-busy
