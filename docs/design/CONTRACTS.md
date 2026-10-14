@@ -11867,6 +11867,10 @@ with a record (<labels>). Every count is 0, so the table is left out. No file on
 to be read again, from the early OCR build or not, none failed once, none was given up (under any engine or
 version), and no read was cut off when a cycle died.`, and the run sentence reads "Run <id> is the newest run that
 records what its re-read looked for, and `finished` is measured against it; it had an engine."
+Amended 2026-10-14, §16.80 K5: the line is one sentence, `- re-read, per source: finished in all N local or inbox
+source(s) with a record (<labels>); nothing is left to read again, none failed or was given up, and no read was cut
+off when a cycle died (measured against run <id>, the newest run that records what its re-read looked for; it had an
+engine).`, and the kinds of file a re-read looks at are said in the table's lead only.
 
 ### 16.41 Installer and shell report fixes (2026-10-11, wave B13 lane D)
 
@@ -17211,6 +17215,18 @@ the same `policy.page_says_withheld`. Tests:
 `test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_ready`,
 `test_image_stubs_whose_pages_are_all_unread_still_get_the_legend`, `test_a_failed_image_stub_query_is_said_not_passed_over`,
 `test_a_msg_or_image_under_a_label_rule_is_withheld_not_missing_a_converter`.
+
+**The all-zero re-read line is one sentence** (K5, K16, one defect; dated line at §16.40 N37). It named the kinds
+of file a re-read looks at, the early OCR build among them, though every count it stands for is 0. It reads `-
+re-read, per source: finished in all N local or inbox source(s) with a record (<labels>); nothing is left to read
+again, none failed or was given up, and no read was cut off when a cycle died (measured against run <id>, the newest
+run that records what its re-read looked for; it had an engine).` Every branch stays: a run with no engine reads
+`it had no engine, so a finished scan says nothing of OCR)`; with no such run the bracket goes and the "as last
+recorded" sentence follows; a helper that is not ready, and a label rule (`A label rule is on, so no image is read
+or counted.`), add their sentence. The prefix `re-read, per source: finished in all N`, which
+docs/deploy/setup-feedback.md quotes, is kept. The finders' `done ... (run N, the newest with an engine, checked)`
+was not built: the run is the newest that says what its re-read looked for, which may have had no engine. Tests:
+`test_an_all_zero_re_read_table_is_one_line`, `test_an_all_zero_re_read_line_keeps_each_caveat_in_a_sentence_of_its_own`.
 
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.

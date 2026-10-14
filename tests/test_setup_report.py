@@ -8427,19 +8427,16 @@ def test_an_all_zero_re_read_table_is_one_line(
     part = status_parts(fake_mac)[1]["OCR"]
     names = list(reread_rows(part))
     assert len(names) == len(ids) and "Every count is 0, so the table is left out" not in part
-    # short sentences, the same facts, and "field build" said in words (B13 round 7 H5); the clause that
-    # named the early OCR build on every Mac is gone, and the term is glossed where the files list uses it
-    # (B13 round 8 J3, J15)
-    assert (
+    # one sentence, the same facts, every branch kept (B13 round 7 H5, round 8 J3, J15); the kinds of file a
+    # re-read looks at are the table's lead only, so the line names no early OCR build (B13 round 9 K5, K16)
+    line = (
         f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record "
-        f"({', '.join(names)}), and every count is 0, so the table is left out. Nothing from before OCR is "
-        "waiting to be read again: none failed even once, none was given up under any engine or version, "
-        "and no read was cut off when a cycle died. Run 6, the newest run that records what its re-read "
-        "looked for, is what `finished` is measured against; it had an engine. The files a re-read would "
-        "look at are images with the no-converter stub, scanned PDFs whose stub says OCR was not run and "
-        "documents whose page has no OCR identity or comes from the early OCR build (an OCR build that was "
-        "never released).\n" in finished
-    ), finished
+        f"({', '.join(names)}); nothing is left to read again, none failed or was given up, and no read was "
+        "cut off when a cycle died (measured against run 6, the newest run that records what its re-read "
+        "looked for; it had an engine).\n"
+    )
+    assert line in finished, finished
+    assert "early OCR build" not in next(ln for ln in finished.splitlines() if "re-read, per source" in ln)
     assert "or not, none failed once" not in finished and "or not," not in finished
     # The newest run that says what its re-read looked for had no engine: the line never claims one.
     seed = Seed(cfg)
@@ -8448,8 +8445,8 @@ def test_an_all_zero_re_read_table_is_one_line(
     seed.close()
     noengine = status_parts(fake_mac)[1]["OCR"]
     assert (
-        "Run 7, the newest run that records what its re-read looked for, is what `finished` is measured "
-        "against; it had no engine, so a finished scan says nothing of OCR." in noengine
+        "when a cycle died (measured against run 7, the newest run that records what its re-read looked for; "
+        "it had no engine, so a finished scan says nothing of OCR).\n" in noengine
     ), noengine
     assert "it had an engine" not in noengine
     # A scan that is not finished keeps the table too, with every count 0.
@@ -8459,6 +8456,37 @@ def test_an_all_zero_re_read_table_is_one_line(
     part = status_parts(fake_mac)[1]["OCR"]
     assert reread_rows(part)[names[1]] == ["no", "0", "0", "0", "0", "0", "no"]
     assert "Every count is 0, so the table is left out" not in part
+
+
+def test_an_all_zero_re_read_line_keeps_each_caveat_in_a_sentence_of_its_own(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 9 K5, K16: the all-zero line is one sentence, and what makes `finished` say less is a short
+    sentence after it: no run that says what its re-read looked for, a helper that is not ready, a label
+    rule. None of them lists the kinds of file a re-read looks at."""
+    cfg = fake_mac["config"]
+    seed = Seed(cfg)
+    ids = seed.ids()
+    now = "c0ffee11" + "0" * 56
+    for source in ids:
+        seed.m.set_meta("reread:" + source, json.dumps([{"done": True, "for": now, "tried": []}]))
+    seed.run(6, {"converted": 0})  # no run says what its re-read looked for
+    seed.close()
+    cfg.write_text(cfg.read_text(encoding="utf-8") + LABEL_RULE_TOML, encoding="utf-8")
+    part = status_parts(fake_mac)[1]["OCR"]
+    line = next(ln for ln in part.splitlines() if ln.startswith("- re-read, per source"))
+    assert line.startswith(
+        f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record ("
+    ), line
+    assert line.count(".") == 4, line  # the sentence, then three caveats
+    assert (
+        "and no read was cut off when a cycle died. None of the last 1 run(s) says what its re-read looked "
+        "for (a run of this build that reaches a local source does), so `finished` is as last recorded, by "
+        "whichever build wrote the record. The helper" in line
+    ), line
+    assert " The helper is not ready (its line above), so a cycle has no engine. A label rule" in line, line
+    assert line.endswith(" A label rule is on, so no image is read or counted."), line
+    assert "measured against" not in line and "would look at" not in line and "early OCR build" not in line
 
 
 # ---- §16.39 N16: the Summary's doctor line names the person's own waits -----------------------------------

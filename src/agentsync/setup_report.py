@@ -4855,7 +4855,6 @@ def _reread_lines(
                 runs,
                 looked=looked,
                 state=state,
-                counted=counted,
                 label_rule=label_rule,
             )
         ]
@@ -4892,48 +4891,46 @@ def _reread_finished(
     *,
     looked: _RunRow | None,
     state: str,
-    counted: str,
     label_rule: bool,
 ) -> str:
     """The re-read table when every row of it reads ``yes``, 0, 0, 0, 0, 0, ``no``: one line that says so,
     names the sources its rows named (``sources``, their labels) and keeps what the table's lead says of the
     run it goes by, the helper and a label rule. A source whose scan is not finished, or any count above 0,
-    keeps the table: its rows say which source."""
+    keeps the table: its rows say which source. The kinds of file a re-read looks at are the table's lead
+    only: with every count 0 they name nothing on this Mac, and the early OCR build least of all (B13 round 9
+    K5, K16)."""
     named = ", ".join(sources[:_ROWS_SHOWN])
     if len(sources) > _ROWS_SHOWN:
         named += f" and {len(sources) - _ROWS_SHOWN} more"
     if looked is None:
-        scan = (
-            f"{f'None of the last {len(runs)} run(s) says' if runs else 'No run is recorded that says'} what "
-            "its re-read looked for (a run of this build that reaches a local source does), so `finished` is "
-            "as last recorded, by whichever build wrote the record."
+        measured = ""
+        said = f"None of the last {len(runs)} run(s) says" if runs else "No run is recorded that says"
+        after = (
+            f" {said} what its re-read looked for (a run of this build that reaches a local source does), so "
+            "`finished` is as last recorded, by whichever build wrote the record."
         )
     else:
         had = (
             "an engine" if "ocr_ms" in looked.counts else "no engine, so a finished scan says nothing of OCR"
         )
-        scan = (
-            f"Run {looked.run_id}, the newest run that records what its re-read looked for, is what "
-            f"`finished` is measured against; it had {had}."
+        measured = (
+            f" (measured against run {looked.run_id}, the newest run that records what its re-read looked "
+            f"for; it had {had})"
         )
-    if state == "ready":
-        files = f"The files a re-read would look at are {counted}."
-    else:
-        why = (
-            "The helper is not ready (its line above), so a cycle has no engine."
+        after = ""
+    if state != "ready":
+        after += (
+            " The helper is not ready (its line above), so a cycle has no engine."
             if state
-            else "The helper did not say whether it is ready (its line above; Doctor's ocr line does)."
+            else " The helper did not say whether it is ready (its line above; Doctor's ocr line does)."
         )
-        files = f"{why} The files from before OCR that a re-read looks at with an engine are {counted}."
-    rule = " A label rule is on, so no image is read and none is counted." if label_rule else ""
-    # short sentences, the same facts (B13 round 7 H5). "From before OCR" covers the early OCR build's pages,
-    # so the clause that named it on every Mac ("from the early OCR build or not") is gone; the term is said
-    # where `counted` uses it (B13 round 8 J3, J15)
+    if label_rule:
+        after += " A label rule is on, so no image is read or counted."
+    # one sentence, the same facts, every branch kept (B13 round 7 H5, round 8 J3, J15, round 9 K5, K16)
     return (
         f"- re-read, per source: finished in all {len(sources)} local or inbox source(s) with a record "
-        f"({named}), and every count is 0, so the table is left out. Nothing from before OCR is waiting to "
-        "be read again: none failed even once, none was given up under any engine or version, and no read "
-        f"was cut off when a cycle died. {scan} {files}{rule}"
+        f"({named}); nothing is left to read again, none failed or was given up, and no read was cut off "
+        f"when a cycle died{measured}.{after}"
     )
 
 
