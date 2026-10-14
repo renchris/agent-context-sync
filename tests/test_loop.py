@@ -1852,13 +1852,16 @@ def test_a_purge_leaves_the_purged_files_name_in_neither_state_md_nor_its_carrie
     ``state_md_lines``) name a source's file by its rel path alone, under the source's heading. A purge cut
     neither (its paired scrubber needs the source id on the line), so the error line stayed in STATE.md and a
     later ``reconcile --source <other>`` printed the purged file's name again. STATE.md shows the name with
-    its whitespace runs collapsed, which is cut too; another source's line naming the same rel path stays."""
+    its whitespace runs collapsed, which is cut too; another source's line naming the same rel path stays,
+    in the meta and, under that source's heading, in STATE.md itself (round 9 K51: the bare rel path cut it
+    from STATE.md under any heading)."""
     name = "Contoso  Layoffs Plan.txt"  # STATE.md shows it with one space
     work = tmp_path / "work"
     _write(work / name, "Plan text.\n")
     _write(work / "memo.txt", "A memo.\n")
     other = tmp_path / "plain"
     _write(other / "note.txt", "A note from Fabrikam.\n")
+    _write(other / name, "Another plan.\n")  # the same rel path in another source, which fails too
     config = _setup(tmp_path, local_source_table("work", work) + local_source_table("plainsrc", other))
     cfg = str(config.config_path)
     state_md = config.docs_repo / "_sync" / "STATE.md"
@@ -1875,13 +1878,25 @@ def test_a_purge_leaves_the_purged_files_name_in_neither_state_md_nor_its_carrie
     with monkeypatch.context() as mp:
         mp.setattr(cycle_module, "convert_file", failing)
         cli.main(["sync", "--config", cfg])
-    assert "`Contoso Layoffs Plan.txt: conversion failed: x`" in state_md.read_text(encoding="utf-8")
+    shown = "error: `Contoso Layoffs Plan.txt: conversion failed: x`"
+
+    def section(sid: str) -> list[str]:
+        return (
+            state_md.read_text(encoding="utf-8")
+            .split(f"\n## {sid}\n", 1)[1]
+            .split("\n## ", 1)[0]
+            .splitlines()
+        )
+
+    assert shown in section("work") and shown in section("plainsrc")
     own = f"{name}: a line of plainsrc's own"
     with Manifest(config.state_paths.db) as manifest:
         stored = json.loads(manifest.get_meta("state_md_lines") or "{}")
         manifest.set_meta("state_md_lines", json.dumps({**stored, "plainsrc": [1, [own], []]}))
     assert cli.main(["purge", f"path={name}", "--source", "work", "--config", cfg]) == cli.EXIT_OK
-    assert "Layoffs" not in state_md.read_text(encoding="utf-8"), "STATE.md right after the purge"
+    text = state_md.read_text(encoding="utf-8")
+    assert "Layoffs" not in "\n".join(section("work")), "STATE.md right after the purge"
+    assert shown in section("plainsrc") and text.count("Layoffs") == 1, "another source's line stays"
     with Manifest(config.state_paths.db) as manifest:
         carried = json.loads(manifest.get_meta("state_md_lines") or "{}")
     assert carried["work"][2] == ["[purged]"] and "Layoffs" not in json.dumps(carried["work"])

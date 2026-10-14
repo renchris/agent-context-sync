@@ -1379,14 +1379,20 @@ def _owned_ignored(rel: str) -> bool:
 
 
 def _reset_worktrees(
-    worktrees: Sequence[_Worktree], scrubber: _Scrubber | None, *, owned: _Scrubber | None = None
+    worktrees: Sequence[_Worktree],
+    scrubber: _Scrubber | None,
+    *,
+    owned: _Scrubber | None = None,
+    state_sources: Collection[str] = (),
 ) -> list[str]:
     """Scrub ignored text files, then ``reset --hard`` each worktree onto its (rewritten) HEAD.
 
     agentsync's own ignored files take ``owned`` when given (B13 round 8 J48): STATE.md names a source's file
     by its rel path under a ``## <id>`` heading, so the line holds no source id for the paired scrubber to
     match. Every other ignored file (a user's own) keeps the paired scrubber, so a generic rel path cuts no
-    line there."""
+    line there. STATE.md goes section by section (B13 round 9 K51): under the ``## <id>`` of a source in
+    ``state_sources`` a bare rel path counts only as that source's own, as in its carried lines, so another
+    source's line naming the same rel path stays."""
     touched: list[str] = []
     for wt in worktrees:
         if not wt.path.is_dir():
@@ -1395,7 +1401,10 @@ def _reset_worktrees(
             ignored = _git_text(wt.path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
             for rel in sorted(p for p in ignored.split("\0") if p):
                 use = owned if owned is not None and _owned_ignored(rel) else scrubber
-                if _scrub_file(wt.path / rel, use):
+                scrub: Callable[[str], tuple[str, int]] = use.scrub
+                if owned is not None and rel == "_sync/STATE.md":
+                    scrub = _state_md_scrub(scrubber, owned, frozenset(state_sources))
+                if _scrub_file(wt.path / rel, scrub):
                     touched.append(str(wt.path / rel))
         if _git(wt.path, "rev-parse", "--verify", "-q", "HEAD", check=False).returncode == 0:
             _git(wt.path, "reset", "--hard", "-q")
@@ -2057,15 +2066,41 @@ def _strings(value: object) -> Iterator[str]:
             yield from _strings(v)
 
 
-def _scrub_file(path: Path, scrubber: _Scrubber) -> bool:
-    """Remove hit lines from one text file in place (0600 tmp + rename); True if changed."""
+def _state_md_scrub(
+    paired: _Scrubber, log: _Scrubber, sources: frozenset[str]
+) -> Callable[[str], tuple[str, int]]:
+    """STATE.md's scrub, section by section (B13 round 9 K51): under the ``## <id>`` of a configured source a
+    line goes when the paired scrubber hits it or it names a purged file of that source by its bare rel path
+    (``own_line_hit``, as its carried lines are scrubbed); under any other heading ``log`` decides alone."""
+
+    def scrub(text: str) -> tuple[str, int]:
+        lines = text.split("\n")
+        keep: list[str] = []
+        section: str | None = None
+        for line in lines:
+            if line.startswith("## "):
+                section = line[3:]
+            if section in sources:
+                hit = paired.line_hit(line) or log.own_line_hit(section, line)
+            else:
+                hit = log.line_hit(line)
+            if not hit:
+                keep.append(line)
+        return "\n".join(keep), len(lines) - len(keep)
+
+    return scrub
+
+
+def _scrub_file(path: Path, scrub: Callable[[str], tuple[str, int]]) -> bool:
+    """Remove hit lines from one text file in place (0600 tmp + rename); True if changed. ``scrub`` is a
+    scrubber's :meth:`_Scrubber.scrub`, or STATE.md's (:func:`_state_md_scrub`)."""
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > _SCRUB_MAX_BYTES:
             return False
         text = path.read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError):
         return False
-    out, removed = scrubber.scrub(text)
+    out, removed = scrub(text)
     if not removed:
         return False
     tmp = path.with_name(f".{path.name}.scrub.tmp")
@@ -2085,7 +2120,7 @@ def _scrub_logs(dirs: Iterable[Path], scrubber: _Scrubber) -> tuple[list[str], l
         for p in sorted(d.rglob("*")):
             if not p.is_file() or p.is_symlink():
                 continue
-            if _scrub_file(p, scrubber):
+            if _scrub_file(p, scrubber.scrub):
                 scrubbed.append(str(p))
             elif p.suffix in {".gz", ".bz2", ".zip", ".xz"}:
                 skipped.append(str(p))
@@ -2292,7 +2327,9 @@ def _purge_locked(
             result = _apply_rewrite(repo, cat, rw, graph, worktrees)
             cat.close()
             cat = None
-            touched = _reset_worktrees(worktrees, scrubber, owned=log_scrubber)
+            touched = _reset_worktrees(
+                worktrees, scrubber, owned=log_scrubber, state_sources={s.id for s in config.sources}
+            )
             notes += [f"scrubbed ignored file {t}" for t in touched]
             _expire_and_prune(repo)
             targets = plan.target_blobs | result.replaced_blobs
