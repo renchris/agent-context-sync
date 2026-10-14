@@ -273,6 +273,33 @@ def test_a_purge_keeps_the_lines_of_a_live_file_named_like_the_old_quoted_form(t
     assert f"`{_OLD_FORM}`" in changelog and "q3-`plan`" not in changelog
 
 
+def test_a_purge_scrubs_an_old_form_line_a_live_file_shares_and_keeps_that_files_own_lines(
+    tmp_path: Path,
+) -> None:
+    """B13 round 9 K79, kept as built: ``q3-`plan`-x`` and a live ``q3-'plan`-x`` write one pre-H37 form,
+    ``q3-'plan'-x``, which is neither's path now. A line in that form cannot be told apart, so the purge of
+    the first scrubs it (R123's fail-closed rule); the live file keeps its page and its own lines."""
+    config, src = make_env(tmp_path)
+    (src / _TICKED).write_text("SECRET-LAMBDA\n", encoding="utf-8")
+    (src / "Q3 'plan` x.txt").write_text("A plan from Fabrikam.\n", encoding="utf-8")
+    assert run(config).exit_code == 0
+    _old_changelog_line(config)
+    rep = governance.purge(
+        config,
+        governance.PurgeSelector(source_id=SID, stable_id=item_id(config, _TICKED)),
+        reason=governance.PurgeReason.ERASURE_REQUEST,
+    )
+    assert rep.verified, rep.notes
+    repo, twin = config.docs_repo, "mirror/src/q3-'plan`-x.txt.md"
+    assert (repo / twin).is_file() and not (repo / _TICKED_PAGE).exists()
+    changelog = "".join(p.read_text(encoding="utf-8") for p in (repo / "CHANGELOG").glob("*.md"))
+    assert f"`{twin}`" in changelog and twin in (repo / "_manifest" / f"{SID}.jsonl").read_text(
+        encoding="utf-8"
+    )
+    history = git(repo, "log", "--all", "-p")
+    assert _OLD_FORM not in history and "q3-`plan`" not in history and "SECRET-LAMBDA" not in history
+
+
 def test_sg03_erasure_purge_is_not_undone_by_a_safe_save_or_a_copy(tmp_path: Path) -> None:
     config, src = make_env(tmp_path)
     memo = src / "memo.txt"
