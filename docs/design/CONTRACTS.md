@@ -16575,3 +16575,15 @@ now give that condition, the lines that keep the attempt failed (an error, a `st
 an untyped line), that the folder-answer note reads the deviations' words only, and the Summary's reason for a
 deviation and an approval, built by `compute_outcome` in the test:
 `test_setup_feedback_states_the_report_rules_of_round_6`.
+
+**The guide reads a folder list that could not read the config** (J59, J70: one defect). Since §16.69 H17, H28 and
+§16.70 H8 a `--list-folders` line can end `synced=unreadable marks=<why>`, and when the attempt's first install run
+then keeps N > 0 folders (`setup_report.unread_synced`) the folder question was a turn agentsync caused: the
+expected-turns line says so, an Items line names it, and an otherwise clean run is "worked with help". The guide's
+triage paragraph still called a stop there the expected one, and its install.log row, outcome bullets and Summary
+table had no word of it. The row now gives the key and its fixed words, the two outcome bullets the condition and
+reason, the table the expected-turns variant and the `note:` line, and the triage paragraph splits a list with no
+`synced=` word (no config, or an older installer: still the expected stop) from one with `synced=unreadable`
+(agentsync's turn when `kept` is above 0; with `kept=0`, no install run or a step 1 stop the question stays
+expected). Test: `test_the_guide_reads_a_folder_list_that_could_not_read_the_config`, which builds each wording with
+`unread_synced`, `unread_why`, `compute_outcome` and `_expected_turns_line`.

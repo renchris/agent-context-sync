@@ -11,7 +11,7 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 
 | Source | Written by | What it knows |
 |---|---|---|
-| `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config; `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
+| `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config, or, when a config is there and could not be read (since 2026-10-13), `synced=unreadable marks=<why>`, the why one fixed word (`no-tool`, `timeout`, `older:<name>`, `failed` or `failed:<ErrorClass>`); `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log entries (repeats in a row shown once), read from the last 64 KiB of each log file |
 | `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v17, <agent>'` (`Attempt: <UTC time>`, `Prompt: v17`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log), at any gap (the prefix is written only before `--log-start`), or the attempt has no header but stated words of its own, with a version or agent that differs from them or more than 10 minutes after its latest time, end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
 
@@ -218,7 +218,8 @@ install.log (a `--list-folders` run is not an install run):
   line (prompt v6 logs neither the folder question in step 1 nor the Allow clicks it announces in steps 1 and 2,
   and v7 neither that question nor the one Allow click it announces in step 1, so every logged one is beyond
   them), no `approval` line, no error that stopped the run, and doctor shows no
-  `[FAIL]`. An attempt with no event line at all is the expected case.
+  `[FAIL]`; and step 1's list did not log `synced=unreadable` before an install run that kept folders (section
+  "A Mac that is already set up"). An attempt with no event line at all is the expected case.
 
   Since prompt v7 the install command must also have worked the first time. An install run that failed before
   the attempt's first install run that exited 0 is a retry, so the outcome is "worked with help" and the
@@ -234,7 +235,9 @@ install.log (a `--list-folders` run is not an install run):
   click counts as well: the click came after the install command had failed, and it cost a second run. A v5
   or v6 attempt is judged as before, since those prompts announce the launcher's Allow click in the install
   step.
-- **Worked with help**: the last install run exited 0, but one of those conditions fails; the Summary says which.
+- **Worked with help**: the last install run exited 0, but one of those conditions fails; the Summary says which
+  (for the folder list, `the folder question: step 1's list could not read the 2 folders this Mac already
+  syncs`).
   Without a friction log, or without the attempt's `Attempt:` line (from `install.sh --log-start`), the human
   turns are unknown, so the outcome is at best this one.
 - **Failed at step N**: the last install run did not exit 0 or has no end line (killed, or still running); then N
@@ -428,6 +431,8 @@ The Summary shows which case a report is:
 | Summary line | What it says |
 |---|---|
 | `expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add one; not logged) · ...` | The Mac already synced folders when the attempt began, so the folder question is not a turn the report expects, and `human turns` does not count it. On a new Mac the line starts `the folder question (step 1; not logged as a question)`. |
+| `expected turns: no folder question (2 folders already synced; step 1's list could not read them, so it was asked: see Items) · ...` | The Mac already synced folders, but step 1's list could not read the config (it logged `synced=unreadable`), so it marked none and the folder question was asked: a turn agentsync caused, not an expected one. Items names it, and an install run that otherwise passed is `worked with help`. Only when the attempt's first install run then logged `kept=N`, N at least 1. |
+| `note: step 1's folder list could not read which folders sources.toml already syncs (the reader took over 10 s), so it marked none` | Any list run that logged `synced=unreadable`, whatever followed: the parenthesis is its `marks=` word in the report's words (`no-tool`, `timeout`, `older:<name>`, `failed[:<ErrorClass>]`; general words for a log without `marks=`). |
 | `folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)` | What the install run did with the folders, from the counts it logged: kept, or `1 added to the 2 already synced`, or `2 added (none was synced before)`. The second part is how many `--source-local` options the command had. A run that named a folder the config already had reads `kept the 1 already synced (none added) · 1 named with --source-local`: it was left as it was. |
 | `sync: done in 9s (install.log) · converted 6, deferred 0 online-only (install.log) · ...` | The install run that ran the sync found sources.toml already there (its config step logged `add-source` or `exists`), so the line says `sync:`, as the installer's own lines did. On a Mac whose config that run created it starts `first sync:`. install.log's step is `first-sync` either way. |
 
@@ -435,10 +440,19 @@ These lines are counts and fixed words. Triage: a `deviation` line that says the
 question, in a report whose `expected turns` line says `no folder question`, is a prompt-wording defect and
 not the new Mac's expected stop. That reading is safe because the line goes by what step 1's list printed:
 `no folder question` needs a list that logged `synced=N`, N at least 1, which is a list that printed
-`already synced on this Mac:`. A list that finished without the count printed no such line, so the report
-says `the folder question` even when step 2 then logged `kept=2`, and a stop there is the expected one (the
-list's `warning:` line says why the config was not read). Only an attempt with no finished list goes by
-the install run's `kept`. A report with no `folders:` line comes from an installer older than the
+`already synced on this Mac:`. A list that finished with no `synced=` word at all (no config, or an installer
+from before 2026-10-13 that could not read it) printed no such line, so the report says `the folder question`
+even when step 2 then logged `kept=2`, and a stop there is the expected one (an older list's `warning:` line says
+why the config was not read). A list that logged `synced=unreadable` is different: a config was there and the
+list could not read it (since 2026-10-13), and the Summary's `note:` line above gives why. When the attempt's
+first install run then logged `kept=N`, N at least 1, the Mac already synced folders and the folder question was
+a turn agentsync caused, not the expected stop: for a v6 or later prompt the `expected turns` line reads `no folder
+question (N folders already synced; step 1's list could not read them, so it was asked: see Items)`, an Items line
+`install.sh · step 1 · the folder list could not read the N folders this Mac already syncs ...; the folder
+question was a turn agentsync caused` names it whatever the outcome, and an install run that otherwise passed is
+`worked with help`. Triage a stop there as an agentsync defect (why the reader failed), not a prompt-wording one.
+With `kept=0`, no install run, or a stop at step 1, the question stays expected and only the note shows. Only an
+attempt with no finished list goes by the install run's `kept`. A report with no `folders:` line comes from an installer older than the
 counts, or from a config the installed agentsync could not read; `install.sh --list-folders` then printed a
 `warning:` line, which the installer output's tail shows.
 

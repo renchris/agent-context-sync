@@ -3659,6 +3659,51 @@ def test_g8_says_the_two_reports_number_a_deduplicated_id_apart() -> None:
     assert "the Python report numbers only the ids no folder pair covers (`<source-1>`" in g8
 
 
+def test_the_guide_reads_a_folder_list_that_could_not_read_the_config(tmp_path: Path) -> None:
+    """B13 round 8 J59, J70 (one defect): since round 7 H17, H28 and H8 a list that logged `synced=unreadable
+    marks=<why>`, followed by an install run that kept folders, makes the folder question a turn agentsync
+    caused (`setup_report.unread_synced`); the guide still called a stop there the expected one, and its
+    install.log row, outcome rules and Summary table had no word of it.  Each wording is built by the code."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    at, run = "2026-10-13T10:00:00Z", "20261013T100000Z-42"
+    log = tmp_path / "install.log"
+    log.write_text(
+        f"{at} run={run}-1 start install.sh compat=16 commit=0123456789ab kind=checkout source=- "
+        "args=--list-folders\n"
+        f"{at} run={run}-1 step=list-folders seconds=4 rc=0 result=done note=listed-3 synced=unreadable "
+        "marks=timeout\n"
+        f"{at} run={run}-1 end rc=0 seconds=4\n"
+        f"{at} run={run}-2 start install.sh compat=16 commit=0123456789ab kind=checkout source=- args=\n"
+        f"{at} run={run}-2 step=config seconds=1 rc=0 result=skipped note=exists kept=2 added=0\n"
+        f"{at} run={run}-2 end rc=0 seconds=9\n",
+        encoding="utf-8",
+    )
+    runs = setup_report.read_install_runs(log)
+    assert setup_report.unread_synced(runs) == 2
+    why = setup_report.unread_why(runs)
+    friction = "Attempt: 2026-10-13T09:59:00Z\nPrompt: v16\nAgent: Tool-A\n"
+    [attempt] = setup_report.parse_friction(friction).attempts
+    outcome = setup_report.compute_outcome(attempt, runs)
+    assert outcome.kind == "worked with help"
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "`synced=unreadable marks=<why>`" in page
+    for word in ("no-tool", "timeout", "older:<name>"):
+        assert f"`{word}`" in page, word
+    assert f"`{outcome.why[-1]}`" in page
+    turns = setup_report._expected_turns_line(attempt, "Real Mac", 0, unread=2)
+    first = turns.removeprefix("- ").split(" · ")[0]
+    assert f"`{first} · ...`" in page
+    assert f"`{first.removeprefix('expected turns: ').replace('2 folders', 'N folders')}`" in page
+    note = (
+        f"note: step 1's folder list could not read which folders sources.toml already syncs ({why}), so it"
+    )
+    assert note in page
+    assert "a turn agentsync caused, not the expected stop" in page
+    assert "With `kept=0`, no install run, or a stop at step 1, the question stays expected" in page
+    assert "A list that finished without the count printed no such line" not in page
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is
