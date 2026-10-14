@@ -2668,7 +2668,8 @@ CONTAINS_MARK="[contains a synced folder]"
 # 2026-09-29 has: step 1 of the setup prompt runs this before step 2 updates the tool. The one exception is
 # provider_link_resolved (2026-10-13), whose import is guarded: an older agentsync gets the same single
 # readlink written here with the standard library alone (B13 round 7 H7; round 6 imported it bare, so step 1
-# marked nothing on every Mac set up before that day). A new agentsync name goes in the same way, and
+# marked nothing on every Mac set up before that day), returning the root form H34 gave the function (B13 round
+# 8 J38: the copy kept the link text form, and a /tmp link under a /private/tmp home matched no listed folder). A new agentsync name goes in the same way, and
 # tests/test_install_oneshot.py pins the list. -I: nothing from the folder this runs in is imported.
 synced_folders() { # PYTHON LIST
 	with_timeout 10 "$1" -I -c '
@@ -2700,7 +2701,10 @@ except ImportError:  # an agentsync from before 2026-10-13: step 2 has not updat
                 target = Path(os.path.normpath(entry.parent / os.readlink(entry)))
             except OSError:
                 return p
-            return target.joinpath(*rel.parts[1:]) if target.parent in roots else p
+            # in the form of the root that held p, as paths.provider_link_resolved returns it since H34 (B13
+            # round 8 J38): under a home reached through a link, a link written in the other form names the
+            # same folder
+            return root.joinpath(target.name, *rel.parts[1:]) if target.parent in roots else p
         return p
 
 

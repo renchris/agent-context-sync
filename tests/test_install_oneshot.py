@@ -3355,6 +3355,39 @@ def test_list_folders_marks_the_synced_folders_with_an_agentsync_from_before_rou
     assert (again.returncode, again.stdout, again.stderr) == (0, cp.stdout, "")
 
 
+def test_list_folders_marks_a_folder_stored_through_a_link_under_a_linked_home_with_an_older_agentsync(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 8 J38 (J49 and J72 are the same defect): the fallback copy of ``provider_link_resolved`` that
+    step 1 gives an agentsync from before 2026-10-13 returned a link's target in the form the link was written
+    in, as paths.py did before H34. Under a home reached through a link (a /tmp sandbox is /private/tmp), a
+    link written in the unresolved form then named a path no listed folder matched: the synced folder was
+    offered again and printed first, outside the list. The copy now returns the form of the root that held
+    the path, as paths.py does, and the list is the same as with agentsync's own function."""
+    (tmp_path / "real" / "home").mkdir(parents=True)
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+    env = {**env, "HOME": str(tmp_path / "alias" / "home")}
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "Project Alpha" / "Inner").mkdir(parents=True)
+    (cs / "OneDrive-Contoso" / "Project Beta").mkdir(parents=True)
+    (cs / "OneDrive-Link").symlink_to(cs / "OneDrive-Contoso", target_is_directory=True)  # the alias form
+    _write_config(
+        env, local_source_table("project-alpha", cs / "OneDrive-Link" / "Project Alpha"), _inbox(env)
+    )
+    _older_tool_python(env, "provider_link_resolved")
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        f"[synced] {cs}/OneDrive-Contoso/Project Alpha",
+        f"[inside a synced folder] {cs}/OneDrive-Contoso/Project Alpha/Inner",
+        f"{cs}/OneDrive-Contoso/Project Beta",
+    ]
+    _tool_python(env)
+    again = install_sh(env, "--list-folders")
+    assert (again.returncode, again.stdout, again.stderr) == (0, cp.stdout, "")
+
+
 def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(env: dict[str, str]) -> None:
     """B13 round 7 H14, H16 and H27 (one defect): the reader's stderr was thrown away and the warning said
     "no installed agentsync loads it", which is false on a Mac that has one. An agentsync older than the
