@@ -1448,9 +1448,12 @@ def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env:
 def test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line(
     env: dict[str, str], tmp_path: Path
 ) -> None:
-    """The agentsync report of a word-named folder says "Private only:" and ends with the issue link its Send
-    it line says not to use; install.sh printed that link and a NEXT offering the issue (B13 round 6 G47,
-    G65). It reads the report's own line, so an agentsync older than the installer is covered too."""
+    """An agentsync from before B13 round 7 H75 ended the report of a word-named folder with "Private only:"
+    and then the issue link its Send it line says not to use; install.sh printed that link and a NEXT offering
+    the issue (B13 round 6 G47, G65). The stub writes that older report, so this checks that install.sh reads
+    the report's own lines and still prints no issue link and no NEXT offering the issue for a private copy. A
+    current agentsync ends a private copy after its Redaction section (H75), which tests/test_setup_report.py
+    covers (B13 round 8 J44, J79)."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
     shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"

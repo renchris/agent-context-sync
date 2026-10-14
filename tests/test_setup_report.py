@@ -8275,6 +8275,10 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     assert setup_report.compute_outcome(only, ()).text == (
         "stopped at step 1 (a deviation, no install run and no error)"
     )
+    # B13 round 8 J44: the docstring said every event is a deviation; it names the kinds a wait may also log
+    doc = " ".join((setup_report.compute_outcome.__doc__ or "").split())
+    assert "at least one step 1 deviation" in doc and "every event is a step 1 deviation:" not in doc
+    assert ":data:`_WAIT_OK_KINDS`" in doc
 
 
 def test_the_installer_table_shows_the_config_steps_folder_counts() -> None:
