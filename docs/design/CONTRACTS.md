@@ -17821,3 +17821,27 @@ path only when a word in it is neither a git server's generic word nor a report 
 §16.69 H20. J63's text stays; a dated line after it points to J20. No code, legend or guide change: all three
 already match J20. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there` (reads this
 claim).
+
+### 16.86 Round 10: setup report (2026-10-14, wave B13 round 10 lane RA)
+
+Reserved for round 10 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 10").
+
+### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
+
+Reserved for round 10 lane RB of B13.
+
+### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
+
+Reserved for round 10 lane P of B13.
+
+### 16.89 Round 10: sync, status, waits, locks and doctor (2026-10-14, wave B13 round 10 lane B)
+
+Reserved for round 10 lane B of B13.
+
+### 16.90 Round 10: stubs, OCR timing and recordings (2026-10-14, wave B13 round 10 lane E)
+
+Reserved for round 10 lane E of B13.
+
+### 16.91 Round 10: deploy docs and CONTRACTS cross-references (2026-10-14, wave B13 round 10 lane D)
+
+Reserved for round 10 lane D of B13.

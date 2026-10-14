@@ -820,6 +820,23 @@ operator; once answered, the later lanes rebased onto the earlier ones before la
 
 Round 10: the round 9 workflow on `3ee72827` with prompt v18 (run `wf_cc5fd9e4-b48`, outputs `round10/`).
 
+### B13 round 10: v18 rehearsal, cross-lane review, harvest (2026-10-14)
+
+Run `wf_cc5fd9e4-b48` on `3ee72827` (87 agents, 0 errors). All six scenarios pass their EXPECTED; the field Mac's
+path is clean (v10 build pulled to v18, no stop, "fully one command"), and round 9's turn group (K9, K20, K32) holds:
+an unreadable config now runs unattended with 0 turns. 76 findings, 74 confirmed (1 turn, 11 wrong, 62 small), 2
+refuted; 11 need prompt text, so the next prompt is v19. The turn: a working checkout whose `.git` is a file (a
+separate git dir or a worktree) fails step 1's `.git/HEAD` test (L27). The worst wrong: in a home that is itself a
+git repo, a checkout with a broken `.git/HEAD` lets git climb to the home repo, and the no-tracking command then
+commits the home's untracked files there (L6).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74 over rounds 2 and 4 to 10; turns 3, 0, 0, 1, 5, 2, 4, 1;
+wrongs 23, 15, 20, 15, 15, 12, 10, 11. Neither paste rule in the operator's open stop question is met.
+
+Lanes (`--account auto`, CONTRACTS §16.86 to §16.91, brief `lanes/COMMON9.md`): RA 19 (setup_report.py), RB 15
+(install.sh), P 10 (prompt v19), B 12 (loop, cli, arm_local, lock, doctor), E 5 (OCR timing, stubs, recordings), D 12
+(docs/deploy, CONTRACTS). Lead: L76 (round 9's scratch and the v17 sandboxes go to the operator, `b13-r9` cleanup).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
