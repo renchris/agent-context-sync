@@ -1748,9 +1748,18 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
     assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
     r = by_name(doctor.run_checks(sample_config, tcc_canary=False, loop_checks=()))[name]
     assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
-    # an inbox no wait names keeps sync -v: a plain sync may run a delta, which the note would not cover
+    # B13 round 9 K75: so does an inbox no wait names on status's path (loop_checks given): an inbox pass is
+    # always full, so install's step-6 sync is that walk; round 8 said a plain sync may run a delta for one
     r = by_name(doctor._check_heartbeat(inbox, loop_checks=()))[name]
-    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v ")
+    assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
+    # the setup report (no loop_checks) runs after install's sync: an inbox not held by empty folders keeps
+    # sync -v, which names a cause no plain sync clears
+    r = by_name(doctor._check_heartbeat(inbox, loop_checks=None))[name]
+    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v "), r
+    # and outside install.sh an inbox no wait names keeps sync -v on status's path too
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV)
+    r = by_name(doctor._check_heartbeat(inbox, loop_checks=()))[name]
+    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v "), r
 
 
 def assert_fix_parses(fix: str | None) -> None:
