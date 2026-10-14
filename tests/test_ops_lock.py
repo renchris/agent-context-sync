@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import fcntl
 import json
 import logging
@@ -16,11 +17,15 @@ from pathlib import Path
 
 import pytest
 
+from agentsync.config import Config
 from agentsync.errors import LockHeldError
 from agentsync.model import CycleMode, PassKind
+from agentsync.ops import launchd
 from agentsync.ops import lock as lockmod
 from agentsync.ops.lock import (
     EMPTY_BODY_HOLDER,
+    STARTED_BY_LAUNCHD,
+    STARTED_BY_OTHER,
     LockAcquisition,
     LockInfo,
     SingleWriterLock,
@@ -575,3 +580,90 @@ def test_a_cycle_holder_reads_as_a_sync_and_its_pass() -> None:
     for label in ("exclude-empty", "governance"):
         body = LockInfo(123, 1, "2026-10-05T08:59:00Z", label).render()
         assert lockmod._describe_holder(body, None) == f"pid 123 ({label}) since 2026-10-05T08:59:00Z"
+
+
+def test_the_holder_line_names_who_started_a_cycle_only_from_its_own_sidecar() -> None:
+    """B13 round 10 L73: ``pid N (a sync, its pass: poll)`` could not tell a sync typed in a terminal from
+    the background job. The holder sidecar of the same pid now says whether the job started it, and the line
+    names it ("not started by the background job" holds for a terminal, an agent's shell and cron alike);
+    with no key, an unknown value or another pid's sidecar it keeps the neutral words. The lock body and
+    the skip WARNING's label stay bare."""
+    body = LockInfo(123, 1, "2026-10-05T08:59:00Z", "poll").render()
+    since = " since 2026-10-05T08:59:00Z"
+    for started, who in (
+        (STARTED_BY_OTHER, "a sync not started by the background job"),
+        (STARTED_BY_LAUNCHD, "the background job"),
+    ):
+        out = lockmod._describe_holder(body, {"pid": 123, "started_by": started})
+        assert out == f"pid 123 ({who}, its pass: poll){since}", out
+    for holder in ({"pid": 123}, {"pid": 123, "started_by": "cron"}, {"pid": 456, "started_by": "launchd"}):
+        assert lockmod._describe_holder(body, holder) == f"pid 123 (a sync, its pass: poll){since}", holder
+    assert lockmod._holder_identity(body) == "poll"
+    other = LockInfo(123, 1, "2026-10-05T08:59:00Z", "exclude-empty").render()
+    assert lockmod._describe_holder(other, {"pid": 123, "started_by": "other"}).startswith(
+        "pid 123 (exclude-empty)"
+    )
+
+
+def test_a_lock_keeps_who_started_it_on_every_beat(tmp_path: Path) -> None:
+    """B13 round 10 L73: ``started_by`` is written on acquire and kept by each heartbeat rewrite; a lock made
+    without it (governance, exclude-empty) writes no such key, and an unknown value is refused."""
+    path = tmp_path / "agentsync.lock"
+    lk = SingleWriterLock(path, "poll", started_by=STARTED_BY_OTHER)
+    lk.acquire()
+    try:
+        assert SingleWriterLock.read_holder(path)["started_by"] == "other"  # type: ignore[index]
+        lk.beat("convert")
+        assert SingleWriterLock.read_holder(path)["started_by"] == "other"  # type: ignore[index]
+        assert (
+            f"pid {os.getpid()} (a sync not started by the background job, its pass: poll)"
+            in SingleWriterLock.describe(path)
+        )
+    finally:
+        lk.release()
+    with SingleWriterLock(path, "governance"):
+        assert "started_by" not in (SingleWriterLock.read_holder(path) or {})
+    with pytest.raises(ValueError, match="started_by"):
+        SingleWriterLock(path, "poll", started_by="cron")
+
+
+def test_only_our_launch_agent_reads_as_the_background_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 10 L73: launchd sets XPC_SERVICE_NAME to the job's label; only ours start with the prefix."""
+    for value, ours in (
+        ("com.agentsync.poll", True),
+        ("com.agentsync.reconcile", True),
+        ("com.agentsyncx.poll", False),
+        ("application.com.apple.Terminal.1234", False),
+        ("", False),
+    ):
+        monkeypatch.setenv("XPC_SERVICE_NAME", value)
+        assert launchd.in_our_job("com.agentsync") is ours, value
+    monkeypatch.delenv("XPC_SERVICE_NAME")
+    assert launchd.in_our_job("com.agentsync") is False
+
+
+def test_a_cycle_records_who_started_it_from_the_environment_not_its_mode(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 10 L73: a terminal ``reconcile`` passes a mode and no wait_for_lock, as the job's ``sync
+    --mode`` does, so the arguments cannot say who started it: the environment does."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    seen: list[str | None] = []
+
+    class Recording(SingleWriterLock):
+        def __init__(self, path: Path, label: str, *, started_by: str | None = None) -> None:
+            seen.append(started_by)
+            super().__init__(path, label, started_by=started_by)
+
+    monkeypatch.setattr(cycle, "SingleWriterLock", Recording)
+    monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
+    cycle.run_cycle(sample_config, mode=CycleMode.RECONCILE)
+    monkeypatch.setenv("XPC_SERVICE_NAME", f"{sample_config.launchd_label_prefix}.poll")
+    cycle.run_cycle(sample_config, mode=CycleMode.POLL)
+    # a job installed under the default prefix before the config changed it is still ours (agents_installed)
+    monkeypatch.setenv("XPC_SERVICE_NAME", "com.agentsync.poll")
+    cycle.run_cycle(
+        dataclasses.replace(sample_config, launchd_label_prefix="org.contoso"), mode=CycleMode.POLL
+    )
+    assert seen == [STARTED_BY_OTHER, STARTED_BY_LAUNCHD, STARTED_BY_LAUNCHD]

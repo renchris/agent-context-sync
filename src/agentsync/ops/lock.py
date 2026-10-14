@@ -251,19 +251,37 @@ def _holder_identity(body: str) -> str:
     return info.label
 
 
+# who started a cycle that holds the lock (the holder sidecar's ``started_by``, B13 round 10 L73): our
+# LaunchAgent, or anything else (a terminal, an agent's shell, cron), which the environment cannot tell apart
+STARTED_BY_OTHER = "other"
+STARTED_BY_LAUNCHD = "launchd"
+_STARTED_BY = {
+    STARTED_BY_OTHER: "a sync not started by the background job",
+    STARTED_BY_LAUNCHD: "the background job",
+}
+
+
 def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     """Human description of a lock holder for LockHeldError, the cycle's lock-wait WARNING and doctor.  The
     sidecar's host is left out: the lock is a local flock, so the holder is always this Mac, and its name is
     shown in the terminal and in chat for nothing (B13 round 6 G36; the sidecar keeps it).  A cycle's label is
     its pass, which a sync typed in a terminal holds as well as the background job, so it reads ``pid N (a
     sync, its pass: poll)``, as the CLI's skip WARNING already does (round 7 H33); the bare ``(poll)`` read as
-    the job (B13 round 9 K37).  The body keeps its four fields, which an older build parses."""
+    the job (B13 round 9 K37).  When the sidecar of the same pid says who started it (``started_by``, read
+    from the environment, never the arguments), the line names that instead: ``the background job, its pass:
+    poll`` or ``a sync not started by the background job, its pass: poll`` (B13 round 10 L73).  The body
+    keeps its four fields, which an older build parses."""
     info = LockInfo.parse(body)
     if info is None:
         if not body.strip():  # held with no body: install.sh's reinstall (lockf), a probe, a starting cycle
             return EMPTY_BODY_HOLDER
         return f"{body.strip()!r} (unparseable lock body)"
-    label = f"a sync, its pass: {info.label}" if info.label in {m.value for m in CycleMode} else info.label
+    label = info.label
+    if info.label in {m.value for m in CycleMode}:
+        same = holder is not None and holder.get("pid") == info.pid
+        started = holder.get("started_by") if holder is not None and same else None
+        who = _STARTED_BY.get(started, "a sync") if isinstance(started, str) else "a sync"
+        label = f"{who}, its pass: {info.label}"
     out = f"pid {info.pid} ({label}) since {info.started_at}"
     if holder is not None and holder.get("pid") == info.pid:
         beat = holder.get("last_beat_at")
@@ -282,12 +300,16 @@ def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
 class SingleWriterLock:
     """``flock(LOCK_EX|LOCK_NB)`` on StatePaths.lock.  The body is truncated on clean release."""
 
-    def __init__(self, path: Path, label: str) -> None:
-        """Bind to the lock path (parent dir created 0700)."""
+    def __init__(self, path: Path, label: str, *, started_by: str | None = None) -> None:
+        """Bind to the lock path (parent dir created 0700). ``started_by`` (:data:`STARTED_BY_OTHER` or
+        :data:`STARTED_BY_LAUNCHD`, a cycle's) goes to the holder sidecar only; None leaves it out."""
         if not _LABEL_RE.match(label):
             raise ValueError(f"lock label must be 1-64 non-whitespace characters, got {label!r}")
+        if started_by is not None and started_by not in _STARTED_BY:
+            raise ValueError(f"started_by must be one of {sorted(_STARTED_BY)}, got {started_by!r}")
         self._path = path
         self._label = label
+        self._started_by = started_by
         self._fd: int | None = None
         self._info: LockInfo | None = None
         self._host = socket.gethostname()
@@ -400,7 +422,7 @@ class SingleWriterLock:
         if stage is None and previous is not None and previous.get("pid") == info.pid:
             prev_stage = previous.get("stage")
             stage = prev_stage if isinstance(prev_stage, str) else None
-        body = {
+        body: dict[str, object] = {
             "boot_time": info.boot_time,
             "host": self._host,
             "label": info.label,
@@ -409,6 +431,8 @@ class SingleWriterLock:
             "stage": stage,
             "started_at": info.started_at,
         }
+        if self._started_by is not None:  # every rewrite keeps it (B13 round 10 L73)
+            body["started_by"] = self._started_by
         _atomic_write(_holder_path(self._path), _dump_json(body), 0o600)
 
     @staticmethod

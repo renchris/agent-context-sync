@@ -146,8 +146,16 @@ from agentsync.model import (
     SourceState,
     Verdict,
 )
-from agentsync.ops.launchd import rotate_logs
-from agentsync.ops.lock import LockAcquisition, LockInfo, SingleWriterLock, read_heartbeat, write_heartbeat
+from agentsync.ops.launchd import rotate_logs, started_by_our_job
+from agentsync.ops.lock import (
+    STARTED_BY_LAUNCHD,
+    STARTED_BY_OTHER,
+    LockAcquisition,
+    LockInfo,
+    SingleWriterLock,
+    read_heartbeat,
+    write_heartbeat,
+)
 from agentsync.ops.lock import Stage as LockStage
 from agentsync.paths import expand
 from agentsync.policy import PolicyConfig
@@ -5257,7 +5265,9 @@ def run_cycle(
         recordings = "named" if forced else "none" if interactive else "background"
     if mode is None:
         mode = _interactive_mode(config, clock())
-    lock = SingleWriterLock(config.state_paths.lock, mode.value)
+    # who started this run, from the environment, never from mode or wait_for_lock (B13 round 10 L73)
+    started_by = STARTED_BY_LAUNCHD if started_by_our_job(config) else STARTED_BY_OTHER
+    lock = SingleWriterLock(config.state_paths.lock, mode.value, started_by=started_by)
     acquisition = _acquire_waiting(lock, lock_wait_s) if interactive else lock.acquire()
     if mode is not CycleMode.DRY_RUN:
         rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)

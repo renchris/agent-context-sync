@@ -380,7 +380,7 @@ def _launcher_canary(launcher: Path, path: Path, timeout_s: float) -> tuple[int,
 
 def _in_launchd_job(config: Config) -> bool:
     """True when doctor itself runs inside one of our LaunchAgents (so TCC results are authoritative)."""
-    return os.environ.get("XPC_SERVICE_NAME", "").startswith(config.launchd_label_prefix + ".")
+    return launchd.in_our_job(config.launchd_label_prefix)
 
 
 # ---------------------------------------------------------------------------------------------------------

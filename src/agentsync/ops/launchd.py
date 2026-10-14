@@ -648,3 +648,18 @@ def _installed_plist(label: str) -> Mapping[str, object] | None:
     except (plistlib.InvalidFileException, ValueError):
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def in_our_job(label_prefix: str) -> bool:
+    """True when this process runs inside one of our LaunchAgents: launchd sets ``XPC_SERVICE_NAME`` to the
+    job's label, and only ours start with ``<launchd_label_prefix>.``. The CLI arguments cannot tell: the job
+    runs ``sync --mode <mode>``, as a terminal can (B13 round 10 L73). Doctor reads it to trust TCC results;
+    :func:`started_by_our_job` reads it for the lock's holder sidecar."""
+    return os.environ.get("XPC_SERVICE_NAME", "").startswith(label_prefix + ".")
+
+
+def started_by_our_job(config: Config) -> bool:
+    """:func:`in_our_job` under either prefix :func:`agents_installed` counts as ours (the config's or the
+    default), so a job installed before the prefix changed still reads as the job: the cycle records it in
+    the lock's holder sidecar (B13 round 10 L73)."""
+    return any(in_our_job(p) for p in {config.launchd_label_prefix, _DEFAULT_LABEL_PREFIX})

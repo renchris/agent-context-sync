@@ -1477,11 +1477,16 @@ def test_a_gitleaks_only_this_shell_finds_is_a_warn_until_a_shell_run_records_it
 def test_lock_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     lock_path = sample_config.state_paths.lock
     assert by_name(run_checks(sample_config))["lock"].detail == "no lock file yet"
-    lk = SingleWriterLock(lock_path, "reconcile")
+    lk = SingleWriterLock(lock_path, "reconcile", started_by="other")
     lk.acquire()
     try:
         r = by_name(run_checks(sample_config))["lock"]
-        assert r.ok and f"pid {os.getpid()} (a sync, its pass: reconcile)" in r.detail
+        # B13 round 10 L73: the holder sidecar says who started it
+        assert (
+            r.ok
+            and f"pid {os.getpid()} (a sync not started by the background job, its pass: reconcile)"
+            in r.detail
+        )
         lk.beat("convert", now_iso="2000-01-01T00:00:00Z")
         r = by_name(run_checks(sample_config))["lock"]
         assert not r.ok and r.severity is Severity.WARN and "silent for" in r.detail
