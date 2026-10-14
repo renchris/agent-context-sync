@@ -4376,6 +4376,53 @@ def test_k52s_withheld_constants_are_named_where_they_live() -> None:
     assert "`policy._WITHHELD_BODY` and `policy._WITHHELD_WORDS`" in k52
 
 
+def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
+    """B13 round 10 L64: round 9's K76 uses a CloudStorage listing that finished a little late, registers its
+    folders after every other value and says so on the Environment line; K30 adds a Run metadata line that
+    counts the local work step 1 kept. The guide had neither, and its `<folder-N>` row named only configured
+    folders, while both reports register step 1's listed folders and the agentsync report its listing's (since
+    round 8 J69)."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    page = " ".join(_page("docs/deploy/setup-feedback.md").split())
+    bound = f"{setup_report._LISTING_S:.1f}"
+    late = f"- redaction: the CloudStorage listing finished after {bound}s and was used for "
+    assert late.replace(f"{setup_report._LISTING_S:.1f}", "{_LISTING_S:.1f}") in source
+    assert f"`{late}redaction`" in page
+    assert (
+        setup_report._LATE_LISTING_S == 0.5
+        and "(it waits at most half a second more there) is still used" in page
+    )
+    assert "and last a listing that finished after its 3-second bound but in time for the report" in page
+    work = inspect.getsource(setup_report._local_work_line)
+    for words in (
+        "- local work kept by setup prompt step 1: ",
+        " local-work branch(es) in the checkout, ",
+        " patch file(s) in the setup folder's local-work",
+        "bring-back.md section 3 only)",
+    ):
+        assert words in work, words
+    assert (
+        "`- local work kept by setup prompt step 1: N local-work branch(es) in the checkout, M patch file(s) "
+        "in the setup folder's local-work, newest written <time> (the patches are in bring-back.md section 3 "
+        "only)`" in page
+    )
+    assert "Documents" in setup_report._GENERIC_FOLDERS
+    assert (
+        "each folder the agentsync report's CloudStorage listing showed, and each folder step 1's "
+        "`--list-folders` runs printed into install.out (both reports), except a generic name such as "
+        "`Documents`" in page
+    )
+    assert (
+        "in the agentsync report, a `OneDrive-SharedLibraries-` entry at depth 2, which is a `<library-N>`"
+        in page
+    )
+    assert 'shared = provider.startswith("OneDrive-SharedLibraries-")' in inspect.getsource(
+        setup_report._add_listed
+    )
+
+
 def test_the_keep_commands_name_the_patch_from_the_local_work_branch() -> None:
     """B13 round 10 L65: §16.82 K28 said both keep commands run `format-patch` "right after" `switch -c`;
     `add -A` and a commit made only when something is staged come between, still on the new branch."""
@@ -4391,6 +4438,8 @@ def test_the_keep_commands_name_the_patch_from_the_local_work_branch() -> None:
     k28 = " ".join(_contracts_section("**Each kept patch carries its keep's branch** (K28", "\n\n").split())
     assert 'Amended 2026-10-14, §16.91 L65: not "right after" `switch -c local-work-<time>`.' in k28
     assert "after `add -A` and the commit (made only when something is staged)" in k28
+
+
 def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() -> None:
     """B13 round 9 K68: since round 8 J30 the Repeat conversions table counts the same file converted again
     from the same bytes and converter options, and a note under it says a label-rule re-screen is a new

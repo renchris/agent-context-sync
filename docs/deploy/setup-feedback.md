@@ -61,7 +61,7 @@ Redaction is on by default and consistent within one report, so the same value i
 | `~` | the home folder path |
 | `<user>`, `<name>` | the login name and the full name (`id -F`) |
 | `<org-N>` | the organization or team after the app's name in a `~/Library/CloudStorage` folder (`OneDrive-<org>`, `OneDrive-SharedLibraries-<org>`, `Dropbox-<team>`; never `Personal`, `Business`, `Work` or a name repeating the app's, such as `Box-Box`), `OneDrive - <org>`, the tenant's and SharePoint host's first label; a single word from a short reviewed list of generic words the report prints (`Link`, `Sync`, `Team`, `Docs`, ...) only in those names, never in the report's sentences; any other one-word organisation the report prints (`Status`) everywhere, which makes the report Private only (below) |
-| `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; every configured source id, except one of agentsync's own words such as `inbox` or `mail` whose folder is not under `~/Library/CloudStorage` (in both reports), and an id that is its cloud folder's name in slug form is that folder's `<folder-N>`; in the shell fallback report, a generic name such as `Documents` only as a whole word |
+| `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; each folder the agentsync report's CloudStorage listing showed, and each folder step 1's `--list-folders` runs printed into install.out (both reports), except a generic name such as `Documents` or a coding agent's own name, which takes none, and, in the agentsync report, a `OneDrive-SharedLibraries-` entry at depth 2, which is a `<library-N>`; every configured source id, except one of agentsync's own words such as `inbox` or `mail` whose folder is not under `~/Library/CloudStorage` (in both reports), and an id that is its cloud folder's name in slug form is that folder's `<folder-N>`; in the shell fallback report, a generic name such as `Documents` only as a whole word |
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know; in the shell fallback report (install.sh, when agentsync cannot run), every `$'...'` word, how install.log writes a name with a curly apostrophe, a dash or an accent, and a relative `--source-local` argument from install.log that names no CloudStorage folder |
 | `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host and computer names, proxy hosts (git's config files and the LaunchAgent's proxy included; a host that is just a common word, such as `proxy` or `wpad`, only where a URL or `host:port` names it, in both reports), the host of each git URL rewrite (`[url "<base>"] insteadOf`, never `pushInsteadOf`; github.com is never replaced) and its path when a word in it is not only a git server's generic words such as `git`, `scm` or `repos` or the report's own words (one number for the host wherever it is printed), and the system PAC URL after its scheme |
 | `<mdmhost>` | the MDM server's host (`profiles status -type enrollment`), when it has a dot; the whole host, no vendor suffix kept |
@@ -77,7 +77,11 @@ ends with no issue link. A configured folder or library with a name every OneDri
 so it does not make the report private (in either report). The agentsync report is Private only too when its
 listing of `~/Library/CloudStorage` for redaction did not finish and install.out holds no folder list from step 1
 (`Private only: the listing of ~/Library/CloudStorage for redaction did not finish ...`): a folder name may then
-show in clear. The shell fallback report never lists CloudStorage, so it never prints this line.
+show in clear. A listing that finishes before the report reaches its friction section (it waits at most half a second more
+there) is still used: the report is then not private
+for this reason, its Environment line reads `- redaction: the CloudStorage listing finished after 3.0s and was used
+for redaction`, and the Configuration line's count of folders named only with coding-agent words still says `could
+not list ~/Library/CloudStorage`. The shell fallback report never lists CloudStorage, so it never prints this line.
 
 The "Redaction" section gives the count per kind: a numbered placeholder as often as the report shows it, the
 unnumbered ones (`~`, `<user>`, `<name>`, `<serial>`, `<host>`, `<mdmhost>`, `<tmp>`) as often as a value was
@@ -138,12 +142,17 @@ words) is yours to remove. The CLI always redacts.
   A placeholder in section 2 is the one the report on the Mac gave when that part was written, which need not
   be section 1's numbering. A report numbers values in the order it registers them (configured CloudStorage
   folders, then the CloudStorage listing, then the folders step 1's `--list-folders` runs printed into
-  install.out, then configured folders elsewhere; the shell fallback report: that run's `--source-local` folders,
+  install.out, then configured folders elsewhere, and last a listing that finished after its 3-second bound but in
+  time for the report, so no earlier number moves; the shell fallback report: that run's `--source-local` folders,
   then sources.toml, then install.log, then install.out's step 1 list), so an added folder, a listing past its
   3-second bound (step 1's list then stands in its place) or a fallback report gives a folder another number,
   between two sessions or between step 2's and step 3's report of one. Since prompt v11 each name carries a role that tells it apart: identify the folder
   by that role, not by the placeholder's number. A part written before v11 may give a placeholder alone: trust
   its number only against section 1 of the file it first arrived in (K34).
+  Both reports also say in counts that step 1 kept local work, under Run metadata in the agentsync report and at
+  the end of the shell fallback's Summary: `- local work kept by setup prompt step 1: N local-work branch(es) in the checkout, M patch file(s) in the setup folder's local-work, newest written
+  <time> (the patches are in bring-back.md section 3 only)`. A public report shows that the work exists, never the
+  patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
   not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
   hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with

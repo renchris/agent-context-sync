@@ -17965,6 +17965,7 @@ the attempt stays `failed at step 1` with a note naming both readings. The guide
 H43's K66 line and §16.85 K66 said any rerun reads stopped. The bullet now names both stops, its pinned pointer to
 the rerun exception kept; the two contract texts carry dated lines. Test:
 `test_setup_feedback_states_the_report_rules_of_round_6`.
+
 **An image stub page is read as the cycle reads it, in the guide and the class table** (L52, L57, L70: one defect;
 dated lines at §16.28's class table, §16.74 J52 and §16.85 K59). Since §16.80 K48 and K58 `_Mirror.read_image_pages`
 classes a page by `policy.page_says_withheld` (its `reason:`, its summary less `refused: `, or the body marker), for
@@ -17995,6 +17996,14 @@ so deleting §16.80's K5, K10 and K46 lines left the suite green (measured on a 
 dated lines in a form the scan reads; it now has a dated paragraph that names its ten lettered targets. The scan
 reads §16.68 to §16.91 but §16.72 and asserts the new claim forms, at least 90 claims in all; K75's line in §16.22's
 unlettered bullet is held by its words. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`.
+
+**The guide covers round 9's late listing and local-work line** (L64). Since §16.80 K76 a CloudStorage listing that
+finishes before the report reaches its friction section (it waits at most `_LATE_LISTING_S` there) is used, registered after every other value, and the Environment line says
+so; since §16.80 K30 Run metadata says in counts that step 1 kept local work. The guide had neither, and its
+`<folder-N>` row named only configured folders while both reports also register step 1's listed folders, and the
+agentsync report its CloudStorage listing's (that gap is from round 8 J69). The row, the Private-only paragraph,
+the numbering paragraph and section 3's paragraph now say so. Test:
+`test_the_guide_names_the_late_listing_and_the_local_work_line` (reads the words from `setup_report`).
 
 **K28's order is the keep commands' order** (L65; dated line at §16.82 K28). §16.82 K28 said both keep commands run
 `format-patch` "right after" `switch -c`; `add -A` and a commit made only when something is staged come between.
