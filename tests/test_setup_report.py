@@ -3088,6 +3088,14 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "refused without a read (install.log; the unreadable/failed/refused split and the "
             "refused-without-a-read count: install.out)",
         ),
+        (  # B13 round 8 J29's clause before it, the files a label rule withheld unread: carried too
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only; 2 withheld unread by the label rule (its "
+            "label cannot be read without the file); 5 refused without a read (no converter for the type, or "
+            "a rule that needs no bytes)",
+            "converted 4, deferred 0 online-only; 2 withheld unread by the label rule; 5 refused without a "
+            "read (install.log; the withheld-unread count and the refused-without-a-read count: install.out)",
+        ),
         (  # the count alone, with no split
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only; 5 refused without a read (no converter for the "

@@ -16638,7 +16638,8 @@ be waiting for the folder answer and not to run `install.sh --report-only` befor
 the Doctor section agree and the "re-run install.sh" fix is dropped. Test:
 `test_a_stopped_copys_install_commit_warn_is_expected`.
 
-**The first-sync line carries the refused-without-a-read count** (J39; dated line at §16.68 H32). Test:
+**The first-sync line carries the refused-without-a-read count** (J39; dated line at §16.68 H32), and before it
+§16.77 J29's `W withheld unread by the label rule`, each only when above 0, named in the source tag. Test:
 `test_first_sync_clause_carries_the_read_again_count`.
 
 **Repeat conversions says it counts options** (J30; dated line at §16.28 Repeat conversions). Test:

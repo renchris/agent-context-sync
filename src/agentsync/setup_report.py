@@ -712,6 +712,8 @@ _SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b(?:
 # and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
 # J39); "without a read" is required, so the split's "R refused)" never matches
 _UNREAD_RE = re.compile(r"\b(\d+) refused without a read\b")
+# and since B13 round 8 J29 "; W withheld unread by the label rule (...)" before it (B13 round 8 J39)
+_WITHHELD_UNREAD_RE = re.compile(r"\b(\d+) withheld unread by the label rule\b")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -2342,6 +2344,8 @@ class _Facts:
     first_sync_first_read: tuple[int, int, int] | None = None
     # its "Q refused without a read" as (N, Q); None: the line has none
     first_sync_refused_unread: tuple[int, int] | None = None
+    # its "W withheld unread by the label rule" as (N, W); None: the line has none
+    first_sync_withheld_unread: tuple[int, int] | None = None
     # the run whose output holds that line, the id of the last "# run=<id> " header above it: "" when
     # install.out has no header at all (an older install.sh), None when the line is above the first header
     # read (the tail starts inside an earlier run)
@@ -3503,6 +3507,9 @@ def _installer_output(r: _Run) -> list[str]:
         unread = _UNREAD_RE.search(last.group("tail"))
         if unread is not None:
             r.facts.first_sync_refused_unread = (converted, int(unread.group(1)))
+        withheld = _WITHHELD_UNREAD_RE.search(last.group("tail"))
+        if withheld is not None:
+            r.facts.first_sync_withheld_unread = (converted, int(withheld.group(1)))
         read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
         if read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
@@ -6781,10 +6788,13 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")
         # the files refused with no conversion, after the split as on the CLI's line, without its bracket: the
         # Summary's refused count disagreed with the per-source stub totals (B13 round 8 J39)
-        refused_unread = r.facts.first_sync_refused_unread
-        if refused_unread is not None and refused_unread[0] == converted and refused_unread[1]:
-            reread += f"; {refused_unread[1]} refused without a read"
-            named.append("the refused-without-a-read count")
+        for counted, words, tag in (
+            (r.facts.first_sync_withheld_unread, "withheld unread by the label rule", "withheld-unread"),
+            (r.facts.first_sync_refused_unread, "refused without a read", "refused-without-a-read"),
+        ):
+            if counted is not None and counted[0] == converted and counted[1]:
+                reread += f"; {counted[1]} {words}"
+                named.append(f"the {tag} count")
         # Name the file the clauses came from: install.log's note carries none (B13 round 4 Q1). A borrowed
         # run is matched to install.out's last sync line only by equal counts: say which line
         if named and source.startswith("install.log"):
