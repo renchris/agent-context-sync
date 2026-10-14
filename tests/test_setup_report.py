@@ -8450,7 +8450,8 @@ def test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole(
 ) -> None:
     """B13 round 7 H74: an organisation named Context or Agent is a report word matched everywhere (G45), so
     it cut agentsync's own paths to ``~/agent-<org-1>/setup/`` and ``~/src/<org-1>-context-sync``, from which
-    a reader recovers the name; the shell report kept them whole. Those fixed path names are held now, as the
+    a reader recovers the name; the shell report kept them whole for a capitalised spelling (a lower-case one
+    cut them there too until B13 round 8 J71). Those fixed path names are held now, as the
     repository locator is; the organisation is replaced everywhere else, and the report stays private only."""
     (fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{org}").mkdir()
     (fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{org}" / f"Agent-{org} Team").mkdir()

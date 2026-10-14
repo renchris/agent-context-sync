@@ -6217,6 +6217,43 @@ def test_the_shell_report_redacts_the_pac_url_and_proxy_hosts(
     assert "- proxy environment: yes" in text, "a host with no dot is not registered"
 
 
+@pytest.mark.parametrize("org", ["context", "agent"])
+def test_the_shell_report_keeps_agentsyncs_own_names_for_an_organisation_named_like_them(
+    env: dict[str, str], org: str
+) -> None:
+    """B13 round 8 J71 (J45 is the same defect), the shell twin of H74: a one-word organisation named
+    ``context`` or ``agent`` is replaced everywhere, and cut ``~/agent-<org-1>/setup``, ``~/<org-1>-context``,
+    ``<org-1>sync is not installed`` and ``com.<org-1>sync.poll``, which the Python report keeps whole. The
+    shell now holds those fixed names, as it holds the repository locator, except where a longer pair covers
+    them: a folder named ``agent-context Fabrikam`` or ``agentsync Fabrikam`` is still replaced whole, not cut
+    after its first word with the rest in clear. The report stays private only, as before."""
+    provider = _cloud(env) / f"OneDrive-{org}"
+    own = [provider / "agent-context Fabrikam", provider / "agentsync Fabrikam"]
+    for d in own:
+        d.mkdir(parents=True)
+    args = [a for d in own for a in ("--source-local", str(d))]
+    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, *args).returncode == 1
+    text = report_path(env).read_text()
+    assert "Fabrikam" not in text, [ln for ln in text.splitlines() if "Fabrikam" in ln]
+    cut = re.findall(r".*(?:agent-<org-\d+>|<org-\d+>-context|<org-\d+>sync).*", text)
+    assert not cut, cut
+    assert "~/agent-context/setup/install.log" in text and "com.agentsync.poll" in text
+    assert "agentsync is not installed" in text and "OneDrive-<org-1>" in text
+    assert "Private only:" in text
+
+
+def test_a_folder_named_agentsync_is_redacted_in_the_shell_report(env: dict[str, str]) -> None:
+    """A pair of the held word itself, a folder named ``agentsync``, is not held off: the folder is
+    ``<folder-N>``, as the Python report has it (B13 round 8 J71)."""
+    named = _cloud(env) / "OneDrive-Contoso" / "agentsync"
+    named.mkdir(parents=True)
+    assert install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, "--source-local", str(named)).returncode == 1
+    text = report_path(env).read_text()
+    assert "OneDrive-<org-1>/agentsync" not in text and re.search(r"OneDrive-<org-1>/<folder-\d+>", text), (
+        text
+    )
+
+
 def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str, str]) -> None:
     """B13 round 7 H20, the shell twin of the Python report's: v15's git stop names a URL rewrite as a cause,
     and git's error names the rewrite's host. The bases of ``[url "<base>"] insteadOf`` are read as files (no

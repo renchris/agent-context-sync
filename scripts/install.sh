@@ -1635,8 +1635,46 @@ redact_stream() {
 	# So is the locator of this repository (github.com/ or github.com: and the owner/repo of ISSUE_URL, any case,
 	# not followed by a word character): on a Mac whose full name run together is its public owner, the name
 	# pairs cut the issue link and the source URL to github.com/<name>/..., as setup_report.Redactor holds it.
+	# So are the fixed names of agentsync itself (B13 round 8 J71, the shell twin of H74): agent-context, agent-context-sync
+	# and agent-context-sync.git right after a "/", and not followed by a word character, a hyphen or a dot and a
+	# word character; and the word agentsync. A one-word organisation named agent or context cut them otherwise
+	# (~/<org-1>-context/setup, <org-1>sync, com.<org-1>sync.poll), which the Python report keeps whole. A name
+	# is held only where no longer pair covers it, as the Python report checks for a longer value: else a folder
+	# named "agent-context Fabrikam" lost its first words to the hold and printed the rest in clear.
 	# A heading of the report itself is never redacted, as in the Python report.
 	function keep(text, isheld) { if (text != "") { m++; tx[m] = text; th[m] = isheld } }
+	function covered(s, c, L, k, v, t, i, off) { # 1: a pair longer than L spans s from c on, for L chars or more
+		for (k = 1; k <= np; k++) {
+			v = val[k]
+			if (length(v) <= L) continue
+			t = s; off = 0
+			while ((i = index(t, v)) > 0) {
+				if (off + i <= c && off + i + length(v) >= c + L) return 1
+				off += i; t = substr(t, i + 1)
+			}
+		}
+		return 0
+	}
+	function own_at(s, best, t, i, off, c, n, x, ok) { # where an own name to hold starts in s (0: none); OL its length
+		best = 0; t = s; off = 0
+		while ((i = index(t, "/agent-context")) > 0) {
+			c = off + i + 1; ok = 0
+			for (x = 1; x <= 3 && !ok; x++) {
+				n = (x == 1 ? 22 : x == 2 ? 18 : 13)
+				if (n > 13 && substr(s, c + 13, n - 13) != substr("-sync.git", 1, n - 13)) continue
+				ok = substr(s, c + n, 1) !~ /[A-Za-z0-9_-]/ && !(substr(s, c + n, 1) == "." && substr(s, c + n + 1, 1) ~ /[A-Za-z0-9_]/)
+			}
+			if (ok && !covered(s, c, n)) { best = c; OL = n; break }
+			off += i; t = substr(t, i + 1)
+		}
+		t = s; off = 0
+		while ((i = index(t, "agentsync")) > 0 && (!best || off + i < best)) {
+			# a pair of the word itself (a folder named agentsync) is no hold either, as in the Python report
+			if (!covered(s, off + i, 8)) { best = off + i; OL = 9; break }
+			off += i; t = substr(t, i + 1)
+		}
+		return best
+	}
 	function repo_at(s, low, best, k, p, t, i, off, n) { # where the locator starts in s (0: nowhere); RL its length
 		best = 0
 		for (k = 1; k <= 2; k++) {
@@ -1656,6 +1694,7 @@ redact_stream() {
 	BEGIN {
 		slug = tolower(ENVIRON["REPO_SLUG"])
 		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
+		for (k = 1; k <= np; k++) { split(rows[k], f, "\t"); val[k] = f[1] }
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
 		for (k = 1; k <= nh; k++) heading[hd[k]] = 1
@@ -1668,6 +1707,7 @@ redact_stream() {
 		while (1) {
 			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy)-([0-9]+|N))>/)) RSTART = 0
 			if ((r = repo_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = RL }
+			if ((r = own_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = OL }
 			if (!RSTART) break
 			keep(substr(s, 1, RSTART - 1), 0)
 			keep(substr(s, RSTART, RLENGTH), 1)

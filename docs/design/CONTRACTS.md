@@ -16075,6 +16075,9 @@ The path is the same on every Mac, so holding it reveals nothing;
 `_word_named` is unchanged and the report stays `Private only:`. install.sh's case-sensitive pair is not changed
 (lane RB's file; only a lowercase `context` organisation would cut it there). Test:
 `tests/test_setup_report.py::test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole`.
+Amended 2026-10-14, §16.75 J71: that note was short: a lower-case `agent` organisation cut the paths there too, and
+the word `agentsync` itself (`<org-1>sync`, `com.<org-1>sync.poll`). The shell's `redact_stream` now holds the same
+path names, and `agentsync`, except where a longer pair covers them.
 
 **A first sync that printed no counts borrows none** (H29). With no counts in its install.log note, the first-sync
 line fell back to install.out's last `converted N, deferred M online-only` line, whichever run printed it, so a
