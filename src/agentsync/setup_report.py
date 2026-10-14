@@ -5006,6 +5006,12 @@ def _took(seconds: float | None) -> str:
     return "?" if seconds is None else _secs(max(seconds, 0.0))
 
 
+_UNFINISHED = frozenset({"running", "aborted"})
+"""Run statuses whose missing counts say nothing of the build: a running run has the column's ``{}`` until it
+finishes, and crash recovery closes a run with ``{}`` (``cycle``).  Only a finished run without
+``converted`` is an earlier build's (B13 round 10 L42)."""
+
+
 def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28). The last
     column is the files each run's re-read left (``reread_left``): read down the runs, it is how many syncs
@@ -5037,8 +5043,15 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
         if newest is not None
         else "- waiting for OCR: no run that had an engine is recorded"
     )
-    # the bracket explains a gap, so it is said only where one is (B13 round 9 K6)
-    gap = " (a run of an earlier build did not)" if len(recorded) < len(runs) else ""
+    # the bracket explains a gap, so it is said only where one is (B13 round 9 K6), and names an earlier
+    # build only for a finished run: a running or crash-closed one of this build has none either (L42)
+    missing = [x for x in runs if "converted" not in x.counts]
+    why = [
+        *(["a run of an earlier build did not"] if any(x.status not in _UNFINISHED for x in missing) else []),
+        *(["a run still running has none yet"] if any(x.status == "running" for x in missing) else []),
+        *(["a run crash recovery closed has none"] if any(x.status == "aborted" for x in missing) else []),
+    ]
+    gap = f" ({'; '.join(why)})" if why else ""
     out = [
         f"- OCR time: of the last {len(runs)} run(s), {len(recorded)} recorded these counts{gap} and "
         f"{len(engine)} had an engine; {total('ocr_over')} used up the cycle's "
@@ -5748,9 +5761,12 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
-    # said only when one of the two runs it counts for is an earlier build's, one that recorded no
-    # conversions (B13 round 9 K6): on a Mac that only ran this build it explained nothing
-    earlier = any(x.run_id in again and "converted" not in x.counts for x in runs)
+    # said only when one of the two runs it counts for is an earlier build's, one that finished and recorded
+    # no conversions (B13 round 9 K6, round 10 L42): on a Mac that only ran this build it explained nothing
+    earlier = any(
+        x.run_id in again and "converted" not in x.counts and x.status not in _UNFINISHED for x in runs
+    )
+    running = runs[0].status == "running"
     total = 0
     for last_used, files in m.rows(
         "SELECT last_used_run, COUNT(*) FROM cache WHERE last_used_run > created_run GROUP BY 1"
@@ -5763,7 +5779,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         f"- converter cache: {total} conversion(s) were used again by a later run than the one that made "
         f"them (the same bytes converted again, by the same file or by a copy of it); {again[newest]} of "
         f"them last by the newest run ({newest}), {again[newest - 1]} by the run before it"
-        + (" (a count that also holds for runs of an earlier build)" if earlier else ""),
+        + (" (a count that also holds for runs of an earlier build)" if earlier else "")
+        + ("; the newest run is still running, so its count can still grow" if running else ""),
     ]
     return out
 

@@ -6980,6 +6980,39 @@ def test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is
     assert "3 recorded these counts (a run of an earlier build did not) and 3 had an engine" in parts["OCR"]
 
 
+def test_a_running_or_crash_closed_run_is_no_earlier_builds(fake_mac: dict[str, Path]) -> None:
+    """B13 round 10 L42: a run still running has the column's ``{}`` and crash recovery closes a run with
+    ``{}``, so a report taken during a cycle said "(a run of an earlier build did not)" and "(a count that
+    also holds for runs of an earlier build)" on a Mac that only ran this build.  Each now says what the run
+    is; a finished run without the counts is still an earlier build's."""
+    seed = Seed(fake_mac["config"])
+    seed.run(10, {})
+    seed.run(11, {"converted": 1, "ocr_ms": 1000, "ocr_budget_s": 180})
+    seed.run(12, {})
+    seed.m._db.execute("UPDATE runs SET status = 'aborted', finished_at = NULL WHERE run_id = 10")
+    seed.m._db.execute("UPDATE runs SET status = 'running', finished_at = NULL WHERE run_id = 12")
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    assert "earlier build" not in parts["OCR"] + parts["Repeat conversions"]
+    assert (
+        "of the last 3 run(s), 1 recorded these counts (a run still running has none yet; a run crash "
+        "recovery closed has none) and 1 had an engine" in parts["OCR"]
+    ), parts["OCR"]
+    assert (
+        "by the run before it; the newest run is still running, so its count can still grow"
+        in parts["Repeat conversions"]
+    ), parts["Repeat conversions"]
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("UPDATE runs SET status = 'ok' WHERE run_id IN (10, 12)")
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    assert "1 recorded these counts (a run of an earlier build did not) and 1 had an engine" in parts["OCR"]
+    assert (
+        "by the run before it (a count that also holds for runs of an earlier build)\n"
+        in parts["Repeat conversions"] + "\n"
+    )
+
+
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
