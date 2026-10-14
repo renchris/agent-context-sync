@@ -6784,7 +6784,8 @@ def test_the_two_reports_number_each_proxy_value_alike(
 def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[str, str]) -> None:
     """B13 round 8 J69, the shell twin: the shell report never lists CloudStorage, so an unconfigured folder
     that step 1's list showed and the agent quoted printed in clear beside the configured one's <folder-N>.
-    It registers the folders install.out's --list-folders runs printed, read from the file."""
+    It registers the folders install.out's --list-folders runs printed, read from the file, whatever mark the
+    list put before one (B13 round 9 K45: a folder inside a synced one stayed in clear)."""
     home = Path(env["HOME"])
     cs = home / "Library" / "CloudStorage"
     (cs / "OneDrive-Contoso" / "Q3 Launch").mkdir(parents=True)
@@ -6795,16 +6796,19 @@ def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[s
     (setup / "friction.md").write_text(
         "Attempt: 2026-10-10T00:00:00Z\nPrompt: v16\n"
         "2026-10-10T00:00:01Z | step 1 | deviation | the person picked Q3 Launch, not Northwind Merger | -\n"
+        "2026-10-10T00:00:02Z | step 1 | deviation | Fabrikam Bid is inside it | -\n"
     )
     out = setup / "install.out"
     out.write_text(
         "# run=20261010T000000Z-1 2026-10-10T00:00:00Z install.sh --list-folders\n"
         f"{cs}/OneDrive-Contoso/Northwind Merger\n[synced] {cs}/OneDrive-Contoso/Q3 Launch\n"
+        f"[inside a synced folder] {cs}/OneDrive-Contoso/Q3 Launch/Fabrikam Bid\n"
     )
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
     text = report_path(env).read_text()
     assert "Northwind" not in text, [ln for ln in text.splitlines() if "Northwind" in ln]
+    assert "Fabrikam" not in text, [ln for ln in text.splitlines() if "Fabrikam" in ln]
     assert re.search(r"picked <folder-\d+>, not <folder-\d+> \|", text), text
     # the legend names the source it was read from (B13 round 9 K3)
     legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())

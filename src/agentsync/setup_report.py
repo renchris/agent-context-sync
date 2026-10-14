@@ -2226,13 +2226,19 @@ _LIST_RUN_RE = re.compile(r"^# run=\S+ \S+ install\.sh(?: .*)? --list-folders(?:
 """install.out's header of a ``--list-folders`` run (``start_capture``): the folder list follows it."""
 
 
+_LIST_MARKS = ("[synced] ", "[inside a synced folder] ", "[contains a synced folder] ")
+"""install.sh's ``SYNCED_MARK``, ``INSIDE_MARK`` and ``CONTAINS_MARK``, each with the space the folder list
+puts after it (a test holds them equal to install.sh's)."""
+
+
 def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:
     """(whether install.out holds a ``--list-folders`` run that printed a folder, and (provider folder, depth,
     name) of every folder those runs printed), from install.out's ``text``: the folders the setup prompt's
     step 1 showed the agent, read from a file, with no folder inside a File Provider domain touched. A printed
-    path is ``<home>/Library/CloudStorage/<provider>/<name>[/<name>]``, with ``[synced] `` before it for a
-    folder the config syncs; depth 2 and 3 only, as :func:`cloud_folder_names` gives them (B13 round 8
-    J69)."""
+    path is ``<home>/Library/CloudStorage/<provider>/<name>[/<name>]``, with one of :data:`_LIST_MARKS`
+    before it for a folder the config syncs, one inside such a folder or one that holds one (a folder inside
+    a synced one was dropped, so its name stayed in clear, B13 round 9 K45); depth 2 and 3 only, as
+    :func:`cloud_folder_names` gives them (B13 round 8 J69)."""
     out: list[tuple[str, int, str]] = []
     heads = (f"{home.rstrip('/')}/Library/CloudStorage/", "~/Library/CloudStorage/")
     listing = False
@@ -2240,7 +2246,7 @@ def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int
         if line.startswith("# run="):
             listing = _LIST_RUN_RE.match(line) is not None
             continue
-        path = line.removeprefix("[synced] ") if listing else ""
+        path = next((line[len(m) :] for m in _LIST_MARKS if line.startswith(m)), line) if listing else ""
         head = next((h for h in heads if path.startswith(h)), None)
         if head is None:
             continue

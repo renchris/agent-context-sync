@@ -1237,14 +1237,15 @@ redaction_pairs() {
 	fi
 	# The folders step 1's lists printed into install.out (the agent saw them and may quote one), as the Python
 	# report registers them: read from the file, never by listing CloudStorage (B13 round 8 J69). A path is
-	# "$cs/<provider>/<name>[/<name>]", with "[synced] " before a folder the config syncs. Kept apart from the
+	# "$cs/<provider>/<name>[/<name>]", with a mark and a space before a folder the config syncs, one inside such a
+	# folder or one that holds one: SYNCED_MARK, INSIDE_MARK, CONTAINS_MARK (B13 round 9 K45). Kept apart from the
 	# configured ones: a listed name that every drive has or that is coding-agent product words only is not
 	# registered, as in the Python report (B13 round 9 K1, K47).
 	if [ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ]; then
 		while IFS= read -r line; do
 			case "$line" in "$cs"/*/*) listed+=("$line") ;; esac
 		done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
-			list { sub(/^\[synced\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
+			list { sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
 	fi
 	emit_pair() { # VALUE PLACEHOLDER [w] [utf8]: the pair and its printf %q form; with utf8, %q in UTF-8 too
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"

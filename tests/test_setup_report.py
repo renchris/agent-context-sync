@@ -9246,6 +9246,17 @@ def test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole(
     assert "Private only:" in text
 
 
+def test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints() -> None:
+    """B13 round 9 K45: the J69 readers stripped "[synced] " only, so a folder printed "[inside a synced
+    folder]" was dropped and its name stayed in clear. Every mark install.sh defines is in both readers."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    marks = re.findall(r'^(?:SYNCED|INSIDE|CONTAINS)_MARK="(\[[^"]+\])"', script, flags=re.M)
+    assert len(marks) == 3 and len(re.findall(r'^[A-Z]+_MARK="', script, flags=re.M)) == 3, marks
+    assert sorted(setup_report._LIST_MARKS) == sorted(f"{m} " for m in marks)
+    [awk] = re.findall(r"list \{ sub\(/\^\\\[\(([^)]*)\)\\\] /", script)
+    assert sorted(awk.split("|")) == sorted(m.strip("[]") for m in marks), awk
+
+
 def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -9261,13 +9272,17 @@ def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_pr
         V11_HAPPY.replace(
             "2026-09-29T10:01:10Z | end",
             "2026-09-29T10:00:00Z | step 1 | deviation | the person picked Northwind Merger later | -\n"
+            "2026-09-29T10:00:30Z | step 1 | deviation | and Fabrikam Bid inside Q3 Launch | -\n"
             "2026-09-29T10:01:10Z | end",
         ),
     )
     out = fake_mac["setup"] / "install.out"
+    # a folder inside a synced one, and one holding a synced one, carry marks of their own (B13 round 9 K45)
     listed = (
         "# run=20260929T095900Z-4141 2026-09-29T09:59:00Z install.sh --list-folders\n"
         f"[synced] {cs}/OneDrive-{ORG}/Q3 Launch\n{cs}/OneDrive-{ORG}/Northwind Merger\n"
+        f"[inside a synced folder] {cs}/OneDrive-{ORG}/Q3 Launch/Fabrikam Bid\n"
+        f"[contains a synced folder] {cs}/OneDrive-{ORG}/Wingtip Clients\n"
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
     )
 
@@ -9278,7 +9293,16 @@ def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_pr
         return setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
 
     found = setup_report.listed_folder_names(listed, str(fake_mac["home"]))
-    assert found == (True, [(f"OneDrive-{ORG}", 2, "Q3 Launch"), (f"OneDrive-{ORG}", 2, "Northwind Merger")])
+    assert found == (
+        True,
+        [
+            (f"OneDrive-{ORG}", 2, "Q3 Launch"),
+            (f"OneDrive-{ORG}", 2, "Northwind Merger"),
+            (f"OneDrive-{ORG}", 2, "Q3 Launch"),
+            (f"OneDrive-{ORG}", 3, "Fabrikam Bid"),
+            (f"OneDrive-{ORG}", 2, "Wingtip Clients"),
+        ],
+    )
     assert setup_report.listed_folder_names(listed.replace(" --list-folders", ""), "/x") == (False, [])
     # a list run that printed no folder is no list (a reviewer's finding)
     assert setup_report.listed_folder_names(listed.split("[synced]", maxsplit=1)[0], "/x") == (False, [])
@@ -9286,6 +9310,7 @@ def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_pr
     out.write_text(listed, encoding="utf-8")
     text = build()
     assert "Northwind" not in text, [ln for ln in text.splitlines() if "Northwind" in ln]
+    assert "Fabrikam" not in text, [ln for ln in text.splitlines() if "Fabrikam" in ln]
     assert "Private only:" not in text and text.rstrip("\n").splitlines()[-1].startswith(
         setup_report.ISSUE_URL
     )

@@ -17290,6 +17290,16 @@ the config's path now (`~/agent-context/sources.toml`), as they print the empty-
 `test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`,
 `test_two_sources_that_cannot_be_listed_get_a_plural_wait`.
 
+**Both readers of step 1's folder list strip every mark** (K45). J69's readers stripped `[synced] ` only, so a
+folder printed `[inside a synced folder] <path>` (or `[contains a synced folder] <path>`) was dropped: its name stayed
+in clear in the shell report every time, and in the agentsync report when the CloudStorage listing did not finish
+(the list still counted as read, so the report stayed public). setup_report's `_LIST_MARKS` and install.sh's awk
+(`sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, "")`) strip all three, so both readers
+number the names alike. A test holds both to the `*_MARK` values install.sh defines. Tests:
+`test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private`,
+`test_the_shell_report_registers_the_folders_step_1s_list_printed`,
+`test_both_readers_of_the_folder_list_strip_every_mark_install_sh_prints`.
+
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 
