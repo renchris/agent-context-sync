@@ -161,10 +161,14 @@ def _shown(path: Path) -> str:
         return path.as_posix()
 
 
-# what an empty-folder wait says of the alarm line it points at, which shows the first five folders of all the
-# source's unknown ones and itself says how to list the rest (B13 round 9 K40: "names the folder(s)" was false
-# past five)
-_UP_TO_FIVE = "up to five, and how to list any more"
+# what a wait says of the alarm line it points at, which shows the first five folders of all the source's
+# unknown ones and, only past five, says how to list the rest (B13 round 9 K40: "names the folder(s)" was
+# false past five; round 10 L36: "up to five, and how to list any more" promised a pointer the alarm of one
+# to five folders does not hold). Count-free, since no wait's own count equals the alarm's.
+_UP_TO_FIVE = "up to five, and past five how to list the rest"
+# what a could-not-be-listed wait says the alarm names: no count and no cause, since a missing sentinel
+# lands on the same wait and its alarm names the sentinel, no folder (B13 round 10 L67)
+_WHAT_FAILED = f"what could not be listed, {_UP_TO_FIVE}"
 
 
 def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = False) -> str:
@@ -173,9 +177,11 @@ def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = Fa
     (a run that does not select the source keeps that source's last one, tagged with its run: round 7 H73).
     STATE.md comes first, since it holds the line wherever the wait prints: install.sh's closing step and
     ``status`` print no alarm line, only a plain sync does (B13 round 7 H35). The alarm names five and itself
-    points at ``sync -v`` for the rest, so the wait never does (round 7 H12); an empty-folder wait says so,
-    ``{what}, up to five, and how to list any more`` (:data:`_UP_TO_FIVE`), true for any count, since the
-    alarm caps on the source's unknown folders of every kind, never on the wait's own (B13 round 9 K40). Two
+    points at ``sync -v`` for the rest, so the wait never does (round 7 H12); every wait says so, ``{what},
+    up to five, and past five how to list the rest`` (:data:`_UP_TO_FIVE`; a could-not-be-listed wait,
+    :data:`_WHAT_FAILED`), true for any count, since the alarm caps on the source's unknown folders of every
+    kind, never on the wait's own (B13 round 9 K40; round 10 L36, L67: the pointer is the alarm's only past
+    five, and the could-not-be-listed waits said "names it" of six folders). Two
     or more ids have one alarm line each, joined with "and" (round 7 H50). The wait itself keeps a count and
     never a path (B13 round 5 F43). ``in_state``: the wait is written into STATE.md itself, which names no
     file it is already in: the
@@ -765,26 +771,28 @@ def next_step(
     # pages at once (the gone line's warning), so that line never offers the exclude as a plain choice.
     if bare := sorted(s for s, missed in unlisted if not missed):
         waits.append(
-            f"a folder in {bare[0]} could not be listed (no access, or a missing folder or sentinel; "
-            f"another sync does not clear it): {named(bare, 'it')}; grant Files and Folders access, "
-            f"or add it to that source's exclude in {_shown(config.config_path)}"
+            # "one or more", never "a folder", and the alarm named by what it names (B13 round 10 L48, L67):
+            # the wait cannot count the folders (no walk stores them), and the alarm names five of six
+            f"one or more folders in {bare[0]} could not be listed (no access, or a missing folder or "
+            f"sentinel; another sync does not clear it): {named(bare, _WHAT_FAILED)}; grant Files and "
+            f"Folders access, or add each one to that source's exclude in {_shown(config.config_path)}"
             if len(bare) == 1
             # One line for every such source, plural throughout (B13 round 7 H50): "a folder in A, B" and
             # "that source's exclude" read as one folder of one source.
-            else f"a folder in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed (no "
-            "access, or a missing folder or sentinel; another sync does not clear it): "
-            f"{named(bare, 'them')}; grant Files and Folders access, or add each to its source's "
+            else f"one or more folders in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed "
+            "(no access, or a missing folder or sentinel; another sync does not clear it): "
+            f"{named(bare, _WHAT_FAILED)}; grant Files and Folders access, or add each to its source's "
             # the config by its path, as the empty-folder wait names it (B13 round 9 K43)
             f"exclude in {_shown(config.config_path)}"
         )
         names_source(*bare)
     for sid, missed in sorted((s, m) for s, m in unlisted if m):
         waits.append(
-            f"a folder in {sid} could not be listed (no access, or a missing folder or sentinel; another "
-            f"sync does not clear it): {named([sid], 'it')}; grant Files and Folders access (the "
-            f"safe fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and "
-            "adding the folder to that source's exclude retires the pages under it at once, with no deletion "
-            "check and no purge queued"
+            f"one or more folders in {sid} could not be listed (no access, or a missing folder or sentinel; "
+            f"another sync does not clear it): {named([sid], _WHAT_FAILED)}; grant Files and Folders access "
+            f"(the safe fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and "
+            "adding such a folder to that source's exclude retires the pages under it at once, with no "
+            "deletion check and no purge queued"
         )
         names_source(sid)
     checks.extend(f"heartbeat.{s}" for s, _ in sorted(unlisted))

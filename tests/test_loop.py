@@ -40,7 +40,7 @@ def _named(config: Config, sid: str, what: str) -> str:
     return f"{state} keeps the alarm line for {sid}, which names {what} (a plain `{BIN} sync` prints it too)"
 
 
-FIVE = "up to five, and how to list any more"
+FIVE = "up to five, and past five how to list the rest"
 """What an empty-folder wait says the alarm line names with its folders (B13 round 9 K40: it names five)."""
 
 BASELINE = 'the agentsync-docs skill\'s "Baseline questions" section (also in ~/agent-context/docs/AGENTS.md)'
@@ -373,7 +373,9 @@ def test_one_empty_folder_is_never_sent_to_a_full_sync(
     """B13 round 7 H12, H35: one empty folder's wait ended "(the first five; `sync -v` logs each one)", which
     sends a reader with one folder to a full sync that downloads files, and named the alarm "a sync prints"
     first, which step 2 and status do not show. The alarm names its one folder, and neither line names
-    ``sync -v``; the wait names STATE.md first."""
+    ``sync -v``; the wait names STATE.md first. B13 round 10 L14, L36, L38: the wait said the alarm names
+    "up to five, and how to list any more", a pointer an alarm of five or fewer folders lacks; it now says
+    the pointer comes past five."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     (root / "Empty A").mkdir(parents=True)
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
@@ -383,8 +385,11 @@ def test_one_empty_folder_is_never_sent_to_a_full_sync(
     (alarm,) = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("    alarm: ")]
     assert "'Empty A'" in alarm and "sync -v" not in alarm and "more" not in alarm
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
-    assert "sync -v" not in wait and "first five" not in wait
-    assert wait.endswith("; " + _named(config, "work", f"the folder(s), {FIVE}"))
+    assert "sync -v" not in wait and "first five" not in wait and "how to list any more" not in wait
+    assert wait.endswith(
+        "keeps the alarm line for work, which names the folder(s), up to five, and past five how to list the "
+        f"rest (a plain `{BIN} sync` prints it too)"
+    ), wait
 
 
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
@@ -421,8 +426,9 @@ def test_six_empty_folders_on_one_wait_are_not_said_to_be_all_named(
 ) -> None:
     """B13 round 9 K40: with six empty folders the one exclude-empty wait said the alarm line "names the
     folder(s)", but the alarm names five and how to list the sixth. Every empty-folder wait now says the
-    alarm names up to five and how to list any more, which is true for any count; still no path and no
-    ``sync -v`` in the wait (round 7 H12, round 5 F43)."""
+    alarm names the folder(s), up to five, and past five how to list the rest, which is true for any count
+    (B13 round 10 L36: "up to five, and how to list any more" promised a pointer one to five folders lack);
+    no path and no ``sync -v`` in the wait (round 7 H12, round 5 F43)."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     for n in range(1, 7):
         (root / f"Empty {n}").mkdir(parents=True)
@@ -435,14 +441,14 @@ def test_six_empty_folders_on_one_wait_are_not_said_to_be_all_named(
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait.startswith("WAITING ON YOU: 6 empty cloud folder(s) keep the listing of work incomplete")
     assert wait.endswith(
-        "keeps the alarm line for work, which names the folder(s), up to five, and how to list any more (a "
-        f"plain `{BIN} sync` prints it too)"
+        "keeps the alarm line for work, which names the folder(s), up to five, and past five how to list the "
+        f"rest (a plain `{BIN} sync` prints it too)"
     ), wait
     assert "Empty 1" not in wait and "sync -v" not in wait
     state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert (
-        "the alarm line under ## work below names the folder(s), up to five, and how to list any more"
-        in state
+        "the alarm line under ## work below names the folder(s), up to five, and past five how to list the "
+        "rest" in state
     )
 
 
@@ -859,9 +865,17 @@ def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_pat
     run_cycle(config, mode=None)
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait == (
-        "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or sentinel; "
-        "another sync does not clear it): " + _named(config, "work", "it") + "; grant Files and Folders "
-        f"access, or add it to that source's exclude in {loop._shown(config.config_path)}"
+        "WAITING ON YOU: one or more folders in work could not be listed (no access, or a missing folder or "
+        "sentinel; another sync does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + "; grant "
+        "Files and Folders access, or add each one to that source's exclude in "
+        f"{loop._shown(config.config_path)}"
+    )
+    # B13 round 10 L67: the alarm here names the sentinel and no folder, so the wait says what it names by
+    # what could not be listed, never "names it" or "the folder(s)"
+    (alarm,) = [ln for ln in _kept_alarms(config) if "sentinel" in ln]
+    assert "unknown dir(s)" not in alarm, alarm
+    assert (
+        "names it" not in wait and "names the folder" not in wait and "names what could not be listed" in wait
     )
     # §16.39 N16: the wait explains that source's heartbeat warn
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
@@ -882,9 +896,10 @@ def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> 
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     state = loop._shown(config.docs_repo / "_sync" / "STATE.md")
     assert wait == (
-        "WAITING ON YOU: a folder in each of alpha and beta could not be listed (no access, or a missing "
-        f"folder or sentinel; another sync does not clear it): {state} keeps the alarm lines for alpha and "
-        f"beta, which name them (a plain `{BIN} sync` prints them too); grant Files and Folders access, or "
+        "WAITING ON YOU: one or more folders in each of alpha and beta could not be listed (no access, or a "
+        f"missing folder or sentinel; another sync does not clear it): {state} keeps the alarm lines for "
+        f"alpha and beta, which name {loop._WHAT_FAILED} (a plain `{BIN} sync` prints them too); grant "
+        "Files and Folders access, or "
         f"add each to its source's exclude in {loop._shown(config.config_path)}"
     )
     alarms = [
@@ -909,11 +924,11 @@ def test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclu
     finally:
         (folder / "Locked").chmod(0o755)
     assert waits == [
-        "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or sentinel; "
-        "another sync does not clear it): " + _named(config, "work", "it") + "; grant Files and Folders "
-        "access (the safe fix); the last walk of work did not list 30 file(s) the mirror still has, and "
-        "adding the folder to that source's exclude retires the pages under it at once, with no deletion "
-        "check and no purge queued"
+        "WAITING ON YOU: one or more folders in work could not be listed (no access, or a missing folder or "
+        "sentinel; another sync does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + "; grant "
+        "Files and Folders access (the safe fix); the last walk of work did not list 30 file(s) the mirror "
+        "still has, and adding such a folder to that source's exclude retires the pages under it at once, "
+        "with no deletion check and no purge queued"
     ]
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
 
@@ -1711,7 +1726,10 @@ def test_state_md_keeps_the_five_long_folder_names_the_empty_folder_wait_points_
 def test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at(
     tmp_path: Path, folder: Path
 ) -> None:
-    """B13 round 7 H48: the could-not-list wait makes the same promise as the empty-folder one."""
+    """B13 round 7 H48: the could-not-list wait makes the same promise as the empty-folder one. Round 10 L48,
+    L67: with six folders it said "a folder in work" and that the alarm "names it", while the alarm names five
+    and "+1 more"; it now says "one or more folders" and that the alarm names what could not be listed, or
+    up to five, and past five how to list the rest."""
     for rel in _LONG:
         _write(folder / rel / "memo.txt", "Memo for Project Alpha.\n")
         (folder / rel).chmod(0)
@@ -1724,6 +1742,9 @@ def test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_point
             (folder / rel).chmod(0o755)
     assert "could not be listed" in wait and "STATE.md" in wait
     assert any(all(f"'{rel}'" in ln for rel in _LONG[:5]) and "(+1 more" in ln for ln in _kept_alarms(config))
+    assert wait.startswith("WAITING ON YOU: one or more folders in work could not be listed"), wait
+    assert f"which names what could not be listed, {FIVE} (a plain" in wait, wait
+    assert "names it" not in wait and "add it to" not in wait, wait
 
 
 def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:

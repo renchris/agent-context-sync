@@ -195,7 +195,8 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     ]
     assert "rename or remove the empty folder(s) in the cloud drive" in wait
     assert (
-        "STATE.md keeps the alarm line for work, which names them, up to five, and how to list any more "
+        "STATE.md keeps the alarm line for work, which names them, up to five, and past five how to list the "
+        "rest "
         in wait
         and "Plans" not in wait
     )

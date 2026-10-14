@@ -4469,15 +4469,15 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
         loop_next=lambda config: [
             "NEXT: none",
             f"WAITING ON YOU: {arm_local.exclude_advice(config.sources[0], ['Empty'], where)}",
-            "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or "
-            "sentinel; another sync does not clear it): it; grant Files and Folders access, or add it to "
-            f"that source's exclude in {where}",
+            "WAITING ON YOU: one or more folders in work could not be listed (no access, or a missing "
+            "folder or sentinel; another sync does not clear it): it; grant Files and Folders access, or add "
+            f"each one to that source's exclude in {where}",
         ]
     )
     text, _red = setup_report.build_report(spaced, hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
     assert " in the config file sources.toml; an excluded folder is not mirrored" in line, line
-    assert line.endswith(" or add it to that source's exclude in the config file sources.toml"), line
+    assert line.endswith(" or add each one to that source's exclude in the config file sources.toml"), line
     assert "Client" not in line and "ctx" not in line
 
 
