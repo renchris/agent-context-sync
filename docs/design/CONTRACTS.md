@@ -17926,6 +17926,11 @@ round 10"; specs `round10/items/L<n>.md`, the verifier's corrected fix built). E
 fails on the text it replaced. A dated line this round writes for an older round's change reads `Amended
 2026-10-14, §16.91 L<n> (by §16.8N K<n>)`.
 
+**The Loop line's config file is quoted in the guide** (L44). Since §16.80 K43 `_eval_by_name` shows the config as
+`_CONFIG_SHOWN` (`the config file sources.toml` for the default config), while the guide's Loop paragraph still
+said "the config file its name", the bare name it printed before. The sentence quotes the words, as it does the
+three other paths. Test: `test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words` (reads every
+`_*_SHOWN` constant `_eval_by_name` uses).
 
 **Only a newer copy's stop is a rerun, in every restatement** (L46, L59: one defect; dated lines at §16.73 H43 and
 §16.85 K66). Since §16.80 K11 `_rerun_note` reads a `--log-start` stop followed within the window as `stopped`

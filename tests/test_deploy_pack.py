@@ -4012,6 +4012,16 @@ def test_the_loop_line_paragraph_names_every_path_the_report_shows_in_words() ->
     ]
     for name in replaced:
         assert f"reads `{getattr(setup_report, name)}`" in para, name
+    # B13 round 10 L44: since round 9 K43 the config file is shown as _CONFIG_SHOWN, its file name in words;
+    # the guide still said "the config file its name", the bare name it showed before
+    assert "line.replace(loop._shown(config.config_path), _CONFIG_SHOWN.format(config.config_path.name))" in (
+        inspect.getsource(setup_report._eval_by_name)
+    )
+    assert "and the config file its name" not in para
+    shown = setup_report._CONFIG_SHOWN
+    assert (
+        f"reads `{shown.format('<its file name>')}` (`{shown.format('sources.toml')}` for the default" in para
+    )
 
 
 def test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values() -> None:
