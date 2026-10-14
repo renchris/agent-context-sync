@@ -1944,7 +1944,7 @@ def test_install_source_skips_a_run_that_read_no_commit(fake_mac: dict[str, Path
         "2026-09-29T10:08:42Z run=20260929T100800Z-15 step=report seconds=1 rc=0 result=done note=agentsync\n"
         "2026-09-29T10:08:43Z run=20260929T100800Z-15 end rc=0 seconds=43\n"
     )
-    assert "; last install.sh run: commit -" in summary and "commit 0123456789ab" not in summary
+    assert "; last install.sh run: no commit read" in summary and "commit 0123456789ab" not in summary
 
 
 def test_a_login_that_is_the_full_name_run_together_is_user(
@@ -2294,6 +2294,30 @@ def test_an_unreadable_proxy_value_keeps_the_redaction(
     text, _summary = summary_of(fake_mac)
     for raw in RAW:
         assert raw not in text, raw
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_install_source_says_a_checkout_is_not_a_git_checkout(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 9 K29: agentsync installed from a folder with no .git read "checkout <path>" with no commit
+    or origin and no reason, and a run that read no commit gave "last install.sh run: commit -"."""
+    checkout = tmp_path / "copy"
+    checkout.mkdir()
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {checkout}", checkout))
+    write_install_log(fake_mac)
+    text, _summary = summary_of(fake_mac)
+    [line] = [ln for ln in text.splitlines() if ln.startswith("- install source: ")]
+    assert line.startswith("- install source: checkout ") and line.endswith(
+        " (not a git checkout: no .git, so no commit or origin); last install.sh run: commit 0123456789ab"
+    ), line
+    path = fake_mac["setup"] / "install.log"
+    path.write_text(path.read_text().replace("commit=0123456789ab", "commit=-"))
+    text, _summary = summary_of(fake_mac)
+    [line] = [ln for ln in text.splitlines() if ln.startswith("- install source: ")]
+    assert "commit -" not in line and line.endswith(
+        " (not a git checkout: no .git, so no commit or origin); last install.sh run: no commit read"
+    ), line
 
 
 def test_an_empty_git_proxy_takes_no_token_from_the_next_line(

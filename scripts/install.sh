@@ -688,6 +688,7 @@ export AGENTSYNC_NO_NEXT_HINT=1
 export UV_TOOL_BIN_DIR="$HOME/.local/bin"
 AGENTSYNC=""
 COMMIT="-"
+COMMIT_TRIED=0 # read_commit ran: a "-" after it is git that could not read the checkout (commit_shown)
 DIRTY="" # the SOURCE checkout's local-change fingerprint (tree_fingerprint), empty when clean or unknown
 PARSED=0       # 1 once the arguments are read: from then on every exit writes the report and a NEXT line
 NEXT_MSG=""    # the NEXT line the EXIT trap prints
@@ -766,6 +767,7 @@ git_head_file() {
 # COMMIT and DIRTY from the checkout $1; both stay as they are when git cannot say.
 read_commit() {
 	local c
+	COMMIT_TRIED=1
 	c="$(checkout_commit "$1")"
 	case "$c" in
 	"") ;;
@@ -1997,9 +1999,31 @@ fallback_outcome_line() {
 # attempt's (B13 round 4 Q23). A run that started before the friction log's latest attempt began is said to be
 # an earlier one, as setup_report._install_line scopes runs to the attempt (B13 round 5 F30); no install log is
 # not "no install run in the install log" (F29).
+# The commit as the Summary shows it: COMMIT and its tree; where COMMIT is "-", which install.log's commit= field
+# and the install stamp keep as their machine word, why there is none (B13 round 9 K17, K29): a wheel, a copy
+# with no .git (the --report-only checkout, or a real run's SOURCE), or a .git git could not read, as --version
+# says "unknown". "-" as before when no read was tried (a run stopped before it).
+commit_shown() {
+	local d="$repo"
+	if [ "$COMMIT" != "-" ]; then
+		printf '%s' "$COMMIT${DIRTY:+ tree=$DIRTY}"
+		return 0
+	fi
+	if [ "$REPORT_ONLY" -eq 0 ]; then
+		[ "$SOURCE_KIND" != wheel ] || { printf 'none (installed from a wheel)' && return 0; }
+		d="$SOURCE"
+	fi
+	if [ -n "$d" ] && [ ! -e "$d/.git" ]; then
+		printf 'none (%s has no .git: not a git checkout)' "$d"
+	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ]; then
+		printf 'unknown (git cannot read %s/.git)' "$d"
+	else
+		printf '%s' "$COMMIT"
+	fi
+}
 fallback_install_line() { # RC
-	local head="- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $COMMIT${DIRTY:+ tree=$DIRTY}" last at rc
-	local begin what
+	local head last at rc begin what
+	head="- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $(commit_shown)"
 	if [ "$REPORT_ONLY" -eq 0 ]; then
 		say "$head, exit $1 ($(rc_meaning "$1"))"
 		return 0

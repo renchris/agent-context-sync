@@ -2899,6 +2899,42 @@ def test_install_log_start_line_names_the_diff_of_a_dirty_source(env: dict[str, 
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+def test_the_shell_report_says_why_a_copy_has_no_commit(env: dict[str, str]) -> None:
+    """B13 round 9 K17, K29: a copy of the installer that is no git checkout gave "source commit -" with no
+    reason. The Summary says why; install.log's commit= field, a machine word the install stamp and the
+    reports read, stays "-"."""
+    src = Path(env["HOME"]) / "src" / "contoso-copy"
+    shown = "~/src/contoso-copy"  # the home redacted, as everywhere in the report
+    (src / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
+    (src / "pyproject.toml").write_text("[project]\nname = 'agentsync'\n")
+
+    def run(*args: str, **extra: str) -> str:
+        subprocess.run(
+            [BASH32, str(src / "scripts" / "install.sh"), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**env, **extra},
+            stdin=subprocess.DEVNULL,
+            timeout=120,
+        )
+        [line] = [ln for ln in report_path(env).read_text().splitlines() if ln.startswith("- install.sh: ")]
+        return line
+
+    assert run("--report-only").startswith(
+        f"- install.sh: setup-prompt-compat {COMPAT}, source commit none ({shown} has no .git: not a git "
+        "checkout); this --report-only run only writes the report"
+    )
+    assert f"source commit none ({shown} has no .git: not a git checkout), exit 1 " in run(
+        STUB_UV_INSTALL_RC="2"
+    )
+    log = (Path(env["HOME"]) / "agent-context" / "setup" / "install.log").read_text()
+    assert " start install.sh compat=" in log and " commit=- " in log, log
+    (src / ".git").mkdir()  # a .git no git and no file read can say anything of
+    assert f"source commit unknown (git cannot read {shown}/.git);" in run("--report-only")
+
+
 def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], tmp_path: Path) -> None:
     """--report-only stops before the run reads its SOURCE, so the shell fallback's Summary said
     "source commit -" (B12 held, H16). It names this installer's checkout, as --version does."""
