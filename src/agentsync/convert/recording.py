@@ -75,6 +75,12 @@ _REREAD_BELOW = "1.0.0"
 """A page or stub an emitter below this wrote is read again once (``RecordingConverter.outdated``).  Raise it
 only for a change worth reading every local recording again for, never above ``_EMITTER_VERSION``."""
 _SELECTION_REVISION = 2  # ``-s<n>`` of the version: the profiles, the gate, the back-offs, the kind rules
+_INDEX_REVISION = 2
+"""The fixed wording of the index page (``recording_page``'s ``_HOW_TO_READ``, ``_NOT_DETECTED``,
+``_TIMES_FACT``, a NOTE): raise it whenever one changes.  It is in ``options`` only, never in a piece's key,
+so it moves the whole file's cache key and a new conversion of the same bytes (a copy, a repair rebuild) gets
+the new wording, while no frame or speech is read again (B13 round 10 L51, as round 6 G59 for the deck
+emitter)."""
 
 WINDOW_MS = 300_000
 """One window unit of the page (spec 3.1, 2.2); the renderer cuts the recording at it."""
@@ -1511,7 +1517,8 @@ class RecordingConverter:
 
     def options(self) -> Mapping[str, OptionValue]:
         """Every constant of spec 2.2 that can change a page, the OCR options and ``max_page_bytes``; the
-        speaker cue's; with a speech engine, S8's and S8b's and the speech piece's limit."""
+        speaker cue's; with a speech engine, S8's and S8b's and the speech piece's limit; the index
+        revision."""
         heard: dict[str, OptionValue] = {}
         if self._speech is not None:
             heard = {
@@ -1520,7 +1527,12 @@ class RecordingConverter:
                 "recording_speech_limit": f"{_BASE_S}+{_SPEECH_S}/second of sound",
                 "speech_diarizer_threshold": THRESHOLD,
             }
-        return {**self._picture_options(), **cue.options(), **heard}
+        return {
+            **self._picture_options(),
+            **cue.options(),
+            **heard,
+            "recording_index_revision": _INDEX_REVISION,
+        }
 
     def _picture_options(self) -> dict[str, OptionValue]:
         """The constants a picture piece or S6 goes by."""

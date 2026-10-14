@@ -23,6 +23,7 @@ from agentsync.config import ConvertConfig
 from agentsync.convert import convert_file
 from agentsync.convert import naming as naming_mod
 from agentsync.convert import recording as rec
+from agentsync.convert import recording_page as rec_page
 from agentsync.convert.cache import ConverterCache
 from agentsync.convert.media import MediaEngine, MediaError
 from agentsync.convert.ocr import OcrLine
@@ -658,6 +659,7 @@ CONSTANTS = {
     "MARK_BELOW": 0.5,
     "STEP_MS": 1_000,
     "JPEG_QUALITY": 0.8,
+    "_INDEX_REVISION": 1,
 }
 
 
@@ -670,6 +672,48 @@ def test_every_constant_that_shapes_a_page_is_in_the_options(
     assert before["max_page_bytes"] == CFG.max_page_bytes and before["ocr_languages"] == "en-US"
     monkeypatch.setattr(rec, name, CONSTANTS[name])
     assert dict(conv.options()) != before, name
+
+
+def test_a_copy_of_bytes_converted_under_an_older_legend_gets_the_new_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 10 L51: round 9 K63 changed How to read without moving the action key, so a copy of bytes
+    converted under the old legend (or a repair rebuild) was served the old index from the cache.  The index
+    revision is in the options, outside a picture piece's key: the copy is converted again, no frame is."""
+    src = staged(tmp_path, teams(share(3, FIRST)))
+    cache = ConverterCache(tmp_path / "cache")
+
+    def through(path: Path, name: str) -> Any:
+        digest = sha256_file(path)
+        return convert_file(
+            path,
+            name=name,
+            content_sha256=digest,
+            canonical_sha256=digest,
+            registry=_registry(tmp_path),
+            cache=cache,
+        )
+
+    with monkeypatch.context() as old:  # round 9 before K63
+        old.setattr(
+            rec_page,
+            "_HOW_TO_READ",
+            (
+                "- `SCREEN:` a content row on screen when the state began; `SCREEN+:` / `SCREEN-:` a row "
+                "came or went",
+                "- `TILE:` the text of a name label or a camera picture: on-screen text, not proof of who "
+                "spoke",
+            ),
+        )
+        old.setattr(rec, "_INDEX_REVISION", 1)
+        piece_key = converter(tmp_path)._key()
+        first = through(src, "meeting.mp4")
+    assert first.status is ConversionStatus.OK and "`SAID vN:`" not in first.units[0].body
+    copied = staged(tmp_path / "copy", teams(share(3, FIRST)), name="meeting copy.mp4")
+    assert sha256_file(copied) == sha256_file(src)
+    result = through(copied, "meeting copy.mp4")
+    assert not result.from_cache and "`SAID vN:`" in result.units[0].body
+    assert converter(tmp_path)._key() == piece_key
 
 
 def test_a_recording_past_the_tick_limit_is_read_to_the_limit_and_says_so(
