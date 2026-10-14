@@ -291,7 +291,7 @@ def test_the_shell_report_redacts_a_configured_source_id(env: dict[str, str]) ->
     assert 'id = "<folder-1>"' in friction and "exclude-empty <folder-1> |" in friction, friction
     assert "OneDrive-<org-1>/<folder-1>; <source-3> kept" in friction, "not a cloud folder: its own number"
     assert "the inbox source and the docs repo are fine" in friction
-    assert "a configured source id (<source-N>" in text
+    assert "\n- <source-N>: a configured source id, or its folder's <folder-N>" in text
 
 
 def test_the_shell_report_keeps_a_deduplicated_ids_own_number(env: dict[str, str]) -> None:  # noqa: F811

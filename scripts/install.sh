@@ -1084,6 +1084,25 @@ generic_folder() {
 	esac
 	return 1
 }
+# Whether a folder name is made of coding-agent product words only ("Copilot", "github-copilot"), as
+# setup_report._agent_words reads it: in lower case, split on runs of blanks, "_", "\" and "-", at least one
+# word and every word one of setup_report._AGENT_WORDS (a test keeps them equal). A folder only step 1's list
+# printed with such a name is not registered, or "GitHub Copilot CLI" in the Agent: line read "GitHub
+# <folder-N> CLI" in the Summary and the issue link (B13 round 9 K1, K47).
+agent_words_name() {
+	local w any=""
+	local -a ws=()
+	# shellcheck disable=SC2141 # the backslash is a separator, as in setup_report._SEP_RE
+	IFS=$' \t_\\-' read -r -d '' -a ws < <(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]') || true
+	for w in ${ws[@]+"${ws[@]}"}; do
+		case "$w" in
+		"") ;;
+		claude | codex | copilot | cursor | gemini | github) any=1 ;;
+		*) return 1 ;;
+		esac
+	done
+	[ -n "$any" ]
+}
 # A proxy host with no dot that names no one and that the report prints as a word of its own (HTTPS_PROXY,
 # network.proxy): setup_report._GENERIC_PROXY_HOSTS (a test keeps them equal). Matched only after // or @, or as
 # host:port with its own port.
@@ -1153,8 +1172,8 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
-	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top
-	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
+	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n'
+	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
 	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
@@ -1211,10 +1230,12 @@ redaction_pairs() {
 	fi
 	# The folders step 1's lists printed into install.out (the agent saw them and may quote one), as the Python
 	# report registers them: read from the file, never by listing CloudStorage (B13 round 8 J69). A path is
-	# "$cs/<provider>/<name>[/<name>]", with "[synced] " before a folder the config syncs.
+	# "$cs/<provider>/<name>[/<name>]", with "[synced] " before a folder the config syncs. Kept apart from the
+	# configured ones: a listed name that every drive has or that is coding-agent product words only is not
+	# registered, as in the Python report (B13 round 9 K1, K47).
 	if [ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ]; then
 		while IFS= read -r line; do
-			case "$line" in "$cs"/*/*) known+=("$line") ;; esac
+			case "$line" in "$cs"/*/*) listed+=("$line") ;; esac
 		done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
 			list { sub(/^\[synced\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
 	fi
@@ -1339,23 +1360,46 @@ redaction_pairs() {
 			add_pair "$org" "<org-$n>"
 		done
 	fi
-	n=0
-	for f in ${known[@]+"${known[@]}"}; do
-		case "$f" in
-		"$cs"/*/*) rel="${f#"$cs"/*/}" ;;
-		*) continue ;;
-		esac
-		while [ -n "$rel" ]; do
-			part="${rel%%/*}"
-			[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
-			n=$((n + 1))
-			whole=""
-			if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments"
-			add_pair "$part" "<folder-$n>" "$whole"
-			# the number its pair has: a later part of the same bytes loses to the first (add_pair)
-			case "$folders_seen" in *$'\n'"$part"$'\t'*) ;; *) folders_seen+="$part"$'\t'"$n"$'\n' ;; esac
+	# The configured folders first, then the listed ones, as the Python report registers them. One number per
+	# folder (B13 round 9 K4): a name found in two places (configured and listed), a parent counted again by a
+	# nested listed path, or another spelling of it (id_key, setup_report._norm's sharing) takes the number it
+	# has; each spelling still gets its own pair, since the matcher compares bytes. A listed name skipped
+	# takes no number.
+	folder_parts() { # LISTED PATH...: LISTED non-empty for step 1's list
+		local only="$1" f rel part whole k
+		shift
+		for f in "$@"; do
+			case "$f" in
+			"$cs"/*/*) rel="${f#"$cs"/*/}" ;;
+			*) continue ;;
+			esac
+			while [ -n "$rel" ]; do
+				part="${rel%%/*}"
+				[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
+				[ -z "$only" ] || ! { generic_folder "$part" || agent_words_name "$part"; } || continue
+				k="$(id_key "$part")"
+				case "$folder_keys" in
+				*$'\n'"$k"$'\t'*)
+					m="${folder_keys#*$'\n'"$k"$'\t'}"
+					m="${m%%$'\n'*}"
+					;;
+				*)
+					n=$((n + 1))
+					m="$n"
+					folder_keys+="$k"$'\t'"$m"$'\n'
+					;;
+				esac
+				whole=""
+				if generic_folder "$part"; then whole=w; fi # "Documents" is kept inside "MyDocuments"
+				add_pair "$part" "<folder-$m>" "$whole"
+				# the number its pair has: a later part of the same bytes loses to the first (add_pair)
+				case "$folders_seen" in *$'\n'"$part"$'\t'*) ;; *) folders_seen+="$part"$'\t'"$m"$'\n' ;; esac
+			done
 		done
-	done
+	}
+	n=0
+	folder_parts "" ${known[@]+"${known[@]}"}
+	folder_parts listed ${listed[@]+"${listed[@]}"}
 	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
 	# A whole word, where "-" is no word character, so "exclude-empty <id>" is matched. An id that is one of
@@ -2159,17 +2203,28 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them]
 	say "## Redaction"
 	say ""
-	say "Shell fallback redaction: the home path (~), this account's temporary folder (\$TMPDIR: <tmp>), the login name"
-	say "(<user>), the full name and its joined forms (<name>), the organisation or team after the app's name in a"
-	say "CloudStorage folder (OneDrive-<org-N>, Dropbox-<org-N>; an account's email address too), the MDM server's host"
-	say "(<mdmhost>), proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a URL or"
-	say "host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com kept) and the"
-	say "system PAC URL after its scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local,"
-	say "sources.toml or install.log name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only"
-	say "where it stands as a whole word), a configured source id (<source-N>, or its folder's <folder-N> where it is that"
-	say "name in slug form; one of agentsync's own words, such as docs or inbox, only for a cloud folder), a --source-local"
-	say "argument in install.log that names no CloudStorage folder (<path>), and every word bash wrote in its dollar-quote"
-	say "form, which install.log uses for a name with a curly apostrophe, an en dash or an accent (<path>)."
+	# One placeholder kind a list item, continued on lines indented by two spaces; no blank line inside, so the
+	# legend stays one block that ends on the "Read the report" line (B13 round 9 K3, K15).
+	say "Shell fallback redaction, one placeholder per kind:"
+	say "- ~: the home path"
+	say "- <tmp>: this account's temporary folder (\$TMPDIR)"
+	say "- <user>: the login name"
+	say "- <name>: the full name and its joined forms"
+	say "- <org-N>: the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
+	say "  Dropbox-<org-N>), and an account's email address"
+	say "- <mdmhost>: the MDM server's host"
+	say "- <proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a"
+	say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
+	say "  kept) and the system PAC URL after its scheme"
+	say "- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml, install.log or"
+	say "  step 1's folder list in install.out name; a name every OneDrive or Google Drive has, such as Documents,"
+	say "  only where it stands as a whole word, and neither such a name nor one made of coding-agent product words"
+	say "  (Copilot, GitHub Copilot) where only step 1's list names it"
+	say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
+	say "  agentsync's own words, such as docs or inbox, only for a cloud folder"
+	say "- <path>: a --source-local argument in install.log that names no CloudStorage folder, and every word bash"
+	say "  wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or"
+	say "  an accent"
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an

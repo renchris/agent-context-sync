@@ -1709,9 +1709,12 @@ def test_the_shell_report_never_redacts_inside_a_placeholder(env: dict[str, str]
     assert "| <name> under OneDrive-<org-1> |" in text
     assert "| copied <name> and <mdmhost> |" in text
     assert "<<" not in text
-    note = " ".join(text.split("\n## Redaction\n", 1)[1].split())
-    assert "the login name (<user>), the full name and its joined forms (<name>), the organisation" in note
-    assert "Dropbox-<org-N>; an account's email address too), the MDM server's host (<mdmhost>)" in note
+    note = text.split("\n## Redaction\n", 1)[1]
+    assert (
+        "\n- <user>: the login name\n- <name>: the full name and its joined forms\n"
+        "- <org-N>: the organisation" in note
+    )
+    assert "  Dropbox-<org-N>), and an account's email address\n- <mdmhost>: the MDM server's host\n" in note
 
 
 def test_the_shell_report_reads_tilde_and_relative_folders_from_install_log(env: dict[str, str]) -> None:
@@ -1811,22 +1814,40 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     assert "listed <folder-1> | -" in text.split("\n## Agent friction log\n", 1)[1]
     installer = raw.split(b"## Installer", 1)[1].split(b"## Configuration", 1)[0]
     assert name.encode() not in raw and b"Fabrikam" not in installer and b"\\" not in installer
-    flat = " ".join(text.split())
-    assert (
-        "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly "
-        "apostrophe, an en dash or an accent (<path>)" in flat
-    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7)"
-    assert (
-        "(<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands"
-        in flat
-    )
-    assert (
-        "proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a "
-        "URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; "
-        "github.com kept) and the system PAC URL after its scheme (<proxy-N>)" in flat
-    ), "a clause with a verb, the rule the matcher applies (B13 round 6 G4), and URL rewrites (round 8 J63)"
     legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
     assert max(map(len, legend)) <= 115 and legend[-1].startswith("Read the report before sending it: a")
+    # one placeholder kind a list item, its own lines continued by two spaces (B13 round 9 K3, K15)
+    assert legend[0] == "Shell fallback redaction, one placeholder per kind:"
+    items = " ".join(legend[1:-1]).replace("   ", " ").split(" - ")
+    assert [ln[:2] for ln in legend[1:-1]] == ["- " if ln.startswith("- ") else "  " for ln in legend[1:-1]]
+    kinds = [ln.split(":", 1)[0] for ln in legend[1:-1] if ln.startswith("- ")]
+    assert kinds == [
+        "- ~",
+        "- <tmp>",
+        "- <user>",
+        "- <name>",
+        "- <org-N>",
+        "- <mdmhost>",
+        "- <proxy-N>",
+        "- <folder-N>",
+        "- <source-N>",
+        "- <path>",
+    ], kinds
+    item = {i.split(":", 1)[0].lstrip("- "): " ".join(i.split()) for i in items}
+    assert item["<path>"].endswith(
+        "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly "
+        "apostrophe, an en dash or an accent"
+    ), "the Redaction text is not itself redacted, and reads plainly (B13 R7)"
+    assert (
+        "a name every OneDrive or Google Drive has, such as Documents, only where it stands"
+        in item["<folder-N>"]
+    )
+    assert item["<proxy-N>"] == (
+        "<proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only "
+        "where a "
+        "URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; "
+        "github.com kept) and the system PAC URL after its scheme"
+    ), "a clause with a verb, the rule the matcher applies (B13 round 6 G4), and URL rewrites (round 8 J63)"
 
 
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
@@ -6090,8 +6111,8 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
     assert cp.returncode == 1
     text = report_path(env).read_text()
     assert "| <tmp>/x |" in text and str(tmpdir) not in text
-    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split())
-    assert "the home path (~), this account's temporary folder ($TMPDIR: <tmp>), the login name" in legend, (
+    legend = text.split("\n## Redaction\n", 1)[1]
+    assert "\n- ~: the home path\n- <tmp>: this account's temporary folder ($TMPDIR)\n" in legend, (
         "the legend names the placeholder its redaction writes, the $ kept literal (B13 round 4 Q40)"
     )
 
@@ -6449,10 +6470,134 @@ def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[s
     text = report_path(env).read_text()
     assert "Northwind" not in text, [ln for ln in text.splitlines() if "Northwind" in ln]
     assert re.search(r"picked <folder-\d+>, not <folder-\d+> \|", text), text
+    # the legend names the source it was read from (B13 round 9 K3)
+    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
+    assert "sources.toml, install.log or step 1's folder list in install.out name" in legend, legend
     # a run that is not a list names no folder of its own
     out.write_text(out.read_text().replace(" --list-folders", " --source-local x"))
     assert install_sh(env, "--report-only").returncode == 0
     assert "not Northwind Merger" in report_path(env).read_text(), "only a list run's paths are read"
+
+
+def test_the_shell_agent_words_are_the_python_reports() -> None:
+    """agent_words_name's words are setup_report._AGENT_WORDS (B13 round 9 K1, K47)."""
+    body = INSTALL_SH.read_text().split("\nagent_words_name() {\n", 1)[1].split("\n}\n", 1)[0]
+    [row] = re.findall(r"^\t\t(claude .*)\) any=1 ;;$", body, re.M)
+    assert {w.strip() for w in row.split("|")} == set(setup_report._AGENT_WORDS)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Copilot",
+        "github-copilot",
+        "GitHub_Copilot",
+        "Claude  Code",
+        "Codex\\Cursor",
+        "copilot-",
+        "Copilot Notes",
+        "",
+        "-",
+    ],
+)
+def test_the_shell_agent_words_test_is_the_python_reports(name: str) -> None:
+    fn = _shell_function("agent_words_name")
+    cp = subprocess.run(
+        [BASH32, "-c", f'{fn}\nagent_words_name "$1"', "-", name],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    assert (cp.returncode == 0) == setup_report._agent_words(name), (name, cp.stderr)
+
+
+def _listed(cs: Path, *paths: str) -> str:
+    return "# run=20261010T000000Z-1 2026-10-10T00:00:00Z install.sh --list-folders\n" + "".join(
+        f"{cs}/{p}\n" for p in paths
+    )
+
+
+def test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name(env: dict[str, str]) -> None:
+    """B13 round 9 K1, K47: a folder only step 1's list printed, named with coding-agent words only
+    ("Copilot") or a name every drive has ("Documents"), is not registered, as in the Python report: the
+    Agent of "GitHub Copilot CLI" read "GitHub <folder-N> CLI" in the Summary and in the link's agent field.
+    A configured folder of that name is still redacted."""
+    home = Path(env["HOME"])
+    cs = home / "Library" / "CloudStorage"
+    (cs / "OneDrive-Contoso" / "Q3 Launch").mkdir(parents=True)
+    _write_config(env, local_source_table("q3-launch", cs / "OneDrive-Contoso" / "Q3 Launch"))
+    out = home / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        _listed(
+            cs, "OneDrive-Contoso/Copilot", "OneDrive-Contoso/Documents", "OneDrive-Contoso/Documents/Copilot"
+        )
+        + f"[synced] {cs}/OneDrive-Contoso/Q3 Launch\n"
+    )
+    said = f"prompt v{COMPAT}, GitHub Copilot CLI: git pull failed in Documents beside Q3 Launch"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    outcome = next(ln for ln in _summary(text) if ln.startswith("- outcome: "))
+    assert outcome.endswith(" · agent: GitHub Copilot CLI"), outcome
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
+    assert fields["agent"] == ["GitHub Copilot CLI"]
+    assert "git pull failed in Documents beside <folder-1> |" in text, text
+    # the agentsync report reads the same agent from the same line
+    attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
+    assert attempt is not None and attempt.said("Agent") == "GitHub Copilot CLI"
+    # a configured folder named so is still redacted, as in the Python report
+    (cs / "OneDrive-Contoso" / "Copilot").mkdir()
+    _write_config(env, local_source_table("copilot", cs / "OneDrive-Contoso" / "Copilot"))
+    assert install_sh(env, "--report-only").returncode == 0
+    outcome = next(ln for ln in _summary(report_path(env).read_text()) if ln.startswith("- outcome: "))
+    assert re.search(r" · agent: GitHub <folder-\d+> CLI$", outcome), outcome
+
+
+def test_the_shell_report_gives_each_folder_one_number(env: dict[str, str]) -> None:
+    """B13 round 9 K4: every place a folder was found took a new number, so six names read as <folder-1> to
+    <folder-10>. One number per folder now, its other spellings (setup_report._norm) sharing it, each still
+    redacted, and a configured folder's slug id still reads as its folder's <folder-N>."""
+    home = Path(env["HOME"])
+    cs = home / "Library" / "CloudStorage"
+    for name in ("Alpha", "Beta"):
+        (cs / "OneDrive-Contoso" / name).mkdir(parents=True)
+    _write_config(
+        env,
+        local_source_table("alpha", cs / "OneDrive-Contoso" / "Alpha"),
+        local_source_table("beta", cs / "OneDrive-Contoso" / "Beta"),
+    )
+    out = home / "agent-context" / "setup" / "install.out"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        _listed(
+            cs,
+            "OneDrive-Contoso/Alpha",
+            "OneDrive-Contoso/Alpha/Q3 Plans",
+            "OneDrive-Contoso/Beta",
+            "OneDrive-Contoso/Beta/Drafts",
+            "OneDrive-Contoso/Gamma",
+            "OneDrive-Contoso/Delta",
+            "OneDrive-Fabrikam/Q3-Plans",
+        )
+    )
+    said = "saw Alpha, Q3 Plans, Beta, Drafts, Gamma, Delta and Q3-Plans; alpha is the id"
+    assert install_sh(env, "--log", "1", "deviation", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    line = next(ln for ln in text.splitlines() if "| deviation |" in ln)
+    m = re.search(
+        r"saw (<folder-\d>), (<folder-\d>), (<folder-\d>), (<folder-\d>), (<folder-\d>), (<folder-\d>) "
+        r"and (<folder-\d>); (<folder-\d>) is the id",
+        line,
+    )
+    assert m, line
+    got = m.groups()
+    assert sorted(set(got)) == [f"<folder-{i}>" for i in range(1, 7)], got
+    assert got[6] == got[1], "another spelling of Q3 Plans shares its number"
+    assert got[7] == got[0], "the configured folder's id reads as its folder"
+    assert not re.search(r"<folder-([7-9]|\d\d)>", text)
 
 
 def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
