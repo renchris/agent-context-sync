@@ -5842,10 +5842,13 @@ _PATH_IN_LOG_RE = re.compile(
     re.IGNORECASE,
 )
 _LOG_HEAD_RE = re.compile(
-    r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} (?:WARNING|ERROR|CRITICAL) agentsync(?:\.\w+)+"
+    r"\d{4}-\d\d-\d\d(?: \d\d:\d\d:\d\d,\d{3}|T\d\d:\d\d:\d\d\.\d{3}Z)"
+    r" (?:WARNING|ERROR|CRITICAL) agentsync(?:\.\w+)+"
 )
 """A segment that is the head of one of agentsync's own log lines, whole: time, level, logger. A logger is
-named after its module, and ``agentsync.convert.pdf`` is not a document."""
+named after its module, and ``agentsync.convert.pdf`` is not a document. The time is the local
+``2026-10-05 09:00:00,000`` of a log written before B13 round 8 J26 or the UTC ``2026-10-05T15:00:00.000Z``
+agentsync writes since."""
 _PY_LOG_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL) agentsync\.")
 """One of agentsync's own log lines (``<time> WARNING agentsync.<module>: ...``). install.sh's and git's
 ``error:`` and ``fatal:`` lines are not: they keep their path or URL in the install.out tail."""

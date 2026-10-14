@@ -37,6 +37,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -2109,7 +2110,15 @@ def _setup_logging(verbosity: int) -> None:
         if getattr(h, "_agentsync", False):
             root.removeHandler(h)
     handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    # UTC with a Z, as the launcher's lines beside these in the err.log and the times inside the messages are
+    # (a lock holder's "since"): local time with no zone showed two clocks on one line (B13 round 8 J26). No
+    # datefmt: with one, formatTime drops the milliseconds. The setup report writes older local lines this
+    # same way (setup_report._utc_log_times).
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    fmt.converter = time.gmtime
+    fmt.default_time_format = "%Y-%m-%dT%H:%M:%S"
+    fmt.default_msec_format = "%s.%03dZ"
+    handler.setFormatter(fmt)
     handler._agentsync = True  # type: ignore[attr-defined]
     root.addHandler(handler)
     root.setLevel(level)

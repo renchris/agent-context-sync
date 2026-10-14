@@ -179,9 +179,10 @@ Nothing is sent automatically. Neither the prompt nor agentsync uploads, emails 
 Read in the report's own order: the Summary (computed outcome and run type, prompt version, agent, times), the
 friction lines, then the machine sections that explain them (Installer timings for slow or failed steps, Doctor
 `[FAIL]`/`[warn]`, Background runs' last exit code and `TCC_*` lines, Recent errors). Times the report or agentsync
-writes are UTC (`...Z`). In Recent errors and the install.out tail, a log line's time was local in the log file and
-is shown converted to UTC with the Mac's zone (also the time install.sh quotes in `warning: agentsync setup-report
-failed (...)`), so search the Mac's own log by its text, not its time. A friction line is referred to
+writes are UTC (`...Z`). agentsync writes its log lines' times in UTC too since 2026-10-14; in an older log, the
+time was local in the log file, and Recent errors and the install.out tail show it converted to UTC with the Mac's
+zone (also the time install.sh quotes in `warning: agentsync setup-report failed (...)`), so search such a log by
+its text, not its time. A friction line is referred to
 as `F<n>`, where n is its line number in the embedded friction.md (the Agent friction log section gives each
 attempt's line range).
 

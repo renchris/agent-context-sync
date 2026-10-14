@@ -425,13 +425,19 @@ def test_the_lock_wait_warning_keeps_a_fixed_stage_word_and_redacts_a_source_sta
     assert setup_report._scrub_item_paths(named) == f"{LOG_HEAD}cycle: src-x: folder '<path>' is empty"
 
 
+UTC_LOG_HEAD = "com.agentsync.poll.err.log: 2026-10-05T15:00:00.000Z WARNING agentsync."
+"""A log line's head as agentsync writes it since B13 round 8 J26: UTC with a Z."""
+
+
+@pytest.mark.parametrize("head", [LOG_HEAD, UTC_LOG_HEAD])
 @pytest.mark.parametrize("module", ["pdf", "xlsx", "pptx", "eml", "markdown", "image"])
-def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str) -> None:
+def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str, head: str) -> None:
     """A logger is named after its module: ``agentsync.convert.pdf`` is not a document, and a line that
-    lost its first segment to ``<path>`` lost its time and its level with it."""
-    line = f"{LOG_HEAD}convert.{module}: Contoso Plan.pdf: comments not read on 1 page(s), first on page 2"
+    lost its first segment to ``<path>`` lost its time and its level with it. That holds for a line with
+    the UTC time agentsync writes since B13 round 8 J26 as for an older log's local time."""
+    line = f"{head}convert.{module}: Contoso Plan.pdf: comments not read on 1 page(s), first on page 2"
     assert setup_report._scrub_item_paths(line) == (
-        f"{LOG_HEAD}convert.{module}: <path>: comments not read on 1 page(s), first on page 2"
+        f"{head}convert.{module}: <path>: comments not read on 1 page(s), first on page 2"
     )
     # Only a segment that is a whole log-line head is left alone: a file named like a logger is a file.
     for posing in (

@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
@@ -32,6 +33,7 @@ from agentsync import (
     net,
     paths,
     policy,
+    setup_report,
     skill,
 )
 from agentsync import cycle as cycle_mod
@@ -945,6 +947,32 @@ def test_lock_held_warning_names_the_holder_and_repeats_verbatim(
     assert cli._lock_holder("poll") == "another sync (its pass: poll)"
     for other in (EMPTY_BODY_HOLDER, "an unidentified holder (unparseable lock body)", "governance"):
         assert cli._lock_holder(other) == other
+
+
+def test_log_lines_carry_their_time_in_utc(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 8 J26: the stderr handler (the background job's err.log, and the terminal) wrote local time
+    with no zone, while the lock holder's "since" inside the same line, and the launcher's lines beside it,
+    are UTC: one line showed two clocks, a day apart. It writes UTC with a Z, in the shape the setup report
+    already gave older lines, with the milliseconds kept."""
+    monkeypatch.setenv("TZ", "America/Chicago")
+    time.tzset()
+    try:
+        before = datetime.now(UTC).replace(microsecond=0)
+        cli._setup_logging(0)
+        logging.getLogger("agentsync.cycle").warning("another sync is running (lock held: pid 4242 (poll))")
+        after = datetime.now(UTC)
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
+    (line,) = [ln for ln in capsys.readouterr().err.splitlines() if "another sync is running" in ln]
+    m = re.fullmatch(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\.\d{3}Z WARNING agentsync\.cycle: another .*", line)
+    assert m is not None, line
+    assert before <= datetime.fromisoformat(m[1]).replace(tzinfo=UTC) <= after, (line, before, after)
+    # the report's own reader takes the line as it is: already UTC, nothing to convert
+    assert setup_report._utc_log_times([line]) == [line]
+    assert setup_report._LOG_TIME_RE.fullmatch(line) is not None
 
 
 def test_sync_without_mode_waits_for_a_running_sync(

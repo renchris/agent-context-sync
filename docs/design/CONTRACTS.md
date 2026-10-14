@@ -11789,6 +11789,9 @@ too, by one regex anchored to its exact prefix; it does not steer the fall-back 
 shows no job log and no install.out tail, so it has no twin. `docs/deploy/setup-feedback.md` §4 says which times
 were converted. Tests: `test_log_times_in_the_report_are_utc`, and the merge test under the `mac_zone` fixture
 (America/Denver: the CI runners are in UTC, where the conversion changes nothing).
+Amended 2026-10-14, §16.77 J26: `_setup_logging` now writes the leading time as UTC, `YYYY-MM-DDTHH:MM:SS.mmmZ`,
+the form `_utc_log_times` writes, which leaves such a line unchanged; `_utc_log_times` stays for logs written before.
+`_LOG_HEAD_RE` takes both forms.
 
 **`other` is counted by shape** (B13 N35, field triage 2026-10-08 D9.f; amends §16.30 "Quarantine names the file
 types no converter reads", whose "Not done: fixed shape words" this does). Three rounds read `other 2 (1 distinct)`
@@ -16633,6 +16636,21 @@ line. J25's verifier kept the `skipped: lock held (` prefix; J11's form is built
 and the `EXIT_LOCK_HELD` comment already do. Tests: `tests/test_cli.py`
 (`test_lock_held_warning_names_the_holder_and_repeats_verbatim`,
 `test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`).
+
+**J26: agentsync's log lines carry their time in UTC (`agentsync.cli`, `agentsync.setup_report`).** The stderr
+handler, which is the terminal and the background job's launchd err.log, wrote `logging`'s default local time
+with no zone (`2026-10-13 21:14:25,778`), while the lock holder's `since` inside the same line and the launcher's
+lines beside it are UTC: one line showed two clocks a day apart, and the terminal and the setup report showed
+different times for it. `_setup_logging`'s formatter now sets `converter = time.gmtime`, `default_time_format =
+"%Y-%m-%dT%H:%M:%S"` and `default_msec_format = "%s.%03dZ"` (no `datefmt`, which would drop the milliseconds):
+`2026-10-14T02:14:25.778Z WARNING ...`, byte for byte what `_utc_log_times` writes, so the report shows the same
+time as the terminal. The timestamp stays: that handler is the background job's only log, and Recent errors
+merges only lines with a leading time. The verifier's survey missed one reader: the report's `_LOG_HEAD_RE`, which
+keeps a log line's head whole so a logger named like a document (`agentsync.convert.pdf`) is not scrubbed as
+`<path>`, matched only the local form; it now takes both. `docs/deploy/setup-feedback.md` §4 says which logs
+carry local times. Tests: `tests/test_cli.py` (`test_log_lines_carry_their_time_in_utc`, under
+`TZ=America/Chicago`), `tests/test_setup_report.py` (`test_a_logger_named_like_a_document_keeps_its_time_and_level`,
+both heads).
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 
