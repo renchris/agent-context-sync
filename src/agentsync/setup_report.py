@@ -1741,14 +1741,14 @@ class Outcome:
     step: int | None  # the failing prompt step, in the attempt's own prompt's numbering
     why: tuple[str, ...]
     version: int = PROMPT_VERSION  # the prompt whose step numbers ``step`` uses (its layout's, or its own)
-    note: str = ""  # what a "stopped" attempt was doing (B13 round 6 G23)
+    note: str = ""  # what a "stopped" attempt was doing (B13 round 6 G23), or what a failed one may have been
 
     @property
     def text(self) -> str:
-        """ "fully one command", "worked with help", "failed at step 2", "stopped at step 1 (<note>)",
-        "failed" or "unknown"."""
+        """ "fully one command", "worked with help", "failed at step 2" (with its note, if any, in a bracket:
+        B13 round 9 K11), "stopped at step 1 (<note>)", "failed" or "unknown"."""
         if self.kind == "failed" and self.step is not None:
-            return f"failed at step {self.step}"
+            return f"failed at step {self.step}" + (f" ({self.note})" if self.note else "")
         if self.kind == "stopped":
             return f"stopped at step {self.step} ({self.note})"
         return self.kind
@@ -6460,26 +6460,29 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
     )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
-        return Outcome("stopped", 1, outcome.why, outcome.version, rerun)
+        kind, note = rerun
+        return Outcome(kind, 1, outcome.why, outcome.version, note)
     return outcome
 
 
 _RERUN_WINDOW = timedelta(seconds=120)
 """How soon after the installer stopped a ``--log-start`` value the same session's corrected command starts
-the next attempt (:func:`_rerun_note`): seconds in the field, and far under :data:`_NEW_SESSION_GAP`, which
-a prompt copied again and pasted into a new session does not beat."""
+the next attempt (:func:`_rerun_note`): seconds in the field (one measured rerun took 1 s), under
+:data:`_NEW_SESSION_GAP`. A prompt copied again and pasted into a new session can beat it too (a rehearsal
+did in 23 s), so it decides only a stop no fresh copy explains."""
 
 
-def _rerun_note(fr: Friction, index: int) -> str | None:
-    """What attempt ``index`` was when the installer stopped its ``--log-start`` value and the same session
-    ran step 1's command again with the installer's own version, as the installer's message tells a current
-    copy whose agent changed the value to (B13 round 8 J9): "failed at step 1" blamed the checkout or the
-    copy for a slip the next command put right. None unless all of these hold: the attempt's step 1 error is
-    the installer's stop (:data:`_PROMPT_STOP_RE`); the next attempt's prompt is the version of the installer
-    that stopped it (its own, never this build's); both name the same agent; and the next one starts within
-    :data:`_RERUN_WINDOW` of the stop. A copy fetched again from the README and pasted into a new session,
-    the remedy for a stale copy, is a real failure and stays one: it comes later. Versions and seconds only
-    are shown."""
+def _rerun_note(fr: Friction, index: int) -> tuple[str, str] | None:
+    """The outcome kind and note of attempt ``index`` when the installer stopped its ``--log-start`` value
+    and the next attempt, within :data:`_RERUN_WINDOW` and by the same agent, named the stopping installer's
+    own version (never this build's), as the installer's message tells an agent that changed the value
+    (B13 round 8 J9); None otherwise, or when the attempt's step 1 error is not the installer's stop
+    (:data:`_PROMPT_STOP_RE`). Its reason decides (B13 round 9 K11): a copy newer than the installer
+    ("this checkout is older than the prompt") has no stale-copy reading, so it is ``stopped`` with a rerun
+    note, where "failed at step 1" blamed the checkout or the copy for a slip the next command put right. An
+    older copy ("the pasted copy is not the current one") reads both ways: an agent's corrected value, or the
+    person's fresh copy from the README pasted into a new session, which the window cannot tell apart. It
+    stays ``failed`` and its note names both readings. Versions and seconds only are shown."""
     if index + 1 >= len(fr.attempts):
         return None
     att, after = fr.attempts[index], fr.attempts[index + 1]
@@ -6493,11 +6496,10 @@ def _rerun_note(fr: Friction, index: int) -> str | None:
         return None
     if not timedelta(0) <= gap <= _RERUN_WINDOW:
         return None
-    older = " or older" if re.fullmatch(r"v\d{1,3} or older", att.header.get("Prompt", "")) else ""
-    return (
-        f"rerun: --log-start said {said}{older}; the next attempt, {_secs(gap.total_seconds())} later, "
-        f"said v{after.version}"
-    )
+    later = f"the next attempt, {_secs(gap.total_seconds())} later, said v{after.version}"
+    if stop.group(2).startswith("the pasted copy"):
+        return "failed", f"a changed --log-start value, or a fresh copy: {later}"
+    return "stopped", f"rerun: --log-start said {said}; {later}"  # a "vN or older" copy is an older one
 
 
 def _kind_counts(attempt: Attempt) -> str:

@@ -16679,6 +16679,8 @@ step 1 error is that stop reads `stopped at step 1 (rerun: --log-start said v61;
 v16)` when the next attempt names the stopping installer's version (not this build's), the same agent, and starts
 within 120 s. A copy fetched again into a new session stays `failed at step 1`. A rerun is never the latest attempt,
 so no Summary copy note needed suppressing. Test: `test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure`.
+Amended 2026-10-14, §16.80 K11: only a copy newer than the installer reads as a rerun; an older copy's stop stays
+`failed at step 1`, with a note naming both readings inside the window.
 
 **The prompt line has one bracket** (J23, J40; dated line at §16.69 H23). `_prompt_line_note` joins the stated
 source, the installer's stop note and the newer-than-this-build note with "; " in one bracket; no cause is added.
@@ -17249,6 +17251,16 @@ other list row starts with. install.sh's warning has its own present-tense words
 unchanged. Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
 `test_the_summary_says_why_a_folder_list_could_not_read_the_config`, and the `unread_why` read-back in
 `tests/test_install_oneshot.py`.
+
+**An older copy's stop followed within two minutes stays a failure** (K11; dated line at §16.74 J9). A rehearsal
+copied a fresh prompt into a new session 23 s after the installer stopped a stale copy, and the report called the
+stale attempt a rerun. `_rerun_note` reads the stop's reason: `this checkout is older than the prompt` (a copy newer
+than the installer, which a fresh copy does not explain) keeps J9's `stopped at step 1 (rerun: ...)`; `the pasted
+copy is not the current one` (an older copy, `vN or older` too) stays `failed at step 1`, in the failed list, and
+inside the 120 s window reads `failed at step 1 (a changed --log-start value, or a fresh copy: the next attempt,
+23s later, said v17)`. The finder's 15 s window was not built: no gap tells an agent's slow rerun from a person's
+quick copy, and it would bring back J9's false failure for a newer copy. Test:
+`test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure` (1 s, 23 s and 2m01s rows).
 
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.

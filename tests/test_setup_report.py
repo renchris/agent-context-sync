@@ -3496,7 +3496,9 @@ def test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failur
     which blames the checkout or the copy. It reads "stopped at step 1 (rerun: ...)" when the next attempt
     names the stopping installer's own version and the same agent within two minutes. A copy fetched again
     and pasted into a new session (the remedy for a stale copy) stays a failure, as does a next attempt of
-    another version or another agent."""
+    another version or another agent. B13 round 9 K11: a stale copy fetched again took 23 s, inside the
+    window, so the stop of an older copy, which reads both ways, stays a failure whose note names both
+    readings; only a copy newer than the installer, which no fresh copy explains, is a rerun."""
     mine = setup_report.PROMPT_VERSION
     (fake_mac["setup"] / "install.log").unlink()
     stop = (
@@ -3510,6 +3512,10 @@ def test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failur
     older = "the pasted copy is not the current one"
     again = "Attempt: {at}\nPrompt: v{version}\nAgent: {agent}\n"
     rerun = "stopped at step 1 (rerun: --log-start said {said}; the next attempt, {gap} later, said v{to})"
+    both = (
+        "failed at step 1 (a changed --log-start value, or a fresh copy: the next attempt, {gap} later, said "
+        "v{to})"
+    )
     for said, why, at, version, agent, earlier in (
         (
             "v61",
@@ -3533,8 +3539,12 @@ def test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failur
             "2026-09-29T09:58:18Z",
             mine,
             "Contoso Bot",
-            rerun.format(said="v7 or older", gap="18s", to=mine),
+            both.format(gap="18s", to=mine),
         ),
+        # an older copy, then the installer's version 1 s or 23 s later: a corrected value or a fresh copy
+        (f"v{mine - 1}", older, "2026-09-29T09:58:01Z", mine, "Contoso Bot", both.format(gap="1s", to=mine)),
+        (f"v{mine - 1}", older, "2026-09-29T09:58:23Z", mine, "Contoso Bot", both.format(gap="23s", to=mine)),
+        (f"v{mine - 1}", older, "2026-09-29T10:00:01Z", mine, "Contoso Bot", "failed at step 1"),
         # copied again from the README and pasted into a new session: a real failure
         (f"v{mine - 1}", older, "2026-09-29T10:13:00Z", mine, "Contoso Bot", "failed at step 1"),
         ("v61", newer, "2026-09-29T10:00:01Z", mine, "Contoso Bot", "failed at step 1"),
