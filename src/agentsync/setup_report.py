@@ -870,6 +870,9 @@ class Redactor:
         self._used: set[str] = set()
         self._regex: re.Pattern[str] | None = None
         self._counting = True
+        # the CloudStorage listing for redaction did not finish and no list of step 1 named the folders in its
+        # place, so a folder name may show in clear (B13 round 8 J69): the report is for a private copy only
+        self.listing_unread = False
 
     @property
     def total(self) -> int:
@@ -910,6 +913,13 @@ class Redactor:
         (``the <folder-1> of this report`` is "status"), so the report is not for a public issue (B13 round 5
         F92). An organisation matched only in a folder or domain name (F42) never is."""
         return bool(self._word_named & self._used)
+
+    @property
+    def private_only(self) -> bool:
+        """Whether the report is for a private copy only: :attr:`word_named_shown`, or a CloudStorage
+        listing for redaction that did not finish with no list of step 1 in its place
+        (:attr:`listing_unread`). Such a report ends with no public issue link (B13 round 7 H75)."""
+        return self.word_named_shown or self.listing_unread
 
     def _placeholder(self, kind: str) -> str:
         if kind == "home":
@@ -2172,6 +2182,37 @@ def cloud_storage_root() -> Path:
     return Path.home() / "Library" / "CloudStorage"
 
 
+_LIST_RUN_RE = re.compile(r"^# run=\S+ \S+ install\.sh(?: .*)? --list-folders(?: |$)")
+"""install.out's header of a ``--list-folders`` run (``start_capture``): the folder list follows it."""
+
+
+def listed_folder_names(text: str, home: str) -> tuple[bool, list[tuple[str, int, str]]]:
+    """(whether install.out holds a ``--list-folders`` run that printed a folder, and (provider folder, depth,
+    name) of every folder those runs printed), from install.out's ``text``: the folders the setup prompt's
+    step 1 showed the agent, read from a file, with no folder inside a File Provider domain touched. A printed
+    path is ``<home>/Library/CloudStorage/<provider>/<name>[/<name>]``, with ``[synced] `` before it for a
+    folder the config syncs; depth 2 and 3 only, as :func:`cloud_folder_names` gives them (B13 round 8
+    J69)."""
+    out: list[tuple[str, int, str]] = []
+    heads = (f"{home.rstrip('/')}/Library/CloudStorage/", "~/Library/CloudStorage/")
+    listing = False
+    for line in text.splitlines():
+        if line.startswith("# run="):
+            listing = _LIST_RUN_RE.match(line) is not None
+            continue
+        path = line.removeprefix("[synced] ") if listing else ""
+        head = next((h for h in heads if path.startswith(h)), None)
+        if head is None:
+            continue
+        parts = [p for p in path[len(head) :].split("/") if p]
+        if 2 <= len(parts) <= 3 and not any(p.startswith(".") for p in parts):
+            out.extend((parts[0], depth, parts[depth - 1]) for depth in range(2, len(parts) + 1))
+        if len(out) >= _LISTING_MAX:
+            break
+    # a list run that printed no folder (cut short, every provider denied) is no list in the listing's place
+    return bool(out), out[:_LISTING_MAX]
+
+
 def cloud_folder_names(root: Path | None = None, limit: int = _LISTING_MAX) -> list[tuple[str, int, str]]:
     """(provider folder, depth, name) for every directory under ``root`` (default ~/Library/CloudStorage) at
     depth 2 and 3, hidden ones skipped and symlinks not followed: what the setup prompt's
@@ -2837,7 +2878,19 @@ def _build_redactor(r: _Run) -> Redactor:
     configured += sum(1 for path in project_paths if _agent_words(path.name))
     agent_listed = sum(1 for _provider, _depth, name in listed if _agent_words(name))
     r.agent_named = (agent_listed if listing_ok else None, configured)
-    for provider, depth, name in listed:
+    # Then the folders step 1's lists printed into install.out, the ones the agent saw and may quote: after
+    # the listing, so a listing that finished keeps its numbers, and in its place when it did not. A listing
+    # that did not finish with no list in install.out makes the report private only (B13 round 8 J69).
+    printed: list[tuple[str, int, str]] = []
+    has_list = False
+    with contextlib.suppress(Exception):
+        out_path = install_out_path(r.install_log)
+        if out_path.is_file() and not out_path.is_symlink():
+            has_list, printed = listed_folder_names(
+                out_path.read_text(encoding="utf-8", errors="replace"), home_path()
+            )
+    red.listing_unread = not listing_ok and not has_list
+    for provider, depth, name in [*listed, *printed]:
         if name in _GENERIC_FOLDERS or _agent_words(name):
             continue
         shared = provider.startswith("OneDrive-SharedLibraries-")
@@ -4941,8 +4994,9 @@ def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     # before any file count: Quarantine by reason reads it too
     if state == "ready" and m.labels_active:  # for a stub whose page cannot be read (B13 round 8 J52)
         m.images_by_probe = True
-    if r.config is not None:
-        m.read_image_pages(r.config.docs_repo)
+    if r.config is not None:  # best effort: a page not read goes by the probe (no manifest yet, time up)
+        with contextlib.suppress(Exception):
+            m.read_image_pages(r.config.docs_repo)
     lines = [
         *helper,
         *_lines(lambda: _ocr_files(r, m, labels, state, label_rule)),
@@ -7366,9 +7420,16 @@ def _redaction_section(
             "Private only: one of your folder, library or organisation names is also a word this report "
             "prints, so where its placeholder stands in the report's own text it can be read back."
         ]
+    if red.listing_unread:  # B13 round 8 J69
+        word.append(
+            "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and "
+            "install.out holds no folder list of step 1, so a folder name may show in clear."
+        )
+    if red.private_only:
+        why = "it would show that name" if red.word_named_shown else "a name may be in clear"
         send = (  # and no link ends the report (B13 round 7 H75), as the shell report has none
             "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a "
-            "public issue: it would show that name. Nothing is sent automatically."
+            f"public issue: {why}. Nothing is sent automatically."
         )
     return [
         "",
@@ -7626,7 +7687,7 @@ def build_report(
         link = ISSUE_URL
     hits = residue_by_section(main, ignore=r.provider_heads)
     tail = _redaction_section(red, hits, issue_link_fields(link))
-    if not red.word_named_shown:  # a private copy ends with no public issue link (B13 round 7 H75)
+    if not red.private_only:  # a private copy ends with no public issue link (B13 round 7 H75)
         tail += ["", link]
     return main + "\n" + "\n".join(tail) + "\n", red
 

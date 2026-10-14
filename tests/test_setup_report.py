@@ -8893,6 +8893,67 @@ def test_an_organisation_named_like_agentsyncs_paths_leaves_them_whole(
     assert "Private only:" in text
 
 
+def test_a_listing_that_did_not_finish_takes_step_1s_list_or_makes_the_report_private(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 8 J69: when the CloudStorage listing for redaction raised (a stall past 3 s, a pending
+    privacy prompt), an unconfigured folder that step 1's list showed and the agent quoted printed in clear,
+    and the report stayed public. The folders install.out's --list-folders runs printed are registered too,
+    with no folder inside a domain touched; with no such list the report is private only and ends with no
+    link. A listing that finished with nothing in it changes nothing."""
+    cs = fake_mac["home"] / "Library" / "CloudStorage"
+    (cs / f"OneDrive-{ORG}" / "Northwind Merger").mkdir()
+    write_friction(
+        fake_mac,
+        V11_HAPPY.replace(
+            "2026-09-29T10:01:10Z | end",
+            "2026-09-29T10:00:00Z | step 1 | deviation | the person picked Northwind Merger later | -\n"
+            "2026-09-29T10:01:10Z | end",
+        ),
+    )
+    out = fake_mac["setup"] / "install.out"
+    listed = (
+        "# run=20260929T095900Z-4141 2026-09-29T09:59:00Z install.sh --list-folders\n"
+        f"[synced] {cs}/OneDrive-{ORG}/Q3 Launch\n{cs}/OneDrive-{ORG}/Northwind Merger\n"
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+    )
+
+    def stalled(*_args: object, **_kwargs: object) -> list[tuple[str, int, str]]:
+        raise TimeoutError("did not finish within 3.0s")
+
+    def build() -> str:
+        return setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())[0]
+
+    found = setup_report.listed_folder_names(listed, str(fake_mac["home"]))
+    assert found == (True, [(f"OneDrive-{ORG}", 2, "Q3 Launch"), (f"OneDrive-{ORG}", 2, "Northwind Merger")])
+    assert setup_report.listed_folder_names(listed.replace(" --list-folders", ""), "/x") == (False, [])
+    # a list run that printed no folder is no list (a reviewer's finding)
+    assert setup_report.listed_folder_names(listed.split("[synced]", maxsplit=1)[0], "/x") == (False, [])
+    monkeypatch.setattr(setup_report, "cloud_folder_names", stalled)
+    out.write_text(listed, encoding="utf-8")
+    text = build()
+    assert "Northwind" not in text, [ln for ln in text.splitlines() if "Northwind" in ln]
+    assert "Private only:" not in text and text.rstrip("\n").splitlines()[-1].startswith(
+        setup_report.ISSUE_URL
+    )
+    assert "- redaction: could not list ~/Library/CloudStorage at depth 2-3 for redaction: " in text
+    # no list of step 1 to take the listing's place: private only, and no link
+    out.write_text(listed.replace(" --list-folders", " --source-local x"), encoding="utf-8")
+    text = build()
+    assert (
+        "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and install.out "
+        "holds no folder list of step 1, so a folder name may show in clear." in text
+    ), text
+    assert "never as a public issue: a name may be in clear." in text
+    assert not text.rstrip("\n").splitlines()[-1].startswith(setup_report.ISSUE_URL)
+    # a listing that finished with no folder is no failure
+    monkeypatch.setattr(setup_report, "cloud_folder_names", lambda *_a, **_k: [])
+    text = build()
+    assert "Private only:" not in text and text.rstrip("\n").splitlines()[-1].startswith(
+        setup_report.ISSUE_URL
+    )
+
+
 def test_a_configured_generic_folder_leaves_the_report_public(fake_mac: dict[str, Path]) -> None:
     """B13 round 6 G48: a configured Documents, Desktop or Pictures folder is a report word, so it made the
     report private only, while the shell report kept the public option; every OneDrive has those folders, so

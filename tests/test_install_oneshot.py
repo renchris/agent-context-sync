@@ -6408,6 +6408,37 @@ def test_the_two_reports_number_each_proxy_value_alike(
     assert min(int(n[7:-1]) for n in numbers(shell)[-2:]) > shared, "numbered after every shared value"
 
 
+def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[str, str]) -> None:
+    """B13 round 8 J69, the shell twin: the shell report never lists CloudStorage, so an unconfigured folder
+    that step 1's list showed and the agent quoted printed in clear beside the configured one's <folder-N>.
+    It registers the folders install.out's --list-folders runs printed, read from the file."""
+    home = Path(env["HOME"])
+    cs = home / "Library" / "CloudStorage"
+    (cs / "OneDrive-Contoso" / "Q3 Launch").mkdir(parents=True)
+    (cs / "OneDrive-Contoso" / "Northwind Merger").mkdir()
+    _write_config(env, local_source_table("q3-launch", cs / "OneDrive-Contoso" / "Q3 Launch"))
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    (setup / "friction.md").write_text(
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v16\n"
+        "2026-10-10T00:00:01Z | step 1 | deviation | the person picked Q3 Launch, not Northwind Merger | -\n"
+    )
+    out = setup / "install.out"
+    out.write_text(
+        "# run=20261010T000000Z-1 2026-10-10T00:00:00Z install.sh --list-folders\n"
+        f"{cs}/OneDrive-Contoso/Northwind Merger\n[synced] {cs}/OneDrive-Contoso/Q3 Launch\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert "Northwind" not in text, [ln for ln in text.splitlines() if "Northwind" in ln]
+    assert re.search(r"picked <folder-\d+>, not <folder-\d+> \|", text), text
+    # a run that is not a list names no folder of its own
+    out.write_text(out.read_text().replace(" --list-folders", " --source-local x"))
+    assert install_sh(env, "--report-only").returncode == 0
+    assert "not Northwind Merger" in report_path(env).read_text(), "only a list run's paths are read"
+
+
 def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
     env: dict[str, str], tmp_path: Path
 ) -> None:

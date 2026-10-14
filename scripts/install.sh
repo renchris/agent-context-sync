@@ -1209,6 +1209,15 @@ redaction_pairs() {
 		done < <(LC_ALL=C sed -n 's/.* start install\.sh .* args=\(.*--source-local.*\)$/\1/p' "$SETUP_LOG" 2>/dev/null |
 			LC_ALL=C grep -oE -e "--source-local \\\$'([^'\\\\]|\\\\.)*'" | LC_ALL=C sed "s/\\\\'/'/g" | LC_ALL=C sort -u)
 	fi
+	# The folders step 1's lists printed into install.out (the agent saw them and may quote one), as the Python
+	# report registers them: read from the file, never by listing CloudStorage (B13 round 8 J69). A path is
+	# "$cs/<provider>/<name>[/<name>]", with "[synced] " before a folder the config syncs.
+	if [ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ]; then
+		while IFS= read -r line; do
+			case "$line" in "$cs"/*/*) known+=("$line") ;; esac
+		done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
+			list { sub(/^\[synced\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
+	fi
 	emit_pair() { # VALUE PLACEHOLDER [w] [utf8]: the pair and its printf %q form; with utf8, %q in UTF-8 too
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
 		local q u
