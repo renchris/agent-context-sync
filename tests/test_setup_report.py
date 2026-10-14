@@ -3080,6 +3080,26 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused "
             "(install.log; the unreadable/failed/refused split: install.out)",
         ),
+        (  # B13 round 8 J39: the files refused without a read, after the split as on the CLI's line
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
+            "refused); 5 refused without a read (no converter for the type, or a rule that needs no bytes)",
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused; 5 "
+            "refused without a read (install.log; the unreadable/failed/refused split and the "
+            "refused-without-a-read count: install.out)",
+        ),
+        (  # the count alone, with no split
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only; 5 refused without a read (no converter for the "
+            "type, or a rule that needs no bytes)",
+            "converted 4, deferred 0 online-only; 5 refused without a read (install.log; the "
+            "refused-without-a-read count: install.out)",
+        ),
+        (  # another sync's line (its converted count differs) is not this one's
+            "note=converted-3-deferred-0",
+            "first sync: converted 4, deferred 0 online-only; 5 refused without a read (no converter)",
+            "converted 3, deferred 0 online-only (install.log)",
+        ),
         (  # a first-read count of another sync (its read-again count differs) is not this one's
             "note=converted-1-deferred-0-reread-3",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
@@ -6545,8 +6565,10 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     )
     assert (
         "| files converted | of them failed | of them unreadable (stub, kept, not retried) | the same file "
-        "from the same bytes as an earlier run | of those, as the run just before |\n" in part
-    )
+        "from the same bytes and converter options as an earlier run | of those, as the run just before |\n"
+        in part
+    ), "B13 round 8 J30: a label-rule re-screen changes the options, so it is no 'same bytes' file"
+    assert "re-screened for a rule change" not in part, "no run re-screened: no note"
     assert [ln for ln in part.splitlines() if re.match(r"\| \d", ln)] == [
         "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 6 | 1 | 0 | 6 | 6 |",
         "| 4 | poll | ok | 2026-10-06T10:00:00Z | 6 | 0 | 2 | 6 | 6 |",
@@ -6572,6 +6594,18 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     seed.close()
     plain = status_parts(fake_mac)[1]["Repeat conversions"]
     assert note not in plain and unreadable not in plain, "no run shown has a failure or an unreadable file"
+    # a run that re-screened files for a label-rule change: its 'same bytes' cell reads 0, and a note says why
+    seed = Seed(fake_mac["config"])
+    five = {"converted": 14, "rescreened": 11, "rescreened_unchanged": 10}
+    seed.m._db.execute("UPDATE runs SET counts_json = ? WHERE run_id = 5", (json.dumps(five),))
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    assert "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 14 | 0 | 0 | 0 | 0 |" in part, part
+    assert (
+        "- re-screened for a rule change: run 5, 11 file(s) (10 came out the same). A label rule is one of "
+        "the converter's options, so a file re-screened for a label-rule change is a new conversion and is "
+        "not in the 'same bytes' column; one re-screened for a secret rule is\n" in part + "\n"
+    ), part
 
 
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(

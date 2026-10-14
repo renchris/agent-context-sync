@@ -709,6 +709,9 @@ _FIRST_READ_RE = re.compile(r"\b(\d+) of them read for the first time, also coun
 # and since B13 round 6 G35 ", R refused" after it (a sync line that prints it is named "the
 # unreadable/failed/refused split" in its source tag since round 7 H46)
 _SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b(?:, (\d+) refused\b)?")
+# and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
+# J39); "without a read" is required, so the split's "R refused)" never matches
+_UNREAD_RE = re.compile(r"\b(\d+) refused without a read\b")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -2296,6 +2299,8 @@ class _Facts:
     first_sync_unreadable: tuple[int, int, int, int] | None = None
     # its "F of them read for the first time, also counted above" as (N, R, F); None: the line has none
     first_sync_first_read: tuple[int, int, int] | None = None
+    # its "Q refused without a read" as (N, Q); None: the line has none
+    first_sync_refused_unread: tuple[int, int] | None = None
     # the run whose output holds that line, the id of the last "# run=<id> " header above it: "" when
     # install.out has no header at all (an older install.sh), None when the line is above the first header
     # read (the tail starts inside an earlier run)
@@ -3438,6 +3443,9 @@ def _installer_output(r: _Run) -> list[str]:
         if split is not None:
             u, f, refused = (int(g or 0) for g in split.groups())
             r.facts.first_sync_unreadable = (converted, u, f, refused)
+        unread = _UNREAD_RE.search(last.group("tail"))
+        if unread is not None:
+            r.facts.first_sync_refused_unread = (converted, int(unread.group(1)))
         read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
         if read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
@@ -5421,7 +5429,7 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "files converted",
         "of them failed",
         "of them unreadable (stub, kept, not retried)",
-        "the same file from the same bytes as an earlier run",
+        "the same file from the same bytes and converter options as an earlier run",
         "of those, as the run just before",
     )
     recorded = [x for x in runs if "converted" in x.counts]
@@ -5442,6 +5450,20 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "- a conversion that failed is counted in the run it failed in and is not tried again until the "
             "file's bytes change: later runs with no failure are not a retry that worked, and the files "
             'still without a page are in Quarantine by reason, class "conversion failed"',
+        ]
+    rescreened = [x for x in runs[:_RUNS_SHOWN] if x.n("rescreened")]
+    if rescreened:
+        # a re-screen after a label-rule change is a new conversion (the rule is one of the converter's
+        # options), so the "same bytes" column read 0 for runs that re-read unchanged files (B13 round 8 J30)
+        each = "; ".join(
+            f"run {x.run_id}, {x.n('rescreened')} file(s) ({x.n('rescreened_unchanged')} came out the same)"
+            for x in rescreened
+        )
+        out += [
+            "",
+            f"- re-screened for a rule change: {each}. A label rule is one of the converter's options, so a "
+            "file re-screened for a label-rule change is a new conversion and is not in the 'same bytes' "
+            "column; one re-screened for a secret rule is",
         ]
     if any(x.n("converted_unreadable") for x in runs[:_RUNS_SHOWN]):
         out += [
@@ -6621,6 +6643,12 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
             # the tag names refused only when its count was printed (B13 round 7 H46)
             named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")
+        # the files refused with no conversion, after the split as on the CLI's line, without its bracket: the
+        # Summary's refused count disagreed with the per-source stub totals (B13 round 8 J39)
+        refused_unread = r.facts.first_sync_refused_unread
+        if refused_unread is not None and refused_unread[0] == converted and refused_unread[1]:
+            reread += f"; {refused_unread[1]} refused without a read"
+            named.append("the refused-without-a-read count")
         # Name the file the clauses came from: install.log's note carries none (B13 round 4 Q1). A borrowed
         # run is matched to install.out's last sync line only by equal counts: say which line
         if named and source.startswith("install.log"):

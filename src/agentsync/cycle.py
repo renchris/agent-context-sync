@@ -2601,9 +2601,10 @@ class _Cycle:
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
         of those, files whose own pages were made from the same bytes by an earlier run
         (``_converted_before``; a copy of a file is not one); ``converted_again``: of those, when the bytes
-        were last converted in the run just before.  ``rescreened``: of those, files converted again because
-        a [policy] or secret-rule change forgot their hashes (B13 round 5 F35); ``rescreened_unchanged``: of
-        those, the ones whose pages came out the same.
+        were last converted in the run just before.  ``rescreened``: of the converted (not of the
+        ``converted_seen``: a label-rule change gives a new action key, B13 round 8 J30), files converted
+        again because a [policy] or secret-rule change forgot their hashes (B13 round 5 F35);
+        ``rescreened_unchanged``: of those, the ones whose pages came out the same.
         ``reread`` and ``reread_kept``: files read again for what their converter has gained, and those
         of them that kept their page.  ``reread_first``: of the ``reread``, those whose bytes were read for
         the first time (a no-converter stub's re-read is the first read of its bytes), so they are in
