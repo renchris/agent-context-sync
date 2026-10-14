@@ -25,7 +25,7 @@ from agentsync.config import Config, ensure_inbox, inbox_source_table, load_conf
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
-from agentsync.model import ConversionStatus, CycleMode, PassKind, RowState, Verdict
+from agentsync.model import SYNC_OUTPUT_END, ConversionStatus, CycleMode, PassKind, RowState, Verdict
 from agentsync.ops import doctor
 from agentsync.ops.doctor import CheckResult, Severity
 from test_cli import _assert_fix_parses
@@ -1743,6 +1743,8 @@ def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:
     assert f"the alarm line under ## work below names the folder(s), {FIVE} (a plain " in wait, wait
     assert "STATE.md" not in wait, wait
     assert block[-1] == publish._STATE_WAIT_LEGEND and "## <id> section below" in block[-1]
+    # B13 round 9 K38: the legend names the alarm's own words and says which line they mean
+    assert f"the WAITING ON YOU line {SYNC_OUTPUT_END} says what to do, that is the line here" in block[-1]
     (alarm,) = [ln for ln in text.split("\n## work\n", 1)[1].splitlines() if ln.startswith("alarm: ")]
     assert "at the end of a sync's output" in alarm, "the stored alarm is left as the sync printed it"
     (terminal,) = [ln for ln in _lines(config) if ln.startswith(loop.WAIT_PREFIX)]
@@ -1751,6 +1753,39 @@ def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:
     assert two == (
         f"the alarm lines under ## alpha and ## beta below name them (a plain `{BIN} sync` prints them too)"
     )
+
+
+def test_state_md_writes_its_wait_legend_only_when_an_alarm_there_names_the_wait(tmp_path: Path) -> None:
+    """B13 round 9 K42: the legend after the waits was written for any wait, so a baseline draft wait, with
+    no alarm in the file, still said where alarm lines are and how to read "at the end of a sync's output".
+    It is written when an alarm STATE.md holds says that, this run's or one carried from an earlier run."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    other = tmp_path / "plain"
+    _write(other / "memo.txt", "A memo from Fabrikam.\n")
+    config = _setup(tmp_path, local_source_table("work", root) + local_source_table("plainsrc", other))
+    cfg = str(config.config_path)
+    state_md = config.docs_repo / "_sync" / "STATE.md"
+
+    def next_block() -> list[str]:
+        text = state_md.read_text(encoding="utf-8")
+        return text.split("## Next\n\n", 1)[1].split("\n\n## This run", 1)[0].splitlines()
+
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    _write(config.docs_repo / "_eval" / "questions.md", "status: draft\n\n1. Question one?\n")
+    _write(config.docs_repo / "_eval" / "answers.md", "status: draft\n\n1. Finance.\n")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    block = next_block()
+    assert any(ln.startswith(loop.WAIT_PREFIX + "the baseline questions") for ln in block), block
+    assert publish._STATE_WAIT_LEGEND not in block
+    assert SYNC_OUTPUT_END not in state_md.read_text(encoding="utf-8")
+    # an empty cloud folder's alarm, carried for work through a run of plainsrc alone, still gets the legend
+    (root / "Empty A").mkdir()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert next_block()[-1] == publish._STATE_WAIT_LEGEND
+    assert cli.main(["reconcile", "--source", "plainsrc", "--config", cfg]) == cli.EXIT_OK
+    assert "alarm (run " in state_md.read_text(encoding="utf-8").split("\n## work\n", 1)[1]
+    assert next_block()[-1] == publish._STATE_WAIT_LEGEND
 
 
 def test_state_md_keeps_another_sources_alarm_after_a_one_source_run(

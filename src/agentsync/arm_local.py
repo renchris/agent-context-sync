@@ -47,6 +47,7 @@ from agentsync.materialise import (
     sha256_file,
 )
 from agentsync.model import (
+    SYNC_OUTPUT_END,
     ByteBudget,
     ExtraValue,
     FetchResult,
@@ -1064,11 +1065,11 @@ class LocalArm:
                 # §16.51 Q49).
                 status = f"`{AGENTSYNC_BIN} status`"
                 where = (
-                    f"the WAITING ON YOU line about {self.source_id} at the end of a sync's output says what "
-                    f"to do, and {status} prints it too"
+                    f"the WAITING ON YOU line about {self.source_id} {SYNC_OUTPUT_END} says what to do, "
+                    f"and {status} prints it too"
                     if len(stats.empty_cloud_dirs) == 1
-                    else f"each WAITING ON YOU line about {self.source_id} at the end of a sync's output "
-                    f"says what to do, and {status} prints each one too"
+                    else f"each WAITING ON YOU line about {self.source_id} {SYNC_OUTPUT_END} says what to "
+                    f"do, and {status} prints each one too"
                 )
                 if stats.unknown_dirs == stats.empty_cloud_dirs:
                     cause, advice = "empty cloud folder(s), zero children in a cloud tree", where

@@ -427,6 +427,11 @@ class SourceReport:
     withheld_unread: int = 0
 
 
+SYNC_OUTPUT_END = "at the end of a sync's output"
+"""Where an alarm says its WAITING ON YOU line is (``arm_local``'s empty-cloud-folder alarm); STATE.md writes
+its wait legend only when an alarm it holds says so (B13 round 9 K42)."""
+
+
 class CarriedLines(NamedTuple):
     """A source's alarm and error lines from the last run that selected it (``run_id``), which STATE.md shows
     under that source after a run that did not (B13 round 7 H73)."""
