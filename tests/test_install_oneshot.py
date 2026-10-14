@@ -140,6 +140,8 @@ case "$sub" in
     setup; printf '[[source]]\\npath = "%s"\\n' "$pos" >> "$cfg"; inbox; hint "agentsync doctor"
     if [ -n "${STUB_ADD_SOURCE_SUMMARY:-}" ]; then  # the lines cli._ensure_setup ends every call on
       echo "added source '${pos##*/}'"
+      [ -f "$cfg.ib" ] ||  # the call that creates the inbox
+        { echo "added inbox source 'inbox' ($(dirname "$cfg")/inbox): drop files here"; : > "$cfg.ib"; }
       echo "docs repo $(dirname "$cfg")/docs (exists, no remote; scaffold up to date)"
       [ -f "$cfg.tm" ] || { echo "time machine: excluded the cache (stub)"; : > "$cfg.tm"; }  # the first call
       echo "sources: ${pos##*/}"
@@ -3945,6 +3947,8 @@ def test_several_folders_print_the_docs_repo_and_sources_lines_once(
     added = [i for i, ln in enumerate(out) if ln.startswith("added source ")]
     assert len(added) == 3, "every other line of every call is still printed"
     assert added[2] < out.index(repo) < out.index(sources), "beside the sources line (B13 round 8 J13)"
+    [inbox] = [ln for ln in out if ln.startswith("added inbox source ")]
+    assert added[2] < out.index(inbox) < out.index(repo), "held with it, not between two folders (round 9 K7)"
     assert "folders: 3 added (none was synced before)" in out
 
     # The field's command: two folders, both already in the config. One block, where there were two.
@@ -3975,9 +3979,10 @@ def test_several_folders_print_the_docs_repo_line_beside_the_sources_line(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     out = cp.stdout.splitlines()
     first = out.index("added source 'FY26 Projects'")
-    assert out[first : first + 5] == [
+    assert out[first : first + 6] == [
         "added source 'FY26 Projects'",
         "added source 'Other'",
+        f"added inbox source 'inbox' ({Path(env['HOME'])}/agent-context/inbox): drop files here",
         f"docs repo {Path(env['HOME'])}/agent-context/docs (exists, no remote; scaffold up to date)",
         "time machine: excluded the cache (stub)",
         "sources: Other",

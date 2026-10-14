@@ -138,7 +138,8 @@
 #      under its own umask, the cache, the logs), so step 5 does not stop on a docs_repo.permissions [FAIL]
 #      that step 6's sync would have cleared (field 2026-10-07: that run ended on a chmod no agent may run).
 #      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
-#      from the first call, printed beside "sources: ..." from the last
+#      from the first call, printed beside "sources: ..." from the last, with the inbox line ("added inbox
+#      source ...") the first call prints
 #   5. status: first the pandoc that status checks ([convert] pandoc_path, else the one bundled with the
 #      tool) is started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
 #      program: on Apple silicon macOS prepares each new copy at its first start (10 to 67 s measured, under
@@ -3571,13 +3572,17 @@ KEPT=0 # the folders synced before this step, and below the ones it added: both 
 # folder. The first call's "docs repo" line, and its "time machine:" lines, which come between the two, are
 # held in the file HELD and printed directly above the last call's "sources:" line: printed where they came,
 # they sat between the first and the second folder's lines and read as the first folder's result (B13 round 8
-# J13). A failed call prints what is held before its error, as it was printed before, and the file is emptied
+# J13). So is the "added inbox source" line, which the call that creates the inbox prints after its folder's
+# block, from any call (B13 round 9 K7). Each line is appended (>>): the file starts empty, each call is an awk
+# process of its own, and ">" would empty what an earlier call held. A failed call prints what is held before
+# its error, as it was printed before, and the file is emptied
 # once printed, so nothing comes twice. With one folder nothing is held or dropped. Every other line passes,
 # stderr is not read, and the call's exit status is the pipeline's (pipefail). LC_ALL=C: a byte that is no
 # character must not fail the filter.
 add_source_filter() { # I N HELD
 	LC_ALL=C awk -v i="$1" -v n="$2" -v held="$3" '
-		n > 1 && (/^docs repo / || (/^time machine: / && i == 1)) { if (i == 1) print > held; next }
+		n > 1 && /^added inbox source / { print >> held; next }
+		n > 1 && (/^docs repo / || (/^time machine: / && i == 1)) { if (i == 1) print >> held; next }
 		/^sources: / && i < n { next }
 		/^sources: / && n > 1 {
 			close(held)
