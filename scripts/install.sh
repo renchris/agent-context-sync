@@ -1149,7 +1149,7 @@ GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources statu
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
-	local port k folders_seen=$'\n' ph b auth sep tail rw
+	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1456,17 +1456,27 @@ redaction_pairs() {
 	# proxy's path can name the customer: /<domain>/proxy.pac), and the host of it and of every proxy URL:
 	# scutil's, the proxy environment variables, [network] proxy and git's config files (read as files: the
 	# logged git error names git's proxy, and step 1 may have stopped with no git). status's network.proxy lines
-	# print them. scutil by name (on every Mac's PATH), so a test can stand in for it.
+	# print them. scutil by name (on every Mac's PATH), so a test can stand in for it. Numbered in the Python
+	# report's order (B13 round 8 J78), so one Mac's two reports give a value the same <proxy-N>: the hosts of
+	# the environment, of the system proxy where its Enable flag is 1 and of the PAC URL, and [network] proxy's,
+	# then the PAC value, git's proxies, each rewrite's host, value and path, and the LaunchAgent's; one number
+	# for a value in any case, as Python lower-cases a host and matches a value in any case. A system proxy host
+	# whose flag is 0, which Python never registers, comes last: still redacted, and no shared number moves.
 	n=0
 	seen=" "
+	keys=""
 	while IFS= read -r u; do
 		pac=""
 		tail=""
 		rw=""
+		# a value that names no proxy ([network] proxy = "direct"), which Python skips, takes no number
+		case "$(printf '%s' "$u" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in direct | none | off) continue ;; esac
 		case "$u" in
-		pac=*)
-			u="${u#pac=}"
+		pacv=*)
+			# the PAC URL's value alone: its host came with the URL itself, before [network] proxy
+			u="${u#pacv=}"
 			pac="${u#*://}"
+			u=""
 			# A PAC URL that is only a generic host ("http://wpad") is that host, matched inside a URL only.
 			case "$pac" in */*) ;; *) ! generic_proxy_host "${pac%%:*}" || pac="" ;; esac
 			;;
@@ -1507,43 +1517,66 @@ redaction_pairs() {
 		port=""
 		case "$h" in *:*) port="${h#*:}" ;; esac
 		h="${h%%:*}"
-		for v in "$pac" "$h" "$tail"; do
+		for v in "$h" "$pac" "$tail"; do
 			[ -n "$v" ] || continue
 			case "$seen" in *" $v "*) continue ;; esac
 			seen="$seen$v "
-			n=$((n + 1))
+			# the number of this value in any case, else a new one (tab and \001 cannot be in a value)
+			key="$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+			case "$keys" in
+			*$'\t'"$key"$'\001'*)
+				m="${keys#*$'\t'"$key"$'\001'}"
+				m="${m%%$'\n'*}"
+				;;
+			*)
+				n=$((n + 1))
+				m="$n"
+				keys="$keys"$'\t'"$key"$'\001'"$m"$'\n'
+				;;
+			esac
 			case "$v" in
 			"$tail")
 				# flag e: no letter or digit may follow, as in Python; a ".git" or a "-tools" may
-				add_pair "$v" "<proxy-$n>" e
-				add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<proxy-$n>" e
+				add_pair "$v" "<proxy-$m>" e
+				add_pair "$key" "<proxy-$m>" e
 				;;
 			"$pac" | *.*)
-				add_pair "$v" "<proxy-$n>"
-				[ -z "$rw" ] || add_pair "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" "<proxy-$n>"
+				add_pair "$v" "<proxy-$m>"
+				[ -z "$rw" ] || add_pair "$key" "<proxy-$m>"
 				;;
 			*)
 				# A host with no dot (B13 R42, R67): a generic word (proxy, wpad) only where a URL names it, so
 				# the report's HTTPS_PROXY and network.proxy stay; any other (contosogw) can name the company and
 				# is a whole word, as git and curl print it ("Could not resolve proxy: contosogw").
 				if generic_proxy_host "$v"; then
-					add_pair "//$v" "//<proxy-$n>" t
-					add_pair "@$v" "@<proxy-$n>" t
-					[ -z "$port" ] || add_pair "$v:$port" "<proxy-$n>:$port" w
+					add_pair "//$v" "//<proxy-$m>" t
+					add_pair "@$v" "@<proxy-$m>" t
+					[ -z "$port" ] || add_pair "$v:$port" "<proxy-$m>:$port" w
 				else
-					add_pair "$v" "<proxy-$n>" w
+					add_pair "$v" "<proxy-$m>" w
 				fi
 				;;
 			esac
 		done
 	done < <(
 		{
-			with_timeout 5 "$(command -v scutil || printf /usr/sbin/scutil)" --proxy 2>/dev/null </dev/null |
-				LC_ALL=C sed -n -e 's/^[[:space:]]*ProxyAutoConfigURLString : /pac=/p' \
-					-e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' || true
+			sp="$(with_timeout 5 "$(command -v scutil || printf /usr/sbin/scutil)" --proxy 2>/dev/null </dev/null || true)"
 			printf '%s\n' "${HTTPS_PROXY:-}" "${https_proxy:-}" "${ALL_PROXY:-}" "${all_proxy:-}" \
 				"${HTTP_PROXY:-}" "${http_proxy:-}"
+			# the top-level keys, as net.parse_scutil_proxy reads them: the HTTPS host, then the HTTP host, each
+			# where its Enable flag is 1, then the PAC URL for its host (P lines: a per-interface one is not read)
+			top="$(printf '%s\n' "$sp" | LC_ALL=C awk '
+				/[{][[:space:]]*$/ { d++; next }
+				/^[[:space:]]*[}]/ { d--; next }
+				d == 1 && $2 == ":" { a[$1] = $3 }
+				END {
+					if (a["HTTPSEnable"] == "1" && a["HTTPSProxy"] != "") print "H" a["HTTPSProxy"]
+					if (a["HTTPEnable"] == "1" && a["HTTPProxy"] != "") print "H" a["HTTPProxy"]
+					if (a["ProxyAutoConfigURLString"] != "") print "P" a["ProxyAutoConfigURLString"]
+				}' || true)"
+			printf '%s\n' "$top" | LC_ALL=C sed -n 's/^[HP]//p'
 			[ ! -f "$CONFIG" ] || LC_ALL=C sed -n 's/^[[:space:]]*proxy[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CONFIG"
+			printf '%s\n' "$top" | LC_ALL=C sed -n 's/^P/pacv=/p'
 			git_proxy_values
 			git_rewrite_bases | LC_ALL=C sed 's/^/rw=/'
 			# The LaunchAgent environment (launchctl setenv) that the doctor network.proxy.job line prints (B13 R68); a
@@ -1551,6 +1584,11 @@ redaction_pairs() {
 			[ "$SIMULATE" -eq 1 ] || for k in HTTPS_PROXY https_proxy ALL_PROXY all_proxy HTTP_PROXY http_proxy; do
 				with_timeout 5 "$LAUNCHCTL" getenv "$k" </dev/null || true
 			done
+			# every other system proxy host (a flag of 0, or below the top level) and PAC URL (a per-interface one,
+			# by host and by value): redacted still, numbered last
+			printf '%s\n' "$sp" | LC_ALL=C sed -n -e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' \
+				-e 's/^[[:space:]]*ProxyAutoConfigURLString : \(.*\)$/\1\
+pacv=\1/p' || true
 		} 2>/dev/null
 	)
 }

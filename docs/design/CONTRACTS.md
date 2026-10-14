@@ -16169,6 +16169,10 @@ existing `<proxy-N>` is renumbered and no placeholder class or legend changes. T
 Amended 2026-10-14, §16.75 J37: the shell matches the scp path with an end boundary only (pair flag `t`; its
 leading `:` marks the start), in its written and lower-case forms, and skips the report's own words as Python does;
 as a whole word it never matched, since a host's last letter comes before the `:`.
+Amended 2026-10-14, §16.75 J78: the shell's `<proxy-N>` numbers are the Python report's: it registers the
+environment's hosts, the system proxy's where its Enable flag is 1, the PAC URL's host and `[network] proxy`'s, then
+the PAC value, git's proxies, each rewrite's host, value and path, and the LaunchAgent's, one number for a value in
+any case; a system proxy host whose flag is 0, which Python never registers, comes last.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`

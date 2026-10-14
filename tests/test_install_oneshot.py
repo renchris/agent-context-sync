@@ -42,7 +42,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agentsync import lints, paths, setup_report
+from agentsync import lints, net, paths, setup_report
 from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.ops import doctor
@@ -6273,6 +6273,95 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     (home / ".gitconfig").unlink()
     assert install_sh(env, "--report-only").returncode == 0
     assert "- URL rewrite in git's config: not set\n" in report_path(env).read_text()
+
+
+SCUTIL_PROXY = """<dictionary> {
+  ExceptionsList : <array> {
+    0 : *.local
+  }
+  HTTPEnable : 0
+  HTTPPort : 8080
+  HTTPProxy : off.contoso.example
+  HTTPSEnable : 1
+  HTTPSPort : 8443
+  HTTPSProxy : sysproxy.contoso.example
+  ProxyAutoConfigEnable : 1
+  ProxyAutoConfigURLString : http://pac.contoso.example/contoso-pac/proxy.pac
+  __SCOPED__ : <dictionary> {
+    en0 : <dictionary> {
+      ProxyAutoConfigURLString : http://scoped.contoso.example/scoped.pac
+    }
+  }
+}
+"""
+"""A system proxy as ``scutil --proxy`` prints it: an HTTPS proxy that is on, an HTTP one that is off, and a
+PAC URL with a path."""
+
+
+def test_the_two_reports_number_each_proxy_value_alike(
+    env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 8 J78: the shell numbered a PAC or rewrite value before its host, read scutil before the
+    environment, took HTTP before HTTPS and a proxy whose Enable flag is 0, and counted case variants apart,
+    so one Mac's two reports gave 3 of 4 values different ``<proxy-N>``. It now registers in the Python
+    report's order, one number for a value in any case, and a disabled system proxy last, still redacted."""
+    home = Path(env["HOME"])
+    _write_exe(Path(env["PATH"].split(":")[0]) / "scutil", f"#!/bin/bash\ncat <<'EOF'\n{SCUTIL_PROXY}EOF\n")
+    cfg = _write_config(env, _inbox(env))
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8") + '\n[network]\nproxy = "http://cfgproxy.contoso.example:3128"\n',
+        encoding="utf-8",
+    )
+    (home / ".gitconfig").write_text(
+        "[http]\n\tproxy = http://gitproxy.contoso.example:8080\n"
+        '[url "https://mirror.contoso.example/contoso-team/"]\n\tinsteadOf = https://github.com/\n'
+        '[url "git@scp.contoso.example:contoso-scp/"]\n\tinsteadOf = https://github.com/someone/\n'
+    )
+    quoted = [
+        "egress.contoso.example",  # HTTPS_PROXY
+        "EGRESS.contoso.example",  # https_proxy, the same host in another case
+        "sysproxy.contoso.example",
+        "pac.contoso.example",
+        "pac.contoso.example/contoso-pac/proxy.pac",
+        "cfgproxy.contoso.example",
+        "gitproxy.contoso.example",
+        "mirror.contoso.example",
+        "mirror.contoso.example/contoso-team",
+        "scp.contoso.example",
+        "x:contoso-scp/y",
+        "off.contoso.example",
+        "scoped.contoso.example/scoped.pac",
+    ]
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    line = "2026-10-10T00:00:01Z | step 1 | error | saw " + " ; ".join(quoted) + " | -"
+    (setup / "friction.md").write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{line}\n")
+    proxied = {
+        **env,
+        "HTTPS_PROXY": "http://egress.contoso.example:8080",
+        "https_proxy": "http://EGRESS.contoso.example:8080",
+        "ALL_PROXY": "direct",  # names no proxy: no number (B13 round 8 J78)
+    }
+    assert install_sh(proxied, "--report-only").returncode == 0
+    [shell] = [ln for ln in report_path(env).read_text().splitlines() if "| step 1 | error | saw " in ln]
+
+    for key in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "HOME"):
+        monkeypatch.setenv(key, proxied[key])
+    for key in ("all_proxy", "HTTP_PROXY", "http_proxy", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(net, "system_proxy", lambda: net.parse_scutil_proxy(SCUTIL_PROXY))
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    python = red.redact(line)
+
+    def numbers(text: str) -> list[str]:
+        return re.findall(r"<proxy-\d+>", text.split(" | error | saw ", 1)[1])
+
+    assert numbers(python) == numbers(shell)[:-2], (shell, python)
+    assert numbers(shell)[:4] == ["<proxy-1>", "<proxy-1>", "<proxy-2>", "<proxy-3>"], shell
+    for kept in ("off.contoso.example", "scoped.contoso.example"):  # Python never reads them
+        assert kept in python and kept not in shell, ("the shell keeps it redacted", kept)
+    shared = max(int(n[7:-1]) for n in numbers(python))
+    assert min(int(n[7:-1]) for n in numbers(shell)[-2:]) > shared, "numbered after every shared value"
 
 
 def test_the_shell_report_reads_every_git_config_file_in_a_utf8_locale(
