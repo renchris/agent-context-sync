@@ -265,7 +265,14 @@ install.log (a `--list-folders` run is not an install run):
   so in the Summary's outcome line, in its `earlier:` clause and in the friction section's attempt lines. The
   form's Outcome records it as `Failed at step 1 (preflight)`. An end line, an error, a `start` line, a line of a
   later step or an untyped line keeps the attempt failed (at step 1 or the step logged); an install run gives the
-  outcome of the bullets above.
+  outcome of the bullets above. One exception (since round 8, J9): an attempt whose step 1 error is install.sh's
+  `--log-start` stop is stopped, not failed, though it holds that error and its end line, when the next attempt
+  names the stopping installer's own version (not the report's build), names the same agent, and starts within
+  120 s of the stop. That is the agent changing the value back and running step 1's command again, as the stop
+  message tells it to. It reads `stopped at step 1 (rerun: --log-start said v61; the next attempt, 18s later, said
+  v18)` (versions and seconds only), in the Summary's `earlier:` clause and the friction section's attempt lines.
+  Such an attempt is never the latest one, so the Summary's outcome line, the title and the form's Outcome never
+  show it. A copy fetched again from the README and pasted into a new session stays `failed at step 1`.
 
 A line logged after an attempt's `end | finished` line cannot have stopped it, so it never changes that
 attempt's outcome. One kind of late line is another session: a step 1 `error` dated more than 10 minutes after
@@ -370,7 +377,8 @@ version, and the installer wrote its own number into the log.
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
 - The version leads the value, and is read in the shape the agent gave it (`Prompt v18: <agent>` and `prompt v18 -
   <agent>` are v18). The stop message shows no value that passes; its last sentence tells a current copy whose
-  agent changed the value to run step 1's command again as the prompt writes it.
+  agent changed the value to run step 1's command again as the prompt writes it. An attempt the session ran again
+  so reads stopped, not failed (the rerun exception under "Stopped at step 1").
 - A copy whose step 3 does not name this stop as one with no report (v9 and older, and a v10 copy taken before its
   step 3 named it) still goes on to its own report; a later copy stops without one, as the installer's stop
   message says. That report's Summary says

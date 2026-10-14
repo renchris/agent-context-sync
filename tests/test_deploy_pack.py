@@ -3700,6 +3700,29 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     assert '**Amended 2026-10-13, §16.73 H67:** "a v7 to v14 attempt" is every v7 or later' in contracts
     h43 = " ".join(_contracts_section("### 16.73 ", "### 16.74 ").split())
     assert "**Amended 2026-10-14, §16.79 J58:** the condition is at least one step 1 deviation" in h43
+    # B13 round 9 K66: since round 8 J9 a --log-start stop the same agent ran again within the window reads
+    # stopped despite its error and end line; the guide's bullet named no exception
+    stop = (
+        "Attempt: 2026-10-13T10:00:00Z\nPrompt: v61\nAgent: Tool-A\n2026-10-13T10:00:00Z | step 1 | error "
+        "| install.sh --log-start: the pasted setup prompt is v61 and this installer is for setup prompt "
+        "v18: this checkout is older than the prompt, or the --log-start value was changed; setup stopped "
+        "(exit 2) | -\n"
+        "2026-10-13T10:00:00Z | end | finished\nAttempt: 2026-10-13T10:00:18Z\nPrompt: v18\nAgent: Tool-A\n"
+    )
+    note = setup_report._rerun_note(parse_friction(stop), 0)
+    assert note is not None
+    assert f"`{Outcome('stopped', 1, (), 61, note).text}`" in stopped_rule
+    window = int(setup_report._RERUN_WINDOW.total_seconds())
+    assert f"starts within {window} s of the stop" in stopped_rule
+    assert (
+        "One exception (since round 8, J9): an attempt whose step 1 error is install.sh's `--log-start` stop"
+        in (stopped_rule)
+    )
+    assert (
+        "A copy fetched again from the README and pasted into a new session stays `failed at step 1`" in page
+    )
+    assert '(the rerun exception under "Stopped at step 1")' in page
+    assert "**Amended 2026-10-14, §16.85 K66 (by §16.74 J9):** an attempt whose step 1 error" in h43
 
 
 def test_the_docs_say_a_label_escalation_entry_stays_queued_while_its_file_is_published() -> None:

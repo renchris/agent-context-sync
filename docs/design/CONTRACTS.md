@@ -16567,6 +16567,9 @@ H42 a stopped attempt's title reads `Stopped at step 1 (preflight)`. Test:
 **Amended 2026-10-14, §16.79 J58:** the condition is at least one step 1 deviation, and otherwise only step 1
 `question`, `click`, `approval` or `prompt` lines (§16.69 H40, `setup_report._WAIT_OK_KINDS`), not "every line a
 step 1 deviation"; the guide's bullet and agent-friction sentence say so.
+**Amended 2026-10-14, §16.85 K66 (by §16.74 J9):** an attempt whose step 1 error is install.sh's `--log-start`
+stop, followed within 120 s by an attempt of the same agent naming the stopping installer's version, reads `stopped
+at step 1 (rerun: ...)` despite its error and end line; the guide's bullet says so.
 
 **A label-escalation entry stays queued while its file is published, in both guides** (H58, H63). Since §16.62
 G30, `governance.KEPT_REASONS` holds `label-escalation` as well as `upstream-deleted`: a run of the queue skips such
@@ -17382,3 +17385,12 @@ line saying so, and J66 a line correcting its claim. The text stays as written. 
 `test_round_8s_prompt_items_have_dated_lines_at_the_text_they_amend`, which holds the targets as (section, a phrase
 only the target holds, items), as J66's test does: §16.76 names paragraphs by quoted phrase, which no heading scan
 reads.
+
+**The guide's stopped rule has J9's rerun exception** (K66; dated line at §16.73 H43). Since §16.74 J9
+`_attempt_outcome` reads an attempt whose step 1 error is the installer's `--log-start` stop as `stopped at step 1
+(rerun: --log-start said v61; the next attempt, 18s later, said v18)` when the next attempt names the stopping
+installer's version, the same agent, and starts within `_RERUN_WINDOW` (120 s); such an attempt holds that error
+and its end line, which the guide's "Stopped at step 1" bullet says keep an attempt failed, and the guide never
+named the rerun. The bullet now ends on the exception, its conditions, its words and where it shows (never the
+latest attempt, so never the outcome line or the form), and the prompt-version bullet points to it. Test:
+`test_setup_feedback_states_the_report_rules_of_round_6` (builds the note with `_rerun_note`).
