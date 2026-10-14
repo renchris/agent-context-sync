@@ -17669,6 +17669,12 @@ condition, which ignores `loop_checks`, is not built: the setup report also runs
 a cause no plain sync clears (an unreadable folder, an empty inbox root in a cloud tree). Outside install.sh the fix
 is unchanged. Test: `test_ops_doctor.py::test_heartbeat_incomplete_follows_the_loop_checks`.
 
+Amended 2026-10-14, §16.91 L72: the items above that amend another name their dated lines in the form the
+dated-line scan reads: (K33; dated lines at §16.68 H32 and §16.77 J29), (K34; dated lines at §16.57 F34 and §16.58
+F8), (K37; dated lines at §16.68 H31 and §16.77 J11), (K40; dated line at §16.63 G13), (K41; dated lines at §16.57
+F11 and §16.63 G57) and (K75; dated line at §16.77 J12). K75's other line, in §16.22's unlettered bullet on an
+incomplete source, has no item for the scan to name; the scan's test holds it by its words.
+
 ### 16.84 Round 9: stubs, front matter and purge (2026-10-14, wave B13 round 9 lane E)
 
 Lane E's round 9 items: K38, K42, K50, K51, K52, K63, K74 built; K79 kept not built, with a test that pins it. K38
@@ -17851,6 +17857,11 @@ reads the sentence form, and asserts the J39 and J50 claims and at least 46 in a
 "§A's X" too, and a dated line may name several items ("(by §16.82 K12, K13)"). Measured on contact: §16.82 K12, K13
 amend §16.76's J7 and J8 paragraph and wrote no dated line there; it now has `Amended 2026-10-14, §16.85 K80 (by
 §16.82 K12, K13)`. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`.
+Amended 2026-10-14, §16.91 L60, L72: the scan took only F, G, H, Q, R, J and K as targets and needed "; dated
+line(s) at" right after the items, so §16.80's N37 target and its K10, K46 heading, §16.69 H22's and H5's targets (§16.14 L10, §16.40 N37) and
+§16.75's J37, J78, J71 heading made no claim (deleting §16.80's K5, K10 and K46 lines left it green), and §16.83
+named no target in a form it reads. It now takes any capital and digits as a target and a heading's middle "; ..."
+clauses, §16.83 names its targets, and it reads §16.68 to §16.91 but §16.72.
 
 **H31's stderr line has J11's words** (K53; dated line at §16.68 H31). §16.77 J11 made the CLI's lock-busy line
 `skipped: lock held by <holder>` and wrote its dated line only at §16.39; §16.68 H31, whose test J11 changed, still
@@ -17974,3 +17985,10 @@ said the shell report's computed line is "never simulated" and that the uncomput
 case has its own `- run:` line. The guide was already right; the test's comment said the old rule, and the test now
 pins that the uncomputed half names the `- run:` line and no section 4 rule. Test:
 `test_the_send_step_counts_the_values_the_link_fills`.
+
+**The dated-line scan reads every item letter and middle clauses** (L60, L72: one defect; dated line at §16.85
+K80). The scan's target letters had no L or N, and its heading needed "; dated line(s) at" right after the items,
+so deleting §16.80's K5, K10 and K46 lines left the suite green (measured on a copy). §16.83 named none of its 11
+dated lines in a form the scan reads; it now has a dated paragraph that names its ten lettered targets. The scan
+reads §16.68 to §16.91 but §16.72 and asserts the new claim forms, at least 90 claims in all; K75's line in §16.22's
+unlettered bullet is held by its words. Test: `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`.

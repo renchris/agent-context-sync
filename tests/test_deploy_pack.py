@@ -4191,28 +4191,43 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     but holds no claim, its targets being paragraphs:
     `test_round_8s_prompt_items_have_dated_lines_at_the_text_they_amend`), and that sentence after a bold item
     lead too, a possessive target ("§16.76's J7") and a dated line naming several items ("(by §16.82 K12,
-    K13)")."""
+    K13)").  B13 round 10 L60, L72 (one defect): the target letters were F, G, H, Q, R, J and K, so an L or N
+    target (§16.80's "dated line at §16.40 N37") made no claim, and a heading with a "; ..." clause before its
+    "dated lines at" (§16.80 K10, K46; §16.75 J37, J78, J71) did not match: deleting §16.80's K5, K10 and K46
+    lines left the suite green.  Any capital and digits is a target now, a heading may carry such clauses (a
+    "; " still comes right before the keyword, so "K72's dated line at §16.79 is lane D's" names nothing),
+    §16.83 names its targets in that form, and the scan reads round 10's §16.86 to §16.91."""
     from agentsync import publish  # noqa: PLC0415
 
     sections = dict(_contracts_numbered_sections())
     claims: list[tuple[str, list[str], str, str]] = []
-    heading = r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*; (?:amends|corrects|dated lines? at) ([^)]*)\)"
-    tok = r"(?:§\d+\.\d+(?:'s)? )?[FGHQRJK]\d+\b"
+    heading = (
+        r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*(?:; [^;()]*)*?; (?:amends|corrects|dated lines? at) ([^)]*)\)"
+    )
+    tok = r"(?:§\d+\.\d+(?:'s)? )?[A-Z]\d+\b"
     # the "." inside "§16.68" ends no sentence, so the targets are tokens, not a [^.]* run
     sentence = rf"^\*\*([A-Z]\d+)\b[^*]*\*\*.*?\bDated lines? at ({tok}(?:(?:, | and ){tok})*)"
-    homes = [f"16.{n}" for n in range(68, 86) if n != 72]
+    homes = [f"16.{n}" for n in range(68, 92) if n != 72]
     for home in homes:
         for para in re.split(r"\n\s*\n", sections[home]):
             flat = " ".join(para.split())
             found = re.findall(heading, flat) + re.findall(sentence, flat)
             for items, targets in found:
                 section = ""
-                for number, item in re.findall(r"(?:§(\d+\.\d+)(?:'s)? )?([FGHQRJK]\d+)\b", targets):
+                for number, item in re.findall(r"(?:§(\d+\.\d+)(?:'s)? )?([A-Z]\d+)\b", targets):
                     section = number or section
                     claims.append((home, re.findall(r"[A-Z]\d+", items), section, item))
     assert ("16.71", ["H52"], "16.66", "G29") in claims, "the scan is broken"
     assert ("16.74", ["J39"], "16.68", "H32") in claims and ("16.78", ["J50"], "16.68", "H37") in claims
-    assert len(claims) >= 46, "the scan is broken"
+    assert ("16.80", ["K5", "K16"], "16.40", "N37") in claims  # an N target
+    assert ("16.80", ["K10", "K46"], "16.74", "J20") in claims  # middle "; ..." clauses
+    assert ("16.75", ["J37", "J78", "J71"], "16.69", "H74") in claims
+    assert ("16.83", ["K33"], "16.68", "H32") in claims and ("16.83", ["K75"], "16.77", "J12") in claims
+    assert len(claims) >= 90, "the scan is broken"
+    # §16.83 K75's line in §16.22's unlettered bullet names no item the scan can read
+    assert "Amended 2026-10-14, §16.83 K75: so does an inbox no wait names" in " ".join(
+        sections["16.22"].split()
+    )
     for home, items, section, item in claims:
         at = "|".join(re.escape(f"§{home} {i}") for i in items)
         marker = re.compile(
