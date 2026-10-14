@@ -17485,6 +17485,8 @@ run that logged `commit=-` reads `last install.sh run: no commit read` (N20's po
 is not shown). Tests: `test_the_shell_report_says_why_a_copy_has_no_commit`,
 `test_the_install_source_says_a_checkout_is_not_a_git_checkout`,
 `test_install_source_skips_a_run_that_read_no_commit`.
+Amended 2026-10-14, §16.86 L28: the agentsync report's line reads `<path>, a copy that is not a git checkout (no
+.git, so no commit or origin)`, no longer `checkout <path> (not a git checkout: ...)`.
 
 **The inbox line is held with the docs repo line** (K7). With several folders the first `add-source` call's
 `added inbox source ...` line came out between the first and the second folder's blocks, as the docs repo line did
@@ -17518,6 +17520,7 @@ them equal). A report already in J18's words, or another install.commit warn, is
 removed: the lock does not say who started the sync. Both read `waited for another sync to end`
 (`_AGENTSYNC_NOTE_WORDS`); install.log keeps the token, and a note the map does not hold is shown as it is. Test:
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+Amended 2026-10-14, §16.86 L35: `wait-ran-out-after-<N>s` and `lock-not-taken-rc<N>` read as words too.
 
 ### 16.82 Round 9: setup prompt v18 (2026-10-14, wave B13 round 9 lane P)
 
@@ -17993,6 +17996,21 @@ attempt as its subject, as every `failed at step N (...)` bracket does, and name
 Summary prompt note's order, then the next attempt: `failed at step 1 (an older copy, or a changed --log-start
 value; the next attempt, 26s later, said v18)`. Test:
 `test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failure`.
+
+**The install source does not call a copy a checkout first** (L28; dated line at §16.81 K29). `- install source:
+checkout ~/src/<repo> (not a git checkout: no .git, so no commit or origin)` named the folder a checkout, then said
+it was not one. With no `.git` the line drops the label: `- install source: ~/src/<repo>, a copy that is not a git
+checkout (no .git, so no commit or origin); last install.sh run: ...`, keeping an editable install's `(editable)`
+and the last run's suffix; a checkout git can read keeps `checkout <path>`. Test:
+`test_the_install_source_says_a_checkout_is_not_a_git_checkout`.
+
+**The agentsync step's numbered notes read as words** (L35; dated line at §16.81 K35). K35 mapped only
+`waited-for-a-background-sync`, so a reinstall whose wait ran out showed `agentsync 121s (wait-ran-out-after-120s)`.
+`_agentsync_note` reads `wait-ran-out-after-<N>s` as `waited <N>s for another sync, then reinstalled while it was
+still running` and `lock-not-taken-rc<N>` as `could not take the sync lock, lockf exit <N>; reinstalled without
+waiting`, by full-match patterns, in the Installer table and the Summary alike; no parenthesis, since the Summary
+puts the note in one. install.log keeps its tokens; any other note is shown as it is. Test:
+`test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

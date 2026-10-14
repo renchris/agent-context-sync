@@ -569,7 +569,9 @@ report's Recent errors shows that skip as `WARNING agentsync.cli: skipped: lock 
 reads `held by an unrecorded holder (...)` with no cycle named: the reinstall writes no lock body.
 The install log's `step=agentsync` line notes what step 2 saw: `waited-for-a-background-sync` (the setup report
 shows it as "waited for another sync to end", since the lock does not say who started that sync),
-`wait-ran-out-after-<N>s` (the reinstall then ran without the lock) or `lock-not-taken-rc<N>`; with no note, the
+`wait-ran-out-after-<N>s` (the reinstall then ran without the lock; the report says "waited <N>s for another sync,
+then reinstalled while it was still running") or `lock-not-taken-rc<N>` ("could not take the sync lock, lockf exit
+<N>; reinstalled without waiting"); with no note, the
 step's seconds are uv's own (or a sync that started after the probe). A launchd run that ends in the launcher's
 `SPAWN_FAILED` (exit 71) or an import error at that time started while uv recreated the tool environment; the
 next interval runs normally.

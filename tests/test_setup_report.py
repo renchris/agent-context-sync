@@ -1899,7 +1899,24 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
     table = "\n".join(setup_report._step_table(list(runs[-1].steps)))
     assert "| done (waited for another sync to end) |" in table and "background" not in table, table
     assert re.search(r"\| done \(created\) +\|", table), table
-    assert setup_report._agentsync_note("wait-ran-out-after-120s") == "wait-ran-out-after-120s"
+    assert setup_report._agentsync_note("some-future-note") == "some-future-note"
+    # B13 round 10 L35: the two notes that carry a number read as words too, in the table and the Summary
+    for token, words in (
+        (
+            "wait-ran-out-after-120s",
+            "waited 120s for another sync, then reinstalled while it was still running",
+        ),
+        ("lock-not-taken-rc73", "could not take the sync lock, lockf exit 73; reinstalled without waiting"),
+    ):
+        noted = log.read_text(encoding="utf-8").replace("note=waited-for-a-background-sync", f"note={token}")
+        log.write_text(noted, encoding="utf-8")
+        runs = setup_report.read_install_runs(log)
+        r.install_runs = runs
+        table = "\n".join(setup_report._step_table(list(runs[-1].steps)))
+        assert f"| done ({words}) |" in table and token not in table and "background" not in table, table
+        line = setup_report._install_line(r, runs, scoped=False)
+        assert f"(agentsync 59s ({words}) · config 1s)" in line and token not in line, line
+        log.write_text(noted.replace(f"note={token}", "note=waited-for-a-background-sync"), encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -2318,16 +2335,25 @@ def test_the_install_source_says_a_checkout_is_not_a_git_checkout(
     write_install_log(fake_mac)
     text, _summary = summary_of(fake_mac)
     [line] = [ln for ln in text.splitlines() if ln.startswith("- install source: ")]
-    assert line.startswith("- install source: checkout ") and line.endswith(
-        " (not a git checkout: no .git, so no commit or origin); last install.sh run: commit 0123456789ab"
+    # B13 round 10 L28: not "checkout <path> (not a git checkout ...)", which called it a checkout first
+    assert not line.startswith("- install source: checkout ") and line.endswith(
+        "/copy, a copy that is not a git checkout (no .git, so no commit or origin); last install.sh run: "
+        "commit 0123456789ab"
     ), line
     path = fake_mac["setup"] / "install.log"
     path.write_text(path.read_text().replace("commit=0123456789ab", "commit=-"))
     text, _summary = summary_of(fake_mac)
     [line] = [ln for ln in text.splitlines() if ln.startswith("- install source: ")]
     assert "commit -" not in line and line.endswith(
-        " (not a git checkout: no .git, so no commit or origin); last install.sh run: no commit read"
+        ", a copy that is not a git checkout (no .git, so no commit or origin); last install.sh run: no "
+        "commit read"
     ), line
+    monkeypatch.setattr(
+        setup_report, "_installed_from", lambda: (f"checkout {checkout} (editable)", checkout)
+    )
+    [line] = [ln for ln in summary_of(fake_mac)[0].splitlines() if ln.startswith("- install source: ")]
+    assert "/copy (editable), a copy that is not a git checkout (" in line, line
+    assert not line.startswith("- install source: checkout "), line
 
 
 def test_an_empty_git_proxy_takes_no_token_from_the_next_line(

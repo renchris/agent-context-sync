@@ -3110,7 +3110,12 @@ def _install_source(r: _Run) -> str:
     # Why a checkout has no commit or origin, which said nothing before (B13 round 9 K29): no .git, or a .git
     # git cannot read. Without the developer tools nothing is read, and nothing is said, as before.
     if directory is not None and not (directory / ".git").exists():
-        where += " (not a git checkout: no .git, so no commit or origin)"
+        # not "checkout <path> (not a git checkout ...)", which called it a checkout first (B13 round 10 L28);
+        # an editable install keeps its "(editable)"
+        where = (
+            where.removeprefix("checkout ")
+            + ", a copy that is not a git checkout (no .git, so no commit or origin)"
+        )
     elif directory is not None and r.devtools():
         where += _checkout_facts(r, directory) or " (git cannot read its .git)"
     with contextlib.suppress(Exception):
@@ -3480,10 +3485,18 @@ def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[
 _AGENTSYNC_NOTE_WORDS = {"waited-for-a-background-sync": "waited for another sync to end"}
 """install.log's agentsync-step note -> the report's words (B13 round 9 K35): the lock does not say who
 started the sync step 2 waited for (H33), a background job or one typed in a terminal, so "background" claimed
-one. The token stays, in install.log and for its readers; a note not here is shown as it is."""
+one. The token stays, in install.log and for its readers."""
 
 
 def _agentsync_note(note: str) -> str:
+    """install.log's agentsync-step note in the report's words: ``waited-for-a-background-sync``
+    (:data:`_AGENTSYNC_NOTE_WORDS`), ``wait-ran-out-after-<N>s`` and ``lock-not-taken-rc<N>``, the two that
+    carry a number (B13 round 10 L35: shown as their raw tokens). No parenthesis: the Summary puts the note in
+    one. A note none of these is shown as it is."""
+    if (ran_out := re.fullmatch(r"wait-ran-out-after-(\d+)s", note)) is not None:
+        return f"waited {ran_out.group(1)}s for another sync, then reinstalled while it was still running"
+    if (untaken := re.fullmatch(r"lock-not-taken-rc(\d+)", note)) is not None:
+        return f"could not take the sync lock, lockf exit {untaken.group(1)}; reinstalled without waiting"
     return _AGENTSYNC_NOTE_WORDS.get(note, note)
 
 
