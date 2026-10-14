@@ -4458,7 +4458,8 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
     assert '"Baseline questions" section (also in the docs repo\'s AGENTS.md), then run x' in line, line
     assert "Client" not in line and "kb docs" not in line, line
 
-    # The wait for empty cloud folders names the config file by its path (§16.36): its name, the same way.
+    # The waits for empty and unlisted folders name the config file by its path (§16.36): "the config file"
+    # and its name, beside the docs repo's files named in words (B13 round 9 K43).
     spaced = docs.parent / "ctx" / "sources.toml"
     spaced.parent.mkdir()
     spaced.write_text(cfg.read_text(encoding="utf-8"), encoding="utf-8")
@@ -4468,11 +4469,15 @@ def test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces(
         loop_next=lambda config: [
             "NEXT: none",
             f"WAITING ON YOU: {arm_local.exclude_advice(config.sources[0], ['Empty'], where)}",
+            "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or "
+            "sentinel; another sync does not clear it): it; grant Files and Folders access, or add it to "
+            f"that source's exclude in {where}",
         ]
     )
     text, _red = setup_report.build_report(spaced, hooks=hooks)
     [line] = [ln for ln in section(text, "Summary").splitlines() if ln.startswith("- Loop: ")]
-    assert " in sources.toml; an excluded folder is not mirrored" in line, line
+    assert " in the config file sources.toml; an excluded folder is not mirrored" in line, line
+    assert line.endswith(" or add it to that source's exclude in the config file sources.toml"), line
     assert "Client" not in line and "ctx" not in line
 
 
@@ -8879,9 +8884,13 @@ def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Pat
     assert "re-run install.sh" not in doctor_part
     # its intro said "nothing for this setup to do" beside a reason that says step 2 has not run, and a NEXT
     # that asks for a fresh copy (B13 round 9 K24)
-    assert doctor_part.strip().splitlines()[0].endswith(
-        " 1 expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do "
-        "beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)."
+    assert (
+        doctor_part.strip()
+        .splitlines()[0]
+        .endswith(
+            " 1 expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do "
+            "beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)."
+        )
     ), doctor_part
     # the doctor shows install.commit ok: nothing is expected
     ok = ["[ok  ] python — fine", "[info] install.commit — installed from a350196b9f87, the checkout's HEAD"]

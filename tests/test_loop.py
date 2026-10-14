@@ -861,7 +861,7 @@ def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_pat
     assert wait == (
         "WAITING ON YOU: a folder in work could not be listed (no access, or a missing folder or sentinel; "
         "another sync does not clear it): " + _named(config, "work", "it") + "; grant Files and Folders "
-        "access, or add it to that source's exclude in sources.toml"
+        f"access, or add it to that source's exclude in {loop._shown(config.config_path)}"
     )
     # §16.39 N16: the wait explains that source's heartbeat warn
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
@@ -885,7 +885,7 @@ def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> 
         "WAITING ON YOU: a folder in each of alpha and beta could not be listed (no access, or a missing "
         f"folder or sentinel; another sync does not clear it): {state} keeps the alarm lines for alpha and "
         f"beta, which name them (a plain `{BIN} sync` prints them too); grant Files and Folders access, or "
-        "add each to its source's exclude in sources.toml"
+        f"add each to its source's exclude in {loop._shown(config.config_path)}"
     )
     alarms = [
         ln for ln in (config.docs_repo / "_sync" / "STATE.md").read_text().splitlines() if "sentinel" in ln

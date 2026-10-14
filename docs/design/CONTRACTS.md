@@ -17280,6 +17280,16 @@ reason (`the installer stopped this copy in step 1, before step 2 reinstalls age
 2).` Other expected warns (the ad hoc launcher, LaunchAgents not yet installed) keep `nothing for this setup to
 do.`; the key is the reason attached, not `copy_stopped` alone. Test: `test_a_stopped_copys_install_commit_warn_is_expected`.
 
+**The Loop line names the config in words** (K43). The empty-folder wait read `that source's exclude in
+sources.toml` beside `the docs repo's _sync/STATE.md`. `_eval_by_name` writes the config's path as `the config
+file <its file name>` (`_CONFIG_SHOWN`; the file name only, never the path, which can name a client folder), and
+the loop's unlisted-folder wait names the config through `loop._shown(config.config_path)` as the empty-folder wait
+does, so both waits pass through the same replacement. `agentsync status` and `sync` print the unlisted wait with
+the config's path now (`~/agent-context/sources.toml`), as they print the empty-folder one. Tests:
+`test_the_loop_line_keeps_no_part_of_a_docs_repo_path_with_spaces`,
+`test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`,
+`test_two_sources_that_cannot_be_listed_get_a_plural_wait`.
+
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 

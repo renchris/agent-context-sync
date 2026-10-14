@@ -767,14 +767,15 @@ def next_step(
         waits.append(
             f"a folder in {bare[0]} could not be listed (no access, or a missing folder or sentinel; "
             f"another sync does not clear it): {named(bare, 'it')}; grant Files and Folders access, "
-            "or add it to that source's exclude in sources.toml"
+            f"or add it to that source's exclude in {_shown(config.config_path)}"
             if len(bare) == 1
             # One line for every such source, plural throughout (B13 round 7 H50): "a folder in A, B" and
             # "that source's exclude" read as one folder of one source.
             else f"a folder in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed (no "
             "access, or a missing folder or sentinel; another sync does not clear it): "
             f"{named(bare, 'them')}; grant Files and Folders access, or add each to its source's "
-            "exclude in sources.toml"
+            # the config by its path, as the empty-folder wait names it (B13 round 9 K43)
+            f"exclude in {_shown(config.config_path)}"
         )
         names_source(*bare)
     for sid, missed in sorted((s, m) for s, m in unlisted if m):

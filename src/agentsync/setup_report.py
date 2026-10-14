@@ -7053,6 +7053,9 @@ Configuration part's ``- docs repo:`` line gives the path."""
 _AGENTS_SHOWN = "the docs repo's AGENTS.md"
 """How the Loop line names the docs repo's ``AGENTS.md``: a bare ``AGENTS.md`` would be the agent's own
 project's when it runs from another folder, the reason the loop prints its path (B13 round 7 H3)."""
+_CONFIG_SHOWN = "the config file {}"
+"""How the Loop line names the config file, with its file name: ``sources.toml`` alone read as a bare word
+beside the docs repo's files named in words (B13 round 9 K43)."""
 _STATE_SHOWN = "the docs repo's _sync/STATE.md"
 """How the Loop line names the docs repo's ``_sync/STATE.md``: a bare ``_sync/STATE.md`` says nothing of what
 it is relative to (B13 round 7 H36)."""
@@ -7064,8 +7067,10 @@ def _eval_by_name(line: str, config: Config) -> str:
     and which named no folder a reader could find.  The draft baseline's wait names that folder by its path,
     and for :data:`_NEXT_PATH_RE` a path ends at its first space: of ``~/Client Alpha/kb docs/_eval`` it left
     ``Client Alpha/kb docs/_eval`` in the line.  So the folder is replaced here as the loop wrote it
-    (``loop._shown``), before the paths without spaces are shortened.  The wait for empty cloud folders
-    names the config file by its path, replaced by its file name the same way. Rules 4, 6 and 8 name the
+    (``loop._shown``), before the paths without spaces are shortened.  The waits for empty and unlisted
+    folders name the config file by its path, shown as :data:`_CONFIG_SHOWN` with the config's own file
+    name, never its path, which can name a client folder (B13 round 9 K43: a bare ``sources.toml`` beside
+    "the docs repo's _sync/STATE.md"). Rules 4, 6 and 8 name the
     docs repo's ``AGENTS.md`` by its path, shown as :data:`_AGENTS_SHOWN` ("the docs repo's AGENTS.md", B13
     round 7 H3), and the waits for empty and unlisted folders name the docs repo's ``_sync/STATE.md`` by its
     path, shown as :data:`_STATE_SHOWN` ("the docs repo's _sync/STATE.md", B13 round 6 G42, round 7 H36)."""
@@ -7075,7 +7080,7 @@ def _eval_by_name(line: str, config: Config) -> str:
     line = line.replace(loop._shown(docs / loop._EVAL_DIR), _EVAL_SHOWN)
     line = line.replace(loop._shown(docs / loop._AGENTS_MD), _AGENTS_SHOWN)
     line = line.replace(loop._shown(docs / loop._STATE_MD), _STATE_SHOWN)  # B13 round 6 G42, round 7 H36
-    return line.replace(loop._shown(config.config_path), config.config_path.name)
+    return line.replace(loop._shown(config.config_path), _CONFIG_SHOWN.format(config.config_path.name))
 
 
 def _loop_line(r: _Run) -> str:
@@ -7088,7 +7093,7 @@ def _loop_line(r: _Run) -> str:
     shows ``note: sync again:`` there was written before the one-time re-read finished. The four paths the
     config puts into these lines, the docs repo's ``_eval``, its ``AGENTS.md``, its ``_sync/STATE.md`` and
     the config file, are shown without their path (the docs repo's ``_eval`` folder, the docs repo's
-    ``AGENTS.md`` and ``_sync/STATE.md``, and the config file by its name) whatever the path
+    ``AGENTS.md`` and ``_sync/STATE.md``, and :data:`_CONFIG_SHOWN`) whatever the path
     (:func:`_eval_by_name`). Records the loop's ``checks`` for the Summary's doctor line, only once its waits
     are on this line. Sets ``r.loop_stage`` for the issue link;
     :func:`build_report` runs it once, before ``took``."""
