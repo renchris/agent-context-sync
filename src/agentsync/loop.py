@@ -161,7 +161,7 @@ def _shown(path: Path) -> str:
         return path.as_posix()
 
 
-def _named(config: Config, ids: Sequence[str], what: str) -> str:
+def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = False) -> str:
     """Where a wait's folders are named, read-only (B13 round 6 G13, G42): the docs repo's STATE.md keeps the
     ``alarm:`` line a sync prints under each source, and every cycle, the background one too, writes it there
     (a run that does not select the source keeps that source's last one, tagged with its run: round 7 H73).
@@ -169,7 +169,13 @@ def _named(config: Config, ids: Sequence[str], what: str) -> str:
     ``status`` print no alarm line, only a plain sync does (B13 round 7 H35). The alarm names five and itself
     points at ``sync -v`` for the rest, so the wait never does (round 7 H12). Two or more ids have one alarm
     line each, joined with "and" (round 7 H50). The wait itself keeps a count and never a path (B13 round 5
-    F43)."""
+    F43). ``in_state``: the wait is written into STATE.md itself, which names no file it is already in: the
+    alarm line is under the source's own ``## <id>`` section below (B13 round 8 J33)."""
+    if in_state:
+        if len(ids) == 1:
+            return f"the alarm line under ## {ids[0]} below names {what} (a plain `{BIN} sync` prints it too)"
+        sections = f"{', '.join(f'## {i}' for i in ids[:-1])} and ## {ids[-1]}"
+        return f"the alarm lines under {sections} below name {what} (a plain `{BIN} sync` prints them too)"
     state = _shown(expand(config.docs_repo) / _STATE_MD)
     if len(ids) == 1:
         return (
@@ -544,13 +550,17 @@ def queue_rows(config: Config) -> int:
     return (len(verdicts) if rc != 2 else 0) + len(uncovered)
 
 
-def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True) -> NextStep:
+def next_step(
+    config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True, in_state: bool = False
+) -> NextStep:
     """The first unmet rule of the loop (module docstring) and the operator's waits, from disk only (no
     source folder is listed: the empty cloud folders it names are the ones the last sync's walk stored).
 
     ``fixes`` are the fixes of status FAILs the caller already ran (rule 1, after the disk checks here).
     ``count_queue=False`` (STATE.md, written by every cycle) skips rule 9's count, which reads every uncited
-    mirror page: past rule 8 the step sends the agent to ``curate``, which counts it."""
+    mirror page: past rule 8 the step sends the agent to ``curate``, which counts it. ``in_state=True``
+    (STATE.md too): a wait points at the alarm line under its source's section, not at STATE.md
+    (:func:`_named`)."""
     docs = expand(config.docs_repo)
     waits: list[str] = []
     notes: list[str] = []
@@ -559,6 +569,9 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
 
     def done(step: str, rule: int) -> NextStep:
         return NextStep(step, tuple(waits), tuple(notes), rule, tuple(checks), dict(about))
+
+    def named(ids: Sequence[str], what: str) -> str:
+        return _named(config, ids, what, in_state=in_state)
 
     def names_source(*sources: str) -> None:
         """The wait just appended names each of these sources."""
@@ -714,7 +727,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
                 # Which folders, by where they are named (B13 round 5 F43; round 6 G13, G42): the wait
                 # carries a count and never a path, and status prints no folder of the source.
-                + _named(config, [src.id], "the folder(s)")
+                + named([src.id], "the folder(s)")
                 + (f"; {size}" if size and not gone and not collides else "")
             )
             names_source(src.id)
@@ -724,7 +737,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "one would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 "empty folder(s) in the cloud drive; "
-                + _named(config, [src.id], "them")
+                + named([src.id], "them")
                 + (f"; {size}" if size and not gone else "")
             )
             names_source(src.id)
@@ -735,7 +748,7 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
                 "it): if the files were removed on purpose, remove the empty folder(s) from the cloud drive "
                 "too, and later syncs take the pages out with the usual deletion check; excluding such a "
                 "folder instead retires its pages at once, with no deletion check and no purge queued; "
-                + _named(config, [src.id], "the folders")
+                + named([src.id], "the folders")
                 + (f"; in all, {size}" if size else "")
             )
             names_source(src.id)
@@ -744,21 +757,21 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     if bare := sorted(s for s, missed in unlisted if not missed):
         waits.append(
             f"a folder in {bare[0]} could not be listed (no access, or a missing folder or sentinel; "
-            f"another sync does not clear it): {_named(config, bare, 'it')}; grant Files and Folders access, "
+            f"another sync does not clear it): {named(bare, 'it')}; grant Files and Folders access, "
             "or add it to that source's exclude in sources.toml"
             if len(bare) == 1
             # One line for every such source, plural throughout (B13 round 7 H50): "a folder in A, B" and
             # "that source's exclude" read as one folder of one source.
             else f"a folder in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed (no "
             "access, or a missing folder or sentinel; another sync does not clear it): "
-            f"{_named(config, bare, 'them')}; grant Files and Folders access, or add each to its source's "
+            f"{named(bare, 'them')}; grant Files and Folders access, or add each to its source's "
             "exclude in sources.toml"
         )
         names_source(*bare)
     for sid, missed in sorted((s, m) for s, m in unlisted if m):
         waits.append(
             f"a folder in {sid} could not be listed (no access, or a missing folder or sentinel; another "
-            f"sync does not clear it): {_named(config, [sid], 'it')}; grant Files and Folders access (the "
+            f"sync does not clear it): {named([sid], 'it')}; grant Files and Folders access (the "
             f"safe fix); the last walk of {sid} did not list {missed} file(s) the mirror still has, and "
             "adding the folder to that source's exclude retires the pages under it at once, with no deletion "
             "check and no purge queued"
@@ -898,11 +911,13 @@ def next_step(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = 
     return done("nothing to do: session done", 10)
 
 
-def next_lines(config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True) -> list[str]:
+def next_lines(
+    config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True, in_state: bool = False
+) -> list[str]:
     """:meth:`NextStep.lines` of :func:`next_step`; [] (with a logged warning) when the state cannot be read,
     so a caller's own exit status never changes because of the hint."""
     try:
-        return next_step(config, fixes=fixes, count_queue=count_queue).lines()
+        return next_step(config, fixes=fixes, count_queue=count_queue, in_state=in_state).lines()
     except (OSError, AgentSyncError) as exc:
         _log.warning("next step: cannot read the loop state: %s", exc)
         return []

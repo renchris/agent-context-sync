@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from agentsync import arm_local, cli, governance, loop, materialise, setup_report, skill
+from agentsync import arm_local, cli, governance, loop, materialise, publish, setup_report, skill
 from agentsync import cycle as cycle_module
 from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
@@ -303,7 +303,13 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
         assert manifest.get_meta("empty_cloud_dirs:work") == '["Empty"]', "what the sync's walk found"
     state = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
-    assert _lines(config)[1] in state.splitlines(), "STATE.md and status give the same wait"
+    # STATE.md and status give the same wait, but for where its folders are named: STATE.md names its own
+    # ## work section, not itself (B13 round 8 J33)
+    stated = _lines(config)[1].replace(
+        _named(config, "work", "the folder(s)"),
+        f"the alarm line under ## work below names the folder(s) (a plain `{BIN} sync` prints it too)",
+    )
+    assert stated != _lines(config)[1] and stated in state.splitlines(), "STATE.md and status give one wait"
     # The wait comes from that walk: status lists no folder of the source, here not even a missing one.
     shutil.move(root, root.with_name("Work moved"))
     assert f"run `{BIN} exclude-empty work`" in _lines(config)[1]
@@ -1680,6 +1686,33 @@ def test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_point
             (folder / rel).chmod(0o755)
     assert "could not be listed" in wait and "STATE.md" in wait
     assert any(all(f"'{rel}'" in ln for rel in _LONG[:5]) and "(+1 more" in ln for ln in _kept_alarms(config))
+
+
+def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:
+    """B13 round 8 J33: STATE.md's ## Next printed the wait as the terminal does, "<docs>/_sync/STATE.md keeps
+    the alarm line for work", inside STATE.md itself, and the alarm under ## work says its WAITING ON YOU
+    line is "at the end of a sync's output", while here that line is above it. In STATE.md the wait names
+    the ## work section, and one fixed line after the waits says where both are; the alarm's own stored
+    text is not rewritten. The terminal and status keep the STATE.md pointer."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    (root / "Empty A").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+    text = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
+    block = text.split("## Next\n\n", 1)[1].split("\n\n## This run", 1)[0].splitlines()
+    (wait,) = [ln for ln in block if ln.startswith(loop.WAIT_PREFIX)]
+    assert "the alarm line under ## work below names the folder(s) (a plain " in wait, wait
+    assert "STATE.md" not in wait, wait
+    assert block[-1] == publish._STATE_WAIT_LEGEND and "## <id> section below" in block[-1]
+    (alarm,) = [ln for ln in text.split("\n## work\n", 1)[1].splitlines() if ln.startswith("alarm: ")]
+    assert "at the end of a sync's output" in alarm, "the stored alarm is left as the sync printed it"
+    (terminal,) = [ln for ln in _lines(config) if ln.startswith(loop.WAIT_PREFIX)]
+    assert _named(config, "work", "the folder(s)") in terminal
+    two = loop._named(config, ["alpha", "beta"], "them", in_state=True)
+    assert two == (
+        f"the alarm lines under ## alpha and ## beta below name them (a plain `{BIN} sync` prints them too)"
+    )
 
 
 def test_state_md_keeps_another_sources_alarm_after_a_one_source_run(

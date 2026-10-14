@@ -300,6 +300,12 @@ _CHANGELOG_MAX_PATHS = 2000
 _INDEX_MAX_LINES = 200
 _INDEX_MAX_BYTES = 25_000
 _REASON_MAX = 300
+_STATE_WAIT_LEGEND = (
+    "(In this file the WAITING ON YOU lines are here, under ## Next, and each source's alarm lines are under "
+    "its own ## <id> section below: where an alarm puts that line at the end of a sync's output, it is here.)"
+)
+"""The line STATE.md's ``## Next`` ends with when it holds a wait (B13 round 8 J33): a stored alarm names the
+wait where a sync prints it, which in this file is above the alarm, not after it."""
 _ALARM_MAX = 6000
 """An alarm line's cap in STATE.md: the waits send the reader there for the folder names an alarm holds, and
 an alarm names up to five, each in full (five relative paths at macOS's 1024-character limit fit); at
@@ -2025,7 +2031,8 @@ class Publisher:
         cycle's commit and checkpoint, the lines ``sync`` prints after a cycle except two: a blocking lint
         finding, which held this run's commit, is the step (the loop's rules never see the land gate), and
         past rule 8 the step sends the agent to ``curate`` instead of counting the queue, a walk of every
-        uncited mirror page that every LaunchAgent poll would otherwise pay."""
+        uncited mirror page that every LaunchAgent poll would otherwise pay. A wait points at its source's
+        ``## <id>`` section, not at this file, and :data:`_STATE_WAIT_LEGEND` follows the waits."""
         from agentsync import loop  # noqa: PLC0415 - loop imports cycle, which imports this module
 
         blocking = sum(1 for f in report.lint_findings if f.blocking)
@@ -2037,9 +2044,14 @@ class Publisher:
             if blocking
             else []
         )
-        next_lines = loop.next_lines(self._config, fixes=fixes, count_queue=False) or [
+        next_lines = loop.next_lines(self._config, fixes=fixes, count_queue=False, in_state=True) or [
             f"(the next step could not be worked out: run `{skill.AGENTSYNC_BIN} status`)"
         ]
+        # An alarm is stored as the sync printed it ("the WAITING ON YOU line ... at the end of a sync's
+        # output"), and here that line is above it: one fixed legend says where, only when a wait is here to
+        # point at, never by rewriting the alarm's text (B13 round 8 J33).
+        if any(ln.startswith(loop.WAIT_PREFIX) for ln in next_lines):
+            next_lines = [*next_lines, _STATE_WAIT_LEGEND]
         now = self._now()
         reports = {r.source_id: r for r in report.sources}
         commit = report.commit_sha[:12] if report.commit_sha else "none (nothing content-changing)"

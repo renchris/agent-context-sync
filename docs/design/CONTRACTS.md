@@ -674,6 +674,9 @@ already carries `SOURCE-MISSING` is not repeated.
     `## This run`. `publish` imports `loop` inside `write_state` (loop imports cycle, which imports publish).
     INDEX.md prints `Topics: none yet; run ~/.local/bin/agentsync sync and follow NEXT` (the command in
     backticks) after `## Sources` while no curated page exists.
+    Amended 2026-10-14, §16.77 J33: in STATE.md a wait that names where its folders are says `the alarm line
+    under ## <id> below names ...`, not `<docs repo>/_sync/STATE.md keeps ...` (`next_lines(in_state=True)`), and
+    the block ends with one fixed legend line whenever it holds a WAITING ON YOU line.
 
 ## 15. Module reference (generated from the stubs)
 
@@ -6196,6 +6199,9 @@ or empty for this case (a source sat incomplete for 900 passes):
     five (H12). **Amended 2026-10-13, §16.68 H50:** two or more such sources read `a folder in each of <A and B>
     could not be listed (...): ... keeps the alarm lines for <A and B>, which name them (...); grant Files and
     Folders access, or add each to its source's exclude in sources.toml`.
+    Amended 2026-10-14, §16.77 J33: written into STATE.md itself, the pointer reads `the alarm line under ## <id>
+    below names ...` (`the alarm lines under ## <A> and ## <B> below name ...`); the terminal, `status`,
+    install.sh and the setup report keep the STATE.md pointer.
 - doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
   an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
   while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
@@ -16661,6 +16667,24 @@ the config path, so `has path <stored> in ` still holds. It names no cause: a li
 `/tmp` against `/private/tmp` all reach this line, and the finder's "read through the CloudStorage link" is true
 only of the first. Typed as stored, the line is unchanged. Test: `tests/test_cli.py`
 (`test_add_source_takes_a_cloud_folder_stored_through_a_link_as_the_same_folder`).
+
+**J33: STATE.md points its waits at its own sections (`agentsync.loop`, `agentsync.publish`).** STATE.md's
+`## Next` holds the loop's waits as the terminal prints them, so the empty-folder and unlisted-folder waits told
+the reader of STATE.md that `<docs repo>/_sync/STATE.md keeps the alarm line for <id>`, the file they were reading;
+and the alarm under `## <id>`, stored as the sync printed it, says its WAITING ON YOU line is "at the end of a
+sync's output", while in STATE.md that line is above it. The two lines are fixed in different ways, since only the
+wait is built when STATE.md is written. `loop.next_step` and `loop.next_lines` take a keyword `in_state: bool =
+False`, passed to `_named`; `write_state` passes `True`, and the pointer reads `the alarm line under ## <id> below
+names <what> (a plain \`~/.local/bin/agentsync sync\` prints it too)`, or for two or more ids `the alarm lines
+under ## <A> and ## <B> below name ...`. The alarm's stored text is not rewritten: it is persisted, carried from
+earlier runs (`alarm (run N):`) and quotes untrusted folder names, and a substitution would tie publish to
+arm_local's wording. Instead `## Next` ends with one fixed line, `publish._STATE_WAIT_LEGEND` (`(In this file the
+WAITING ON YOU lines are here, under ## Next, and each source's alarm lines are under its own ## <id> section
+below: where an alarm puts that line at the end of a sync's output, it is here.)`), written only when the block
+holds a `WAITING ON YOU:` line, so it never points at a wait that is not there (the placeholder when the loop
+cannot be read, or a carried alarm that outlived its wait). The terminal, `status`, install.sh and the setup report
+keep the STATE.md pointer. Tests: `tests/test_loop.py` (`test_state_md_points_its_waits_at_its_own_sections`,
+`test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`).
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 
