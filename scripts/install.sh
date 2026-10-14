@@ -772,6 +772,17 @@ git_head_file() {
 	[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) printf '%s' "$head" | cut -c1-12 ;;
 	esac
 }
+# Whether git refuses the checkout $1 as another user account's ("detected dubious ownership"): the reason the
+# report gives beside a commit git could not read, which only the friction log named (B13 round 10 L29). Never
+# the owning account. Its own call, not checkout_commit's, whose output read_commit and show_version parse; the
+# text captured, not piped to grep, which pipefail would make git's status.
+git_refuses_owner() { # DIR
+	local e
+	have_devtools || return 1
+	e="$(LC_ALL=C git_ro -C "$1" rev-parse HEAD 2>&1 >/dev/null || true)"
+	case "$e" in *"dubious ownership"*) return 0 ;; esac
+	return 1
+}
 # COMMIT and DIRTY from the checkout $1; both stay as they are when git cannot say.
 read_commit() {
 	local c
@@ -2056,6 +2067,8 @@ commit_shown() {
 	fi
 	if [ -n "$d" ] && [ ! -e "$d/.git" ]; then
 		printf 'none (%s has no .git: not a git checkout)' "$d"
+	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ] && git_refuses_owner "$d"; then
+		printf 'unknown (git refuses %s/.git: the folder belongs to another user account)' "$d"
 	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ]; then
 		printf 'unknown (git cannot read %s/.git)' "$d"
 	else
@@ -2636,7 +2649,13 @@ write_fallback_report() { # RC WHY
 		read_commit "$repo"
 		if [ "$COMMIT" = "-" ]; then
 			c="$(git_head_file "$repo")"
-			[ -z "$c" ] || COMMIT="$c (local changes not checked)"
+			if [ -z "$c" ]; then
+				:
+			elif git_refuses_owner "$repo"; then
+				COMMIT="$c (local changes not checked: git refuses this folder, which belongs to another user account)"
+			else
+				COMMIT="$c (local changes not checked)"
+			fi
 		fi
 	fi
 	dir="$(dirname "$REPORT_PATH")"

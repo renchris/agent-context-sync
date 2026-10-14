@@ -2357,6 +2357,32 @@ def test_the_install_source_says_a_checkout_is_not_a_git_checkout(
     assert not line.startswith("- install source: checkout "), line
 
 
+def test_the_install_source_says_git_refuses_a_checkout_another_account_owns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 10 L29: an installed checkout git refuses ("detected dubious ownership") read "git cannot
+    read its .git", as an unreadable .git does. It says why, as the shell report does, naming no account."""
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    for args in (("init", "-q", "-b", "main"), ("commit", "-q", "--allow-empty", "-m", "one")):
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.email=t@example.invalid", "-c", "user.name=t", *args],
+            check=True,
+            capture_output=True,
+        )
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    monkeypatch.setattr(run, "devtools", lambda: True)
+    assert setup_report._install_source(run).startswith(f"checkout {repo} @ ")
+    monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+    assert setup_report._install_source(run) == (
+        f"checkout {repo} (git refuses its .git: the folder belongs to another user account)"
+    )
+    (repo / ".git" / "HEAD").write_text("garbage\n")
+    monkeypatch.delenv("GIT_TEST_ASSUME_DIFFERENT_OWNER")
+    assert setup_report._install_source(run) == f"checkout {repo} (git cannot read its .git)"
+
+
 def test_an_empty_git_proxy_takes_no_token_from_the_next_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

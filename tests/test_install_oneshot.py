@@ -3274,6 +3274,13 @@ def test_the_shell_report_says_why_a_copy_has_no_commit(env: dict[str, str]) -> 
     assert " start install.sh compat=" in log and " commit=- " in log, log
     (src / ".git").mkdir()  # a .git no git and no file read can say anything of
     assert f"source commit unknown (git cannot read {shown}/.git);" in run("--report-only")
+    # B13 round 10 L29: a real run whose SOURCE git refuses as another account's says so
+    (src / ".git").rmdir()
+    _git_checkout(src)
+    refused = (
+        f"source commit unknown (git refuses {shown}/.git: the folder belongs to another user account), "
+    )
+    assert refused in run(STUB_UV_INSTALL_RC="2", GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
 
 
 def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], tmp_path: Path) -> None:
@@ -3311,6 +3318,11 @@ def test_the_shell_report_only_names_this_checkouts_commit(env: dict[str, str], 
     assert f"source commit {sha}-dirty tree={_fingerprint(git)};" in summary()
     no_tools = {"DEVELOPER_DIR": str(tmp_path / "none")}
     assert f"source commit {sha} (local changes not checked);" in summary(no_tools)
+    # B13 round 10 L29: git's refusal of a folder another account owns is named, never that account
+    assert (
+        f"source commit {sha} (local changes not checked: git refuses this folder, which belongs to another "
+        "user account);" in summary({"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"})
+    )
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)

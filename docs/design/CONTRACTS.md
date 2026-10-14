@@ -17518,6 +17518,8 @@ is not shown). Tests: `test_the_shell_report_says_why_a_copy_has_no_commit`,
 `test_install_source_skips_a_run_that_read_no_commit`.
 Amended 2026-10-14, §16.86 L28: the agentsync report's line reads `<path>, a copy that is not a git checkout (no
 .git, so no commit or origin)`, no longer `checkout <path> (not a git checkout: ...)`.
+Amended 2026-10-14, §16.87 L29: a .git git refuses as another user account's reads `unknown (git refuses
+<path>/.git: the folder belongs to another user account)`, and the agentsync report's `(git refuses its .git: ...)`.
 
 **The inbox line is held with the docs repo line** (K7). With several folders the first `add-source` call's
 `added inbox source ...` line came out between the first and the second folder's blocks, as the docs repo line did
@@ -18220,6 +18222,19 @@ agentsync: a duplicate source id stops step 2 with exit 1; an older build that r
 and step 2 keeps it byte for byte), `test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
 `test_step_1s_failed_config_exception_reads_the_installers_words` (pins v19's words to the clause), the
 `_unread_words` cases in `tests/test_setup_report.py`.
+
+**A checkout git refuses says why** (L29; amends §16.81 K17 and K29). Under git's ownership check ("detected
+dubious ownership": the checkout belongs to another user account) the shell report said only `(local changes not
+checked)`, the words a Mac with no developer tools gets, or `unknown (git cannot read <path>/.git)`; only the
+friction line named the cause. `git_refuses_owner` (its own `rev-parse HEAD`, stderr captured in the C locale,
+never checkout_commit's output, which read_commit and show_version parse) decides the words: `--report-only` reads
+`<sha> (local changes not checked: git refuses this folder, which belongs to another user account)`, a real run's
+`unknown (git refuses <path>/.git: the folder belongs to another user account)`; the no-devtools case keeps its
+words. The agentsync report's install source reads `(git refuses its .git: the folder belongs to another user
+account)` when `_checkout_facts` read nothing and git's stderr (`_git_ro_err`) says so, else `(git cannot read its
+.git)`. The owning account is never named. Tests: `test_the_shell_report_only_names_this_checkouts_commit`,
+`test_the_shell_report_says_why_a_copy_has_no_commit` (GIT_TEST_ASSUME_DIFFERENT_OWNER=1),
+`test_the_install_source_says_git_refuses_a_checkout_another_account_owns`.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 

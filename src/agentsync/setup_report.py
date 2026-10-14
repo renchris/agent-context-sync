@@ -3169,7 +3169,17 @@ def _install_source(r: _Run) -> str:
             + ", a copy that is not a git checkout (no .git, so no commit or origin)"
         )
     elif directory is not None and r.devtools():
-        where += _checkout_facts(r, directory) or " (git cannot read its .git)"
+        # git's refusal of a folder another user account owns, said as the shell report says it (B13 round 10
+        # L29); never that account's name
+        facts = _checkout_facts(r, directory)
+        if not facts:
+            refused = b"dubious ownership" in _git_ro_err(r, directory, "rev-parse", "HEAD")[2]
+            facts = (
+                " (git refuses its .git: the folder belongs to another user account)"
+                if refused
+                else " (git cannot read its .git)"
+            )
+        where += facts
     with contextlib.suppress(Exception):
         # The last run that reached an install step: a --list-folders run and a run a usage error stopped log
         # ``commit=-`` before reading their source's commit, so they say nothing about the installed copy.
@@ -3195,9 +3205,15 @@ def _git_ro(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple
     """``git -C directory args`` read-only (``GIT_OPTIONAL_LOCKS=0``: not even the index's stat cache is
     rewritten), bounded by ``timeout`` and the report's budget: (exit status, stdout bytes); 124/127 on a
     timeout or a missing git."""
+    rc, out, _err = _git_ro_err(r, directory, *args, timeout=timeout)
+    return rc, out
+
+
+def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
+    """:func:`_git_ro` with git's stderr too (in the C locale, so its messages are git's English ones)."""
     limit = min(timeout, r.remaining() - _RESERVE_S)
     if limit <= 0.2:
-        return 124, b""
+        return 124, b"", b""
     try:
         cp = subprocess.run(
             ["/usr/bin/git", "-C", str(directory), *args],
@@ -3208,10 +3224,10 @@ def _git_ro(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple
             env={**os.environ, "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"},
         )
     except subprocess.TimeoutExpired:
-        return 124, b""
+        return 124, b"", b""
     except OSError:
-        return 127, b""
-    return cp.returncode, cp.stdout
+        return 127, b"", b""
+    return cp.returncode, cp.stdout, cp.stderr
 
 
 def origin_label(url: str) -> str:
