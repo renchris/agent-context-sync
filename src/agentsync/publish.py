@@ -1124,7 +1124,9 @@ class Publisher:
                 return reason
         return None
 
-    def _plan_stub(self, source: SourceConfig, item: ItemRow, result: ConversionResult) -> PlannedPage:
+    def _plan_stub(
+        self, source: SourceConfig, item: ItemRow, result: ConversionResult, *, withheld: bool | None = None
+    ) -> PlannedPage:
         status = result.status
         refusal = policy.is_refusal_reason(result.reason)
         if status is ConversionStatus.REFUSED or refusal:
@@ -1151,9 +1153,16 @@ class Publisher:
         # read (a .msg that holds MIME text is read as an .eml, B13 round 4 Q78): the stored reason stays "no
         # converter for <suffix>" (re-reads and stub identity key on it, and no label escalation fires), and
         # only the words say why (B13 round 3 R33): the summary, the body and the page's reason: (B13 round 6
-        # G29), never the stored reason.
+        # G29), never the stored reason. ``withheld`` given (the stub re-render, B13 round 8 J47, J53) is what
+        # the published page says, which stands in for this run's OCR state: the run that planned it decides.
         withheld = (
-            status is ConversionStatus.REFUSED and not refusal and self._withheld(result.reason, suffix)
+            status is ConversionStatus.REFUSED
+            and not refusal
+            and (
+                self._withheld(result.reason, suffix)
+                if withheld is None
+                else withheld and self._withheld_eligible(result.reason, suffix)
+            )
         )
         summary_text = shown
         if withheld:
@@ -1244,11 +1253,14 @@ class Publisher:
             refusal=reason if refusal else None,
         )
 
-    def plan_pages(self, source: SourceConfig, item: ItemRow, result: ConversionResult) -> list[PlannedPage]:
+    def plan_pages(
+        self, source: SourceConfig, item: ItemRow, result: ConversionResult, *, withheld: bool | None = None
+    ) -> list[PlannedPage]:
         """Build every page of one conversion (OK -> one page per unit; UNREADABLE/REFUSED/FAILED -> one stub
         page with status unreadable|refused and ``reason``), frontmatter per
         ``frontmatter.MirrorFrontmatter``.  An item whose label the ``[policy]`` excludes gets a refused stub
-        whatever the conversion produced (its content never reaches docs/)."""
+        whatever the conversion produced (its content never reaches docs/). ``withheld`` overrides this run's
+        OCR state in a stub's withheld decision (the re-render's page decision, ``_plan_stub``)."""
         if item.source_id != source.id:
             raise PublishError(f"item {item.source_id}/{item.stable_id} planned against source {source.id}")
         screening = self.policy_refusal(item)
@@ -1262,7 +1274,7 @@ class Publisher:
                 raise PublishError(f"{item.rel_path}: duplicate unit ids from {result.converter_id}")
             pages = [self._plan_unit(source, item, result, u) for u in units]
         else:
-            pages = [self._plan_stub(source, item, result)]
+            pages = [self._plan_stub(source, item, result, withheld=withheld)]
         keys = [slug.collision_key(p.output_path) for p in pages]
         if len(set(keys)) != len(keys):
             raise PublishError(f"{item.rel_path}: two units map to one mirror path")

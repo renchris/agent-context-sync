@@ -233,6 +233,8 @@ _reread_clock = time.monotonic
 _recording_clock = time.monotonic  # the staging of a recording, charged to the recording allowance
 _POLICY_META = "policy_fingerprint"
 _STUB_RENDER_META = "stub_render"
+_WITHHELD_BODY = "its content is withheld (content policy)"  # every withheld stub's body (publish._plan_stub)
+_WITHHELD_WORDS = "withheld by label rule"  # its summary since Q27, its reason: since G29
 """The ``publish.STUB_RENDER`` the stub pages were last re-rendered for (``Cycle._rerender_stubs``)."""
 _SCOPE_CHANGE_META = "scope_change:"
 _SCOPE_CHANGE_REASON = "retired:scope-change"
@@ -1914,7 +1916,7 @@ class _Cycle:
                     (o.output_path, o.page_sha256) for o in outs if o.status is not OutputStatus.TOMBSTONE
                 ]
                 try:  # one row that cannot be planned or written keeps its page; no sync stops on it
-                    pages = self.publisher.plan_pages(src, row, result)
+                    pages = self.publisher.plan_pages(src, row, result, withheld=self._page_withheld(row))
                     if [(p.output_path, p.page_sha256) for p in pages] == have:
                         continue
                     self.changes += self.publisher.write_pages(row, pages, self.run_id)
@@ -1928,6 +1930,28 @@ class _Cycle:
         self.manifest.set_meta(_STUB_RENDER_META, str(STUB_RENDER))
         if rewritten:
             log.info("%d stub or tombstone page(s) re-rendered for stub rendering %d", rewritten, STUB_RENDER)
+
+    def _page_withheld(self, row: ItemRow) -> bool | None:
+        """Whether the live stub of an image a label rule may withhold says so, read from the page, or None
+        for any other row (B13 round 8 J47, J53). The run that planned the stub decided it by its OCR state
+        (H52); the re-render runs once per STUB_RENDER, so taking this run's state instead turned the wording
+        for good on a run whose engine missed its ``--version``. The body marker is in every withheld page's
+        body since its first wording, before its ``reason:`` said so (G29). A .msg is withheld whatever
+        OCR."""
+        suffix = Path(row.name).suffix.lower()
+        if suffix == ".msg" or not self.publisher._withheld_eligible(row.state_reason, suffix):
+            return None
+        for out in self.manifest.outputs_for(row.source_id, row.stable_id):
+            if out.status is OutputStatus.TOMBSTONE:
+                continue
+            try:
+                fm, body = parse_mirror_page((self.repo / out.output_path).read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, FrontmatterError):
+                return None
+            said = [fm.reason or "", (fm.summary or "").removeprefix(content_policy.REFUSED_PREFIX)]
+            text = body.split("\n\n", 2)[-1]  # below the banner and the heading, which holds the file's name
+            return _WITHHELD_BODY in text or any(s.startswith(_WITHHELD_WORDS) for s in said)
+        return None
 
     def _rerender_tombstones(self, source_id: str) -> int:
         """Re-render the intact tombstone pages of ``source_id`` in this version's layout (B13 round 6

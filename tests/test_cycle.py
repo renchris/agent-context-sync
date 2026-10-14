@@ -2839,6 +2839,80 @@ def test_quarantine_tsv_keeps_the_wording_of_the_published_stub_whatever_this_ru
         ), f"run {n + 1}"
 
 
+@pytest.mark.parametrize(
+    ("engines", "expected", "rel"),
+    [
+        ([True, True, False, True], publish_mod._withheld_reason(".png"), SITE_PLAN),
+        ([False, False, True, False], "no converter for .png", SITE_PLAN),
+        (
+            [False, False, False],
+            "no converter for .png",
+            "projects/its content is withheld (content policy).png",
+        ),
+    ],
+    ids=[
+        "withheld, re-rendered with no engine",
+        "no converter, re-rendered with an engine",
+        "no converter, named with the withheld words",
+    ],
+)
+def test_the_stub_re_render_keeps_the_wording_the_page_has_whatever_this_runs_ocr(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    engines: list[bool],
+    expected: str,
+    rel: str,
+) -> None:
+    """B13 round 8 J47, J53: the one-time stub re-render (a STUB_RENDER bump) planned an image stub with this
+    run's OCR state, so a run whose engine missed its ``--version`` turned a withheld stub into "no converter"
+    (page and TSV), and the meta, written after it, kept it so for good. The page's own wording decides now
+    (H52: the run that planned the stub), in both directions, and the re-render moves nothing; the file's
+    name, in the page's heading, is not the page's wording."""
+    engine = fake_engine(tmp_path / "ocr-bin")
+    picture(local_source_dir / rel, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    for n, ready in enumerate(engines):
+        if n == 2:
+            with Manifest(config.state_paths.db) as m:
+                m.set_meta(cycle_mod._STUB_RENDER_META, "4")  # an install before this rendering version
+        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d, e=engine if ready else None: e)
+        report = run(config)
+        assert report.exit_code == 0 and (report.commit_sha is not None) == (n == 0), f"run {n + 1}"
+        fm, _body = _image_page(config, rel)
+        assert (fm["reason"], _quarantine_reason(config, rel)) == (expected, expected), f"run {n + 1}"
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_meta(cycle_mod._STUB_RENDER_META) == str(publish_mod.STUB_RENDER)
+
+
+@pytest.mark.parametrize("ready", [True, False], ids=["with an engine", "with no engine"])
+def test_the_stub_re_render_keeps_a_withheld_image_page_from_before_its_reason_said_so(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, ready: bool
+) -> None:
+    """B13 round 8 J47: before G29 a withheld image's page kept ``reason: no converter for .png`` under a
+    withheld summary and body. Its re-render reads the body, so it comes out withheld, whatever this run's
+    OCR, rather than as a plain "no converter" stub."""
+    engine = fake_engine(tmp_path / "ocr-bin")
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine)
+    with monkeypatch.context() as old:  # the rendering before G29: the page's reason: was the stored one
+        old.setattr(publish_mod, "_withheld_reason", lambda suffix: f"no converter for {suffix}")
+        assert run(config).exit_code == 0
+    fm, body = _image_page(config, SITE_PLAN)
+    assert fm["reason"] == "no converter for .png" and "its content is withheld (content policy)" in body
+    with Manifest(config.state_paths.db) as m:
+        m.set_meta(cycle_mod._STUB_RENDER_META, "3")
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _c, _d: engine if ready else None)
+    report = run(config)
+    assert report.exit_code == 0 and report.commit_sha is not None
+    fm, body = _image_page(config, SITE_PLAN)
+    withheld = publish_mod._withheld_reason(".png")
+    assert (fm["reason"], _quarantine_reason(config, SITE_PLAN)) == (withheld, withheld)
+    assert fm["summary"].startswith("refused: withheld by label rule") and body.startswith(UNTRUSTED_BANNER)
+    assert run(config).commit_sha is None
+
+
 def _msg_page_then_a_rule(tmp_path: Path, local_source_dir: Path) -> tuple[Config, str]:
     """A .msg published as a page with no label rule, and the config that adds one."""
     (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
