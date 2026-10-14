@@ -8527,6 +8527,9 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   note itself is unchanged, and so is a line written without a config.
   Amended 2026-10-13, §16.69 H17 (with H28): when a config is there and could not be read, every
   `list-folders` line ends `synced=unreadable` instead (a separate flag; `$synced` stays a number).
+  **Amended 2026-10-14, §16.79 J67 (by §16.70 H8):** the line no longer ends there: it reads `synced=unreadable
+  marks=<why>`, the why one of `no-tool`, `timeout`, `older:<name>`, `failed` or `failed:<Class>`, which
+  `setup_report.unread_why` turns into the Summary's note.
 - Nothing new reaches a report unredacted. The first line holds counts. A marked line holds a path the
   report already redacts: every folder name under `~/Library/CloudStorage` at the depths the list shows is a
   placeholder (§16.14), whatever comes before it on the line. A synced folder the list does not reach is a
@@ -15986,6 +15989,10 @@ Nothing is sent automatically.`, the shell report's words. No reader needs the l
 `report_issue_link` and `stopped_report_note` handle a report without one, and `setup-report --out` and install.sh
 already print none for it. The README prompt already says "none when the report says it is for a private copy only".
 Test: `tests/test_setup_report.py::test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately`.
+**Amended 2026-10-14, §16.79 J67:** not quite the shell report's words: its line (`fallback_redaction`) ends
+`never as a public issue. Nothing is sent automatically.`, with no `: it would show that name`, and never had it.
+The agentsync line is the shell report's words plus why; the shell report's own `Private only:` line, just above
+its `Send it:` line, says why there.
 
 **agentsync's own paths stay whole beside an organisation named like them** (H74; dated line at §16.64 G45). An
 organisation `Context` or `Agent` is a report word, fuzzy and matched everywhere, so it cut `~/agent-context/setup/`
@@ -16641,3 +16648,11 @@ written later list it among the runs that select sources. Each gets a dated line
 residuals line, about launchd runs, which never select sources, keeps the byte budget as its one reason. The text
 stays as written, as every older section's does. Test:
 `test_every_contract_paragraph_that_names_sync_source_says_it_does_not_exist`, which also parses both commands.
+
+**The contracts quote the shell report's list and Send lines as written** (J67; dated lines at §16.29 and §16.69
+H75). §16.70 H8 made install.sh's line `synced=unreadable marks=<why>` and left no dated line at §16.29, whose H17
+line still says the line ends `synced=unreadable`; and §16.69 H75 called the agentsync report's `Send it:` line,
+which ends `: it would show that name. Nothing is sent automatically.`, the shell report's words, while
+`fallback_redaction`'s line never had that clause (`git log -S` finds none). Documentation only: install.sh keeps
+its line, and §16.69 H17's quote stays as the record of what round 7 built. Test:
+`test_the_contracts_quote_the_shell_reports_list_and_send_lines_as_written`, which reads both lines in install.sh.

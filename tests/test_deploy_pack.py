@@ -3791,6 +3791,24 @@ def test_every_contract_paragraph_that_names_sync_source_says_it_does_not_exist(
         assert "**Amended 2026-10-14, §16.79 J51:** `sync --source` does not exist" in para, para[:80]
 
 
+def test_the_contracts_quote_the_shell_reports_list_and_send_lines_as_written() -> None:
+    """B13 round 8 J67: §16.29's dated line said a list that could not read the config ends
+    `synced=unreadable`, while since round 7 H8 install.sh writes `synced=unreadable marks=<why>`; §16.69
+    H75 called the agentsync report's `Send it:` line, with its `: it would show that name`, the shell
+    report's words, which hold no such clause.  Each gets a dated line, read against install.sh."""
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'unread=" synced=unreadable marks=$marks"' in installer
+    send = next(line for line in installer.splitlines() if 'say "Send it: privately' in line)
+    assert "it would show that name" not in send and "never as a public issue. Nothing is sent" in send
+    s29 = " ".join(_contracts_section("### 16.29 ", "### 16.30 ").split())
+    assert (
+        "**Amended 2026-10-14, §16.79 J67 (by §16.70 H8):** the line no longer ends there: it reads " in s29
+    )
+    assert "`synced=unreadable marks=<why>`" in s29
+    s69 = " ".join(_contracts_section("### 16.69 ", "### 16.70 ").split())
+    assert "**Amended 2026-10-14, §16.79 J67:** not quite the shell report's words" in s69
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is
