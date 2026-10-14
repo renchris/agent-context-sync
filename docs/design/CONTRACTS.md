@@ -18313,7 +18313,8 @@ file, so v18 cloned onto a good checkout and told the person to move it aside. S
 .git ]`. An empty or junk `.git` file then reaches the pull, whose "invalid gitfile format" the not-a-checkout stop
 now names beside "not a git repository" (a dangling `gitdir:` gives the latter). A second worktree of another
 checkout also pulls; on a branch with no upstream, its no-tracking recovery cannot take main from the worktree that
-has it out, and git's "is already used by worktree" (git 2.54 and Apple git 2.50) is a not-a-checkout stop too, whose
+has it out, and git's "is already used by worktree" (git 2.54 and Apple git 2.50; the CI runner's `/usr/bin/git`
+resets that main instead, lossless under the ancestor test) is a not-a-checkout stop too, whose
 words now read "not a checkout this setup can use" and name the local-work branch the recovery made (the lane's
 review found that loop: v18 cloned onto such a folder instead). The allow list gains `Bash([ -f
 ~/src/agent-context-sync/.git ])`, so step 1 needs the first eight rules. Test:

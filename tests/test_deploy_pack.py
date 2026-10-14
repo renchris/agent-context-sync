@@ -1597,7 +1597,11 @@ def test_step1_and_its_recoveries_never_reach_a_repository_above_the_checkout(tm
     foreign = env | {"GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"}
     proc = _zsh(_step1_pull(upstream), home, foreign)
     assert proc.returncode != 0 and "detected dubious ownership" in proc.stderr, proc.stderr
-    git_dir = _zsh(f"git -C {_CHECKOUT} --git-dir=.git pull --ff-only", home, foreign)
+    # A read with no fetch: a pull's fetch from a local upstream runs upload-pack, which the CI runner's git
+    # also refuses under the foreign-owner switch, so it would fail for a reason that is not the checkout's.
+    found = _zsh(f"git -C {_CHECKOUT} rev-parse HEAD", home, foreign)
+    assert found.returncode != 0 and "detected dubious ownership" in found.stderr, found.stderr
+    git_dir = _zsh(f"git -C {_CHECKOUT} --git-dir=.git rev-parse HEAD", home, foreign)
     assert git_dir.returncode == 0, "L61's --git-dir skips the ownership check: not built"
     (home / "src").rename(home / "real-src")
     (home / "src").symlink_to(home / "real-src")
@@ -1632,9 +1636,11 @@ def test_a_checkout_whose_git_is_a_file_pulls(tmp_path: Path) -> None:
     (checkout / ".git").write_text(f"gitdir: {home / 'nowhere'}\n", encoding="utf-8")
     proc = _zsh(_step1_pull(upstream), home, env)
     assert proc.returncode == 128 and "not a git repository" in proc.stderr, proc.stderr
-    # A second worktree of another checkout on a branch with no upstream reaches the no-tracking recovery,
-    # which cannot take main from the worktree that has it out: that is the not-a-checkout stop too (round 10
-    # lane P review), with the work kept on the branch the recovery made.
+    # A second worktree of another checkout on a branch with no upstream reaches the no-tracking recovery.
+    # git 2.50 and 2.54 refuse to take main from the worktree that has it out: that is the not-a-checkout stop
+    # too (round 10 lane P review), with the work kept on the branch the recovery made. The CI runner's
+    # /usr/bin/git resets that main instead, which the recovery's ancestor test keeps lossless: every commit
+    # of main is on the local-work branch.
     shutil.rmtree(checkout)
     primary = home / "primary"
     subprocess.run([*_GIT, "clone", "-q", str(upstream), str(primary)], check=True)
@@ -1642,10 +1648,16 @@ def test_a_checkout_whose_git_is_a_file_pulls(tmp_path: Path) -> None:
         [*_GIT, "-C", str(primary), "worktree", "add", "-q", "-b", "feat", str(checkout)], check=True
     )
     assert "no tracking information" in _zsh(_step1_pull(upstream), home, env).stderr
+    main_before = _git_out(primary, "rev-parse", "main")
     proc = _zsh(KEEP_BRANCH_WORK, home, env)
-    assert proc.returncode != 0 and "is already used by worktree" in proc.stderr, proc.stderr
     assert 'or that main "is already used by worktree"' in step1
-    assert _git_out(checkout, "branch", "--show-current").startswith("local-work-"), "the work is kept"
+    [kept] = _git_out(checkout, "branch", "--list", "local-work-*", "--format=%(refname:short)").split()
+    assert main_before in _git_out(checkout, "rev-list", kept), "every commit of main is kept"
+    if proc.returncode != 0:
+        assert "is already used by worktree" in proc.stderr, proc.stderr
+        assert _git_out(checkout, "branch", "--show-current") == kept, "the work is kept"
+    else:
+        assert _git_out(checkout, "rev-parse", "main") == _git_out(checkout, "rev-parse", "origin/main")
 
 
 def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
