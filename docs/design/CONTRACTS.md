@@ -17540,6 +17540,9 @@ deviation (its agent waited all the same: K9's verifier) keep v17's reading. Tes
 (`test_a_folder_list_that_could_not_read_the_config_goes_on_unattended`,
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_list_folders_is_step_1s_only_listing`),
 `tests/test_setup_report.py` (`test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`).
+Amended 2026-10-14, §16.86 L23: the line reads "... could not read them, so step 1 asks at most whether to add one;
+not logged)": the step asks, not its list. Amended 2026-10-14, §16.86 L7: so does a v18 attempt whose install could
+not count the folders either (its config step logged no `kept=`).
 
 **The branch recovery says what it kept** (K12, K13; amends §16.76's J7 and J8 paragraph). On a main with no
 upstream and nothing of its own, v17's recovery made an empty local-work branch and wrote no patch, while the
@@ -17916,6 +17919,25 @@ ConfigError)` named no file, so "it" referred to nothing. The cell reads `could 
 syncs, because <why>`, the Summary note's own noun; `_UNREAD_WHY`, the Summary's note and install.sh's warning,
 whose "it" refers back to the file they name, are unchanged. Test:
 `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`.
+
+**An unread config is counted the same way wherever a count is missing** (L7, L12, L23; dated line at §16.82
+K20). L7: a v18 list that could not read the config, then an install whose config step failed before it logged
+`kept=`: no count says whether the Mac synced a folder, yet the report counted the unlogged folder question
+(`human turns: 1`, `the folder question (step 1; not logged as a question)`), because only a `kept=N` carried v18's
+rule. `unread_unknown` (the deciding list could not read the config, an install run exists, and its first config
+step logged no `kept=`) now leaves the question uncounted from `UNREAD_GOES_ON` on, and the expected-turns line
+reads `no folder question (step 1's list could not read the config, so step 1 asks at most whether to add one; not
+logged)`. Unchanged: `kept=0` (a config that synced nothing, still asked), v17 and older, a v18 attempt with a
+step 1 deviation (`waited_for_folders`, the test `unread_asked` uses too), and an attempt with no install run. L12:
+a list that could not read the config, then a re-run before the install that read it (`synced=N`), is decided by
+the re-run (`_list_reread`, read by `synced_before` and `unread_synced`; `rerun_synced` gives the note its count): the expected-turns line is the
+already-synced one and the note keeps the first run's reason, then says `; its re-run read it: N already synced`
+(`... read it and marked none` for 0). Both runs unreadable keep `, so it marked none`; a list run after an install
+run reads a config the install changed and decides nothing. L23: the `kept_unread` line said the list "asked"; it
+reads `so step 1 asks at most whether to add one`. Tests:
+`test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn`,
+`test_a_folder_list_run_again_before_the_install_is_what_step_1_printed`,
+`test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

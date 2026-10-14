@@ -4165,10 +4165,146 @@ def test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn(
             continue
         assert first.startswith("- **outcome: fully one command** "), summary
         assert _line(summary, "- human turns: ").startswith("- human turns: 0 (0 questions"), summary
+        # the step asks, not its list (B13 round 10 L23)
         assert expected.startswith(
             "- expected turns: no folder question (2 folders already synced; step 1's list could not read "
-            "them, so it asked at most whether to add one; not logged) · "
+            "them, so step 1 asks at most whether to add one; not logged) · "
         ), expected
+        assert "it asked at most" not in summary
+
+
+def test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 10 L7: a v18 list that could not read the config, then an install whose config step failed
+    and so logged no ``kept=``: nobody answered anything, yet the report counted the unlogged folder question
+    (human turns 1, "the folder question (step 1; not logged as a question)"), since only a ``kept=N`` carried
+    v18's rule. With no count either way the question is not counted from v18 on; v17, a v18 agent that
+    logged it waited, and an install that read the config and kept 0 keep the old reading."""
+    failed = ("", "failed note=config-error")
+    unread = "done note=listed-25 synced=unreadable marks=failed:ConfigError"
+    waited = "2026-09-29T09:58:30Z | step 1 | deviation | waited for the folder answer | -\n"
+    quiet = (
+        "- expected turns: no folder question (step 1's list could not read the config, so step 1 asks at "
+        "most whether to add one; not logged) · "
+    )
+    for prompt, extra, config, asked in (
+        ("v18", "", failed, False),
+        ("v17", "", failed, True),
+        ("v18", waited, failed, True),
+        ("v18", "", ("", "done note=created kept=0 added=1"), True),
+    ):
+        log = set_up_log(fake_mac, config, listed="", list_step=unread)
+        if config is failed:
+            log.write_text(log.read_text(encoding="utf-8").replace("end rc=0", "end rc=1"), encoding="utf-8")
+        runs = setup_report.read_install_runs(log)
+        assert setup_report.unread_unknown(runs) is (config is failed), prompt
+        friction = V11_HAPPY.replace("Prompt: v11", f"Prompt: {prompt}").replace(
+            "2026-09-29T10:01:10Z | end", f"{extra}2026-09-29T10:01:10Z | end"
+        )
+        write_friction(fake_mac, friction)
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        turns, expected = _line(summary, "- human turns: "), _line(summary, "- expected turns: ")
+        if config is failed:
+            assert "failed at step 2" in summary.strip().splitlines()[0], summary
+        if asked:
+            assert turns.startswith("- human turns: 1 (1 question"), (prompt, extra, config, turns)
+            assert not expected.startswith(quiet), expected
+            continue
+        assert turns.startswith("- human turns: 0 (0 questions"), turns
+        assert expected.startswith(quiet), expected
+        assert "Allow clicks: none possible" in expected or "the announced" in expected, expected
+    # no install run: a stop at step 1 stays expected
+    runs = setup_report.read_install_runs(set_up_log(fake_mac, listed="", list_step=unread))
+    assert not setup_report.unread_unknown(runs)
+
+
+def test_a_folder_list_run_again_before_the_install_is_what_step_1_printed(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 10 L12: step 1's list timed out, its re-run marked two folders and printed "already synced
+    on this Mac: 2 folder(s)", yet the Summary said the list "marked none" and "could not read them", as the
+    first list run alone decided. A re-run before the install that read the config decides now; the note
+    keeps the first run's reason and says what the re-run read. Both runs unreadable still say "so it marked
+    none", and a list run after the install changes nothing."""
+    unread = "done note=listed-6 synced=unreadable marks=timeout"
+
+    def log_with_lists(*listed: str, after: str | None = None) -> Path:
+        log = set_up_log(fake_mac, ("", "skipped note=exists kept=2 added=0"), listed="", list_step=unread)
+        text, start = log.read_text(encoding="utf-8"), "2026-09-29T10:00:00Z run=20260929T100000Z-4242 start"
+        extra = "".join(
+            LIST_RUN.replace(" launchd=simulated", "")
+            .replace("T09:58:0", f"T09:59:{n}")
+            .replace("20260929T095805Z-11", f"20260929T0959{n}5Z-1{n}")
+            .replace("result=done\n", f"result=done note=listed-6{fields}\n")
+            for n, fields in enumerate(listed)
+        )
+        text = text.replace(start, extra + start)
+        if after is not None:
+            text += (
+                LIST_RUN.replace(" launchd=simulated", "")
+                .replace("T09:58:0", "T10:05:0")
+                .replace("20260929T095805Z-11", "20260929T100505Z-19")
+                .replace("result=done\n", f"result=done note=listed-6{after}\n")
+            )
+        log.write_text(text, encoding="utf-8")
+        return log
+
+    note = (
+        "- note: step 1's folder list could not read which folders sources.toml already syncs (the reader "
+        "took over 10 s)"
+    )
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v18"))
+    runs = setup_report.read_install_runs(log_with_lists(" synced=2"))
+    assert [run.list_only for run in runs] == [True, True, False]
+    assert (setup_report.synced_before(runs), setup_report.unread_synced(runs)) == (2, None)
+    assert setup_report.rerun_synced(runs) == 2 and not setup_report.unread_unknown(runs)
+    summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+    assert f"{note}; its re-run read it: 2 already synced" in summary.splitlines(), summary
+    expected = _line(summary, "- expected turns: ")
+    assert expected.startswith(
+        "- expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add "
+        "one; not logged) · "
+    ), expected
+    assert "could not read them" not in expected
+    assert _line(summary, "- human turns: ").startswith("- human turns: 0 (0 questions"), summary
+    # a re-run that read a config syncing nothing: the question was due
+    runs = setup_report.read_install_runs(log_with_lists(" synced=0"))
+    assert (setup_report.synced_before(runs), setup_report.rerun_synced(runs)) == (0, 0)
+    summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+    assert f"{note}; its re-run read it and marked none" in summary.splitlines(), summary
+    # both unreadable (probe A3): as before
+    for runs_after in ((" synced=unreadable marks=timeout",), ()):
+        runs = setup_report.read_install_runs(log_with_lists(*runs_after))
+        assert setup_report.rerun_synced(runs) is None
+        assert (setup_report.synced_before(runs), setup_report.unread_synced(runs)) == (0, 2)
+        summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+        assert f"{note}, so it marked none" in summary.splitlines(), summary
+    # a finished list that logged no synced= at all decides by itself, as in synced_before (a reviewer's find)
+    runs = setup_report.read_install_runs(log_with_lists("", " synced=2"))
+    assert (setup_report.synced_before(runs), setup_report.unread_synced(runs)) == (0, 2)
+    assert setup_report.rerun_synced(runs) is None
+    # an install run before the lists that logged no kept= is passed over by both (a reviewer's find)
+    log = log_with_lists(" synced=2")
+    text = log.read_text(encoding="utf-8")
+    early = "".join(
+        ln.replace("2026-09-29T10:00:00Z", "2026-09-29T09:50:00Z")
+        .replace("20260929T100000Z-4242", "20260929T095000Z-4241")
+        .replace("result=skipped note=exists kept=2 added=0", "result=failed note=config-error")
+        for ln in text.splitlines(keepends=True)
+        if "20260929T100000Z-4242" in ln
+    )
+    log.write_text(early + text, encoding="utf-8")
+    runs = setup_report.read_install_runs(log)
+    assert [run.list_only for run in runs] == [False, True, True, False]
+    assert (setup_report.synced_before(runs), setup_report.rerun_synced(runs)) == (2, 2)
+    # a list run after the install reads a config the install changed: not what step 1 showed
+    runs = setup_report.read_install_runs(log_with_lists(after=" synced=3"))
+    assert [run.list_only for run in runs] == [True, False, True]
+    assert setup_report.rerun_synced(runs) is None and setup_report.unread_synced(runs) == 2
+    summary = section(report(tmp_path, fake_mac["config"])[1], "Summary")
+    assert f"{note}, so it marked none" in summary.splitlines(), summary
 
 
 def test_the_summary_says_why_a_folder_list_could_not_read_the_config(

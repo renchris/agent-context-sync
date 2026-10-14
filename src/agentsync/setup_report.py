@@ -1634,12 +1634,17 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None:
     that finished decides by itself: with no ``synced=`` it printed no "already synced" line, the folder
     question was asked (or the agent stopped), and the answer is 0 whatever a later install run kept. A
     list that ended on a click (``result=failed``) decides only when it logged the count, which is when it
-    printed that line; otherwise the next run does."""
-    for run in runs:
+    printed that line; otherwise the next run does. Nor does a finished list that could not read the config
+    (``synced=unreadable``) decide when step 1 ran the list again before any install run and the re-run
+    read it (:func:`_list_reread`): the prompt then goes by what the re-run printed (B13 round 10 L12)."""
+    runs = list(runs)
+    for n, run in enumerate(runs):
         if run.list_only:
             listed = run.step("list-folders") or {}
             found = _count(listed, "synced")
             if found is None and listed.get("result") == "done":
+                if listed.get("synced") == "unreadable" and _list_reread(runs[n + 1 :]) is not None:
+                    continue
                 return 0
         else:
             found = _count(run.step("config"), "kept")
@@ -1678,6 +1683,39 @@ def _unread_words(fields: dict[str, str]) -> str | None:
     return f"{why} and raised {name}" if kind == "failed" and name else why
 
 
+def _list_reread(later: Sequence[InstallRun]) -> int | None:
+    """The ``synced=N`` of the first ``--list-folders`` run of ``later`` that read the config, before any
+    install run; None when none did. A list run after an install run reads a config the install already
+    changed, so its count is not what step 1 showed (B13 round 10 L12). A finished list with no ``synced=``
+    at all (an installer from before the field) decides by itself, as in :func:`synced_before`: None."""
+    for run in later:
+        if not run.list_only:
+            return None
+        listed = run.step("list-folders") or {}
+        found = _count(listed, "synced")
+        if found is not None:
+            return found
+        if listed.get("result") == "done" and listed.get("synced") != "unreadable":
+            return None
+    return None
+
+
+def rerun_synced(runs: Sequence[InstallRun]) -> int | None:
+    """N when the first ``--list-folders`` run of ``runs`` that logged ``synced=unreadable`` was run again
+    before any install run and the re-run read the config: it logged ``synced=N`` (:func:`_list_reread`).
+    None otherwise, as when every list run before the install could not read it (B13 round 10 L12). An
+    install run before that list that logged no ``kept=`` is passed over, as :func:`synced_before` does."""
+    runs = list(runs)
+    for n, run in enumerate(runs):
+        if not run.list_only:
+            if _count(run.step("config"), "kept") is not None:
+                return None
+            continue
+        if (run.step("list-folders") or {}).get("synced") == "unreadable":
+            return _list_reread(runs[n + 1 :])
+    return None
+
+
 def unread_why(runs: Sequence[InstallRun]) -> str | None:
     """:func:`_unread_words` of the first ``--list-folders`` run of ``runs`` that logged
     ``synced=unreadable``; None when no list run logged it."""
@@ -1688,26 +1726,49 @@ def unread_why(runs: Sequence[InstallRun]) -> str | None:
     return None
 
 
+def _decided_unread(runs: Sequence[InstallRun]) -> bool:
+    """Whether the list that decides :func:`synced_before` finished with ``synced=unreadable``: a config was
+    there and could not be read, and no re-run before the install read it (:func:`_list_reread`)."""
+    runs = list(runs)
+    for n, run in enumerate(runs):
+        if run.list_only:
+            listed = run.step("list-folders") or {}
+            if _count(listed, "synced") is not None:
+                return False
+            if listed.get("result") == "done":
+                if listed.get("synced") != "unreadable":
+                    return False
+                if _list_reread(runs[n + 1 :]) is None:
+                    return True
+        elif _count(run.step("config"), "kept") is not None:
+            return False
+    return False
+
+
+def _first_kept(runs: Sequence[InstallRun]) -> int | None:
+    """The ``kept=N`` the attempt's first install run logged on its config step; None with no install run or
+    no count. The first run's count alone: a later run's can hold folders added after the question."""
+    first = next((x for x in runs if not x.list_only), None)
+    return _count(first.step("config"), "kept") if first is not None else None
+
+
 def unread_synced(runs: Sequence[InstallRun]) -> int | None:
     """N when the list that decides :func:`synced_before` finished with ``synced=unreadable`` (a config was
     there and could not be read) and the attempt's first install run then logged it kept N > 0 folders: this
     Mac already synced them, so the folder question was a turn agentsync caused (B13 round 7 H17, H28). None
     otherwise, and :func:`synced_before` still counts the question as asked: a config that synced nothing, or
     a stop at step 1, leaves it expected."""
-    for run in runs:
-        if run.list_only:
-            listed = run.step("list-folders") or {}
-            if _count(listed, "synced") is not None:
-                return None
-            if listed.get("result") == "done":
-                if listed.get("synced") != "unreadable":
-                    return None
-                # the first install run's count alone: a later run's can hold folders added after the question
-                first = next((x for x in runs if not x.list_only), None)
-                return (_count(first.step("config"), "kept") if first is not None else None) or None
-        elif _count(run.step("config"), "kept") is not None:
-            return None
-    return None
+    return (_first_kept(runs) or None) if _decided_unread(runs) else None
+
+
+def unread_unknown(runs: Sequence[InstallRun]) -> bool:
+    """Whether the list that decides :func:`synced_before` could not read the config and the attempt's first
+    install run could not say either: it ran, and its config step logged no ``kept=`` (it failed before it
+    read the config). Nobody knows whether this Mac synced a folder, so from prompt v18 on, which goes on
+    from such a list as from one that marked folders (:data:`UNREAD_GOES_ON`), the unlogged folder question
+    is not counted (B13 round 10 L7). False with no install run: a stop at step 1 leaves it expected, and
+    with ``kept=0``, a config that synced nothing, where it stays asked."""
+    return _decided_unread(runs) and any(not x.list_only for x in runs) and _first_kept(runs) is None
 
 
 UNREAD_GOES_ON = 18
@@ -1725,8 +1786,13 @@ def unread_asked(attempt: Attempt | None, runs: Sequence[InstallRun]) -> int | N
     if not unread or attempt is None:
         return unread
     version = attempt.version
-    waited = any(e.step == attempt.layout.folder_question_step for e in attempt.of_kind("deviation"))
-    return unread if version is None or version < UNREAD_GOES_ON or waited else None
+    return unread if version is None or version < UNREAD_GOES_ON or waited_for_folders(attempt) else None
+
+
+def waited_for_folders(attempt: Attempt) -> bool:
+    """Whether the attempt logged a deviation at the folder question's step: its agent stopped to wait for
+    the folder answer, so the question was asked whatever the prompt allowed (B13 round 9 K20)."""
+    return any(e.step == attempt.layout.folder_question_step for e in attempt.of_kind("deviation"))
 
 
 def runs_for_attempt(friction: Friction | None, index: int, runs: Sequence[InstallRun]) -> list[InstallRun]:
@@ -6661,7 +6727,9 @@ def _stopped_before_the_list(att: Attempt, runs: Sequence[InstallRun]) -> bool:
     return bool(_prompt_copy_note(att)) and not runs
 
 
-def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False) -> str:
+def _turns_line(
+    att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False, unasked: bool = False
+) -> str:
     """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
     folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
     observable" when none is logged and the agent's tool does not tell it (:data:`APPROVAL_HIDDEN_TOOLS`); the
@@ -6671,11 +6739,12 @@ def _turns_line(att: Attempt, run_type: str, synced: int | None = None, *, stopp
     folder list (:func:`_stopped_before_the_list`), or one whose step 1 command stopped before
     ``install.sh --log-start`` (a header-less attempt with no install.sh run): nobody was asked anything.
     An attempt that names no agent cannot vouch for zero approvals either: "not observable" (B13 round 3
-    R24)."""
+    R24). Nor is it counted when ``unasked`` (:func:`unread_unknown` under prompt v18 or later): the list
+    could not read the config and nothing says it synced no folder (B13 round 10 L7)."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
     # v6: the folder question is not logged
-    asked = 0 if att.layout.logs_expected_turns or synced or stopped else 1
+    asked = 0 if att.layout.logs_expected_turns or synced or stopped or unasked else 1
     q = logged_q + asked
     agent = " ".join(att.said("Agent").split()).lower()
     hidden = a == 0 and (not agent or any(t in agent for t in APPROVAL_HIDDEN_TOOLS))
@@ -6702,6 +6771,7 @@ def _expected_turns_line(
     no_run: bool = False,
     unread: int | None = None,
     kept_unread: int | None = None,
+    unasked: bool = False,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -6711,7 +6781,9 @@ def _expected_turns_line(
     before ``install.sh --log-start``, nor one with ``no_run``: an attempt with no install.sh run of its own,
     so no folder list was printed (B13 round 3 R15). With ``unread`` (:func:`unread_asked`) the Mac already
     synced folders the list could not read: no folder question was due, and the one asked is an Item. With
-    ``kept_unread`` instead, the prompt (v18 on) asked at most whether to add one, as with ``synced``."""
+    ``kept_unread`` instead, the prompt (v18 on) asked at most whether to add one, as with ``synced``, and so
+    with ``unasked`` (:func:`unread_unknown`), where no count says how many folders were synced (B13 round 10
+    L7)."""
     layout = att.layout
     if unstarted:
         return (
@@ -6745,9 +6817,15 @@ def _expected_turns_line(
                 "not read them, so it was asked: see Items)"
             ]
         elif kept_unread:
+            # the step asks, not its list (B13 round 10 L23)
             parts = [
                 f"no folder question ({_plural(kept_unread, 'folder')} already synced; step {step}'s list "
-                "could not read them, so it asked at most whether to add one; not logged)"
+                f"could not read them, so step {step} asks at most whether to add one; not logged)"
+            ]
+        elif unasked:
+            parts = [
+                f"no folder question (step {step}'s list could not read the config, so step {step} asks at "
+                "most whether to add one; not logged)"
             ]
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
@@ -7422,7 +7500,17 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         # from prompt v18 a list that could not read the config asks at most whether to add one (round 9 K20)
         unread, asked = unread_synced(runs), unread_asked(att, runs)
         kept_unread = unread if unread and not asked else None
-        out.append(_turns_line(att, run_type, synced or kept_unread, stopped=stopped))
+        # and so when the install could not say either (no kept=): nothing shows a folder question was due,
+        # unless the agent logged that it waited for one (B13 round 10 L7)
+        unasked = (
+            att.version is not None
+            and att.version >= UNREAD_GOES_ON
+            and not waited_for_folders(att)
+            and not synced
+            and not kept_unread
+            and unread_unknown(runs)
+        )
+        out.append(_turns_line(att, run_type, synced or kept_unread, stopped=stopped, unasked=unasked))
         out.append(
             _expected_turns_line(
                 att,
@@ -7433,13 +7521,23 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 no_run=no_run and not unstarted,
                 unread=asked,
                 kept_unread=kept_unread,
+                unasked=unasked,
             )
         )
         why_unread = unread_why(runs)
         if why_unread is not None:  # whatever followed: with no folder kept, or a stop, no Item names it
+            # a re-run before the install that read the config is what step 1 printed (B13 round 10 L12)
+            again = rerun_synced(runs)
+            marked = (
+                "so it marked none"
+                if again is None
+                else f"its re-run read it: {again} already synced"
+                if again
+                else "its re-run read it and marked none"
+            )
             out.append(
                 f"- note: step {att.layout.folder_question_step}'s folder list could not read which folders "
-                f"sources.toml already syncs ({why_unread}), so it marked none"
+                f"sources.toml already syncs ({why_unread}){',' if again is None else ';'} {marked}"
             )
         out.append(_agent_friction_line(att, stop))
         extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
