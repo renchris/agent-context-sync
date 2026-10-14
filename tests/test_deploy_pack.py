@@ -4271,6 +4271,34 @@ def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
     assert "then sources.toml, then install.log, then install.out's step 1 list)" in page
 
 
+def test_the_first_sync_row_names_every_clause_the_summary_adds() -> None:
+    """B13 round 9 K82: the Summary's first-sync clause can add a first-read count, the unreadable/failed
+    split, the withheld-unread count and the refused-without-a-read count after its converted counts, each
+    from install.out's line of the same sync (`_first_sync_line`), and name them in its source tag; the
+    guide's row said only "what it converted and read again".  Each part's fixed words are read from the
+    code that writes it."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    # one literal per part: the adjacent string pieces a long one is written in are joined
+    code = re.sub(r'"\s*\n\s*f?"', "", inspect.getsource(setup_report._first_sync_line))
+    page = _page("docs/deploy/setup-feedback.md")
+    row = page[page.index("| Summary: `first sync:` or `sync:` |") : page.index("| Installer: every run |")]
+    first = re.search(r'reread \+= \(?\s*f": \{first\[2\]\} (of them [^"]*)"', code)
+    split = re.search(
+        r'reread \+= f"; (of the converted): \{split\[1\]\} (unreadable), \{split\[2\]\} (failed)', code
+    )
+    counted = re.findall(r'\(r\.facts\.first_sync_\w+, "([^"]+)", "([^"]+)"\)', code)
+    assert first and split and len(counted) == 2, "the clause code moved"
+    assert f"`: F of them {first.group(1)[len('of them ') :]}`" in row
+    assert f"`; {split.group(1)}: U {split.group(2)}, F {split.group(3)}`" in row
+    for words, _tag in counted:
+        assert re.search(rf"`; [A-Z] {re.escape(words)}`", row), words
+    assert '"the unreadable/failed split"' in code and 'f"the {tag} count"' in code
+    tag = dict(counted)["refused without a read"]
+    assert f"(install.log; the unreadable/failed split and the {tag} count: install.out)" in row
+    assert "copied from the sync's own line in install.out when that line describes the same sync" in row
+
+
 def test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block() -> None:
     """B13 round 8 J68: v16's re-wrap left a line holding only "If", and v15 had left a 132-column line, in a
     block a person reads in a ```text fence, which keeps its line breaks. A command line is as long as its

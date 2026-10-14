@@ -17413,3 +17413,13 @@ not finish ...`. The guide gave only the word-named cause and neither registrati
 the second cause for the agentsync report only (the shell report never lists CloudStorage) and the list in both
 orders, standing in for a listing past its bound. Test: `test_the_guide_names_step_1s_folder_list_as_a_redaction_source`
 (reads the line and the order from both reports' source).
+
+**The first-sync row names every clause the Summary adds** (K82). After its converted, deferred and read-again
+counts, `_first_sync_line` adds up to four parts from install.out's line of the same sync (§16.58 F8, §16.63 G35,
+§16.69 H46, §16.74 J39, §16.77 J29): `: F of them a first read, of a stub whose bytes had never been read, also in
+the converted count` (§16.83 K34's words), `; of the converted: U unreadable, F failed[, R refused]`, `; W withheld
+unread by the label rule` and `; Q refused without a read`, and the source tag names them when the step's counts are
+install.log's. The guide's row said only "what it converted and read again". It now gives each part's words, when it
+is copied (the same converted count; the first read also the same read-again count) and the tag; only the first-read
+part follows "read again" (the verifier's correction). Test:
+`test_the_first_sync_row_names_every_clause_the_summary_adds` (reads each part's words from `_first_sync_line`).
