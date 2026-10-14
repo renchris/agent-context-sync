@@ -753,6 +753,29 @@ Lanes (`--account auto`, CONTRACTS §16.74 to §16.79, brief `lanes/COMMON7.md`)
 re-render), D 13 (docs/deploy, CONTRACTS). Lead: J32 (round 9's scenario F expects the STATE.md pointer, not
 `sync -v`), J81 (round 7's worktrees; the pushed backup branch and old scratch go to the operator).
 
+### B13 round 8 landed (2026-10-14)
+
+All six lanes landed; CI green on `e440422c` (prompt v17). Notes `lanes/r8-<lane>.md`. One sub-part is not built,
+with a measured reason: J69's shell friction-line fallback (the prompt has not logged the folder question since v6).
+Lead items: J32 is in round 9's scenario F; J81 corrected the round 7 table (`7cceecbc`) and added the pipefail line
+to `lanes/COMMON.md`.
+
+| Lane | Landed |
+|---|---|
+| P | `b5798d0d..b9f4c98b` (v17) |
+| D | `b9f4c98b..27f9c1a0`, 11 commits |
+| B | `3ed3541e..1713a687` |
+| RB | `1713a687..affa5833`, 15 commits |
+| E | `affa5833..8285d7c5`, 8 commits |
+| RA | `aa809aa7..e440422c`, 11 commits |
+
+Learnings: a lane whose push waits at the "ask" prompt is rejected once another lane lands first, then rebases,
+re-runs the gate and asks again, so each queued push after the first costs the operator another Yes. Left in place: branch
+`b13/r7-rb-dev` and `origin/b13/r7-d` (the operator's `b13-r7` cleanup deletes the remote one).
+
+Round 9: the round 8 workflow on `e440422c` with prompt v17 (run `wf_0f6ec280-91a`, outputs `round9/`); scenario F
+expects the wait to point at `_sync/STATE.md`, never at `sync -v`, plus a six-folder variant for the alarm (J32).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
