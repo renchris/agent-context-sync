@@ -17394,3 +17394,13 @@ and its end line, which the guide's "Stopped at step 1" bullet says keep an atte
 named the rerun. The bullet now ends on the exception, its conditions, its words and where it shows (never the
 latest attempt, so never the outcome line or the form), and the prompt-version bullet points to it. Test:
 `test_setup_feedback_states_the_report_rules_of_round_6` (builds the note with `_rerun_note`).
+
+**The Repeat conversions row quotes the options-aware column and the re-screen note** (K68). Since §16.74 J30 the
+table's column reads `the same file from the same bytes and converter options as an earlier run`, and a
+`re-screened for a rule change:` note says a file re-screened for a label-rule change is a new conversion, not in
+that column, while a secret-rule re-screen is; the guide's row said "from the bytes their own page was made from"
+and had no word of the note, so a reader expected a label-rule re-screen of unchanged files to be counted. The row
+now quotes both columns and the note. The report's summary bullet above the table still says "from the bytes its
+page was made from" (lane RA's file; the verifier's optional alignment, not built here). Test:
+`test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note` (reads the words from
+`setup_report`'s source).

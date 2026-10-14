@@ -4220,6 +4220,32 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
     assert f"`{setup_report._WITHHELD_IMAGE_REASON.format('<suffix>')}`" in table
 
 
+def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() -> None:
+    """B13 round 9 K68: since round 8 J30 the Repeat conversions table counts the same file converted again
+    from the same bytes and converter options, and a note under it says a label-rule re-screen is a new
+    conversion while a secret-rule one is counted; the guide's row said "the bytes" alone and had no word of
+    the note.  The row quotes the report's own header and note words."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    page = _page("docs/deploy/setup-feedback.md")
+    row = page[page.index("| Repeat conversions |") : page.index("| Background runs: installed plist |")]
+    headers = re.findall(
+        r'"(the same file from the same bytes[^"]*|of those, as the run just before)"', source
+    )
+    assert len(headers) == 2, headers
+    for header in headers:
+        assert f"`{header}`" in row, header
+    assert "and converter options as an earlier run" in row
+    note = re.search(
+        r'f"- (re-screened for a rule change): \{each\}\. (A label rule is one of the converter)', source
+    )
+    assert note is not None
+    assert f"`{note.group(1)}:`" in row and f"{note.group(2)}'s options" in row
+    assert "a file re-screened after a secret-rule change is counted" in row
+    assert "counts files converted again from the bytes their own page was made from, right after" not in row
+
+
 def test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block() -> None:
     """B13 round 8 J68: v16's re-wrap left a line holding only "If", and v15 had left a 132-column line, in a
     block a person reads in a ```text fence, which keeps its line breaks. A command line is as long as its
