@@ -17203,7 +17203,8 @@ used the same words for its four targets; they now have dated lines too.
 ### 16.80 Round 9: setup report (2026-10-14, wave B13 round 9 lane RA)
 
 Lane RA's round 9 items: K5, K6, K10, K11, K16, K22, K23, K24, K30, K36, K43, K45, K46, K48, K49, K58, K61, K62,
-K76, K77. Each test fails on the code before it, except where a paragraph says why none can.
+K76, K77: K77 not built (its paragraph has the measured reason); K5 and K16, K23 and K36, K10 and K46 are one
+defect each, built once. Each test fails on the code before it, except K49 (docstrings) and K62 (a test only).
 
 **An image stub's page is read the way the cycle reads it, every page** (K48, K58, K61, K62). The report and the
 cycle's re-render read a stub page by one test, `policy.page_says_withheld` (its `reason:`, its summary less
