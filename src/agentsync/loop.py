@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
-from agentsync.arm_local import _dir_excluded, _folder_glob, _unexcluded
+from agentsync.arm_local import _unexcluded, files_below, split_empty
 from agentsync.config import Config, SourceConfig, canonical_source_root
 from agentsync.convert import NO_CONVERTER_PREFIX
 from agentsync.convert.recording import RecordingConverter
@@ -61,6 +61,7 @@ from agentsync.cycle import (
     _ROOT_UNLISTED_META,
     _SCOPE_ROOT_META,
     _SEED_PAGE_NAMES,
+    _UNLISTED_DIRS_META,
     HYDRATION_REFUSED,
     LISTING_HELD,
     NETWORK_POLICY_FAILED,
@@ -450,24 +451,10 @@ def _empty_dirs(manifest: Manifest, src: SourceConfig) -> _EmptyDirs:
     except ValueError:
         stored = []
     names = [d for d in stored if isinstance(d, str)] if isinstance(stored, list) else []
-    below = dict.fromkeys(_unexcluded(src, names), 0)
-    holding: set[str] = set()
-    if below:
-        by_key: dict[str, list[str]] = {}
-        for d in below:
-            by_key.setdefault(d.casefold(), []).append(d)
-        for row in manifest.iter_items(src.id, states=_PRESENT):
-            if row.is_dir:
-                continue
-            parts = row.rel_path.split("/")[:-1]
-            folders = ["/".join(parts[: i + 1]) for i in range(len(parts))]
-            holding.update(folders)
-            for folder in reversed(folders):  # the nearest stored folder above the file
-                if hit := by_key.get(folder.casefold()):
-                    for d in hit:
-                        below[d] += 1
-                    break
-    return _EmptyDirs(bool(names), below, frozenset(holding))
+    folders = _unexcluded(src, names)
+    rows = manifest.iter_items(src.id, states=_PRESENT) if folders else ()  # rows read only for a folder
+    below, holding = files_below(folders, (row.rel_path for row in rows if not row.is_dir))
+    return _EmptyDirs(bool(names), below, holding)
 
 
 def _excludable(empty_dirs: _EmptyDirs) -> tuple[list[str], list[str]]:
@@ -475,15 +462,9 @@ def _excludable(empty_dirs: _EmptyDirs) -> tuple[list[str], list[str]]:
     ``agentsync exclude-empty`` excludes, and those whose exclude glob would also prune a folder holding
     mirrored files (a ``[`` is written as ``?``: ``arm_local._glob_literal``), which it leaves, since
     excluding one would retire those pages at once. One rule for the command and the wait naming it (B13
-    round 5 F65), so the wait never names a command that refuses its folder."""
-    empty = [d for d, files in empty_dirs.below.items() if not files]
-    if not empty:
-        return [], []
-    held = empty_dirs.holding
-    clear: list[str] = []
-    collides: list[str] = []
-    for d in empty:
-        (collides if any(_dir_excluded(h, [_folder_glob(d)]) for h in held) else clear).append(d)
+    round 5 F65), so the wait never names a command that refuses its folder; the walk's alarm counts the
+    waits by the same rule (``arm_local.split_empty``, B13 round 10 L15)."""
+    clear, collides, _gone = split_empty(empty_dirs.below, empty_dirs.holding)
     return clear, collides
 
 
@@ -503,6 +484,18 @@ def empty_cloud_folders_held(manifest: Manifest, src: SourceConfig) -> bool:
     if (last.skipped_reason or "").startswith(LISTING_HELD):
         return False
     return bool(_empty_dirs(manifest, src).below)
+
+
+def _unlisted_dirs(manifest: Manifest, src: SourceConfig) -> list[str]:
+    """The folders the source's last walk could not list for a cause other than an empty cloud folder
+    (manifest meta ``unlisted_dirs:<id>``) that sources.toml does not exclude today; empty when that walk
+    stored none, or the state is from before B13 round 10 L68."""
+    try:
+        stored = json.loads(manifest.get_meta(_UNLISTED_DIRS_META + src.id) or "[]")
+    except ValueError:
+        stored = []
+    names = [d for d in stored if isinstance(d, str)] if isinstance(stored, list) else []
+    return _unexcluded(src, names)
 
 
 def _missed(manifest: Manifest, source_id: str) -> int:
@@ -664,7 +657,17 @@ def next_step(
                         stored, below = found.stored, found.below
                         if below:
                             clear, collides = _excludable(found)
-                            empty.append((src, below, clear, collides, _missed(manifest, src.id)))
+                            missed = _missed(manifest, src.id)
+                            # A folder it could not read beside them gets its own wait now, not only after
+                            # exclude-empty and another sync (B13 round 10 L68); the missed count is then
+                            # said once, on that line, whose wording never offers a plain exclude for it.
+                            other = _unlisted_dirs(manifest, src)
+                            also = bool(other) and src.kind is SourceKind.LOCAL
+                            empty.append((src, below, clear, collides, 0 if also else missed))
+                            if also:
+                                unlisted.append((src.id, missed))
+                            elif other:
+                                inbox_partial.append(src.id)
                         elif src.kind is SourceKind.INBOX:
                             inbox_partial.append(src.id)
                         elif stored:
@@ -795,7 +798,8 @@ def next_step(
             "deletion check and no purge queued"
         )
         names_source(sid)
-    checks.extend(f"heartbeat.{s}" for s, _ in sorted(unlisted))
+    # once per source: one with empty cloud folders beside has its check already (B13 round 10 L68)
+    checks.extend(c for s, _ in sorted(unlisted) if (c := f"heartbeat.{s}") not in checks)
     for sid in sorted(root_unlisted):  # a root cannot be excluded: never offer it
         waits.append(
             f"the folder of {sid} itself could not be listed or is empty (an unmounted volume, a sync client "

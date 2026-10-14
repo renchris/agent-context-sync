@@ -266,6 +266,12 @@ _ROOT_UNLISTED_META = "root_unlisted:"
 folder or found it empty (the root its only unknown folder, or no walk at all: missing, unreadable, not a
 folder), else "". ``loop.next_step`` then gives the source a wait with no exclude, since a root cannot be
 excluded (b13 R102/R103 review)."""
+_UNLISTED_DIRS_META = "unlisted_dirs:"
+"""Manifest meta ``unlisted_dirs:<source id>``: the folders below the root the source's last walk could not
+list for a cause other than an empty cloud folder (no access, a provider error), a JSON list of paths relative
+to its root ("" when there were none). ``loop.next_step`` gives a source whose walk also stored empty cloud
+folders the could-not-be-listed wait beside theirs, on the first sync, not after exclude-empty and another
+(B13 round 10 L68)."""
 HYDRATION_REFUSED = "hydration-refused"
 """``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
 later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
@@ -2969,13 +2975,16 @@ class _Cycle:
         return scan, pc, rows, fast_ids, restamp
 
     def _note_empty_dirs(self, source_id: str, stats: WalkStats | None) -> None:
-        """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`) and whether its root was
-        unlisted (:data:`_ROOT_UNLISTED_META`), each written only on a change."""
+        """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), whether its root was
+        unlisted (:data:`_ROOT_UNLISTED_META`) and the other folders it could not list
+        (:data:`_UNLISTED_DIRS_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
         root = stats is None or stats.unknown_dirs == (".",)
+        other = sorted(set(stats.unknown_dirs) - set(found) - {"."}) if stats is not None else []
         for key, value in (
             (_EMPTY_DIRS_META + source_id, json.dumps(list(found), ensure_ascii=False) if found else ""),
             (_ROOT_UNLISTED_META + source_id, "1" if root else ""),
+            (_UNLISTED_DIRS_META + source_id, json.dumps(other, ensure_ascii=False) if other else ""),
         ):
             if (self.manifest.get_meta(key) or "") != value:
                 self.manifest.set_meta(key, value)

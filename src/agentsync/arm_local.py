@@ -31,7 +31,7 @@ import threading
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -105,6 +105,8 @@ _S_IFDIR = stat.S_IFDIR
 _S_IFREG = stat.S_IFREG
 _NO_HASHES = RemoteHashes()  # frozen: shared by every local item (a local file has no provider hash)
 _NO_EXTRA: Mapping[str, ExtraValue] = MappingProxyType({})
+# the row states of a file the mirror holds (``cycle._PRESENT``, which imports this module)
+_PRESENT_STATES = frozenset({"live", "dataless", "quarantined", "refused"})
 
 
 class _KnownStat(Protocol):
@@ -718,6 +720,44 @@ def _unexcluded(cfg: SourceConfig, dirs: Sequence[str]) -> list[str]:
     return [d for d in dirs if not pruned(d)]
 
 
+def files_below(folders: Sequence[str], files: Iterable[str]) -> tuple[dict[str, int], frozenset[str]]:
+    """Each of ``folders`` (empty cloud folders of a source, relative POSIX paths) with the number of
+    ``files`` (mirrored files, relative POSIX paths) below it, counted at the nearest such folder above the
+    file, and every folder holding one of ``files`` at or below it. A file counts below a folder whose name
+    differs only in case, as the exclude glob matches (``paths.glob_match`` ignores case): the rows of a
+    case-only rename upstream are still held under the old name (B13 round 6 G55). One count for the loop's
+    waits and the walk's alarm (B13 round 10 L15)."""
+    below = dict.fromkeys(folders, 0)
+    holding: set[str] = set()
+    by_key: dict[str, list[str]] = {}
+    for d in below:
+        by_key.setdefault(d.casefold(), []).append(d)
+    for rel in files:
+        parts = rel.split("/")[:-1]
+        nested = ["/".join(parts[: i + 1]) for i in range(len(parts))]
+        holding.update(nested)
+        for folder in reversed(nested):  # the nearest stored folder above the file
+            if hit := by_key.get(folder.casefold()):
+                for d in hit:
+                    below[d] += 1
+                break
+    return below, frozenset(holding)
+
+
+def split_empty(below: Mapping[str, int], holding: Collection[str]) -> tuple[list[str], list[str], list[str]]:
+    """``below`` (:func:`files_below`) split by the wait each folder lands on: those with no mirrored file
+    below them that ``agentsync exclude-empty`` excludes; those whose exclude glob would also prune a folder
+    of ``holding`` (a ``[`` is written as ``?``: :func:`_glob_literal`), which it leaves, since excluding one
+    would retire those pages at once; and those with mirrored files below them. One rule for the command, the
+    waits naming it (B13 round 5 F65) and the walk's alarm that points at those waits (round 10 L15)."""
+    clear: list[str] = []
+    collides: list[str] = []
+    gone = [d for d, files in below.items() if files]
+    for d in (d for d, files in below.items() if not files):
+        (collides if any(_dir_excluded(h, [_folder_glob(d)]) for h in holding) else clear).append(d)
+    return clear, collides, gone
+
+
 def exclude_advice(cfg: SourceConfig, empty: Sequence[str], where: str) -> str:
     """What to do about ``empty`` (zero-child cloud folders of the source, ``WalkStats.empty_cloud_dirs``):
     a ready-to-paste ``exclude = [...]`` line for the source's table in sources.toml. ``where`` is that file
@@ -954,6 +994,22 @@ class LocalArm:
         except OSError:
             return False
 
+    def _empty_waits(self, empty: Sequence[str]) -> int | None:
+        """How many WAITING ON YOU lines the loop gives ``empty`` (this walk's empty cloud folders): one per
+        kind of :func:`split_empty` present, at most 3, from the files ``known_h0`` holds; None when that is
+        not set, so the count is unknown (B13 round 10 L15)."""
+        if self.known_h0 is None:
+            return None
+        files = [
+            getattr(row, "rel_path", None)
+            for row in self.known_h0.values()
+            if not getattr(row, "is_dir", False) and str(getattr(row, "state", "live")) in _PRESENT_STATES
+        ]
+        if not all(isinstance(rel, str) for rel in files):
+            return None  # a row with no path: the count is unknown
+        below, holding = files_below(empty, cast(list[str], files))
+        return sum(1 for kind in split_empty(below, holding) if kind)
+
     def _known_file_count(self) -> int:
         """Files the manifest holds for this source (from ``known_h0``, the cycle's observation index)."""
         if not self.known_h0:
@@ -1058,7 +1114,10 @@ class LocalArm:
                 # one of three waits (the exclude-empty line, the `[` collision line, the held-files line; B13
                 # round 5 F11, F65), so one folder means one line, and two or more make one line per wait kind
                 # present, at most 3, however many folders (round 6 G57; round 9 K41: the plural "prints them"
-                # was false for six folders on the one exclude-empty line). The waits name this alarm as where
+                # was false for six folders on the one exclude-empty line). The singular is chosen by those
+                # kinds, counted by the loop's own rule (:meth:`_empty_waits`), not by the folders: six on
+                # one wait read "the line"; "each" only for two kinds or more, or an unknown count (round 10
+                # L15). The waits name this alarm as where
                 # the folders are named, so it names them for the step, not the step's command for the folders
                 # (round 6 G13, G42): the end of a sync's output, where its waits print, and status, which
                 # prints them too, by its full path, which works with ~/.local/bin off PATH (round 5 F44, as
@@ -1067,7 +1126,7 @@ class LocalArm:
                 where = (
                     f"the WAITING ON YOU line about {self.source_id} {SYNC_OUTPUT_END} says what to do, "
                     f"and {status} prints it too"
-                    if len(stats.empty_cloud_dirs) == 1
+                    if len(stats.empty_cloud_dirs) == 1 or self._empty_waits(stats.empty_cloud_dirs) == 1
                     else f"each WAITING ON YOU line about {self.source_id} {SYNC_OUTPUT_END} says what to "
                     f"do, and {status} prints each one too"
                 )

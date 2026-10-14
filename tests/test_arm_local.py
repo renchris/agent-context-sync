@@ -17,7 +17,7 @@ import threading
 import time
 import tomllib
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -531,6 +531,51 @@ def test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude() -
         "WAITING ON YOU line about local-test at the end of a sync's output says what to do, and "
         "`~/.local/bin/agentsync status` prints it too",
     )
+
+
+def _waits_alarm(root: Path, known: Sequence[SourceItem]) -> str:
+    arm = al.LocalArm(_cfg(root))
+    arm.known_h0 = {i.stable_id: i for i in known}
+    (alarm,) = arm.scan(None, full=True).alarms
+    return alarm
+
+
+def test_the_empty_folder_alarm_counts_the_waits_by_the_loops_rule() -> None:
+    """B13 round 10 L15: six empty folders that all land on the one exclude-empty wait read "each WAITING ON
+    YOU line ... prints each one too", though there is one such line. The alarm counts the waits by the
+    loop's own rule (``split_empty`` over the files the manifest holds): one kind of wait is "the line", two
+    kinds are "each"; with no stored files to count by (``known_h0`` None) it keeps "each", true for any
+    count."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    _write(root / "a.docx")
+    for n in range(1, 7):
+        (root / f"Empty {n}").mkdir(parents=True)
+    known = _walk(root)[0]
+    one = "the WAITING ON YOU line about local-test at the end of a sync's output says what to do, and "
+    alarm = _waits_alarm(root, known)
+    assert alarm.endswith(f"({one}`~/.local/bin/agentsync status` prints it too)"), alarm
+    (unknown,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
+    assert "(each WAITING ON YOU line about local-test" in unknown and "prints each one too" in unknown
+    # a [ folder whose exclude would also prune a folder holding files: its own wait, so two
+    _write(root / "Qx1]" / "b.docx")
+    (root / "Q[1]").mkdir()
+    alarm = _waits_alarm(root, _walk(root)[0])
+    assert "(each WAITING ON YOU line about local-test" in alarm and "prints each one too" in alarm, alarm
+
+
+def test_an_empty_folder_that_held_files_is_its_own_wait_in_the_alarm() -> None:
+    """B13 round 10 L15: a folder that held mirrored files lands on the held-files wait, not the exclude-empty
+    one, so beside a plain empty folder the alarm says "each" line."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    _write(root / "Was Full" / "old.docx")
+    (root / "Plain").mkdir(parents=True)
+    known = _walk(root)[0]
+    (root / "Was Full" / "old.docx").unlink()
+    alarm = _waits_alarm(root, known)
+    assert "'Plain', 'Was Full'" in alarm and "prints each one too" in alarm, alarm
+    (root / "Plain").rmdir()
+    alarm = _waits_alarm(root, known)
+    assert alarm.endswith("prints it too)"), alarm
 
 
 def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:

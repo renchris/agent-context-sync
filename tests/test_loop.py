@@ -1747,6 +1747,67 @@ def test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_point
     assert "names it" not in wait and "add it to" not in wait, wait
 
 
+def _mixed_root(empty: int) -> Path:
+    """A cloud folder holding ``empty`` empty folders, one note, and a folder ``Zz Locked`` with one file."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    for n in range(1, empty + 1):
+        (root / f"Empty {n}").mkdir(parents=True)
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    _write(root / "Zz Locked" / "memo.txt", "Memo for Project Alpha.\n")
+    return root
+
+
+def test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits(tmp_path: Path) -> None:
+    """B13 round 10 L68: five empty cloud folders and one folder the walk cannot read gave only the
+    exclude-empty wait; the could-not-be-listed one came only after exclude-empty and another sync. The walk
+    now stores the other folders it could not list, and the first sync gives both waits, the missed count
+    said once."""
+    root = _mixed_root(5)
+    config = _setup(tmp_path, local_source_table("work", root))
+    (root / "Zz Locked").chmod(0)
+    try:
+        assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+        waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+        assert len(waits) == 2, waits
+        assert waits[0].startswith("WAITING ON YOU: 5 empty cloud folder(s) keep the listing of work"), waits
+        assert waits[1].startswith("WAITING ON YOU: one or more folders in work could not be listed"), waits
+        assert sum("did not list" in w for w in waits) <= 1, waits
+        assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+        # exclude-empty takes the empty folders; the could-not-be-listed wait stays
+        assert cli.main(["exclude-empty", "work", "--config", str(config.config_path)]) == cli.EXIT_OK
+        assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
+        (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+        assert wait.startswith("WAITING ON YOU: one or more folders in work could not be listed"), wait
+        # the stored folders are read through the exclude in force, as the empty ones are
+        work = next(src for src in config.sources if src.id == "work")
+        with Manifest(config.state_paths.db) as manifest:
+            assert loop._unlisted_dirs(manifest, work) == ["Zz Locked"]
+            gone = dataclasses.replace(work, exclude=(*work.exclude, "/Zz Locked/"))
+            assert loop._unlisted_dirs(manifest, gone) == []
+    finally:
+        (root / "Zz Locked").chmod(0o755)
+
+
+def test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words(tmp_path: Path) -> None:
+    """B13 round 10 L68: a locked folder whose files the mirror holds, beside an empty cloud folder, gets the
+    could-not-be-listed wait in its safe form (grant access; an exclude retires the pages), never the plain
+    exclude offer, and the missed count is on that line only."""
+    root = _mixed_root(0)
+    config = _synced(tmp_path, root)
+    (root / "Empty 1").mkdir()
+    (root / "Zz Locked").chmod(0)
+    try:
+        run_cycle(config, mode=None)
+        waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    finally:
+        (root / "Zz Locked").chmod(0o755)
+    assert len(waits) == 2, waits
+    assert waits[0].startswith("WAITING ON YOU: 1 empty cloud folder(s) keep the listing of work"), waits
+    assert "did not list" not in waits[0], waits
+    assert "(the safe fix); the last walk of work did not list 1 file(s) the mirror still has" in waits[1]
+    assert "add each one to that source's exclude" not in waits[1], waits
+
+
 def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:
     """B13 round 8 J33: STATE.md's ## Next printed the wait as the terminal does, "<docs>/_sync/STATE.md keeps
     the alarm line for work", inside STATE.md itself, and the alarm under ## work says its WAITING ON YOU
