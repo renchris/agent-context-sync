@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -537,7 +538,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (16, "10b989602d2f13001179928815ec510ff6b49b4c0fe37d216ff78ce23651b7d7")
+PROMPT = (17, "7d2648d486af122a3abb6b143767560bf1e3d9b813d2da73b9c5909312c94b06")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -587,9 +588,24 @@ when main has commits the checked-out branch lacks: the reset of main would leav
 KEEP_RETRY = f"git -C {_CHECKOUT} fetch origin && git -C {_CHECKOUT} switch -C main origin/main"
 """The keep command's last two steps, run again when only they failed (the changes are kept by then)."""
 
-BACK_TO_MAIN = f"git -C {_CHECKOUT} switch main"
-"""Step 1's recovery for a checkout a v15 keep command left on its branch: the pull there says "no tracking
-information" (B13 round 7 H19)."""
+KEEP_BRANCH_WORK = (
+    f"git -C {_CHECKOUT} switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C {_CHECKOUT} add -A"
+    f" && {{ git -C {_CHECKOUT} diff --cached --quiet"
+    f" || git -C {_CHECKOUT} -c user.name=agentsync -c user.email=agentsync@localhost commit -q"
+    f" -m 'local changes kept before update'; }}"
+    f" && git -C {_CHECKOUT} format-patch -q origin/main.. -o ~/agent-context/setup/local-work"
+    f" && git -C {_CHECKOUT} switch main"
+    f" && {{ git -C {_CHECKOUT} config --get branch.main.merge"
+    f" || git -C {_CHECKOUT} branch --set-upstream-to=origin/main main; }}"
+)
+"""Step 1's recovery when the pull says "no tracking information" (a branch with no upstream, such as one a
+v15 keep command left) or the keep command stops at its first step (main has commits the checked-out branch
+lacks). v16 ran a bare ``git switch main``, which an uncommitted edit to a file main changes refused, so step
+1 looped, and which copied none of the branch's commits to local-work (B13 round 8 J7, J8: one defect, built
+once). It keeps the work on a new branch, leaving the person's own branch as it was, writes a patch per
+commit the update lacks (``origin/main..``, as the keep command: ``main..`` also copied the update's own
+commits when the branch was cut from a newer origin/main, measured), goes back to main, and gives main the
+Source's main as its upstream when it has none, so a main with no upstream does not loop either."""
 
 GIT_REWRITE_QUERY = "git config --get-regexp '^url\\..*\\.insteadof$'"
 GIT_PROXY_QUERY = "git config --get-urlmatch http.proxy https://github.com"
@@ -752,7 +768,7 @@ def test_readme_step1_is_one_command() -> None:
         "xcode-select --install",
         KEEP_LOCAL_WORK,
         KEEP_RETRY,
-        BACK_TO_MAIN,
+        KEEP_BRANCH_WORK,
         GIT_REWRITE_QUERY,
         GIT_PROXY_QUERY,
     ]
@@ -809,10 +825,16 @@ def test_readme_step1_is_one_command() -> None:
     # R32: "either of these two stops" came right after three cases, the middle one a recovery, not a stop.
     # R25: the line a session logs here is the only one it writes before --log-start, so it carries the
     # prompt's version and the agent in --log-start's words, which the report reads for that attempt alone.
+    # B13 round 8 J19: a ~/src/agent-context-sync that is not a git checkout has no installer, so a log
+    # keyed on the folder ran an install.sh that does not exist (rc 127). The condition is the installer.
     assert (
-        "Before going to the report from the Xcode stop or the other-git-failure stop above, log the failed "
-        "command as a step 1 error if ~/src/agent-context-sync exists, starting its what-text with "
-        f"{START_AGENT} and a colon (the same words as in step 1's command; write no colon inside <agent>)."
+        "Before going to the report from the Xcode stop, the not-a-checkout stop or the other-git-failure "
+        "stop "
+        "above, log the failed command as a step 1 error if ~/src/agent-context-sync/scripts/install.sh "
+        "exists, "
+        f"starting its what-text with {START_AGENT} and a colon (the same words as in step 1's command; "
+        "write "
+        "no colon inside <agent>)."
     ) in flat
     assert "either of these two stops" not in flat
     assert "and stop. If git pull failed" not in step1 and "HTTPS_PROXY set) and stop" not in step1
@@ -933,8 +955,8 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # the per-part reasons are what triage reads.
     assert (
         "background sync), saying why (if setup stopped before step 2, no part was used: one line saying so "
-        "and naming the step it stopped at is enough); skip this part if ~/src/agent-context-sync does not "
-        "exist."
+        "and naming the step it stopped at is enough); skip this part if "
+        "~/src/agent-context-sync/scripts/install.sh does not exist."
     ) in " ".join(step3.split())
 
 
@@ -1024,6 +1046,14 @@ def _zsh(command: str, home: Path, env: dict[str, str]) -> subprocess.CompletedP
     )
 
 
+def _next_second() -> None:
+    """Wait for the clock's next second: the keep commands name their branch local-work-<date to the second>,
+    and in the field step 1 runs between two of them; here nothing does."""
+    now = int(time.time())
+    while int(time.time()) == now:
+        time.sleep(0.05)
+
+
 def _pull(checkout: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(checkout), "pull", "--ff-only"],
@@ -1083,9 +1113,15 @@ def test_readme_keeps_a_local_commit_and_moves_main_to_the_update(tmp_path: Path
     ) in step1
     assert (
         'If the pull says "no tracking information", or the keep command exits 1 at once and prints nothing '
-        f"(main has commits the checked-out branch lacks), run `{BACK_TO_MAIN}` and step 1's command again."
+        "(main has commits the checked-out branch lacks), keep the checked-out branch's work on a new local "
+        f"branch and go back to main, in one command: `{KEEP_BRANCH_WORK}` then tell me the name of the "
+        "branch "
+        "I was on and of the new local-work branch (my commits stay on my branch; all of my work, "
+        "uncommitted "
+        "changes included, is also on the local-work branch and copied as patches to "
+        "~/agent-context/setup/local-work), and run step 1's command again."
     ) in step1
-    assert step1.index(BACK_TO_MAIN) < step1.index("If git failed any other way")
+    assert step1.index(KEEP_BRANCH_WORK) < step1.index("If git failed any other way")
     rules = " ".join(_preamble().split())
     assert (
         "keeping local changes on a branch and moving main to the update, as step 1 says, is none of these"
@@ -1125,7 +1161,8 @@ def test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main(tmp_path: Pa
     )
     stuck = _pull(checkout, env)
     assert stuck.returncode != 0 and "no tracking information" in stuck.stderr, stuck.stderr
-    assert _zsh(BACK_TO_MAIN, home, env).returncode == 0
+    assert _zsh(KEEP_BRANCH_WORK, home, env).returncode == 0
+    _next_second()
     pull = _pull(checkout, env)
     assert "Not possible to fast-forward" in pull.stderr, "back on main, the pull names the local commit"
     proc = _zsh(KEEP_LOCAL_WORK, home, env)
@@ -1155,7 +1192,8 @@ def test_the_keep_command_leaves_a_main_with_commits_of_its_own_as_it_is(tmp_pat
         and _git_out(checkout, "rev-parse", "main") == mine
     )
     assert not (home / "agent-context").exists() and "local-work" not in _git_out(checkout, "branch")
-    assert _zsh(BACK_TO_MAIN, home, env).returncode == 0
+    assert _zsh(KEEP_BRANCH_WORK, home, env).returncode == 0
+    _next_second()
     assert "Not possible to fast-forward" in _pull(checkout, env).stderr
     keep = _zsh(KEEP_LOCAL_WORK, home, env)
     assert keep.returncode == 0, keep.stdout + keep.stderr
@@ -1165,6 +1203,87 @@ def test_the_keep_command_leaves_a_main_with_commits_of_its_own_as_it_is(tmp_pat
         p.read_text(encoding="utf-8") for p in (home / "agent-context" / "setup" / "local-work").iterdir()
     )
     assert "+local commit" in patches and "+local edit" in patches
+
+
+def test_a_branch_with_no_upstream_and_an_edit_main_changes_is_kept_and_main_updated(tmp_path: Path) -> None:
+    """B13 round 8 J7, J8 (one defect, built once): a branch with no upstream, one commit and an uncommitted
+    edit to a file that main changes, while local main holds a commit the branch lacks. The pull says "no
+    tracking information"; v16's `git switch main` refused the edit ("would be overwritten") and the keep
+    command stopped at its first step, so step 1 looped, and nothing reached local-work. The recovery keeps
+    everything on a new branch and as patches, leaves the person's branch as it was, and goes back to main,
+    from which step 1's pull goes on."""
+    upstream, home, checkout, env = _behind_upstream(tmp_path)
+    (upstream / "convert.py").write_text("v8\n", encoding="utf-8")
+    subprocess.run([*_GIT, "-C", str(upstream), "commit", "-q", "-am", "v8"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "pull", "-q", "--ff-only"], env=env, check=True)
+    (upstream / "notes.md").write_text("v9\n", encoding="utf-8")
+    subprocess.run([*_GIT, "-C", str(upstream), "add", "-A"], check=True)
+    subprocess.run([*_GIT, "-C", str(upstream), "commit", "-q", "-m", "v9"], check=True)
+    subprocess.run([*_GIT, "-C", str(checkout), "switch", "-q", "-c", "my-experiment", "HEAD~2"], check=True)
+    (checkout / "exp.py").write_text("local tweak\n", encoding="utf-8")
+    subprocess.run([*_GIT, "-C", str(checkout), "add", "-A"], check=True)
+    subprocess.run([*_GIT, "-C", str(checkout), "commit", "-q", "-m", "local tweak"], check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    mine = _git_out(checkout, "rev-parse", "my-experiment")
+    stuck = _pull(checkout, env)
+    assert stuck.returncode != 0 and "no tracking information" in stuck.stderr, stuck.stderr
+    v16 = _zsh(f"git -C {_CHECKOUT} switch main", home, env)
+    assert v16.returncode != 0 and "would be overwritten" in v16.stderr, "v16's step back to main loops"
+    proc = _zsh(KEEP_BRANCH_WORK, home, env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _git_out(checkout, "branch", "--show-current") == "main"
+    assert _git_out(checkout, "rev-parse", "my-experiment") == mine, "the person's branch is as it was"
+    [kept] = _git_out(checkout, "branch", "--list", "local-work-*", "--format=%(refname:short)").split()
+    assert _git_out(checkout, "show", f"{kept}:convert.py") == "local edit"
+    assert _git_out(checkout, "show", f"{kept}:exp.py") == "local tweak"
+    patches = sorted(p.name for p in (home / "agent-context" / "setup" / "local-work").iterdir())
+    assert patches == ["0001-local-tweak.patch", "0002-local-changes-kept-before-update.patch"], patches
+    assert _git_out(checkout, "rev-parse", "--abbrev-ref", "main@{upstream}") == "origin/main", "left as is"
+    assert _pull(checkout, env).returncode == 0, "step 1 again pulls main"
+    assert _git_out(checkout, "rev-parse", "main") == _git_out(checkout, "rev-parse", "origin/main")
+
+
+def test_a_main_with_no_upstream_gets_the_sources_main_and_does_not_loop(tmp_path: Path) -> None:
+    """B13 round 8 J7's verifier: the pull also says "no tracking information" when main itself has no
+    upstream, and going back to main changes nothing there, so step 1 looped (and each loop of the new
+    recovery would add a branch). The recovery gives main origin/main as its upstream when it has none."""
+    _upstream, home, checkout, env = _behind_upstream(tmp_path)
+    subprocess.run(["git", "-C", str(checkout), "branch", "--unset-upstream"], check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    assert "no tracking information" in _pull(checkout, env).stderr
+    proc = _zsh(KEEP_BRANCH_WORK, home, env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _git_out(checkout, "rev-parse", "--abbrev-ref", "main@{upstream}") == "origin/main"
+    [patch] = (home / "agent-context" / "setup" / "local-work").iterdir()
+    assert "+local edit" in patch.read_text(encoding="utf-8")
+    assert _pull(checkout, env).returncode == 0, "step 1 again pulls"
+    assert _git_out(checkout, "status", "--porcelain") == ""
+
+
+def test_a_folder_at_the_checkouts_path_that_is_not_a_checkout_is_named(tmp_path: Path) -> None:
+    """B13 round 8 J19: ~/src/agent-context-sync holding files but no .git makes step 1's clone fail with
+    words the prompt did not name, so the person got the proxy message, and the log and report steps, keyed
+    on the folder, ran an installer that is not there (rc 127). The prompt names git's words (measured here
+    with step 1's own if/else) and keys both steps on the installer."""
+    step1 = " ".join(_prompt_steps()[1].split())
+    said = (
+        'If git clone says the folder "already exists and is not an empty directory", '
+        "~/src/agent-context-sync "
+        "is not a git checkout: tell me to move it aside so step 1 clones it, then paste this prompt again, "
+        "and "
+        f"go to step {_report_step()}'s report."
+    )
+    assert said in step1 and step1.index(said) < step1.index("If git failed any other way")
+    upstream, home, checkout, env = _behind_upstream(tmp_path)
+    shutil.rmtree(checkout)
+    checkout.mkdir()
+    (checkout / "README.md").write_text("a copy\n", encoding="utf-8")
+    code = STEP1_COMMAND.split("&& { ", 1)[1].split("; } &&", 1)[0]
+    proc = _zsh(code.replace("https://github.com/renchris/agent-context-sync.git", str(upstream)), home, env)
+    assert proc.returncode == 128 and "already exists and is not an empty directory" in proc.stderr, (
+        proc.stderr
+    )
+    assert not (checkout / "scripts" / "install.sh").exists(), "the condition the log and report key on"
 
 
 def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
@@ -1557,13 +1676,16 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     # a re-run of step 2 prints that for every folder the first run added (round 7 lane P review).
     # B13 round 7 H6: at the folder wait no report runs, so "before the report" had nothing to point at, and
     # the folder list's NEXT: line (an install.sh command with the folder left open) read as the answer.
+    # B13 round 8 J6: at that wait, and at any stop before step 2, sources.toml does not exist yet (step 1's
+    # --list-folders installs nothing), so "read sources.toml" named a missing file; the "none" form says so.
     assert (
         'the folders this Mac syncs, as full paths: the kind = "local" sources in'
         " ~/agent-context/sources.toml that are not paused or retired, read after step 2 or, if setup stopped"
         " before step 2, as they are"
         ' (never the inbox or another kind = "inbox" folder), saying which of them this session added: those'
-        ' for which a run of step 2 this session printed an "added source" line; or, if sources.toml has no'
-        ' such kind = "local" source, "none: this Mac syncs no folder" (if setup stopped before step 2, say'
+        ' for which a run of step 2 this session printed an "added source" line; or, if'
+        ' ~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this'
+        ' Mac syncs no folder" (if setup stopped before step 2, say'
         " at which step);"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         " answer\" while you wait for my folder answer in step 1; the folder list's NEXT: line is not a step"
@@ -1710,8 +1832,10 @@ def test_readme_report_step_after_any_failure() -> None:
     # B13 round 5 F27: the skip read "if ~/agent-context/setup does not exist", which step 1's own --log or
     # --log-start creates on every path with a checkout, so it fired only when the checkout was missing too.
     # The checkout is now the one condition for the section, the report and the heading rule.
+    # B13 round 8 J19: a folder at the checkout's path that is not a checkout has no installer, so the
+    # condition is the installer, not the folder.
     assert flat.index(defined) < flat.index(
-        "skip this part if ~/src/agent-context-sync does not exist. Then the"
+        "skip this part if ~/src/agent-context-sync/scripts/install.sh does not exist. Then the"
     )
     assert "~/agent-context/setup does not exist" not in flat
     assert flat.index("skip this part if") < flat.index("Then the report, even after a failure")
@@ -1728,12 +1852,15 @@ def test_readme_report_step_after_any_failure() -> None:
         '--report-only` Three cases have no report and no "## Not used" section: while you wait for my '
         "folder answer in step 1; when step 1 stops (after at most that one rerun) because this prompt is "
         "not the installer's (either check: the --version line does not end with this prompt's number, or "
-        "the command says so); and when ~/src/agent-context-sync does not exist (tell me instead that setup "
-        "stopped before the code was downloaded). Every other stop still ends with the report. The report "
-        "works out"
+        "the command says so); and when ~/src/agent-context-sync/scripts/install.sh does not exist (tell me "
+        "instead that setup stopped before the code was downloaded). Every other stop still ends with the "
+        "report. The report works out"
     ) in flat
     assert "Two cases have no report" not in flat
-    assert flat.count("~/src/agent-context-sync does not exist") == 2, "the one condition, once per part"
+    assert flat.count("~/src/agent-context-sync/scripts/install.sh does not exist") == 2, (
+        "the one condition, once per part"
+    )
+    assert "~/src/agent-context-sync does not exist" not in flat
     assert (
         "or the command says the pasted prompt is not the installer's, stop and run no other step: this "
         f"prompt is v{PROMPT[0]}" in " ".join(steps[1].split())
@@ -2293,12 +2420,12 @@ def _copilot_rule_matches(rule: str, command: str) -> bool:
 def _agent_commands() -> list[str]:
     """Every command the block has the agent run on its normal path (``xcode-select --install`` and the git
     stop's two queries are the person's to run; :data:`KEEP_LOCAL_WORK`, :data:`KEEP_RETRY` and
-    :data:`BACK_TO_MAIN` run only after a failed pull or keep, and ask first)."""
+    :data:`KEEP_BRANCH_WORK` run only after a failed pull or keep, and ask first)."""
     persons = (
         "xcode-select --install",
         KEEP_LOCAL_WORK,
         KEEP_RETRY,
-        BACK_TO_MAIN,
+        KEEP_BRANCH_WORK,
         GIT_REWRITE_QUERY,
         GIT_PROXY_QUERY,
     )
@@ -3527,6 +3654,15 @@ def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
         assert any(marker.search(p) and re.search(rf"\b{item}\b", p) for p in paragraphs), (
             f"§{section} {item} has no dated line for §{home} {g}"
         )
+
+
+def test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block() -> None:
+    """B13 round 8 J68: v16's re-wrap left a line holding only "If", and v15 had left a 132-column line, in a
+    block a person reads in a ```text fence, which keeps its line breaks. A command line is as long as its
+    command."""
+    lines = _one_prompt_block().splitlines()
+    assert [ln for ln in lines if len(ln.split()) == 1 and "`" not in ln] == []
+    assert [ln for ln in lines if "`" not in ln and len(ln) > 120] == []
 
 
 def test_the_deploy_guide_says_git_and_the_installer_do_not_read_the_network_proxy() -> None:

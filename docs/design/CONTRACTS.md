@@ -16463,7 +16463,83 @@ Reserved for round 8 lane RB of B13.
 
 ### 16.76 Round 8: setup prompt v17 (2026-10-14, wave B13 round 8 lane P)
 
-Reserved for round 8 lane P of B13.
+The B13 round 8 items of lane P (specs `round8/items/J<n>.md`, the verifier's corrected fix built). Five need
+prompt text (J6, J7, J8, J19, J68), so the prompt is **setup prompt v17**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`,
+step 1's `prompt v17` and `setup-prompt-compat 17`, the issue form's placeholder and the block's digest move
+together; a saved v16 copy is stopped at step 1 like every older copy. v17 moves no step, so it has no
+`PROMPT_LAYOUTS` entry and is read with v7's rules. J24, J56 and J57 are documentation outside the block. None adds
+an agentsync command, an installer flag, a config key or a friction kind. This section amends the older sections it
+names here; the older text stays as the record of its version.
+
+**The "none" form covers a missing `sources.toml`** (J6; amends §16.72's "The finish's folder list is the
+config's"). Step 1's `--list-folders` installs nothing, so at the folder wait, and at any stop before step 2 on a new
+Mac, `~/agent-context/sources.toml` does not exist (measured in a throwaway home: only `setup/install.out` and
+`setup/install.log`), and the finish told the agent to read a missing file. It now reads "or, if
+~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this Mac syncs no
+folder"". Test: `tests/test_deploy_pack.py` (`test_readme_step3_runs_the_loop_then_the_report`).
+
+**The no-tracking path keeps the branch's work and goes back to main** (J7 and J8, one defect, built once; amends
+§16.72's "The keep command keeps a local commit and moves main to the update", whose back-to-main step this
+replaces). v16 answered "no tracking information", and a keep command that stops at its first step, with a bare
+`git switch main`. On a branch with no upstream, one commit and an uncommitted edit to a file main changes, while
+local main holds a commit the branch lacks, that switch exits 1 ("would be overwritten"), the keep command exits 1
+at once, and the prompt sends that case back to the switch: step 1 looped (measured, git 2.54). That path also
+copied none of the branch's commits to `local-work/` and told the person nothing. Step 1 now runs, in one command,
+`git switch -c local-work-<time>`, `add -A`, a commit only when something is staged, `format-patch -q
+origin/main.. -o ~/agent-context/setup/local-work`, `git switch main`, and `{ git config --get branch.main.merge ||
+git branch --set-upstream-to=origin/main main; }`, then tells the person the name of the branch they were on and of
+the new local-work branch, and runs step 1 again. The person's branch is left as it was (the verifiers' correction of
+the finders' fix, which committed onto it). Two corrections by measurement: the patch base is `origin/main..`, the
+keep command's, not the verifiers' `main..`, which on a branch cut from an origin/main newer than local main also
+wrote the update's own commit as a patch (`0001-v7.patch` beside the local one, a throwaway home); and the last step
+gives main `origin/main` as its upstream only when it has none (the verifier's optional case). Without it a main
+with no upstream still says "no tracking information" after the switch, so step 1 looped there too, and each loop of
+the new command would add a branch; an upstream main already has is left as it is. The pull of the next step 1 sends
+a main with commits of its own through the keep command as before. Tests:
+`test_a_branch_with_no_upstream_and_an_edit_main_changes_is_kept_and_main_updated`,
+`test_a_main_with_no_upstream_gets_the_sources_main_and_does_not_loop`,
+`test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`,
+`test_the_keep_command_leaves_a_main_with_commits_of_its_own_as_it_is`,
+`test_readme_keeps_a_local_commit_and_moves_main_to_the_update`, `test_readme_step1_is_one_command`.
+
+**A folder that is not a checkout is its own stop, and the log and report key on the installer** (J19; amends
+§16.49's logging sentence and §16.61's "if ~/src/agent-context-sync does not exist"). A
+`~/src/agent-context-sync` holding files but no `.git` makes step 1's clone exit 128 with "destination path ...
+already exists and is not an empty directory", which the prompt did not name, so the person got the proxy message;
+and the step 1 log, step 3's skip and the third no-report case, keyed on the folder, ran `install.sh --log` and
+`--report-only`, which are not there (rc 127). Step 1 now says: "If git clone says the folder "already exists and is
+not an empty directory", ~/src/agent-context-sync is not a git checkout: tell me to move it aside so step 1 clones
+it, then paste this prompt again, and go to step 3's report." The logging sentence names "the Xcode stop, the
+not-a-checkout stop or the other-git-failure stop", and all three conditions read
+"~/src/agent-context-sync/scripts/install.sh exists" / "does not exist", so that stop ends with no report and the
+person is told setup stopped before the code was downloaded. A clone or pull that worked always has the installer.
+Tests: `test_a_folder_at_the_checkouts_path_that_is_not_a_checkout_is_named` (git's words, measured with step 1's
+own if/else), `test_readme_step1_is_one_command`, `test_readme_report_step_after_any_failure`.
+
+**The block has no lone word** (J68). v16's re-wrap left a line holding only "If", and v15 had left a 132-column
+line, in a ```text fence a person reads with its line breaks. The block is re-wrapped at about 118 columns with no
+change of wording beyond the items above (step 2's first sentence no longer ends on a one-word line either).
+Test: `test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block` (no line outside a command is one
+word or wider than 120 columns; v16 fails it on both).
+
+**The deploy guide says what `[network] proxy` covers** (J24). `docs/deploy/README.md`, which the prompt says
+explains every step, said only "a PAC-only network fails closed, so set `[network] proxy`". That key is agentsync's
+own, in `sources.toml`, read only for its Graph traffic (`config.network.proxy`); git, the uv download (`curl`) and
+`uv tool install` never read it, and `sources.toml` does not exist at clone time. The paragraph now says so and
+names `HTTPS_PROXY` (an `http://` URL; PAC files are not evaluated) for the clone, the pull and `install.sh`, and
+points at step 1 for a git error that names another host. It does not suggest git's own `http.proxy`, which step 1
+diagnoses as a stale cause (the verifier's correction). Test:
+`test_the_deploy_guide_says_git_and_the_installer_do_not_read_the_network_proxy`.
+
+**The README says what a recording page reads of speech, and which decks get OCR** (J56, J57). It said "No speech
+is read yet" while `recording_page` writes `SPEAKING:` lines from the lit name label (no speech models needed), and
+`SAID v<N>:` lines, speech `NOTE:` lines and a Voices block of `VOICE:` lines once both model folders are placed.
+The tag list and the paragraph now say so, with the verifier's correction that `SPEAKING:` is not from the models,
+and that a VOICE name is the account whose audio carried the voice; the index bullet adds the count of speech lines
+and voices. The OCR list now reads "Pictures on a deck's slides (`.pptx`, or a `.potx` template that has slides; the
+pictures in a template's master and layouts are not read)": `PptxConverter` reads `.potx`, and OCR runs over
+`prs.slides` only (the verifier's correction of "a `.potx` template"). Test:
+`test_the_readme_says_what_a_recording_page_reads_of_speech_and_which_decks_get_ocr`.
 
 ### 16.77 Round 8: sync, status and doctor (2026-10-14, wave B13 round 8 lane B)
 
