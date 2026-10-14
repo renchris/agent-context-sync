@@ -863,7 +863,7 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
         fr,
     ), "the report records what it embedded (J4)"
     assert (
-        "- attempt 1 (lines 1-15; started 2026-09-29T09:58:00Z, prompt v5, agent Claude Code, "
+        "- attempt 1 (lines 1-15; started 2026-09-29T09:58:00Z; prompt v5; agent Claude Code, "
         "claude-opus-5-5): fully one command; 12 event line(s): 4 start, 4 end, 1 question, 2 click, 1 "
         "finished\n" in fr
     ), "a finished attempt says so once, in its counts (B13 round 6 G22)"
@@ -1019,7 +1019,7 @@ def test_attempts_the_latest_is_judged_and_earlier_ones_listed(fake_mac: dict[st
     fr = section(text, "Agent friction log")
     assert "2 attempt(s):" in fr
     assert (
-        "- attempt 1 (lines 1-6; started 2026-09-29T09:00:00Z, prompt v5, agent Claude Code): failed at "
+        "- attempt 1 (lines 1-6; started 2026-09-29T09:00:00Z; prompt v5; agent Claude Code): failed at "
         "step 1" in fr
     )
     assert "- attempt 2 (lines 7-21; started 2026-09-29T09:58:00Z" in fr
@@ -1052,7 +1052,8 @@ def test_v4_logs_are_legacy_and_never_counted(fake_mac: dict[str, Path]) -> None
     )
     fr = section(text, "Agent friction log")
     assert (
-        "no Attempt: line (v4 format)" in fr and "2 legacy v4 line(s) (F<n> | ...), shown, not counted" in fr
+        "no Attempt: line, since it is in the v4 format" in fr
+        and "2 legacy v4 line(s) (F<n> | ...), shown, not counted" in fr
     )
     assert "F2 | step 3 | needed help | 1 | asked which folders; I clicked Allow | say it first" in fr
 
@@ -4961,14 +4962,15 @@ def test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attemp
     text, summary = summary_of(fake_mac)
     fr = section(text, "Agent friction log")
     assert "3 attempt(s):" in fr
-    assert "- attempt 1 (lines 1-4; started 2026-09-29T09:58:00Z, prompt v6, " in fr
+    assert "- attempt 1 (lines 1-4; started 2026-09-29T09:58:00Z; prompt v6; " in fr
     assert re.search(r"^- attempt 1 \(.*\): fully one command; 1 event line\(s\): 1 finished", fr, re.M)
     assert (
-        "- attempt 2 (lines 5-5; no Attempt: line (logged after the previous attempt finished), prompt not "
-        'stated, agent not stated): failed at step 1; 1 event line(s): 1 error; no "end | finished" line'
-        in fr
+        # one line is "line 5", and no bracket sits inside the attempt's own (B13 round 10 L32)
+        "- attempt 2 (line 5; no Attempt: line, since it was logged after the previous attempt finished; "
+        "prompt not stated; agent not stated): failed at step 1; 1 event line(s): 1 error; "
+        'no "end | finished" line' in fr
     )
-    assert "- attempt 3 (lines 6-9; started 2026-10-03T09:00:00Z, prompt v7, " in fr
+    assert "- attempt 3 (lines 6-9; started 2026-10-03T09:00:00Z; prompt v7; " in fr
     assert "- attempt: 3 of 3 (earlier: attempt 1 fully one command, attempt 2 failed at step 1)" in summary
     assert "- friction (attempt 3): 1 event line(s): 1 finished" in summary
 
@@ -5018,9 +5020,10 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
         "list: no folder question and no Allow click)" in summary
     )
     assert (
-        "- attempt 2 (lines 5-5; no Attempt: line (logged after the previous attempt finished), prompt not "
-        'stated, agent not stated): failed at step 1; 1 event line(s): 1 error; no "end | finished" line'
-        in section(text, "Agent friction log")
+        # one line is "line 5", and no bracket sits inside the attempt's own (B13 round 10 L32)
+        "- attempt 2 (line 5; no Attempt: line, since it was logged after the previous attempt finished; "
+        "prompt not stated; agent not stated): failed at step 1; 1 event line(s): 1 error; "
+        'no "end | finished" line' in section(text, "Agent friction log")
     )
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
     assert link["outcome"] == ["Failed at step 1 (preflight)"] and "prompt_version" not in link
@@ -5270,7 +5273,7 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
     assert "approvals: not observable" in summary, "the stated agent's tool does not show approvals"
     assert re.search(r"· step 1 · error · git pull exited 1\b", summary), "the item is the line's own text"
     assert "prompt v12, " not in summary.split(" · agent: ", 1)[1]
-    assert f"prompt v12 (from the step 1 error line), agent {agent}" in fr
+    assert f"prompt v12, from the step 1 error line; agent {agent}" in fr
     assert link["prompt_version"] == ["v12"] and link["agent"] == [agent]
     assert "v12" in link["title"][0]
     parsed = setup_report.parse_friction(V12_HAPPY + stop).attempts
@@ -5295,7 +5298,7 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
     _text, summary, fr, link = report(V11_HAPPY + stop.replace(f"prompt v12, {agent}: ", ""))
     assert "- prompt: not stated · run: " in summary and " · agent: not stated" in summary
     assert (
-        "prompt not stated, agent not stated" in fr and "prompt_version" not in link and "agent" not in link
+        "prompt not stated; agent not stated" in fr and "prompt_version" not in link and "agent" not in link
     )
 
     # Within 10 minutes and in the attempt's own words, after its header: another session's (B13 round 5
@@ -5322,8 +5325,8 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
     assert summary.split(" · agent: ", 1)[1].startswith(agent)
     assert re.search(r"· step 1 · error · git pull exited 1\b", summary)
     assert link["prompt_version"] == ["v12"] and link["agent"] == [agent]
-    assert f"prompt v12 (from the step 1 error line), agent {agent}" in fr
-    assert "no Attempt: line (a session that stopped before `install.sh --log-start`)" in fr, fr
+    assert f"prompt v12, from the step 1 error line; agent {agent}" in fr
+    assert "no Attempt: line, since its session stopped before `install.sh --log-start`" in fr, fr
     assert "v4 format" not in fr and "may be stale" not in summary
     assert (
         "It starts at a step 1 error logged before any attempt was started: that session stopped" in summary
@@ -5336,7 +5339,7 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
         [att] = setup_report.parse_friction(first).attempts
         assert att.stated == {} and att.events[0].what.startswith("prompt v12, "), first
     _text, _summary, fr, _link = report("F1 | step 2 | the pull failed | -\n")
-    assert "no Attempt: line (v4 format)" in fr, fr
+    assert "no Attempt: line, since it is in the v4 format" in fr, fr
 
 
 def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line() -> None:
@@ -5627,7 +5630,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
     fr = section(text, "Agent friction log")
     assert "1 attempt(s):" in fr and "- attempt:" not in summary, "the late lines start no attempt"
     assert re.search(
-        r"^- attempt 1 \(lines 1-7; .*, prompt v8, .*\): worked with help; 4 event line", fr, re.M
+        r"^- attempt 1 \(lines 1-7; .*; prompt v8; .*\): worked with help; 4 event line", fr, re.M
     )
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
     assert link["outcome"] == ["Worked with help"]

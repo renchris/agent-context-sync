@@ -300,20 +300,21 @@ attempt's outcome. One kind of late line is another session: a step 1 `error` da
 the closing line, or, since round 5 (F23), one that starts with `prompt vN, <agent>: ` after a headed attempt, at
 any gap (2 minutes after the end line is enough). Its session's step 1 stopped before `install.sh --log-start` wrote a header (since prompt v11
 the Xcode and git stops log that error before the report), so the report
-lists it, and the lines after it, as an attempt of its own with "no Attempt: line (logged after the previous
-attempt finished)". When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
+lists it, and the lines after it, as an attempt of its own with "no Attempt: line, since it was logged after the
+previous attempt finished". When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
 prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v18, <agent>: ` now), the words step 1 gives `--log-start`, so the
 Summary's `prompt:` and `agent:`, the attempt's line in the friction log section and the issue link's
-`prompt_version` and `agent` name them (the version marked `(from the step 1 error line)`), and the item shows
+`prompt_version` and `agent` name them (the version marked `(from the step 1 error line)`; in the attempt's line
+`prompt v18, from the step 1 error line`), and the item shows
 the rest of the line. Without those words, as in a v11 log, they say `not stated`. Those words also split an
 attempt that has no end line. Since round 5 (F23) a step 1 `error` that states them always starts its own attempt
 when the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in
 a v4 log), whatever the gap and even in the same words, because a session that wrote a header never writes the
 prefix. After a header-less attempt with stated words (round 4), it
 does so only when its version or agent differs from them, or it comes more than 10 minutes after that attempt's
-latest time. Such an attempt is listed as "no Attempt: line (logged after the previous attempt, which has no end line, by another
-session)". When such an error is the log's first line its words are read too, and the attempt is "no Attempt:
-line (a session that stopped before `install.sh --log-start`)". A step 1 error without those words, a line of
+latest time. Such an attempt is listed as "no Attempt: line, since another session logged it after the previous
+attempt, which has no end line". When such an error is the log's first line its words are read too, and the attempt
+is "no Attempt: line, since its session stopped before `install.sh --log-start`". A step 1 error without those words, a line of
 another step or kind, and a late line that stays in its attempt are never read that way. Any
 other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
 written more than 10 minutes after the last attempt's end line, with no run in install.log since (`--report-only`

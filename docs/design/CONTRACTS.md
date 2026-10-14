@@ -6128,6 +6128,8 @@ log a line with no `Attempt:` header after an older attempt's `end | finished`. 
   judges it ("failed at step 1": no install run, and step 1 logged an error), not the attempt that had
   finished before it. `install.sh --report-only` closes only an attempt with a header, so instead of the
   stale-report WARNING the Summary says "note: attempt N has no Attempt: line. ...".
+  Amended 2026-10-14, §16.86 L32: the label reads "no Attempt: line, since it was logged after the previous attempt
+  finished", a clause in the attempt's one bracket.
 - Every other line after a closing line stays in its attempt: a deviation, a prompt line, an error of another
   step, a step 1 error inside the 10 minutes, a line with no time. A line logged after `--report-only` in the
   same session must not become the latest attempt and take the Summary's headline, and a late deviation
@@ -14124,6 +14126,9 @@ format`. install.sh's `friction_attempt_stopped` and `friction_earlier_end` foll
 (`track`, `restate` in `FRICTION_AWK`). Tests: `test_a_header_less_step_1_error_states_its_prompt_and_agent`,
 `test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line`,
 `test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`.
+Amended 2026-10-14, §16.86 L32: the labels read `no Attempt: line, since its session stopped before `install.sh
+--log-start``, `no Attempt: line, since another session logged it after the previous attempt, which has no end
+line` and `no Attempt: line, since it is in the v4 format`.
 
 **Q31: Configuration says whether a label rule is on.** A line after `[network] proxy`: `- [policy] label rule:
 off`, or `on (I excluded id(s), N name(s), refuse_unlabelled=true|false)`, with `; policy.toml beside
@@ -18011,6 +18016,16 @@ still running` and `lock-not-taken-rc<N>` as `could not take the sync lock, lock
 waiting`, by full-match patterns, in the Installer table and the Summary alike; no parenthesis, since the Summary
 puts the note in one. install.log keeps its tokens; any other note is shown as it is. Test:
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+
+**The friction section's attempt line has one bracket** (L32). `- attempt 2 (lines 5-5; no Attempt: line (logged
+after the previous attempt finished), prompt v18 (from the step 1 error line), agent ...)` nested brackets and wrote
+one line as `5-5`. It reads `- attempt 2 (line 5; no Attempt: line, since it was logged after the previous attempt
+finished; prompt v18, from the step 1 error line; agent ...): ...`: one line is `line N`, the bits are joined by
+"; ", and each header-less kind is a clause (`since another session logged it after the previous attempt, which
+has no end line`, `since its session stopped before `install.sh --log-start``, `since it is in the v4 format`).
+`_stated_note` keeps its brackets: the Summary's prompt line strips them. The labels quoted in §16.28 and
+§16.52 have dated lines. Tests: `test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attempt`
+and the friction tests that pin the attempt line.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

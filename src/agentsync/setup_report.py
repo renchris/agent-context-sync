@@ -6674,11 +6674,12 @@ def _headerless_kind(fr: Friction, index: int) -> str | None:
 
 
 _HEADERLESS_LABEL = {
-    "finished": "logged after the previous attempt finished",
-    "open": "logged after the previous attempt, which has no end line, by another session",
-    "first": "a session that stopped before `install.sh --log-start`",
+    "finished": "since it was logged after the previous attempt finished",
+    "open": "since another session logged it after the previous attempt, which has no end line",
+    "first": "since its session stopped before `install.sh --log-start`",
 }
-"""The friction section's words for each :func:`_headerless_kind`, after "no Attempt: line"."""
+"""The friction section's words for each :func:`_headerless_kind`, a clause after "no Attempt: line, " (B13
+round 10 L32: a bracket inside the attempt's own bracket); a v4 log's is "since it is in the v4 format"."""
 
 
 def _friction_section(r: _Run) -> list[str]:
@@ -6700,10 +6701,13 @@ def _friction_section(r: _Run) -> list[str]:
     ]
     for i, att in enumerate(fr.attempts):
         outcome = _attempt_outcome(r, i)
-        no_header = _HEADERLESS_LABEL.get(_headerless_kind(fr, i) or "", "v4 format")
+        no_header = _HEADERLESS_LABEL.get(_headerless_kind(fr, i) or "", "since it is in the v4 format")
+        # clauses joined by "; ", no bracket inside the attempt's own, and "line 5" for one line (B13 round 10
+        # L32); _stated_note keeps its brackets for the Summary's prompt line, which strips them
+        stated = ", from the step 1 error line" if _stated_note(att) else ""
         bits = [
-            f"started {_iso(att.started)}" if att.started else f"no Attempt: line ({no_header})",
-            f"prompt {_prompt_version(att) or 'not stated'}{_stated_note(att)}",
+            f"started {_iso(att.started)}" if att.started else f"no Attempt: line, {no_header}",
+            f"prompt {_prompt_version(att) or 'not stated'}{stated}",
             f"agent {att.said('Agent') or 'not stated'}",
         ]
         tail = [f"{len(att.events)} event line(s): {_kind_counts(att)}"]
@@ -6715,10 +6719,12 @@ def _friction_section(r: _Run) -> list[str]:
             )
         if not att.finished:  # a finished one says so in its counts ("1 finished")
             tail.append('no "end | finished" line')
-        out.append(
-            f"- attempt {att.number} (lines {att.first_line}-{att.last_line}; {', '.join(bits)}): "
-            f"{outcome.text}; {'; '.join(tail)}"
+        span = (
+            f"line {att.first_line}"
+            if att.first_line == att.last_line
+            else f"lines {att.first_line}-{att.last_line}"
         )
+        out.append(f"- attempt {att.number} ({span}; {'; '.join(bits)}): {outcome.text}; {'; '.join(tail)}")
     if fr.truncated:
         out.append(f"Only the first {FRICTION_MAX_BYTES // 1024} KiB are shown.")
     out.append(f"Each line is shown with its line number{_F_IDS_MARK}")
