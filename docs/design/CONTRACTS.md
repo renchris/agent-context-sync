@@ -17607,6 +17607,11 @@ another user account, the person moves it aside, and the agent does not run the 
 suggests. Both are in the list of stops that log the failed command before the report. Tests:
 `test_a_folder_at_the_checkouts_path_that_is_not_a_checkout_is_named`, `test_readme_step1_is_one_command`,
 `test_readme_step1_command_clones_then_pulls`.
+Amended 2026-10-14, §16.88 L61: the `[ -f .git/HEAD ]` test alone left one case open. A `.git` holding HEAD but no
+objects or refs, or a HEAD that names no ref, passes it, and under a home that is a repository git still climbed
+there, so "no tracking information" sent the recovery to commit the home (measured, git 2.54). Since v19 step 1's
+command and each git recovery export `GIT_CEILING_DIRECTORIES="$HOME/src"` (§16.88), and the two stops this
+paragraph names run no installer and write no report.
 
 **Each kept patch carries its keep's branch** (K28; dated lines at §16.30's "Not by file name" and §16.72's H19
 paragraph). Two keeps, each with an uncommitted change, both wrote `0001-local-changes-kept-before-update.patch`,
@@ -18099,7 +18104,96 @@ Reserved for round 10 lane RB of B13.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 
-Reserved for round 10 lane P of B13.
+The B13 round 10 items of lane P (specs `round10/items/L<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise). All ten need prompt text, so the prompt is **setup prompt v19**:
+`SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v19` and `setup-prompt-compat 19`, the issue form's
+placeholder and the block's digest move together, and a saved v18 copy is stopped at step 1 like every older copy.
+v19 moves no step, so it has no `PROMPT_LAYOUTS` entry. Lane RB sent words for its L11, built here; no other lane
+sent prompt words. None adds an agentsync command, an installer flag, a config key or a friction kind. Where this
+section changes what §16.82 describes, §16.82 stays the record of v18; the one dated line is where L61's spec asks.
+
+**Git never searches above ~/src** (L6, L61: one defect, built once). In a home that is itself a git repository,
+a checkout whose `.git` git does not accept (HEAD alone, or a HEAD that names no ref, even beside `objects/` and
+`refs/`) passed v18's `[ -f .git/HEAD ]` test, git searched upward to the home, the pull said "no tracking
+information", and the recovery for it switched the home's repository to a local-work branch and committed the home's
+untracked files there (probe e4h, measured). Step 1's command and each of its three git recoveries now start with
+`export GIT_CEILING_DIRECTORIES="$HOME/src" &&`, so such a checkout gives "not a git repository", the not-a-checkout
+stop; the export also covers the git calls inside `$( )`, and installer and agentsync processes inherit it harmlessly
+(their repositories are the checkout, below the ceiling, and `~/agent-context/docs`, outside it). A valid clone, one
+under a symlinked `~/src` (git resolves the ceiling) and a `.git` file all still pull. L61's corrected fix,
+`git --git-dir=.git pull`, is not built: an explicit git dir skips git's ownership check (measured with
+`GIT_TEST_ASSUME_DIFFERENT_OWNER=1`, git 2.54 and Apple git 2.50: "Already up to date." where discovery says
+"detected dubious ownership"), so another account's checkout would pull, running its config and hooks, and the
+ownership stop would never fire. Comparing `rev-parse --show-toplevel` with the path misroutes a symlinked `~/src`
+(L61's verifier). The Claude Code allow list gains `Bash(export GIT_CEILING_DIRECTORIES="$HOME/src")` (an allow rule
+matches a subcommand's whole text, and `export` is a subcommand of its own), and Copilot's list the same `shell(...)`.
+Tests: `test_step1_and_its_recoveries_never_reach_a_repository_above_the_checkout` (runs v18's commands too, which
+commit the home), `test_readme_pre_allow_rules_cover_every_command`.
+
+**A checkout whose `.git` is a file pulls** (L27). `git clone --separate-git-dir` and a git worktree leave `.git` a
+file, so v18 cloned onto a good checkout and told the person to move it aside. Step 1 tests `[ -f .git/HEAD ] || [ -f
+.git ]`. An empty or junk `.git` file then reaches the pull, whose "invalid gitfile format" the not-a-checkout stop
+now names beside "not a git repository" (a dangling `gitdir:` gives the latter). A second worktree of another
+checkout also pulls; on a branch with no upstream, its no-tracking recovery cannot take main from the worktree that
+has it out, and git's "is already used by worktree" (git 2.54 and Apple git 2.50) is a not-a-checkout stop too, whose
+words now read "not a checkout this setup can use" and name the local-work branch the recovery made (the lane's
+review found that loop: v18 cloned onto such a folder instead). The allow list gains `Bash([ -f
+~/src/agent-context-sync/.git ])`, so step 1 needs the first eight rules. Test:
+`test_a_checkout_whose_git_is_a_file_pulls`.
+
+**A main the recovery keeps in full moves to the update** (L9). On a main with a commit of its own and no upstream,
+v18's no-tracking recovery went back to main as it was; the next pull said "Not possible to fast-forward", and the
+keep command kept the same commit again, on a second branch and in a second patch (probe G3c). The recovery's
+`switch main` is now `{ if git merge-base --is-ancestor main HEAD; then git switch -C main origin/main; else git
+switch main; fi; }`: HEAD is the new local-work branch there, so the test holds exactly when that branch keeps every
+commit of main, and only then is the reset lossless. Where main has commits the branch lacks (the keep command's
+exit-1 case), main stays as it was. `switch -C` from a remote-tracking branch sets the upstream, so git's "set up to
+track" line comes before the count, and the upstream step is a no-op there. The optional `fetch` before format-patch
+is not built: step 1's pull fetched before it failed. Tests: `test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref`,
+`test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`.
+
+**A kept patch's name keeps its subject** (L17, L30: one defect, built once). git counts `--suffix` inside
+format-patch's 64-character file-name cap, so with the 33-character branch suffix a subject kept about 25 characters
+("0001-local-changes-kept-before.<branch>.patch"). Both keep commands run `git -c format.filenameMaxLength=128
+format-patch`. Not `--filename-max-length=128` (L17's finder): that option arrived in git 2.30, and an older git
+would fail it after the keep's commit, with no patch written and main not restored; an unknown config key is ignored.
+Test: `test_a_kept_patch_name_keeps_its_whole_subject` (v18's command cuts both subjects).
+
+**Only this prompt's installer logs or reports at a step 1 stop** (L31). The not-a-checkout and ownership stops ran
+`install.sh --log` and `--report-only` from whatever copy the folder held (a v14 archive's, measured), and the
+ownership stop ran another account's script. Those two stops now run no `install.sh` command and write no report or
+"## Not used" section. The Xcode and other-git-failure stops, where no pull ran, first run `install.sh --version`
+(it checks for the developer tools before it calls git) and log and report only when it ends with this prompt's
+number; otherwise they tell the person the code on the Mac is not this prompt's version and setup stopped before it
+could be updated. The finish still applies after every one of these stops. Step 1's version check now reads "the
+--version inside step 1's one command", so the Xcode and git stops' own `--version` is not taken for it. Step 3's
+no-report cases are four. Test: `test_readme_step1_is_one_command`,
+`test_readme_report_step_after_any_failure`.
+
+**The second exception follows the last list** (L62, L11). After a timed-out list, a re-run that read an inbox-only
+config prints no unread clause, but v18's "if no list marked a folder" still told the person the config could not be
+read and, unattended, ran step 2 with no folder. The exception now holds only while the last list's `NEXT:` still says
+the config's folders could not be read; a re-run whose `NEXT:` no longer says so is followed as on any Mac. Lane RB's L11 words: where that `NEXT:`
+says the installed agentsync failed while reading the config, the agent shows that line and does not say step 2
+keeps the folders. Test: `test_a_folder_list_that_could_not_read_the_config_goes_on_unattended`.
+
+**The wait after step 2 is step 1's** (L10). When step 2 says no folder is synced yet, the folder question applies
+as on a new Mac, but step 2 has already written setup-report.md and bring-back.md. v19 says the wait is step 1's in
+full (a deviation at step 1, no `--report-only`, no "## Not used"), the finish names "none" for the `NEXT:` line and
+for bring-back.md (step 3's no-report case and the finish's bring-back rule say so too), and the answer goes to step 2
+again with `--source-local`, not to the `add-source` its `NEXT:` names, which no step 2 line reports as added. Step 2's rule
+for a non-zero exit names the same exception. Test:
+`test_prompt_routes_changes_to_the_source_not_the_checkout`.
+
+**The git stop points at the report's proxy entries** (L74; option (b), since v19 ships). Round 9's verifier for K31
+offered it; v18 left it out with no record. The quote adds that, if the setup report gets written, its entries
+"proxy in git's config" and "URL rewrite in git's config" say only set or not set, never the host, and that what it
+says about proxy variables comes from the shell the report ran in, which may not be the person's terminal. It names
+only labels both reports print (`setup_report.py`'s proxy fact and `install.sh`'s shell report), not "proxy
+environment", which only the shell report has, and no parenthesis, which H21 keeps out of the quote. Test:
+`test_readme_step1_is_one_command`.
+
+Register: `docs/deploy/setup-feedback.md` K43.
 
 ### 16.89 Round 10: sync, status, waits, locks and doctor (2026-10-14, wave B13 round 10 lane B)
 

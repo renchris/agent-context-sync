@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v18) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v19) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -357,11 +357,12 @@ def rerun(wheel: Path, folder: Path) -> str:
 
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
-    """README step 1: "If --version does not end with "setup-prompt-compat 18", ... stop"."""
+    """README step 1: "If the --version inside step 1's one command does not end with
+    "setup-prompt-compat 19", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 18" == f"setup-prompt-compat {COMPAT}"
+    assert lines[-1] == "setup-prompt-compat 19" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
