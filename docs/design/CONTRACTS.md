@@ -9267,6 +9267,10 @@ attempt reached its report. Every other patch is sent, fenced, as before.
   with the earlier attempt's end, which it is newer than.
 - **Not by file name.** `git format-patch -1` with the prompt's constant commit subject always writes
   `0001-local-changes-kept-before-update.patch`, and a second keep overwrites it. The new mtime sends it.
+  **Amended 2026-10-14, §16.79 J66 (by §16.72 H19):** since v16 the keep command writes one patch per commit the update
+  lacks (`format-patch -q origin/main..`), and only the commit of uncommitted changes gets the constant subject,
+  so a second keep overwrites a first keep's patch only where both get the same number and subject. Section 3
+  still reads every `*.patch` by its mtime, so the rule above is unchanged.
 
 **Every doubt sends the patch.** No friction log, no earlier attempt that ended, an end line or an mtime
 that is not exactly `YYYY-MM-DDTHH:MM:SSZ` (`utc_stamp`), or a hash that is not 12 hex digits: the patch is
@@ -12441,6 +12445,9 @@ step, so it has no entry in `PROMPT_LAYOUTS`. A saved v10 copy is stopped at ste
   WAITING ON YOU: line of the loop" had several candidates; the v10 rehearsals read it two ways (on a new Mac the
   draft-baseline wait alone, with no NEXT; on a set-up Mac the NEXT with both waits). "Before the report" leaves
   out the report's own `NEXT:`; `install.sh --log` prints none. The report's Loop line already lists every wait.
+  **Amended 2026-10-14, §16.79 J66 (by §16.72 H6):** since v16 the item adds "(also "none: waiting for your folder answer"
+  while you wait for my folder answer in step 1; the folder list's NEXT: line is not a step for me)": at the
+  folder wait no report runs, so "before the report" pointed at nothing.
 - **Step 2's NEXT does not count toward the loop** (H4; amends §16.28 "One round"). "Step 2's NEXT: line does not count, even when it
   already said "session done": step 2's sync downloaded nothing, so run this loop's sync at least once." On a
   re-run, loop rules 5, 9 and 10 can end the installer's `NEXT:` in "session done". Step 2's sync is
@@ -13689,6 +13696,9 @@ which the test reads. **Amended 2026-10-13, §16.67 G37:** since v15 it goes on 
 "another sync is still running" and waits for that sync again, up to 10 more minutes, and is skipped ("skipped,
 lock busy") if it is still running then. Both waits and that skip are expected, not deviations: do not log
 them."
+**Amended 2026-10-14, §16.79 J66 (by §16.72 H66):** since v16 that first-sync wait is its own sentence, for every run, a
+re-run at the same commit included ("If another sync is running when its first sync starts ..., it says "another
+sync is still running" and waits for it, up to 10 minutes"), no longer "again, up to 10 more minutes".
 
 **Step 3's report is defined once** (R31): "Step 3's report, where every "go to step 3's report" in this prompt
 lands, has two parts, in this order. First, add a "## Not used" section ...; skip this part if
@@ -13703,6 +13713,11 @@ saying which ones this session added, or "none: this Mac syncs no folder" (if se
 at which step)". The folders are
 the ones install.sh counts (`synced_folders`: live `kind = "local"` sources), the same N step 1 and step 2 print.
 "Every source folder in sources.toml" was not used: it would add the inbox and the person's own inbox folders.
+**Amended 2026-10-14, §16.79 J66 (by §16.72 H9):** since v16 the finish reads "the kind = "local" sources in
+~/agent-context/sources.toml that are not paused or retired, read after step 2 or, if setup stopped before step 2,
+as they are (never the inbox or another kind = "inbox" folder), saying which of them this session added: those for
+which a run of step 2 this session printed an "added source" line": step 1's `[synced]` marks no longer decide it, so
+a list that marked nothing gives no false "none" (§16.72 calls this paragraph §16.36's and §16.43's finish).
 
 **Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
 block carries a dated line).
@@ -14955,6 +14970,9 @@ built here.
   **Amended 2026-10-13, §16.67 G15:** the prompt's own stop said "copy the prompt again" at every such stop, so
   when the checkout was the cause the person got two orders on one screen. Since v15 the agent tells the person
   what the error says, in its words, and says to copy the prompt again only when there is no such error.
+  **Amended 2026-10-14, §16.79 J66 (by §16.72 H65):** since v16 it also gives the checkout sentence whenever the error's
+  words do not already mention this Mac's checkout, since installers v8 to v14 answer a newer copy with "copy the
+  prompt again" alone.
 - **Wording** (F18). The note and the `NEXT:` say "a copy of the setup prompt that does not match this
   installer". `test_a_stopped_newer_copy_is_not_called_out_of_date`.
 
@@ -15102,6 +15120,8 @@ quote for the person; the agent runs neither command. Test:
 `git config --get-regexp 'url\..*insteadof'` prints, or as a proxy", and the terminal's variables include
 `all_proxy`; "which wins" now reads "which wins over the terminal's". **Amended 2026-10-13, §16.67 G24:** each
 command is in code marks, and the person runs them, not the agent.
+**Amended 2026-10-14, §16.79 J66 (by §16.72 H25):** since v16 the query is anchored, `'^url\..*\.insteadof$'`: the v15 one
+above also printed `pushinsteadof` keys, which never change a fetch or pull URL.
 
 **A missing checkout is step 3's third case with no report** (F25, F27; amends §16.36 "Step 3 names the two stops
 with no report" by a dated line). "Two cases have no report ... Every other stop still ends with the report" came
@@ -15767,6 +15787,9 @@ it, then paste the prompt again." The fallback covers an installer old enough to
 in the chat only: the stderr names the checkout's path and remote, which the friction log keeps out on purpose
 (`newer_copy_fix`), so the prompt asks for no log line of it. Test: `tests/test_deploy_pack.py`
 (`test_readme_prompt_names_its_version_and_the_installer_compat_line`).
+**Amended 2026-10-14, §16.79 J66 (by §16.72 H65):** since v16, unless the error's words already mention this Mac's checkout,
+the agent also tells the person that a fresh copy stopping here too means the checkout does not follow main of the
+Source: installers v8 to v14 say only "copy the prompt again", so the checkout sentence never came where it was meant.
 
 **The git stop's hint names a URL rewrite and marks its commands** (G73, G24; dated lines at §16.61 F24). With
 `url."https://<mirror>/".insteadOf = https://github.com/` git's error names the mirror ("Could not resolve host"),
@@ -15779,6 +15802,9 @@ shows". "Which wins" stays on the proxy setting: a rewrite is another mechanism.
 the Xcode one is, so a person sees where it ends; both git queries are the person's, so the allow-rule list does not
 cover them (`_agent_commands`). The hint stays read-only: it never tells the agent to change a rewrite. Test:
 `tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`).
+**Amended 2026-10-14, §16.79 J66 (by §16.72 H21, H25):** since v16 the quote is sentences, the one action last ("Once git can
+reach GitHub from a terminal, start a new session from that terminal and paste this prompt again"), and the rewrite
+query is anchored, `git config --get-regexp '^url\..*\.insteadof$'`, which leaves out `pushinsteadof`.
 
 **The report comes after a failure, except in three cases** (G25; dated lines at §16.36 and §16.49 R31). "Then
 the report, always, even after a failure" came just before "Three cases have no report"; it now reads "Then the
@@ -15797,6 +15823,10 @@ deviations: do not log them." A skipped first sync is still recorded (`skipped 7
 600 s cap stays: a first sync that did not wait would be skipped more often. Tests:
 `tests/test_install_oneshot.py::test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before` and
 `tests/test_deploy_pack.py` (`test_readme_step2_is_the_one_install_command`).
+**Amended 2026-10-14, §16.79 J66 (by §16.72 H66):** since v16 the first sync's wait is a sentence of its own, for every run, not
+only a reinstall's: "If another sync is running when its first sync starts (that same one, or one that started
+since, such as a background sync on a Mac that already syncs), it says "another sync is still running" and waits for
+it, up to 10 minutes, and skips that sync ("skipped, lock busy") if it is still running then."
 
 **Prompt words from another lane** (lane RB's G47 and G65, §16.65). A report that holds a `Private only:` line gets
 no `issue link (review the report first):` line, and its `NEXT:` names `bring-back.md` alone, so step 3's "its last
@@ -16295,6 +16325,9 @@ placeholder and the block's digest move together; a saved v15 copy is stopped at
 moves no step, so it has no `PROMPT_LAYOUTS` entry and is read with v7's rules. None adds an agentsync command, an
 installer flag, a config key or a friction kind. This section amends the older sections it names here; the older
 text stays as the record of its version.
+**Amended 2026-10-14, §16.79 J66:** as §16.67 did for v15, each text this section amends now has a dated line,
+`Amended 2026-10-14, §16.79 J66 (by §16.72 H<n>)`, also at the v15 lines that quoted the text v16 replaced. "§16.36
+and §16.43's finish" below is §16.49's "The finish" (R11, R30): neither section has a finish paragraph.
 
 **The finish's folder list is the config's** (H9 and H30, one defect, built once; amends §16.36 and §16.43's
 finish). v15 listed "those step 1's list marked [synced] and those step 2 added", with `sources.toml` only for a
@@ -16675,3 +16708,15 @@ overturned, so the three stood unmarked. Each now has a line `Amended 2026-10-14
 which reads every "(H<n>; amends|corrects §A X)" heading and every "(<item>; dated line(s) at §A X)" claim of §16.68
 to §16.71, §16.73 and this section and requires the line at the item (or in a dated paragraph right after it), and
 pins the `STUB_RENDER` line, whose correction sits in a paragraph body rather than a heading.
+
+**Round 7's prompt items have dated lines at the text they amend** (J66; dated lines at §16.30's "Not by file name",
+§16.49 R30, §16.43 H3, §16.67 G73, G15 and G37, the v15 lines at §16.61 F24, §16.59 F17 and §16.49's step 2, and
+§16.72's opening). §16.72 said it amends §16.30, §16.43, §16.67 and "§16.36 and §16.43's finish", but wrote "the
+older text stays as the record of its version" in place of dated lines, a rule found nowhere else in §16 (§16.67 had
+dated every v15 target), so §16.30 still said `git format-patch -1` always writes one patch, and the v15 lines at
+G73's and G37's targets quoted text v16 replaced. Each target now has `Amended 2026-10-14, §16.79 J66 (by §16.72
+H<n>)`. Measured on contact: neither §16.36 nor §16.43 has a finish paragraph; the v15 folder list H9 and H30
+replaced is §16.49's "The finish" (R11, R30), where the line is, and §16.72's opening line says so. Its opening is
+amended by a line, not rewritten, as for every older section. Test:
+`test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend`, which holds the targets as (section, a phrase
+only the target holds, items), since §16.72 names paragraphs, not items, and no heading scan can find them.

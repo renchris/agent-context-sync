@@ -3809,6 +3809,40 @@ def test_the_contracts_quote_the_shell_reports_list_and_send_lines_as_written() 
     assert "**Amended 2026-10-14, §16.79 J67:** not quite the shell report's words" in s69
 
 
+_ROUND_7_PROMPT_AMENDS = (
+    ("16.30", "**Not by file name.**", "H19"),
+    ("16.49", '**The finish** (R11, R30): "the folders this Mac syncs', "H9"),
+    ("16.43", "**The finish names one NEXT line** (H3;", "H6"),
+    ("16.67", "**The git stop's hint names a URL rewrite and marks its commands** (G73, G24;", "H21, H25"),
+    ("16.61", "**Amended 2026-10-13, §16.67 G73:** since v15", "H25"),
+    ("16.67", "**The version stop passes on the installer's words** (G15, G67;", "H65"),
+    ("16.59", "**Amended 2026-10-13, §16.67 G15:**", "H65"),
+    ("16.67", "**The first sync's own wait is named** (G37;", "H66"),
+    ("16.49", "**Amended 2026-10-13, §16.67 G37:** since v15", "H66"),
+)
+"""§16.72's targets (B13 round 8 J66): the section, a phrase only the amended paragraph or bullet holds,
+and the round 7 items whose dated line it carries. §16.72 names them as paragraphs, so no heading scan finds
+them."""
+
+
+def test_round_7s_prompt_items_have_dated_lines_at_the_text_they_amend() -> None:
+    """B13 round 8 J66: §16.72 (v16) amended §16.30, §16.43, §16.49 and §16.67 text with no dated line at
+    any of it, "the older text stays as the record of its version", while §16.67 (v15) and §16 as a whole
+    mark each target; so §16.30 still said `git format-patch -1` always writes one patch.  Each target, the
+    v15 lines that quoted the text v16 replaced included, holds `Amended 2026-10-1N, §16.79 J66 (by §16.72
+    H<n>)`."""
+    sections = dict(_contracts_numbered_sections())
+    assert len(_ROUND_7_PROMPT_AMENDS) >= 9
+    for section, anchor, items in _ROUND_7_PROMPT_AMENDS:
+        blocks = [" ".join(b.split()) for b in re.split(r"\n\s*\n|\n(?=\s*- \*\*)", sections[section])]
+        [block] = [b for b in blocks if anchor in b]
+        marker = rf"\*\*Amended 2026-10-1\d, §16\.79 J66 \(by §16\.72 {re.escape(items)}\):\*\* since v16"
+        assert re.search(marker, block), f"§{section} {anchor[:40]} has no dated line for §16.72 {items}"
+    opening = " ".join(sections["16.72"].split("\n\n")[1].split())
+    assert "stays as the record of its version. **Amended 2026-10-14, §16.79 J66:** as" in opening
+    assert 'is §16.49\'s "The finish" (R11, R30)' in opening
+
+
 def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 8 J73: §16.71 H47 and H52 corrected §16.66 G52 and G29, and H77 its "`STUB_RENDER` is
     4", with no dated line at any of them, the defect class H54 fixed for round 6, whose test reads only G
