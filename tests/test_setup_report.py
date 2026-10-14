@@ -4768,8 +4768,12 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert "northwind" not in text.lower(), [ln for ln in text.splitlines() if "northwind" in ln.lower()]
     for part in (section(text, "Summary"), section(text, "Agent friction log")):
-        assert re.search(r"Could not resolve host: <proxy-\d+> \(exit 128\)", part), part
-        assert re.search(r"git clone https://<proxy-\d+>/someone/agent-context-sync\.git/:", part), part
+        # B13 round 8 J1, J20: the host is one placeholder in the URL and in git's resolver error, its port
+        # stays, and the company-named path is a value of its own; scripts/install.sh writes the same line
+        assert (
+            "git clone https://<proxy-1>:8443<proxy-2>/someone/agent-context-sync.git/: Could not resolve "
+            "host: <proxy-1> (exit 128)" in part
+        ), part
         # git@host is an email address to the redactor; the scp base's path is a value of its own
         assert re.search(r"git pull <email-\d+><proxy-\d+>/x\.git: ", part), part
     assert "URL rewrite in git's config: set (3)" in section(text, "Environment")
@@ -4789,6 +4793,41 @@ def test_a_git_url_rewrite_host_and_path_are_redacted(
     assert shown == "/usr/bin/git; /opt/homebrew/bin/git; ~/src/agent-context-sync/.git/config; /Git/hooks"
     assert setup_report._rewrite_values("https://GitHub.com/") is None
     assert setup_report._rewrite_values("ssh://git@GITHUB.com/") is None
+    # B13 round 8 J1, J20: a generic path is left in clear and the host keeps one number; a path of report
+    # words (tools, dev) is no value either, so the report's own words stay; a company path is its own value
+    for base, said, shown in (
+        (
+            "https://gitmirror.northwind-six.invalid/scm/",
+            "git clone https://gitmirror.northwind-six.invalid/scm/jdoe/x.git/: Could not resolve host: "
+            "gitmirror.northwind-six.invalid; /usr/bin/git",
+            "git clone https://<proxy-1>/scm/jdoe/x.git/: Could not resolve host: <proxy-1>; /usr/bin/git",
+        ),
+        (
+            "https://dev.northwind-seven.invalid/tools/",
+            "https://dev.northwind-seven.invalid/tools/x: Xcode command line tools missing; > /dev/null",
+            "https://<proxy-1>/tools/x: Xcode command line tools missing; > /dev/null",
+        ),
+        (
+            "https://dev.example.invalid/northwind-team/",
+            "https://dev.example.invalid/northwind-team/jdoe/x: Could not resolve host: dev.example.invalid",
+            "https://<proxy-1><proxy-2>/jdoe/x: Could not resolve host: <proxy-1>",
+        ),
+    ):
+        red = setup_report.Redactor()
+        found = setup_report._rewrite_values(base)
+        assert found is not None, base
+        host, value, tail = found
+        setup_report._add_proxy_host(red, host)
+        if value.lower() != host.lower():
+            red.add("proxy", value, ignore_case=True)
+        if tail:
+            red.add("proxy", tail, ignore_case=True)
+        assert red.redact(said) == shown, (base, red.redact(said))
+    # B13 round 8 J2: the legend says a rewrite is a <proxy-N> too
+    legend = section(text, "Redaction")
+    assert "<proxy-N> proxy host, git URL rewrite (insteadOf) host and its company-named path, or the " in (
+        legend
+    ), legend
     (Path.home() / ".gitconfig").unlink()
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert "URL rewrite in git's config: not set" in section(text, "Environment")

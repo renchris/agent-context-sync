@@ -66,8 +66,8 @@ hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), 
 (``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names (``<host>``), the
 MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches inside it),
 proxy hosts, those in git's config files included, and the LaunchAgent's own (``launchctl setenv``) proxy,
-the host and the base after its scheme and user of each git URL rewrite (``insteadOf``; github.com kept), and
-the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
+the host of each git URL rewrite (``insteadOf``; github.com kept) and its path when a company word is in it,
+and the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
 ``/var/folders/<x>/<y>``: ``<tmp>``). A dotless generic host (``proxy``, ``wpad``, ``gateway``:
 :data:`_GENERIC_PROXY_HOSTS`) is replaced only where a URL names it (after ``//`` or ``@``, or before
 ``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable; any other dotless host is matched bare.
@@ -615,8 +615,8 @@ _LEGEND = {
     "host": "<host> this Mac's host or computer name",
     "mdmhost": "<mdmhost> MDM server's host",
     "proxy": (
-        "<proxy-N> proxy host, git URL rewrite (insteadOf) host or base, or the system PAC URL after its "
-        "scheme"
+        "<proxy-N> proxy host, git URL rewrite (insteadOf) host and its company-named path, or the system "
+        "PAC URL after its scheme"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
 }
@@ -2578,18 +2578,21 @@ _GENERIC_PATH_WORDS = frozenset({"git", "scm", "repo", "repos", "mirror", "mirro
 
 
 def _rewrite_values(base: str) -> tuple[str, str, str] | None:
-    """(host, base after its scheme and user, the scp form's path after its ``:``) of a rewrite base, a URL
-    (``https://user@host:port/path/``) or git's scp form (``git@host:path``); None for GitHub's own host,
-    which the repository locator and the issue link name, and for a base with no host. An scp path is its own
-    value too: ``user@host`` is an email address to the redactor, matched before any value, so a printed
-    ``git@host:path`` kept its path otherwise. Not a URL's path, which its base value covers, and not a path
-    of generic words only (``git``, ``scm/repos``), which would cut ``/usr/bin/git``."""
+    """(host, the value for the base, its path) of a rewrite base, a URL (``https://user@host:port/path/``) or
+    git's scp form (``git@host:path``); None for GitHub's own host, which the repository locator and the issue
+    link name, and for a base with no host. The value for an scp base is ``host:path``; for a URL it is the
+    host alone: the base after its scheme was a value of its own, so git's error read as naming two hosts,
+    ``https://<proxy-2>/...`` and ``resolve host: <proxy-1>`` (B13 round 8 J1, J20); its port goes with the
+    host. The path (``/path`` or ``:path``) is a value of its own, so a company word in it goes wherever it is
+    printed (``user@host`` is an email address to the redactor, matched before any value, so a printed
+    ``git@host:path`` kept its path otherwise), but not a path of generic or report words only (``git``,
+    ``scm/repos``, ``tools``), which would cut ``/usr/bin/git`` and the report's own words."""
     if "://" in base:
         rest = base.split("://", 1)[1]
         auth, sep, path = rest.partition("/")
         hostport = auth.rpartition("@")[2]
         host = hostport.split(":", 1)[0]
-        value, scp = hostport, False
+        value, scp = host, False
     else:
         auth, sep, path = base.partition(":")
         host = value = auth.rpartition("@")[2]
@@ -2598,8 +2601,8 @@ def _rewrite_values(base: str) -> tuple[str, str, str] | None:
     if not host or host.lower() == "github.com":
         return None
     words = [w for w in re.split(r"[^A-Za-z0-9]+", path.lower()) if w]
-    own = scp and any(w not in _GENERIC_PATH_WORDS and w not in report_words() for w in words)
-    return host, value + tail, tail if own else ""
+    own = any(w not in _GENERIC_PATH_WORDS and w not in report_words() for w in words)
+    return host, value + tail if scp else value, tail if own else ""
 
 
 def _proxy_urls(r: _Run) -> list[str]:
@@ -2861,9 +2864,10 @@ def _build_redactor(r: _Run) -> Redactor:
     # Git's proxies last, after the PAC value: a git-only proxy leaves every other <proxy-N> as it was.
     for host in _proxy_hosts(_git_proxy_urls()):
         _add_proxy_host(red, host)
-    # Then git's URL rewrites (B13 round 7 H20): each base's host, and the base after its scheme and user,
-    # as the PAC value is, so a company word in its path (``dev.example/contoso/``) goes too. GitHub's own
-    # host is skipped, so the repository locator and the issue link stay.
+    # Then git's URL rewrites (B13 round 7 H20): each base's host, then its path when a company word is in it
+    # (``dev.example/contoso/``), so the host is one <proxy-N> in the URL and in git's resolver error alike
+    # (B13 round 8 J1, J20); scripts/install.sh numbers them in the same order. GitHub's own host is skipped,
+    # so the repository locator and the issue link stay.
     for found in filter(None, map(_rewrite_values, _git_rewrite_bases())):
         host, value, tail = found
         _add_proxy_host(red, host)

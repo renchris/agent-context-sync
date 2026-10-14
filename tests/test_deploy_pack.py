@@ -3743,14 +3743,17 @@ def test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values() -> None:
     """B13 round 8 J63: since round 7 H20 both reports register each git URL rewrite's host and base as a
     `<proxy-N>` and count the rewrites on the Environment line; the guide's `<proxy-N>` row and machine
     sections, and the Python report's own legend and module docstring, named only proxy hosts and the PAC URL.
-    (The shell legend is pinned in `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.)"""
+    (The shell legend is pinned in `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.)
+    Since round 8 J20 the base is no value: the host is, and its path when a company word is in it."""
     from agentsync import setup_report  # noqa: PLC0415
 
-    assert "git URL rewrite (insteadOf) host or base" in setup_report._LEGEND["proxy"]
+    assert "git URL rewrite (insteadOf) host and its company-named path" in setup_report._LEGEND["proxy"]
     doc = " ".join((setup_report.__doc__ or "").split())
-    assert "the host and the base after its scheme and user of each git URL rewrite (``insteadOf``" in doc
+    assert (
+        "the host of each git URL rewrite (``insteadOf``; github.com kept) and its path when a company" in doc
+    )
     page = _page("docs/deploy/setup-feedback.md")
-    assert 'of each git URL rewrite (`[url "<base>"] insteadOf`, never `pushInsteadOf`' in page
+    assert 'the host of each git URL rewrite (`[url "<base>"] insteadOf`, never `pushInsteadOf`' in page
     assert "github.com is never replaced" in page
     assert "how many URL rewrites it has (a count, never a host)" in page
 

@@ -1485,14 +1485,16 @@ redaction_pairs() {
 			case "$pac" in */*) ;; *) ! generic_proxy_host "${pac%%:*}" || pac="" ;; esac
 			;;
 		rw=*)
-			# A URL rewrite's base (B13 round 7 H20), a URL or git's scp form (git@host:path): its base after
-			# the scheme and user and its host, as the Python report registers them, in their written and lower
-			# case forms (git prints the host as configured, a resolver error in lower case); an scp base's
-			# path too, unless it is a server's generic layout (git, scm, repos) or words the report prints, since
-			# the Python report reads git@host as an email address first. The path is matched with an end boundary
-			# only, no letter or digit after it, as in Python (pair flag e): its own ":" marks the start, and before a ":" in any URL is the last letter of a host, which a
-			# whole-word match refused, so the pair never matched (B13 round 8 J37). GitHub's own host is
-			# skipped, so the repository locator and the issue link stay.
+			# A URL rewrite's base (B13 round 7 H20), a URL or git's scp form (git@host:path): its host, then
+			# an scp base as host:path, as the Python report registers them, in their written and lower case
+			# forms (git prints the host as configured, a resolver error in lower case); the path too, unless it
+			# is a server's generic layout (git, scm, repos) or words the report prints. A URL base after its
+			# scheme is no value of its own: it gave the host a second number, so git's error read as naming two
+			# hosts (B13 round 8 J1, J20). The path is matched with an end boundary only, no letter or digit
+			# after it, as in Python (pair flag e): its own ":" or "/" marks the start, and before it in any URL
+			# is the last letter of a host or a port's digit, which a whole-word match refused, so the pair never
+			# matched (B13 round 8 J37). GitHub's own host is skipped, so the repository locator and the issue
+			# link stay.
 			rw=1
 			u="${u#rw=}"
 			case "$u" in *://*) h="${u#*://}" sep="/" ;; *) h="$u" sep=":" ;; esac
@@ -1502,16 +1504,16 @@ redaction_pairs() {
 			auth="${auth##*@}"
 			case "$(printf '%s' "${auth%%:*}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in "" | github.com) continue ;; esac
 			[ "$sep" = / ] || auth="${auth%%:*}"
-			pac="$auth$tail"
-			[ "$pac" != "${auth%%:*}" ] || pac=""
+			pac=""
+			[ "$sep" = / ] || [ "$auth$tail" = "$auth" ] || pac="$auth$tail"
 			u="rw://$auth/"
 			k=""
 			b=" git scm repo repos mirror mirrors src source code " # setup_report._GENERIC_PATH_WORDS
-			if [ "$sep" = : ]; then
-				for w in $(printf '%s' "$tail" | LC_ALL=C tr -c 'A-Za-z0-9' ' ' | LC_ALL=C tr '[:upper:]' '[:lower:]'); do
-					case "$b" in *" $w "*) ;; *) report_word "$w" || k=1 ;; esac
-				done
-			fi
+			# a word of the report's own (docs, tools) is no company word either, as in the Python report: a
+			# /docs path would cut ~/agent-context/docs (B13 round 8 J20)
+			for w in $(printf '%s' "$tail" | LC_ALL=C tr -c 'A-Za-z0-9' ' ' | LC_ALL=C tr '[:upper:]' '[:lower:]'); do
+				case "$b" in *" $w "*) ;; *) report_word "$w" || k=1 ;; esac
+			done
 			[ -n "$k" ] || tail=""
 			;;
 		esac
@@ -2152,13 +2154,13 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	say "(<user>), the full name and its joined forms (<name>), the organisation or team after the app's name in a"
 	say "CloudStorage folder (OneDrive-<org-N>, Dropbox-<org-N>; an account's email address too), the MDM server's host"
 	say "(<mdmhost>), proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a URL or"
-	say "host:port names it), a git URL rewrite's host and base (insteadOf; github.com kept) and the system PAC URL after"
-	say "its scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local, sources.toml or"
-	say "install.log name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only where it stands as"
-	say "a whole word), a configured source id (<source-N>, or its folder's <folder-N> where it is that name in slug form;"
-	say "one of agentsync's own words, such as docs or inbox, only for a cloud folder), a --source-local argument in"
-	say "install.log that names no CloudStorage folder (<path>), and every word bash wrote in its dollar-quote form, which"
-	say "install.log uses for a name with a curly apostrophe, an en dash or an accent (<path>)."
+	say "host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com kept) and the"
+	say "system PAC URL after its scheme (<proxy-N>), the names of the folders under CloudStorage that --source-local,"
+	say "sources.toml or install.log name (<folder-N>; a name every OneDrive or Google Drive has, such as Documents, only"
+	say "where it stands as a whole word), a configured source id (<source-N>, or its folder's <folder-N> where it is that"
+	say "name in slug form; one of agentsync's own words, such as docs or inbox, only for a cloud folder), a --source-local"
+	say "argument in install.log that names no CloudStorage folder (<path>), and every word bash wrote in its dollar-quote"
+	say "form, which install.log uses for a name with a curly apostrophe, an en dash or an accent (<path>)."
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an

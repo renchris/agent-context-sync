@@ -1822,8 +1822,8 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     )
     assert (
         "proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a "
-        "URL or host:port names it), a git URL rewrite's host and base (insteadOf; github.com kept) and the "
-        "system PAC URL after its scheme (<proxy-N>)" in flat
+        "URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; "
+        "github.com kept) and the system PAC URL after its scheme (<proxy-N>)" in flat
     ), "a clause with a verb, the rule the matcher applies (B13 round 6 G4), and URL rewrites (round 8 J63)"
     legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
     assert max(map(len, legend)) <= 115 and legend[-1].startswith("Read the report before sending it: a")
@@ -6271,6 +6271,8 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         "\tpushInsteadOf = https://github.com/\n"
         '[URL "https://Mirror.Northwind-Four.invalid/git"]\n'  # a generic path, a host in mixed case
         "insteadof=https://github.com/x/\n"
+        '[url "https://mirror.northwind-five.invalid/docs/"]\n'  # a report word: no value (round 8 J20)
+        "\tinsteadOf = https://github.com/y/\n"
     )
     setup = home / "agent-context" / "setup"
     setup.mkdir(parents=True)
@@ -6288,15 +6290,17 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
         "git@mirror2.example.invalid:northwind-scp/x.git | -\n"
         "2026-10-10T00:00:05Z | step 1 | error | saw git@mirror3.example.invalid:northwind-scp.git and "
         "x:northwind-scp-tools | -\n"
+        "2026-10-10T00:00:04Z | step 1 | deviation | read ~/agent-context/docs/index.md | -\n"
     )
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stderr
     text = report_path(env).read_text()
     assert "northwind" not in text.lower(), [ln for ln in text.splitlines() if "northwind" in ln.lower()]
-    assert re.search(
-        r"git clone https://<proxy-\d+>/someone/agent-context-sync\.git/: Could not resolve host: "
-        r"<proxy-\d+> \|",
-        text,
+    # B13 round 8 J1, J20: the host is one placeholder in the URL and in git's resolver error, numbered as
+    # the Python report numbers it, so both write this line the same way
+    assert (
+        "git clone https://<proxy-1>:8443<proxy-2>/someone/agent-context-sync.git/: Could not resolve host: "
+        "<proxy-1> |" in text
     ), text
     assert re.search(r"git pull git@<proxy-\d+>/x\.git: Could not resolve hostname <proxy-\d+> \|", text), (
         text
@@ -6306,7 +6310,10 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     assert re.search(r"saw git@mirror3\.example\.invalid<proxy-\d+>\.git and x<proxy-\d+>-tools \|", text), (
         text
     )
-    assert "- URL rewrite in git's config: set (4)\n" in text
+    assert "read ~/agent-context/docs/index.md |" in text and "agent-context<proxy" not in text, (
+        "a report-word path is no value"
+    )
+    assert "- URL rewrite in git's config: set (5)\n" in text
     (home / ".gitconfig").unlink()
     assert install_sh(env, "--report-only").returncode == 0
     assert "- URL rewrite in git's config: not set\n" in report_path(env).read_text()
