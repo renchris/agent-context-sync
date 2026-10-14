@@ -3799,11 +3799,27 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     # friction log", which holds no run type; it names the fields, and install.sh's comment quotes the page.
     assert "four fields" not in page
     shell = page[page.index("Its Summary has an `- outcome:` line.") : page.index("Not for a report with")]
-    for label in ("Outcome", "Prompt version", "Agent tool and model"):
-        assert label in shell, label
-    assert "so Run type is yours to choose by section 4's rule" in shell
-    assert "and Loop stage stays empty" in shell
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    # B13 round 9 K64: since round 8 J22 the computed line carries the run type by the HOME rule and the link
+    # fills it (install.sh's LINK_FIELDS); only the uncomputed case leaves Run type to section 4's rule
+    assert "computes no run type" not in shell
+    computed, bare = shell.split("Otherwise the line says no outcome is computed and the link is bare")
+    fields = max(re.findall(r'LINK_FIELDS="([^"]+)"', installer), key=len)
+    assert fields.endswith("and Agent tool and model")
+    for label in re.split(r", (?:and )?", fields):
+        assert label in computed, label
+    assert "never simulated launchd, since the attempt ran no `install.sh`" in computed
+    assert "step 1's pull did not update it" in installer
+    assert "the line's bracket also says so: step 1's pull did not update the installer" in computed
+    for label in ("Outcome", "Prompt version", "Agent tool and model"):
+        assert label in bare, label
+    assert "and choose Run type by section 4's rule" in bare
+    assert "In both cases the shell report has no `Loop:` line, and Loop stage stays empty" in bare
+    j42 = " ".join(_contracts_section("**The Send step names the fields the shell report", "\n\n**").split())
+    assert (
+        "Amended 2026-10-14, §16.85 K64 (by §16.75 J22): the computed outcome line carries the run type"
+        in j42
+    )
     assert "copy the four values from the Summary" not in installer
     assert f'"copy the {count} values from the Summary" (setup-feedback.md)' in installer
 

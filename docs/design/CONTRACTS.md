@@ -17033,6 +17033,10 @@ has. The friction log holds no run type, and the shell report computes none and 
 (`fallback_issue_link` fills Outcome, Prompt version and, when named, Agent). The sentence now names those three
 and their source, says Run type is the person's by section 4's rule and Loop stage stays empty; the comment quotes
 the five. Test: `test_the_send_step_counts_the_values_the_link_fills`.
+Amended 2026-10-14, §16.85 K64 (by §16.75 J22): the computed outcome line carries the run type (`Sandbox` or `Real
+Mac` by the HOME rule, never simulated) and `fallback_issue_link` fills Outcome, Run type, Prompt version and, when
+named, Agent; only the uncomputed case leaves Run type to section 4's rule. The guide says so, and J21's newer-prompt
+note.
 
 **A step 1 stop may log approvals, questions, clicks and prompt lines beside its deviation** (J58; dated line at
 §16.73 H43). Since §16.69 H40 `compute_outcome` reads an attempt as stopped at step 1 when it has at least one step 1
@@ -17339,3 +17343,13 @@ page differs from the intact one, and J47/J53 already read an image stub's withh
 unchanged stubs make no commit. Test:
 `test_cycle.py::test_a_tombstone_of_a_source_deleted_from_sources_toml_is_rendered_again_banner_first` (now also
 from a stored mark of 5, and the mark ends at `STUB_RENDER`).
+
+**The guide says the shell report's computed line carries the run type** (K64; dated line at §16.79 J42). Since
+§16.75 J22 install.sh's computed outcome line reads `· run: Sandbox (computed: HOME is under a temporary folder)`
+(or `Real Mac`, by `home_run_kind`, never simulated: the attempt ran no install.sh), and `fallback_issue_link` puts
+the run type in the title and `run_type`, naming "Outcome, Run type, Prompt version, and Agent tool and model" in
+its Send line. The guide's shell paragraph and §16.79 J42 still said the shell report computes no run type and
+leaves Run type to the person, and J42's test pinned that. The paragraph now splits the two cases: the computed one
+names the four fields the link fills and J21's newer-than-this-installer note; the uncomputed one keeps section 4's
+rule; neither has a `Loop:` line. Test: `test_the_send_step_counts_the_values_the_link_fills` (reads the field list
+from install.sh's `LINK_FIELDS`).
