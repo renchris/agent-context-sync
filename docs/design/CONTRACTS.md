@@ -17880,6 +17880,8 @@ now quotes both columns and the note. The report's summary bullet above the tabl
 page was made from" (lane RA's file; the verifier's optional alignment, not built here). Test:
 `test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note` (reads the words from
 `setup_report`'s source).
+Amended 2026-10-14, §16.86 L71: the optional half is built; the bullet reads "from the same bytes and converter
+options its own page was made from".
 
 **The guide names step 1's folder list as a redaction source and a second Private-only cause** (K69). Since §16.74
 J69 the agentsync report registers the folders step 1's `--list-folders` runs printed into install.out after its
@@ -18044,6 +18046,14 @@ docstring still named that reader and a test kept it equal to `publish._withheld
 report does. The constant is gone; the tests that write a withheld image page, and the class-table check in
 `tests/test_deploy_pack.py`, take the words from `publish._withheld_reason`. No behavior changes, so no test fails
 without it (as K49's docstrings).
+
+**The Repeat conversions bullet says what it counts** (L71; dated line at §16.85 K68). The bullet counted
+`converted_again`, a column of "the same bytes and converter options", but said "converted at least one file
+again from the bytes its page was made from", which a label-rule re-screen of unchanged bytes (a new action key,
+§16.74 J30) also fits. It reads "... from the same bytes and converter options its own page was made from, which
+the run just before had converted too (the sign of a loop; a copy of a file is a new file and is not counted, nor
+is a file re-screened for a label-rule change)", and `_repeat_part`'s docstring names the action key. Test:
+`test_repeat_conversions_part_reads_the_run_records_and_the_cache` (the pinned bullet).
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 

@@ -7320,9 +7320,13 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     part = parts["Repeat conversions"]
     assert (
         "- of the last 3 run(s), 2 recorded what they converted; 2 of those converted at least one file "
-        "again from the bytes its page was made from, which the run just before had converted too (the sign "
-        "of a loop; a copy of a file is a new file and is not counted)\n" in part
+        "again from the same bytes and converter options its own page was made from, which the run just "
+        "before had converted too (the sign of a loop; a copy of a file is a new file and is not counted, "
+        "nor is a file re-screened for a label-rule change)\n" in part
     )
+    # a re-screen under a label-rule change gets a new action key, so the bullet no longer covers it in words
+    # it does not count it by (B13 round 10 L71)
+    assert "again from the bytes its page was made from" not in part
     assert (
         "| files converted | of them failed | of them unreadable (stub, kept, not retried) | the same file "
         "from the same bytes and converter options as an earlier run | of those, as the run just before |\n"

@@ -5776,7 +5776,8 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
 
 def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     """Whether the same files are converted run after run: per run, the files converted and how many of them
-    were files whose own page an earlier run had made from the same bytes, and how many of those when the
+    were files whose own page an earlier run had made from the same bytes and converter options (the action
+    key; a label-rule re-screen is a new conversion, B13 round 10 L71), and how many of those when the
     run just before converted them (``runs.counts_json``: ``cycle._Cycle._converted_before``). A copy of a
     file is not such a file. Then what the converter cache says, which is by the bytes alone (a copy
     counts there) and also speaks for the runs of an earlier build."""
@@ -5811,8 +5812,9 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     looping = sum(1 for x in recorded if x.n("converted_again"))
     out = [
         f"- of the last {len(runs)} run(s), {len(recorded)} recorded what they converted; {looping} of those "
-        "converted at least one file again from the bytes its page was made from, which the run just before "
-        "had converted too (the sign of a loop; a copy of a file is a new file and is not counted)",
+        "converted at least one file again from the same bytes and converter options its own page was made "
+        "from, which the run just before had converted too (the sign of a loop; a copy of a file is a new "
+        "file and is not counted, nor is a file re-screened for a label-rule change)",
         "",
         "the last runs, newest first:",
         "",
