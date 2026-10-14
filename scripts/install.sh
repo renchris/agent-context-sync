@@ -1812,17 +1812,19 @@ fallback_body() {
 	say "- written by: scripts/install.sh shell fallback ($why), $(utc_now)"
 	fallback_install_line "$rc"
 	fallback_outcome_line
-	# The mode, and whether this home holds each job's plist: "not simulated" alone read as "installed" on a setup
-	# that installed none (B13 round 4 Q6). Background runs has each job's loaded state.
+	# The mode, and whether this home holds each job's plist: the mode alone read as "installed" on a setup that
+	# installed none (B13 round 4 Q6). Background runs has each job's loaded state. Labelled "background sync" in
+	# the agentsync report's words: "not simulated (the real launchctl)" named a test mode a reader cannot know
+	# of (B13 round 8 J5).
 	if [ "$SIMULATE" -eq 1 ]; then
-		say "- launchd: simulated"
+		say "- background sync: launchd: simulated (no LaunchAgent of this setup ran)"
 	else
 		v=""
 		for l in "$POLL_LABEL" "$RECONCILE_LABEL"; do
 			if [ -f "$HOME/Library/LaunchAgents/$l.plist" ]; then k="present"; else k="absent"; fi
 			v="$v${v:+, }$l plist $k"
 		done
-		say "- launchd: not simulated (the real launchctl); $v (Background runs has each job's state)"
+		say "- background sync: $v in this home (Background runs has each job's state)"
 	fi
 	[ -z "$LAST_ERROR" ] || say "- last error: $LAST_ERROR"
 	say ""

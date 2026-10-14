@@ -856,9 +856,10 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
     assert text.startswith(setup_report.REPORT_TITLE + "\n")
     assert "exit 1 (failed)" in text and "uv tool install failed" in text
     assert (
-        "- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, "
-        "com.agentsync.reconcile plist absent (Background runs has each job's state)" in text
-    ), "the mode names the plists this home holds, not an install that never ran (B13 round 4 Q6)"
+        "- background sync: com.agentsync.poll plist absent, com.agentsync.reconcile plist absent in this "
+        "home (Background runs has each job's state)" in text
+    ), "the plists this home holds, not an install that never ran (B13 round 4 Q6), as agentsync labels it"
+    assert "simulated" not in _summary(text), "no test-mode word on a real run (B13 round 8 J5)"
     assert "step=agentsync" in text and "result=failed" in text, "the install.log lines are embedded"
     assert (
         "- macOS: " in text
@@ -1150,9 +1151,7 @@ def test_the_shell_report_has_a_line_for_each_job(env: dict[str, str]) -> None:
     part = _background_part(env)
     assert "- com.agentsync.poll: plist absent · loaded: no" in part
     assert "- com.agentsync.reconcile: loaded, but the job belongs to another install" in part
-    assert "- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, " in (
-        report_path(env).read_text()
-    )
+    assert "- background sync: com.agentsync.poll plist absent, " in report_path(env).read_text()
 
 
 def test_the_shell_report_redacts_a_full_name_written_last_comma_first(
@@ -2532,6 +2531,7 @@ def test_simulated_launchd_touches_no_launchctl(env: dict[str, str], folder: Pat
     )
     text = report_path(env).read_text()  # the shell report (the stub setup-report failed)
     assert "- launchd: simulated" in text and "AGENTSYNC_SIMULATE_LAUNCHD=1" in text
+    assert "- background sync: launchd: simulated (no LaunchAgent of this setup ran)" in _summary(text)
     assert not (Path(env["HOME"]) / "Library" / "LaunchAgents").exists()
 
 

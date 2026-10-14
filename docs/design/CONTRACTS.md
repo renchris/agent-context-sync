@@ -13097,6 +13097,9 @@ an older section, a dated line sits at that section too.
   present|absent, ...`.
   Amended 2026-10-13, §16.65 G74: the plist-absent line reads ``(removed without `launchctl bootout`;
   `~/.local/bin/agentsync install-agent` repairs it)``.
+  Amended 2026-10-14, §16.75 J5: the Summary line reads `- background sync: <label> plist present|absent, ... in
+  this home (Background runs has each job's state)`, or `- background sync: launchd: simulated (no LaunchAgent of
+  this setup ran)`.
 - **uv's Pythons** (R5): the count skips uv's hidden `.temp` folder (`! -name '.*'`).
   `test_the_shell_report_counts_uv_pythons_without_uvs_hidden_folder`.
 - **A repeated organisation** (R44) takes no second `<org-N>`. Only the same bytes are a repeat: the shell
@@ -14131,6 +14134,8 @@ item amends an older section, a dated line sits at that section too.
 - **The Summary's launchd line** (Q6) names the mode and the plists this home holds, not an install:
   `- launchd: not simulated (the real launchctl); com.agentsync.poll plist absent, com.agentsync.reconcile plist
   absent (Background runs has each job's state)`. `test_failure_without_agentsync_writes_the_shell_report`.
+  Amended 2026-10-14, §16.75 J5: it reads `- background sync: com.agentsync.poll plist absent, ... in this home
+  (...)`, the agentsync report's label; "not simulated" named a test mode.
 - **The Summary's install.sh line under `--report-only`** (Q23). That run only writes the report, so its own
   `exit 0 (ok)` said nothing of the setup, and was the fallback's only status line. It now reads `- install.sh:
   setup-prompt-compat <N>, source commit <sha>; this --report-only run only writes the report; ` and then the
