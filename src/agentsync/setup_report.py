@@ -7147,7 +7147,10 @@ def _installer_step_times(runs: Sequence[InstallRun], layout: PromptLayout) -> l
 
 
 def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
-    fix = f" → {_shorten(r.red.redact(e.fix), 160)}" if e.fix else ""  # redacted, then cut
+    # redacted, then cut; the installer's own stop line keeps its fix, which names the remedy of each of its
+    # two readings (B13 round 9 K18), to 400 characters
+    cut = 400 if _PROMPT_STOP_RE.match(e.what) else 160
+    fix = f" → {_shorten(r.red.redact(e.fix), cut)}" if e.fix else ""
     step = f"step {e.step}" if e.step is not None else "no step"
     return f"- F{e.line} · {step} · {e.kind} · {_shorten(r.red.redact(e.what))}{fix}"
 

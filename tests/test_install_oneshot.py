@@ -4809,6 +4809,13 @@ def test_log_start_log_and_report_only_write_the_friction_log(env: dict[str, str
     ]
 
 
+SECOND_REMEDY = (
+    f'; or, if the first line of the prompt says "setup prompt v{COMPAT}", the --log-start value was '
+    "changed: run step 1's command again once, exactly as the prompt writes it"
+)
+"""The stop line's second remedy, after its first (B13 round 9 K18); the NEXT carries only the first."""
+
+
 def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: dict[str, str]) -> None:
     """The README prompt hands ``--log-start`` its own version. A copy whose version is not the installer's
     is not the README's of this checkout: older (a saved copy; one from before v8 names no version) or newer
@@ -4873,7 +4880,7 @@ def test_log_start_stops_a_copy_of_the_prompt_that_is_not_the_installers(env: di
         assert (event.step, event.kind) == (1, "error") and why in event.what
         assert event.what.endswith(f"; setup stopped (exit {cp.returncode})"), "the line gives the real exit"
         assert setup_report._PROMPT_STOP_RE.match(event.what), "the report still reads the line as the stop"
-        assert newer_copy or event.fix == f"copy the prompt again from {PROMPT_SOURCE}"
+        assert newer_copy or event.fix == f"copy the prompt again from {PROMPT_SOURCE}{SECOND_REMEDY}"
         assert closed.kind == "finished" and attempt.finished, "the stop closes its own attempt"
     assert len(setup_report.parse_friction(friction_path(env).read_text()).attempts) == len(cases)
     ok = install_sh(env, "--log-start", f"prompt v{COMPAT},Copilot CLI")
@@ -4988,15 +4995,17 @@ def test_a_copy_newer_than_the_checkout_is_told_what_fixes_it(
     told = cp.stderr.split("Tell the person to ", 1)[1]
     tell = told.split('. If the first line of your prompt says "', 1)[0]
     if kind == "copy-again":
-        assert event.fix == tell, "the friction line's fix is what the agent was told"
+        assert event.fix == tell + SECOND_REMEDY, "the friction line's fix is what the agent was told"
     else:  # the same without the checkout's path or remote URL: the friction log reaches the report
         assert str(script.parents[1]) not in event.fix and "example.invalid" not in event.fix, event.fix
-        assert event.fix.rsplit(", ", 1)[1] == tell.rsplit(", ", 1)[1], (event.fix, tell)
+        first = event.fix.removesuffix(SECOND_REMEDY)
+        assert first.rsplit(", ", 1)[1] == tell.rsplit(", ", 1)[1], (event.fix, tell)
     reported = run("--report-only")
     assert reported.returncode == 0, reported.stdout + reported.stderr
     assert last_line(reported) == (
         f"{STOPPED_NEXT}, which is for setup prompt v{COMPAT}, so do not send it or bring it back: "
-        f"{event.fix} [setup report: {friction_path(env).parent / 'stopped-copy-report.md'}]"
+        f"{event.fix.removesuffix(SECOND_REMEDY)} "
+        f"[setup report: {friction_path(env).parent / 'stopped-copy-report.md'}]"
     ), last_line(reported)
     side = friction_path(env).parent / "stopped-copy-report.md"
     assert "example.invalid" not in reported.stdout + side.read_text(), "nor in what the report holds"
@@ -5277,6 +5286,148 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it
     )
     assert len(fenced) == 3
     _sends_nothing(side)
+
+
+def test_the_shell_stopped_copy_warn_is_the_reports() -> None:
+    [w] = re.findall(r'(?m)^STOPPED_COPY_WARN="(.*)" #', INSTALL_SH.read_text())
+    assert w == setup_report._STOPPED_COPY_WARN
+
+
+STOPPED_WARN = setup_report._STOPPED_COPY_WARN
+_COMMIT_WARN = (
+    "[warn] install.commit — installed from 0123456789ab, but the checkout at ~/src/agent-context-sync is at "
+    "89abcdef0123 (fix: re-run install.sh (~/src/agent-context-sync/scripts/install.sh))"
+)
+_DOCTOR_HEAD = "42 check(s): 39 ok, 0 info, 3 warn, 0 FAIL. Only the lines that are not ok:"
+_EXPECTED_NOTE = (
+    " expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do."
+)
+
+
+def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
+    return "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            summary,
+            "",
+            "## Doctor",
+            "",
+            head,
+            "",
+            "~~~text",
+            *fenced,
+            "~~~",
+            "",
+            "39 ok: config",
+            "",
+            "## Redaction",
+            "",
+            "Read the report before sending it: anything else confidential is yours to remove.",
+            "",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("summary", "head", "fenced", "want_summary", "want_head", "want_fenced"),
+    [
+        (  # a lone install.commit warn
+            "- doctor: 0 FAIL, 1 warn (42 checks) · unexpected 1: install.commit warn",
+            _DOCTOR_HEAD,
+            [_COMMIT_WARN],
+            "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
+            f"({STOPPED_WARN}) · unexpected 0",
+            _DOCTOR_HEAD + " 1" + _EXPECTED_NOTE,
+            [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+        ),
+        (  # beside an ad hoc launcher's expected warn and another unexpected one
+            "- doctor: 0 FAIL, 3 warn (42 checks) · expected 1: launcher.signature (ad hoc launcher) · "
+            "unexpected 2: install.commit warn, launchd.poll warn",
+            _DOCTOR_HEAD + " 1" + _EXPECTED_NOTE,
+            [
+                "[warn] launcher.signature — ad hoc (expected: ad hoc launcher)",
+                _COMMIT_WARN,
+                "[warn] launchd.poll — x",
+            ],
+            "- doctor: 0 FAIL, 3 warn (42 checks) · expected 2: launcher.signature (ad hoc launcher); "
+            f"install.commit ({STOPPED_WARN}) · unexpected 1: launchd.poll warn",
+            _DOCTOR_HEAD + " 2" + _EXPECTED_NOTE,
+            [
+                "[warn] launcher.signature — ad hoc (expected: ad hoc launcher)",
+                _COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})",
+                "[warn] launchd.poll — x",
+            ],
+        ),
+        (  # a renderer with J18 already
+            "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
+            f"({STOPPED_WARN}) · unexpected 0",
+            _DOCTOR_HEAD + " 1" + _EXPECTED_NOTE,
+            [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+            None,
+            None,
+            None,
+        ),
+        (  # another install.commit warn
+            "- doctor: 0 FAIL, 1 warn (42 checks) · unexpected 1: install.commit warn",
+            _DOCTOR_HEAD,
+            ["[warn] install.commit — could not read the install stamp (fix: re-run install.sh)"],
+            None,
+            None,
+            None,
+        ),
+    ],
+)
+def test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected(
+    env: dict[str, str],
+    tmp_path: Path,
+    summary: str,
+    head: str,
+    fenced: list[str],
+    want_summary: str | None,
+    want_head: str | None,
+    want_fenced: list[str] | None,
+) -> None:
+    """B13 round 9 K21: J18 is in the agentsync report only, and a stopped copy is rendered by the installed
+    agentsync, which step 2 never updated: an older one still listed install.commit as unexpected, with
+    doctor's "re-run install.sh" fix, under a NEXT that says to copy the prompt again. The installer, which
+    runs from the current checkout, gives that report J18's words; any other wording is left as it is."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    old = tmp_path / "old-report.md"
+    old.write_text(_old_doctor_report(summary, head, fenced))
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    lines = side.read_text().splitlines()
+    doctor = lines[lines.index("## Doctor") :]
+    got_fenced = doctor[doctor.index("~~~text") + 1 : doctor.index("~~~")]
+    assert [ln for ln in lines if ln.startswith("- doctor: ")] == [want_summary or summary]
+    assert doctor[2] == (want_head or head)
+    assert got_fenced == (want_fenced or fenced)
+
+
+def test_a_stopped_lines_fix_names_the_remedy_of_both_readings(env: dict[str, str]) -> None:
+    """B13 round 9 K18: the line --log-start writes for a copy it stops names two causes (an older or newer
+    copy, or a changed --log-start value), but its fix column gave only the first one's remedy; the second was
+    in the message to the agent only. Both remedies now, the first one's first, where the report reads it."""
+    clause = (
+        f'; or, if the first line of the prompt says "setup prompt v{COMPAT}", the --log-start value was '
+        "changed: run step 1's command again once, exactly as the prompt writes it"
+    )
+    for said, first in (
+        (f"prompt v{COMPAT - 1}, Contoso Agent", "copy the prompt again from "),
+        (f"prompt v{COMPAT + 1}, Contoso Agent", ""),  # newer_copy_fix's remedy, which this checkout decides
+        ("Contoso Agent", "copy the prompt again from "),
+    ):
+        assert install_sh(env, "--log-start", said).returncode == 2
+        [stop] = [ln for ln in friction_path(env).read_text().splitlines() if " | step 1 | error | " in ln][
+            -1:
+        ]
+        fix = stop.split(" | ")[-1]
+        assert fix.startswith(first) and fix.endswith(clause) and not fix.startswith("; or"), (said, fix)
 
 
 def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str], tmp_path: Path) -> None:

@@ -1531,7 +1531,13 @@ def test_a_saved_copy_of_an_older_prompt_is_stopped_at_step_1(tmp_path: Path, sh
     assert attempt.header == {"Prompt": "v7 or older", "Agent": "Test Agent (model-1)"}
     assert attempt.version == 7 and attempt.finished, "the stop closes the attempt: no other step may follow"
     event, _closed = attempt.events
-    assert (event.step, event.kind, event.fix) == (1, "error", f"copy the prompt again from {source}")
+    assert (event.step, event.kind, event.fix) == (
+        1,
+        "error",
+        f'copy the prompt again from {source}; or, if the first line of the prompt says "setup prompt '
+        f"v{PROMPT[0]}\", the --log-start value was changed: run step 1's command again once, exactly as the "
+        "prompt writes it",
+    ), "both readings' remedies (B13 round 9 K18)"
     assert event.what == (
         f"install.sh --log-start: the pasted setup prompt is v7 or older and this installer is for setup "
         f"prompt v{PROMPT[0]}: the pasted copy is not the current one, or the --log-start value was changed; "

@@ -3652,6 +3652,28 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     assert line.startswith("- prompt: v7 · run: ")
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_installers_stop_line_keeps_both_remedies_in_the_report(fake_mac: dict[str, Path]) -> None:
+    """B13 round 9 K18: the stop line's fix column now names the remedy of each of its two readings; the
+    item line cut every fix at 160 characters, which hid the second. The installer's stop line keeps its
+    fix to 400."""
+    clause = (
+        '; or, if the first line of the prompt says "setup prompt v9", the --log-start value was changed: '
+        "run step 1's command again once, exactly as the prompt writes it"
+    )
+    write_friction(fake_mac, STOPPED_V8.replace("on the main branch\n", f"on the main branch{clause}\n"))
+    text, _summary = summary_of(fake_mac)
+    assert "exactly as the prompt writes it" in text.split("## Agent friction log", 1)[0], text
+    other = STOPPED_V8.replace(
+        "install.sh --log-start: the pasted setup prompt is v8", "the person pasted v8"
+    ).replace("on the main branch\n", f"on the main branch{clause}\n")
+    write_friction(fake_mac, other)
+    text, _summary = summary_of(fake_mac)
+    assert "exactly as the prompt writes it" not in text.split("## Agent friction log", 1)[0], (
+        "any other line's fix is cut as before"
+    )
+
+
 STOPPED_V8 = (
     "Attempt: 2026-09-29T11:00:00Z\nPrompt: v8\nAgent: Claude Code, claude-opus-5-5\n"
     "2026-09-29T11:00:00Z | step 1 | error | install.sh --log-start: the pasted setup prompt is v8 and this "
