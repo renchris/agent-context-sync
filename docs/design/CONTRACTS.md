@@ -16169,13 +16169,14 @@ from the Python report's. All are `<proxy-N>`, registered after git's proxies an
 existing `<proxy-N>` is renumbered and no placeholder class or legend changes. The Environment line adds a count, `URL rewrite in git's config: set (N)` or `not set`. Tests:
 `tests/test_setup_report.py::test_a_git_url_rewrite_host_and_path_are_redacted` (with no git on PATH),
 `tests/test_install_oneshot.py::test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`.
-Amended 2026-10-14, §16.75 J37: the shell matches the scp path with an end boundary only (pair flag `t`; its
-leading `:` marks the start), in its written and lower-case forms, and skips the report's own words as Python does;
+Amended 2026-10-14, §16.75 J37: the shell matches the scp path with an end boundary only (a new pair flag `e`: no
+letter or digit after it, as Python's value ends; its leading `:` marks the start), in its written and lower-case forms, and skips the report's own words as Python does;
 as a whole word it never matched, since a host's last letter comes before the `:`.
 Amended 2026-10-14, §16.75 J78: the shell's `<proxy-N>` numbers are the Python report's: it registers the
 environment's hosts, the system proxy's where its Enable flag is 1, the PAC URL's host and `[network] proxy`'s, then
 the PAC value, git's proxies, each rewrite's host, value and path, and the LaunchAgent's, one number for a value in
-any case; a system proxy host whose flag is 0, which Python never registers, comes last.
+any case, and none for a value that names no proxy (`direct`, `none`, `off`); a system proxy host whose flag is 0,
+or a per-interface one or PAC URL, which Python never reads, comes last.
 
 **Two round 6 tests pin what they claim** (H45; tests only). In
 `test_a_context_organisation_is_matched_only_after_an_app_name_and_only_for_a_generic_word` the `word_named_shown`
@@ -16576,7 +16577,90 @@ Reserved for round 8 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 
 
 ### 16.75 Round 8: installer and the shell report (2026-10-14, wave B13 round 8 lane RB)
 
-Reserved for round 8 lane RB of B13.
+The installer's findings of the v16 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 8"): the shell fallback report now says what the agentsync report says, in its words, and step 1 says
+more where it could not read a config. Each item has a test that fails without it; where an older section stated
+the old behavior it has a dated line.
+
+**The Installer part counts the lines it shows** (J4). The header said "The last 60 lines" above a 15-line
+install.log. It reads `All N line(s) of ~/agent-context/setup/install.log (...)` for a log of 60 lines or fewer, `The
+last 60 of N lines of ...` for a longer one, and `... is empty.` with no fence for an empty one. awk counts a last
+line with no newline and ends it, so the closing fence keeps a line of its own (it read `<line>~~~` before). Test:
+`test_the_shell_reports_installer_part_counts_the_lines_it_shows`.
+
+**The Summary labels background sync as agentsync does** (J5; dated lines at §16.47 and §16.53). `- launchd: not
+simulated (the real launchctl); ...` named the installer's test mode. A real run reads `- background sync: <label>
+plist present|absent, ... in this home (Background runs has each job's state)`, a simulated one the agentsync
+report's `- background sync: launchd: simulated (no LaunchAgent of this setup ran)`. Tests:
+`test_failure_without_agentsync_writes_the_shell_report`, `test_simulated_launchd_touches_no_launchctl`.
+
+**The computed outcome line has the newer-prompt note and the run type** (J21, J22; dated lines at §16.70 H24). A
+stated version above `SETUP_PROMPT_COMPAT` adds `; newer than this installer, which is for prompt vN: step 1's pull
+did not update it` inside the line's own parenthesis: H23's note, naming this installer, which writes the report.
+The run type is `paths.is_temporary`'s rule (`TEMPORARY_ROOTS`, held equal by a test; HOME or the folder it resolves
+to): ` · run: Sandbox (computed: HOME is under a temporary folder)` or ` · run: Real Mac (computed: HOME is not
+under a temporary folder and launchd was not simulated)`, before the agent, as the agentsync report has it. The
+simulated type cannot apply: the line is written only for an attempt with no install run. The link carries it in
+its title and `run_type`, as `build_issue_url` writes them, computed again rather than read from the redacted line,
+where a folder named after it would be its placeholder. The words print capitalised and are on the script's lines
+in lower case (`sandbox`, `real mac`), so `report_word` knows them. Tests:
+`test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer`,
+`test_the_shell_temporary_roots_are_the_reports`, `test_the_shell_run_type_is_the_reports`,
+`test_the_shell_run_type_reads_the_folder_home_resolves_to`,
+`test_the_shell_report_states_a_step_1_failure_and_fills_its_link`.
+
+**The link keeps an agent's letters outside ASCII** (J77; dated line at §16.70 H24). It keeps `[:alnum:]` under
+`en_US.UTF-8` after `iconv -c` drops a byte that is not UTF-8, cuts at 100 characters and collapses blanks, as
+`_issue_link` does; where that filter fails, the ASCII one runs. A symbol Python counts as a digit (a superscript
+two) is the gap left, and GNU `cut` counts bytes, not characters. Test:
+`test_the_shell_reports_link_keeps_an_agents_letters_outside_ascii`.
+
+**Step 1's fallback link reader returns the root form** (J38; J49 and J72 are the same defect). The standard-library
+copy of `provider_link_resolved` that an agentsync from before 2026-10-13 gets returned a link's target in the form
+the link was written in, as paths.py did before H34, so under a home reached through a link the synced folder went
+unmarked. It returns `root.joinpath(target.name, ...)`. Test:
+`test_list_folders_marks_a_folder_stored_through_a_link_under_a_linked_home_with_an_older_agentsync`.
+
+**No bracket inside the warning's bracket** (J27; dated lines at §16.29 and §16.70). `(the installed agentsync is
+older than this installer: it has no <name>)`, and the report's note `...older than the installer: it had no <name>`
+and `...could not load it: a <class>`. Tests: `test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader`,
+`tests/test_setup_report.py::test_the_summary_says_why_a_folder_list_could_not_read_the_config`.
+
+**Step 1's NEXT over an unread config** (J17; dated line at §16.29). The folder question stays, and whichever NEXT
+is chosen (it, or the two exit-3 sign-in ones) adds `; this Mac has a config (<config>) whose folders could not be
+read: if it was set up before, <install.sh> with no --source-local keeps whatever that config syncs, and each
+--source-local only adds`, plus `; or re-run <install.sh> --list-folders to mark them` after a reader that ran out of
+time. No count: none was read, and the config may hold the inbox alone. Whether the prompt treats it like the
+"already synced on this Mac:" exception is lane P's (told). Tests: `test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
+`test_list_folders_with_no_provider_says_an_unread_config_is_there`,
+`test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`.
+
+**With several folders, the docs repo line prints beside the sources line** (J13). The first add-source call's
+`docs repo` line, and its `time machine:` lines, are held in a temp file and printed directly above the last call's
+`sources:` line; a later call that fails prints them before its error and keeps its own exit code. Tests:
+`test_several_folders_print_the_docs_repo_line_beside_the_sources_line`,
+`test_several_folders_print_the_docs_repo_and_sources_lines_once`.
+
+**bring-back.md says section 3 carries each commit's author** (J65; dated lines at §16.22 and §16.72 H19). After the
+header's sentence on sections 2 and 3, kept word for word: "Section 3 holds one patch per kept commit, and each
+starts with its author's name and email and the commit's date and message; ...". setup-feedback.md says the same.
+The `From:` line is not redacted: the file is private, and the triage tells the person's commit from the keep's by
+it. Test: `test_report_only_writes_one_bring_back_file`.
+
+**The shell report redacts what the Python one does, numbered alike** (J37, J78, J71; J45 is J71; dated lines at
+§16.69 H20 and H74). J37: the scp rewrite path's pair is `e` (end boundary only: no letter or digit after it, so `.git` or `-tools`
+may follow, as in Python; `t` also refuses those) with its lower-case form, and skips
+the report's words: as a whole word it never matched, since a host's last letter precedes its `:`. J78: proxy values
+are registered in the Python report's order, one number for a value in any case, a disabled system proxy last.
+J71: `redact_stream` holds `agent-context`, `agent-context-sync(.git)` after a `/` and the word `agentsync` unless a
+longer pair covers the span, so a lower-case `agent` or `context` organisation no longer cuts them. Tests:
+`test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`, `test_the_two_reports_number_each_proxy_value_alike`,
+`test_the_shell_report_keeps_agentsyncs_own_names_for_an_organisation_named_like_them`.
+
+**Two stale docstrings** (J44; J79 is the same test docstring). The private-copy test describes an agentsync from
+before H75, which its stub writes; `compute_outcome`'s "stopped at step 1" names H40's `_WAIT_OK_KINDS` (that half
+landed with lane D's `be3a3562`; this lane adds the check). Test:
+`tests/test_setup_report.py::test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_failed`.
 
 ### 16.76 Round 8: setup prompt v17 (2026-10-14, wave B13 round 8 lane P)
 
