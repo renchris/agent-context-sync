@@ -2402,10 +2402,11 @@ def test_the_shell_report_says_how_to_send_it_before_its_link(env: dict[str, str
 
 
 NOT_COMPUTED = (
-    "- outcome: not computed (this shell fallback computes none for this attempt; the issue form's fields "
-    "are left for you, from the friction log below)"
+    "- outcome: not computed (this shell fallback computes none for this attempt; Outcome, Prompt version "
+    "and Agent are yours from the friction log below, Run type from the run line)"
 )
-"""The shell report's Summary line where it computes no outcome (B13 round 7 H24)."""
+"""The shell report's Summary line where it computes no outcome (B13 round 7 H24; round 9 K8 names where each
+field comes from)."""
 
 
 def _summary(report: str) -> list[str]:
@@ -2552,7 +2553,7 @@ def test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer(
     assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
-    note = f"; newer than this installer, which is for prompt v{COMPAT}: step 1's pull did not update it"
+    note = f"; newer than this installer, which is for prompt v{COMPAT}"  # no cause (B13 round 9 K26)
     outcome = next(ln for ln in _summary(text) if ln.startswith("- outcome: "))
     assert outcome.startswith(
         f"- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: "
@@ -2570,11 +2571,10 @@ def test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer(
     [
         [],  # no friction log
         [("1", "error", "git pull failed: could not resolve host")],  # states no prompt or agent
-        [
-            ("1", "error", "prompt v15, Contoso Agent: git pull failed"),
-            ("1", "deviation", "asked"),
-        ],  # two events
         [("2", "error", "prompt v15, Contoso Agent: install.sh failed")],  # not step 1
+        # B13 round 9 K14: the stated line is not the first, or a line of another step follows it
+        [("1", "prompt", "the person ran it"), ("1", "error", "prompt v15, Contoso Agent: git pull failed")],
+        [("1", "error", "prompt v15, Contoso Agent: git pull failed"), ("2", "error", "install.sh failed")],
     ],
 )
 def test_the_shell_report_computes_no_other_outcome(
@@ -2590,6 +2590,109 @@ def test_the_shell_report_computes_no_other_outcome(
     assert _summary(text)[2] == NOT_COMPUTED
     assert text.splitlines()[-1] == setup_report.ISSUE_URL
     assert 'opens a blank "Setup report" issue form; ' in text.splitlines()[-3]
+
+
+@pytest.mark.parametrize(
+    "later",
+    [
+        [("1", "error", "git pull failed again")],
+        [("1", "prompt", "the person said to go on")],
+        [("1", "question", "which folder?")],
+        [("1", "deviation", "asked"), ("1", "error", "prompt v15, Contoso Agent: still no network")],
+    ],
+)
+def test_the_shell_report_computes_a_step_1_failure_past_its_first_line(
+    env: dict[str, str], later: list[tuple[str, ...]]
+) -> None:
+    """B13 round 9 K14: the outcome was computed only when the stated step 1 error was the attempt's only
+    line, so a second step 1 line left it "not computed" and the link bare, while the agentsync report
+    computes "failed at step 1" from the same log. Every line a step 1 line and the first the stated error
+    now computes, with the first line's version and agent only, as compute_outcome and Attempt.said read
+    them."""
+    said = "prompt v15, Contoso Agent: git pull failed: could not resolve host"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    for step, kind, what in later:
+        assert install_sh(env, "--log", step, kind, what, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    outcome = _summary(text)[2]
+    attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
+    assert attempt is not None
+    computed = setup_report.compute_outcome(attempt, [])
+    assert computed.text == "failed at step 1", "every line the attempt holds"
+    assert len(attempt.events) == 1 + len(later)
+    assert setup_report._prompt_version(attempt) == "v15" and attempt.said("Agent") == "Contoso Agent"
+    assert outcome.startswith(
+        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v15 "
+        "(from the step 1 error line) · "
+    ), outcome
+    assert outcome.endswith(" · agent: Contoso Agent"), outcome
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
+    assert fields["prompt_version"] == ["v15"] and fields["agent"] == ["Contoso Agent"]
+
+
+def _run_line(text: str) -> str:
+    return next(ln for ln in _summary(text) if ln.startswith("- run: "))
+
+
+@pytest.mark.parametrize(
+    ("start", "sim", "label", "why"),
+    [
+        (
+            "00:01:00",
+            " launchd=simulated",
+            "Sandbox with simulated launchd",
+            "install.log says launchd=simulated; HOME is also under a temporary folder",
+        ),
+        ("00:01:00", "", "Sandbox", "HOME is under a temporary folder"),
+        (
+            "00:00:00",
+            " launchd=simulated",
+            "Sandbox",
+            "HOME is under a temporary folder",
+        ),  # an earlier attempt's
+    ],
+)
+def test_the_shell_reports_run_line_is_the_run_type_the_agentsync_report_computes(
+    env: dict[str, str], start: str, sim: str, label: str, why: str
+) -> None:
+    """B13 round 9 K8: an outcome the shell does not compute left the form's fields to the friction log, which
+    holds no run type. The Summary now has a run line of its own with the type compute_run_type gives: the
+    attempt's last install run saying launchd=simulated makes it Sandbox with simulated launchd. The link
+    stays bare."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    (setup / "friction.md").write_text(
+        "Attempt: 2026-10-10T00:00:30Z\nPrompt: v15\nAgent: Contoso Agent\n"
+        "2026-10-10T00:00:31Z | step 1 | deviation | picked a folder | -\n"
+    )
+    rid = f"run=20261010T{start.replace(':', '')}Z-1"
+    (setup / "install.log").write_text(
+        f"2026-10-10T{start}Z {rid} start install.sh compat=15 commit=- kind=checkout source=-{sim} args=\n"
+        f"2026-10-10T{start[:-2]}09Z {rid} end rc=1 seconds=9\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert _summary(text)[2] == NOT_COMPUTED
+    assert _run_line(text) == f"- run: {label} (computed: {why})"
+    fr = setup_report.parse_friction((setup / "friction.md").read_text())
+    runs = setup_report.runs_for_attempt(
+        fr, len(fr.attempts) - 1, setup_report.read_install_runs(setup / "install.log")
+    )
+    assert setup_report.ISSUE_RUN_TYPES[setup_report.compute_run_type(runs, env["HOME"])] == label
+    assert text.splitlines()[-1] == setup_report.ISSUE_URL
+
+
+def test_the_shell_reports_newer_prompt_note_names_no_pull(env: dict[str, str]) -> None:
+    """B13 round 9 K26: the note blamed step 1's pull, but a step 1 error can come from the Xcode stop, before
+    any pull ran; it names no cause, as _newer_than_me_note does."""
+    said = f"prompt v{COMPAT + 1}, Contoso Agent: xcode-select -p printed no path"
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    outcome = _summary(report_path(env).read_text())[2]
+    inside = outcome.split(" (from the step 1 error line", 1)[1].split(") · ", 1)[0]
+    assert inside == f"; newer than this installer, which is for prompt v{COMPAT}", outcome
+    assert "pull" not in inside
 
 
 def test_a_stopped_copys_shell_report_computes_no_outcome_and_has_no_link(env: dict[str, str]) -> None:

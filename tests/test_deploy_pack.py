@@ -3831,12 +3831,14 @@ def test_the_send_step_counts_the_values_the_link_fills() -> None:
     assert fields.endswith("and Agent tool and model")
     for label in re.split(r", (?:and )?", fields):
         assert label in computed, label
-    assert "never simulated launchd, since the attempt ran no `install.sh`" in computed
-    assert "step 1's pull did not update it" in installer
-    assert "the line's bracket also says so: step 1's pull did not update the installer" in computed
+    # B13 round 9 K8 and K26: the run type is compute_run_type's, the simulated one too, and the note names no
+    # cause; not computed, a "- run:" line gives the run type
+    assert "Sandbox with simulated launchd when the attempt's last run says `launchd=simulated`" in computed
+    assert "step 1's pull did not update it" not in installer
+    assert "the line's bracket also says so, naming no cause" in computed
     for label in ("Outcome", "Prompt version", "Agent tool and model"):
         assert label in bare, label
-    assert "and choose Run type by section 4's rule" in bare
+    assert "and Run type from the `- run:` line below it" in bare
     assert "In both cases the shell report has no `Loop:` line, and Loop stage stays empty" in bare
     j42 = " ".join(_contracts_section("**The Send step names the fields the shell report", "\n\n**").split())
     assert (

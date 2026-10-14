@@ -101,17 +101,16 @@ words) is yours to remove. The CLI always redacts.
   fence does not break. Keep the agent's additions to `~~~` too.
   The shell fallback report ends its Redaction part on the same one-line `Send it:` advice as the agentsync
   report, then the link.
-  Its Summary has an `- outcome:` line. That line is computed only for an attempt that ran no `install.sh` and
-  whose one event is a step 1 error stating the prompt version and the agent. Then the line also states the run
-  type, computed by the agentsync report's HOME rule (`Sandbox` when HOME is under a temporary folder, otherwise
-  `Real Mac`; never simulated launchd, since the attempt ran no `install.sh`), and the link fills Outcome, Run
-  type, Prompt version and Agent tool and model (Agent only when the line names one), with the run type in its
-  title. When the stated version is newer than this installer's, the line's bracket also says so: step 1's pull
-  did not update the installer. Otherwise the line says no outcome is computed and the link is bare: take
-  Outcome, Prompt version and Agent tool and model from the friction log (its `Prompt:` and `Agent:` header lines
-  and its step lines), and choose Run type by section 4's rule (the Summary's `launchd: simulated` is Sandbox with
-  simulated launchd; otherwise Real Mac, or Sandbox when HOME was a throwaway one). In both cases the shell report
-  has no `Loop:` line, and Loop stage stays empty.
+  Its Summary has an `- outcome:` line. That line is computed only for an attempt that ran no `install.sh`,
+  whose lines are all step 1's and whose first line is a step 1 error stating the prompt version and the agent.
+  Then the line also states the run type as the agentsync report computes it (`Sandbox` when HOME is under a
+  temporary folder, otherwise `Real Mac`, and Sandbox with simulated launchd when the attempt's last run says
+  `launchd=simulated`), and the link fills Outcome, Run type, Prompt version and Agent tool and model (Agent only
+  when the line names one), with the run type in its title. When the stated version is newer than this
+  installer's, the line's bracket also says so, naming no cause. Otherwise the line says no outcome is computed
+  and the link is bare: take Outcome, Prompt version and Agent tool and model from the friction log (its
+  `Prompt:` and `Agent:` header lines and its step lines), and Run type from the `- run:` line below it, which
+  computes it the same way. In both cases the shell report has no `Loop:` line, and Loop stage stays empty.
   Not for a report with a `Private only:` line (section 2): neither `install.sh` nor `agentsync setup-report --out`
   prints the issue link for it, neither report has one, and `--report-only`'s NEXT names only
   bring-back.md. Send that one privately.

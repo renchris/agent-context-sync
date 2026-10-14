@@ -1869,19 +1869,22 @@ friction_attempt_begin() {
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20) }
 		END { print b }' "$f" 2>/dev/null || true
 }
-# The one outcome the shell report computes (B13 round 7 H24): "<N><TAB><agent as written>" when the friction
-# log's latest attempt (friction_attempt_begin's) holds one timed line besides its end line, that line is a
-# step 1 error that states "prompt vN, <agent>:", and it is not the line --log-start writes for a copy it
-# stopped. Nothing otherwise. The agentsync report calls that attempt "failed at step 1" when it has no
-# install run (compute_outcome) and takes the version and the agent from the same words; anything wider is
-# left to it, so the two cannot drift.
+# The one outcome the shell report computes (B13 round 7 H24): "<N><TAB><agent as written>" when every timed
+# line of the friction log's latest attempt (friction_attempt_begin's) but its end line is a step 1 line, the
+# first of them is a step 1 error that states "prompt vN, <agent>:", and that one is not the line --log-start
+# writes for a copy it stopped. Nothing otherwise. With no install run and an error among events that are all
+# step 1's, the agentsync report calls that attempt "failed at step 1" whichever error it picks
+# (compute_outcome), and takes the version and the agent from the line that opens a header-less attempt, the
+# same first line; a later line's words are never read, and a line of another step leaves it to that report,
+# so the two cannot drift. A second step 1 error, or a step 1 prompt or question line, after the stated one no
+# longer leaves the outcome uncomputed (B13 round 9 K14: it was the attempt's only line).
 friction_step1_stated() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
 	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
-		function fresh() { n = 0; one = ""; ended = "" }
+		function fresh() { first = ""; other = 0; ended = "" }
 		{ q = track($0) }
 		NH { NH = 0; fresh(); next }
 		/^Attempt:/ { fresh(); next }
@@ -1889,8 +1892,9 @@ friction_step1_stated() {
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
 		$0 !~ (stamp " [|]") { next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
-		{ n++; one = $0 }
-		END { if (n == 1 && one ~ s1 && !index(one, mark) && stated(one)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
+		first == "" { first = $0 }
+		$0 !~ (stamp " [|] step 1 [|]") { other = 1 }
+		END { if (!other && first ~ s1 && !index(first, mark) && stated(first)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
 }
 # Whether the friction log's latest attempt has no install run of its own, by the test fallback_install_line
 # makes: a --report-only run, and no install log, no install run in it, or a last one that started before the
@@ -1914,8 +1918,8 @@ OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install.sh run; ste
 TEMPORARY_ROOTS="/tmp /private/tmp /var/folders /private/var/folders"
 # The run type the agentsync report computes when no install run says launchd=simulated (compute_run_type, by
 # paths.is_temporary): "sandbox" when HOME, or the folder it resolves to, is one of TEMPORARY_ROOTS or lies under
-# one, else "real mac". Only the computed outcome line needs it, and that line is written only when the attempt
-# has no install run, so the simulated type cannot apply (B13 round 8 J22).
+# one, else "real mac" (B13 round 8 J22). run_kind adds the simulated type, which the run line of an attempt with
+# an install run needs (B13 round 9 K8).
 home_run_kind() {
 	local c r
 	for c in "$HOME" "$(cd "$HOME" 2>/dev/null && pwd -P)"; do
@@ -1930,18 +1934,49 @@ home_run_kind() {
 	done
 	printf 'real mac'
 }
+# Whether the run compute_run_type judges says launchd=simulated (any of its lines, as _SIMULATED_RE reads
+# them): of the runs in install.log that started since the friction log's latest attempt began (every run when
+# it gives no time, runs_for_attempt), the last install run, else the last run (a --list-folders one).
+attempt_run_simulated() {
+	[ -f "$SETUP_LOG" ] || return 1
+	LC_ALL=C awk -v lo="$(utc_stamp "$(friction_attempt_begin)")" '
+		$2 !~ /^run=/ { next }
+		{ id = substr($2, 5) }
+		!(id in at) { order[++n] = id; at[id] = $1 }
+		index($0 " ", " step=list-folders ") { lists[id] = 1 }
+		tolower($0) ~ /(^|[^a-z0-9_])launchd[ \t]*[=:][ \t]*simulated([^a-z0-9_]|$)/ { sim[id] = 1 }
+		END {
+			for (i = n; i > 0; i--) if ((lo == "" || at[order[i]] >= lo) && !(order[i] in lists)) { last = order[i]; break }
+			if (last == "") for (i = n; i > 0; i--) if (lo == "" || at[order[i]] >= lo) { last = order[i]; break }
+			exit !(last != "" && (last in sim))
+		}' "$SETUP_LOG" 2>/dev/null
+}
+run_kind() { if attempt_run_simulated; then printf 'simulated launchd'; else home_run_kind; fi; }
 # The form's run_type option and the Summary's words for it, as setup_report.ISSUE_RUN_TYPES and its Summary have them.
-run_type_label() { case "$(home_run_kind)" in sandbox) printf 'Sandbox' ;; *) printf 'Real Mac' ;; esac }
+run_type_label() {
+	case "$(run_kind)" in
+	simulated*) printf 'Sandbox with simulated launchd' ;;
+	sandbox) printf 'Sandbox' ;;
+	*) printf 'Real Mac' ;;
+	esac
+}
 run_type_why() {
-	case "$(home_run_kind)" in
+	case "$(run_kind)" in
+	simulated*)
+		printf 'install.log says launchd=simulated'
+		[ "$(home_run_kind)" != sandbox ] || printf '; HOME is also under a temporary folder'
+		;;
 	sandbox) printf 'HOME is under a temporary folder' ;;
 	*) printf 'HOME is not under a temporary folder and launchd was not simulated' ;;
 	esac
 }
 # A stated version above this installer's has the agentsync report's note (H23) in the same parenthesis, naming
 # this installer, which writes the report (B13 round 8 J21); no blank comes before the digits, and no " · agent: "
-# is added, so fallback_issue_link reads the version and the agent as before. The run type comes before the agent,
-# where the agentsync report has it.
+# is added, so fallback_issue_link reads the version and the agent as before. Like _newer_than_me_note it names no
+# cause: a step 1 error can come from the Xcode or the not-a-checkout stop, before any pull ran (B13 round 9 K26).
+# The run type comes before the agent, where the agentsync report has it. Not computed, the line says which
+# field comes from where, and a run line of its own gives the run type the agentsync report computes, which the
+# friction log does not hold (B13 round 9 K8); the link stays bare.
 fallback_outcome_line() {
 	local stated="" n note=""
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
@@ -1949,11 +1984,12 @@ fallback_outcome_line() {
 		n="${stated%%$'\t'*}"
 		case "$n" in
 		"" | *[!0-9]*) ;;
-		*) [ "$n" -le "$SETUP_PROMPT_COMPAT" ] || note="; newer than this installer, which is for prompt v$SETUP_PROMPT_COMPAT: step 1's pull did not update it" ;;
+		*) [ "$n" -le "$SETUP_PROMPT_COMPAT" ] || note="; newer than this installer, which is for prompt v$SETUP_PROMPT_COMPAT" ;;
 		esac
 		say "$OUTCOME_LINE_HEAD$n (from the step 1 error line$note) · run: $(run_type_label) (computed: $(run_type_why)) · agent: ${stated#*$'\t'}"
 	else
-		say "- outcome: not computed (this shell fallback computes none for this attempt; the issue form's fields are left for you, from the friction log below)"
+		say "- outcome: not computed (this shell fallback computes none for this attempt; Outcome, Prompt version and Agent are yours from the friction log below, Run type from the run line)"
+		say "- run: $(run_type_label) (computed: $(run_type_why))"
 	fi
 }
 # The Summary's install.sh line. A --report-only run only writes the report, so its own exit 0 says nothing of
