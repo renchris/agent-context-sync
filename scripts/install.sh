@@ -56,8 +56,10 @@
 # is printed first, so each one is named, also when nothing else is listed (OneDrive signed out) or a
 # provider waits for a click. Without a
 # config, or with one that holds no such source, --list-folders prints what it always did. A config the
-# installed agentsync cannot read (or no installed agentsync) is a warning, and no folder is marked. A run
-# with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
+# installed agentsync cannot read (or no installed agentsync) is a warning, and no folder is marked; the folder
+# question NEXT, or either sign-in one, then adds that the config is there and that a run with no --source-local keeps whatever it
+# syncs, with no count, and, when the reader ran out of time, that a re-run of the list can mark them (B13
+# round 8 J17). A run with no --source-local over such a config keeps every source, updates agentsync, and runs status and a sync
 # (steps 4 to 6); --source-local adds to them. Step 4 says which it was, in counts: one line, "folders: kept
 # the N already synced (none added)", "folders: M added to the N already synced" or "folders: M added (none
 # was synced before)", and its log line ends with kept=N added=M.
@@ -2749,7 +2751,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread=""
+	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -2841,6 +2843,13 @@ list_folders() {
 	rm -rf "$tmp"
 	term="$(terminal_app)"
 	term="this terminal app${term:+ ($term)}"
+	# A config whose folders could not be read is still there: the NEXTs that ask for a folder or a sign-in
+	# say so as information, never a count, since none was read (B13 round 8 J17)
+	kept=""
+	if [ -n "$unread" ]; then
+		kept="; this Mac has a config ($CONFIG) whose folders could not be read: if it was set up before, $SELF with no --source-local keeps whatever that config syncs, and each --source-local only adds"
+		case "$unread" in *" marks=timeout") kept="$kept; or re-run $SELF --list-folders to mark them" ;; esac
+	fi
 	rc=0
 	if [ -n "$denied" ]; then
 		rc=4
@@ -2862,14 +2871,14 @@ list_folders() {
 		step_end "done" 0 "listed-$total synced=$synced"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
-		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN"
+		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"
 		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}$unread"
 	elif [ "$total" -eq 0 ]; then
 		rc=3
-		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN"
+		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN$kept"
 		step_end failed "$rc" "no-folders${synced:+ synced=$synced}$unread"
 	else
-		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)"
+		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$kept"
 		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread"
 	fi
 	return "$rc"

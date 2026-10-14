@@ -3243,7 +3243,8 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     assert re.search(r" result=failed note=(not-signed-in|no-folders) synced=0$", install_log(env)[-2])
     cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
     cp = install_sh(env, "--list-folders")
-    assert cp.returncode == 3 and cp.stdout.splitlines() == [only], "a config nobody can read: a new Mac"
+    # a new Mac's exit and NEXT, which adds that a config is there (B13 round 8 J17)
+    assert cp.returncode == 3 and cp.stdout.splitlines() == [_unread_next(env, head=only)], "an unread config"
     assert cp.stderr.startswith(f"warning: could not read which folders {cfg} already syncs ")
     # B13 round 7 H17, H28; and why, as the class of the reader's error (H8, H16)
     unread = r" result=failed note=(not-signed-in|no-folders) synced=unreadable marks=failed:ConfigError$"
@@ -3289,10 +3290,23 @@ def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, s
     assert len(lines) == 204 and sum(ln.startswith("[synced] ") for ln in lines) == 2
 
 
+def _unread_next(env: dict[str, str], *, timeout: bool = False, head: str = LIST_NEXT) -> str:
+    """The NEXT of a list whose reader could not read the config: ``head``, the one it would be on a new Mac,
+    and what it adds since B13 round 8 J17."""
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    also = f"; or re-run {INSTALL_SH} --list-folders to mark them" if timeout else ""
+    return (
+        f"{head}; this Mac has a config ({cfg}) whose folders could not be read: if it was set up before, "
+        f"{INSTALL_SH} with no --source-local keeps whatever that config syncs, and each --source-local only "
+        f"adds{also}"
+    )
+
+
 @pytest.mark.parametrize("broken", ["no installed agentsync", "a config that does not load"])
 def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str, str], broken: str) -> None:
     """A config nobody can read is not a reason to guess: the list is the new Mac's, where the person is
-    asked, and one warning says why no folder is marked."""
+    asked, and one warning says why no folder is marked. The NEXT adds that the config is there and that a
+    run with no folder keeps whatever it syncs, with no count, since none was read (B13 round 8 J17)."""
     cs = _cloud(env)
     (cs / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
     cfg = _write_config(env, local_source_table("fy26", cs / "OneDrive-Contoso" / "FY26 Projects"))
@@ -3301,7 +3315,7 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
         cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stderr
-    assert cp.stdout == f"{cs}/OneDrive-Contoso/FY26 Projects\n{LIST_NEXT}\n"
+    assert cp.stdout == f"{cs}/OneDrive-Contoso/FY26 Projects\n{_unread_next(env)}\n"
     # B13 round 7 H14, H16 and H27: the warning says which of the two it was, in fixed words
     why = {
         "no installed agentsync": "no agentsync is installed",
@@ -3315,6 +3329,18 @@ def test_list_folders_marks_nothing_when_the_config_cannot_be_read(env: dict[str
     # and why, in a fixed word with at most the class of the reader's error (H8, H16)
     marks = {"no installed agentsync": "no-tool", "a config that does not load": "failed:ConfigError"}[broken]
     assert install_log(env)[-2].endswith(f" result=done note=listed-1 synced=unreadable marks={marks}")
+
+
+def test_list_folders_with_no_provider_says_an_unread_config_is_there(env: dict[str, str]) -> None:
+    """B13 round 8 J17: with nothing listed (OneDrive signed out), a set-up Mac whose reader failed was told
+    to sign in and exit 3, as a new Mac is, where a readable one is told a re-run keeps its folders. The
+    sign-in NEXT is unchanged and adds what an unread config means."""
+    _write_config(env, local_source_table("fy26", _cloud(env) / "OneDrive-Contoso" / "FY26 Projects"))
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 3, cp.stdout + cp.stderr
+    head = f"NEXT: OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: {INSTALL_SH} "
+    head += "--list-folders"
+    assert last_line(cp) == _unread_next(env, head=head)
 
 
 def _older_tool_python(env: dict[str, str], *missing: str) -> Path:
@@ -3414,7 +3440,7 @@ def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(e
     (cs / "OneDrive-Contoso" / "Project Alpha").mkdir(parents=True)
     cfg = _write_config(env, local_source_table("project-alpha", cs / "OneDrive-Contoso" / "Project Alpha"))
     head = f"warning: could not read which folders {cfg} already syncs ("
-    unmarked = f"{cs}/OneDrive-Contoso/Project Alpha\n{LIST_NEXT}\n"
+    unmarked = f"{cs}/OneDrive-Contoso/Project Alpha\n{_unread_next(env)}\n"
     _older_tool_python(env, "provider_link_resolved", "is_under")
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stdout) == (0, unmarked)
@@ -3427,7 +3453,11 @@ def test_list_folders_says_why_an_installed_agentsync_could_not_run_the_reader(e
     py = _tool_python(env)
     _write_exe(py, "#!/bin/sh\nexec sleep 30\n")
     cp = install_sh(env, "--list-folders")
-    assert (cp.returncode, cp.stdout) == (0, unmarked)
+    # a retry of the list is the cheap fix for a loaded Mac (B13 round 8 J17)
+    assert (cp.returncode, cp.stdout) == (
+        0,
+        unmarked.replace(_unread_next(env), _unread_next(env, timeout=True)),
+    )
     assert cp.stderr == f"{head}the reader took over 10 s), so none is marked below\n"
     assert install_log(env)[-2].endswith(" note=listed-1 synced=unreadable marks=timeout")
     # what the report makes of the first of those lines (it reads the log these runs wrote)

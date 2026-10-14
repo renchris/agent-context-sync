@@ -8536,6 +8536,10 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   installed agentsync could not load it`.
   Amended 2026-10-14, §16.75 J27: the third reads `the installed agentsync is older than this installer: it has
   no <name>`, so the bracket holds no bracket.
+  Amended 2026-10-14, §16.75 J17: the person is still asked, and the NEXT, the new Mac's or a sign-in's, adds
+  `; this Mac has a config (<config>) whose folders could not be read: if it was set up before, <install.sh>
+  with no --source-local keeps whatever that config syncs, and each --source-local only adds`, with `; or re-run
+  <install.sh> --list-folders to mark them` after a reader that ran out of time.
 - The setup log's `list-folders` line ends with `synced=N` when the config was read, 0 included
   (`note=listed-25 synced=2`, and `result=failed note=denied synced=2` for a list that ends on a click). The
   note itself is unchanged, and so is a line written without a config.
