@@ -77,7 +77,9 @@ _OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
 # reads this note, with no ``fix:``. A FAIL keeps its fix.
 _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # Also under NO_NEXT_HINT_ENV: a local folder's listing that stays incomplete is the person's to settle (an
-# empty cloud folder, a folder without access), and install.sh prints the loop's line for it. That status runs
+# empty cloud folder, a folder without access), and install.sh prints the loop's line for it; one that no
+# wait names (its stopping folders excluded since) reads the note too, since install's sync is the walk that
+# lists it (B13 round 8 J12). That status runs
 # before install.sh's sync and reads the last walk's stored state, which the sync can clear (a file added, a
 # folder no longer a File Provider domain): the note promises no line, it says where the answer is, true
 # whether the wait stays, goes, or a FAIL skips the sync (B13 round 4 Q26, Q32). The answer can be a WAITING
@@ -1665,7 +1667,9 @@ def _check_heartbeat(
 
     ``loop_checks`` (``loop.NextStep.checks``, which status passes) are the checks a WAITING ON YOU line
     explains: an incomplete listing points at that line only when its ``heartbeat.<id>`` is among them, and
-    otherwise says to sync again. ``None`` (no loop state read): a local source points at the line."""
+    otherwise says to sync again. ``None`` (no loop state read): a local source points at the line. Under
+    ``NO_NEXT_HINT_ENV`` (install.sh) every incomplete local source, and an inbox among the checks, reads
+    ``_LISTING_YOURS_NOTE`` with no fix: the run's own sync comes next (B13 round 8 J12)."""
     path = config.state_paths.heartbeat
     try:
         beats: Mapping[str, Mapping[str, object]] = read_heartbeat(path)
@@ -1714,7 +1718,11 @@ def _check_heartbeat(
                 yours = src.kind is SourceKind.LOCAL or (
                     src.kind is SourceKind.INBOX and _empty_folders_held(config, src)
                 )
-            if yours and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+            # Under install.sh a local source no wait names gets the note too: its "sync; another full walk"
+            # fix is the walk install's own sync runs next, and the note stays true if that sync is skipped
+            # (lock busy, a FAIL) (B13 round 8 J12).
+            in_install = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
+            if in_install and (yours or src.kind is SourceKind.LOCAL):
                 out.append(CheckResult(name, False, detail, Severity.WARN, note=_LISTING_YOURS_NOTE))
             else:
                 waits = None if loop_waits is None else loop_waits.get(src.id)
@@ -1769,7 +1777,8 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int 
     report's Doctor section may have none above. Otherwise a Graph pass resumes, and an inbox is most often
     incomplete while a file in it is still being written, so another sync clears those; ``sync -v`` names any
     other cause. A local source with no such line either changed since its last walk (its stopping folders are
-    excluded now) or had no full walk yet: the next full walk lists it.
+    excluded now) or had no full walk yet: the next full walk lists it (under install.sh it reads
+    ``_LISTING_YOURS_NOTE`` instead, since install's own sync is that walk: B13 round 8 J12).
     ``waits``: how many WAITING ON YOU lines name the source, when status knows
     (``loop.NextStep.wait_counts``): "the line" only for exactly one, as the sync's alarm says it (B13 round
     6 G44); unknown (the setup report, which may show none) and more than one keep "each", true for any

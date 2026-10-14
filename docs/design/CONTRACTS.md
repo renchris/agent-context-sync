@@ -6217,6 +6217,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   WAITING ON YOU fix.
   **Amended 2026-10-12, §16.53 Q26, Q32:** the note under `AGENTSYNC_NO_NEXT_HINT=1` reads `held at its last
   walk: the WAITING ON YOU lines at the end of this run say whether it still is`.
+  Amended 2026-10-14, §16.77 J12: under `AGENTSYNC_NO_NEXT_HINT=1` an incomplete local source no wait names
+  reads the note too, with no fix; the `sync; another full walk lists it` fix stays for status outside install.sh.
 - `walk` logs a zero-child cloud folder at info, not warning. The scan's one alarm still names the first five
   each pass (logged at warning, printed by `sync -v`, kept in STATE.md). **Amended 2026-10-11, §16.39 N28:**
   that alarm is printed and kept, not logged; a folder whose listing failed is logged at info too, and one
@@ -16608,7 +16610,16 @@ pictures in a template's master and layouts are not read)": `PptxConverter` read
 
 ### 16.77 Round 8: sync, status and doctor (2026-10-14, wave B13 round 8 lane B)
 
-Reserved for round 8 lane B of B13.
+**J12: install's doctor names no sync for a listing install's own sync walks (`agentsync.ops.doctor`).**
+`_check_heartbeat` gives `_LISTING_YOURS_NOTE` (`held at its last walk: the end of this run says whether this
+run's sync cleared it`) and no fix to every incomplete local source under `AGENTSYNC_NO_NEXT_HINT=1`, not only to
+one whose `heartbeat.<id>` is among status's loop checks. After `exclude-empty` no wait names the folder, and the
+old fix `~/.local/bin/agentsync sync; another full walk lists it` told the agent to run the walk install.sh's
+step 6 runs anyway. The note stays true when that sync is skipped (lock busy, a FAIL). No new wording: the note
+is the one §16.53 and G33 settled. Outside install.sh the fix is unchanged; an inbox no wait names keeps
+`sync -v`, since a plain sync may run a delta. Tests: `tests/test_ops_doctor.py`
+(`test_heartbeat_incomplete_follows_the_loop_checks`), `tests/test_loop.py`
+(`test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it`).
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 

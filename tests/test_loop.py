@@ -25,6 +25,7 @@ from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAIL
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind, RowState, Verdict
+from agentsync.ops import doctor
 from agentsync.ops.doctor import CheckResult, Severity
 from test_cli import _assert_fix_parses
 
@@ -448,7 +449,8 @@ def test_status_points_the_heartbeat_at_a_wait_only_while_the_loop_has_it(
     _assert_fix_parses(heartbeat().fix)
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     r = heartbeat()
-    assert r.note is None and r.fix == "~/.local/bin/agentsync sync; another full walk lists it"
+    # B13 round 8 J12: install.sh's status names no sync to run, since install's own sync runs next
+    assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
 
 
 def test_status_says_each_wait_line_when_one_source_has_more_than_one(tmp_path: Path) -> None:

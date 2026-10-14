@@ -1742,8 +1742,15 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
     r = by_name(doctor._check_heartbeat(inbox, loop_checks=(name,)))[name]
     assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
+    # B13 round 8 J12: under install.sh a local source no wait names reads the note too, not "sync; another
+    # full walk": install's own sync is that walk, and the note stays true if a lock or a FAIL skips it
     r = by_name(doctor._check_heartbeat(sample_config, loop_checks=()))[name]
-    assert r.note is None and r.fix == "~/.local/bin/agentsync sync; another full walk lists it"
+    assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
+    r = by_name(doctor.run_checks(sample_config, tcc_canary=False, loop_checks=()))[name]
+    assert r.fix is None and r.note == doctor._LISTING_YOURS_NOTE
+    # an inbox no wait names keeps sync -v: a plain sync may run a delta, which the note would not cover
+    r = by_name(doctor._check_heartbeat(inbox, loop_checks=()))[name]
+    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v ")
 
 
 def assert_fix_parses(fix: str | None) -> None:
