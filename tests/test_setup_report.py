@@ -50,6 +50,7 @@ from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind
 from agentsync.ops import doctor, launchd
 from agentsync.paths import TEMPORARY_ROOTS, expand, is_temporary
+from conftest import zone
 from test_ocr import fake_engine, write_fake
 
 ORG = "Contoso"
@@ -254,16 +255,10 @@ def test_recent_errors_never_carry_an_item_path_or_document_name(
 def mac_zone() -> Iterator[None]:
     """This Mac's time zone is America/Denver (UTC-6 until 2026-11-01, then UTC-7): the report reads a Python
     log line's local time with it. Set here because the CI runners are in UTC, where the conversion changes
-    nothing; ``tzset`` is run again on the way out, which monkeypatch would not do."""
-    old = os.environ.get("TZ")
-    os.environ["TZ"] = "America/Denver"
-    time.tzset()
-    yield
-    if old is None:
-        os.environ.pop("TZ", None)
-    else:
-        os.environ["TZ"] = old
-    time.tzset()
+    nothing; ``tzset`` is run again on the way out, which monkeypatch would not do (``conftest.zone``, which
+    test_cli.py's UTC log test shares: B13 round 9 K55)."""
+    with zone("America/Denver"):
+        yield
 
 
 @pytest.mark.usefixtures("mac_zone")

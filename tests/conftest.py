@@ -8,11 +8,13 @@ Claude Code skill folders (~/.claude/skills, $CLAUDE_CONFIG_DIR/skills) every sy
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pwd
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -145,6 +147,24 @@ def _isolate_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         mp.delenv("AGENTSYNC_CONFIG", raising=False)
         mp.delenv("CLAUDE_CONFIG_DIR", raising=False)  # every sync writes the skill there too
         yield home
+
+
+@contextlib.contextmanager
+def zone(name: str) -> Iterator[None]:
+    """Run with ``TZ`` set to ``name``, then put the old value back (or remove it) and run ``tzset`` after
+    that, so ``time``'s cached zone follows the restored value. A ``monkeypatch`` restore comes after the
+    test, with no ``tzset`` behind it (B13 round 9 K55)."""
+    old = os.environ.get("TZ")
+    os.environ["TZ"] = name
+    time.tzset()
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = old
+        time.tzset()
 
 
 def fails_without_a_fix(results: Iterable[CheckResult]) -> list[str]:
