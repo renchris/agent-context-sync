@@ -3758,6 +3758,22 @@ def test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values() -> None:
     assert "how many URL rewrites it has (a count, never a host)" in page
 
 
+def test_the_prompt_version_section_reads_a_prompt_newer_than_the_reports_agentsync() -> None:
+    """B13 round 8 J64: since round 7 H23 the Summary's prompt line adds `(newer than this report's agentsync,
+    for prompt vN)` when an older installed build wrote the report; the guide quoted only the installer's
+    `newer than the installer's vN` forms (K18), which share the words."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    newer, own = f"v{setup_report.PROMPT_VERSION + 1}", f"v{setup_report.PROMPT_VERSION}"
+    friction = f"Attempt: 2026-10-13T10:00:00Z\nPrompt: {newer}\nAgent: Tool-A\n"
+    [attempt] = setup_report.parse_friction(friction).attempts
+    note = setup_report._newer_than_me_note(attempt)
+    assert note
+    page = _page("docs/deploy/setup-feedback.md")
+    assert f"`prompt: vM{note.replace(own, 'vN')}` is a different case: no installer stop" in page
+    assert "Do not triage it as K18." in page
+
+
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 7 H54: §16.66 said G59, G63, G76 and G77 amend items of §16.51, §16.54, §16.60 and §16.61,
     but wrote no dated line beside any of them, so Q77 still said the deck emitter's version is

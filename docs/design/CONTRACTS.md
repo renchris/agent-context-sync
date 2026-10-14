@@ -16613,3 +16613,11 @@ legend rewrapped to its 115 columns). H20's "no legend changes" meant no new pla
 The legend words only add to the words a folder name is checked against for Private only (more private, never
 less). Tests: `test_the_redaction_docs_name_the_git_url_rewrites_as_proxy_values` and
 `tests/test_install_oneshot.py::test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+
+**The prompt-version section reads a prompt newer than the report's agentsync** (J64). §16.69 H23's clause `(newer
+than this report's agentsync, for prompt vN)` (`_newer_than_me_note`) was in no guide text, and the section quoted
+only the installer's `newer than the installer's vN` forms (K18), which share the words, so a triager could file it
+as K18. A bullet now says it is no installer stop: an older installed build wrote the report, with its own step
+names and checks; the clause names no cause; the run metadata's `agentsync:` line gives the build's version; and
+the installer's form wins when its stop line is in the attempt. Test:
+`test_the_prompt_version_section_reads_a_prompt_newer_than_the_reports_agentsync`, which builds the clause.
