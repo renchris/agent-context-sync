@@ -11882,6 +11882,9 @@ records what its re-read looked for, and `finished` is measured against it; it h
   `write_fallback_report`, only when the shell fallback writes the report, so a report agentsync writes runs no
   git for it. A real run still names its SOURCE, and its install.log start line is unchanged (`read_commit` is
   the same code moved).
+  Amended 2026-10-14, §16.81 K17: where COMMIT stays `-` the Summary says why (`none (installed from a wheel)`,
+  `none (<path> has no .git: not a git checkout)`, `unknown (git cannot read <path>/.git)`); install.log's
+  `commit=` field is unchanged.
 - **The reinstall holds the background sync's lock** (`scripts/install.sh`, `agentsync.ops.lock`).
   - Step 2 runs `uv tool install` under `/usr/bin/lockf -k -n -s -t $AGENTSYNC_REINSTALL_WAIT_SECONDS
     <state_dir>/agentsync.lock` (default 120 s; 0 never waits), the flock(2) lock the sync takes. The lock path
@@ -16027,6 +16030,8 @@ holders and the governance and exclude-empty labels are named as before (wrappin
 reinstall a sync). Still one text per label, so Recent errors merges repeats. Tests:
 `test_cli.py::test_lock_held_warning_names_the_holder_and_repeats_verbatim`, the reinstall pins in
 `test_install_oneshot.py` (`REINSTALL_WAITS`, `REINSTALL_TICK`).
+Amended 2026-10-14, §16.81 K35: the setup report renders that word as `waited for another sync to end`, in the
+Summary and the Installer table; install.log keeps it.
 
 **H34: a provider link keeps the form of the root that held it (`agentsync.paths`).** Under a home reached through
 a link (`/tmp` is `/private/tmp`), a provider link whose absolute target is written in the unresolved form was read
@@ -16347,6 +16352,11 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   installer, which is for prompt vN: step 1's pull did not update it` inside the line's parenthesis.
   Amended 2026-10-14, §16.75 J77: the agent keeps letters and digits outside ASCII as well (UTF-8 classes,
   after a byte that is not UTF-8 is dropped), with blanks collapsed as `" ".join(agent.split())` does.
+  Amended 2026-10-14, §16.81 K14: not only a one-line attempt: every timed line but the end line is a step 1
+  line, and the first is the stated error, whose version and agent are the only ones read.
+  Amended 2026-10-14, §16.81 K8: not computed, the line reads `- outcome: not computed (this shell fallback
+  computes none for this attempt; Outcome, Prompt version and Agent are yours from the friction log below, Run
+  type from the run line)`, and a `- run: <label> (computed: <why>)` line follows it.
 - **A list that could not read the config: built once, by lane RA; this lane adds why** (H8, with H16's log
   note). H8 is the defect of H17 and H28: the log line of a list whose reader failed was a new Mac's, so the
   report called the answered folder question an expected turn and the attempt `fully one command`. Lane RA
@@ -16751,6 +16761,10 @@ in lower case (`sandbox`, `real mac`), so `report_word` knows them. Tests:
 `test_the_shell_temporary_roots_are_the_reports`, `test_the_shell_run_type_is_the_reports`,
 `test_the_shell_run_type_reads_the_folder_home_resolves_to`,
 `test_the_shell_report_states_a_step_1_failure_and_fills_its_link`.
+Amended 2026-10-14, §16.81 K26: the note reads `; newer than this installer, which is for prompt vN`, with no
+cause: a step 1 error can come from the Xcode or the not-a-checkout stop, before any pull ran.
+Amended 2026-10-14, §16.81 K8: the simulated type does apply, to a --list-folders run of the attempt that says
+`launchd=simulated` and to the not-computed case's own `- run:` line, as `compute_run_type` gives it.
 
 **The link keeps an agent's letters outside ASCII** (J77; dated line at §16.70 H24). It keeps `[:alnum:]` under
 `en_US.UTF-8` after `iconv -c` drops a byte that is not UTF-8, cuts at 100 characters and collapses blanks, as
@@ -17178,10 +17192,10 @@ Reserved for round 9 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 
 ### 16.81 Round 9: installer and the shell report (2026-10-14, wave B13 round 9 lane RB)
 
 The installer's findings of the v17 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
-"B13 round 9"). Each item has a test that fails without it. This section is the only CONTRACTS text this lane
-writes, so where an item changes what an older section states, the older section is named here and its text is
-not edited: §16.70 H24 and §16.75 J21 and J22 (the shell report's outcome line), §16.41 (the install line's
-commit), §16.68 H33 (the agentsync step's note), §16.75 J69 (the folders step 1's list printed).
+"B13 round 9"). Each item has a test that fails without it. Where an item changes what an older section states,
+that section has a dated line (`Amended 2026-10-14, §16.81 K<n>`) and its text is otherwise as it was: §16.70 H24
+and §16.75 J21 and J22 (the shell report's outcome line), §16.41 (the install line's commit), §16.68 H33 (the
+agentsync step's note).
 
 **A listed folder named like a coding agent or like every drive is not redacted** (K1 and K47, one defect). The
 shell report registered every folder `install.out`'s `--list-folders` runs printed, so a listed `Copilot` turned
