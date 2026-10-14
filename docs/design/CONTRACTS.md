@@ -17177,7 +17177,116 @@ Reserved for round 9 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 
 
 ### 16.81 Round 9: installer and the shell report (2026-10-14, wave B13 round 9 lane RB)
 
-Reserved for round 9 lane RB of B13.
+The installer's findings of the v17 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 9"). Each item has a test that fails without it. This section is the only CONTRACTS text this lane
+writes, so where an item changes what an older section states, the older section is named here and its text is
+not edited: §16.70 H24 and §16.75 J21 and J22 (the shell report's outcome line), §16.41 (the install line's
+commit), §16.68 H33 (the agentsync step's note), §16.75 J69 (the folders step 1's list printed).
+
+**A listed folder named like a coding agent or like every drive is not redacted** (K1 and K47, one defect). The
+shell report registered every folder `install.out`'s `--list-folders` runs printed, so a listed `Copilot` turned
+the Agent `GitHub Copilot CLI` into `GitHub <folder-N> CLI` in the Summary and in the issue link's agent field.
+Listed paths are kept apart from the configured ones, and a listed name that `generic_folder` knows or that
+`agent_words_name` finds made of coding-agent product words only (setup_report `_agent_words`: split on blanks,
+`_`, `\` and `-`, every word one of `_AGENT_WORDS`, held equal by a test) takes no pair and no number, as in the
+Python report. A configured folder of such a name is still redacted. Tests:
+`test_the_shell_agent_words_are_the_python_reports`, `test_the_shell_agent_words_test_is_the_python_reports`,
+`test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name`.
+
+**One number per folder** (K4). Each place a folder was found (FOLDERS, sources.toml, install.log, step 1's list,
+and a parent counted again by a nested listed path) took a new `<folder-N>`, so six names read up to
+`<folder-10>`. A folder's number is now keyed by `id_key` (setup_report `_norm`): a name seen again, or another
+spelling of it, takes the number it has, and every spelling still gets its own pair, since the matcher compares
+bytes. Correction to the spec: its test (b) put a second spelling only in the friction log, which no reader
+registers; the test gives the second spelling a listed path of its own. Test:
+`test_the_shell_report_gives_each_folder_one_number`.
+
+**The Redaction legend is one placeholder kind a line** (K3, K15). The legend was one 200-word sentence and left
+out step 1's list as a source of `<folder-N>`. It is a Markdown list after the line `Shell fallback redaction, one
+placeholder per kind:`, an item per kind (`~`, `<tmp>`, `<user>`, `<name>`, `<org-N>`, `<mdmhost>`, `<proxy-N>`,
+`<folder-N>`, `<source-N>`, `<path>`), continued on lines indented by two spaces, no line over 115 characters and
+no blank line inside, so it still ends on `Read the report before sending it: ...`. The folder item names `step 1's
+folder list in install.out` and the names it keeps. Tests: `test_the_shell_report_registers_the_folders_step_1s_list_printed`,
+`test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+
+**A rewrite path's placeholder keeps its separator** (K2 and K27, one defect). The path of a git URL rewrite base
+was matched with its leading `/` or `:` and replaced with it, so host and path read as one token
+(`https://<proxy-1><proxy-2>/...`) in both reports. The separator is still part of the matched value, which
+anchors its start and keeps a two-letter path over the shell's 3-character floor, and it is written back before
+the placeholder: `https://<proxy-1>/<proxy-2>/...`, `git@<proxy-N>:...` stays `<email-N>:<proxy-M>/...` in the
+Python report. The shell pair's placeholder carries it; `Redactor.add(keep_lead=True)` does it in the Python
+report, for the rewrite path only. K27's fix (strip the separator, add a start boundary to flag `e`) was not built:
+a path such as `/gh` would fall under `add_pair`'s floor and print in clear in the shell report only. Tests:
+`test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports`,
+`test_the_shell_report_redacts_a_git_url_rewrite_host_and_path`, `test_a_git_url_rewrite_host_and_path_are_redacted`.
+
+**The outcome is computed past the first line** (K14; amends §16.70 H24). It was computed only when the stated step 1
+error was the attempt's only line. It is computed when every timed line of the attempt but its end line is a step
+1 line and the first is a step 1 error that states `prompt vN, <agent>:` (not the stopped copy's line), with N and
+the agent from that first line only, which is what `compute_outcome` and `Attempt.said` give for such an attempt. A
+first line that is not the stated error, or any line of another step, still leaves it to the agentsync report.
+Tests: `test_the_shell_report_computes_a_step_1_failure_past_its_first_line`,
+`test_the_shell_report_computes_no_other_outcome`.
+
+**The newer-prompt note names no cause** (K26; amends §16.75 J21). `: step 1's pull did not update it` is dropped:
+a step 1 error can come from the Xcode or the not-a-checkout stop, before any pull ran. The note reads `; newer than
+this installer, which is for prompt vN`, as `_newer_than_me_note` names no cause. Tests:
+`test_the_shell_reports_newer_prompt_note_names_no_pull`,
+`test_the_shell_report_says_a_stated_prompt_is_newer_than_this_installer`.
+
+**Not computed, the Summary says where each field comes from, and computes the run type** (K8; amends §16.70 H24 and
+§16.75 J22). The line said the form's fields come from the friction log, which holds no run type. It reads `-
+outcome: not computed (this shell fallback computes none for this attempt; Outcome, Prompt version and Agent are
+yours from the friction log below, Run type from the run line)`, and a `- run: <label> (computed: <why>)` line
+follows it with the type `compute_run_type` gives: the attempt's last install run (else its last run; every run
+when the friction log gives no time) saying `launchd=simulated` is `Sandbox with simulated launchd` (`install.log
+says launchd=simulated`, and `; HOME is also under a temporary folder` where it is), else J22's rule. The computed
+line and the link use the same type. The link stays bare, and no field is read from the friction header. Test:
+`test_the_shell_reports_run_line_is_the_run_type_the_agentsync_report_computes`. docs/deploy/setup-feedback.md
+says so.
+
+**The install line says why a copy has no commit** (K17 and K29, one defect; amends §16.41). `source commit -` gave
+no reason. COMMIT and install.log's `commit=` field stay `-` (a machine word the install stamp compares), and the
+Summary shows `none (installed from a wheel)`, `none (<path> has no .git: not a git checkout)`, or, when a read was
+tried, `unknown (git cannot read <path>/.git)`, as `--version` says `unknown`. The agentsync report's `install
+source` adds ` (not a git checkout: no .git, so no commit or origin)` or ` (git cannot read its .git)`, and a last
+run that logged `commit=-` reads `last install.sh run: no commit read` (N20's point stands: an older run's commit
+is not shown). Tests: `test_the_shell_report_says_why_a_copy_has_no_commit`,
+`test_the_install_source_says_a_checkout_is_not_a_git_checkout`,
+`test_install_source_skips_a_run_that_read_no_commit`.
+
+**The inbox line is held with the docs repo line** (K7). With several folders the first `add-source` call's
+`added inbox source ...` line came out between the first and the second folder's blocks, as the docs repo line did
+before J13. `add_source_filter` holds it too, from any call, and every held line is appended (`>>`: each call is
+an awk process of its own, the file starts empty), so it prints just above `docs repo ...` and `sources: ...`.
+With one folder nothing is held. Tests: `test_several_folders_print_the_docs_repo_line_beside_the_sources_line`
+and its real-agentsync twin.
+
+**The stop line names the remedy of both its readings** (K18). The line `--log-start` writes for a copy it stops
+names two causes but its fix column gave only the first one's remedy. The second follows it: `; or, if the first
+line of the prompt says "setup prompt vN", the --log-start value was changed: run step 1's command again once,
+exactly as the prompt writes it`, in all three branches (older, no version, newer), after the first, where
+`_prompt_stop_note` reads it. The NEXT of the stopped copy's `--report-only` (`friction_attempt_stopped`) keeps
+the first remedy only, so it names the version once. The agentsync report's item line keeps that line's fix to 400
+characters (160 for any other). Tests: `test_a_stopped_lines_fix_names_the_remedy_of_both_readings`,
+`test_the_installers_stop_line_keeps_both_remedies_in_the_report`,
+`test_a_stopped_newer_copys_next_says_its_version_once_and_of_the_installer`.
+
+**A stopped copy rendered before J18 calls its commit warn expected** (K21). J18 is in the agentsync report only,
+and a stopped copy is rendered by the installed agentsync, which step 2 never updated. `stopped_report_note`, which
+runs from the current checkout, rewrites the old wording only: in `## Doctor`, a `[warn] install.commit — ` line
+holding `, but the checkout at ` and ` (fix: ` ends in `(expected: <STOPPED_COPY_WARN>)`, the header gains or
+counts in the expected-warn note; in `## Summary`, the doctor line moves `install.commit warn` from its
+unexpected list to an `expected N:` part. `STOPPED_COPY_WARN` is `setup_report._STOPPED_COPY_WARN` (a test keeps
+them equal). A report already in J18's words, or another install.commit warn, is left as it is. Tests:
+`test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected`,
+`test_the_shell_stopped_copy_warn_is_the_reports`.
+
+**The agentsync step's note reads as words** (K35; amends §16.68 H33). The report showed install.log's token
+`waited-for-a-background-sync` as prose in the Summary and the Installer table, which brought back the claim H33
+removed: the lock does not say who started the sync. Both read `waited for another sync to end`
+(`_AGENTSYNC_NOTE_WORDS`); install.log keeps the token, and a note the map does not hold is shown as it is. Test:
+`test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
 
 ### 16.82 Round 9: setup prompt v18 (2026-10-14, wave B13 round 9 lane P)
 
