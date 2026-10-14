@@ -74,7 +74,10 @@ When a folder, library or organisation name redacted everywhere is also a word t
 (`Private only: ...`) and its `Send it:` line sends the report privately, never as a public issue; such a report
 ends with no issue link. A configured folder or library with a name every OneDrive or Google Drive has (`Documents`,
 `Downloads`, `Desktop`) is the exception: it is still redacted, but reading its placeholder back gives nothing away,
-so it does not make the report private (in either report).
+so it does not make the report private (in either report). The agentsync report is Private only too when its
+listing of `~/Library/CloudStorage` for redaction did not finish and install.out holds no folder list from step 1
+(`Private only: the listing of ~/Library/CloudStorage for redaction did not finish ...`): a folder name may then
+show in clear. The shell fallback report never lists CloudStorage, so it never prints this line.
 
 The "Redaction" section gives the count per kind: a numbered placeholder as often as the report shows it, the
 unnumbered ones (`~`, `<user>`, `<name>`, `<serial>`, `<host>`, `<mdmhost>`, `<tmp>`) as often as a value was
@@ -135,10 +138,11 @@ words) is yours to remove. The CLI always redacts.
   kept, so the file's own headings stay inside it.
   A placeholder in section 2 is the one the report on the Mac gave when that part was written, which need not
   be section 1's numbering. A report numbers values in the order it registers them (configured CloudStorage
-  folders, then the CloudStorage listing, then configured folders elsewhere; the shell fallback report: that
-  run's `--source-local` folders, then sources.toml, then install.log), so an added folder, a listing past its
-  3-second bound or a fallback report gives a folder another number, between two sessions or between step 2's
-  and step 3's report of one. Since prompt v11 each name carries a role that tells it apart: identify the folder
+  folders, then the CloudStorage listing, then the folders step 1's `--list-folders` runs printed into
+  install.out, then configured folders elsewhere; the shell fallback report: that run's `--source-local` folders,
+  then sources.toml, then install.log, then install.out's step 1 list), so an added folder, a listing past its
+  3-second bound (step 1's list then stands in its place) or a fallback report gives a folder another number,
+  between two sessions or between step 2's and step 3's report of one. Since prompt v11 each name carries a role that tells it apart: identify the folder
   by that role, not by the placeholder's number. A part written before v11 may give a placeholder alone: trust
   its number only against section 1 of the file it first arrived in (K34).
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is

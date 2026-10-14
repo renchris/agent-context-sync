@@ -17404,3 +17404,12 @@ now quotes both columns and the note. The report's summary bullet above the tabl
 page was made from" (lane RA's file; the verifier's optional alignment, not built here). Test:
 `test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note` (reads the words from
 `setup_report`'s source).
+
+**The guide names step 1's folder list as a redaction source and a second Private-only cause** (K69). Since §16.74
+J69 the agentsync report registers the folders step 1's `--list-folders` runs printed into install.out after its
+CloudStorage listing and before the configured folders elsewhere, the shell report after install.log, and a listing
+that did not finish with no such list adds `Private only: the listing of ~/Library/CloudStorage for redaction did
+not finish ...`. The guide gave only the word-named cause and neither registration order had the list. It now names
+the second cause for the agentsync report only (the shell report never lists CloudStorage) and the list in both
+orders, standing in for a listing past its bound. Test: `test_the_guide_names_step_1s_folder_list_as_a_redaction_source`
+(reads the line and the order from both reports' source).

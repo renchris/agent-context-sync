@@ -4246,6 +4246,31 @@ def test_the_repeat_conversions_row_quotes_the_columns_and_the_re_screen_note() 
     assert "counts files converted again from the bytes their own page was made from, right after" not in row
 
 
+def test_the_guide_names_step_1s_folder_list_as_a_redaction_source() -> None:
+    """B13 round 9 K69: since round 8 J69 both reports register the folders step 1's `--list-folders` runs
+    printed into install.out (the agentsync report after its CloudStorage listing, the shell report after
+    install.log), and a listing that did not finish with no such list makes the agentsync report Private
+    only; the guide gave one Private-only cause and neither registration order had the list."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    line = re.search(
+        r'"(Private only: the listing of ~/Library/CloudStorage for redaction did not finish) and "', source
+    )
+    assert line is not None and "red.listing_unread = not listing_ok and not has_list" in source
+    assert "for provider, depth, name in [*listed, *printed]:" in source  # after the listing, before the rest
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert installer.index("printed into install.out") > installer.index('"$SETUP_LOG" 2>/dev/null |')
+    page = _page("docs/deploy/setup-feedback.md")
+    assert f"(`{line.group(1)} ...`)" in page
+    assert "The shell fallback report never lists CloudStorage, so it never prints this line." in page
+    assert (
+        "then the CloudStorage listing, then the folders step 1's `--list-folders` runs printed into "
+        "install.out, then configured folders elsewhere" in page
+    )
+    assert "then sources.toml, then install.log, then install.out's step 1 list)" in page
+
+
 def test_no_line_of_the_prompt_block_is_a_lone_word_or_wider_than_the_block() -> None:
     """B13 round 8 J68: v16's re-wrap left a line holding only "If", and v15 had left a 132-column line, in a
     block a person reads in a ```text fence, which keeps its line breaks. A command line is as long as its
