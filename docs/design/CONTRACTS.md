@@ -16267,6 +16267,11 @@ Round 7 findings (`round7/items/H<n>.md` of the bring-back cache) built in `scri
   `test_the_shell_report_states_a_step_1_failure_and_fills_its_link`,
   `test_the_shell_report_computes_no_other_outcome`,
   `test_the_shell_report_computes_no_outcome_once_the_attempt_ran_install`.
+  Amended 2026-10-14, §16.75 J22: the line has ` · run: Sandbox (computed: HOME is under a temporary folder)`
+  or ` · run: Real Mac (computed: ...)` before its agent, by `paths.is_temporary`'s rule, and the link has the
+  run type in its title and `run_type` field, as `build_issue_url` writes them.
+  Amended 2026-10-14, §16.75 J21: a stated version above `SETUP_PROMPT_COMPAT` adds `; newer than this
+  installer, which is for prompt vN: step 1's pull did not update it` inside the line's parenthesis.
 - **A list that could not read the config: built once, by lane RA; this lane adds why** (H8, with H16's log
   note). H8 is the defect of H17 and H28: the log line of a list whose reader failed was a new Mac's, so the
   report called the answered folder question an expected turn and the attempt `fully one command`. Lane RA

@@ -1761,9 +1761,38 @@ attempt_ran_no_install() {
 # reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
 # redaction, for the link.
 OUTCOME_LINE_HEAD="- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v"
+# Where macOS keeps throwaway files: paths.TEMPORARY_ROOTS (a test keeps them equal).
+TEMPORARY_ROOTS="/tmp /private/tmp /var/folders /private/var/folders"
+# The run type the agentsync report computes when no install run says launchd=simulated (compute_run_type, by
+# paths.is_temporary): "sandbox" when HOME, or the folder it resolves to, is one of TEMPORARY_ROOTS or lies under
+# one, else "real mac". Only the computed outcome line needs it, and that line is written only when the attempt
+# has no install run, so the simulated type cannot apply (B13 round 8 J22).
+home_run_kind() {
+	local c r
+	for c in "$HOME" "$(cd "$HOME" 2>/dev/null && pwd -P)"; do
+		[ -n "$c" ] || continue
+		for r in $TEMPORARY_ROOTS; do
+			case "$c" in "$r" | "$r"/*)
+				printf 'sandbox'
+				return 0
+				;;
+			esac
+		done
+	done
+	printf 'real mac'
+}
+# The form's run_type option and the Summary's words for it, as setup_report.ISSUE_RUN_TYPES and its Summary have them.
+run_type_label() { case "$(home_run_kind)" in sandbox) printf 'Sandbox' ;; *) printf 'Real Mac' ;; esac }
+run_type_why() {
+	case "$(home_run_kind)" in
+	sandbox) printf 'HOME is under a temporary folder' ;;
+	*) printf 'HOME is not under a temporary folder and launchd was not simulated' ;;
+	esac
+}
 # A stated version above this installer's has the agentsync report's note (H23) in the same parenthesis, naming
 # this installer, which writes the report (B13 round 8 J21); no blank comes before the digits, and no " · agent: "
-# is added, so fallback_issue_link reads the version and the agent as before.
+# is added, so fallback_issue_link reads the version and the agent as before. The run type comes before the agent,
+# where the agentsync report has it.
 fallback_outcome_line() {
 	local stated="" n note=""
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
@@ -1773,7 +1802,7 @@ fallback_outcome_line() {
 		"" | *[!0-9]*) ;;
 		*) [ "$n" -le "$SETUP_PROMPT_COMPAT" ] || note="; newer than this installer, which is for prompt v$SETUP_PROMPT_COMPAT: step 1's pull did not update it" ;;
 		esac
-		say "$OUTCOME_LINE_HEAD$n (from the step 1 error line$note) · agent: ${stated#*$'\t'}"
+		say "$OUTCOME_LINE_HEAD$n (from the step 1 error line$note) · run: $(run_type_label) (computed: $(run_type_why)) · agent: ${stated#*$'\t'}"
 	else
 		say "- outcome: not computed (this shell fallback computes none for this attempt; the issue form's fields are left for you, from the friction log below)"
 	fi
@@ -2084,12 +2113,13 @@ url_quote() {
 # The issue link the shell report ends with: bare, or, when the Summary (the redacted report in file $1, above
 # its friction log) holds the computed outcome line, with the title and the fields that line gives, as
 # setup_report.build_issue_url writes them (H24). The agent is read from the redacted line, since the link is
-# written after redaction, keeps only what _issue_link keeps (ASCII here) and at most 100 characters. No
-# run type: the shell computes none. Sets LINK and LINK_FIELDS (the fields it fills, for the Send it line).
+# written after redaction, keeps only what _issue_link keeps (ASCII here) and at most 100 characters. The run
+# type is computed again, not read from the redacted line, where a folder named after it would read as its
+# placeholder (B13 round 8 J22). Sets LINK and LINK_FIELDS (the fields it fills, for the Send it line).
 LINK=""
 LINK_FIELDS=""
 fallback_issue_link() { # REDACTED-BODY-FILE
-	local line n agent fail="Failed at step 1 (preflight)"
+	local line n agent run fail="Failed at step 1 (preflight)"
 	LINK="$ISSUE_URL"
 	LINK_FIELDS=""
 	line="$(LC_ALL=C awk -v p="$OUTCOME_LINE_HEAD" '$0 == "## Agent friction log" { exit } index($0, p) == 1 { print; exit }' "$1" 2>/dev/null || true)"
@@ -2100,11 +2130,13 @@ fallback_issue_link() { # REDACTED-BODY-FILE
 	agent="${line##* · agent: }"
 	[ "$agent" != "$line" ] || agent=""
 	agent="$(printf '%s' "$agent" | LC_ALL=C tr -cd 'A-Za-z0-9_ .:/()+,@<>-' | LC_ALL=C cut -c 1-100 | LC_ALL=C sed 's/^ *//; s/ *$//')"
-	LINK="$ISSUE_URL&title=$(url_quote "Setup report: $fail · v$n")&outcome=$(url_quote "$fail")&prompt_version=v$n"
-	LINK_FIELDS="Outcome and Prompt version"
+	run="$(run_type_label)"
+	LINK="$ISSUE_URL&title=$(url_quote "Setup report: $fail · $run · v$n")&outcome=$(url_quote "$fail")"
+	LINK="$LINK&run_type=$(url_quote "$run")&prompt_version=v$n"
+	LINK_FIELDS="Outcome, Run type, and Prompt version"
 	[ -z "$agent" ] || {
 		LINK="$LINK&agent=$(url_quote "$agent")"
-		LINK_FIELDS="Outcome, Prompt version, and Agent tool and model"
+		LINK_FIELDS="Outcome, Run type, Prompt version, and Agent tool and model"
 	}
 }
 # The friction log for the shell report: friction.md, else what an earlier report holds under its heading

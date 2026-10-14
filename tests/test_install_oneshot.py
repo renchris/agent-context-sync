@@ -42,7 +42,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agentsync import lints, setup_report
+from agentsync import lints, paths, setup_report
 from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.ops import doctor
@@ -2380,8 +2380,9 @@ def test_the_shell_report_states_a_step_1_failure_and_fills_its_link(env: dict[s
     agent and its link was bare, while docs/deploy/setup-feedback.md says to copy the values from the
     Summary. In that one case (the latest attempt's only event is a step 1 error that states both, and the
     attempt has no install run) the Summary has the line the agentsync report computes, and the link is the
-    one ``build_issue_url`` writes for the same values, with no run type. The agent is taken from the
-    redacted line, so a folder it names is that folder's placeholder in the link too."""
+    one ``build_issue_url`` writes for the same values. The agent is taken from the redacted line, so a folder
+    it names is that folder's placeholder in the link too. Since B13 round 8 J22 the line and the link carry
+    the run type the agentsync report computes: this test's HOME is under a temporary folder, a Sandbox."""
     cloud = Path(env["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso"
     (cloud / "Fabrikam Bridge").mkdir(parents=True)
     _write_config(env, local_source_table("fabrikam-bridge", cloud / "Fabrikam Bridge"))
@@ -2392,7 +2393,8 @@ def test_the_shell_report_states_a_step_1_failure_and_fills_its_link(env: dict[s
     text = report_path(env).read_text()
     assert _summary(text)[2] == (
         "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · prompt: v15 "
-        "(from the step 1 error line) · agent: Northwind Agent 2.1 (<folder-1>)"
+        "(from the step 1 error line) · run: Sandbox (computed: HOME is under a temporary folder) · agent: "
+        "Northwind Agent 2.1 (<folder-1>)"
     )
     # what the agentsync report computes from the same friction log, and the link it builds
     attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
@@ -2403,18 +2405,71 @@ def test_the_shell_report_states_a_step_1_failure_and_fills_its_link(env: dict[s
     link = setup_report.build_issue_url(
         outcome=outcome.form_label,
         title_outcome=outcome.title_label,
-        run_type=None,
+        run_type=setup_report.ISSUE_RUN_TYPES[setup_report.compute_run_type([], env["HOME"])],
         prompt="v15",
         agent="Northwind Agent 2.1 (<folder-1>)",
     )
     lines = text.splitlines()
     assert lines[-1] == link and setup_report.issue_link(text) == link
-    assert setup_report.issue_link_fields(link) == ["Outcome", "Prompt version", "Agent tool and model"]
+    assert setup_report.issue_link_fields(link) == [
+        "Outcome",
+        "Run type",
+        "Prompt version",
+        "Agent tool and model",
+    ]
     assert lines[-3].startswith(
-        'Send it: the link on the last line opens a new "Setup report" issue with the Outcome, Prompt '
-        "version, and Agent tool and model fields filled in (nothing else); paste this report into its "
+        'Send it: the link on the last line opens a new "Setup report" issue with the Outcome, Run type, '
+        "Prompt version, and Agent tool and model fields filled in (nothing else); paste this report into "
     )
     assert "Fabrikam" not in text and f"issue link (review the report first): {link}" in cp.stdout
+
+
+def test_the_shell_temporary_roots_are_the_reports() -> None:
+    """The shell's twin of paths.TEMPORARY_ROOTS, by which both reports call a run a Sandbox (B13 round 8
+    J22)."""
+    [roots] = re.findall(r'(?m)^TEMPORARY_ROOTS="(.*)"$', INSTALL_SH.read_text())
+    assert tuple(roots.split(" ")) == paths.TEMPORARY_ROOTS
+
+
+@pytest.mark.parametrize(
+    ("home", "kind"),
+    [
+        ("/tmp", "sandbox"),
+        ("/private/var/folders/xy/T/contoso/home", "sandbox"),
+        ("/tmpcontoso/home", "real mac"),
+        ("/Users/contoso-no-such-home", "real mac"),
+    ],
+)
+def test_the_shell_run_type_is_the_reports(home: str, kind: str) -> None:
+    """home_run_kind gives what setup_report.compute_run_type gives for an attempt with no install run: a root
+    itself or a path below one, never a name that only starts like one."""
+    fn = _shell_function("home_run_kind")
+    [roots] = re.findall(r'(?m)^TEMPORARY_ROOTS=".*"$', INSTALL_SH.read_text())
+    cp = subprocess.run(
+        [BASH32, "-c", f"{roots}\n{fn}\nhome_run_kind"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": home, "LC_ALL": "C"},
+    )
+    assert cp.stdout == kind
+    assert setup_report.compute_run_type([], home) == kind.split(" ", maxsplit=1)[0]
+
+
+def test_the_shell_run_type_reads_the_folder_home_resolves_to(tmp_path: Path) -> None:
+    """A HOME reached by a link is judged by the folder it resolves to as well, as is_temporary does: the
+    roots are this test's own folder here, which the link's path does not start with."""
+    (tmp_path / "root" / "home").mkdir(parents=True)
+    (tmp_path / "alias").symlink_to(tmp_path / "root", target_is_directory=True)
+    fn = _shell_function("home_run_kind")
+    cp = subprocess.run(
+        [BASH32, "-c", f'TEMPORARY_ROOTS="{tmp_path}/root"\n{fn}\nhome_run_kind'],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "alias" / "home"), "LC_ALL": "C"},
+    )
+    assert cp.stdout == "sandbox"
 
 
 @pytest.mark.parametrize("ahead", [1, 0, -1])
