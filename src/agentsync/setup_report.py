@@ -3871,6 +3871,7 @@ def _doctor(r: _Run) -> list[str]:
     current_ok = False
     installed = agents_installed(r.install_runs)
     annotated = 0
+    stopped_note = False  # an expected warn says step 2 has not run: the NEXT line's fresh copy runs it
     for raw in lines:
         line = raw
         m = _DOCTOR_TAG_RE.match(raw)
@@ -3893,6 +3894,7 @@ def _doctor(r: _Run) -> list[str]:
                 if why is not None:  # expected: its fix is nothing for this setup to do
                     line = f"{_without_fix(raw)} (expected: {why})"
                     annotated += 1
+                    stopped_note = stopped_note or why == _STOPPED_COPY_WARN
         elif current_ok:
             continue  # a continuation of an ok line
         shown.append(line)
@@ -3900,9 +3902,11 @@ def _doctor(r: _Run) -> list[str]:
     summary = f"{sum(tags.values())} check(s): " + ", ".join(
         f"{tags.get(t, 0)} {t}" for t in ("ok", "info", "warn", "FAIL")
     )
+    # "nothing for this setup to do" sat beside a reason that says step 2 has not run (B13 round 9 K24)
+    beyond = " beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)"
     note = (
         f" {annotated} expected warn(s) end in (expected: <why>) instead of their fix: nothing for this "
-        "setup to do."
+        f"setup to do{beyond * stopped_note}."
         if annotated
         else ""
     )

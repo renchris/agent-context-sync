@@ -8877,6 +8877,12 @@ def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Pat
         f"(expected: {why})" in doctor_part
     ), doctor_part
     assert "re-run install.sh" not in doctor_part
+    # its intro said "nothing for this setup to do" beside a reason that says step 2 has not run, and a NEXT
+    # that asks for a fresh copy (B13 round 9 K24)
+    assert doctor_part.strip().splitlines()[0].endswith(
+        " 1 expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do "
+        "beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)."
+    ), doctor_part
     # the doctor shows install.commit ok: nothing is expected
     ok = ["[ok  ] python — fine", "[info] install.commit — installed from a350196b9f87, the checkout's HEAD"]
     _text, summary = summary_of(fake_mac, doctor=lambda config: ok)

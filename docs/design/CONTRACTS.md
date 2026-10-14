@@ -17274,6 +17274,12 @@ The quotes in docs/deploy/setup-feedback.md follow. Tests:
 `test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary`, the setup-feedback quote test in
 `tests/test_deploy_pack.py`.
 
+**A stopped copy's Doctor intro points at its NEXT line** (K24). When an expected warn carries the stopped-copy
+reason (`the installer stopped this copy in step 1, before step 2 reinstalls agentsync`), the Doctor intro ends
+`nothing for this setup to do beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step
+2).` Other expected warns (the ad hoc launcher, LaunchAgents not yet installed) keep `nothing for this setup to
+do.`; the key is the reason attached, not `copy_stopped` alone. Test: `test_a_stopped_copys_install_commit_warn_is_expected`.
+
 **Docstrings after J69 and J26** (K49): `build_report` names `red.private_only`; `_LOCAL_LOG_TIME_RE` and
 `_utc_log_times` say only a log written before J26 holds local times. Docstrings only: no test reads them.
 
