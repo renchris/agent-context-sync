@@ -998,6 +998,7 @@ class SourceReport:
     conversion_failed: int = 0  # 2026-10-12 (§16.56 F86)
     refused: int = 0  # 2026-10-13 (§16.63 G35): of ``converted``, files refused after their bytes were read
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
+    withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
 
 class CarriedLines(NamedTuple):  # 2026-10-13 (§16.68 H73): an unselected source's lines in STATE.md
     run_id: int  # the last run that selected the source
@@ -15931,6 +15932,9 @@ that needs no bytes)`, only when Q > 0, with no bare `converted`, `deferred` or 
 `setup_report._SPLIT_RE` read the line as before). It names no label rule: a type with no converter is refused the
 same way. Tests: `test_cli.py::test_the_sync_line_counts_the_files_refused_without_a_read`,
 `test_cli.py::test_a_type_with_no_converter_is_counted_refused_without_a_read_and_no_rule_is_named`.
+Amended 2026-10-14, §16.77 J29: a refusal with no byte read whose stub says a label rule withheld it is counted
+in `SourceReport.withheld_unread`, not `refused_unread`, and the line names the rule for those in a clause of its
+own, `; W withheld unread by the label rule (its label cannot be read without the file)`, before this one.
 
 **H49: an inbox duplicate is not in R (`agentsync.cycle`).** An inbox file whose bytes match a Graph file is read,
 then quarantined (`duplicate-of ...`), yet `acc.refused` counted it, so the line said `1 refused` beside the source
@@ -16685,6 +16689,26 @@ holds a `WAITING ON YOU:` line, so it never points at a wait that is not there (
 cannot be read, or a carried alarm that outlived its wait). The terminal, `status`, install.sh and the setup report
 keep the STATE.md pointer. Tests: `tests/test_loop.py` (`test_state_md_points_its_waits_at_its_own_sections`,
 `test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4`).
+
+**J29: the sync line names the label rule for a file it withheld unread (`agentsync.cycle`, `agentsync.publish`,
+`agentsync.model`, `agentsync.cli`).** H32's one clause, `Q refused without a read (no converter for the type, or
+a rule that needs no bytes)`, took in an image a label rule withheld: `_no_converter` refuses it by its name with
+the stored reason `no converter for .png`, while its page says `withheld by label rule: the label of a .png file
+cannot be read`, and OCR converts a .png. The count is now split by the predicate that writes the page:
+`Publisher.withheld(reason, suffix)`, a public wrapper of `_withheld` (a label rule on, a suffix it may withhold,
+and for an image `images_readable`). `_publish` adds a refused, unread file to `withheld_unread` when that holds
+and to `refused_unread` otherwise; `_SourceAcc`, `SourceReport` and `report()` carry the new field. `_print_report`
+prints `; W withheld unread by the label rule (its label cannot be read without the file)`, then H32's clause, each
+only when its count is above 0, with no bare `converted`, `deferred` or `read again` (install.sh's awk and
+`setup_report._SPLIT_RE` read the line as before); with both 0 the line is unchanged. An image under a label rule
+on a Mac with no OCR engine keeps `no converter for .png` on its page, and so it is counted under H32's clause, not
+as withheld: a split inferred from `labels_active` alone would mislabel it. Correction to the verifier's fix: it
+also reworded H32's clause to `(no converter for the type, or a label refused before a download)`, which names a
+label on a run with no label rule and breaks the test it asked to keep (a no-rule refusal never mentions
+"label"); H32's words are kept, true for every refusal that clause still counts. Tests: `tests/test_cycle.py`
+(`test_a_withheld_image_is_counted_apart_from_a_type_with_no_converter`,
+`test_without_an_engine_an_image_under_a_label_rule_is_counted_with_no_converter`), `tests/test_cli.py`
+(`test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread`).
 
 ### 16.78 Round 8: purge, stubs and STATE.md (2026-10-14, wave B13 round 8 lane E)
 

@@ -424,11 +424,13 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     two parentheses never stand side by side (B13 round 5 F34), then ``; re-screened S for a rule change
     (also counted above, K of them unchanged)``: a [policy] or secret-rule re-screen runs the converter on the
     same bytes, so it is in N, and counted again in S (F35), then ``; Q refused without a read (no converter
-    for the type, or a rule that needs no bytes)`` when Q files were refused with no byte read: those are in
-    each source line's ``refused=`` but not in N, so with it the line's refusals add up to the sources' (B13
-    round 7 H32; it names no label rule, since a type with no converter is refused the same way). With
-    ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are one
-    count per source: at 0 every changed online-only file would otherwise get one."""
+    for the type, or a rule that needs no bytes)`` when Q files were refused with no byte read: those
+    are in each source line's ``refused=`` but not in N, so with it the line's refusals add up to the sources'
+    (B13 round 7 H32). Before it, ``; W withheld unread by the label rule (its label cannot be read without
+    the file)`` counts those of them whose stub says a label rule withheld them, by the page's own test (B13
+    round 8 J29: the one clause named no label rule, so a withheld image read as a type with no converter).
+    With ``run_budget`` (``sync --materialise-budget``) the per-file "exceeds the per-cycle budget" alarms are
+    one count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
     counted = f"{len(report.changes)} change(s)"
     if report.commit_sha and not report.changes:
@@ -493,12 +495,18 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         if report.rescreened
         else ""
     )
-    # No bare "converted", "deferred" or "read again" in it either, and nothing when Q is 0 (B13 round 7 H32)
+    # No bare "converted", "deferred" or "read again" in it either, and nothing when Q is 0 (B13 round 7 H32).
+    # A file whose stub says a label rule withheld it is counted apart, by the page's own test, so the line
+    # names the cause its page names (B13 round 8 J29).
+    withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
-    unread_tail = (
-        f"; {unread} refused without a read (no converter for the type, or a rule that needs no bytes)"
-        if unread
-        else ""
+    unread_tail = "".join(
+        f"; {n} {what}"
+        for n, what in (
+            (withheld, "withheld unread by the label rule (its label cannot be read without the file)"),
+            (unread, "refused without a read (no converter for the type, or a rule that needs no bytes)"),
+        )
+        if n
     )
     _out(f"converted {converted}, deferred {online} online-only{again}{of_them}{rescreened}{unread_tail}")
 

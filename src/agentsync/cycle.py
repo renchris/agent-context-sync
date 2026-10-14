@@ -1455,6 +1455,7 @@ class _SourceAcc:
     conversion_failed: int = 0
     refused: int = 0
     refused_unread: int = 0
+    withheld_unread: int = 0
     breaker_tripped: bool = False
     live_rows: int = 0
     staged_cursor: bool = False
@@ -1488,6 +1489,7 @@ class _SourceAcc:
             conversion_failed=self.conversion_failed,
             refused=self.refused,
             refused_unread=self.refused_unread,
+            withheld_unread=self.withheld_unread,
         )
 
 
@@ -4639,7 +4641,9 @@ class _Cycle:
         """Publish ``result``'s pages for ``row`` and set its state, verdict and counts. ``unread``: the
         result was made without reading a byte of the file (no converter for its name, a rule that needs no
         bytes, a withheld online-only .msg); a refusal from it is counted apart, in ``refused_unread``, for
-        the sync line, whose split counts only the refusals made after a read (B13 round 7 H32)."""
+        the sync line, whose split counts only the refusals made after a read (B13 round 7 H32). One whose
+        stub says a label rule withheld it (:meth:`Publisher.withheld`, the page's own test) is counted in
+        ``withheld_unread`` instead, so the line names that cause (B13 round 8 J29)."""
         sid, stable = row.source_id, row.stable_id
         prior_ok = [o for o in self.manifest.outputs_for(sid, stable) if o.status is OutputStatus.OK]
         if quarantine_reason == _CREDENTIAL or (
@@ -4688,7 +4692,9 @@ class _Cycle:
             self.manifest.set_state(sid, stable, RowState.REFUSED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
             acc.counts[Verdict.REFUSED] += 1
-            if unread:
+            if unread and self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
+                acc.withheld_unread += 1
+            elif unread:
                 acc.refused_unread += 1
         elif result.status is ConversionStatus.FAILED:
             self.manifest.set_state(sid, stable, RowState.QUARANTINED, reason)

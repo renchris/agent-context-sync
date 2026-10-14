@@ -2595,6 +2595,37 @@ def test_under_a_label_rule_no_image_is_read_and_a_page_from_before_it_becomes_a
         assert m.get_meta(cycle_mod._RESCREEN_META) == ""
 
 
+def test_a_withheld_image_is_counted_apart_from_a_type_with_no_converter(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 8 J29: the sync line's one "refused without a read (no converter for the type, ...)" count
+    took in an image a label rule withheld, whose page says "withheld by label rule". A refusal with no byte
+    read is counted in ``withheld_unread`` when its page says so (``Publisher.withheld``, the page's own
+    test), else in ``refused_unread``: here the image and the .zip. Without an engine the image's page says
+    "no converter for .png", and so does the count (the next test)."""
+    _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / "Contoso floor.png", "Loading dock")
+    (local_source_dir / "Contoso archive.zip").write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    [rep] = run(labelled).sources
+    assert _image_page(labelled, "Contoso floor.png")[0]["reason"] == (
+        "withheld by label rule: the label of a .png file cannot be read"
+    )
+    assert (rep.withheld_unread, rep.refused_unread, rep.counts.get(Verdict.REFUSED)) == (1, 1, 2), rep
+
+
+def test_without_an_engine_an_image_under_a_label_rule_is_counted_with_no_converter(
+    tmp_path: Path, local_source_dir: Path
+) -> None:
+    """B13 round 8 J29: on a Mac with no OCR engine nothing converts an image, and its page says "no
+    converter for .png" with or without a label rule, so the line counts it there, never as withheld."""
+    picture(local_source_dir / "Contoso floor.png", "Loading dock")
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    [rep] = run(labelled).sources
+    assert _image_page(labelled, "Contoso floor.png")[0]["reason"] == "no converter for .png"
+    assert (rep.withheld_unread, rep.refused_unread) == (0, 1), rep
+
+
 KICKOFF_MSG = "projects/Contoso kickoff.msg"
 
 

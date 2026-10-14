@@ -417,8 +417,12 @@ class SourceReport:
     # G35). An inbox duplicate is quarantined, not refused (round 7 H49)
     refused: int = 0
     # refused with no byte read (no converter for the name, a rule that needs no bytes, a withheld online-only
-    # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32)
+    # .msg): in the source's REFUSED count, never in ``converted`` (B13 round 7 H32); not one whose stub says
+    # a label rule withheld it, which ``withheld_unread`` counts (B13 round 8 J29)
     refused_unread: int = 0
+    # refused with no byte read, and its stub says a label rule withheld it (an image OCR would read, a .msg,
+    # neither on this Mac): in the source's REFUSED count, never in ``converted`` (B13 round 8 J29)
+    withheld_unread: int = 0
 
 
 class CarriedLines(NamedTuple):

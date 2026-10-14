@@ -380,6 +380,41 @@ def test_the_sync_line_counts_the_files_refused_without_a_read(capsys: pytest.Ca
     assert "without a read" not in capsys.readouterr().out.splitlines()[-1], "nothing when there are none"
 
 
+def test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 8 J29: an image a label rule withheld (its page says "withheld by label rule") was counted
+    under "refused without a read (no converter for the type, or a rule that needs no bytes)", whose one
+    cause a reader knows is false for it: OCR converts a .png. Those files are counted apart and their
+    clause names the rule; each clause is printed only when its count is above 0, and the refusals still add
+    up to the sources'."""
+    alpha = SourceReport(
+        "project-alpha",
+        SourceKind.LOCAL,
+        PassKind.FULL,
+        True,
+        counts={Verdict.REFUSED: 3},
+        refused_unread=1,
+        withheld_unread=2,
+    )
+    report = CycleReport(run_id=9, mode=CycleMode.POLL, sources=(alpha,), changes=(), commit_sha=None)
+    cli._print_report(report)
+    out = capsys.readouterr().out.splitlines()
+    assert out[-1] == (
+        "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (its label cannot be read "
+        "without the file); 1 refused without a read (no converter for the type, or a rule that needs no "
+        "bytes)"
+    )
+    said = sum(int(n) for n in re.findall(r"(\d+) (?:refused|withheld)\b", out[-1]))
+    assert said == sum(int(n) for ln in out for n in re.findall(r"\brefused=(\d+)", ln)) == 3
+    assert out[-1].split().count("converted") == 1 and "deferred" not in out[-1].split("online-only", 1)[1]
+    cli._print_report(dataclasses.replace(report, sources=(dataclasses.replace(alpha, refused_unread=0),)))
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (its label cannot be read "
+        "without the file)"
+    )
+
+
 def test_a_type_with_no_converter_is_counted_refused_without_a_read_and_no_rule_is_named(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -1099,6 +1099,11 @@ class Publisher:
         or an image while OCR could read it (on a Mac without OCR, nothing converts an image anyway)."""
         return self._withheld_eligible(reason, suffix) and (suffix == ".msg" or self.images_readable)
 
+    def withheld(self, reason: str | None, suffix: str) -> bool:
+        """:meth:`_withheld`, for the cycle's count of the stubs this says ``withheld by label rule`` on, so
+        the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
+        return self._withheld(reason, suffix)
+
     def _stub_reason(self, source_id: str, stable_id: str) -> str | None:
         """The ``reason:`` of the stub published for one item, or None when it has none on disk.
 
