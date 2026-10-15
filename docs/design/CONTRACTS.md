@@ -18573,3 +18573,27 @@ the numbering paragraph and section 3's paragraph now say so. Test:
 **K28's order is the keep commands' order** (L65; dated line at §16.82 K28). §16.82 K28 said both keep commands run
 `format-patch` "right after" `switch -c`; `add -A` and a commit made only when something is staged come between.
 The commands are unchanged. Test: `test_the_keep_commands_name_the_patch_from_the_local_work_branch`.
+
+### 16.92 Round 11: setup report (2026-10-15, wave B13 round 11 lane RA)
+
+Reserved for round 11 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 11").
+
+### 16.93 Round 11: installer and the shell report (2026-10-15, wave B13 round 11 lane RB)
+
+Reserved for round 11 lane RB of B13.
+
+### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
+
+Reserved for round 11 lane P of B13.
+
+### 16.95 Round 11: waits, alarms, status and doctor (2026-10-15, wave B13 round 11 lane B)
+
+Reserved for round 11 lane B of B13.
+
+### 16.96 Round 11: recordings, speech, OCR and stubs (2026-10-15, wave B13 round 11 lane E)
+
+Reserved for round 11 lane E of B13.
+
+### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
+
+Reserved for round 11 lane D of B13.

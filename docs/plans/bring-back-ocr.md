@@ -859,6 +859,25 @@ fail on the CI runner's git, so the lane that lands a test owns the read-back of
 
 Round 11: the round 10 workflow on `12147e30` with prompt v19 (run `wf_5c8991f7-17f`, outputs `round11/`).
 
+### B13 round 11: v19 rehearsal, cross-lane review, harvest (2026-10-15)
+
+Run `wf_5c8991f7-17f` on `12147e30` (98 agents, 0 errors). All six scenarios pass their EXPECTED; the field Mac's
+path is clean (v10 build pulled to v19, no stop, "fully one command"). 87 findings, all 87 confirmed (1 turn, 17
+wrong, 69 small); 11 need prompt text, so the next prompt is v20. The turn: on a Mac that already syncs folders, a
+signed-out OneDrive sends the agent to the folder question (M4). Most wrongs sit on probe paths the lanes asked for: a
+config the installed agentsync fails on, a checkout whose `.git` is a file, and a proxy host from an earlier friction
+line reaching the public report (M29). Rehearsal safety: building the v10 before-state wrote SwiftPM caches into the
+real home (M20); round 12's scenario B copies built helpers instead.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87 over rounds 2 and 4 to 11; turns 3, 0, 0, 1, 5, 2, 4, 1,
+1; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17. Turns have stayed at one for two rounds; the total has not fallen.
+Neither paste rule in the operator's open stop question is met.
+
+Lanes (`--account auto`, CONTRACTS §16.92 to §16.97, brief `lanes/COMMON10.md`, which adds a pre-push read of
+trunk's CI, M87): RA 22 (setup_report.py), RB 20 (install.sh), P 10 (prompt v20), B 15 (arm_local, loop, cli,
+doctor), E 8 (recordings, speech, OCR, publish), D 9 (docs/deploy, CONTRACTS). Lead: M20 (round 12's scenario B
+method), M86 (one operator cleanup, `b13-r10`, replacing the round 7 and round 9 ones), M87 (COMMON10).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
