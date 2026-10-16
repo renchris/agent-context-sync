@@ -2183,9 +2183,10 @@ friction_attempt_begin() {
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = late != "" ? late : substr($0, 1, 20); ended = ""; late = ""; restate($0); next }
 		$0 !~ (stamp " [|]") { next }
 		b == "" { b = substr($0, 1, 20) }
-		# the unbroken run of step 1 lines past the gap after the end line, which an opening step 1 error takes
-		# with it (parse_friction, B13 round 10 L26)
-		ended != "" { if ($0 ~ (stamp " [|] step 1 [|]") && secs($0) - secs(ended) > gap) { if (late == "") late = substr($0, 1, 20) } else late = "" }
+		# the unbroken run of step 1 lines at or after the end line, whatever the gap, which an opening step 1
+		# error takes with it (parse_friction, B13 round 10 L26; round 12 N23: the finished session runs
+		# nothing after its report, so a line 71 s after its end line is the next one)
+		ended != "" { if ($0 ~ (stamp " [|] step 1 [|]") && secs($0) >= secs(ended)) { if (late == "") late = substr($0, 1, 20) } else late = "" }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); late = "" }
 		END { print b }' "$f" 2>/dev/null || true
 }

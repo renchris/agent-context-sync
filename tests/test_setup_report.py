@@ -5660,6 +5660,36 @@ def test_the_friction_line_is_left_out_when_it_adds_only_the_end_line(
         assert line in summary.splitlines(), summary
 
 
+def test_a_new_sessions_step_1_line_before_its_error_leaves_the_finished_attempt(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 12 N23: a step 1 deviation 71 s after a finished attempt's end line, then a stated step 1
+    error, was counted in the finished attempt: the error opened the new attempt at any gap, but the lines
+    before it moved only past the 10-minute gap. The finished session runs nothing after its --report-only,
+    so the unbroken run of step 1 lines before the error moves with it whatever the gap; a late step 1 line
+    no such error follows still stays where it is."""
+    head = "Attempt: 2026-10-16T15:50:00Z\nPrompt: v20\nAgent: Contoso Agent\n"
+    end = "2026-10-16T15:57:18Z | end | finished\n"
+    error = "2026-10-16T15:58:30Z | step 1 | error | prompt v20, Contoso Agent: git pull exited 1 | -\n"
+    for deviation in ("prompt v20, Contoso Agent: waited", "waited"):  # devfirst and devplain
+        log = head + "2026-10-16T15:52:00Z | step 2 | start | x | -\n" + end
+        log += f"2026-10-16T15:58:29Z | step 1 | deviation | {deviation} | -\n" + error
+        first, second = setup_report.parse_friction(log).attempts
+        assert [e.kind for e in first.events] == ["start", "finished"], first.events
+        assert [e.kind for e in second.events] == ["deviation", "error"], second.events
+        assert (second.first_line, second.last_line) == (6, 7), (second.first_line, second.last_line)
+        write_friction(fake_mac, log)
+        _text, summary = summary_of(fake_mac)
+        assert "- agent friction: 1 deviation, 0 prompt, 1 error (F6, F7); F7 stopped the run" in summary, (
+            summary
+        )
+    # no error after it: the late line stays in the finished attempt
+    [only] = setup_report.parse_friction(
+        head + end + "2026-10-16T15:58:29Z | step 1 | deviation | x | -\n"
+    ).attempts
+    assert [e.kind for e in only.events] == ["finished", "deviation"], only.events
+
+
 def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[str, Path]) -> None:
     """B13 round 2 R25: a session whose step 1 stopped before ``install.sh --log-start`` wrote no header, so
     the Summary, the friction log section and the issue link said "not stated" for a v11 paste by a known

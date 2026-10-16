@@ -3094,13 +3094,30 @@ def test_the_shell_report_computes_a_step_1_failure_past_its_first_line(
             ["finished", "deviation"],
             "2026-10-14T17:42:00Z",
         ),
-        (  # a late step 1 line inside the gap stays with the finished attempt; the error still opens its own
+        (  # B13 round 12 N23: a step 1 line inside the gap moves with the error too, whatever the gap: the
+            # finished session runs nothing after its --report-only (it stayed with the finished attempt)
             "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
             "2026-10-14T17:20:00Z | end | finished\n"
             "2026-10-14T17:25:00Z | step 1 | click | late | -\n"
             "2026-10-14T17:42:00Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
-            ["finished", "click"],
-            "2026-10-14T17:42:00Z",
+            ["finished"],
+            "2026-10-14T17:25:00Z",
+        ),
+        (  # N23's devfirst: a stated step 1 deviation 71 s after the end line, then the stated error
+            "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
+            "2026-10-14T17:10:00Z | step 2 | deviation | a | -\n2026-10-14T17:20:00Z | end | finished\n"
+            "2026-10-14T17:21:11Z | step 1 | deviation | prompt v18, Contoso Agent: waited | -\n"
+            "2026-10-14T17:21:12Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            ["deviation", "finished"],
+            "2026-10-14T17:21:11Z",
+        ),
+        (  # and devplain: the deviation with no prefix
+            "Attempt: 2026-10-14T17:00:00Z\nPrompt: v18\nAgent: Contoso Agent\n"
+            "2026-10-14T17:10:00Z | step 2 | deviation | a | -\n2026-10-14T17:20:00Z | end | finished\n"
+            "2026-10-14T17:21:11Z | step 1 | deviation | waited | -\n"
+            "2026-10-14T17:21:12Z | step 1 | error | prompt v18, Contoso Agent: git pull failed | -\n",
+            ["deviation", "finished"],
+            "2026-10-14T17:21:11Z",
         ),
     ],
 )

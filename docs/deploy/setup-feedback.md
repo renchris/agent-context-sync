@@ -320,7 +320,8 @@ any gap (2 minutes after the end line is enough). Its session's step 1 stopped b
 the Xcode and git stops log that error before the report; since v19 only when the folder's installer is the
 prompt's version, and otherwise they log nothing and write no report), so the report
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line, since it was logged after the
-previous attempt finished". When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
+previous attempt finished". The unbroken run of step 1 lines just before it, after the closing line, moves with it
+at any gap: the finished session runs nothing after its report. When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
 prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v21, <agent>: ` now), the words step 1 gives `--log-start`, so the
 Summary's `prompt:` and `agent:`, the attempt's line in the friction log section and the issue link's
 `prompt_version` and `agent` name them (the version marked `(from the step 1 error line)`; in the attempt's line

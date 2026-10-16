@@ -1497,9 +1497,9 @@ def parse_friction(text: str) -> Friction:
     a prompt line before its error (B13 round 10 L26; it was read only when the error was the attempt's
     first line). An attempt with a header, and a line of any other step or kind, are never read that way.
     When a step 1 error opens a header-less attempt, the unbroken run of step 1 lines just before it, each
-    dated more than :data:`_NEW_SESSION_GAP` after the previous attempt's end line, is that session's too and
-    moves with it (L26: it was counted in the attempt that had finished); a late line no such error follows
-    stays where it is."""
+    dated at or after the previous attempt's end line, is that session's too and moves with it (L26: it was
+    counted in the attempt that had finished; B13 round 12 N23: whatever the gap, since the finished session
+    runs nothing after its ``--report-only``); a late line no such error follows stays where it is."""
     attempts: list[Attempt] = []
     cur: dict[str, object] | None = None
     shell_step1: dict[int, str] = {}  # line number -> kind, for the lines install.sh reads as step 1's
@@ -1550,7 +1550,9 @@ def parse_friction(text: str) -> Friction:
             )
 
     def late_run() -> list[FrictionEvent]:
-        """Pop the open attempt's trailing step 1 lines dated more than the gap after its end line."""
+        """Pop the open attempt's trailing step 1 lines dated at or after its end line, whatever the gap: the
+        finished session runs nothing after ``--report-only``, its last command, so they are the next
+        session's (B13 round 12 N23: a step 1 line 71 s after the end line stayed with the finished one)."""
         if cur is None:
             return []
         events = cast("list[FrictionEvent]", cur["events"])
@@ -1559,10 +1561,7 @@ def parse_friction(text: str) -> Friction:
             return []
         end, k = max(closed), len(events)
         while (
-            k > 0
-            and events[k - 1].line in shell_step1
-            and (at := events[k - 1].at) is not None
-            and at - end > _NEW_SESSION_GAP
+            k > 0 and events[k - 1].line in shell_step1 and (at := events[k - 1].at) is not None and at >= end
         ):
             k -= 1
         moved = events[k:]

@@ -18304,6 +18304,8 @@ unchanged.
 Amended 2026-10-16, §16.92 M30 (M73 the same defect): such an attempt is labelled `since its session stopped before
 `install.sh --log-start`` too, not `since it is in the v4 format`: `_headerless_kind` reads the first step 1 error
 when only step 1 lines come before it.
+Amended 2026-10-16, §16.98 N23: the run is the step 1 lines dated at or after the end line, whatever the gap, in both
+readers (`late_run`, `friction_attempt_begin`): the finished session runs nothing after its `--report-only`.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 
