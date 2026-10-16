@@ -18698,6 +18698,9 @@ Amended 2026-10-15, §16.96 M62: `_reason_line` had no caller left and is remove
 one caller, never read the reason.
 Amended 2026-10-15, §16.97 M81: L54 also amends §16.78 J55's `_stub_reason`, where its second line is (L54; dated
 line at §16.78 J55).
+Amended 2026-10-16, §16.102 N60: `_withheld_on_page` returns the verdict alone (`bool | None`): both callers,
+`_stub_says` and the cycle's `_page_withheld`, read only that. The tests read the decoded `reason:` through
+`_frontmatter_lines`.
 
 **L51: the recording index revision is in the cache options (`agentsync.convert.recording`; amends §16.84 K63).**
 K63 changed How to read without moving the action key, so a copy of bytes converted under the old legend, or a
@@ -19418,6 +19421,8 @@ YAML fallback still yields None for a page with no reason. J55's test, which pro
 `_withheld_on_page`, the reader production uses, and `setup_report._page_strings` names `_frontmatter_lines`. Test:
 `test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`. Code removal: the test
 passes before the change as after it; it pins the reader production uses, where it pinned one production did not.
+Amended 2026-10-16, §16.102 N60: the same unread reason sat one level down, in `_withheld_on_page`, which now
+returns the verdict alone (`bool | None`) as `_stub_says` does.
 
 **A copy of a read recording is read again once the index revision rises; a repair rebuild keeps the old legend
 (M64, M65; `agentsync.convert.recording`; amends §16.90 L51, §16.84 K63, §16.66 G59).** L51 said raising
@@ -19856,6 +19861,15 @@ credential), `test_cycle.py::test_a_new_recording_read_in_the_cycle_that_deferre
 `test_cycle.py::test_a_new_file_the_os_will_not_hydrate_is_counted_deferred`,
 `test_cli.py::test_a_new_file_is_counted_once_under_its_final_verdict` (an edited file reads `changed=1`, not new),
 `test_cli.py::test_a_new_file_publish_quarantines_reads_quarantined_and_not_changed`.
+
+**`_withheld_on_page` returns the verdict alone (N60; `agentsync.publish`, `agentsync.cycle`; amends §16.90 L47,
+§16.96 M62).** M62 took the unread reason out of `_stub_says`; it sat one level down, in `_withheld_on_page`'s
+`(reason, verdict)`, whose two callers read only the verdict and whose only readers of the reason were tests. It
+returns `bool | None` now; a missing or empty reason, or a line that does not decode, still gives None, which sends
+the caller to the YAML parse. J55's test reads the decoded `reason:` through `_frontmatter_lines`, the L47/L54 test
+and M79's test the verdict. Tests: `test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`,
+`test_cycle.py::test_a_stub_pages_lines_say_withheld_as_its_yaml_parse_does`,
+`test_deploy_pack.py::test_a_page_read_that_says_neither_can_disagree_with_the_tsv`.
 
 ### 16.103 Round 12: deploy docs and CONTRACTS cross-references (2026-10-16, wave B13 round 12 lane D)
 

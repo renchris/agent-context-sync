@@ -5283,8 +5283,10 @@ def test_a_page_read_that_says_neither_can_disagree_with_the_tsv() -> None:
     from agentsync import policy, publish, setup_report  # noqa: PLC0415
 
     text = '---\nreason: "unsupported image layout"\nsummary: "an image"\n---\n\n# a.png\n\nthe page body\n'
-    shown, withheld = publish._withheld_on_page(text) or ("", True)
-    assert not withheld  # the TSV keeps the row's reason
+    assert publish._withheld_on_page(text) is False  # the TSV keeps the row's reason
+    read = publish._frontmatter_lines(text, ("reason",))
+    shown = read[0]["reason"] if read is not None else None
+    assert shown == "unsupported image layout"
     assert not policy.page_says_withheld(shown, "an image", "the page body")
     assert not shown.casefold().startswith(setup_report._NO_CONVERTER)  # so read_image_pages counts it unread
     mirror = setup_report._Mirror.__new__(setup_report._Mirror)

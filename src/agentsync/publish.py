@@ -559,12 +559,13 @@ def _frontmatter_lines(text: str, keys: tuple[str, ...]) -> tuple[dict[str, str 
     return found, body
 
 
-def _withheld_on_page(text: str) -> tuple[str, bool] | None:
-    """A stub page's ``reason:`` and whether the page says a label rule withheld its file
-    (:func:`policy.page_says_withheld`: its reason, its summary or its body), read from its frontmatter lines
-    without a YAML parse, or None when the reason line is missing or a reason or summary line does not decode,
-    for the caller's parse. The cycle reads it for every online-only image stub a label rule may withhold on
-    each pass that has no OCR engine, where the parse cost about 1 s per 2000 stubs a poll (B13 round 10
+def _withheld_on_page(text: str) -> bool | None:
+    """Whether a stub page says a label rule withheld its file (:func:`policy.page_says_withheld`: its
+    reason, its summary or its body), read from its frontmatter lines without a YAML parse, or None when the
+    reason line is missing or empty, or a reason or summary line does not decode, for the caller's parse. It
+    returns the verdict alone: both callers read only that (B13 round 12 N60, as round 11 M62 did for
+    ``Publisher._stub_says``). The cycle reads it for every online-only image stub a label rule may withhold
+    on each pass that has no OCR engine, where the parse cost about 1 s per 2000 stubs a poll (B13 round 10
     L47), and ``_sync/QUARANTINE.tsv`` for each such stub every run (L54)."""
     read = _frontmatter_lines(text, ("reason", "summary"))
     if read is None:
@@ -573,7 +574,7 @@ def _withheld_on_page(text: str) -> tuple[str, bool] | None:
     reason = found.get("reason")
     if not reason or ("summary" in found and found["summary"] is None):
         return None
-    return reason, policy.page_says_withheld(reason, found.get("summary"), body)
+    return policy.page_says_withheld(reason, found.get("summary"), body)
 
 
 def _withheld_reason(suffix: str) -> str:
@@ -1166,8 +1167,8 @@ class Publisher:
             text = self._read_text(out.output_path)
             if text is None:
                 continue
-            if (fast := _withheld_on_page(text)) is not None:
-                return fast[1]
+            if (said := _withheld_on_page(text)) is not None:
+                return said
             try:
                 data, body = parse_frontmatter(text)
             except FrontmatterError:

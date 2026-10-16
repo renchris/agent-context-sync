@@ -2021,8 +2021,8 @@ class _Cycle:
                 text = (self.repo / out.output_path).read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 return None
-            if (fast := _withheld_on_page(text)) is not None:
-                return fast[1]
+            if (said := _withheld_on_page(text)) is not None:
+                return said
             try:
                 fm, body = parse_mirror_page(text)
             except FrontmatterError:

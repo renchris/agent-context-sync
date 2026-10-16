@@ -3090,7 +3090,8 @@ def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
     """B13 round 8 J55: H52 had every run YAML-parse the page of each stub a label rule may withhold, about
     1.2 s per 2000 image stubs on every poll. The page's ``reason:`` line is decoded as the emitter wrote it
     now, which gives what the YAML parse gives for any wording.  Round 11 M62: the reader is
-    ``_withheld_on_page``, the one ``Publisher._stub_says`` uses; ``_reason_line`` had no caller left."""
+    ``_withheld_on_page``, the one ``Publisher._stub_says`` uses; ``_reason_line`` had no caller left.
+    Round 12 N60: it returns the verdict alone, so the decode is read through ``_frontmatter_lines``."""
     engine = fake_engine(tmp_path / "ocr-bin")
     picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
@@ -3109,10 +3110,10 @@ def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
     page = (config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)).read_text(encoding="utf-8")
     for reason in (withheld, "no converter for .png", 'a "quoted" naïve — reason: x', "true", "12"):
         text = render_frontmatter({"status": "refused", "reason": reason}) + "body\n"
-        fast = publish_mod._withheld_on_page(text)
-        assert fast is not None and fast[0] == real(text)[0]["reason"] == reason
-    fast = publish_mod._withheld_on_page(page)
-    assert fast == (withheld, True) and real(page)[0]["reason"] == withheld
+        assert publish_mod._withheld_on_page(text) is not None
+        read = publish_mod._frontmatter_lines(text, ("reason",))
+        assert read is not None and read[0]["reason"] == real(text)[0]["reason"] == reason
+    assert publish_mod._withheld_on_page(page) is True and real(page)[0]["reason"] == withheld
     assert publish_mod._withheld_on_page("---\nstatus: refused\n---\nbody\n") is None
 
 
@@ -3179,7 +3180,7 @@ def test_a_stub_pages_lines_say_withheld_as_its_yaml_parse_does(text: str, withh
     parse."""
     fm, body = parse_frontmatter(text)
     assert content_policy.page_says_withheld(fm["reason"], fm.get("summary"), body) is withheld
-    assert publish_mod._withheld_on_page(text) == (fm["reason"], withheld)
+    assert publish_mod._withheld_on_page(text) is withheld
     if "\nsummary: " in text:
         assert publish_mod._withheld_on_page(text.replace("\nsummary: ", "\nsummary: x", 1)) is None
 
