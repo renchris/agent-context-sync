@@ -3163,7 +3163,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them a first read: a stub "
             "whose bytes had never been read, now in the count above)",
-            "converted 1, deferred 0 online-only, first read 1: stubs whose bytes had never been read, also "
+            "converted 1, deferred 0 online-only, first read 1: a stub whose bytes had never been read, also "
             "in the converted count (install.out)",
         ),
         (  # B13 round 10 L34: the CLI's own first-read head, from install.out and with install.log's note
@@ -3192,7 +3192,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "",
             "first sync: converted 1, deferred 0 online-only, read again 1 (1 of them read for the first "
             "time, also counted above)",
-            "converted 1, deferred 0 online-only, first read 1: stubs whose bytes had never been read, also "
+            "converted 1, deferred 0 online-only, first read 1: a stub whose bytes had never been read, also "
             "in the converted count (install.out)",
         ),
         (  # B13 round 6 G35: the refused count, and a split with no unreadable stub, are kept; the tag

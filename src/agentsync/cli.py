@@ -422,7 +422,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     converted)`` says how many: B13 round 4 Q28; round 9 K34 reworded it, since "read for the first time",
     said of files read again, said both things of the same files; when all R are first reads the head says so
     instead, ``, first read R (stubs whose bytes had never been read, so also counted as converted)``, since
-    "read again" was false of every one: round 10 L34; round 10 L16 named the count both brackets are in),
+    "read again" was false of every one: round 10 L34; round 10 L16 named the count both brackets are in; ``a
+    stub whose bytes ...`` for R = 1: round 11 M11),
     then `` (of the converted: U unreadable, F failed, R refused)`` when some of the N are UNREADABLE stubs
     (U), conversions that failed (F; §16.45 R2) or files refused after their bytes were read (R: a label rule,
     a .msg whose label cannot be read; B13 round 6 G35, which also prints the split for F or R alone; an inbox
@@ -496,10 +497,8 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     if report.read_again and report.read_first == report.read_again:
         # all of them first reads: no "again" at all, and R right after "first read", which install.sh's awk
         # and setup_report read as they read "read again R" (B13 round 10 L34)
-        again = (
-            f", first read {report.read_again} (stubs whose bytes had never been read, so also counted as "
-            "converted)"
-        )
+        what = "a stub whose bytes" if report.read_again == 1 else "stubs whose bytes"  # B13 round 11 M11
+        again = f", first read {report.read_again} ({what} had never been read, so also counted as converted)"
     elif report.read_again and report.read_first:
         again += (
             f" ({report.read_first} of them a first read: a stub whose bytes had never been read, so also "

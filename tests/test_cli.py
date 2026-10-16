@@ -356,6 +356,12 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
         "counted as converted); of the converted: 1 unreadable, 0 failed, 0 refused"
     )
     assert "again" not in line and ") (" not in line and line.split().count("converted") == 1
+    # B13 round 11 M11: one stub is "a stub", not "stubs"
+    cli._print_report(dataclasses.replace(report, read_again=1, read_first=1))
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "converted 0, deferred 0 online-only, first read 1 (a stub whose bytes had never been read, so also "
+        "counted as converted)"
+    )
     cli._print_report(dataclasses.replace(report, sources=(unread,), read_again=0))
     assert capsys.readouterr().out.splitlines()[-1] == (
         "converted 3, deferred 0 online-only (of the converted: 1 unreadable, 0 failed, 0 refused)"

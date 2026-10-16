@@ -7123,9 +7123,8 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         first = r.facts.first_sync_first_read
         if again and first is not None and first[:2] == (converted, again) and first[2] == again:
             # every one a first read: no "read again" (the CLI's head since B13 round 10 L34), no bracket
-            reread = (
-                f", first read {again}: stubs whose bytes had never been read, also in the converted count"
-            )
+            what = "a stub whose bytes" if again == 1 else "stubs whose bytes"  # B13 round 11 M11
+            reread = f", first read {again}: {what} had never been read, also in the converted count"
             named.append("the first-read count")
         elif first is not None and first[:2] == (converted, again) and first[2]:
             # the CLI's words since B13 round 9 K34, without its bracket (no comma before "of": round 10 L34)
