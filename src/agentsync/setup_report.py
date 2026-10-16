@@ -3243,10 +3243,17 @@ def _git_ro(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple
 
 
 def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
-    """:func:`_git_ro` with git's stderr too (in the C locale, so its messages are git's English ones)."""
+    """:func:`_git_ro` with git's stderr too (in the C locale, so its messages are git's English ones).  Every
+    caller reads a checkout: git looks no higher than ``directory`` (its resolved parent is the ceiling), so a
+    .git it cannot read is not read past into a repository around it (B13 round 11 M51)."""
     limit = min(timeout, r.remaining() - _RESERVE_S)
     if limit <= 0.2:
         return 124, b"", b""
+    env = {**os.environ, "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
+    with contextlib.suppress(OSError, RuntimeError):
+        parent = str(directory.resolve().parent)
+        if ":" not in parent:  # a colon would split git's list
+            env["GIT_CEILING_DIRECTORIES"] = parent
     try:
         cp = subprocess.run(
             ["/usr/bin/git", "-C", str(directory), *args],
@@ -3254,7 +3261,7 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
             timeout=limit,
             check=False,
             stdin=subprocess.DEVNULL,
-            env={**os.environ, "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"},
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return 124, b"", b""

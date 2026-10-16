@@ -349,11 +349,11 @@ newer_copy_fix() {
 	case "$shown" in "$HOME"/*) shown='~/'"${shown#"$HOME"/}" ;; esac
 	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
 	if [ -n "$src" ] && [ -n "$d" ] && [ -d "$d" ]; then
-		u="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+		u="$(git_ro -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 		[ -z "$u" ] || r="${u%%/*}"
-		url="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" remote get-url "$r" 2>/dev/null || true)"
-		b="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" symbolic-ref -q --short HEAD 2>/dev/null || true)"
-		[ -z "$b" ] || m="$(GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C "$src" config --get "branch.$b.merge" 2>/dev/null || true)"
+		url="$(git_ro -C "$src" remote get-url "$r" 2>/dev/null || true)"
+		b="$(git_ro -C "$src" symbolic-ref -q --short HEAD 2>/dev/null || true)"
+		[ -z "$b" ] || m="$(git_ro -C "$src" config --get "branch.$b.merge" 2>/dev/null || true)"
 	fi
 	if [ -n "$url" ] && [ -z "$u" ]; then
 		if [ -z "$b" ]; then how="it is on no branch"; elif [ -z "$m" ]; then how="it follows no upstream branch"; fi
@@ -377,6 +377,21 @@ newer_copy_fix() {
 		follows="does not follow main of $CANON_REPO ($how): point it there, or move it aside so step 1 clones it, then paste the prompt again"
 		FIX="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session; if that copy stops here too, this Mac's checkout $follows"
 		TELL="copy the prompt again from $PROMPT_SOURCE (\"Set up on a new Mac: one prompt\") and paste it into a new session; if that copy stops here too, this Mac's checkout ($shown) $follows"
+	fi
+}
+# git, read-only: GIT_OPTIONAL_LOCKS=0 keeps even `git diff` from rewriting the index's stat cache. Every
+# caller reads a checkout (-C DIR): git looks no higher than DIR, so a .git it cannot read (one holding only
+# HEAD) is not read past into a repository around it, such as a home that is one (B13 round 11 M51). The
+# ceiling is DIR's physical parent; git ignores a relative entry, and a ":" would split the list. Defined
+# here, before the friction-log commands, whose newer_copy_fix reads the checkout too.
+git_ro() {
+	local p=""
+	[ "${1-}" != -C ] || p="$(cd -P "$2" 2>/dev/null && cd -P .. && pwd -P)" || p=""
+	case "$p" in *:*) p="" ;; esac
+	if [ -n "$p" ]; then
+		GIT_CEILING_DIRECTORIES="$p" GIT_OPTIONAL_LOCKS=0 /usr/bin/git "$@"
+	else
+		GIT_OPTIONAL_LOCKS=0 /usr/bin/git "$@"
 	fi
 }
 friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
@@ -739,8 +754,6 @@ have_devtools() {
 	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
 	[ -n "$d" ] && [ -d "$d" ]
 }
-# git, read-only: GIT_OPTIONAL_LOCKS=0 keeps even `git diff` from rewriting the index's stat cache.
-git_ro() { GIT_OPTIONAL_LOCKS=0 /usr/bin/git "$@"; }
 # The first 12 hex digits of the SHA-256 of `git diff HEAD` in the checkout $1: which local changes ran.
 tree_fingerprint() {
 	git_ro -C "$1" diff --no-ext-diff --no-color HEAD -- 2>/dev/null | /usr/bin/shasum -a 256 | cut -c1-12

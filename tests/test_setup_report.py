@@ -2398,6 +2398,32 @@ def test_the_install_source_says_git_refuses_a_checkout_another_account_owns(
     assert setup_report._install_source(run) == f"checkout {repo} (git cannot read its .git)"
 
 
+def test_the_install_source_reads_no_commit_from_a_repository_around_the_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 11 M51: a checkout whose .git holds only HEAD, inside a home that is a git repository, read
+    as ``@ <the home's commit>``: git searched upward past the .git it could not read. The checkout's parent
+    is git's ceiling, so it reads "git cannot read its .git"."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "notes.txt").write_text("Contoso notes\n")
+    git = ["git", "-C", str(home), "-c", "user.email=t@example.invalid", "-c", "user.name=t"]
+    for args in (("init", "-q", "-b", "main"), ("add", "-A"), ("commit", "-q", "-m", "one")):
+        subprocess.run([*git, *args], check=True, capture_output=True)
+    outer = subprocess.run(
+        [*git, "rev-parse", "--short=12", "HEAD"], check=True, capture_output=True, text=True
+    )
+    repo = home / "src" / "checkout"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    monkeypatch.setattr(setup_report, "_installed_from", lambda: (f"checkout {repo}", repo))
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    monkeypatch.setattr(run, "devtools", lambda: True)
+    line = setup_report._install_source(run)
+    assert line == f"checkout {repo} (git cannot read its .git)", line
+    assert outer.stdout.strip() not in line
+
+
 def test_an_empty_git_proxy_takes_no_token_from_the_next_line(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

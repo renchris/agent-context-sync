@@ -18941,6 +18941,18 @@ The header's step 2 paragraph, the comments, setup-feedback.md and `setup_report
 say so. Tests: `test_the_reinstall_names_who_started_the_sync_it_waits_for` (other, launchd, no `started_by`, another
 pid, an empty body; the host never printed), the `REINSTALL_WAITS` pins.
 
+**A checkout git cannot read takes no commit from a repository around it** (M51). In a home that is itself a git
+repository, a checkout whose `.git` holds only `HEAD` (not a valid gitdir) made git search upward, so `install.sh
+--version`, the shell report's `source commit`, install.log's start line (`read_commit "$SOURCE"`) and the agentsync
+report's install source (`checkout ... @ <sha>`) all named the home's commit. v19's step 1 command exports a ceiling,
+but only inside that one command. The read-only git helpers, `git_ro` (install.sh) and `_git_ro_err`
+(setup_report.py), whose every caller reads a checkout, set `GIT_CEILING_DIRECTORIES` to the checkout's physical
+parent (`cd -P`; `Path.resolve().parent`), and to nothing when that path holds a `:`, which would split git's list.
+git still reads the checkout itself, so a healthy checkout and a linked worktree (`.git` a file) read as before, and
+an unreadable `.git` falls to the existing words (`unknown`, `git cannot read its .git`). Tests:
+`test_a_checkout_git_cannot_read_takes_no_commit_from_a_repository_around_it` (`--version`, the shell report, a
+linked worktree), `test_the_install_source_reads_no_commit_from_a_repository_around_the_checkout`.
+
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
 The B13 round 11 items of lane P (specs `round11/items/M<n>.md`, the verifier's corrected fix built unless a

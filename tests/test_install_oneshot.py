@@ -3287,6 +3287,42 @@ def test_version_of_a_dirty_checkout_names_its_diff(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+def test_a_checkout_git_cannot_read_takes_no_commit_from_a_repository_around_it(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 11 M51: in a home that is itself a git repository, a checkout whose .git holds only HEAD made
+    git search upward, so --version, the shell report and install.log named the home's commit. git_ro sets
+    the checkout's parent as git's ceiling; a healthy checkout and a linked worktree still read their own."""
+    home = Path(env["HOME"])
+    (home / "notes.txt").write_text("Contoso notes\n")
+    outer = subprocess.run(
+        [*_git_checkout(home), "rev-parse", "--short=12", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    src = home / "src" / "agent-context-sync"
+    (src / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, src / "scripts" / "install.sh")
+    (src / ".git").mkdir()
+    (src / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    script = src / "scripts" / "install.sh"
+    version = install_sh(env, "--version", script=script)
+    assert version.stdout.splitlines()[0].startswith("source commit: unknown"), version.stdout
+    assert install_sh(env, "--report-only", script=script).returncode == 0
+    text = report_path(env).read_text()
+    assert outer not in version.stdout + text, "the home's commit"
+    main = tmp_path / "main"
+    (main / "scripts").mkdir(parents=True)
+    shutil.copy2(INSTALL_SH, main / "scripts" / "install.sh")
+    git = _git_checkout(main)
+    subprocess.run([*git, "worktree", "add", "-q", str(tmp_path / "wt")], check=True, capture_output=True)
+    sha = subprocess.run(
+        [*git, "rev-parse", "--short=12", "HEAD"], check=True, capture_output=True, text=True
+    )
+    for checkout in (main, tmp_path / "wt"):
+        cp = install_sh(env, "--version", script=checkout / "scripts" / "install.sh")
+        assert cp.stdout.splitlines()[0] == f"source commit: {sha.stdout.strip()}", cp.stdout
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
 def test_install_log_start_line_names_the_diff_of_a_dirty_source(env: dict[str, str], tmp_path: Path) -> None:
     src = tmp_path / "checkout"
     src.mkdir()
