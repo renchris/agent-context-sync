@@ -5910,15 +5910,21 @@ def test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version(
     two, and its Run metadata named its own prompt version beside the Summary's comparison with this
     installer's. The installer gives the prompt line the second reason, and says whose version the metadata
     names; a line in K22's words, the no-version form, a prompt line outside the Summary and a matching
-    version are left."""
+    version are left. B13 round 11 M27, M52: that clause was a second bracket right before the renderer's
+    "(python ...)" one; it opens inside it, joined by "; ", and a line that has it already is left."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
     shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
     meta_old = f"- agentsync: 0.1.0, setup prompt v{COMPAT - 1} (python 3.11.9, /usr/bin/python3)"
     meta_same = f"- agentsync: 0.1.0, setup prompt v{COMPAT} (python 3.11.9, /usr/bin/python3)"
+    meta_new = (
+        f"- agentsync: 0.1.0, setup prompt v{COMPAT - 1} (the installed agentsync, which renders this "
+        "report; the checkout's installer, which stopped this copy, is for setup prompt "
+        f"v{COMPAT}, and the fresh copy's step 2 reinstalls agentsync; python 3.11.9, /usr/bin/python3)"
+    )
     old = tmp_path / "old-report.md"
     old.write_text(
         _old_doctor_report(line, _DOCTOR_HEAD, ["[warn] launchd.poll — x"]).replace(
-            "## Redaction", f"### Run metadata\n\n{meta_old}\n{meta_same}\n{line}\n\n## Redaction"
+            "## Redaction", f"### Run metadata\n\n{meta_old}\n{meta_same}\n{line}\n{meta_new}\n\n## Redaction"
         )
     )
     side = report_path(env).parent / "setup" / "stopped-copy-report.md"
@@ -5928,12 +5934,8 @@ def test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version(
     meta = lines.index("### Run metadata")
     assert lines[lines.index("## Summary") + 2] == (want or line)
     assert lines[meta + 4] == line, "a prompt line outside the Summary is left as it is"
-    assert lines[meta + 2 : meta + 4] == [
-        f"- agentsync: 0.1.0, setup prompt v{COMPAT - 1} (the installed agentsync, which renders this "
-        "report; the checkout's installer, which stopped this copy, is for setup prompt "
-        f"v{COMPAT}, and the fresh copy's step 2 reinstalls agentsync) (python 3.11.9, /usr/bin/python3)",
-        meta_same,
-    ]
+    assert lines[meta + 2 : meta + 4] == [meta_new, meta_same]
+    assert lines[meta + 5] == meta_new, "a line that has the clause already gets it once"
 
 
 def test_a_stopped_lines_fix_names_the_remedy_of_both_readings(env: dict[str, str]) -> None:

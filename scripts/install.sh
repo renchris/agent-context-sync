@@ -3120,8 +3120,10 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				}
 				index($0, "## ") == 1 { sec = $0 }
 				sec == "## Summary" { $0 = prompt_line($0) }
-				index($0, "- agentsync: ") == 1 && match($0, /, setup prompt v[0-9]+ \(/) && substr($0, RSTART + 16, RLENGTH - 18) != compat {
-					$0 = substr($0, 1, RSTART + RLENGTH - 3) " (the installed agentsync, which renders this report; the checkout\047s installer, which stopped this copy, is for setup prompt v" compat ", and the fresh copy\047s step 2 reinstalls agentsync)" substr($0, RSTART + RLENGTH - 2)
+				# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13
+				# round 11 M27, M52; the rule of G9 and J23/J40). Every renderer writes "setup prompt vN (python X, exe)".
+				index($0, "- agentsync: ") == 1 && match($0, /, setup prompt v[0-9]+ \(/) && substr($0, RSTART + 16, RLENGTH - 18) != compat && !index($0, "the installed agentsync, which renders this report") {
+					$0 = substr($0, 1, RSTART + RLENGTH - 1) "the installed agentsync, which renders this report; the checkout\047s installer, which stopped this copy, is for setup prompt v" compat ", and the fresh copy\047s step 2 reinstalls agentsync; " substr($0, RSTART + RLENGTH)
 				}
 				c && sec == "## Doctor" && old($0) { $0 = substr($0, 1, index($0, " (fix: ") - 1) " (expected: " w ")" }
 				c && sec == "## Doctor" && $0 ~ /^[0-9]+ check\(s\): .*\. Only the lines that are not ok:/ {

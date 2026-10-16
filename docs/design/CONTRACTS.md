@@ -18255,6 +18255,8 @@ agentsync)`, before its `(python ...)` bracket. Tests:
 `test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected` (K24's renderer left alone, another
 expected warn keeps the bare words), `test_the_shell_stopped_copy_beyond_is_the_reports`,
 `test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version`.
+Amended 2026-10-15, §16.93 M27, M52: (c) opens the clause inside its `(python ...)` bracket, joined by `; `
+(`setup prompt vN (the installed agentsync, ...; python X, <exe>)`), so the line has one bracket (G9, J23/J40).
 
 **Not computed, the link still fills what the shell reads** (L2; amends §16.81 K8). With no computed outcome the
 link was bare, though the run line computes the run type and the friction log states the version and the agent.
@@ -18817,6 +18819,16 @@ not a grep). `LOCAL_WORK_WHERE` (install.sh and setup_report.py, one string) sai
 carried`, which beside `1 patch file(s)` read as a number; it says `any patch an earlier report already carried`.
 docs/deploy/setup-feedback.md says both. Tests: `test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch`
 (one and two patches), `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`.
+
+**The stopped copy's Run metadata line has one bracket** (M27 and M52, one defect; amends §16.87 L24 (c)). L24 put
+its clause in a bracket of its own right before the renderer's `(python X, <exe>)` one, two brackets in a row, the
+form G9 and J23/J40 removed elsewhere. The clause opens inside the renderer's bracket and ends with `; `: `- agentsync:
+0.1.0, setup prompt v18 (the installed agentsync, which renders this report; the checkout's installer, which stopped
+this copy, is for setup prompt v19, and the fresh copy's step 2 reinstalls agentsync; python 3.11.9,
+/usr/bin/python3)`. The interpreter path stays last, so a `; ` inside it cannot end the clause (M27's objection to
+putting the clause after the path), and the `;` is kept (M27: a `:` would change the meaning). A line that holds the
+clause already is left. Every renderer writes `setup prompt vN (python ...)`, so the bracket after vN is always the
+python one. Test: `test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version`.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
