@@ -2039,23 +2039,56 @@ friction_attempt_begin() {
 # (compute_outcome), and takes the version and the agent from the same line, its first stated step 1 error;
 # a line of another step leaves it to that report, so the two cannot drift. A second step 1 error, or a step 1 prompt or question line, after the stated one no
 # longer leaves the outcome uncomputed (B13 round 9 K14: it was the attempt's only line).
+# A copy --log-start stopped has a header and a stop line that states nothing, so it was never computed, though
+# the agentsync report computes "failed at step 1" for it: when the attempt's first step 1 error is that stop
+# line and every timed line is step 1's, the version and the agent come from the attempt's first Prompt: and
+# Agent: header lines, and a third field says so ("header"; B13 round 11 M14). Prints "<N><TAB><agent><TAB>
+# [header]".
 friction_step1_stated() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
 	LC_ALL=C awk -v mark="| step 1 | error | $PROMPT_STOPPED " -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
-		function fresh() { first = ""; other = 0; ended = "" }
+		function fresh() { first = ""; other = 0; ended = ""; hp = ""; ha = ""; e1 = "" }
+		function value(line) { # as parse_friction: the text after the colon, less stars and blanks around it
+			sub(/^[^:]*:/, "", line); gsub(/^[ \t*]+|[ \t*]+$/, "", line); return line
+		}
 		{ q = track($0) }
-		NH { NH = 0; fresh(); next }
+		NH { NH = 0; fresh() }
 		/^Attempt:/ { fresh(); next }
+		/^[-* ]*Prompt:/ { if (hp == "") hp = value($0); next }
+		/^[-* ]*Agent:/ { if (ha == "") ha = value($0); next }
 		q { fresh() }
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
 		$0 !~ (stamp " [|]") { next }
 		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
+		e1 == "" && $0 ~ s1 { e1 = $0 }
 		first == "" && $0 ~ s1 && stated($0) { first = $0 }
 		$0 !~ (stamp " [|] step 1 [|]") { other = 1 }
-		END { if (!HD && !other && first != "" && !index(first, mark) && stated(first)) printf "%s\t%s\n", SV, SR }' "$f" 2>/dev/null || true
+		END {
+			if (!HD && !other && first != "" && !index(first, mark) && stated(first)) printf "%s\t%s\t\n", SV, SR
+			else if (HD && !other && index(e1, mark) && hp != "") { sub(/^[vV]/, "", hp); printf "%s\t%s\theader\n", hp, ha }
+		}' "$f" 2>/dev/null || true
+}
+# Whether the friction log's latest attempt holds a timed "<UTC> | step N | ..." line, with the attempt
+# boundaries friction_step1_stated takes. Its Attempt:, Prompt: and Agent: lines and its "| end | finished" line
+# are no step line (B13 round 11 M15).
+friction_latest_has_step() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 1
+	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		BEGIN { step = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|] step [0-9]+ [|]" }
+		function fresh() { has = 0; ended = "" }
+		{ q = track($0) }
+		NH { NH = 0; fresh() }
+		/^Attempt:/ { fresh(); next }
+		q { fresh() }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
+		$0 ~ step { has = 1 }
+		END { exit !has }' "$f" 2>/dev/null
 }
 # The Prompt and Agent values of the friction log's latest attempt, as Attempt.said gives them: the attempt's
 # first Prompt: and Agent: header lines, else what the step 1 error line that opened a header-less attempt
@@ -2168,17 +2201,39 @@ run_type_why() {
 # friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
 # version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
-	local stated="" n note=""
+	local stated="" n note="" agent where="the step 1 error line" choose
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
 	if [ -n "$stated" ]; then
 		n="${stated%%$'\t'*}"
+		agent="${stated#*$'\t'}"
+		case "${agent#*$'\t'}" in
+		header)
+			# a copy --log-start stopped: the version from the attempt's header, and for an older one the
+			# agentsync report's note on its prompt line (B13 round 11 M14)
+			where="the attempt's Prompt line"
+			case "$n" in
+			"" | *[!0-9]*) ;;
+			*) [ "$n" -ge "$SETUP_PROMPT_COMPAT" ] || note="; older than the installer's v$SETUP_PROMPT_COMPAT: the pasted copy was not the current README, or the --log-start value was changed" ;;
+			esac
+			;;
+		esac
+		agent="${agent%%$'\t'*}"
 		case "$n" in
 		"" | *[!0-9]*) ;;
 		*) [ "$n" -le "$SETUP_PROMPT_COMPAT" ] || note="; newer than this installer, which is for prompt v$SETUP_PROMPT_COMPAT" ;;
 		esac
-		say "$OUTCOME_LINE_HEAD$n (from the step 1 error line$note) · run: $(run_type_label) (computed: $(run_type_why)) · agent: ${stated#*$'\t'}"
+		say "$OUTCOME_LINE_HEAD$n (from $where$note) · run: $(run_type_label) (computed: $(run_type_why))${agent:+ · agent: $agent}"
 	else
-		say "- outcome: not computed (this shell fallback computes none for this attempt; the Outcome is yours to choose from the friction log's step lines; the link fills Run type, and Prompt version and Agent where the latest attempt states them)"
+		# where the Outcome is read from: the attempt's step lines, the install runs of the attempt when it has
+		# no step line, or neither (B13 round 11 M15: it named step lines an attempt did not have)
+		if friction_latest_has_step; then
+			choose="; the Outcome is yours to choose from the friction log's step lines"
+		elif ! attempt_ran_no_install; then
+			choose=", and the friction log has no step line for it; the Outcome is yours to choose from the Installer section, which has this attempt's install runs"
+		else
+			choose=", and the friction log has no step line for it; the Outcome is yours to choose"
+		fi
+		say "- outcome: not computed (this shell fallback computes none for this attempt$choose; the link fills Run type, and Prompt version and Agent where the latest attempt states them)"
 		say "- run: $(run_type_label) (computed: $(run_type_why))"
 	fi
 }

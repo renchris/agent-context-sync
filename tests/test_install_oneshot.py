@@ -2649,6 +2649,15 @@ NOT_COMPUTED = (
 field comes from; round 10 L2: the link fills what the shell can read)."""
 
 
+NO_STEP_LINE = (
+    "- outcome: not computed (this shell fallback computes none for this attempt, and the friction log has "
+    "no step line for it; the Outcome is yours to choose{}; the link fills Run type, and Prompt version and "
+    "Agent where the latest attempt states them)"
+)
+"""NOT_COMPUTED for an attempt with no step line, or no friction log (B13 round 11 M15); the braces take
+" from the Installer section, ..." when the attempt has an install run."""
+
+
 def _summary(report: str) -> list[str]:
     return report.split("\n## Summary\n\n", 1)[1].split("\n\n## ", 1)[0].splitlines()
 
@@ -2830,12 +2839,79 @@ def test_the_shell_report_computes_no_other_outcome(
         assert install_sh(env, "--log", step, kind, what, "-").returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
-    assert _summary(text)[2] == NOT_COMPUTED
+    assert _summary(text)[2] == (NOT_COMPUTED if logged else NO_STEP_LINE.format(""))  # B13 round 11 M15
     link = text.splitlines()[-1]
     assert link == _uncomputed_link(env, text) and "outcome=" not in link
     fields = setup_report.issue_link_fields(link)
     names = " and ".join(fields) if len(fields) < 3 else ", ".join(fields[:-1]) + ", and " + fields[-1]
     assert f"issue with the {names} field" in text.splitlines()[-3]
+
+
+@pytest.mark.parametrize(
+    ("said", "late", "want"),
+    [
+        (
+            "prompt v3, Contoso Agent 1",
+            False,
+            "prompt: v3 (from the attempt's Prompt line; older than the installer's v{c}: the pasted copy "
+            "was not the current README, or the --log-start value was changed)",
+        ),
+        (
+            "prompt v99, Contoso Agent 1",
+            False,
+            "prompt: v99 (from the attempt's Prompt line; newer than this "
+            "installer, which is for prompt v{c})",
+        ),
+        ("Contoso Agent 1", False, "prompt: v7 or older (from the attempt's Prompt line)"),
+        ("prompt v3, Contoso Agent 1", True, None),
+    ],
+)
+def test_the_shell_report_computes_a_stopped_copys_failure(
+    env: dict[str, str], said: str, late: bool, want: str | None
+) -> None:
+    """B13 round 11 M14: a copy --log-start stopped has a header and a stop line that states nothing, so the
+    shell report left its outcome "not computed" while the agentsync report computes "failed at step 1" from
+    the same log. The version and the agent now come from the attempt's Prompt: and Agent: lines; a late line
+    of another step still leaves the outcome to the agentsync report."""
+    assert install_sh(env, "--log-start", said).returncode == 2
+    if late:
+        assert install_sh(env, "--log", "3", "error", "the report did not open", "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = (friction_path(env).parent / "stopped-copy-report.md").read_text()
+    outcome = _summary(text)[2]
+    if want is None:
+        assert outcome == NOT_COMPUTED, outcome
+        return
+    assert outcome.startswith(
+        "- outcome: failed at step 1 (computed: no install.sh run; step 1 logged an error) · "
+        + want.format(c=COMPAT)
+        + " · run: "
+    ), outcome
+    assert outcome.endswith(" · agent: Contoso Agent 1"), outcome
+
+
+@pytest.mark.parametrize("ran", [False, True])
+def test_an_uncomputed_outcome_names_step_lines_only_when_the_attempt_has_them(
+    env: dict[str, str], ran: bool
+) -> None:
+    """B13 round 11 M15: with a friction log of a header and an end line only, the uncomputed outcome still
+    said to choose "from the friction log's step lines". It says the attempt has none, and names the
+    Installer section when the attempt has an install run."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-14T10:00:00Z\nPrompt: v19\nAgent: Northwind Agent 2.1\n"
+        "2026-10-14T10:05:00Z | end | finished\n"
+    )
+    if ran:
+        (setup / "install.log").write_text(
+            "2026-10-14T10:01:00Z run=20261014T100100Z-1 start install.sh compat=19 commit=- kind=- source=- "
+            "args=\n2026-10-14T10:01:01Z run=20261014T100100Z-1 step=uv seconds=0 rc=0 result=skipped\n"
+        )
+    assert install_sh(env, "--report-only").returncode == 0
+    outcome = _summary(report_path(env).read_text())[2]
+    where = " from the Installer section, which has this attempt's install runs" if ran else ""
+    assert outcome == NO_STEP_LINE.format(where), outcome
 
 
 @pytest.mark.parametrize(
@@ -3106,13 +3182,15 @@ def test_the_shell_reports_newer_prompt_note_names_no_pull(env: dict[str, str]) 
     assert "pull" not in inside
 
 
-def test_a_stopped_copys_shell_report_computes_no_outcome_and_has_no_link(env: dict[str, str]) -> None:
+def test_a_stopped_copys_shell_report_has_no_link(env: dict[str, str]) -> None:
     """The line --log-start writes for a copy it stopped is a step 1 error too, and the attempt's only event:
-    H24's rule leaves it out, and the stopped copy's report still ends with no link."""
+    H24's rule left it out; since B13 round 11 M14 its outcome is computed from the attempt's header, as the
+    agentsync report computes it, and the stopped copy's report still ends with no link."""
     assert install_sh(env, "--log-start", f"prompt v{COMPAT + 1}, Contoso Agent").returncode == 2
     assert install_sh(env, "--report-only").returncode == 0
     text = (friction_path(env).parent / "stopped-copy-report.md").read_text()
-    assert NOT_COMPUTED in _summary(text) and setup_report.ISSUE_URL not in text and "Send it: " not in text
+    assert _summary(text)[2].startswith("- outcome: failed at step 1 (computed: "), _summary(text)
+    assert setup_report.ISSUE_URL not in text and "Send it: " not in text
 
 
 def test_the_shell_report_computes_no_outcome_once_the_attempt_ran_install(env: dict[str, str]) -> None:

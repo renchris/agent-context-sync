@@ -17600,6 +17600,9 @@ Amended 2026-10-14, §16.87 L2: the link is no longer bare; it fills the run typ
 the friction log's latest attempt states, with no outcome, and the line reads `the Outcome is yours to choose from
 the friction log's step lines; the link fills Run type, and Prompt version and Agent where the latest attempt
 states them`.
+Amended 2026-10-15, §16.93 M14, M15: a copy --log-start stopped is computed too (`from the attempt's Prompt
+line`), and an attempt with no step line reads `..., and the friction log has no step line for it; the Outcome is
+yours to choose[ from the Installer section, which has this attempt's install runs]; ...`.
 
 **The install line says why a copy has no commit** (K17 and K29, one defect; amends §16.41). `source commit -` gave
 no reason. COMMIT and install.log's `commit=` field stay `-` (a machine word the install stamp compares), and the
@@ -18298,6 +18301,8 @@ attempt states them)`; docs/deploy/setup-feedback.md says so. Tests:
 `test_the_shell_reports_link_fills_the_latest_attempts_version_and_agent` (two attempts, a header-less one, one
 that states nothing; against `parse_friction` and `_prompt_version` on the same log),
 `test_the_shell_report_computes_no_other_outcome`, `test_the_shell_report_says_how_to_send_it_before_its_link`.
+Amended 2026-10-15, §16.93 M14, M15: a stopped copy's outcome is computed from its header lines, and the not
+computed line names step lines only when the attempt has one.
 
 **The legend lists the kinds the report shows** (L1 and L3; amends §16.81 K3 and §16.75 J78). The shell legend
 listed all ten kinds, seven of which a plain report never showed. `legend_kinds` reads the redacted body before
@@ -18940,6 +18945,31 @@ M43's verifier built the sidecar read and M60's the rewording alone; both are he
 The header's step 2 paragraph, the comments, setup-feedback.md and `setup_report._AGENTSYNC_NOTE_WORDS`'s docstring
 say so. Tests: `test_the_reinstall_names_who_started_the_sync_it_waits_for` (other, launchd, no `started_by`, another
 pid, an empty body; the host never printed), the `REINSTALL_WAITS` pins.
+
+**The shell report computes a stopped copy's failure** (M14; amends §16.87 L2 and §16.81 K8). A copy `--log-start`
+stopped writes a header (`Attempt:`, `Prompt: vN`, `Agent:`) and a stop line whose words state nothing, so
+`friction_step1_stated` never matched and the shell said `not computed`, while the agentsync report computes `failed
+at step 1 (computed: no install.sh run; step 1 logged an error)` with that prompt and agent. Round 10's L26 left the
+stop mark out on purpose; the guards stay. The awk keeps the latest attempt's first `Prompt:` and `Agent:` header
+values (reset with the attempt, as `friction_latest_said` does) and its first step 1 error; when the attempt has a
+header, every timed line is step 1's and that first error is the stop line, it prints the header's version (less
+its `v`; `7 or older` stays words, which no note reads) and agent with a third field `header`. The line then reads
+`(from the attempt's Prompt line; older than the installer's vM: the pasted copy was not the current README, or the
+--log-start value was changed)` for an older copy, the agentsync report's note, or the existing newer note for a newer
+one, and leaves out ` · agent:` when the header has none. `OUTCOME_LINE_HEAD` is unchanged, so the link still reads
+the line. A stopped attempt with a late line of another step stays uncomputed. Test:
+`test_the_shell_report_computes_a_stopped_copys_failure` (v3, v99, no version, a late step 3 line).
+
+**The uncomputed outcome names step lines only where there are some** (M15; amends §16.87 L2). With a friction log
+of a header and an end line only, the line still said `the Outcome is yours to choose from the friction log's step
+lines`. `friction_latest_has_step` reads, with the attempt boundaries the other readers take, whether the latest
+attempt has a timed `<UTC> | step N |` line (`Attempt:`, `Prompt:`, `Agent:` and `| end | finished` are none). With
+one, the line is as before; with none (or no friction log) it reads `- outcome: not computed (this shell fallback
+computes none for this attempt, and the friction log has no step line for it; the Outcome is yours to choose; ...)`,
+and `... to choose from the Installer section, which has this attempt's install runs; ...` when the attempt has an
+install run (`attempt_ran_no_install` is false). The `- outcome: not computed (` prefix stays.
+docs/deploy/setup-feedback.md says both. Tests: `test_an_uncomputed_outcome_names_step_lines_only_when_the_attempt_has_them`,
+`test_the_shell_report_computes_no_other_outcome` (no friction log).
 
 **A checkout git cannot read takes no commit from a repository around it** (M51). In a home that is itself a git
 repository, a checkout whose `.git` holds only `HEAD` (not a valid gitdir) made git search upward, so `install.sh
