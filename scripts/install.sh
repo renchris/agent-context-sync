@@ -168,7 +168,8 @@
 #      no online-only file is downloaded here and this step's time does not grow with the folders' size; each
 #      later sync downloads and converts the online-only files it deferred, within its per-run budget. Its
 #      output is shown as its "converted N, deferred M online-only[, read again R | , first read R]" line(s), each prefixed
-#      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0 and
+#      "first sync: " (and logged as the step's note converted-N-deferred-M, with -reread-R when R > 0, then
+#      -first-F when F of the R were first reads, and
 #      -waited-for-the-lock when another sync held the config's lock as it started), else as all it printed. The flag is passed unconditionally: sync --help hides it, and the agentsync
 #      installed here always has it. When another sync holds the config's lock as it starts, a line before
 #      the sync says it waits for that one to end, at most 10 minutes; one still running then skips it (75)
@@ -4742,8 +4743,13 @@ show_first_sync() { # RC
 		printf '%s\n' "$summary" | sed "s/^[[:space:]]*/$SYNC_LABEL: /"
 		[ -n "$FIRST_SYNC_NOTE" ] || FIRST_SYNC_NOTE="$(printf '%s\n' "$summary" | awk '
 			{ for (i = 1; i < NF; i++) { if ($i == "converted") c += $(i + 1); if ($i == "deferred") d += $(i + 1)
-				if (($i == "again" && $(i - 1) == "read") || ($i == "read" && $(i - 1) == "first")) r += $(i + 1) } }
-			END { printf "converted-%d-deferred-%d", c, d; if (r > 0) printf "-reread-%d", r }')"
+				if (($i == "again" && $(i - 1) == "read") || ($i == "read" && $(i - 1) == "first")) r += $(i + 1)
+				# and the first reads among them: the all-first head, or "(F of them a first read", once
+				# "F of them read for the first time" (B13 round 12 N35); never "K of them withheld"
+				if ($i == "read" && $(i - 1) == "first") f += $(i + 1)
+				if ($i == "of" && $(i + 1) == "them" && (($(i + 2) == "a" && $(i + 3) == "first") ||
+					($(i + 2) == "read" && $(i + 3) == "for"))) { x = $(i - 1); gsub(/[^0-9]/, "", x); f += x } } }
+			END { printf "converted-%d-deferred-%d", c, d; if (r > 0) { printf "-reread-%d", r; if (f > 0) printf "-first-%d", f } }')"
 	else
 		cat "$SYNC_OUT" 2>/dev/null || true
 	fi

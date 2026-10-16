@@ -18886,6 +18886,9 @@ the Summary have since L34. Tests: `test_the_first_sync_steps_note_is_in_words_i
 Amended 2026-10-16, §16.98 N14, N33: in the Summary a note follows a comma, not a bracket of its own: `skipped in
 601s, rc 75, lock busy: another sync held the lock past the wait (install.log)`, `(uv 0s · agentsync 62s, waited for
 another sync to end · config 1s)`; the Installer table keeps one bracket.
+Amended 2026-10-16, §16.98 N35: install.sh logs `-first-F` after `-reread-R` when F of the R were first reads, and
+the row reads them as the Summary does (`first read R: ...`, `read again R: F of them a first read ...`); R stays
+the sum, and a note with no `-first-` keeps the neutral words.
 
 **The local-work line in a checkout whose `.git` is a file, and which branches are empty** (M49, M70, M54, M71;
 dated lines at §16.86 L58 and §16.80 K30). v19 pulls a checkout whose `.git` is a file and keeps work there, but both readers

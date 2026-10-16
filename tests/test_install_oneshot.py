@@ -7143,7 +7143,8 @@ def test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket(
 ) -> None:
     """B13 round 9 K34 reworded the first-read bracket after ``, read again R``: the note's awk adds the
     number after each bare ``converted``, ``deferred`` and ``read again``, so the new words, with the split
-    after them, still log ``-reread-R`` and nothing else."""
+    after them, still log ``-reread-R``; since B13 round 12 N35 ``-first-F`` follows, the first reads among
+    R."""
     line = (
         "converted 3, deferred 0 online-only, read again 2 (2 of them a first read: a stub whose bytes had "
         f"never been read, {said}); of the converted: 1 unreadable, 0 failed, 0 refused"
@@ -7151,7 +7152,7 @@ def test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket(
     cp = install_sh({**env, "STUB_SYNC_OUT": line}, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert f"first sync: {line}" in cp.stdout.splitlines()
-    assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2") in steps(install_log(env))
+    assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2-first-2") in steps(install_log(env))
 
 
 def test_first_sync_note_reads_the_count_after_the_first_read_head(
@@ -7159,7 +7160,7 @@ def test_first_sync_note_reads_the_count_after_the_first_read_head(
 ) -> None:
     """B13 round 10 L34: when every file read again was a first read, the sync's head is ``, first read R``,
     with no "read again"; the note's awk adds the number after "first read" too, so it still logs
-    ``-reread-R`` and the setup report reads the same note."""
+    ``-reread-R`` and the setup report reads the same note; ``-first-R`` follows since B13 round 12 N35."""
     line = (
         "converted 3, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, so also "
         "counted as converted); of the converted: 1 unreadable, 0 failed, 0 refused"  # round 10 L16's words
@@ -7167,7 +7168,7 @@ def test_first_sync_note_reads_the_count_after_the_first_read_head(
     cp = install_sh({**env, "STUB_SYNC_OUT": line}, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert f"first sync: {line}" in cp.stdout.splitlines()
-    assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2") in steps(install_log(env))
+    assert ("first-sync", "done", "0", "converted-3-deferred-0-reread-2-first-2") in steps(install_log(env))
 
 
 # ---- the on-device OCR helper is built in the helpers step -------------------------------------------------

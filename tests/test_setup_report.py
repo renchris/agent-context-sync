@@ -10640,6 +10640,46 @@ def test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side(
         assert f", {setup_report._first_sync_note(note)} (install.log: the install run of " in line, line
 
 
+@pytest.mark.parametrize(
+    ("printed", "note"),
+    [
+        (
+            "converted 2, deferred 0 online-only, first read 2 (stubs whose bytes had never been read, so "
+            "also counted as converted)",
+            "converted-2-deferred-0-reread-2-first-2",
+        ),
+        (
+            "converted 3, deferred 1 online-only, read again 3 (1 of them a first read: a stub whose bytes "
+            "had never been read, so also counted as converted) (of the converted: 0 unreadable, 1 failed, 2 "
+            "refused, 2 of them withheld by the label rule)",
+            "converted-3-deferred-1-reread-3-first-1",
+        ),
+        ("converted 2, deferred 0 online-only, read again 2", "converted-2-deferred-0-reread-2"),
+        ("converted 4, deferred 0 online-only", "converted-4-deferred-0"),
+    ],
+)
+def test_install_sh_logs_the_first_reads_among_the_files_read_again(printed: str, note: str) -> None:
+    """B13 round 12 N35: install.sh added the sync's "read again" and "first read" heads into one R and
+    logged only ``-reread-R``, so the Installer row could not say which the Summary's "first read 2" was. Its
+    awk now logs ``-first-F`` after R when F of them were first reads (never "K of them withheld"), and the
+    report reads both (test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary)."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [program] = re.findall(
+        r"FIRST_SYNC_NOTE=\"\$\(printf '%s\\n' \"\$summary\" \| awk '(.*?)'\)\"", script, re.S
+    )
+    out = subprocess.run(
+        ["awk", program],
+        input=f"first sync: {printed}\n",
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "LC_ALL": "C"},
+    ).stdout
+    assert out == note, out
+    [row] = setup_report._step_table([("first-sync", {"result": "done", "note": note})])[-1:]
+    assert "read again or read for the first time" not in row or "-first-" not in note, row
+
+
 def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
     """B13 round 12 N48: the helpers row read ``skipped (config-unreadable)`` beside worded first-sync and
     agentsync rows, and ``no-interpreter`` is explained nowhere else in the report. install.log keeps its
@@ -10669,6 +10709,27 @@ def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
             "0",
             "done",
             "converted 0, deferred 0 online-only, after waiting for another sync to end",
+        ),
+        (  # B13 round 12 N35: install.sh logs the first reads among R, and the row says it as the Summary
+            "converted-2-deferred-0-reread-2-first-2",
+            "0",
+            "done",
+            "converted 2, deferred 0 online-only, first read 2: stubs whose bytes had never been read, also "
+            "in the converted count",
+        ),
+        (
+            "converted-3-deferred-0-reread-3-first-1",
+            "0",
+            "done",
+            "converted 3, deferred 0 online-only, read again 3: 1 of them a first read of a stub whose bytes "
+            "had never been read, also in the converted count",
+        ),
+        (
+            "converted-1-deferred-0-reread-1-first-1-waited-for-the-lock",
+            "0",
+            "done",
+            "converted 1, deferred 0 online-only, first read 1: a stub whose bytes had never been read, also "
+            "in the converted count, after waiting for another sync to end",
         ),
         ("waited-for-the-lock", "0", "done", "waited for another sync to end"),
         ("lock-busy", "75", "skipped", "lock busy: another sync held the lock past the wait"),

@@ -741,8 +741,10 @@ _INSTRUCTION_RES = (
 )
 _OUT_RUN_RE = re.compile(r"^# run=(\S+) ")  # install.out's header line of each run, with its run id
 _CONVERTED_NOTE_RE = re.compile(  # install.log's note; the suffix: it waited for another sync (Q29)
-    # or the suffix alone, when the sync printed no counts (B13 round 5 F59): group 5, and no group 1
-    r"converted-(\d+)-deferred-(\d+)(?:-reread-(\d+))?(-waited-for-the-lock)?|(waited-for-the-lock)"
+    # or the suffix alone, when the sync printed no counts (B13 round 5 F59): w2, and no c. -first-F, the
+    # first reads among R, is logged since B13 round 12 N35 (an older install.log has none)
+    r"converted-(?P<c>\d+)-deferred-(?P<d>\d+)(?:-reread-(?P<r>\d+)(?:-first-(?P<f>\d+))?)?"
+    r"(?P<w>-waited-for-the-lock)?|(?P<w2>waited-for-the-lock)"
 )
 _CONVERTED_LINE_RE = re.compile(  # sync's last line; the rest of it holds its clauses
     r"\bconverted (?P<c>\d+), deferred (?P<d>\d+) online-only\b"
@@ -3783,13 +3785,24 @@ def _first_sync_note(note: str) -> str:
     """install.log's first-sync note in the report's words, as :func:`_agentsync_note` gives the agentsync
     step's (B13 round 11 M40: the Installer table showed ``converted-2-deferred-0-reread-2``, ``lock-busy``).
     ``reread-R`` is neutral: install.sh adds the sync's "read again" and "first read" heads into R, so R alone
-    never says which. No parenthesis; a note none of these is shown as it is."""
+    never says which; ``-first-F`` after it does (B13 round 12 N35: the row read "2 read again or read for the
+    first time" beside the Summary's "first read 2"), in the Summary's words. An older install.log with no
+    ``-first-`` keeps the neutral words. No parenthesis; a note none of these is shown as it is."""
     m = _CONVERTED_NOTE_RE.fullmatch(note)
-    if m is not None and m.group(1) is not None:
-        words = f"converted {m.group(1)}, deferred {m.group(2)} online-only"
-        if m.group(3) is not None:
-            words += f", {m.group(3)} read again or read for the first time"
-        return words + (", after waiting for another sync to end" if m.group(4) else "")
+    if m is not None and m["c"] is not None:
+        words = f"converted {m['c']}, deferred {m['d']} online-only"
+        again, first = m["r"], int(m["f"] or 0)
+        if again is not None and first and first == int(again):
+            what = "a stub whose bytes" if first == 1 else "stubs whose bytes"
+            words += f", first read {again}: {what} had never been read, also in the converted count"
+        elif again is not None and first:
+            words += (
+                f", read again {again}: {first} of them a first read of a stub whose bytes had never been "
+                "read, also in the converted count"
+            )
+        elif again is not None:
+            words += f", {again} read again or read for the first time"
+        return words + (", after waiting for another sync to end" if m["w"] else "")
     return _FIRST_SYNC_NOTE_WORDS.get(note, note)
 
 
@@ -7473,9 +7486,9 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             text += f", rc {v['rc']}"
         note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
         if note is not None:
-            if note.group(1) is not None:
-                counts = (int(note.group(1)), int(note.group(2)), int(note.group(3) or 0))
-            if note.group(4) or note.group(5):
+            if note["c"] is not None:
+                counts = (int(note["c"]), int(note["d"]), int(note["r"] or 0))
+            if note["w"] or note["w2"]:
                 text += ", after waiting for another sync to end"
         elif v.get("note"):
             # after a comma, not in a bracket of its own: the source tag is the line's one trailing bracket
