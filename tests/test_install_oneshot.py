@@ -1736,7 +1736,11 @@ def test_the_shell_report_never_redacts_inside_a_placeholder(env: dict[str, str]
         "\n- ~: the home path\n- <name>: the full name and its joined forms\n- <org-N>: the organization"
         in note
     )
-    assert "  Dropbox-<org-N>), and an account's email address\n- <mdmhost>: the MDM server's host\n" in note
+    # B13 round 12 N16: the body shows OneDrive-<org-1> and no email address, so the item names no other
+    assert (
+        "- <org-N>: the organization or team after the app's name in a CloudStorage folder "
+        "(OneDrive-<org-N>)\n- <mdmhost>: the MDM server's host\n"
+    ) in note
 
 
 def test_the_shell_report_reads_tilde_and_relative_folders_from_install_log(env: dict[str, str]) -> None:
@@ -8244,16 +8248,27 @@ def _listed(cs: Path, *paths: str) -> str:
     )
 
 
-def _folder_item(text: str) -> str:
-    """The shell legend's <folder-N> item, its lines joined (each at most 115 characters)."""
+def _folder_item(text: str, head: str = "- <folder-N>: ") -> str:
+    """The shell legend's <folder-N> item (or the one starting ``head``), its lines joined (each at most 115
+    characters)."""
     legend = text.split("\n## Redaction\n", 1)[1].split("\n\n", maxsplit=1)[0].strip().splitlines()
-    start = next(i for i, ln in enumerate(legend) if ln.startswith("- <folder-N>: "))
+    start = next(i for i, ln in enumerate(legend) if ln.startswith(head))
     end = next((i for i in range(start + 1, len(legend)) if not legend[i].startswith("  ")), len(legend))
     assert max(len(ln) for ln in legend[start:end]) <= 115, legend[start:end]
     return " ".join(" ".join(legend[start:end]).split())
 
 
-@pytest.mark.parametrize("state", ["plain", "list-only names quoted", "a configured Documents"])
+@pytest.mark.parametrize(
+    "state",
+    [
+        "plain",
+        "list-only names quoted",
+        "a configured Documents",
+        "a list-only Documents quoted",
+        "a list-only Copilot quoted",
+        "a configured Documents, a list-only Copilot quoted",
+    ],
+)
 def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[str, str], state: str) -> None:
     """B13 round 11 M3: the shell legend's <folder-N> item always explained step 1's list, the whole-word rule
     for a name every drive has and the list-only rule for coding-agent product words, with "Copilot" as its
@@ -8265,7 +8280,7 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
         (lib / d).mkdir(parents=True)
     setup = friction_path(env).parent
     setup.mkdir(parents=True)
-    picked = lib / ("Documents" if state == "a configured Documents" else "Project Alpha")
+    picked = lib / ("Documents" if state.startswith("a configured Documents") else "Project Alpha")
     (setup / "install.log").write_text(
         "2026-10-10T00:00:02Z run=20261010T000002Z-1 start install.sh compat=15 commit=- kind=- source=- "
         f"args=--source-local {shlex.quote(str(picked))}\n"
@@ -8278,9 +8293,12 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
             "OneDrive-Contoso/Documents/Copilot",
         )
     )
-    quoted = {"plain": "Project Alpha", "list-only names quoted": "Copilot under Documents"}.get(
-        state, "Documents"
-    )
+    quoted = {
+        "plain": "Project Alpha",
+        "list-only names quoted": "Copilot under Documents",
+        "a list-only Copilot quoted": "Copilot",
+        "a configured Documents, a list-only Copilot quoted": "Copilot under Documents",
+    }.get(state, "Documents")
     friction_path(env).write_text(
         f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | deviation | "
         f"picked {quoted} | -\n"
@@ -8298,9 +8316,51 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
         "; not a name every OneDrive or Google Drive has, such as Documents, nor one made of coding-agent "
         "product words (Copilot, GitHub Copilot), where only step 1's list names it"
     )
-    want = {"plain": base, "list-only names quoted": base + only, "a configured Documents": base + whole}[
-        state
-    ]
+    # B13 round 12 N45: one kind of list-only name quoted gives that kind's clause alone
+    agent = "one made of coding-agent product words (Copilot, GitHub Copilot)"
+    want = {
+        "plain": base,
+        "list-only names quoted": base + only,
+        "a configured Documents": base + whole,
+        "a list-only Documents quoted": base + "; not a name every OneDrive or Google Drive has, such as "
+        "Documents, where only step 1's list names it",
+        "a list-only Copilot quoted": base + f"; not {agent}, where only step 1's list names it",
+        "a configured Documents, a list-only Copilot quoted": base
+        + whole
+        + f", and not {agent} where only step 1's list names it",
+    }[state]
+    assert item == want, item
+    assert ("Copilot" in item) == ("Copilot" in quoted), item
+
+
+@pytest.mark.parametrize("case", ["plain", "inside a longer word", "an email address"])
+def test_the_org_legend_explains_only_what_the_report_shows(env: dict[str, str], case: str) -> None:
+    """B13 round 12 N16 (M3's rule for the <org-N> item): it always named a Dropbox folder and an email
+    address, and never the organization cut out of a longer word (FUZZY=o: ContosoDrive reads <org-1>Drive).
+    Its example is the app the body shows, and each clause is printed only where the body shows its case."""
+    provider = "GoogleDrive-someone@contoso.com" if case == "an email address" else "OneDrive-Contoso"
+    (_cloud(env) / provider / "Project Alpha").mkdir(parents=True)
+    quoted = {
+        "plain": "Project Alpha under OneDrive-Contoso",
+        "inside a longer word": "ContosoDrive under OneDrive-Contoso",
+        "an email address": f"Project Alpha under {provider}",
+    }[case]
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | deviation | "
+        f"picked {quoted} | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "contoso" not in text.lower().replace("contoso agent", ""), text
+    item = _folder_item(text, "- <org-N>: ")
+    base = "- <org-N>: the organization or team after the app's name in a CloudStorage folder "
+    want = {
+        "plain": base + "(OneDrive-<org-N>)",
+        "inside a longer word": base
+        + "(OneDrive-<org-N>), also where it stands inside a longer word (such as <org-1>Drive)",
+        "an email address": base + "(GoogleDrive-<org-N>), and an account's email address",
+    }[case]
     assert item == want, item
 
 

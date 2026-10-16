@@ -2719,7 +2719,8 @@ say_item() { # TEXT
 	}'
 }
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
-	local used="${2:-}" folder_item in_list="" whole="" skipped="" v p fl
+	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
+	local org_item apps="" email="" inword="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
@@ -2731,17 +2732,39 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		while IFS=$'\t' read -r fl v; do
 			case "$fl" in
 			keep) in_list=1 ;;
-			skip) [ -n "$skipped" ] || ! LC_ALL=C grep -qiwF -- "$v" "$3" 2>/dev/null || skipped=1 ;;
+			# which kind of skipped name, as folder_parts checks them: a name every drive has first (B13 round 12
+			# N45), so the clause gives no Copilot example for a quoted Documents, nor Documents for a Copilot
+			skip)
+				if LC_ALL=C grep -qiwF -- "$v" "$3" 2>/dev/null; then
+					if generic_folder "$v"; then skip_generic=1; else skip_agent=1; fi
+				fi
+				;;
 			esac
 		done < <(listed_folder_names)
 		while IFS=$'\t' read -r v p fl; do
-			case "$p" in "<folder-"*) ;; *) continue ;; esac
-			if [ "$fl" != w ] || ! generic_folder "$v"; then continue; fi
-			! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || whole=1
+			case "$p" in
+			"<folder-"*)
+				if [ "$fl" != w ] || ! generic_folder "$v"; then continue; fi
+				! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || whole=1
+				;;
+			# an account's email address is an <org-N> pair too: the <org-N> item names it where one is shown
+			"<org-"*) case "$v" in *@*) ! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || email=1 ;; esac ;;
+			esac
 		done <<<"$pairs"
+		# The <org-N> item's example is the app the body shows before one, and it says where one stands inside a
+		# longer word (FUZZY=o cuts it out at a CamelCase, digit or capital boundary: <org-1>Drive), each only
+		# where the body shows it (B13 round 12 N16, M3's rule). Not "-<org-1>", "<org-1>.sharepoint.com" or
+		# "<org-1>-my".
+		apps="$(LC_ALL=C grep -oE '[A-Za-z]+(-SharedLibraries)?-<org-[0-9]+>' "$3" 2>/dev/null |
+			LC_ALL=C sed 's/-<org-[0-9]*>$/-<org-N>/' | LC_ALL=C sort -u | LC_ALL=C awk 'NR <= 2' |
+			LC_ALL=C paste -sd ',' - | LC_ALL=C sed 's/,/, /g')"
+		! LC_ALL=C grep -qE '[A-Za-z0-9]<org-[0-9]+>|<org-[0-9]+>[A-Za-z0-9]' "$3" 2>/dev/null || inword=1
 	else # no body to read: every clause, as before
-		in_list=1 whole=1 skipped=1
+		in_list=1 whole=1 skip_generic=1 skip_agent=1 email=1 inword=1 apps="OneDrive-<org-N>, Dropbox-<org-N>"
 	fi
+	org_item="- <org-N>: the organization or team after the app's name in a CloudStorage folder (${apps:-OneDrive-<org-N>})"
+	[ -z "$email" ] || org_item+=", and an account's email address"
+	[ -z "$inword" ] || org_item+=", also where it stands inside a longer word (such as <org-1>Drive)"
 	folder_item="- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml"
 	if [ -n "$in_list" ]; then
 		folder_item+=", install.log or step 1's folder list in install.out name"
@@ -2749,10 +2772,20 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		folder_item+=" or install.log name"
 	fi
 	[ -z "$whole" ] || folder_item+="; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole word"
-	if [ -n "$skipped" ] && [ -n "$whole" ]; then
-		folder_item+=", and neither such a name nor one made of coding-agent product words (Copilot, GitHub Copilot) where only step 1's list names it"
-	elif [ -n "$skipped" ]; then
-		folder_item+="; not a name every OneDrive or Google Drive has, such as Documents, nor one made of coding-agent product words (Copilot, GitHub Copilot), where only step 1's list names it"
+	if [ -n "$whole" ]; then
+		if [ -n "$skip_generic" ] && [ -n "$skip_agent" ]; then
+			folder_item+=", and neither such a name nor $ag where only step 1's list names it"
+		elif [ -n "$skip_generic" ]; then
+			folder_item+=", and not such a name where only step 1's list names it"
+		elif [ -n "$skip_agent" ]; then
+			folder_item+=", and not $ag where only step 1's list names it"
+		fi
+	elif [ -n "$skip_generic" ] && [ -n "$skip_agent" ]; then
+		folder_item+="; not a name every OneDrive or Google Drive has, such as Documents, nor $ag, where only step 1's list names it"
+	elif [ -n "$skip_generic" ]; then
+		folder_item+="; not a name every OneDrive or Google Drive has, such as Documents, where only step 1's list names it"
+	elif [ -n "$skip_agent" ]; then
+		folder_item+="; not $ag, where only step 1's list names it"
 	fi
 	say "## Redaction"
 	say ""
@@ -2763,11 +2796,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <tmp> "*) say "- <tmp>: this account's temporary folder (\$TMPDIR)" ;; esac
 	case "$used" in *" <user> "*) say "- <user>: the login name" ;; esac
 	case "$used" in *" <name> "*) say "- <name>: the full name and its joined forms" ;; esac
-	case "$used" in *" <org-[0-9] "*)
-		say "- <org-N>: the organization or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
-		say "  Dropbox-<org-N>), and an account's email address"
-		;;
-	esac
+	case "$used" in *" <org-[0-9] "*) say_item "$org_item" ;; esac
 	case "$used" in *" <mdmhost> "*) say "- <mdmhost>: the MDM server's host" ;; esac
 	# numbered as in agentsync's own report (B13 round 8 J78), so a number the other report gave can be missing
 	# here: the shell names an environment proxy only by its variable (B13 round 10 L3)
