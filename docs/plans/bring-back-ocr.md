@@ -946,6 +946,25 @@ cannot take a later sha from another lane, so cross-lane splits are recorded her
 Round 13: the round 12 workflow on `2551fd70` with prompt v21 (run `wf_54651985-298`, outputs `round13/`); scenarios B
 and E copy built helpers for every pre-`8b47c900` build and check their own TMPDIR (N19, N77).
 
+### B13 round 13: v21 rehearsal, cross-lane review, harvest (2026-10-17)
+
+Run `wf_54651985-298` on `2551fd70` (85 agents, 0 errors). All six scenarios pass their EXPECTED with no turn on any
+rehearsed path; the field Mac's path is clean (v10 build with copied helpers, pulled to v21, no stop, "fully one
+command"), and the kit's own-TMPDIR check found no SwiftPM run in B or E. 74 findings, all 74 confirmed (1 turn, 20
+wrong, 53 small); 6 need prompt text, so the next prompt is v22. The turn is from code review: `status` reads every
+cloud source's provider folder before its timed listing, so a slow provider can stall it (O47). Most wrongs are one
+cluster around round 12's sign-in stop: both reports call any stop "OneDrive is not signed in" whatever the app
+(O1, O5, O29, O39, O42, O58, O66), a SharePoint library that is only unsynced reads as signed out (O41, O48, O52,
+O57), and which click counts as the sign-in (O40, O43, O59).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74 over rounds 2 and 4 to 13; turns 3, 0, 0, 1, 5, 2,
+4, 1, 1, 3, 1; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20. First round with no turn on any rehearsed path.
+
+Lanes (`--account auto`, CONTRACTS §16.104 to §16.109, brief `lanes/COMMON12.md`): RA 24 (setup_report.py, most of
+them the sign-in wording cluster), RB 19 (install.sh), P 6 (prompt v22), B 11 (status, loop, arm_local, doctor), E 5
+(deferred counts, speech, converters, policy), D 8 (docs/deploy, CONTRACTS). Lead: O74 (one operator cleanup,
+`b13-r12`, replacing the `b13-r11` one).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

@@ -20104,3 +20104,27 @@ when lane B landed first. A completeness test fails on any
 `Amended <date>, §16.<home>` line with a home of §16.92 or later that neither holds a claim alone nor is pinned, and
 on a bare section a claim from §16.92 on names with no pin there. Rounds 7 to 10 (homes §16.68 to §16.91) are not
 in it: their lines were never mutation-tested. Test: `test_every_dated_line_from_round_11_on_is_held_by_a_test`.
+
+### 16.104 Round 13: setup report (2026-10-17, wave B13 round 13 lane RA)
+
+Reserved for round 13 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 13").
+
+### 16.105 Round 13: installer, the sign-in stop and the shell report (2026-10-17, wave B13 round 13 lane RB)
+
+Reserved for round 13 lane RB of B13.
+
+### 16.106 Round 13: setup prompt v22 (2026-10-17, wave B13 round 13 lane P)
+
+Reserved for round 13 lane P of B13.
+
+### 16.107 Round 13: status, waits, read advice and doctor (2026-10-17, wave B13 round 13 lane B)
+
+Reserved for round 13 lane B of B13.
+
+### 16.108 Round 13: deferred counts, speech, converters and policy (2026-10-17, wave B13 round 13 lane E)
+
+Reserved for round 13 lane E of B13.
+
+### 16.109 Round 13: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 13 lane D)
+
+Reserved for round 13 lane D of B13.
