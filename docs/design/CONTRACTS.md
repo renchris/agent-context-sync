@@ -14644,7 +14644,8 @@ bare ones and older ones stayed, so `status` printed `~/.local/bin/agentsync pur
   `<bin> it-request --out ...` (the line and its run-again text). Q81's secret-scan fix at `(fix: agentsync sync from
   this shell)` is round 5 lane RA's (F57, F83) and is not changed here.
 - cli.py's sign-in lines (`<bin> graph login`), `renamed: run <bin> status|curate`, `sources: none yet ... (run <bin>
-  add-source <folder>)`, `reconcile --accept-deletions` without a source (`run <bin> accept-deletions SOURCE`),
+  add-source <folder>)` (amended 2026-10-15, §16.93 M13: `sources: no folder yet besides ...` when an inbox is
+  configured), `reconcile --accept-deletions` without a source (`run <bin> accept-deletions SOURCE`),
   adopt's `the next <bin> sync`, the File Provider `check: <bin> status` and setup-report's
   `<bin> status probes it`; config's missing-file error (`run <bin> add-source <folder>`); graph.auth's Entra and
   device-code error texts (`<bin> graph login`, `<bin> login`, `<bin> logout`); discover's 401 advice.
@@ -18312,6 +18313,7 @@ built the same author rule and adds "Section 3 sends no patch this time: ..." wh
 remain; the two are one function.
 Amended 2026-10-15, §16.93 M1: the review sentences read `... is not redacted: it may name a real folder, file or
 person, so review it before sending.` (`they may name` for sections 2 and 3), not `it names real folders and files`.
+Amended 2026-10-15, §16.93 M84: the temp-file removal on a failed `chmod` or `mv` has a test (a PATH stub forces it).
 
 **A config the installed agentsync failed on: neutral words, and no keep claimed** (L11 and L37; amends §16.75
 J17 and §16.80 K23). L37: step 1's warning and the report said `the installed agentsync could not load it` for
@@ -18803,8 +18805,8 @@ The installer's findings of the v19 rehearsal, the cross-lane review and the har
 "B13 round 11"). Each item has a test that fails without it. Where an item changes what an older section states,
 that section has a dated line (`Amended 2026-10-15, §16.93 M<n>`) and its text is otherwise as it was.
 
-**bring-back.md's header says a section may name things** (M1; amends §16.87 L4 and the bring-back paragraph of
-§16.75 J65's section). The header said section 2 `names real folders and files`, though the prompt has the agent name
+**bring-back.md's header says a section may name things** (M1; amends §16.87 L4). A dated line is also at the
+bring-back paragraph that §16.75 J65 amended. The header said section 2 `names real folders and files`, though the prompt has the agent name
 each folder, file or person by its role, and a section 2 of `No change requested.` and its `## Not used` lines names
 none. The sentences read `Section N is not redacted: it may name a real folder, file or person, so review it
 before sending.` and `Sections 2 and 3 are not redacted: they may name ...`; which one is printed is chosen as
@@ -18817,8 +18819,7 @@ long form is printed only when the list shows a folder. Tests:
 `test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`,
 `test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied`.
 
-**One patch is not "each", nor "one" a count** (M18; amends §16.86 L25's header sentence and §16.87's local-work
-line). With one patch not repeated the header said "each was in an earlier report"; it reads `Section 3 sends no
+**One patch is not "each", nor "one" a count** (M18; amends §16.86 L25 and §16.75 J65). With one patch not repeated the header said "each was in an earlier report"; it reads `Section 3 sends no
 patch this time: its one patch was in an earlier report and is listed by its hash.` (a counter in the skip branch,
 not a grep). `LOCAL_WORK_WHERE` (install.sh and setup_report.py, one string) said `one an earlier report already
 carried`, which beside `1 patch file(s)` read as a number; it says `any patch an earlier report already carried`.
