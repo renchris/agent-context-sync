@@ -3972,7 +3972,14 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
 
 
 @pytest.mark.parametrize(
-    "layout", ["no CloudStorage", "an empty CloudStorage", "an empty provider folder", "notes beside them"]
+    "layout",
+    [
+        "no CloudStorage",
+        "an empty CloudStorage",
+        "an empty provider folder",
+        "a provider folder with hidden entries only",
+        "notes beside them",
+    ],
 )
 def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
     env: dict[str, str], layout: str
@@ -3995,6 +4002,11 @@ def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
         cs.mkdir(parents=True)
     elif layout == "an empty provider folder":
         lib.mkdir(parents=True)
+    elif (
+        layout == "a provider folder with hidden entries only"
+    ):  # the list shows nothing there (B13 round 12 N61)
+        (lib / ".tmp.drivedownload").mkdir(parents=True)
+        (lib / ".849C9593.marker").write_text("")
     _write_config(env, *tables, _inbox(env))
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
@@ -4018,6 +4030,152 @@ def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert "a re-run keeps them" in last_line(cp)
+
+
+@pytest.mark.parametrize(
+    "layout", ["renamed in a signed-in provider", "a symlinked provider folder", "another account of the app"]
+)
+def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
+    env: dict[str, str], tmp_path: Path, layout: str
+) -> None:
+    """B13 round 12 N41, N61: M4's sign-in exit fired on a signed-in Mac whose synced folder was renamed or
+    deleted in OneDrive, and every re-run of the list stopped the same way. The provider folder decides, by
+    doctor's rule: one that lists other folders (a symlink too, as lexists reads it), or another folder of
+    the same app beside a missing one, is no signed-out app, so the list keeps exit 0 and names the folder,
+    and step 2's doctor names its fix. Only a folder whose provider folder is there is said to have a
+    signed-in app."""
+    cs = _cloud(env)
+    lib = cs / "OneDrive-Contoso"
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    gone = lib / "Project Beta"
+    if layout == "another account of the app":  # the Contoso folder is gone while a Fabrikam one is there
+        kept = cs / "OneDrive-Fabrikam" / "Project Alpha"
+        kept.mkdir(parents=True)
+        clause = (
+            "; 1 of them is not on disk because its provider folder is missing while another folder of "
+            f"that app is there: {gone}. Step 2's status fails on it and names the fix (sign in to that app "
+            f"with the account it belongs to, or fix its [[source]] path in {cfg}), and nothing syncs until "
+            "then"
+        )
+    else:
+        real = tmp_path / "real-provider" if layout == "a symlinked provider folder" else lib
+        for n in ("Project Alpha", "Project Gamma"):
+            (real / n).mkdir(parents=True)
+        if real != lib:
+            cs.mkdir(parents=True)
+            lib.symlink_to(real)
+        kept = lib / "Project Alpha"
+        clause = (
+            "; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted "
+            f"there): {gone}. Step 2's status fails on it and names the fix, and nothing syncs until the "
+            f"folder is back under that name or its [[source]] path in {cfg} is fixed"
+        )
+    _write_config(
+        env, local_source_table("project-alpha", kept), local_source_table("project-beta", gone), _inbox(env)
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert f"[synced] {gone}" in cp.stdout.splitlines()
+    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: ")
+    assert last_line(cp).endswith(clause), last_line(cp)
+    assert steps(install_log(env))[-1][:3] == ("list-folders", "done", "0")
+    assert install_log(env)[-2].endswith(" synced=2 gone=1")
+    cp = install_sh(env, "--list-folders")  # no loop: a re-run gives the same exit 0
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+
+
+@pytest.mark.parametrize(
+    ("layout", "want"),
+    [
+        ("gone, no other folder of the app", 0),
+        ("gone beside another account's folder", 2),
+        ("there and empty", 0),
+        ("there with hidden entries only", 0),
+        ("there with a folder", 1),
+        ("there with a dangling symlink only", 1),
+        ("a dangling symlink itself", 1),
+        ("there and unreadable", 1),
+    ],
+)
+def test_signed_out_reads_a_provider_folder_as_doctor_does(tmp_path: Path, layout: str, want: int) -> None:
+    """B13 round 12 N61, review: the list's sign-in exit and doctor's fix follow one rule. A symlink, dangling
+    or not, is there (doctor's lexists and iterdir), and a folder this account cannot read is not shown empty
+    (doctor's OSError keeps the path fix), so neither asks a signed-in person to sign in."""
+    cs = tmp_path / "CloudStorage"
+    p = cs / "OneDrive-Contoso"
+    cs.mkdir()
+    if layout == "gone beside another account's folder":
+        (cs / "OneDrive-Fabrikam").mkdir()
+    elif layout.startswith("there"):
+        p.mkdir()
+        if layout == "there with hidden entries only":
+            (p / ".tmp.drivedownload").mkdir()
+        elif layout == "there with a folder":
+            (p / "Project Alpha").mkdir()
+        elif layout == "there with a dangling symlink only":
+            (p / "Project Alpha").symlink_to(tmp_path / "nowhere")
+        elif layout == "there and unreadable":
+            (p / "Project Alpha").mkdir()
+            p.chmod(0)
+    elif layout == "a dangling symlink itself":
+        p.symlink_to(tmp_path / "nowhere")
+    try:
+        cp = subprocess.run(
+            [BASH32, "-c", f'{_shell_function("signed_out")}\nsigned_out "$1" "$2"', "-", str(cs), p.name],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        )
+    finally:
+        if p.is_dir() and not p.is_symlink():
+            p.chmod(0o700)
+    assert (cp.returncode, cp.stderr) == (want, ""), layout
+
+
+@pytest.mark.parametrize(
+    ("provider", "app"),
+    [("Dropbox", "Dropbox"), ("GoogleDrive-someone@contoso.com", "Google Drive"), ("Box-Box", "Box")],
+)
+def test_list_folders_names_the_app_whose_folder_is_signed_out(
+    env: dict[str, str], provider: str, app: str
+) -> None:
+    """B13 round 12 N41, N61: a missing folder of another app read "OneDrive is not signed in" on a Mac
+    whose OneDrive is signed in and full. The NEXT names the app of the missing folder's provider."""
+    cs = _cloud(env)
+    alpha = cs / "OneDrive-Contoso" / "Project Alpha"
+    alpha.mkdir(parents=True)
+    team = cs / provider / "Team"
+    _write_config(
+        env, local_source_table("project-alpha", alpha), local_source_table("team", team), _inbox(env)
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (3, ""), cp.stdout + cp.stderr
+    assert last_line(cp) == (
+        f"NEXT: {app} is not signed in on this Mac, so it is missing 1 of the folders this Mac already "
+        f"syncs: sign in to {app} (or let it finish setting up), then re-run: {INSTALL_SH} "
+        "--list-folders; the folders marked [synced] are kept"
+    )
+    assert "OneDrive" not in last_line(cp)
+    assert install_log(env)[-2].endswith(" result=failed note=not-signed-in synced=2")
+
+
+def test_list_folders_names_every_app_whose_folder_is_signed_out(env: dict[str, str]) -> None:
+    cs = _cloud(env)
+    cs.mkdir(parents=True)
+    tables = [
+        local_source_table(i, cs / p / "Team") for i, p in (("a", "OneDrive-Contoso"), ("b", "Dropbox"))
+    ]
+    _write_config(env, *tables, _inbox(env))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 3, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(
+        "NEXT: Dropbox, OneDrive are not signed in on this Mac, so this Mac is missing 2 of the folders this "
+        "Mac already syncs: sign in to Dropbox, OneDrive (or let it finish setting up)"
+    )
 
 
 def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied(
@@ -4130,6 +4288,15 @@ def test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load(
         else "Step 2 reinstalls agentsync first, and if that version cannot load it either, step 2 stops at "
         "its config step and nothing is kept or added until the config is fixed"
     ), last_line(cp)
+    # B13 round 12 N29: with no reinstall, every --source-local fails at add-source, so the head asks for
+    # none; the other two can still load the config after step 2's reinstall, so they ask as before
+    assert last_line(cp).startswith(
+        f"NEXT: no folder can be added until the config is fixed: run {script} with no --source-local, which "
+        f"shows the error; {opening}"
+        if current
+        else "NEXT: choose the folders to sync from the list above"
+    ), last_line(cp)
+    assert ("choose the folders" in last_line(cp)) != current
     install_sh(env, script=script)
     assert (("agentsync", "skipped", "0", "current") in steps(install_log(env))) == current
 

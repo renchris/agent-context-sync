@@ -888,11 +888,13 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     app is signed out, so the fix is the sign-in alone; with another folder of the app there (another
     account, a renamed organization) the sign-in is not clear-cut, so it keeps the path; a provider folder
     that is there means the person is signed in, so the subfolder is the path or a folder the app does not
-    sync; a folder outside ~/Library/CloudStorage has no sync client to sign in to. A SharePoint library
-    folder (``OneDrive-SharedLibraries-<org>``) missing beside its organization's ``OneDrive-<org>`` is a
-    library not synced on this Mac, never a sign-in, since that account is signed in (B13 round 12 N53). The
-    sign-in names the command to run after it (round 12 N56: "then re-run" named none). No parenthesis: a
-    FAIL line puts its fix in one. One rule for the listing, the volume and the launcher's probe."""
+    sync, unless it holds nothing but hidden entries, which is a stale one (signed out, or still setting up:
+    B13 round 12 N61, the rule install.sh's list keys its sign-in exit on); a folder outside
+    ~/Library/CloudStorage has no sync client to sign in to. A SharePoint library folder
+    (``OneDrive-SharedLibraries-<org>``) missing beside its organization's ``OneDrive-<org>`` is a library not
+    synced on this Mac, never a sign-in, since that account is signed in (B13 round 12 N53). The sign-in names
+    the command to run after it (round 12 N56: "then re-run" named none). No parenthesis: a FAIL line puts its
+    fix in one. One rule for the listing, the volume and the launcher's probe."""
     fix_path = f'fix path in [[source]] id = "{src.id}"'
     if not is_cloud_path(root):
         return fix_path
@@ -901,6 +903,14 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
         return f"{fix_path}, or sign in to the sync client"
     app = provider.name.split("-", 1)[0] or "the sync client"
     if os.path.lexists(provider):
+        shown: list[str] = ["?"]  # unreadable: not shown empty, so the path fix as before
+        with contextlib.suppress(OSError):
+            shown = [p.name for p in provider.iterdir() if not p.name.startswith(".")]
+        if not shown:  # a stale provider folder, as install.sh's list reads it (B13 round 12 N61)
+            return (
+                f"sign in to {app} on this Mac or let it finish setting up, since {provider} is empty, "
+                f"then run {BIN} status again"
+            )
         return f"{fix_path}, or sync that folder in {app}"
     org = org_of(provider.name) if provider.name.startswith("OneDrive-SharedLibraries-") else None
     if org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}"):

@@ -27,9 +27,12 @@
 #                           folder 1 or 2 levels inside each ~/Library/CloudStorage/<provider> (names only: no
 #                           file is opened; no dot folders), sorted, one full path per line, at most 200 then
 #                           "(N more)"; installs nothing and writes no report, only a list-folders step in the
-#                           setup log. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet);
-#                           4 this terminal app was denied access (macOS "Operation not permitted"), or macOS
-#                           is still asking; its NEXT: line says which and names the click. On a Mac whose
+#                           setup log. Exit 0 listed; 3 none (OneDrive not signed in, or nothing synced yet),
+#                           or a folder this Mac already syncs under ~/Library/CloudStorage is not on disk and
+#                           its app is signed out (its provider folder gone with no other folder of that app,
+#                           or there and empty), even when other folders were listed; 4 this terminal app was
+#                           denied access (macOS "Operation not permitted"), or macOS is still asking; its
+#                           NEXT: line says which and names the click. On a Mac whose
 #                           config already syncs folders (see "Folders already synced" below) the list starts
 #                           with "already synced on this Mac: N folder(s) ..." and each of them has
 #                           "[synced] " before its path (one the list does not reach is printed first, as
@@ -37,7 +40,11 @@
 #                           synced folder] " there, and one that holds one "[contains a synced folder] "; its
 #                           NEXT: names the command that keeps them. A list that exits 4 has that line and
 #                           the marks too, for what it could list, and still ends on the click. With nothing
-#                           to list, such a Mac gets that line, its synced folders and exit 0, not 3
+#                           to list, such a Mac gets that line, its synced folders and exit 0, not 3, as
+#                           long as no synced folder's app is signed out: then the list still prints the
+#                           [synced] lines but exits 3, and its NEXT: asks for that app's sign-in, listed or
+#                           not. A synced folder gone while its app is signed in (renamed, moved or deleted
+#                           there) keeps exit 0, and the NEXT: names it: step 2's status names its fix
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -3506,6 +3513,27 @@ provider_label() {
 	*) printf '%s' "${1%%-*}" ;;
 	esac
 }
+# Whether CloudStorage folder $1 shows provider $2's app signed out, by ops/doctor.py's _missing_source_fix
+# rule: 0 signed out (the provider folder gone with no other folder of that app, the name before its first "-",
+# beside it; or there and holding no folder or file the list would show, a stale one: hidden entries do not
+# count); 2 the provider folder gone while another folder of that app is there (another account: doctor names
+# the sign-in with that account, or the path); 1 signed in. A symlink, dangling or not, is there, as lexists
+# reads it, and a provider folder this account cannot read counts as signed in, as doctor reads it (B13 round 12
+# N61). Arguments: CS PROVIDER.
+signed_out() {
+	local f app="${2%%-*}"
+	if [ -e "$1/$2" ] || [ -L "$1/$2" ]; then
+		[ -r "$1/$2" ] && [ -x "$1/$2" ] || return 1
+		for f in "$1/$2"/*; do
+			[ ! -e "$f" ] && [ ! -L "$f" ] || return 1
+		done
+		return 0
+	fi
+	for f in "$1/$app" "$1/$app"-*; do
+		[ ! -e "$f" ] && [ ! -L "$f" ] || return 2
+	done
+	return 0
+}
 # This terminal app's name, as System Settings lists it, when the terminal says (else empty).
 terminal_app() {
 	case "${TERM_PROGRAM:-}" in
@@ -3642,11 +3670,12 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 }
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
-# 0 listed, 3 none, 4 denied or still asking.
+# 0 listed, 3 none or a synced folder under CloudStorage whose app is signed out (B13 round 11 M4, round 12
+# N41, N46, N61), 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
-	local line missing=0
+	local line missing=0 gone=0 gonepaths="" others=0 other="" apps="" stuck=0 more=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -3735,10 +3764,36 @@ list_folders() {
 			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"
 		fi
 		tail -n +3 "$tmp/marked"
-		# A synced folder under CloudStorage that is not on disk: its provider is signed out (or not set up
-		# yet), and step 2's doctor fails on it, so this list asks for the sign-in (B13 round 11 M4)
-		while IFS= read -r line; do
-			case "$line" in "$SYNCED_MARK $cs/"*) [ -e "${line#"$SYNCED_MARK "}" ] || missing=$((missing + 1)) ;; esac
+		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
+		# it: that folder gone with no other folder of its app beside it, or there and listing nothing, means the
+		# app is signed out (or not set up yet), so this list asks for the sign-in (B13 round 11 M4). A provider
+		# folder that lists other folders is signed in: the folder was renamed, moved or deleted there, and a
+		# sign-in would never bring it back, so step 2's doctor names it (B13 round 12 N41, N61).
+		# Not read while a provider was denied or is still asking: its exit 4 comes first, and a read of the
+		# provider folder that the list just timed out on could wait on the same prompt, past LIST_TOTAL.
+		[ -n "$denied$asking" ] || while IFS= read -r line; do
+			case "$line" in "$SYNCED_MARK $cs/"*) ;; *) continue ;; esac
+			line="${line#"$SYNCED_MARK "}"
+			[ ! -e "$line" ] || continue
+			e="${line#"$cs/"}"
+			e="${e%%/*}"
+			rc=0
+			signed_out "$cs" "$e" || rc=$?
+			case "$rc" in
+			0)
+				missing=$((missing + 1))
+				label="$(provider_label "$e")"
+				case ", $apps," in *", $label,"*) ;; *) apps="${apps:+$apps, }$label" ;; esac
+				;;
+			2)
+				others=$((others + 1))
+				other="${other:+$other; }$line"
+				;;
+			*)
+				gone=$((gone + 1))
+				gonepaths="${gonepaths:+$gonepaths; }$line"
+				;;
+			esac
 		done <"$tmp/marked"
 	else
 		cat "$tmp/shown"
@@ -3762,6 +3817,7 @@ list_folders() {
 		lacks="${lacks#:}"
 		kept="; this Mac has a config ($CONFIG) whose folders could not be read: the installed agentsync failed while reading it${lacks:+ (it raised $lacks)}, and ~/.local/bin/agentsync status prints why."
 		if built="$(checkout_is_installed)"; then
+			stuck=1
 			kept="$kept The installed agentsync is already this checkout's build (commit $built), so step 2 (run from this checkout) does not reinstall it: step 2 stops at its config step, and nothing is kept or added until the person fixes the config"
 		else
 			kept="$kept Step 2 reinstalls agentsync first, and if that version cannot load it either, step 2 stops at its config step and nothing is kept or added until the config is fixed"
@@ -3784,8 +3840,10 @@ list_folders() {
 	elif [ "$missing" -gt 0 ]; then
 		# Not "a re-run keeps them": step 2 would stop on each missing folder's [FAIL] lines. A Mac whose synced
 		# folders are all there (one syncing only ~/Documents/notes too) keeps exit 0 below (B13 round 11 M4).
+		# The app is the one each missing folder's provider folder names, not always OneDrive (B13 round 12 N41).
 		rc=3
-		NEXT_MSG="OneDrive is not signed in on this Mac, so it is missing $missing of the folders this Mac already syncs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept"
+		case "$apps" in *", "*) more="are not signed in on this Mac, so this Mac is" ;; *) more="is not signed in on this Mac, so it is" ;; esac
+		NEXT_MSG="$apps $more missing $missing of the folders this Mac already syncs: sign in to $apps (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept"
 		step_end failed "$rc" "not-signed-in synced=$synced"
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
 		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
@@ -3796,7 +3854,24 @@ list_folders() {
 		else
 			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
 		fi
-		step_end "done" 0 "listed-$total synced=$synced"
+		# A folder gone while its app is signed in: no sign-in (a re-run of this list would stop the same way),
+		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause
+		# says so, so the keep is not read as a sync (B13 round 12 N41, N61).
+		if [ "$gone" -eq 1 ]; then
+			NEXT_MSG="$NEXT_MSG; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on it and names the fix, and nothing syncs until the folder is back under that name or its [[source]] path in $CONFIG is fixed"
+		elif [ "$gone" -gt 1 ]; then
+			NEXT_MSG="$NEXT_MSG; $gone of them are no longer on disk although their app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on each and names the fix, and nothing syncs until each folder is back under its name or its [[source]] path in $CONFIG is fixed"
+		fi
+		# its provider folder gone while another folder of the app is there: not "signed in", as doctor's fix
+		# names the sign-in with the account it belongs to, or the path
+		if [ "$others" -eq 1 ]; then
+			NEXT_MSG="$NEXT_MSG; 1 of them is not on disk because its provider folder is missing while another folder of that app is there: $other. Step 2's status fails on it and names the fix (sign in to that app with the account it belongs to, or fix its [[source]] path in $CONFIG), and nothing syncs until then"
+		elif [ "$others" -gt 1 ]; then
+			NEXT_MSG="$NEXT_MSG; $others of them are not on disk because their provider folders are missing while another folder of each app is there: $other. Step 2's status fails on each and names the fix (sign in to that app with the account each belongs to, or fix its [[source]] path in $CONFIG), and nothing syncs until then"
+		fi
+		gone=$((gone + others))
+		[ "$gone" -eq 0 ] || more=" gone=$gone"
+		step_end "done" 0 "listed-$total synced=$synced$more"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"
@@ -3805,6 +3880,12 @@ list_folders() {
 		rc=3
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN$kept"
 		step_end failed "$rc" "no-folders${synced:+ synced=$synced}$unread"
+	elif [ "$stuck" -eq 1 ]; then
+		# The installed build is this checkout's and failed on the config: step 2 does not reinstall it, so
+		# every --source-local fails at add-source, and the list asks for none (B13 round 12 N29). $kept keeps
+		# the words the prompt's step 1 exception reads.
+		NEXT_MSG="no folder can be added until the config is fixed: run $SELF with no --source-local, which shows the error$kept"
+		step_end "done" 0 "listed-$total$unread"
 	else
 		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$kept"
 		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread"

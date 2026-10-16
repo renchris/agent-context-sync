@@ -1944,6 +1944,13 @@ def test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cau
     gone.rmdir()
     cfg = dataclasses.replace(sample_config, sources=(src,))
     gone.mkdir()
+    (gone / ".tmp.drivedownload").mkdir()
+    # B13 round 12 N61: a provider folder that shows nothing is stale, as install.sh's list reads it
+    assert fixes() == {
+        f"sign in to OneDrive on this Mac or let it finish setting up, since {gone} is empty, then run "
+        "~/.local/bin/agentsync status again"
+    }
+    (gone / "Other").mkdir()
     assert fixes() == {f"{table}, or sync that folder in OneDrive"}
     plain = dataclasses.replace(src, path=sample_config.config_path.parent / "gone")
     r = by_name(run_checks(dataclasses.replace(cfg, sources=(plain,))))
