@@ -16449,6 +16449,9 @@ converter` is withheld in the TSV as in the setup report; `_stub_reason` is `_st
 withheld stub's page, `reason:` and TSV row show `withheld by label rule: ...`; `label_withheld_suffixes()` says an
 image counts as withheld only while an OCR engine is ready, and names a `.msg` the OS refused to hydrate. Docstrings
 only.
+Amended 2026-10-15, §16.96 M66: `label_withheld_suffixes()` still said the TSV copies the page's `reason:`. Since
+§16.90 L54 the TSV and the setup report class the row by the page as `policy.page_says_withheld` reads it; for a
+stub whose page it cannot read, the report goes by its own OCR probe and the TSV keeps the stored reason.
 
 **A re-rendered tombstone with no `last_commit` names the commit that holds its content (H77; amends §16.60 F68,
 §16.66 G77).** Compaction leaves a tombstone row with no `last_commit` (its commit squashed; the page keeps the
@@ -18666,6 +18669,13 @@ test fails when the digest moves without the revision, or when it equals an olde
 _INDEX_REVISION in recording.py and add <n+1>: <digest> to INDEX_WORDINGS". Test:
 `test_convert_recording.py::test_the_index_wording_and_its_revision_move_together` (fails on a one-word edit of How
 to read).
+
+**The registry docstring says the TSV classes a row by the page (M66; amends §16.71 H56).**
+`label_withheld_suffixes()` said `_sync/QUARANTINE.tsv` copies the page's `reason:`. Since §16.90 L54 the TSV and the
+setup report class the row by the page as `policy.page_says_withheld` reads it (its reason, its summary or its body);
+for a stub whose page it cannot read, the report goes by its own OCR probe and the TSV keeps the stored reason.
+Docstring only: `test_cycle.py::test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_the_report_does`
+already pins the behaviour.
 
 ### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
 

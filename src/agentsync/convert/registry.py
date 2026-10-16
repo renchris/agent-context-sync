@@ -57,9 +57,11 @@ def label_withheld_suffixes() -> frozenset[str]:
     anyway). Their stub keeps the stored reason ``no converter for <suffix>``; the page (its ``reason:``
     too), ``_sync/QUARANTINE.tsv`` and the setup report word it as the label rule's (B13 round 3 R33, round
     6 G29, G62). For an image, the run that planned the stub decides the page's ``reason:`` (withheld only
-    when that run's engine was ready), the TSV copies it (B13 round 7 H52) and the setup report classes the
-    row by it, going by its own OCR probe only for a stub whose page it cannot read (B13 round 8 J52, J54):
-    an engine that comes or goes later changes neither the page nor the TSV until the stub is planned again,
+    when that run's engine was ready), and the TSV and the setup report class the row by the page as
+    ``policy.page_says_withheld`` reads it (its reason:, its summary or its body; B13 round 7 H52, round 9
+    K48, round 10 L54). For a stub whose page it cannot read, the report goes by its own OCR probe (B13 round
+    8 J52, J54) and the TSV keeps the stored reason: an engine that comes or goes later changes neither the
+    page nor the TSV until the stub is planned again,
     and the report's class only for the stubs whose page it could not read, which it counts (B13 round 9
     K58)."""
     from agentsync.convert.image import ImageConverter  # noqa: PLC0415 - lazy, as in Registry.default
