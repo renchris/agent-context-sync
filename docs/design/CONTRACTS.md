@@ -5167,6 +5167,8 @@ how many it left out; the section's line is unchanged.
 **Amended (2026-10-11, §16.41 "The report install.sh writes at its own exit counts its own run's `NEXT:` as
 still to come"):** when the last header counted is the run writing the report, the parenthesis adds that its
 `NEXT:` comes after the report.
+Amended 2026-10-16, §16.92 M36: the report's own words spell it "capitalized", and "organization" (the legend's
+`<org-N>`, the Private-only line), the setup prompt's US spelling, in both reports.
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -5240,6 +5242,9 @@ line (install.sh writes the report once the run is closed), so the run's seconds
 Amended 2026-10-13, §16.69 H22: on origin/main reads `yes|no|unknown[, N ahead][, N behind]`: `git rev-list
 --left-right --count HEAD...origin/main` adds `N behind` when it is above 0, and `N ahead` to a `no`; no count when
 that call fails.
+Amended 2026-10-16, §16.92 M34: the Summary's `- friction (attempt N)` line is left out when it would only repeat the
+agent-friction line (every event a deviation, prompt or error, and no legacy line); where it prints, its counts still
+add up.
 
 KISS K16b revision (2026-10-05; supersedes the paragraphs above where they differ). **Loop line.** The Summary's
 second bullet is `- Loop: <stage>; NEXT: <step>[; WAITING ON YOU: <first wait>[ (+N more)]]`: `loop_stage(baseline, topics, synced)` gives the furthest
@@ -6152,6 +6157,7 @@ printed link and the Summary's outcome are the same value.
 counts the words as listed (a word found in two sections is listed and counted twice; it counted distinct words,
 so the number disagreed with the list). A friction line shortened for the Summary's item lists ends at a word's end
 before the `…`, never inside a word.
+Amended 2026-10-16, §16.92 M36: "Residue check: N capitalized or joined word(s)".
 
 **Empty cloud folders: the wait names them and prints the line to paste.** The rule stays: a folder under
 `~/Library/CloudStorage` with zero children is unknown, never empty (§11), so the pass is incomplete and
@@ -9064,6 +9070,10 @@ wording, and the report now says what each number is. The cycle, its limits and 
   whose conversion failed (§16.27). "442 read again (0 kept the page they had)" read as 442 new pages. It is
   not: a file read again whose text comes out the same is cut off at the page's own hash, so the page file
   and its `converter:` line stay and only the output row's key moves (§16.27).
+  Amended 2026-10-16, §16.92 M12: a run record's `reread_first` (a stub read for the first time) is no read again:
+  all first reads read `N first read(s) of a stub whose bytes had never been read, also in the converted count`, some
+  `N read(s) again (F of them a first read ...; K could not be converted and kept their page)`, and the run's cell
+  adds `, F first read`.
 - **`pages added + changed`**, a new column before it: the run record's `A` and `M`, the pages the run added
   and changed from every cause. Every build wrote them, so a run of an earlier build has them too. A sync
   that only reads again shows there how many pages the re-read really changed, which the first paste could
@@ -9073,6 +9083,8 @@ wording, and the report now says what each number is. The cycle, its limits and 
   engine, newest first (the sums above are over all 7 run(s) read, so these rows do not add up to them)`.
   The field's five rows were added up against sums over six runs. With five or fewer the title is `the last
   runs that had an engine, newest first`, as before.
+  Amended 2026-10-16, §16.92 M19: both title forms, and Repeat conversions' `The last runs, newest first:`, start
+  with a capital, as every paragraph of the report does.
 - **The limit that ends the reading.** After the title: a run starts no more re-reads once it has spent 120
   s on them (`_REREAD_BUDGET_S`, a copy of the cycle's; a test holds the two equal), whatever OCR time is
   left. That usually ends its reading first. It does not always: the read that passes the 120 s finishes,
@@ -11663,6 +11675,10 @@ reader counts), and naming the next step from a fixed order (older installers ha
 `test_a_run_cut_off_in_a_step_names_the_last_step_logged`, `test_pid_alive_reads_this_process_and_a_reaped_one`
 and `test_a_run_killed_during_the_helper_builds_reads_as_killed`. Accepted: a reused pid reads as "in use",
 which keeps both readings, as before.
+Amended 2026-10-16, §16.92 M24 (M41 the same defect): the outcome detail has no bracket inside its `(computed: ...)`:
+`install.sh has no end line after its failed <step> step, <state>` (the step before the causes, so it never reads as
+one of them), and `install.sh exited <rc>: its <step> step failed with rc <n>` (`with no rc logged` when its line has
+none), which says whose each exit code is.
 
 **The "nothing started since" note says install.log** (B13 H17; amends §16.37). The note said "no install.sh
 run began since attempt <N> finished", but the report it sits in is written by `install.sh --report-only` (step 3,
@@ -11714,6 +11730,8 @@ triage of a report from a Mac with such a v6 attempt sees it move from "failed a
 or "worked with help": that is this fix, not a new event. Tests:
 `test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_only` and
 `test_v6_an_install_step_error_is_resolved_by_an_install_run_that_ended_0`.
+Amended 2026-10-16, §16.92 M44: the brackets read `(this attempt's runs only; the Installer section also counts the
+<k> earlier run(s) in the lines read)` and `(the Installer section counts the <r> earlier run(s) in the lines read)`.
 
 **The first-sync count names the field it counts** (B13 N17, field triage 2026-10-07 U18 and 2026-10-08 D1.h;
 amends §16.14 and §16.37). The clause read "N of M source(s) listed completely (status: baseline complete) at
@@ -13236,6 +13254,12 @@ the fix.
   counts `(install.log: that earlier run; ...)` or `(install.out: an earlier run's; this attempt ran none)`. With
   no earlier sync step it reads `no install.sh run during this attempt (install.log)`. The live baseline clause
   and the Loop line keep their words. `test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_reads`.
+  Amended 2026-10-16, §16.92 M6 (M22, M38 the same defect): an attempt whose install runs reached no first-sync step
+  reads `no install run of this attempt reached its first sync (install.log: the last stopped at its <step> step)` (a
+  list-only attempt: `this attempt ran only install.sh --list-folders, no first sync (install.log)`), and
+  install.out's counts are its own only under one of its runs' headers; an earlier run's are tagged `(install.out:
+  the install run of <start>, before this attempt; ...)`, a headerless file's `(install.out: which run printed it is
+  not recorded; ...)`.
 - **No install.sh run, no folder question** (R15). An attempt with no run of its own counts no folder question
   and reads `- expected turns: none (no install.sh --list-folders run in this attempt: no folder question and no
   Allow click)`; any run keeps the usual rules and a logged question still counts.
@@ -14799,6 +14823,9 @@ the product name in the friction log's Agent: line stays as written; M of the co
 redacted to <folder-N> like any other`, or `could not list ~/Library/CloudStorage` for the count. The line gives no
 example product word: such a word is a folder name a source can have, and the redacted example would give it back
 (F92). Test: `test_configuration_counts_the_folders_named_like_a_coding_agent`.
+Amended 2026-10-16, §16.92 M2: `, so the product name ... stays as written` follows only when an Agent: line of the
+friction log has a word of a listed folder's name that is not configured, and N counts only those folders (a
+configured one is redacted, and never decides the clause).
 
 **F31: one wording for the label rule.** The OCR part's line is `- [policy] label rule: on (no image is read under
 one)`, `off` or `not read (<Exc>)`, the Configuration line's words (Q31), with the OCR part's own suffix kept.
@@ -15003,6 +15030,7 @@ Amended 2026-10-13, §16.65 G47, G65: a report with a `Private only:` line gets 
 Amended 2026-10-13, §16.69 H75: the agentsync report's `Send it:` line reads `privately (docs/deploy/setup-feedback.md
 in the agentsync repository), never as a public issue: it would show that name. Nothing is sent automatically.`, and
 the report ends after its Redaction section with no issue link, as the shell report does.
+Amended 2026-10-16, §16.92 M36: `Private only: one of your folder, library or organization names ...`.
 
 **F7, F19: built by lane RB (§16.59).** The stopped copy's issue link and its "Read the report before sending it"
 sentence are rewritten in install.sh's `stopped_report_note`, lane RB's file, together with RB's F16 (one defect),
@@ -15543,6 +15571,8 @@ friction section's attempt lines. Test: `test_an_attempt_that_only_stopped_for_t
 Amended 2026-10-13, §16.69 H40: step 1 may also log `question`, `click`, `approval` and `prompt` lines beside its
 deviation; the wait is read from the deviations alone, and the why then reads `step 1 logged a deviation (F<n>), <N
 kind(s)> and nothing else`. Amended 2026-10-13, §16.69 H42: the issue title says `Stopped at step 1 (…)`.
+Amended 2026-10-16, §16.92 M31: the Summary's line is `- attempt: N of N; earlier: …`, so an outcome's own note
+bracket is the line's only one.
 
 **G27: the origin/main clause dates the checkout's last fetch.** The run metadata's `install source` line ends `on
 origin/main: <yes|no|unknown> (<fetch>)`, from one lstat of the checkout's FETCH_HEAD (no new network, no write):
@@ -18042,6 +18072,9 @@ reads `so step 1 asks at most whether to add one`. Tests:
 `test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn`,
 `test_a_folder_list_run_again_before_the_install_is_what_step_1_printed`,
 `test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`.
+Amended 2026-10-16, §16.92 M7: an attempt whose runs are only step 1 lists that all failed counts no folder question:
+after an exit 3 (`not-signed-in`, `no-folders`) nothing was listed and the expected turns are none; after an exit 4
+(`denied`, `tcc-pending`, or an exit 3 after one) the Allow click stays the turn.
 
 **The local-work line says only what it can know** (L8, L25, L40, L58; dated lines at §16.80 K30 and §16.75 J65).
 `- local work kept by setup prompt step 1: 1 local-work branch(es) in the checkout, 0 patch file(s) ... (the
@@ -18064,6 +18097,11 @@ hash." L58's prompt half (delete the empty branch) was not built: it is prompt t
 branches earlier runs left. Tests: `test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch`.
+Amended 2026-10-16, §16.92 M71: "a branch cut from an older origin/main still counts" is no longer so: a branch at
+any commit origin/main's reflog names is not counted, since v19's recovery moves main on to origin/main. Amended
+2026-10-16, §16.92 M54: a branch at main's or origin/main's commit is counted when a top-level patch is named for it
+(`.<branch>.patch`). Amended 2026-10-16, §16.92 M49 (M70 the same defect): the patches are counted whatever the
+checkout is, and the branches read from its common dir, so a `.git` file is no reason for no line.
 
 **The OCR part folds the document kinds with no page** (L5; dated lines at §16.28's OCR part and §16.48's
 `.potx` paragraph). A Mac with no deck template or OpenDocument page printed `0 with an OCR identity, 0 without an
@@ -18098,6 +18136,8 @@ still running` and `lock-not-taken-rc<N>` as `could not take the sync lock, lock
 waiting`, by full-match patterns, in the Installer table and the Summary alike; no parenthesis, since the Summary
 puts the note in one. install.log keeps its tokens; any other note is shown as it is. Test:
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+Amended 2026-10-16, §16.92 M40: the first-sync step's notes read as words too (`_first_sync_note`), in the Installer
+table and the Summary alike.
 
 **The friction section's attempt line has one bracket** (L32). `- attempt 2 (lines 5-5; no Attempt: line (logged
 after the previous attempt finished), prompt v18 (from the step 1 error line), agent ...)` nested brackets and wrote
@@ -18163,6 +18203,9 @@ line alone is no header (G51), so a stated error after it now states its words t
 `test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers`,
 `test_an_attempt_line_alone_keeps_a_stated_step_1_error_in_its_attempt`, and the late-line contract table,
 unchanged.
+Amended 2026-10-16, §16.92 M30 (M73 the same defect): such an attempt is labelled `since its session stopped before
+`install.sh --log-start`` too, not `since it is in the v4 format`: `_headerless_kind` reads the first step 1 error
+when only step 1 lines come before it.
 
 ### 16.87 Round 10: installer and the shell report (2026-10-14, wave B13 round 10 lane RB)
 
@@ -18469,6 +18512,8 @@ own, so `setup_report._SPLIT_RE` still matches). W stays out of N, and its paren
 cannot be read: an image or a .msg not on this Mac)`. K + W are the pages that say withheld. Dated lines at §16.77
 J29 and §16.83 K33. Tests: `test_cycle.py::test_the_sync_line_counts_every_stub_the_label_rule_withheld`, the pins
 in `test_cli.py`, `test_cycle.py` and `test_setup_report.py`.
+Amended 2026-10-16, §16.92 M82: `_SPLIT_RE` now reads K too, and the setup report's Summary prints `, K of them
+withheld by the label rule` after R.
 
 **L34: when every file read again was a first read, the head says so (`agentsync.cli`, `agentsync.setup_report`,
 scripts/install.sh; amends §16.37 and §16.83 K34).** `read again 2 (2 of them a first read: ...)` still said
@@ -18628,7 +18673,87 @@ The commands are unchanged. Test: `test_the_keep_commands_name_the_patch_from_th
 
 ### 16.92 Round 11: setup report (2026-10-15, wave B13 round 11 lane RA)
 
-Reserved for round 11 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 11").
+Lane RA's round 11 items: M2, M6, M7, M12, M19, M22, M24, M30, M31, M34, M36, M38, M40, M41, M44, M49, M53, M54,
+M70, M71, M73, M82. M6, M22 and M38; M24 and M41; M30 and M73; M49 and M70 are one defect each, built once. M44's
+second half is not built (below). No prompt words were needed, so nothing went to lane P.
+
+**The first-sync line names whose counts it shows** (M6, M22, M38; dated line at §16.47 R19). An attempt whose
+install run stopped at its config step, after an earlier run synced, read `no install.sh run with a first-sync step
+(install.log) · converted 7, deferred 3 online-only (install.out)`: install.log has that earlier run, and the counts
+were its. `_first_sync_line` takes install.out's last sync line as the attempt's only when it sits under one of the
+attempt's own `# run=` headers (an install.sh that printed a sync and logged no step); an earlier run's line keeps
+its counts as `(install.out: the install run of <start>, before this attempt; ...)`, and a headerless install.out's
+as `(install.out: which run printed it is not recorded; ...)`. The head reads `no install run of this attempt reached
+its first sync (install.log: the last stopped at its <step> step)`, or for a list-only attempt `this attempt ran only
+install.sh --list-folders, no first sync (install.log)`. The unscoped line keeps install.out's counts under one of
+install.log's runs or in a headerless file, as before. Test:
+`test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_counts_as_its_own`.
+
+**The outcome names whose each exit code is, with one bracket** (M24, M41; dated line at §16.40 H14). `(computed:
+install.sh exited 1 at its config step (rc 78))` reads `(computed: install.sh exited 1: its config step failed with
+rc 78)`, or `... failed with no rc logged`, never `rc ?`; a run with no end line reads `install.sh has no end line
+after its failed <step> step, <state>`: the step comes before the state's "a, b, or c", so it is never read as a
+cause after the "or" (H14 C2), with no ";", which joins the outcome's reasons. A list-only outcome reads `only
+install.sh --list-folders ran, in step 1`. Tests: `test_installer_failure_is_failed_at_step_3`,
+`test_a_run_with_no_end_line_and_a_failed_step_keeps_the_two_apart`.
+
+**A header-less attempt may start with step 1 lines before its error** (M30, M73; dated line at §16.86 L26).
+`_headerless_kind` read only the first event, so the attempt L26 was built for, a step 1 deviation and then the
+stated step 1 error, was labelled `since it is in the v4 format` (0 legacy lines), lost the Summary's note and
+gained a stale WARNING naming `install.sh --report-only`. It reads the first step 1 error and accepts it when only
+step 1 lines come before it; a later step's line first, or `F<n>` lines, still read v4. The Summary's note reads `It
+holds a step 1 error (F<n>) logged ...` (`Its lines were logged ...` with none), never that the attempt starts at
+it. Test: `test_a_step_1_line_before_the_stated_step_1_error_keeps_the_header_less_label`.
+
+**A step 1 list that stopped asked no folder question** (M7; dated line at §16.86 L7). An attempt whose runs are
+only step 1 lists, every one failed, counted the unlogged folder question. `_list_stopped` gives the last list's
+note: after an exit 3 (`not-signed-in`, `no-folders`) nothing was listed, `human turns` counts no question and the
+line reads `- expected turns: none (step 1's list stopped: OneDrive is not signed in, so no folder was listed: no
+folder question and no Allow click)`; after an exit 4 (`denied`, `tcc-pending`, or an exit 3 after one) it reads
+`no folder question (step 1's list ended on an Allow click, before the folder question)` and the click stays the
+turn. A list that finished, an install run, or a Mac that already syncs keeps the usual rules. Test:
+`test_a_step_1_list_that_stopped_on_a_sign_in_asked_no_folder_question`.
+
+**The Configuration line's product-name clause says only what follows** (M2; dated line at §16.58 F4). `, so the
+product name in the friction log's Agent: line stays as written` printed with no such folder, and beside an Agent
+line that shares no word with one. It follows only when an Agent: line of the friction log (every attempt's: the
+report embeds them all) has a word of a listed agent-word folder's name that is not configured; `N under
+~/Library/CloudStorage` counts only those folders, since a configured one is redacted. Configured names never
+decide the clause, which would hint that a redacted folder is named like the agent. Test:
+`test_configuration_counts_the_folders_named_like_a_coding_agent`.
+
+**Notes and counts in words** (M40, M82, M12; dated lines at §16.86 L35, §16.89 L33, §16.30's run table). M40: the
+first-sync step's notes read as words in the Installer table and the Summary (`_first_sync_note`): `converted N,
+deferred M online-only[, R read again or read for the first time][, after waiting for another sync to end]` (R is
+neutral: install.sh adds the sync's "read again" and "first read" heads into it), `waited for another sync to end`,
+`lock busy: another sync held the lock past the wait`, `no folder to sync in sources.toml`, `agentsync status
+reported a failure, so no sync ran`, `this terminal app may not read the folders`; install.log keeps its tokens.
+M82: `_SPLIT_RE` reads the CLI's `, K of them withheld by the label rule` after R, and the Summary prints it; an
+older line parses as before. M12: the OCR part's re-read count names first reads (`reread_first`), as the CLI and
+the Summary have since L34. Tests: `test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary`,
+`test_first_sync_clause_carries_the_read_again_count`, `test_the_ocr_part_calls_a_first_read_a_first_read`.
+
+**The local-work line in a checkout whose `.git` is a file, and which branches are empty** (M49, M70, M54, M71;
+dated line at §16.86 L58). v19 pulls a checkout whose `.git` is a file and keeps work there, but both readers
+returned when `.git` was no folder, so the public report said nothing while bring-back.md section 3 sent the patch.
+`_local_work_line` and `fallback_local_work_line` count the patches first, whatever the checkout is, and read the
+branches from its common dir (`_checkout_git_dirs`, `checkout_git_dirs`, which the git-config readers now share).
+M54: a branch at main's or origin/main's commit counts when a top-level patch is named for it (`.<branch>.patch`):
+a keep whose fetch failed leaves its work there. M71: a branch at any commit origin/main's reflog names (both
+columns, read as a file) is not counted; v19's recovery moves main on to origin/main, which left an empty keep's
+branch counted. A commit only local main had still counts, and with no reflog the count errs toward counting. The
+reflog skip of main's own (M71's finder) was not built: the most common keep's commit is in main's reflog. Test:
+`test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file` (both readers, one line).
+
+**Wording** (M19, M31, M34, M36, M44, M53; dated lines at §16.30's run table, §16.64 G23, §16.14, §16.22, §16.58
+F92 and §16.40 H21). M19: the OCR run table's titles and Repeat conversions' `The last runs, newest first:` start
+with a capital. M31: `- attempt: 2 of 2; earlier: attempt 1 failed at step 1 (...)`. M34: the `- friction (attempt
+N)` line is left out when it would only repeat the agent-friction line. M36: "organization" and "capitalized" in
+both reports and the guide. M44: `(this attempt's runs only; the Installer section also counts the <k> earlier
+run(s) in the lines read)`. M53: `_STOPPED_COPY_WARN`'s docstring sits under it again, and `_STOPPED_COPY_BEYOND`
+has its own; a test reads both with `ast`. M44's second half, one bracket on doctor's `[warn] heartbeat.<id>` line,
+is not built: install.sh's `cleared_listings` finds the line by `(deletions held)`, and cli.py swaps the note by
+equality, so a joined form would drop install.sh's "deletions are no longer held" line and the report's note swap.
 
 ### 16.93 Round 11: installer and the shell report (2026-10-15, wave B13 round 11 lane RB)
 
