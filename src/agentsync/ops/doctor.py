@@ -29,7 +29,7 @@ from pathlib import Path
 
 from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
-from agentsync.arm_local import CallTimedOutError, call_with_timeout
+from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _holds_home, _sync_leaves
 from agentsync.errors import AgentSyncError, ConfigError
@@ -881,6 +881,38 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     return out
 
 
+def _missing_source_fix(src: SourceConfig, root: Path) -> str:
+    """The fix for a source whose folder does not exist, by what is missing (B13 round 11 M10): its provider
+    folder (``~/Library/CloudStorage/<provider>``) gone with no other folder of that app beside it means the
+    app is signed out, so the fix is the sign-in alone; with another folder of the app there (another
+    account, a renamed organization) the sign-in is not clear-cut, so it keeps the path; a provider folder
+    that is there means the person is signed in, so the subfolder is the path or a folder the app does not
+    sync; a folder outside ~/Library/CloudStorage has no sync client to sign in to. No parenthesis: a FAIL
+    line puts its fix in one. One rule for the listing, the volume and the launcher's probe."""
+    fix_path = f'fix path in [[source]] id = "{src.id}"'
+    if not is_cloud_path(root):
+        return fix_path
+    provider = cloud_provider_root(root)
+    if provider is None:
+        return f"{fix_path}, or sign in to the sync client"
+    app = provider.name.split("-", 1)[0] or "the sync client"
+    if os.path.lexists(provider):
+        return f"{fix_path}, or sync that folder in {app}"
+    others: list[str] = []
+    with contextlib.suppress(OSError):
+        others = [
+            p.name
+            for p in provider.parent.iterdir()
+            if p.name != provider.name and p.name.split("-", 1)[0] == app
+        ]
+    if others:
+        return (
+            f"{provider} is missing while another {app} folder is there: sign in to {app} with the account "
+            f"it belongs to, or {fix_path}"
+        )
+    return f"sign in to {app} on this Mac, since {provider} is missing, then re-run"
+
+
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:
     """One local/inbox source: listable, sentinel present, volume UUID readable."""
     base = f"source.{src.id}"
@@ -890,7 +922,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         return [_bad(base, "no path configured", fix=f'set path in the [[source]] with id = "{src.id}"')]
     root = expand(src.path)
     cloud = is_cloud_path(root)
-    missing_fix = f'fix path in [[source]] id = "{src.id}", or sign in to the sync client'
+    missing_fix = _missing_source_fix(src, root)
     # An error with no rule of its own (an I/O error, a sync app that stopped answering) is the person's to
     # look at, so its fix says where: for the listing, and for the sentinel read below.
     sync_app = " and that its sync app is running and signed in" if cloud else ""
@@ -1372,7 +1404,7 @@ def _check_tcc_access(config: Config) -> list[CheckResult]:
                 _bad(
                     name,
                     f"{root} does not exist (sync client signed out or folder moved)",
-                    fix=f'fix path in [[source]] id = "{src.id}", or sign in to the sync client',
+                    fix=_missing_source_fix(src, root),
                 )
             )
         elif rc == launchd.EXIT_DISCLAIM_UNAVAILABLE:

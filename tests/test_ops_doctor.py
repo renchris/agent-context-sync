@@ -581,7 +581,7 @@ def test_the_fail_lines_that_named_no_fix_name_one(
 
     gone = dataclasses.replace(sample_config.sources[0], path=tmp_path / "gone")
     r = by_name(run_checks(dataclasses.replace(sample_config, sources=(gone,))))
-    missing = 'fix path in [[source]] id = "local-fixture", or sign in to the sync client'
+    missing = 'fix path in [[source]] id = "local-fixture"'  # no sync client to sign in to (B13 round 11 M10)
     assert (
         r["source.local-fixture.volume"].detail == f"volume UUID not checked: {tmp_path / 'gone'} is missing"
     )
@@ -1886,6 +1886,38 @@ def _cloud(cfg: Config) -> tuple[Config, Path]:
     (root / "a.docx").write_bytes(b"x")
     src = dataclasses.replace(cfg.sources[0], id="onedrive", path=root, sentinel=None)
     return dataclasses.replace(cfg, sources=(cfg.sources[0], src)), root
+
+
+def test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cause(
+    sample_config: Config,
+) -> None:
+    """B13 round 11 M10: every missing source's fix read "fix path ..., or sign in to the sync client", also
+    one command after step 1 said OneDrive is not signed in. The fix follows what is missing: no provider
+    folder of that app at all, the sign-in alone; the provider folder there but not the subfolder, the path
+    or the app's folder choice, never a sign-in; a plain folder, the path alone; the provider folder missing
+    beside another of the same app (another account), the sign-in or the path."""
+    cloud = Path.home() / "Library" / "CloudStorage"
+    gone = cloud / "OneDrive-Contoso"
+    src = dataclasses.replace(sample_config.sources[0], id="docs", path=gone / "Docs", sentinel=None)
+    cfg = dataclasses.replace(sample_config, sources=(src,))
+    table = 'fix path in [[source]] id = "docs"'
+
+    def fixes() -> set[str | None]:
+        r = by_name(run_checks(cfg))
+        return {r["source.docs.listable"].fix, r["source.docs.volume"].fix}
+
+    assert fixes() == {f"sign in to OneDrive on this Mac, since {gone} is missing, then re-run"}
+    (cloud / "OneDrive-Fabrikam").mkdir(parents=True)
+    assert fixes() == {
+        f"{gone} is missing while another OneDrive folder is there: sign in to OneDrive with the account it "
+        f"belongs to, or {table}"
+    }
+    gone.mkdir()
+    assert fixes() == {f"{table}, or sync that folder in OneDrive"}
+    plain = dataclasses.replace(src, path=sample_config.config_path.parent / "gone")
+    r = by_name(run_checks(dataclasses.replace(cfg, sources=(plain,))))
+    assert r["source.docs.listable"].fix == table
+    assert all("(" not in (f or "") for f in fixes())  # a FAIL line puts its fix in one parenthesis
 
 
 def test_a_source_fix_names_the_table_as_sources_toml_writes_it(
