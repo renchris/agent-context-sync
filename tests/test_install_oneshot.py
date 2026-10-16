@@ -5474,12 +5474,15 @@ def test_list_folders_caps_the_wait_across_providers(env: dict[str, str]) -> Non
     for p in ("OneDrive-Contoso/FY26 Projects", "Dropbox/Shared", "GoogleDrive-x/Team"):
         (_cloud(env) / p).mkdir(parents=True)
     _write_exe(Path(env["PATH"].split(":")[0]) / "find", "#!/bin/bash\nexec sleep 30\n")
-    e = {**env, "AGENTSYNC_LIST_TIMEOUT": "2", "AGENTSYNC_LIST_TOTAL_SECONDS": "3"}
+    # B13 round 12 N78: per-list timeout > bound > cap + headroom. With a 2 s timeout the bound sat at the
+    # uncapped 6 s and failed under load (6.4 s, 7.1 s), and a first list not cut to the cap passed. Now a
+    # working cap takes about 3.3 s against a bound of 12; no total cap takes 60 s, no cut about 20 s.
+    e = {**env, "AGENTSYNC_LIST_TIMEOUT": "20", "AGENTSYNC_LIST_TOTAL_SECONDS": "3"}
     t0 = time.monotonic()
-    cp = install_sh(e, "--list-folders", timeout=30)
+    cp = install_sh(e, "--list-folders", timeout=90)
     elapsed = time.monotonic() - t0
     assert cp.returncode == 4, cp.stdout + cp.stderr
-    assert elapsed < 6, f"three providers waited {elapsed:.1f}s past a 3 s cap"
+    assert elapsed < 12, f"three providers waited {elapsed:.1f}s past a 3 s cap"
     assert last_line(cp).startswith(
         "NEXT: macOS is asking whether this terminal app may access files managed by Dropbox, Google Drive, "
         "OneDrive: click Allow"
