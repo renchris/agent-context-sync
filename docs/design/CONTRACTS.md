@@ -19090,6 +19090,9 @@ before it writes the first legend line, and runs `redaction_pairs` once, as befo
 `Copilot under Documents`, a configured `Documents`), and the `$'..'` folder case of the legend test.
 Amended 2026-10-16, §16.99 N45, N16: the list-only clause names only the kind of name the body shows (a name
 every drive has, coding-agent words, or both), and the `<org-N>` item is built from clauses the same way.
+Amended 2026-10-16, §16.98 N3: the Python legend's `<folder-N>` item adds the list-only clause under the same test
+(`; not a name every OneDrive has, such as Documents, nor one made of coding-agent product words, such as Copilot or
+GitHub Copilot, where only a folder listing names it`), without "Google", which is no Python report word.
 
 **An organisation is redacted inside a longer word** (M50; amends §16.87 L66). L66 made the shell match an
 organisation as the Python report's fuzzy mode does, a whole word, so both reports printed it in `ContosoGroup`,

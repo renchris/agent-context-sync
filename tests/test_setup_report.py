@@ -2252,6 +2252,46 @@ def test_the_residue_check_names_a_word_glued_to_the_organisation(
     ), red
 
 
+def test_the_folder_legend_says_why_a_listed_generic_or_agent_name_stays_in_clear(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 12 N3: a friction line quoting "Copilot under Documents" showed both words in clear in both
+    readers, and only the shell legend said why: the Python ``<folder-N>`` item read as if every CloudStorage
+    folder became one. The clause is added when a listed name kept in clear (a generic one, or one made of
+    coding-agent product words) stands in the body as a whole word, and only then; it adds no report word."""
+    listed = Path.home() / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Documents" / "Copilot"
+    listed.mkdir(parents=True)
+    write_install_log(fake_mac)
+    item = "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder"
+    clause = (
+        "; not a name every OneDrive has, such as Documents, nor one made of coding-agent product words, "
+        "such as Copilot or GitHub Copilot, where only a folder listing names it)"
+    )
+    write_friction(fake_mac, V5_HAPPY)  # the role: no kept name in the body
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    red = section(text, "Redaction")
+    assert item + ")" in red and clause not in red, red
+    write_friction(
+        fake_mac,
+        V5_HAPPY.replace("| 1 folder chosen |", "| the folder list showed Copilot under Documents |"),
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "Copilot under Documents" in section(text, "Agent friction log")
+    assert item + clause in section(text, "Redaction"), section(text, "Redaction")
+    # only the kind the body shows, as the shell's since round 12 N45
+    for quoted, which in (
+        ("Copilot", "one made of coding-agent product words, such as Copilot or GitHub Copilot"),
+        ("Documents", "a name every OneDrive has, such as Documents"),
+    ):
+        write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| the list showed {quoted} |"))
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        assert f"{item}; not {which}, where only a folder listing names it)" in section(text, "Redaction")
+    assert "google" not in setup_report.report_words()
+    assert all(w in setup_report.report_words() for w in re.findall(r"[a-z]{3,}", clause.lower())), (
+        "the clause adds no report word"
+    )
+
+
 def test_every_placeholder_kind_is_one_the_report_reads_back() -> None:
     """A path component or source id that redacts to a placeholder is kept as one only if _PLACEHOLDER_RE
     reads it, and a hyphen there means a number: a kind spelled ``<mdm-host>`` would be cut to ``<path>`` or

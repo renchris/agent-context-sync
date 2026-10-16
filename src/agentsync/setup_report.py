@@ -924,6 +924,11 @@ class Redactor:
         # the CloudStorage listing for redaction did not finish and no list of step 1 named the folders in its
         # place, so a folder name may show in clear (B13 round 8 J69): the report is for a private copy only
         self.listing_unread = False
+        # the listed names :func:`_add_listed` kept in clear (a generic name, or one of coding-agent product
+        # words) that no configured folder has, and the configured names it compares with: the legend says
+        # why one stays in clear where the body shows it (B13 round 12 N3)
+        self.kept_listed: set[str] = set()
+        self.configured_names: frozenset[str] = frozenset()
 
     @property
     def total(self) -> int:
@@ -3183,6 +3188,7 @@ def _build_redactor(r: _Run) -> Redactor:
     # M2)
     mine = {c.casefold() for _sid, _provider, comps in cloud_sources for c in comps}
     mine |= {path.name.casefold() for path in project_paths}
+    red.configured_names = frozenset(mine)
     only = [name for _provider, _depth, name in listed if _agent_words(name) and name.casefold() not in mine]
     only_words = frozenset(w for name in only for w in _SEP_RE.split(name.casefold()) if w)
     r.agent_named = (len(only) if listing_ok else None, configured, only_words)
@@ -8143,11 +8149,44 @@ def residue_by_section(report: str, *, ignore: frozenset[str] = frozenset()) -> 
     return out
 
 
+_KEPT_GENERIC = "a name every OneDrive has, such as Documents"
+_KEPT_AGENT = "one made of coding-agent product words, such as Copilot or GitHub Copilot"
+"""The folder legend's list-only clause names these, as the shell report's does (CONTRACTS §16.97 M3), less
+"Google", which is no report word: a new one would change how an organisation or folder of that name is
+matched (B13 round 12 N3). Only the kind the body shows is named, as the shell's since §16.99 N45."""
+
+
+def _legend_item(red: Redactor, kind: str, body: str) -> str:
+    """One kind's legend item; the folder item adds the list-only clause (:data:`_KEPT_AGENT`) when a listed
+    name kept in clear (:attr:`Redactor.kept_listed`) stands in ``body`` as a whole word, any case, as the
+    shell's ``grep -qiwF`` test does: the item alone says every CloudStorage folder became ``<folder-N>``."""
+    item = _LEGEND[kind]
+    if kind != "folder":
+        return item
+    shown = [
+        name
+        for name in red.kept_listed
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", body, re.IGNORECASE)
+    ]
+    generic = any(name in _GENERIC_FOLDERS for name in shown)
+    agent = any(name not in _GENERIC_FOLDERS for name in shown)
+    if generic or agent:
+        which = (
+            f"{_KEPT_GENERIC}, nor {_KEPT_AGENT}"
+            if generic and agent
+            else _KEPT_GENERIC
+            if generic
+            else _KEPT_AGENT
+        )
+        item = f"{item[:-1]}; not {which}, where only a folder listing names it)"
+    return item
+
+
 def _redaction_section(
-    red: Redactor, hits: list[tuple[str, list[str]]], filled: Sequence[str] = ()
+    red: Redactor, hits: list[tuple[str, list[str]]], filled: Sequence[str] = (), body: str = ""
 ) -> list[str]:
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
-    legend = " · ".join(_LEGEND[k] for k in red.kinds_used() if k in _LEGEND)
+    legend = " · ".join(_legend_item(red, k, body) for k in red.kinds_used() if k in _LEGEND)
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
     unnumbered = ", ".join(k for k in _LEGEND if k in _UNNUMBERED)
     check = (
@@ -8465,9 +8504,12 @@ def _local_work_line() -> str | None:
 
 def _add_listed(red: Redactor, entries: Iterable[tuple[str, int, str]]) -> None:
     """Register the folders a CloudStorage listing or step 1's list gave: a SharedLibraries entry at depth 2
-    is a library, any other a folder; a generic folder name or one of the agent's words is left out."""
+    is a library, any other a folder; a generic folder name or one of the agent's words is left out, and
+    noted in :attr:`Redactor.kept_listed` unless a configured folder has it (B13 round 12 N3)."""
     for provider, depth, name in entries:
         if name in _GENERIC_FOLDERS or _agent_words(name):
+            if name.casefold() not in red.configured_names:
+                red.kept_listed.add(name)
             continue
         shared = provider.startswith("OneDrive-SharedLibraries-")
         red.add("library" if shared and depth == 2 else "folder", name, fuzzy=True)
@@ -8591,7 +8633,7 @@ def build_report(
     except Exception:  # the link is a convenience: the bare form always works
         link = ISSUE_URL
     hits = residue_by_section(main, ignore=r.provider_heads)
-    tail = _redaction_section(red, hits, issue_link_fields(link))
+    tail = _redaction_section(red, hits, issue_link_fields(link), main)
     if not red.private_only:  # a private copy ends with no public issue link (B13 round 7 H75)
         tail += ["", link]
     return main + "\n" + "\n".join(tail) + "\n", red
