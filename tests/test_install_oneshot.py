@@ -2193,10 +2193,17 @@ def test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch(env: d
     old = _keep_patch(env, "2026-10-06T16:42:39Z", "+old = 1\n", "0001-old.patch")
     head = header()
     assert authors not in head, head
+    # B13 round 11 M18: one patch is "its one patch", not "each"
     assert head.endswith(
-        "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
+        "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its "
+        "hash."
     ), head
     assert _local_work(env) == _not_repeated(old, "2026-10-06T16:42:39Z")
+    second = _keep_patch(env, "2026-10-06T16:42:40Z", "+old = 3\n", "0001-older.patch")
+    assert header().endswith(
+        "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
+    )
+    second.unlink()
     _keep_patch(env, "2026-10-07T15:58:27Z", "+new = 2\n", "0002-new.patch")
     assert authors in header()
     for path in (old, old.parent / "0002-new.patch"):
@@ -7548,6 +7555,8 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
         "checkout\n" in text
     ), text
     assert f'LOCAL_WORK_WHERE="{setup_report.LOCAL_WORK_WHERE}"\n' in INSTALL_SH.read_text(), "one wording"
+    # B13 round 11 M18: "one an earlier report already carried" read as a count beside "1 patch file(s)"
+    assert "; any patch an earlier report already carried is listed there by its hash); " in text, text
     for word in ("Northwind", "Fabrikam", "pricing", "0001"):
         assert word not in text, word
     # a nested patch is not counted, nor a branch at main's or origin/main's own commit

@@ -16922,6 +16922,8 @@ an earlier report the header reads "Section 3 sends no patch this time: each was
 listed by its hash.", and with no patch it has neither.
 Amended 2026-10-14, §16.87 L4: the review sentence names only the sections that hold something (none, section 2,
 section 3, or both), beside L25's author rule.
+Amended 2026-10-15, §16.93 M18: with one patch not repeated it reads "Section 3 sends no patch this time: its one
+patch was in an earlier report and is listed by its hash."
 
 **The shell report redacts what the Python one does, numbered alike** (J37, J78, J71; J45 is J71; dated lines at
 §16.69 H20 and H74). J37: the scp rewrite path's pair is `e` (end boundary only: no letter or digit after it, so `.git` or `-tools`
@@ -18116,6 +18118,8 @@ any commit origin/main's reflog names is not counted, since v19's recovery moves
 2026-10-16, §16.92 M54: a branch at main's or origin/main's commit is counted when a top-level patch is named for it
 (`.<branch>.patch`). Amended 2026-10-16, §16.92 M49 (M70 the same defect): the patches are counted whatever the
 checkout is, and the branches read from its common dir, so a `.git` file is no reason for no line.
+Amended 2026-10-15, §16.93 M18: the bracket reads `...; any patch an earlier report already carried is listed there
+by its hash`, and the header's no-patch sentence is `its one patch was in an earlier report` for one patch.
 
 **The OCR part folds the document kinds with no page** (L5; dated lines at §16.28's OCR part and §16.48's
 `.potx` paragraph). A Mac with no deck template or OpenDocument page printed `0 with an OCR identity, 0 without an
@@ -18805,6 +18809,14 @@ nothing listed (OneDrive signed out, its folder still empty, the only provider d
 long form is printed only when the list shows a folder. Tests:
 `test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`,
 `test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied`.
+
+**One patch is not "each", nor "one" a count** (M18; amends §16.86 L25's header sentence and §16.87's local-work
+line). With one patch not repeated the header said "each was in an earlier report"; it reads `Section 3 sends no
+patch this time: its one patch was in an earlier report and is listed by its hash.` (a counter in the skip branch,
+not a grep). `LOCAL_WORK_WHERE` (install.sh and setup_report.py, one string) said `one an earlier report already
+carried`, which beside `1 patch file(s)` read as a number; it says `any patch an earlier report already carried`.
+docs/deploy/setup-feedback.md says both. Tests: `test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch`
+(one and two patches), `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

@@ -8183,11 +8183,12 @@ def _issue_link(r: _Run, red: Redactor) -> str:
 
 
 LOCAL_WORK_WHERE = (
-    "no patch text is in this report: each patch goes once to the private bring-back.md section 3; one an "
-    "earlier report already carried is listed there by its hash"
+    "no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch "
+    "an earlier report already carried is listed there by its hash"
 )
 """The bracket after the local-work line's patch count, word for word in install.sh's fallback: it claims
-nothing this report cannot know (which patches an earlier report carried), B13 round 10 L8, L25."""
+nothing this report cannot know (which patches an earlier report carried), B13 round 10 L8, L25. "any patch",
+not "one", which read as a count beside the patch count (B13 round 11 M18)."""
 
 
 def _published_shas(git: Path) -> set[str]:

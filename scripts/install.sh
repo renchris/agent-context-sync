@@ -2235,7 +2235,7 @@ checkout_ref_sha() { # GIT REF
 	printf '%s' "$s"
 }
 # The words after the local-work line patch count, as setup_report.LOCAL_WORK_WHERE (B13 round 10 L8, L25).
-LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the private bring-back.md section 3; one an earlier report already carried is listed there by its hash"
+LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch an earlier report already carried is listed there by its hash"
 # The count-only line that says step 1 kept local work, as setup_report._local_work_line writes it (B13 round 9
 # K30, round 10 L8, L25, L40, L58). Patches are the measure of kept work: the *.patch files at the top of the
 # setup folder local-work, the files section 3 of bring-back.md reads, with the newest time. The checkout
@@ -2907,7 +2907,7 @@ source_excludes_line() { # CONFIG
 }
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
-	local prev at sha sent=0 skipped="" fix=0
+	local prev at sha sent=0 skipped="" fix=0 nskip=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
@@ -2932,6 +2932,7 @@ write_bring_back() {
 				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
 				[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
 					skipped="${skipped}not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
+					nskip=$((nskip + 1))
 					continue
 					;;
 				esac
@@ -2965,6 +2966,8 @@ write_bring_back() {
 			printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
 				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
 				"set, a name and address git filled in from this Mac's account), so check those lines too."
+		elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
+			printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
 		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
 			printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
 		fi
