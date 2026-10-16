@@ -4084,7 +4084,7 @@ def test_the_placeholder_table_states_the_org_word_and_generic_folder_rules_of_r
     assert words is not None
     for word in re.findall(r"`(\w+)`", words.group(1)):
         assert word.lower() in setup_report._CONTEXT_ORG_WORDS, word
-    other = re.search(r"any other one-word organisation the report prints \(`(\w+)`\) everywhere", page)
+    other = re.search(r"any other one-word organization the report prints \(`(\w+)`\) everywhere", page)
     assert other is not None and other.group(1).lower() not in setup_report._CONTEXT_ORG_WORDS
     assert "which makes the report Private only (below)" in page
     folders = re.search(r"a name every OneDrive or Google Drive has \(([^)]*)\) is the exception", page)

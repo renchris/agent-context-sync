@@ -604,7 +604,7 @@ _LEGEND = {
     "home": "~ home folder",
     "user": "<user> login name",
     "name": "<name> full name",
-    "org": "<org-N> organisation",
+    "org": "<org-N> organization",
     "library": "<library-N> SharePoint library",
     "folder": "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder)",
     "source": "<source-N> source id",
@@ -2076,10 +2076,17 @@ def compute_outcome(
         return Outcome("worked with help", None, ("install.sh exit 0", *why), version)
     if last is not None:
         failing = last.failed_step()
-        where = f" at its {failing[0]} step (rc {failing[1].get('rc', '?')})" if failing else ""
+        # whose each exit code is, with no bracket inside the outcome's own (B13 round 11 M24, M41)
+        rc = failing[1].get("rc", "") if failing else ""
+        where = (
+            (f": its {failing[0]} step failed " + (f"with rc {rc}" if rc else "with no rc logged"))
+            if failing
+            else ""
+        )
         if last.rc is None:
-            last_failed = f"; last failed step {failing[0]}" if failing else ""
-            detail = f"install.sh has no end line ({_open_state(last)}{last_failed})"
+            # the failed step before the open state's "a, b, or c", never read as a fourth cause (H14 C2)
+            last_failed = f" after its failed {failing[0]} step" if failing else ""
+            detail = f"install.sh has no end line{last_failed}, {_open_state(last)}"
         else:
             detail = f"install.sh exited {last.rc}{where}"
         return Outcome("failed", layout.install_step, (detail,), version)
@@ -2114,7 +2121,9 @@ def compute_outcome(
         why_step = f"no install.sh run and no error; the last step logged is {steps[-1]}"
         return Outcome("failed", steps[-1], (why_step,), version)
     if runs and not layout.logs_steps:  # v6: only --list-folders ran (step 1), and nothing was logged
-        return Outcome("failed", 1, ("no install run: only install.sh --list-folders ran (step 1)",), version)
+        return Outcome(
+            "failed", 1, ("no install run: only install.sh --list-folders ran, in step 1",), version
+        )
     return Outcome("unknown", None, ("no install.sh run in this attempt and no step logged",), version)
 
 
@@ -2176,14 +2185,14 @@ def it_draft_fields(text: str) -> tuple[list[str], list[str]]:
 
 
 _STOPPED_COPY_WARN = "the installer stopped this copy in step 1, before step 2 reinstalls agentsync"
-# "nothing for this setup to do" sat beside a reason that says step 2 has not run (B13 round 9 K24);
-# install.sh's STOPPED_COPY_BEYOND gives these words to an older renderer's stopped report (a test keeps them
-# equal; B13 round 10 L39)
+"""Why ``install.commit`` warns on a stopped copy (:func:`expected_warn`): step 1 pulls the checkout and its
+``--log-start`` then stops the copy, so step 2's reinstall never runs (B13 round 8 J18)."""
 _STOPPED_COPY_BEYOND = (
     " beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)"
 )
-"""Why ``install.commit`` warns on a stopped copy (:func:`expected_warn`): step 1 pulls the checkout and its
-``--log-start`` then stops the copy, so step 2's reinstall never runs (B13 round 8 J18)."""
+"""What follows "nothing for this setup to do" on a stopped copy, which sat beside a reason that says step 2
+has not run (B13 round 9 K24); install.sh's STOPPED_COPY_BEYOND gives these words to an older renderer's
+stopped report (a test keeps them equal; B13 round 10 L39)."""
 
 
 def expected_warn(
@@ -3678,7 +3687,7 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     if start is None:
         return (
             f"- installer output: no run of this attempt in the last {read} line(s) of install.out (the "
-            f"Installer section counts the {total} earlier run(s) read)"
+            f"Installer section counts the {total} earlier run(s) in the lines read)"
         )
     if start == 0:
         return whole
@@ -3686,8 +3695,8 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     k = sum(1 for ln in mine if _OUT_RUN_RE.match(ln))
     text = _instruction_text(instruction_counts(mine), len(mine), k, pending=pending)
     return (
-        f"- installer output: {text} (this attempt's runs only: the {total - k} earlier run(s) read are not "
-        "counted; the Installer section counts them)"
+        f"- installer output: {text} (this attempt's runs only; the Installer section also counts the "
+        f"{total - k} earlier run(s) in the lines read)"
     )
 
 
@@ -5265,10 +5274,10 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     )
     pool = engine or runs
     what = "runs that had an engine" if engine else "runs (none had an engine)"
-    title = f"the last {what}, newest first"
+    title = f"The last {what}, newest first"
     if len(pool) > len(shown):
         title = (
-            f"the last {len(shown)} of the {len(pool)} {what}, newest first (the sums above are over all "
+            f"The last {len(shown)} of the {len(pool)} {what}, newest first (the sums above are over all "
             f"{len(runs)} run(s) read, so these rows do not add up to them)"
         )
     notes = (
@@ -5882,7 +5891,7 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "from, which the run just before had converted too (the sign of a loop; a copy of a file is a new "
         "file and is not counted, nor is a file re-screened for a label-rule change)",
         "",
-        "the last runs, newest first:",
+        "The last runs, newest first:",
         "",
         *_table(header, rows),
     ]
@@ -7511,7 +7520,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         earlier = ", ".join(
             f"attempt {a.number} {_attempt_outcome(r, i).text}" for i, a in enumerate(fr.attempts[:-1])
         )
-        out.append(f"- attempt: {len(fr.attempts)} of {len(fr.attempts)} (earlier: {earlier})")
+        out.append(f"- attempt: {len(fr.attempts)} of {len(fr.attempts)}; earlier: {earlier}")
     why_run = {
         "simulated launchd": "install.log says launchd=simulated",
         "sandbox": "HOME is under a temporary folder",
@@ -7634,10 +7643,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"sources.toml already syncs ({why_unread}){',' if again is None else ';'} {marked}"
             )
         out.append(_agent_friction_line(att, stop))
-        extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
-        out.append(
-            f"- friction (attempt {att.number}): {len(att.events)} event line(s): {_kind_counts(att)}{extra}"
-        )
+        # only when it says more than the agent-friction line: a kind other than the problem kinds, or a
+        # legacy line (B13 round 11 M34)
+        if att.legacy or any(n for k, n in att.kinds().items() if k not in PROBLEM_KINDS):
+            extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
+            counted = f"{len(att.events)} event line(s): {_kind_counts(att)}{extra}"
+            out.append(f"- friction (attempt {att.number}): {counted}")
         timing = []
         late = _after_end(runs, _attempt_end(att))
         wall, stamps = att.wall_seconds(), att.timestamps()
@@ -7794,11 +7805,11 @@ def _redaction_section(
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
     unnumbered = ", ".join(k for k in _LEGEND if k in _UNNUMBERED)
     check = (
-        f"Residue check: {listed} capitalised or joined word(s) next to a placeholder in this report ("
+        f"Residue check: {listed} capitalized or joined word(s) next to a placeholder in this report ("
         + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
         + "); check them."
         if hits
-        else "Residue check: no capitalised or joined word next to a placeholder in this report."
+        else "Residue check: no capitalized or joined word next to a placeholder in this report."
     )
     names = " and ".join(filled) if len(filled) < 3 else ", ".join(filled[:-1]) + ", and " + filled[-1]
     opens = (
@@ -7815,7 +7826,7 @@ def _redaction_section(
     word = []
     if red.word_named_shown:  # its placeholder in fixed text reads back as the word (B13 round 5 F92)
         word = [
-            "Private only: one of your folder, library or organisation names is also a word this report "
+            "Private only: one of your folder, library or organization names is also a word this report "
             "prints, so where its placeholder stands in the report's own text it can be read back."
         ]
     if red.listing_unread:  # B13 round 8 J69

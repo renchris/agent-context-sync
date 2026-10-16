@@ -1432,9 +1432,12 @@ def test_the_shell_report_sends_a_report_with_a_word_named_folder_privately(env:
     assert failed.returncode == 1
     text = report_path(env).read_text(encoding="utf-8")
     assert (
-        "Private only: one of your folder or organisation names is also a word this report prints, so where "
+        "Private only: one of your folder or organization names is also a word this report prints, so where "
         "its\n" in text
     ), text
+    # one spelling, the prompt's, as agentsync's report (B13 round 11 M36)
+    assert "- <org-N>: the organization or team" in text and "organisation" not in text, text
+    assert "capitalised" not in text
     assert (
         "\nSend it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public "
         "issue. Nothing is sent automatically.\n" in text
@@ -1473,7 +1476,7 @@ def test_an_agentsync_report_for_a_private_copy_gets_no_issue_link_line(
         old.write_text(
             "# agentsync setup report\n\n## Agent friction log\n\nPrivate only: quoted from a report\n\n"
             "## Redaction\n\n"
-            + "Private only: one of your folder, library or organisation names is ...\n" * private
+            + "Private only: one of your folder, library or organization names is ...\n" * private
             + f"Send it: ...\n\n{ISSUE_LINK}\n"
         )
         cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
@@ -1505,7 +1508,7 @@ def test_the_shell_report_redacts_any_providers_team_and_account(env: dict[str, 
         assert secret not in text, secret
     assert "Dropbox-<org-" in text and "GoogleDrive-<org-" in text and "## Redaction" in text
     # The Redaction paragraph calls <org-N> the organisation, not "the name", which reads as the person's.
-    assert "the organisation or team after the app's name in a CloudStorage folder" in " ".join(text.split())
+    assert "the organization or team after the app's name in a CloudStorage folder" in " ".join(text.split())
 
 
 def test_the_shell_report_gives_a_repeated_organisation_one_number(env: dict[str, str]) -> None:
@@ -1720,7 +1723,7 @@ def test_the_shell_report_never_redacts_inside_a_placeholder(env: dict[str, str]
     # the legend lists the kinds the body shows: no <user>, the login "org" printed nowhere (B13 round 10 L1)
     assert "<user>" not in _legend_kinds(text)
     assert (
-        "\n- ~: the home path\n- <name>: the full name and its joined forms\n- <org-N>: the organisation"
+        "\n- ~: the home path\n- <name>: the full name and its joined forms\n- <org-N>: the organization"
         in note
     )
     assert "  Dropbox-<org-N>), and an account's email address\n- <mdmhost>: the MDM server's host\n" in note

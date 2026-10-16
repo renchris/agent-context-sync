@@ -2497,7 +2497,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <user> "*) say "- <user>: the login name" ;; esac
 	case "$used" in *" <name> "*) say "- <name>: the full name and its joined forms" ;; esac
 	case "$used" in *" <org-[0-9] "*)
-		say "- <org-N>: the organisation or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
+		say "- <org-N>: the organization or team after the app's name in a CloudStorage folder (OneDrive-<org-N>,"
 		say "  Dropbox-<org-N>), and an account's email address"
 		;;
 	esac
@@ -2549,7 +2549,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		case "$v" in "" | *[!A-Za-z]*) continue ;; esac
 		case "$generic" in *" $p "*) continue ;; esac
 		report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" || continue
-		say "Private only: one of your folder or organisation names is also a word this report prints, so where its"
+		say "Private only: one of your folder or organization names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back."
 		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."
 		PRIVATE_ONLY=1 # the report then ends with no issue link (the caller's subshell reads it)

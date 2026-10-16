@@ -60,7 +60,7 @@ Redaction is on by default and consistent within one report, so the same value i
 |---|---|
 | `~` | the home folder path |
 | `<user>`, `<name>` | the login name and the full name (`id -F`) |
-| `<org-N>` | the organization or team after the app's name in a `~/Library/CloudStorage` folder (`OneDrive-<org>`, `OneDrive-SharedLibraries-<org>`, `Dropbox-<team>`; never `Personal`, `Business`, `Work` or a name repeating the app's, such as `Box-Box`), `OneDrive - <org>`, the tenant's and SharePoint host's first label; a single word from a short reviewed list of generic words the report prints (`Link`, `Sync`, `Team`, `Docs`, ...) only in those names, never in the report's sentences; any other one-word organisation the report prints (`Status`) everywhere, which makes the report Private only (below) |
+| `<org-N>` | the organization or team after the app's name in a `~/Library/CloudStorage` folder (`OneDrive-<org>`, `OneDrive-SharedLibraries-<org>`, `Dropbox-<team>`; never `Personal`, `Business`, `Work` or a name repeating the app's, such as `Box-Box`), `OneDrive - <org>`, the tenant's and SharePoint host's first label; a single word from a short reviewed list of generic words the report prints (`Link`, `Sync`, `Team`, `Docs`, ...) only in those names, never in the report's sentences; any other one-word organization the report prints (`Status`) everywhere, which makes the report Private only (below) |
 | `<library-N>`, `<folder-N>`, `<source-N>` | SharePoint library names; each configured folder name below `CloudStorage/<provider>/`, and a configured folder elsewhere under the home folder from its project folder down; each folder the agentsync report's CloudStorage listing showed, and each folder step 1's `--list-folders` runs printed into install.out (both reports), except a generic name such as `Documents` or a coding agent's own name, which takes none, and, in the agentsync report, a `OneDrive-SharedLibraries-` entry at depth 2, which is a `<library-N>`; every configured source id, except one of agentsync's own words such as `inbox` or `mail` whose folder is not under `~/Library/CloudStorage` (in both reports), and an id that is its cloud folder's name in slug form is that folder's `<folder-N>`; in the shell fallback report, a generic name such as `Documents` only as a whole word |
 | `<path>` | an item's path, a document's name or any quoted name in one of agentsync's WARNING or ERROR log lines (Recent errors, and the installer output's tail, with a sync's `alarm:` and `error:` lines there); the part of a `--source-local` argument from the first folder the report does not know; in the shell fallback report (install.sh, when agentsync cannot run), every `$'...'` word, how install.log writes a name with a curly apostrophe, a dash or an accent, and a relative `--source-local` argument from install.log that names no CloudStorage folder |
 | `<email-N>`, `<guid-N>`, `<serial>`, `<host>`, `<proxy-N>` | email addresses, GUIDs (client, tenant and volume ids), the serial number, the Mac's host and computer names, proxy hosts (git's config files and the LaunchAgent's proxy included; a host that is just a common word, such as `proxy` or `wpad`, only where a URL or `host:port` names it, in both reports), the host of each git URL rewrite (`[url "<base>"] insteadOf`, never `pushInsteadOf`; github.com is never replaced) and its path when a word in it is not only a git server's generic words such as `git`, `scm` or `repos`, a tool or kind of host such as `gh`, `homebrew` or `npm`, or the report's own words (one number for the host wherever it is printed), and the system PAC URL after its scheme |
@@ -69,7 +69,7 @@ Redaction is on by default and consistent within one report, so the same value i
 | `<hash-N>`, `<commit-N>` | a hex fingerprint of 16 or more digits (launcher cdhash, content hash); a docs-repo commit id (every abbreviation sharing its first 7 digits is the same placeholder) |
 | `(source N)`, `(not in the config, N)` | in the evidence parts and the Configuration section's `source excludes beyond agentsync's own` line only: a configured source id the redaction does not know, by its place in sources.toml (the shell fallback report's excludes line names every source this way); a source id that is in the manifest or the purge queue and no longer in sources.toml (evidence parts only) |
 
-When a folder, library or organisation name redacted everywhere is also a word the report prints (a folder
+When a folder, library or organization name redacted everywhere is also a word the report prints (a folder
 `Status`), its placeholder in the report's own text reads back as that word, so the Redaction section says so
 (`Private only: ...`) and its `Send it:` line sends the report privately, never as a public issue; such a report
 ends with no issue link. A configured folder or library with a name every OneDrive or Google Drive has (`Documents`,
@@ -125,7 +125,7 @@ words) is yours to remove. The CLI always redacts.
   of any local work step 1 kept, one per commit. Sections 2 and 3 are not redacted and name real folders and
   files, so review them first, and never paste this file into the public form: the public route takes
   `setup-report.md` alone. A person's own kept commit keeps its `From:` line (their git name and email, whose
-  domain can name the organisation, or a name and address git filled in from the Mac's account) and its message.
+  domain can name the organization, or a name and address git filled in from the Mac's account) and its message.
   Section 2 is the whole file, every session's part in the order written: `fix-request.md` is kept from
   session to session and nothing in it is deleted. Since prompt v9 each session writes under a heading of its
   own, which names the prompt's version and the date and time, and rewrites only its own part. Since prompt v11
@@ -169,7 +169,7 @@ words) is yours to remove. The CLI always redacts.
   To hand a report to the maintainer without a public post, the optional route is the contact on the maintainer's
   GitHub profile ([github.com/renchris](https://github.com/renchris)); no email address is published in this
   repository. Keep the report redacted. A privately
-  sent report is filed as a public issue, with the organisation removed, only if the person agrees. The issue form's
+  sent report is filed as a public issue, with the organization removed, only if the person agrees. The issue form's
   "Send a setup report privately" link points here.
 
 The form's field ids are stable, because the pre-filled link names them
