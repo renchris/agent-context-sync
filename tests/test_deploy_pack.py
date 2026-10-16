@@ -538,7 +538,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (20, "e8220f10e8bd8eb45f6ed04321eab2359c70f7d74d1c1bbb79173dcb2a74d6bb")
+PROMPT = (21, "68bdd4eac8804a9e2720f054559a7d090808a087f23b8218f42b5d4ce194fe9d")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -597,6 +597,18 @@ worktree"; the tree is clean after the keep's commit, so ``reset --keep`` loses 
 switch prints git's "Your branch is behind ... by N commits" before the count, false once the reset ran (the
 lane's review); the refusal still prints."""
 
+MAIN_UPSTREAM = (
+    f'{{ test -n "$(git -C {_CHECKOUT} config --get branch.main.merge)"'
+    f" || git -C {_CHECKOUT} branch --set-upstream-to=origin/main main; }}"
+)
+"""How each recovery gives main the Source's main as its upstream when it has none, ending the chain. The
+no-tracking recovery has ended so since v16; the keep command and its retry since v21 (B13 round 12 N76):
+v20's :data:`TO_THE_UPDATE` dropped the upstream ``switch -C main origin/main`` had set, so a keep run on a
+branch with an upstream, from a main with none, left main with none, and step 1's next pull met "no
+tracking information" and ran a second, empty keep (measured, git 2.54). Conditional, so a main that tracks
+something keeps it; after the fetch, so origin/main exists; and safe to run again. Not inside
+:data:`TO_THE_UPDATE`, which also sits inside the no-tracking recovery's if-branch."""
+
 KEEP_LOCAL_WORK = (
     f"{CEILING} && git -C {_CHECKOUT} merge-base --is-ancestor main HEAD"
     f" && git -C {_CHECKOUT} switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C {_CHECKOUT} add -A"
@@ -604,7 +616,7 @@ KEEP_LOCAL_WORK = (
     f" || git -C {_CHECKOUT} -c user.name=agentsync -c user.email=agentsync@localhost commit -q"
     f" -m 'local changes kept before update'; }}"
     f" && {FORMAT_PATCH}"
-    f" && git -C {_CHECKOUT} fetch origin && {TO_THE_UPDATE}"
+    f" && git -C {_CHECKOUT} fetch origin && {TO_THE_UPDATE} && {MAIN_UPSTREAM}"
 )
 """Step 1's recovery when the pull fails on local changes (field report 2026-10-05: an agent
 stopped at step 1 because uncommitted work sat in the checkout and the prompt forbids stash and
@@ -615,10 +627,11 @@ pull reports as "Not possible to fast-forward": it commits only when something i
 patch for every commit the update lacks, and moves main to the update, where v15's commit failed on a
 clean tree and left the checkout on a branch with no upstream. Its first step stops it, changing nothing,
 when main has commits the checked-out branch lacks: the reset of main would leave them on no branch. Since
-v20 main moves by :data:`TO_THE_UPDATE`."""
+v20 main moves by :data:`TO_THE_UPDATE`, and since v21 it ends with :data:`MAIN_UPSTREAM`."""
 
-KEEP_RETRY = f"{CEILING} && git -C {_CHECKOUT} fetch origin && {TO_THE_UPDATE}"
-"""The keep command's last three steps, run again when only they failed (the changes are kept by then)."""
+KEEP_RETRY = f"{CEILING} && git -C {_CHECKOUT} fetch origin && {TO_THE_UPDATE} && {MAIN_UPSTREAM}"
+"""The keep command's last four steps (the fetch, the switch, the reset and, since v21, setting main's
+upstream), run again when only they failed (the changes are kept by then)."""
 
 KEEP_BRANCH_WORK = (
     f"{CEILING} && git -C {_CHECKOUT} switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C {_CHECKOUT} "
@@ -631,8 +644,7 @@ KEEP_BRANCH_WORK = (
     f" {TO_THE_UPDATE}; else git -C {_CHECKOUT} switch -q main; fi; }}"
     f' && n=$(git -C {_CHECKOUT} rev-list --count origin/main..@{{-1}}) && echo "$n"'
     f' && {{ [ "$n" -gt 0 ] || git -C {_CHECKOUT} branch -D @{{-1}}; }}'
-    f' && {{ test -n "$(git -C {_CHECKOUT} config --get branch.main.merge)"'
-    f" || git -C {_CHECKOUT} branch --set-upstream-to=origin/main main; }}"
+    f" && {MAIN_UPSTREAM}"
 )
 """Step 1's recovery when the pull says "no tracking information" (a branch with no upstream, such as one a
 v15 keep command left) or the keep command stops at its first step (main has commits the checked-out branch
@@ -712,6 +724,15 @@ UNLOADED_CONFIG = (
     ' ~/agent-context/sources.toml does not load", followed by the reason the report gives'
 )
 """The finish's case for a sources.toml that exists but does not load, since v20 (B13 round 11 M28)."""
+
+UNCHECKED_CONFIG = (
+    'or, if the report\'s Configuration section says "loads: not checked" (the shell report, when agentsync'
+    ' could not run), list no folders and say "unknown: ~/agent-context/sources.toml was not checked",'
+    " followed by the reason the report gives"
+)
+"""The finish's case for a sources.toml the shell report could not check, since v21 (B13 round 12 N25, lane
+RB's words): with agentsync unable to run, the shell report prints ``- loads: not checked (<reason>)``, and
+the finish had only "loads: no" and the folder list, neither of which the agent could read."""
 
 REPORT_COMMAND = f"{INSTALL_SH} --report-only"
 """Setup prompt v7 step 3's last command, the report, which first appends the friction log's end line (KISS
@@ -962,8 +983,8 @@ def test_readme_step1_is_one_command() -> None:
     assert (
         "Before going to the report from the Xcode stop or the other-git-failure stop above, if "
         "~/src/agent-context-sync/scripts/install.sh exists, run "
-        f"`{INSTALL_SH} --version`: step 1 did not update that copy (its pull did not run or did not "
-        "finish), so it may be older than this prompt. If its output "
+        f"`{INSTALL_SH} --version`: step 1 did not update that copy (its pull did not run, or failed), so "
+        "it may be older than this prompt. If its output "
         f'ends with "setup-prompt-compat {PROMPT[0]}", log the failed command as a step 1 error, starting '
         "its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
@@ -978,6 +999,9 @@ def test_readme_step1_is_one_command() -> None:
     # problem to solve; it now says the next paste tries the update (not that it succeeds: local changes or a
     # checkout off main have their own recoveries in step 1).
     assert "no pull ran" not in flat
+    # B13 round 12 N27: "did not finish" read as cut off, but at the other-git-failure stop the pull ran to
+    # its end and failed (rc 1, FETCH_HEAD emptied: measured)
+    assert "did not finish" not in flat
     assert "the not-a-checkout stop, the ownership stop" not in flat
     assert "either of these two stops" not in flat
     assert "and stop. If git pull failed" not in step1 and "HTTPS_PROXY set) and stop" not in step1
@@ -1070,10 +1094,14 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # a copy that is not the installer's could leave an earlier session's. The clause follows whether a report
     # ran.
     assert " ".join(finish.split()).endswith(
-        "step 1 kept; a patch an earlier report carried is not repeated, only listed by its hash); if no "
+        "step 1 kept; a patch an earlier report carried is not repeated, only listed by its hash); if the "
+        "report's run printed that bring-back.md could not be written, say so, do not name "
+        "~/agent-context/bring-back.md, and name the files the NEXT: line names instead; if no "
         'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
         "and do not point me to an older bring-back.md."
     )
+    # B13 round 12 N71 (lane RB's words): when the report could not write bring-back.md, the finish still
+    # named that file; it now names what the report's NEXT: line names instead
     # B13 round 11 M35: "the patches of any work step 1 kept" was false on a re-run after an earlier report:
     # section 3 then holds only "not repeated:" lines, as the file's own header says. Not worded as what was
     # copied back: the installer decides by file time and cannot know that.
@@ -1224,8 +1252,9 @@ def test_readme_keeps_local_work_then_runs_step_1_again(tmp_path: Path) -> None:
     step1 = " ".join(_prompt_steps()[1].split())
     assert (
         "then tell me the branch name (my changes are safe on it, and copied as patches to "
-        "~/agent-context/setup/local-work) and run step 1's command again. If only its last three steps (the "
-        "fetch, the switch or the reset) failed, my changes are already kept: tell me the branch name, run "
+        "~/agent-context/setup/local-work) and run step 1's command again. If only its last four steps (the "
+        "fetch, the switch, the reset or setting main's upstream) failed, my changes are already kept: tell "
+        "me the branch name, run "
         f"`{KEEP_RETRY}`, then step 1's command again."
     ) in step1
     assert "only that command's last step, the pull" not in step1
@@ -1245,6 +1274,46 @@ def test_readme_keeps_local_work_then_runs_step_1_again(tmp_path: Path) -> None:
     assert _git_out(checkout, "branch", "--show-current") == "main"
     assert _pull(checkout, env).returncode == 0, "step 1 again pulls a clean main"
     assert _git_out(checkout, "show", f"{branch}:convert.py") == "local edit", "the branch still holds them"
+
+
+@pytest.mark.parametrize("version", ["v20", "v21"])
+def test_a_keep_from_a_branch_leaves_main_with_an_upstream(tmp_path: Path, version: str) -> None:
+    """B13 round 12 N76: a checkout on a branch with an upstream, local changes on it and a main with no
+    upstream. v20's keep command moved main with ``switch main`` and ``reset --keep``, where v19's ``switch -C
+    main origin/main`` had set the upstream, so step 1's next pull said "no tracking information" and the
+    session ran the no-tracking recovery: a second keep, of nothing. Since v21 the keep command ends with
+    :data:`MAIN_UPSTREAM`; v20's command is the control. A main that already tracks a branch keeps it."""
+    upstream, home, checkout, env = _behind_upstream(tmp_path)
+    subprocess.run([*_GIT, "-C", str(upstream), "branch", "feature", "main~1"], check=True)
+    subprocess.run([*_GIT, "-C", str(checkout), "fetch", "-q", "origin"], check=True)
+    track = ["switch", "-q", "-c", "feature", "--track", "origin/feature"]
+    subprocess.run([*_GIT, "-C", str(checkout), *track], check=True)
+    subprocess.run([*_GIT, "-C", str(checkout), "branch", "--unset-upstream", "main"], check=True)
+    subprocess.run([*_GIT, "-C", str(upstream), "switch", "-q", "feature"], check=True)
+    (upstream / "convert.py").write_text("v6 feature\n", encoding="utf-8")
+    subprocess.run([*_GIT, "-C", str(upstream), "commit", "-q", "-am", "feature"], check=True)
+    subprocess.run([*_GIT, "-C", str(upstream), "switch", "-q", "main"], check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    pull = _pull(checkout, env)
+    assert pull.returncode != 0 and "would be overwritten" in pull.stderr, pull.stderr
+    command = KEEP_LOCAL_WORK if version == "v21" else KEEP_LOCAL_WORK.removesuffix(f" && {MAIN_UPSTREAM}")
+    assert command != KEEP_LOCAL_WORK or version == "v21"
+    proc = _zsh(command, home, env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _git_out(checkout, "rev-parse", "main") == _git_out(checkout, "rev-parse", "origin/main")
+    again = _pull(checkout, env)
+    if version == "v20":
+        assert again.returncode != 0 and "no tracking information" in again.stderr, again.stderr
+        return
+    assert "set up to track 'origin/main'" in proc.stdout + proc.stderr, proc.stdout + proc.stderr
+    assert again.returncode == 0 and "Already up to date" in again.stdout, again.stdout + again.stderr
+    assert len(_git_out(checkout, "branch", "--list", "local-work-*").split()) == 1, "one keep, no second"
+    # a main that already tracks a branch keeps it, and the retry sets nothing again
+    tracks = ["branch", "--set-upstream-to=origin/feature", "main"]
+    subprocess.run([*_GIT, "-C", str(checkout), *tracks], check=True)
+    retry = _zsh(KEEP_RETRY, home, env)
+    assert retry.returncode == 0, retry.stdout + retry.stderr
+    assert _git_out(checkout, "config", "--get", "branch.main.merge") == "refs/heads/feature"
 
 
 @pytest.mark.parametrize("uncommitted", [False, True])
@@ -2339,7 +2408,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         ' ~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this'
         ' Mac syncs no folder" (if setup stopped before step 2, say'
         " at which step);"
-        f" {UNLOADED_CONFIG};"
+        f" {UNLOADED_CONFIG}; {UNCHECKED_CONFIG};"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         ' answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the'
         " folders to choose is not a step for me), and under it each WAITING ON YOU: line the same command"
@@ -2669,11 +2738,33 @@ words setup prompt v9's step 1 keys on."""
 
 SIGNED_OUT = (
     "If the list's NEXT: line asks me to sign in, tell me which folders are kept and that I must sign in to"
-    " OneDrive, and wait for me as for a click; once I say so, run --list-folders again and go by what it"
-    " prints."
+    " the app that line names, and wait for me as for a click; once I say so, run --list-folders again and go"
+    " by what it prints."
 )
 """Step 1's first exception, since v20, for a list whose synced folders are missing because OneDrive is signed
-out (B13 round 11 M4, lane RB: ``--list-folders`` exits 3 and its NEXT: asks for the sign-in)."""
+out (B13 round 11 M4, lane RB: ``--list-folders`` exits 3 and its NEXT: asks for the sign-in). Since v21 it
+names no app: the NEXT: line names the one that is signed out (B13 round 12 N61, N41, lane RB's words)."""
+
+SIGNED_OUT_UNASKED = (
+    "If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not wait and"
+    " log nothing for it: go to step 3's report."
+)
+"""What the first exception's sign-in wait does with nobody to ask, since v21 (B13 round 12 N32, N6: one
+defect). v20 had no rule, so an unattended agent waited forever or improvised. To the report, not to step 3's
+no-report cases (N6's verifier): the report records the stop and its doctor line says to sign in, where a
+no-report stop leaves the person no bring-back.md; and it is what a Mac that syncs no folder yet does with the
+same sign-in (N7). Nothing is logged for it: the report reads the stop from install.log."""
+
+NEW_MAC_SIGN_IN = (
+    "If --list-folders printed no folder paths (only a NEXT: line), do what that line says if it is a click"
+    " for me (a sign-in is not one: only the first exception below waits for a sign-in), otherwise show it to"
+    " me and go to step 3's report."
+)
+"""Step 1's rule for a list with no folder path, since v21 (B13 round 12 N7). v20 waited for a sign-in "as
+for a click" on a Mac that already syncs folders, and left open whether the same sign-in NEXT: on a Mac that
+syncs none is "a click for me": read as one, the agent waited, logged a click and the report said "worked
+with help". The report (``_LIST_STOPS``) and the guide already send that stop to the report; the prompt now
+says so."""
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
@@ -2692,10 +2783,10 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     kept = (
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
-        f"path in the list). {SIGNED_OUT} Otherwise tell me which they are and ask only whether to add any "
-        "unmarked folder. If you cannot ask me then, add none "
-        "and go on to step 2. That is not a deviation: do not log it or stop, and say in your final message "
-        "that I gave no answer, so no folder was added."
+        f"path in the list). {SIGNED_OUT} {SIGNED_OUT_UNASKED} If the list's NEXT: line does not ask me to "
+        "sign in, tell me which they are and ask only whether to add any unmarked folder. If you cannot ask "
+        "me then, add none and go on to step 2. That is not a deviation: do not log it or stop, and say in "
+        "your final message that I gave no answer, so no folder was added."
     )
     assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
     # B13 round 11 M4 (lane RB's words): with OneDrive signed out, a Mac that already syncs folders got
@@ -2703,6 +2794,13 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     # step 2 that fails. The list now exits 3 with a NEXT: that asks the person to sign in; the exception
     # waits for that as for a click, before its "add none and go on", and reads the list again.
     assert step1.index(SIGNED_OUT) < step1.index("If you cannot ask me then, add none")
+    # B13 round 12 N32, N6: the sign-in wait has a rule for nobody to ask, and it is the report, so step 3's
+    # no-report cases do not name it; N7: on a Mac that syncs no folder yet a sign-in is no click to wait for
+    assert NEW_MAC_SIGN_IN in step1 and step1.index(NEW_MAC_SIGN_IN) < step1.index("Two exceptions.")
+    assert step1.count("as for a click") == 1, "only the first exception waits for a sign-in"
+    no_report = " ".join(_prompt_steps()[3].split()).split("Four cases have no report", 1)[1]
+    no_report = no_report.split("Every other stop still ends with the report.", 1)[0]
+    assert "sign" not in no_report, "an unanswered sign-in wait goes to the report"
     assert step1.index(stop) < step1.index(kept) and step1.count("log a deviation") == 2, "the wait and L10's"
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert script.count(f'say "{ALREADY_SYNCED} $synced folder(s) (') == 2, "both forms of the line start so"
@@ -2755,9 +2853,9 @@ UNREAD_CONFIG = (
     " already syncs. If that NEXT: line says the installed agentsync failed while reading the config, show me"
     " that line in its own words and do not say step 2 keeps my folders; otherwise say that if this Mac "
     "was set"
-    " up before, step 2 with no --source-local keeps them. Ask only whether to add a folder from the list "
-    "(none"
-    " is needed)."
+    " up before, step 2 with no --source-local keeps them. If that line says step 2 does not reinstall it,"
+    " ask me nothing about folders: no folder can be added until I fix the config; go on to step 2 with no"
+    " --source-local. Otherwise ask only whether to add a folder from the list (none is needed)."
     " If you cannot ask me then, add none and go on to step 2 with no --source-local: as in the first"
     " exception, that is not a deviation, and your final message says I gave no answer, so no folder was"
     " added. If step 2 then says no folder is synced yet (that config held none), this Mac syncs no folder"
@@ -2916,7 +3014,7 @@ def test_readme_question_kind_counts_a_go_ahead_given_in_the_chat() -> None:
         "an answer",
         "which folders to sync",
         "my folder answer",
-        "telling you I clicked something",
+        "telling you I clicked something or signed in",
         "one line",
         "a question line of its own",
         "deviation",
@@ -2924,6 +3022,11 @@ def test_readme_question_kind_counts_a_go_ahead_given_in_the_chat() -> None:
         assert words in question, words
     [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `question` |")]
     assert "go-ahead" in row and "click" in row
+    # B13 round 12 N5, N32 (one defect): the sign-in step 1 waits for is no click line, as an announced Allow
+    # is not; v20's kind named only the Allow, so an agent logged the sign-in and the report read "worked
+    # with help"
+    [click] = re.findall(r"click \(([^)]*)\)", listed)
+    assert click == "I clicked something other than an Allow or the sign-in this prompt announced", click
 
 
 def _fill_line(step: int, kind: str, what: str, fix: str) -> str:
@@ -4930,6 +5033,7 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     assert len({(h, tuple(i), s, t) for h, i, s, t in claims}) >= 208, "the scan is broken"
     # B13 round 12 N72: a bare section in a target list is read too, and a pin holds its line
     assert ("16.92", "16.14") in bare and ("16.89", "16.37") in bare and ("16.92", "16.64") not in bare
+    assert ("16.100", ["N76"], "16.94", "M69") in claims and ("16.100", ["N7"], "16.94", "M4") in claims
     # §16.83 K75's line in §16.22's unlettered bullet names no item the scan can read
     assert "Amended 2026-10-14, §16.83 K75: so does an inbox no wait names" in " ".join(
         sections["16.22"].split()

@@ -19124,6 +19124,11 @@ ran; git's refusal still prints. Tests: `test_a_recovery_in_a_second_worktree_le
 (parametrized over this machine's gits; v19's reset as the control),
 `test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref`.
 
+**Amended 2026-10-16, §16.100 N76:** since v21 the keep command and its retry end by giving main origin/main as its
+upstream when it has none (the no-tracking recovery's own tail), so a keep from a branch with an upstream no longer
+leaves the next pull "no tracking information" and a second, empty keep; they say "its last four steps (the fetch,
+the switch, the reset or setting main's upstream)".
+
 **The worktree stop says what is where and how to move it** (M17, M69; amends §16.88 L27). The not-a-checkout stop
 named only the local-work branch. The worktree case is now a stop of its own, keyed on main "is already used by
 worktree" or "is already checked out at" (git's version decides the words). It tells the person the branch they were
@@ -19178,6 +19183,9 @@ problem; the stop now adds "and that this asks nothing more of me: once the Comm
 can reach GitHub), the next paste of this prompt tries to update that code first". "Tries", not "updates" (M16's
 verifier): local changes and a checkout off main have their own recoveries. Test: `test_readme_step1_is_one_command`.
 
+**Amended 2026-10-16, §16.100 N27:** since v21 it reads "(its pull did not run, or failed)": at the other-git-failure
+stop the pull ran to its end and failed, which "did not finish" read as cut off.
+
 **The finish for a config that does not load** (M28; amends §16.72 H9 and §16.49 R11). A sources.toml that exists but
 does not load (mode 000, bad TOML, a schema error; probe H) had no words: "read after step 2" could not be done or
 parsed a file agentsync rejected, and the only other case, "none: this Mac syncs no folder", was false on a Mac that
@@ -19207,6 +19215,10 @@ to sign in, and the first exception, before its "add none and go on to step 2", 
 me to sign in, tell me which folders are kept and that I must sign in to OneDrive, and wait for me as for a click;
 once I say so, run --list-folders again and go by what it prints." Test:
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+
+**Amended 2026-10-16, §16.100 N32, N6, N5, N7:** since v21 the wait has a rule for nobody to ask ("do not wait and log
+nothing for it: go to step 3's report"), the sign-in is no `click` line, and on a Mac that syncs no folder yet a
+sign-in is no click to wait for; the person signs in to "the app that line names" (lane RB's N61, N41).
 
 Register: `docs/deploy/setup-feedback.md` K44.
 
@@ -19495,7 +19507,84 @@ Reserved for round 12 lane RB of B13.
 
 ### 16.100 Round 12: setup prompt v21 (2026-10-16, wave B13 round 12 lane P)
 
-Reserved for round 12 lane P of B13.
+The B13 round 12 items of lane P (specs `round12/items/N<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): N5, N6, N7, N27, N32, N76. All need prompt text, so the prompt is **setup prompt
+v21**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v21` and `setup-prompt-compat 21`, the issue form's
+placeholder and the block's digest move together, and a saved v20 copy is stopped at step 1 like every older copy.
+v21 moves no step, so it has no `PROMPT_LAYOUTS` entry. Lane RB sent words for its N29, N61 (with N41), N25 and N71,
+built here. None adds an agentsync command, an installer flag, a config key or a friction kind.
+
+**The sign-in step 1 waits for is not a click line** (N5, N32: one defect, the prompt half; amends §16.94 M4). v20's
+`click` kind was "I clicked something other than an Allow this prompt announced", and the sign-in the first exception
+waits for "as for a click" is no Allow, so an agent that followed the words logged `step 1 | click`, and the report
+read "worked with help" with "1 click logged, though none is possible" (probe M1). The kind is now "I clicked
+something other than an Allow or the sign-in this prompt announced", and the `question` kind leaves out "telling you
+I clicked something or signed in", so the person's "done" is no question line either. The report half, which reads a
+v20 log that has the click (one step 1 click excused after a `note=not-signed-in` list that a later list or install
+run follows), is lane RA's, in `setup_report.py` with its N31 (§16.98). N5's verifier also asked for "one rule for new
+and set-up Macs" (finding 3); that is N7's finder's fix, which N7's verifier showed makes things worse, so it is not
+built (below). Test: `test_readme_question_kind_counts_a_go_ahead_given_in_the_chat`.
+
+**The sign-in wait with nobody to ask goes to the report** (N32, N6: one defect; amends §16.94 M4). v20 said to wait,
+and nothing for an unattended tool or an unanswered question: step 3's no-report cases name only the folder wait,
+and "Every other stop still ends with the report". Right after the wait the exception now says: "If you cannot ask
+me (your tool runs unattended, or the question comes back unanswered), do not wait and log nothing for it: go to
+step 3's report." N6's verifier built the other answer, a sixth no-report case with its own finish words; not built,
+because that makes things worse, as N32's verifier measured: the report at this stop (probe 50) is the person's only
+record, says "failed at step 1" and carries doctor's "fix: sign in" line, where a no-report stop leaves no
+bring-back.md at all; and the same NEXT: on a Mac that syncs no folder yet already goes to the report (N7). With
+RA's N31 the report names the sign-in stop in its expected turns. Nothing is logged: the report reads the stop from
+install.log's `note=not-signed-in`. The step 3 list and the finish words stay as they were: the finish's "the last
+NEXT: line printed before the report" is the sign-in line. Placement: right after the wait and before the
+`If the list's NEXT: line does not ask me to sign in` sentence (v20's bare "Otherwise", which would now have read
+as "otherwise, if you can ask me"), so it cannot merge into the "add none and go on to step 2" clause, which gives
+the opposite instruction. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`SIGNED_OUT_UNASKED`,
+and no "sign" in step 3's no-report cases).
+
+**A sign-in on a Mac that syncs no folder yet is no click** (N7; amends §16.94 M4). Step 1's rule for a list with no
+folder path, "do what that line says if it is a click for me, otherwise show it to me and go to step 3's report",
+left open whether the list's "sign in to OneDrive" NEXT: is a click, while the first exception waited for the same
+act "as for a click". It now reads "(a sign-in is not one: only the first exception below waits for a sign-in)". The
+verifier's reading, built: `_LIST_STOPS` and the guide already send that stop to the report, so the prompt now
+says what the code expects. The finder's fix, "one rule for both", is not built: it turns every new Mac's sign-in into
+a wait the report counts as help (`_list_stopped` returns None once a list finishes) and the guide contradicts.
+`step1.count("as for a click") == 1` holds the one wait. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`
+(`NEW_MAC_SIGN_IN`, before "Two exceptions.").
+
+**"its pull did not run, or failed"** (N27; amends §16.94 M32). "did not finish" read as cut off; at the
+other-git-failure stop the pull runs to its end and fails (rc 1, `FETCH_HEAD` emptied, reproduced with an unreachable
+proxy on git 2.54). A pull cut off partway also failed, so no case reads worse. Test: `test_readme_step1_is_one_command`
+(the new words, and "did not finish" nowhere in step 1).
+
+**The keep command leaves main tracking the Source** (N76; amends §16.94 M69). v20's `switch -q main && reset -q
+--keep origin/main` dropped the upstream v19's `switch -C main origin/main` had set. On a checkout on a branch with an
+upstream and local changes, from a main with none, the keep command exited 0 and step 1's next pull said "There is no
+tracking information for the current branch", so the session ran the no-tracking recovery: a second keep, of nothing
+(measured, git 2.54). The keep command and its retry now end with the no-tracking recovery's own tail,
+`{ test -n "$(git -C ~/src/agent-context-sync config --get branch.main.merge)" || git -C ~/src/agent-context-sync branch --set-upstream-to=origin/main main; }`
+(`MAIN_UPSTREAM` in `tests/test_deploy_pack.py`): conditional, so a main that tracks something keeps it; after the
+fetch, so origin/main exists; safe to run again. Not inside `TO_THE_UPDATE`, which also sits in the no-tracking
+recovery's if-branch, already followed by the tail. The retry sentence names "its last four steps (the fetch, the
+switch, the reset or setting main's upstream)". No allow rule is added: no recovery is allow-listed (§16.94 M69).
+Test: `test_a_keep_from_a_branch_leaves_main_with_an_upstream` (v20's command as the control: "no tracking
+information"; v21's: "Already up to date" and one local-work branch; a main that tracks another branch keeps it
+through the retry).
+
+**Lane RB's words** (N29, N61, N41, N25, N71; the installer halves and their dated lines are §16.99's). The first
+exception's "sign in to OneDrive" is "sign in to the app that line names" (N61, N41: the list's sign-in NEXT: names
+the signed-out app), and this lane's click kind and N7's clause say "the sign-in" and "a sign-in" to match. The
+second exception: "If that line says step 2 does not reinstall it, ask me nothing about folders: no folder can be
+added until I fix the config; go on to step 2 with no --source-local. Otherwise ask only whether to add a folder from
+the list (none is needed)." (N29; keyed on "does not reinstall it", not on "step 2 stops at its config step", which
+the older-stamp line also has). The finish: after the "does not load" case, "or, if the report's Configuration
+section says "loads: not checked" (the shell report, when agentsync could not run), list no folders and say
+"unknown: ~/agent-context/sources.toml was not checked", followed by the reason the report gives" (N25,
+`UNCHECKED_CONFIG`); and after the patches, "if the report's run printed that bring-back.md could not be written,
+say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT: line names instead" (N71). Tests:
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`SIGNED_OUT`, `UNREAD_CONFIG`),
+`test_readme_step3_runs_the_loop_then_the_report`, `test_prompt_routes_changes_to_the_source_not_the_checkout`.
+
+Register: `docs/deploy/setup-feedback.md` K45.
 
 ### 16.101 Round 12: waits, read advice, status and doctor (2026-10-16, wave B13 round 12 lane B)
 
