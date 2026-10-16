@@ -459,7 +459,8 @@ friction_proxy_hosts() {
 		LC_ALL=C sed -E -e 's/^Could not resolve (proxy|host): //' -e 's/^Failed to connect to //' -e 's/ port [0-9]+$//' \
 			-e 's/[.-]+$//' | while IFS= read -r w; do
 		h="$(printf '%s' "$w" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
-		case " $PUBLIC_HOSTS " in *" $h "*) continue ;; esac
+		# and a public host without its ".com", as a paraphrase writes it ("GitHub"; B13 round 12 N43)
+		case " $PUBLIC_HOSTS " in *" $h "* | *" $h.com "*) continue ;; esac
 		# lower case first, the number's key; then as written, since the shell matches a host byte for byte
 		# where the Python report matches it in any case
 		[ -z "$h" ] || printf '%s\n' "$h"
@@ -1820,8 +1821,11 @@ redaction_pairs() {
 				# A host with no dot (B13 R42, R67): a generic word (proxy, wpad) only after // or @ or as host:port
 				# with its own port, so
 				# the report's HTTPS_PROXY and network.proxy stay; any other (contosogw) can name the company and
-				# is a whole word, as git and curl print it ("Could not resolve proxy: contosogw").
-				if generic_proxy_host "$v"; then
+				# is a whole word, as git and curl print it ("Could not resolve proxy: contosogw"). A word the
+				# report prints is matched as a generic one: "Could not resolve host: the proxy was down" made
+				# every "the" a placeholder (B13 round 12 N43), and so is one of one or two letters ("an"), which
+				# no report word is
+				if generic_proxy_host "$v" || [ "${#v}" -lt 3 ] || report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')"; then
 					add_pair "//$v" "//<proxy-$m>" t
 					add_pair "@$v" "@<proxy-$m>" t
 					[ -z "$port" ] || add_pair "$v:$port" "<proxy-$m>:$port" w

@@ -8138,6 +8138,36 @@ def test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset(
     )
 
 
+def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 12 N43: both readers took any word after "Could not resolve host:" as a proxy host, so a
+    paraphrase made every "the" in the report a placeholder, its own sentences included, and "GitHub" turned
+    github.com into "<proxy-2>.com". A dotless host the report prints as a word is matched only where a URL
+    puts it, and a public host without its ".com" is none; a dotless host that is no such word (contosogw)
+    is still a whole word, as curl prints a proxy, with the same number in both readers."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    said = (
+        "Could not resolve host: the proxy was down; Could not resolve host: GitHub; see "
+        "https://github.com/x/y and http://the:8080; Could not resolve host: an internal mirror is an issue; "
+        "Failed to connect to contosogw port 8080"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == python, (shell, python)
+    assert shell == (
+        "Could not resolve host: the proxy was down; Could not resolve host: GitHub; see "
+        "https://github.com/x/y and http://<proxy-1>:8080; Could not resolve host: an internal mirror is an "
+        "issue; Failed to connect to <proxy-3> port 8080"
+    ), shell
+    text = report_path(env).read_text()
+    assert " the " in text.split("## Agent friction log", 1)[0], "the shell report's own sentences"
+    red = setup_report._build_redactor(setup_report._Run(None, setup_report.ReportHooks(), 12.0))
+    assert red.redact("only writes the report, but the plist is absent") == (
+        "only writes the report, but the plist is absent"
+    )
+
+
 @pytest.mark.parametrize("host", ["egress.northwind-lan.invalid", "Egress.Northwind-LAN.invalid"])
 def test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset(
     env: dict[str, str], monkeypatch: pytest.MonkeyPatch, host: str

@@ -3001,7 +3001,8 @@ def _resolver_hosts(text: str) -> list[str]:
     hosts: list[str] = []
     for found in _RESOLVER_HOST_RE.finditer(text):
         host = (found.group(1) or found.group(2) or "").rstrip(".-").lower()
-        if host and host not in _PUBLIC_HOSTS:
+        # "GitHub", a paraphrase's public host without its ".com", is no value (B13 round 12 N43)
+        if host and host not in _PUBLIC_HOSTS and f"{host}.com" not in _PUBLIC_HOSTS:
             hosts.append(host)
     return hosts
 
@@ -3016,7 +3017,17 @@ def _recorded_proxy_hosts() -> list[str]:
 
 
 def _add_proxy_host(red: Redactor, host: str) -> None:
-    generic = "." not in host and ":" not in host and host.lower() in _GENERIC_PROXY_HOSTS
+    # A dotless host that is a generic word or one the report prints is matched only where a URL puts it
+    # (after // or @, or before :<port>): a paraphrase, "Could not resolve host: the proxy was down", made
+    # every "the" a placeholder (B13 round 12 N43). Any other (contosogw) stays a whole word, as curl
+    # prints it.
+    # and one of one or two letters ("an", "my"), which report_words() is too short to hold (review)
+    bare = host.lower()
+    generic = (
+        "." not in host
+        and ":" not in host
+        and (bare in _GENERIC_PROXY_HOSTS or bare in report_words() or len(bare) < 3)
+    )
     red.add("proxy", host, url=generic, ignore_case=True)
 
 
