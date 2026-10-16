@@ -490,7 +490,10 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   install), it adds instead `; this Mac has a config (<config>) whose folders could not be read: the installed
   agentsync failed while reading it (it raised <Class>), and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, and if that
   version cannot load it either, step 2 stops at its config step and nothing is kept or added until the config is
-  fixed`: step 2's reinstall reads a config an older agentsync rejected for a newer key (B13 round 10 L11).
+  fixed`: step 2's reinstall reads a config an older agentsync rejected for a newer key (B13 round 10 L11). When the
+  installed agentsync is already this checkout's build, step 2 does not reinstall it, and the sentence says so
+  instead: `The installed agentsync is already this checkout's build (commit <sha>), so step 2 (run from this
+  checkout) does not reinstall it: ...until the person fixes the config` (B13 round 11 M37).
   Since v18 step 1 treats that list like the one above: it runs the offered re-run once, says the list could not
   read the folders, and asks only whether to add one; an agent that cannot ask adds none and runs step 2 with no
   `--source-local`, which is not a deviation. If step 2 then says no folder is synced yet (the config held none),

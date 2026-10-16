@@ -16912,6 +16912,8 @@ time. No count: none was read, and the config may hold the inbox alone. Whether 
 Amended 2026-10-14, §16.87 L11: after `marks=failed` the clause goes on `: the installed agentsync failed while
 reading it (it raised <Class>), and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first,
 ...` and claims no keep.
+Amended 2026-10-15, §16.93 M37 (by §16.87 L11): `Step 2 reinstalls agentsync first` only when it will; otherwise
+`The installed agentsync is already this checkout's build (commit <sha>), so step 2 ... does not reinstall it`.
 
 **With several folders, the docs repo line prints beside the sources line** (J13). The first add-source call's
 `docs repo` line, and its `time machine:` lines, are held in a temp file and printed directly above the last call's
@@ -18334,6 +18336,10 @@ agentsync: a duplicate source id stops step 2 with exit 1; an older build that r
 and step 2 keeps it byte for byte), `test_list_folders_marks_nothing_when_the_config_cannot_be_read`,
 `test_step_1s_failed_config_exception_reads_the_installers_words` (pins v19's words to the clause), the
 `_unread_words` cases in `tests/test_setup_report.py`.
+Amended 2026-10-15, §16.93 M37: when the installed agentsync is already this checkout's build, the sentence after
+`status prints why.` reads `The installed agentsync is already this checkout's build (commit <sha>), so step 2 (run
+from this checkout) does not reinstall it: step 2 stops at its config step, and nothing is kept or added until the
+person fixes the config`.
 
 **A checkout git refuses says why** (L29; amends §16.81 K17 and K29). Under git's ownership check ("detected
 dubious ownership": the checkout belongs to another user account) the shell report said only `(local changes not
@@ -18877,6 +18883,19 @@ config that exists" it told the agent its own typo was the person's to fix (M23'
 NEXT that names the fix as the person's is neither a command nor a click, so the rule sends the agent to the report.
 Tests: `test_a_config_that_does_not_load_is_the_persons_to_fix` (init and add-source at 78; init at 1, add-source at
 2), `test_a_failed_add_source_still_fails_the_run_through_the_filter` (a created config at 78: the generic line).
+
+**Step 1 says step 2 reinstalls agentsync only when it will** (M37; amends §16.87 L11). For a config the installed
+agentsync failed on, step 1's NEXT said `Step 2 reinstalls agentsync first, and if that version cannot load it
+either, ...`, but step 2 skips the reinstall when the install stamp names this clean checkout's commit, the common
+case for a config that is itself broken. Step 2's stamp test is one function, `install_is_current STAMP AGENTSYNC
+SOURCE COMMIT`, and step 1 asks it through `checkout_is_installed`, which finds uv as step 1 does (`find_uv`, now
+shared with `tool_python` and step 1 of the run), reads uv's tool folders with `uv tool dir` and `uv tool dir --bin`
+as step 2 does, and reads this checkout's commit (`checkout_commit`; a changed tree never matches). When it holds,
+the sentence after `status prints why.` reads `The installed agentsync is already this checkout's build (commit
+<sha>), so step 2 (run from this checkout) does not reinstall it: step 2 stops at its config step, and nothing is kept
+or added until the person fixes the config`; otherwise it is L11's. The clause's opening words, which the prompt's
+step 1 exception reads, are unchanged. Test: `test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load`
+(this checkout's stamp, an older commit's, a changed tree; step 2's own `agentsync` step agrees each time).
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

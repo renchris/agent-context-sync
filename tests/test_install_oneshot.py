@@ -296,12 +296,14 @@ def wheel(tmp_path: Path) -> Path:
     return w
 
 
-def install_sh(env: dict[str, str], *args: str, timeout: float = 120) -> subprocess.CompletedProcess[str]:
-    """One install.sh run. Its NEXT says of the [FAIL] lines above it that "each names its fix", so every
-    run of every test is held to that: the real agentsync's lines, and the stub's, which are written as the
-    real ones are."""
+def install_sh(
+    env: dict[str, str], *args: str, timeout: float = 120, script: Path = INSTALL_SH
+) -> subprocess.CompletedProcess[str]:
+    """One install.sh run (``script``: a copy in another checkout). Its NEXT says of the [FAIL] lines above it
+    that "each names its fix", so every run of every test is held to that: the real agentsync's lines, and the
+    stub's, which are written as the real ones are."""
     cp = subprocess.run(
-        [BASH32, str(INSTALL_SH), *args],
+        [BASH32, str(script), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -3892,6 +3894,59 @@ def _unread_next(
         f"{INSTALL_SH} with no --source-local keeps whatever that config syncs, and each --source-local only "
         f"adds{also}"
     )
+
+
+def _committed_checkout(tmp_path: Path) -> tuple[Path, str]:
+    """A clean git checkout holding a copy of install.sh, and its commit as install.sh reads it."""
+    checkout = tmp_path / "src" / "agent-context-sync"
+    (checkout / "scripts").mkdir(parents=True)
+    shutil.copy(INSTALL_SH, checkout / "scripts" / "install.sh")
+    (checkout / "pyproject.toml").write_text('[project]\nname = "agentsync"\n')
+    git = _git_checkout(checkout)
+    head = subprocess.run(
+        [*git, "rev-parse", "--short=12", "HEAD"], check=True, capture_output=True, text=True
+    )
+    return checkout, head.stdout.strip()
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+@pytest.mark.parametrize("stamp", ["this checkout's", "an older commit's", "a changed tree"])
+def test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load(
+    env: dict[str, str], tmp_path: Path, stamp: str
+) -> None:
+    """B13 round 11 M37: step 1 said "Step 2 reinstalls agentsync first" for a config the installed agentsync
+    failed on, though step 2 skips the reinstall when the install stamp names this clean checkout's commit;
+    then the config itself is at fault. Both read one test (install_is_current), and step 2's own result
+    agrees."""
+    checkout, head = _committed_checkout(tmp_path)
+    script = checkout / "scripts" / "install.sh"
+    cs = _cloud(env)
+    (cs / "OneDrive-Contoso" / "FY26 Projects").mkdir(parents=True)
+    cfg = _write_config(env, local_source_table("fy26", cs / "OneDrive-Contoso" / "FY26 Projects"))
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
+    py = _tool_python(env)
+    bin_ = Path(env["HOME"]) / ".local" / "bin"
+    bin_.mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
+    commit = head if stamp != "an older commit's" else "0123456789ab"
+    (py.parent.parent / ".agentsync-install-source").write_text(f"commit={commit} source={checkout}")
+    if stamp == "a changed tree":
+        (checkout / "pyproject.toml").write_text('[project]\nname = "agentsync"\nversion = "0"\n')
+    cp = install_sh(env, "--list-folders", script=script)
+    assert install_log(env)[-2].endswith(" marks=failed:ConfigError"), install_log(env)[-2]
+    opening = f"this Mac has a config ({cfg}) whose folders could not be read: the installed agentsync failed"
+    assert opening in last_line(cp), "the words the prompt's step 1 exception reads"
+    current = stamp == "this checkout's"
+    assert last_line(cp).endswith(
+        f"The installed agentsync is already this checkout's build (commit {head}), so step 2 (run from this "
+        "checkout) does not reinstall it: step 2 stops at its config step, and nothing is kept or added "
+        "until the person fixes the config"
+        if current
+        else "Step 2 reinstalls agentsync first, and if that version cannot load it either, step 2 stops at "
+        "its config step and nothing is kept or added until the config is fixed"
+    ), last_line(cp)
+    install_sh(env, script=script)
+    assert (("agentsync", "skipped", "0", "current") in steps(install_log(env))) == current
 
 
 @pytest.mark.parametrize("broken", ["no installed agentsync", "a config that does not load"])

@@ -3285,17 +3285,40 @@ terminal_app() {
 	*) printf '%s' "${TERM_PROGRAM:-}" ;;
 	esac
 }
+# uv, where step 1 finds it: on PATH, else where its installer puts it; empty when there is none.
+find_uv() {
+	if command -v uv >/dev/null 2>&1; then
+		command -v uv
+	elif [ -x "$HOME/.local/bin/uv" ]; then
+		printf '%s' "$HOME/.local/bin/uv"
+	fi
+}
 # The installed agentsync's own interpreter (uv's tool environment: the path step 2 names TOOL_PY), when
 # there is one. `uv tool dir` only prints a path.
 tool_python() {
-	local uv="" dir="$HOME/.local/share/uv/tools"
-	if command -v uv >/dev/null 2>&1; then
-		uv="$(command -v uv)"
-	elif [ -x "$HOME/.local/bin/uv" ]; then
-		uv="$HOME/.local/bin/uv"
-	fi
+	local uv dir="$HOME/.local/share/uv/tools"
+	uv="$(find_uv)"
 	[ -z "$uv" ] || dir="$("$uv" tool dir 2>/dev/null || printf '%s' "$dir")"
 	[ ! -x "$dir/agentsync/bin/python" ] || printf '%s' "$dir/agentsync/bin/python"
+}
+# Whether step 2 skips the reinstall: the last install's stamp names this clean checkout at the same commit.
+# One test for step 2 and for step 1's word on what step 2 will do, so the two cannot disagree (B13 round 11
+# M37). A commit of "-" (unread) or one ending in -dirty never matches.
+install_is_current() { # STAMP AGENTSYNC SOURCE COMMIT
+	case "$4" in "" | - | *-dirty) return 1 ;; esac
+	[ -x "$2" ] && [ -f "$1" ] && [ "$(cat "$1" 2>/dev/null)" = "commit=$4 source=$3" ]
+}
+# The same, for a step 2 run from this checkout with uv's tool folders as step 2 reads them (step 1 runs
+# before step 2 sets UV, TOOL_DIR and COMMIT); prints the commit when it holds.
+checkout_is_installed() {
+	local uv c bin="$HOME/.local/bin" dir="$HOME/.local/share/uv/tools"
+	uv="$(find_uv)"
+	[ -n "$uv" ] && [ -e "$repo/.git" ] || return 1
+	bin="$("$uv" tool dir --bin 2>/dev/null || printf '%s' "$bin")"
+	dir="$("$uv" tool dir 2>/dev/null || printf '%s' "$dir")"
+	c="$(checkout_commit "$repo")"
+	case "$c" in *" dirty "*) return 1 ;; esac
+	install_is_current "$dir/agentsync/.agentsync-install-source" "$bin/agentsync" "$repo" "$c" && printf '%s' "$c"
 }
 SYNCED_MARK="[synced]" # what --list-folders writes before a folder the config already syncs
 # A sync reads the whole tree under a synced folder, so a listed folder inside one is synced too, and one
@@ -3390,7 +3413,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # 0 listed, 3 none, 4 denied or still asking.
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
-	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept=""
+	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -3495,10 +3518,16 @@ list_folders() {
 		# A config the installed agentsync failed on: step 2 reinstalls agentsync, which may read it (an older one
 		# that rejects a newer key) or may stop at its config step, where neither "keeps" nor "only adds" holds
 		# (B13 round 10 L11). status prints the error itself. The clause opens as the others do, the words the
-		# prompt's step 1 exception reads.
+		# prompt's step 1 exception reads. When the installed build is already this checkout's, step 2 does
+		# not reinstall it, so the config itself is at fault (B13 round 11 M37).
 		lacks="${unread##* marks=failed}"
 		lacks="${lacks#:}"
-		kept="; this Mac has a config ($CONFIG) whose folders could not be read: the installed agentsync failed while reading it${lacks:+ (it raised $lacks)}, and ~/.local/bin/agentsync status prints why. Step 2 reinstalls agentsync first, and if that version cannot load it either, step 2 stops at its config step and nothing is kept or added until the config is fixed"
+		kept="; this Mac has a config ($CONFIG) whose folders could not be read: the installed agentsync failed while reading it${lacks:+ (it raised $lacks)}, and ~/.local/bin/agentsync status prints why."
+		if built="$(checkout_is_installed)"; then
+			kept="$kept The installed agentsync is already this checkout's build (commit $built), so step 2 (run from this checkout) does not reinstall it: step 2 stops at its config step, and nothing is kept or added until the person fixes the config"
+		else
+			kept="$kept Step 2 reinstalls agentsync first, and if that version cannot load it either, step 2 stops at its config step and nothing is kept or added until the config is fixed"
+		fi
 		;;
 	*)
 		kept="; this Mac has a config ($CONFIG) whose folders could not be read: if it was set up before, $SELF with no --source-local keeps whatever that config syncs, and each --source-local only adds"
@@ -3684,12 +3713,7 @@ fi
 
 # ------------------------------------------------------------------------------------------------ 1. uv
 step_start uv
-UV=""
-if command -v uv >/dev/null 2>&1; then
-	UV="$(command -v uv)"
-elif [ -x "$HOME/.local/bin/uv" ]; then
-	UV="$HOME/.local/bin/uv"
-fi
+UV="$(find_uv)"
 if [ -n "$UV" ]; then
 	say "uv: $UV (present)"
 	step_end skipped 0 present
@@ -3842,9 +3866,7 @@ AGENTSYNC="$BIN_DIR/agentsync"
 # the same commit is the same code, so it is not installed again.
 STAMP="$TOOL_DIR/agentsync/.agentsync-install-source"
 STAMP_WANT="commit=$COMMIT source=$SOURCE"
-if [ "$DRY_RUN" -eq 0 ] && [ "$SOURCE_KIND" = "checkout" ] && [ "$COMMIT" != "-" ] &&
-	[ "${COMMIT%-dirty}" = "$COMMIT" ] && [ -x "$AGENTSYNC" ] && [ -f "$STAMP" ] &&
-	[ "$(cat "$STAMP" 2>/dev/null)" = "$STAMP_WANT" ]; then
+if [ "$DRY_RUN" -eq 0 ] && [ "$SOURCE_KIND" = "checkout" ] && install_is_current "$STAMP" "$AGENTSYNC" "$SOURCE" "$COMMIT"; then
 	say "agentsync: $AGENTSYNC (current: installed from commit $COMMIT)"
 	step_end skipped 0 current
 else
