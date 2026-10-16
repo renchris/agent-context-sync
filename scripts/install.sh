@@ -3414,6 +3414,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
+	local line missing=0
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -3502,6 +3503,11 @@ list_folders() {
 			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"
 		fi
 		tail -n +3 "$tmp/marked"
+		# A synced folder under CloudStorage that is not on disk: its provider is signed out (or not set up
+		# yet), and step 2's doctor fails on it, so this list asks for the sign-in (B13 round 11 M4)
+		while IFS= read -r line; do
+			case "$line" in "$SYNCED_MARK $cs/"*) [ -e "${line#"$SYNCED_MARK "}" ] || missing=$((missing + 1)) ;; esac
+		done <"$tmp/marked"
 	else
 		cat "$tmp/shown"
 	fi
@@ -3543,6 +3549,12 @@ list_folders() {
 		rc=4
 		NEXT_MSG="macOS is asking whether $term may access files managed by $asking: click Allow (or turn it on in System Settings > Privacy & Security > Files and Folders), then re-run: $RERUN"
 		step_end failed "$rc" "tcc-pending${synced:+ synced=$synced}$unread"
+	elif [ "$missing" -gt 0 ]; then
+		# Not "a re-run keeps them": step 2 would stop on each missing folder's [FAIL] lines. A Mac whose synced
+		# folders are all there (one syncing only ~/Documents/notes too) keeps exit 0 below (B13 round 11 M4).
+		rc=3
+		NEXT_MSG="OneDrive is not signed in on this Mac, so it is missing $missing of the folders this Mac already syncs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept"
+		step_end failed "$rc" "not-signed-in synced=$synced"
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
 		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
 		if [ "$providers" -eq 0 ]; then

@@ -8560,6 +8560,11 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   prompt then goes to the report without step 2: no update and no sync, though `install.sh` alone keeps the
   folder and syncs it. A Mac that syncs no folder (no config, the inbox alone, a config nobody can read)
   still gets exit 3 and the same `NEXT:`; its log line gains `synced=0` when the config was read.
+  Amended 2026-10-15, §16.93 M4: exit 0 only when every synced folder is there. One under
+  `~/Library/CloudStorage` that is not on disk (its provider signed out or not set up) gets exit 3, note
+  `not-signed-in synced=N`, the `[synced]` lines, and `NEXT: OneDrive is not signed in on this Mac, so it is missing
+  M of the folders this Mac already syncs: sign in to OneDrive (or let it finish setting up), then re-run:
+  install.sh --list-folders; the folders marked [synced] are kept`. The `~/Documents/notes` Mac keeps exit 0.
 - **Who reads the config.** The installed agentsync does, through its own interpreter
   (`<uv tool dir>/agentsync/bin/python -I`, the path step 2 names `TOOL_PY`; `tool_python`): `load_config`,
   then `canonical_source_root` on each listed path, compared with each source's `path` (`synced_folders`).
@@ -18896,6 +18901,22 @@ the sentence after `status prints why.` reads `The installed agentsync is alread
 or added until the person fixes the config`; otherwise it is L11's. The clause's opening words, which the prompt's
 step 1 exception reads, are unchanged. Test: `test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load`
 (this checkout's stamp, an older commit's, a changed tree; step 2's own `agentsync` step agrees each time).
+
+**Step 1 asks for the sign-in when synced folders are missing** (M4, the round's turn; amends §16.29's "A set-up
+Mac with nothing to list"). On a Mac that syncs two OneDrive folders, with OneDrive signed out, step 1 printed the
+two `[synced]` lines, exited 0 and said `a re-run keeps them`; step 2's doctor then failed on each missing folder
+(`[FAIL] source.<id>.listable`, not a TCC line, so it blocks), and the report read `failed at step 2`, though step 1
+already knew. `list_folders` counts the `[synced]` lines whose path is under `~/Library/CloudStorage` and not on disk;
+when any is, it exits 3 with note `not-signed-in synced=N`, still prints the `already synced` line and every
+`[synced]` path, and says `OneDrive is not signed in on this Mac, so it is missing M of the folders this Mac
+already syncs: sign in to OneDrive (or let it finish setting up), then re-run: <install.sh> --list-folders; the
+folders marked [synced] are kept`. It keys on missing folders, not on no provider, so a stale empty provider folder and another
+provider being present take the same exit. A Mac whose synced folders are all there (one syncing only
+`~/Documents/notes` too) keeps exit 0; a mixed Mac stops at step 1, where step 2 would have failed. The prompt half
+(step 1's first exception: unless its NEXT asks me to sign in, tell me which folders are kept and that I must sign
+in, and wait as for a click) is lane P's (§16.94). Test:
+`test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing` (no CloudStorage, an empty one, an empty
+provider folder, a notes folder beside them; signed in again, exit 0).
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

@@ -3835,6 +3835,55 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     assert re.search(unread, install_log(env)[-2]), install_log(env)[-2]
 
 
+@pytest.mark.parametrize(
+    "layout", ["no CloudStorage", "an empty CloudStorage", "an empty provider folder", "notes beside them"]
+)
+def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
+    env: dict[str, str], layout: str
+) -> None:
+    """B13 round 11 M4: OneDrive signed out on a Mac that syncs two of its folders. Step 1 said "a re-run
+    keeps them" and exited 0, step 2's doctor then failed on each missing folder, and the person had to sign
+    in and paste the prompt again. A synced folder under CloudStorage that is not on disk now gets the new
+    Mac's exit 3 and a sign-in NEXT, with the [synced] lines still printed. Keyed on missing folders, not on
+    no provider: a stale empty provider folder fails step 2 the same way."""
+    cs = _cloud(env)
+    lib = cs / "OneDrive-Contoso"
+    tables = [
+        local_source_table(n.lower().replace(" ", "-"), lib / n) for n in ("Project Alpha", "Project Beta")
+    ]
+    notes = Path(env["HOME"]) / "Documents" / "notes"
+    if layout == "notes beside them":
+        notes.mkdir(parents=True)
+        tables.append(local_source_table("notes", notes))
+    elif layout == "an empty CloudStorage":
+        cs.mkdir(parents=True)
+    elif layout == "an empty provider folder":
+        lib.mkdir(parents=True)
+    _write_config(env, *tables, _inbox(env))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (3, ""), cp.stdout + cp.stderr
+    synced = len(tables)
+    marked = [ln for ln in cp.stdout.splitlines() if ln.startswith("[synced] ")]
+    assert sorted(marked) == sorted(
+        [f"[synced] {lib}/Project Alpha", f"[synced] {lib}/Project Beta"]
+        + ([f"[synced] {notes}"] if layout == "notes beside them" else [])
+    )
+    assert cp.stdout.startswith(f"already synced on this Mac: {synced} folder(s) (marked [synced] below)\n")
+    assert last_line(cp) == (
+        "NEXT: OneDrive is not signed in on this Mac, so it is missing 2 of the folders this Mac already "
+        f"syncs: sign in to OneDrive (or let it finish setting up), then re-run: {INSTALL_SH} "
+        "--list-folders; the folders marked [synced] are kept"
+    )
+    assert steps(install_log(env)) == [("list-folders", "failed", "3", "not-signed-in")]
+    assert install_log(env)[-2].endswith(f" result=failed note=not-signed-in synced={synced}")
+    for name in ("Project Alpha", "Project Beta"):  # signed in: every synced folder is there, so exit 0
+        (lib / name).mkdir(parents=True, exist_ok=True)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "a re-run keeps them" in last_line(cp)
+
+
 def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied(
     env: dict[str, str],
 ) -> None:
