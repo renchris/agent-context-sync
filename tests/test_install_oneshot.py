@@ -8164,6 +8164,24 @@ def test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset(
     assert shown is not None and red.redact(said) == f"the proxy {shown[1]} timed out", "one number in both"
 
 
+def test_the_deploy_docs_list_the_proxy_hosts_file() -> None:
+    """B13 round 12 N69: proxy-hosts, the one file setup keeps that holds proxy host names in clear, was in no
+    list of what setup writes: not the setup-folder row a person cleans up from, nor the report's sources."""
+    docs = INSTALL_SH.parents[1] / "docs" / "deploy"
+    row = next(
+        ln
+        for ln in (docs / "README.md").read_text("utf-8").splitlines()
+        if ln.startswith("| `~/agent-context/setup/`")
+    )
+    assert "`proxy-hosts`" in row and row.endswith("| you |"), row
+    page = " ".join((docs / "setup-feedback.md").read_text("utf-8").split())
+    section1 = page.split("## 1. How a report is produced", 1)[1].split("## 2.", 1)[0]
+    assert "also keep `proxy-hosts` beside friction.md (0600" in section1, "a file setup writes"
+    assert "in lower case and, where it differs, as written" in section1, "B13 round 12 N42's two spellings"
+    proxy_row = page.split("`<serial>`, `<host>`, `<proxy-N>` | ", 1)[1].split(" |", 1)[0]
+    assert "kept in `~/agent-context/setup/proxy-hosts`" in proxy_row
+
+
 def test_both_readers_keep_the_same_public_hosts() -> None:
     """B13 round 11 M29: install.sh's PUBLIC_HOSTS is setup_report._PUBLIC_HOSTS."""
     words = re.findall(r'^PUBLIC_HOSTS="(?:\$PUBLIC_HOSTS )?([^"]*)"$', INSTALL_SH.read_text(), re.M)
