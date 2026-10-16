@@ -19583,7 +19583,86 @@ test that still said the lock does not say who started the sync, now says the in
 
 ### 16.98 Round 12: setup report (2026-10-16, wave B13 round 12 lane RA)
 
-Reserved for round 12 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 12").
+The setup report's findings of the v20 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 12"). Lane RA's round 12 items: N3, N4, N8, N11, N14, N15, N20, N21, N23, N24, N26, N28, N31, N33, N35,
+N43, N48, N49, N57, and N5's report half (lane P builds its prompt half, §16.100). All are built; none was recorded
+as making things worse. N14 and N33 are one defect, built once; so are N5 and N31 with lane P's N32.
+
+**Install.log notes in words** (N4, N48; dated lines at §16.74 J10, §16.80 K23, §16.96 M25, §16.25's and §16.37's
+helpers text). The Installer table's list-folders row read `done (listed-6)` and the helpers row `skipped
+(config-unreadable)` beside worded first-sync and agentsync rows. `_list_folders_note` gives `listed N folder(s)` and
+fixed words for `denied`, `tcc-pending`, `not-signed-in` and `no-folders`; `_HELPERS_NOTE_WORDS` words
+`config-unreadable`, `no-devtools` and `no-interpreter`. A note the report does not know is shown as it is, and
+install.log keeps its tokens. Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
+`test_the_helpers_steps_note_is_in_words_in_the_installer_table`.
+
+**One bracket per Summary clause** (N14, N33; dated line at §16.92 M40). The first-sync line read `skipped in 601s, rc
+75 (lock busy: ...) (install.log)`, also on a stopped copy's borrowed line, and the install.sh step list put
+`agentsync 62s (waited for another sync to end)` inside its own bracket. Both notes follow a comma, so the source tag
+is the line's one trailing bracket (§16.64 G34); the Installer table keeps its single bracket, and the shared word
+maps are unchanged. The agentsync note `current` reads `already current, not reinstalled`. Test:
+`test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side`, over every note, own run and borrowed.
+
+**First reads** (N15, N35, N49; dated lines at §16.30's run table and §16.92 M40). N15: the OCR run table's cell read
+`1 (0), 1 first read` for one stub; it reads `F first read` when every re-read was a first read, `R (K), F of them a
+first read` when some were. N35: install.sh's awk logs `-first-F` after `-reread-R` (the all-first head, or `(F of
+them a first read`, never `K of them withheld`); `_CONVERTED_NOTE_RE` has named groups, and the Installer row words
+it as the Summary does; R stays the sum, an older install.log keeps the neutral words, and `_step_table` reads no
+install.out (H29, M38). N49: `_reread_clause`'s all-first branch drops a kept-page suffix it could never print.
+Tests: `test_the_ocr_part_calls_a_first_read_a_first_read`,
+`test_install_sh_logs_the_first_reads_among_the_files_read_again`, and the M40 note test's new cases.
+
+**Attempts and the friction log** (N20, N23, N28; dated lines at §16.14's M34 line, §16.92 M34 and §16.86 L26). N20:
+the closing `end | finished` line no longer prints the `- friction (attempt N)` line by itself, so a clean attempt
+and a stopped copy print none; where it prints, its counts include it. N23: when a step 1 error opens a header-less
+attempt, the unbroken run of step 1 lines dated at or after the end line moves with it whatever the gap, in
+`parse_friction`'s `late_run` and `friction_attempt_begin` alike: the finished session runs nothing after its
+`--report-only`. N28: the header-less note names `attempt N's session`, not `that session`. Tests:
+`test_the_friction_line_is_left_out_when_it_adds_only_the_end_line`,
+`test_a_new_sessions_step_1_line_before_its_error_leaves_the_finished_attempt`,
+`test_a_stopping_sessions_earlier_step_1_lines_are_its_own_in_both_readers`.
+
+**The sign-in** (N31, N5's report half; dated line at §16.86 L7). N31: `_list_stopped` is read on a Mac that already syncs folders too. An exit
+3 there reads `- expected turns: none (step 1's list stopped: OneDrive is not signed in, so folders this Mac already
+syncs (N) are missing; they are kept: no folder question and no Allow click)`, and neither turns line names an Allow
+click; an exit 4 keeps its click. The list-only outcome adds `; it stopped: <why>` for an exit 3. N5: from prompt v20
+(`SIGN_IN_WAITS`, by the attempt's stated version), when a list failed `not-signed-in` and a later list or install run
+followed, the first step 1 click line is the sign-in step 1 asked for: an expected turn (`the OneDrive sign-in step 1
+asked for (F<n>)`, or `(not logged)`), no extra click and no Item. A v6+ click line is no Allow click, so with none
+possible the human-turns line says `Allow clicks: none possible`, never that the click was impossible; on a real
+Mac the click line reads `..., which is F<n>, the OneDrive sign-in step 1 asked for`, after the Allow clause. A list
+that stops again after the sign-in reads `- expected turns: the OneDrive sign-in step 1 asked for (F<n>) and no other
+(...)`. Tests:
+`test_a_synced_macs_sign_in_stop_is_named_and_asks_no_allow_click`,
+`test_the_sign_in_step_1_asked_for_is_no_extra_click`, and M7's test, whose synced case now expects the new line.
+
+**Redaction** (N3, N8, N43, N57; dated line at §16.93 M3). N3: the folder legend item adds the shell's list-only
+clause when a listed generic or coding-agent name kept in clear (`Redactor.kept_listed`, not configured) stands in the
+body as a whole word, naming only the kind the body shows (as the shell's since §16.99 N45), without "Google", which
+is no Python report word. N8: the residue check also names a word glued
+to a placeholder (`<org-1>Drive`, `Acme<org-1>`), the forms M50's cut leaves. N43: a dotless resolver host that is a
+report word, or has one or two letters, is matched only where a URL puts it, in both readers, and a public host
+without `.com` is none;
+`contosogw` stays a whole word. The finder's fix (dotted hosts only) was not built: it prints an unset proxy's
+dotless host in clear. N57: both readers hold FluidAudio, LaunchAgent and LaunchAgents whole beside an organisation.
+Tests: `test_the_folder_legend_says_why_a_listed_generic_or_agent_name_stays_in_clear`,
+`test_the_residue_check_names_a_word_glued_to_the_organisation`,
+`test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url`,
+`test_an_organisation_is_redacted_inside_a_longer_word`.
+
+**Smaller fixes** (N11, N21, N24, N26; dated line at §16.59 F5). N11: with no sources.toml the Configuration line
+reads `- loads: pending: no sources.toml yet (setup's step 2 writes it)`, and the Loop, doctor, status and secret-scan
+lines say `no sources.toml yet`; the verifier's `loads: not yet` was not used, since it still contains `loads: no`,
+the words the prompt's finish keys a failing config on. N21: runs started in one second are numbered over the whole
+of install.log, the first keeping the bare stamp (`<stamp>.2`), in both readers, and either lead-in adds `, numbered
+.2 on for runs started in one second` when one is shown. N24: the first-sync line cites `(no
+install log)` when there is none. N26: `- macOS: 15.5 (24F74)`, as the shell prints it. Tests:
+`test_missing_config_is_a_finding` (both states), `test_runs_started_in_one_second_are_numbered_alike_in_both_readers`,
+`test_the_first_sync_line_cites_no_install_log_when_there_is_none`,
+`test_the_macos_line_gives_the_version_and_build_as_the_shell_report_does`.
+
+Report words: the new wording adds `asking`, `devtools` and `helpers` to `report_words()`. All three already reached
+the report, in the raw install.log lines the Installer section embeds; no other word was added.
 
 ### 16.99 Round 12: installer, the sign-in exit and the shell report (2026-10-16, wave B13 round 12 lane RB)
 

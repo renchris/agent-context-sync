@@ -5113,6 +5113,9 @@ _ROUND_12_PARAGRAPH_AMENDS = (
     ("16.29", "- **A set-up Mac with nothing to list is still set up**", "§16.99 N41, N61"),
     ("16.53", "- **It ends without inviting a send** (Q10, Q18, one defect).", "§16.99 N22"),
     ("16.12", "STATE.md quotes alarms, errors, skipped reasons and lint text in code spans", "§16.102 N73"),
+    ("16.25", "**Installer** (`scripts/install.sh`, inside the `launcher` step", "§16.98 N48"),
+    ("16.30", "- **`read(s) again (N of them could not be converted and kept their page)`**", "§16.98 N15"),
+    ("16.37", "- **The helper builds have a step of their own.**", "§16.98 N48"),
 )
 """Round 12's dated lines at sections its claims name with no item, as :data:`_ROUND_11_PARAGRAPH_AMENDS`."""
 
@@ -5140,7 +5143,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.101 (lane B) four, §16.99 (lane RB) two, §16.102 (lane E) one: N73's at §16.12's STATE.md
     paragraph."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
-    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 9
+    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
