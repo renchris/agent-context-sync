@@ -5033,6 +5033,57 @@ def test_a_page_read_that_says_neither_can_disagree_with_the_tsv() -> None:
     )
 
 
+def test_the_guide_names_step_3s_four_cases_with_no_report() -> None:
+    """B13 round 11 M72: since v19 step 3 lists four cases with no report, the fourth being step 1's
+    not-a-checkout and ownership stops, which run no installer, and its Xcode and git stops when the folder's
+    installer is not the prompt's version; the guide still said every failure goes to its report, "Three stops
+    have no report", "step 3's three cases" and that the Xcode and git stops always log their error."""
+    report = " ".join(_prompt_steps()[_report_step()].split())
+    assert 'Four cases have no report and no "## Not used" section' in report
+    # v20 split the worktree stop out of the not-a-checkout one (round 11 M17, M69)
+    assert "at step 1's not-a-checkout, worktree and ownership stops, and at its Xcode and" in report
+    assert "Those three stops end there, with no report" in " ".join(_prompt_steps()[1].split())
+    page = " ".join(_page("docs/deploy/setup-feedback.md").split())
+    assert "one: every failure goes to its report" not in page
+    assert "one: every failure but the four below goes to its report" in page
+    assert "Four stops have no report (three before v19): a new Mac" in page
+    assert (
+        "since v19, step 1's not-a-checkout stop (git clone says the folder \"already exists and is not an "
+        'empty directory", git says "not a git repository" or "invalid gitfile format", or main is used by '
+        'another worktree) and its ownership stop ("detected dubious ownership"), which run no install.sh '
+        "command at all" in page
+    )
+    assert "`install.sh --version` does not end with the prompt's own `setup-prompt-compat N`" in page
+    assert "Since v19 step 3 lists four such cases, and none of them has a `## Not used` section." in page
+    assert 'Since v20 the worktree stop (a recovery stops because main "is already used by worktree"' in page
+    assert "cases with no report; since v19, in any of step 3's four)" in page
+    assert (
+        "the Xcode and git stops log that error before the report; since v19 only when the folder's "
+        "installer is the prompt's version, and otherwise they log nothing and write no report)" in page
+    )
+
+
+def test_the_guides_unread_config_paragraph_says_what_v19_changed() -> None:
+    """B13 round 11 M76: the guide's paragraph on a config whose folders could not be read stopped at v18. v19
+    follows a re-run that read the config as any list (L62), makes no keep claim after `marks=failed` (L11),
+    and after step 2's "no folder is synced yet" runs no report, finishes with `none` and runs step 2 again
+    with `--source-local` (L10)."""
+    step1 = " ".join(_prompt_steps()[1].split())
+    assert (
+        "line no longer says the config's folders could not be read, its config was read, so follow" in step1
+    )
+    assert "show me that line in its own words and do not say step 2 keeps my folders" in step1
+    assert 'Run no --report-only and add no "## Not used" section.' in step1
+    assert "run step 2 again with one --source-local per folder I chose" in step1
+    page = " ".join(_page("docs/deploy/setup-feedback.md").split())
+    v19 = page.partition("Since v19 (B13 round 10 L62, L11, L10): ")[2].partition(" The sign-in `NEXT:`s")[0]
+    assert "re-run's `NEXT:` no longer says the config could not be read, step 1 follows that list" in v19
+    assert "(`marks=failed`), step 1 shows that line in its own words and does not say step 2 keeps" in v19
+    assert 'runs no `--report-only` and adds no "## Not used" section' in v19
+    assert "`none: waiting for your folder answer` and `none` for bring-back.md" in v19
+    assert "step 2 again with one `--source-local` per folder, not to the add-source its `NEXT:` names" in v19
+
+
 def test_k52s_withheld_constants_are_named_where_they_live() -> None:
     """B13 round 10 L55: §16.84 K52 said J47's `_WITHHELD_BODY` and `_WITHHELD_WORDS` sit below
     `_STUB_RENDER_META`'s docstring in agentsync.cycle; round 9's K48 moved them to agentsync.policy, where

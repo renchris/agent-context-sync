@@ -35,20 +35,28 @@ after the agent's last friction line is always safe. The prompt makes the report
 line is written after it.
 
 Setup stopped before agentsync was installed (steps 1 and 2)? These reports matter most, and step 3 still produces
-one: every failure goes to its report, `~/src/agent-context-sync/scripts/install.sh --report-only`, which needs no
+one: every failure but the four below goes to its report, `~/src/agent-context-sync/scripts/install.sh --report-only`, which needs no
 agentsync (prompt v6 ran it after `agentsync it-request`, whose failure a `;` let through; v7 drafts no IT request).
 Without agentsync, `--report-only` writes
 `~/agent-context/setup-report.md` from what exists (install.log, `friction.md`, the macOS facts). Review it as in
 section 2. If the checkout is missing too (step 1 stopped before the clone), there is no installer and no friction
-log, and the agent tells you setup stopped before the code was downloaded. Three stops have no report: a new Mac
+log, and the agent tells you setup stopped before the code was downloaded. Four stops have no report (three before v19): a new Mac
 whose agent is waiting for the folder answer of step 1; a copy of the prompt that step 1 stopped because it
 is not the installer's, by either check: the `--version` line, or the `--log-start` error (the prompt says so
 since the second v10 text, and names both checks since v11); and a missing checkout, where step 1 stopped before
-or during the clone (an Xcode stop on a new Mac, a failed clone). Since v14 the prompt lists the third with the
+or during the clone (an Xcode stop on a new Mac, a failed clone); and, since v19, step 1's not-a-checkout stop (git
+clone says the folder "already exists and is not an empty directory", git says "not a git repository" or "invalid gitfile format", or main is
+used by another worktree) and its ownership stop ("detected dubious ownership"), which run no install.sh command at
+all, so they log nothing and write no report, and the Xcode and other-git-failure stops when the folder's
+`install.sh --version` does not end with the prompt's own `setup-prompt-compat N`, which log nothing either. Since
+v14 the prompt lists the third with the
 other two, and skips the `## Not used` section and its heading on the same condition, so such a session that asks
 for no change writes nothing to `~/agent-context/setup`. Since v15 step 3 says none of the three has a `## Not used`
 section, and the heading rule names that section, not step 3's skip, so a session that asks for no change writes no
-heading at the folder wait or the version stop either. Without an agent, run
+heading at the folder wait or the version stop either. Since v19 step 3 lists four such cases, and none of them has a
+`## Not used` section. Since v20 the worktree stop (a recovery stops because main "is already used by worktree" or
+"is already checked out at" a path) is a stop of its own, with no installer run and no report, and step 3 names it
+beside the not-a-checkout and ownership stops. Without an agent, run
 step 3's command yourself, and log what happened with `install.sh --log` first (or write `friction.md` in your
 own words).
 
@@ -134,7 +142,7 @@ words) is yours to remove. The CLI always redacts.
   own, which names the prompt's version and the date and time, and rewrites only its own part. Since prompt v11
   that includes a session that asks for no change: its `## Not used` section goes under its own heading (since
   v14, unless the checkout is missing, when the session writes neither; since v15, in any of step 3's three
-  cases with no report). Before
+  cases with no report; since v19, in any of step 3's four). Before
   v11 such a session could add its `## Not used` with no heading of its own; then the lines from the first
   difference down are that later session's, not the part whose heading is above them. Two sessions
   of one day are told apart by the time. Do not start at the last session heading: the Mac cannot know what
@@ -306,7 +314,8 @@ A line logged after an attempt's `end | finished` line cannot have stopped it, s
 attempt's outcome. One kind of late line is another session: a step 1 `error` dated more than 10 minutes after
 the closing line, or, since round 5 (F23), one that starts with `prompt vN, <agent>: ` after a headed attempt, at
 any gap (2 minutes after the end line is enough). Its session's step 1 stopped before `install.sh --log-start` wrote a header (since prompt v11
-the Xcode and git stops log that error before the report), so the report
+the Xcode and git stops log that error before the report; since v19 only when the folder's installer is the
+prompt's version, and otherwise they log nothing and write no report), so the report
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line, since it was logged after the
 previous attempt finished". When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
 prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v20, <agent>: ` now), the words step 1 gives `--log-start`, so the
@@ -501,7 +510,13 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   read the folders, and asks only whether to add one; an agent that cannot ask adds none and runs step 2 with no
   `--source-local`, which is not a deviation. If step 2 then says no folder is synced yet (the config held none),
   the Mac syncs no folder after all, and step 1's folder question applies as on a new Mac. Up to v17 an agent that
-  could not ask logged a deviation and waited there (B13 round 9 K9, K20, K32, K73, K78). The sign-in `NEXT:`s
+  could not ask logged a deviation and waited there (B13 round 9 K9, K20, K32, K73, K78). Since v19 (B13 round 10
+  L62, L11, L10): when the offered re-run's `NEXT:` no longer says the config could not be read, step 1 follows that
+  list as on any Mac. When it says the installed agentsync failed while reading the config (`marks=failed`), step 1
+  shows that line in its own words and does not say step 2 keeps the folders. After step 2's "no folder is synced
+  yet", an agent that cannot ask logs a step 1 deviation and waits, runs no `--report-only` and adds no "## Not used"
+  section. Its finish says `none: waiting for your folder answer` and `none` for bring-back.md, and the answer goes
+  to step 2 again with one `--source-local` per folder, not to the add-source its `NEXT:` names. The sign-in `NEXT:`s
   carry the same clause but list no folder, so step 1 shows them and goes to the report, as before.
 - Step 2 with nothing to add is `install.sh` with no `--source-local`. It keeps every source, updates
   agentsync, and runs status and a sync.
