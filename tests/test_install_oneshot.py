@@ -372,7 +372,7 @@ def test_version_prints_the_prompt_compat_line_last() -> None:
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
-        r" branch before it updates\))?|unknown)",
+        r" branch before it updates\))?|unknown \(.+\))",
         lines[0],
     )
 
@@ -3491,7 +3491,10 @@ def test_a_checkout_git_cannot_read_takes_no_commit_from_a_repository_around_it(
     (src / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
     script = src / "scripts" / "install.sh"
     version = install_sh(env, "--version", script=script)
-    assert version.stdout.splitlines()[0].startswith("source commit: unknown"), version.stdout
+    # B13 round 12 N75: with the reason the shell report gives, the folder as ~/...
+    assert version.stdout.splitlines()[0] == (
+        "source commit: unknown (git cannot read ~/src/agent-context-sync/.git)"
+    ), version.stdout
     assert install_sh(env, "--report-only", script=script).returncode == 0
     text = report_path(env).read_text()
     assert outer not in version.stdout + text, "the home's commit"

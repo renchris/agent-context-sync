@@ -953,14 +953,30 @@ read_commit() {
 	*) COMMIT="$c" ;;
 	esac
 }
+# Why the commit of the checkout $1 is unknown, from the folder alone (no run state, so --version and the
+# report read it alike), its path as ~/... under the home: git refuses it, git cannot read it, or, with no
+# developer tools, git never ran and its .git/HEAD names no commit (B13 round 12 N75).
+unread_reason() { # DIR
+	local d="$1"
+	# shellcheck disable=SC2088 # the ~ is printed
+	case "$d" in "$HOME"/*) d='~/'"${d#"$HOME"/}" ;; esac
+	if git_refuses_owner "$1"; then
+		printf 'git refuses %s/.git: the folder belongs to another user account' "$d"
+	elif have_devtools; then
+		printf 'git cannot read %s/.git' "$d"
+	else
+		printf 'no developer tools to run git, and its .git/HEAD names no commit'
+	fi
+}
 show_version() { # the compat line last: step 1 of the setup prompt reads the last line of its output
 	local c
 	if [ -e "$repo/.git" ]; then
 		c="$(checkout_commit "$repo")"
 		[ -n "$c" ] || c="$(git_head_file "$repo")"
+		[ -n "$c" ] || c="unknown ($(unread_reason "$repo"))"
 		case "$c" in
 		*" dirty "*) say "source commit: $c (local changes in this checkout; setup prompt step 1 keeps them on a local branch before it updates)" ;;
-		*) say "source commit: ${c:-unknown}" ;;
+		*) say "source commit: $c" ;;
 		esac
 	fi
 	say "setup-prompt-compat $SETUP_PROMPT_COMPAT"
@@ -2418,10 +2434,8 @@ commit_shown() {
 	fi
 	if [ -n "$d" ] && [ ! -e "$d/.git" ]; then
 		printf 'none (%s has no .git: not a git checkout)' "$d"
-	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ] && git_refuses_owner "$d"; then
-		printf 'unknown (git refuses %s/.git: the folder belongs to another user account)' "$d"
 	elif [ -n "$d" ] && [ "$COMMIT_TRIED" -eq 1 ]; then
-		printf 'unknown (git cannot read %s/.git)' "$d"
+		printf 'unknown (%s)' "$(unread_reason "$d")"
 	else
 		printf '%s' "$COMMIT"
 	fi
