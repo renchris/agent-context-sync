@@ -2812,7 +2812,10 @@ write_fallback_report() { # RC WHY
 		rm -f "$tmp"
 		return 1
 	}
-	mv -f "$tmp" "$REPORT_PATH"
+	mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)
+		rm -f "$tmp"
+		return 1
+	}
 }
 # When an earlier attempt reached its report, for section 3 of the bring-back file: the time of the last
 # "<UTC> | end | finished" line that a later "Attempt:" line follows, or a step 1 error line dated more than
@@ -3144,7 +3147,10 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				{ for (; blank > 0; blank--) print ""; print }
 				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH"
 	} >"$tmp"; then
-		mv -f "$tmp" "$REPORT_PATH"
+		mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)
+			rm -f "$tmp"
+			return 1
+		}
 	else
 		rm -f "$tmp"
 		return 1

@@ -18830,6 +18830,14 @@ putting the clause after the path), and the `;` is kept (M27: a `:` would change
 clause already is left. Every renderer writes `setup prompt vN (python ...)`, so the bracket after vN is always the
 python one. Test: `test_an_older_renderers_stopped_report_gives_both_reasons_and_whose_version`.
 
+**A report writer that cannot finish leaves no temp file, and that is tested** (M84; amends §16.87 L4). L4's note said
+bring-back.md's temp-file cleanup "cannot be forced in a sandbox"; a `mv` or `chmod` first on PATH that fails for the
+temp file's name forces it. `stopped_report_note` and `write_fallback_report` ran a bare `mv -f "$tmp"
+"$REPORT_PATH"`, so a failed one left `.stopped-report.*` or `.setup-report.*.tmp` beside the report; each now
+removes its temp file and returns 1, the status it returned before. Tests:
+`test_a_report_writer_that_cannot_finish_leaves_no_temp_file` (bring-back.md's mv and chmod, the shell report's mv),
+`test_a_stopped_copy_note_that_cannot_finish_leaves_no_temp_file`.
+
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
 The B13 round 11 items of lane P (specs `round11/items/M<n>.md`, the verifier's corrected fix built unless a

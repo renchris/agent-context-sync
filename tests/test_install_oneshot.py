@@ -2042,6 +2042,48 @@ def test_the_bring_back_header_names_only_what_the_file_holds(
     assert ("not repeated: a patch file" in text) == (patch == "old")
 
 
+def _failing_tool(env: dict[str, str], tool: str, pattern: str) -> None:
+    """A ``tool`` first on PATH that fails for any argument holding ``pattern`` and is /bin's otherwise."""
+    _write_exe(
+        Path(env["PATH"].split(":")[0]) / tool,
+        f'#!/bin/bash\nfor a in "$@"; do case "$a" in *{pattern}*) exit 1 ;; esac; done\n'
+        f'exec /bin/{tool} "$@"\n',
+    )
+
+
+@pytest.mark.parametrize(
+    ("tool", "pattern"),
+    [("mv", "/.bring-back."), ("chmod", "/.bring-back."), ("mv", "/.setup-report.")],
+)
+def test_a_report_writer_that_cannot_finish_leaves_no_temp_file(
+    env: dict[str, str], tool: str, pattern: str
+) -> None:
+    """B13 round 10 L4 removed bring-back.md's temp file when its chmod or mv fails: it holds the unredacted
+    fix request and patches. Its note said a test "cannot be forced in a sandbox"; a PATH stub forces it
+    (B13 round 11 M84). The shell report's own temp file (redacted) is removed the same way."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    (setup / "fix-request.md").write_text("- OCR scanned PDFs\n", encoding="utf-8")
+    _keep_patch(env, "2026-10-07T16:00:00Z")
+    _failing_tool(env, tool, pattern)
+    install_sh(env, "--report-only")
+    left = [p.name for p in report_path(env).parent.iterdir() if p.name.startswith(pattern[1:-1])]
+    assert left == [], left
+    if pattern == "/.bring-back.":
+        assert not (report_path(env).parent / "bring-back.md").exists()
+
+
+def test_a_stopped_copy_note_that_cannot_finish_leaves_no_temp_file(env: dict[str, str]) -> None:
+    """B13 round 11 M84: stopped_report_note's mv had no cleanup, so a failed one left a .stopped-report.*
+    copy beside the report it was to replace."""
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    _failing_tool(env, "mv", "/.stopped-report.")
+    install_sh(env, "--report-only")
+    setup = report_path(env).parent / "setup"
+    assert (setup / "stopped-copy-report.md").exists()
+    assert not [p.name for p in setup.iterdir() if p.name.startswith(".stopped-report.")]
+
+
 def test_the_bring_back_file_fences_each_file_it_embeds(env: dict[str, str]) -> None:
     """B13 round 5 F14: the embedded report's H1 and H2s and the fix request's H1 outranked or matched the
     file's own numbered sections. Each embedded file sits in a tilde fence longer than any tilde run that
