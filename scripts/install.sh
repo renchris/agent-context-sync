@@ -3457,9 +3457,11 @@ list_folders() {
 		esac
 	fi
 	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not
-	# reach (deeper than it goes, outside ~/Library/CloudStorage, past its cap) come first, then the list.
+	# reach (deeper than it goes, outside ~/Library/CloudStorage, past its cap) come first, then the list. A list
+	# that shows no folder (signed out, an empty provider folder, the only provider denied) is not promised: the
+	# line is the plain one (B13 round 11 M9).
 	if [ "${synced:-0}" -gt 0 ]; then
-		if [ "$unlisted" -eq 0 ]; then
+		if [ "$unlisted" -eq 0 ] || [ ! -s "$tmp/shown" ]; then
 			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below)"
 		else
 			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"

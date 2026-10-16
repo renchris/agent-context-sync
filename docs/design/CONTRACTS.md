@@ -8530,6 +8530,8 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   prompt's "each has [synced] before its path" and "tell me which they are" hold for all N. Until then such
   a folder was only counted (`2 marked [synced] below; 1 not in this list`), and a Mac whose one synced
   folder was `~/Documents/notes` got that line over a list with no mark.
+  Amended 2026-10-15, §16.93 M9: when the list shows no folder (signed out, an empty provider folder, the only
+  provider denied) the first line is the plain `(marked [synced] below)`, since no list follows.
 - The `NEXT:` line names the command that keeps them, since nothing has to be chosen: `install.sh` alone, with
   `--source-local` only for a folder to add. With no synced folder it is the line it was.
 - **Without a config the output is byte for byte what it was**, and the installed agentsync is not asked. The
@@ -18796,6 +18798,13 @@ each folder, file or person by its role, and a section 2 of `No change requested
 none. The sentences read `Section N is not redacted: it may name a real folder, file or person, so review it
 before sending.` and `Sections 2 and 3 are not redacted: they may name ...`; which one is printed is chosen as
 before. docs/deploy/setup-feedback.md says so. Test: `test_the_bring_back_header_names_only_what_the_file_holds`.
+
+**Step 1 promises no list it does not print** (M9; amends §16.29's "Every synced folder is printed"). With
+nothing listed (OneDrive signed out, its folder still empty, the only provider denied) the first line read
+`(marked [synced] below: first the 1 outside the list, then the list)` over the `[synced]` lines alone. The
+long form is printed only when the list shows a folder. Tests:
+`test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list`,
+`test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied`.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

@@ -3742,7 +3742,8 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     line to mark, so this Mac got the new Mac's exit 3 and "sign in to OneDrive". The prompt then goes to
     the report without step 2: no update and no sync, though install.sh alone keeps that folder and syncs
     it (review, 2026-10-07). The list now says what is synced, exits 0 and names that command. A Mac that
-    syncs no folder still gets exit 3 and the line it always got."""
+    syncs no folder still gets exit 3 and the line it always got. B13 round 11 M9: with no list to follow,
+    the first line no longer says "first the 1 outside the list, then the list"."""
     notes = Path(env["HOME"]) / "Documents" / "notes"
     notes.mkdir(parents=True)
     why = "OneDrive is not signed in on this Mac"
@@ -3754,8 +3755,7 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines() == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
-        "the list)",
+        "already synced on this Mac: 1 folder(s) (marked [synced] below)",  # B13 round 11 M9: no list follows
         f"[synced] {notes}",
         f"NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run {INSTALL_SH} (no folder to "
         f"add is listed: {why})",
@@ -3794,8 +3794,7 @@ def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 4, cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
-        "the list)",
+        "already synced on this Mac: 1 folder(s) (marked [synced] below)",  # B13 round 11 M9: no list follows
         f"[synced] {projects}",
     ]
     assert last_line(cp).startswith("NEXT: this terminal app was denied access to files managed by OneDrive")

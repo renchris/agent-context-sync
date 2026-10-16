@@ -468,7 +468,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `already synced on this Mac: N folder(s) (marked [synced] below)` and each of them has `[synced]` before its
   path. A synced folder the list does not reach (deeper than it goes, outside `~/Library/CloudStorage`) is
   printed first with the same mark, and the first line then ends `(marked [synced] below: first the 1 outside
-  the list, then the list)`. So every synced folder is named once.
+  the list, then the list)` when the list shows a folder. So every synced folder is named once.
 - A sync reads the whole tree under a synced folder. So a listed folder inside one has
   `[inside a synced folder]` before its path, and one that holds one has `[contains a synced folder]`. Only
   an unmarked folder is one to add: a marked one, added, would be read twice.
