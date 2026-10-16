@@ -10254,12 +10254,18 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     ), part
     assert "read(s) again" not in part
     rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
-    assert rows[0].endswith("| 0 + 0 | 1 (0), 1 first read | - |") and rows[1].endswith("| 0 (0) | - |"), rows
+    # B13 round 12 N15: one stub read for the first time is one file, not "1 (0), 1 first read"
+    assert rows[0].endswith("| 0 + 0 | 1 first read | - |") and rows[1].endswith("| 0 (0) | - |"), rows
     part = ocr_part(first, {"converted": 2, "reread": 2, "reread_kept": 1, "ocr_ms": 1000})
     assert (
         " · 3 read(s) again (1 of them a first read of a stub whose bytes had never been read, also in the "
         "converted count; 1 could not be converted and kept their page)\n" in part
     ), part
+    rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
+    assert rows[0].endswith("| 1 first read | - |") and rows[1].endswith("| 2 (1) | - |"), rows
+    part = ocr_part({"converted": 3, "reread": 3, "reread_kept": 1, "reread_first": 1, "ocr_ms": 1000}, first)
+    rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
+    assert rows[0].endswith("| 3 (1), 1 of them a first read | - |"), rows
     part = ocr_part({"converted": 1, "reread": 1, "ocr_ms": 1000}, {"converted": 0, "ocr_ms": 1000})
     assert " · 1 read(s) again (0 of them could not be converted and kept their page)\n" in part, part
 

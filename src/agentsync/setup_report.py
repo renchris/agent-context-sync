@@ -5442,8 +5442,7 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
                 x.n("ocr_failed"),
                 f"{x.n('ocr_page_cap')} + {x.n('ocr_picture_cap')}",
                 f"{x.n('A')} + {x.n('M')}",
-                f"{x.n('reread')} ({x.n('reread_kept')})"
-                + (f", {x.n('reread_first')} first read" if x.n("reread_first") else ""),
+                _reread_cell(x.n("reread"), x.n("reread_first"), x.n("reread_kept")),
                 # A run that looked says what it left (0 is left out of its record); one that did not look
                 # (an earlier build's, a ``materialise PATH`` run) has no count to give.
                 x.n("reread_left") if "reread_for" in x.counts else "-",
@@ -5483,6 +5482,17 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
         "background job's"
     )
     return [*out, "", f"{title}. {notes}:", "", *_table(header, rows)]
+
+
+def _reread_cell(again: int, first: int, kept: int) -> str:
+    """The run table's ``read again (conversion failed)`` cell, in the words of :func:`_reread_clause` and the
+    CLI: all first reads are ``F first read`` (no "(0)": a kept page is never a first read), some are ``R (K),
+    F of them a first read``. ``1 (0), 1 first read`` read as two files for one (B13 round 12 N15)."""
+    if first and first == again:
+        return f"{first} first read"
+    if first:
+        return f"{again} ({kept}), {first} of them a first read"
+    return f"{again} ({kept})"
 
 
 def _reread_clause(again: int, first: int, kept: int) -> str:

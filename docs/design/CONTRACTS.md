@@ -9099,6 +9099,8 @@ wording, and the report now says what each number is. The cycle, its limits and 
   all first reads read `N first read(s) of a stub whose bytes had never been read, also in the converted count`, some
   `N read(s) again (F of them a first read ...; K could not be converted and kept their page)`, and the run's cell
   adds `, F first read`.
+  Amended 2026-10-16, §16.98 N15: the run's cell reads `F first read` when every re-read was a first read, `R (K),
+  F of them a first read` when some were, and `R (K)` otherwise.
 - **`pages added + changed`**, a new column before it: the run record's `A` and `M`, the pages the run added
   and changed from every cause. Every build wrote them, so a run of an earlier build has them too. A sync
   that only reads again shows there how many pages the re-read really changed, which the first paste could
