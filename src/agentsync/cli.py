@@ -869,10 +869,11 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             # names this command by the same rule (B13 round 5 F65).
             clear, _collides = loop._excludable(found)
         gone = len(below) - len(clear)
+        left = "it" if gone == 1 else "them"  # B13 round 12 N40: by the count, as the line's own folders
         held = (
             f"; {gone} empty cloud folder(s) in {src.id} were left as they are: each held file(s) the mirror "
             "still has, or its exclude would also match a folder that does (excluding such a folder retires "
-            f"its pages at once, with no deletion check); {loop._named(config, [src.id], 'them')}"
+            f"its pages at once, with no deletion check); {loop._named(config, [src.id], left)}"
             if gone
             else ""
         )
@@ -892,7 +893,9 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     _out(
         f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
         f"({len(clear)} empty cloud folder(s) added); an excluded folder is not mirrored if it later gains "
-        f"files; the next sync lists {src.id} without them{held}"
+        # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
+        f"files; the next sync lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
+        f"{held}"
     )
     return EXIT_OK
 

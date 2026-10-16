@@ -57,6 +57,7 @@ def test_every_empty_folder_is_excluded_once_and_the_listing_completes(
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK, out
     assert "(7 empty cloud folder(s) added)" in out and "not mirrored if it later gains files" in out
+    assert out.rstrip().endswith("the next sync lists work without those folders"), out  # B13 round 12 N40
     src = load_config(cfg).source("work")
     assert src.exclude == ("*.bak", *(f"/Empty {n}/" for n in range(6)), "/Plans ?old]/")
     assert _exclude_empty(cfg, "work", capsys) == (cli.EXIT_OK, "exclude-empty work: nothing to exclude\n")
@@ -83,6 +84,9 @@ def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     assert rc == cli.EXIT_OK, out
     assert "(1 empty cloud folder(s) added)" in out
     assert "1 empty cloud folder(s) in work were left as they are" in out
+    # B13 round 12 N40: "without them" after one folder, beside "files", and the left one is "it"
+    assert "the next sync lists work without that folder; " in out and "without them" not in out, out
+    assert "which names it" in out and "which names them" not in out, out
     assert "Gone" not in out
     assert load_config(cfg).source("work").exclude[-1] == "/Empty/"
     assert "/Gone/" not in load_config(cfg).source("work").exclude
