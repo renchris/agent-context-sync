@@ -13826,6 +13826,7 @@ the ones install.sh counts (`synced_folders`: live `kind = "local"` sources), th
 as they are (never the inbox or another kind = "inbox" folder), saying which of them this session added: those for
 which a run of step 2 this session printed an "added source" line": step 1's `[synced]` marks no longer decide it, so
 a list that marked nothing gives no false "none" (§16.72 calls this paragraph §16.36's and §16.43's finish).
+Amended 2026-10-16, §16.94 M28: since v20 a sources.toml that does not load is "unknown", not "none".
 
 **Step 1's exception** (R41): "say in your final message that I gave no answer, so no folder was added" (§16.29's
 block carries a dated line).
@@ -16550,6 +16551,8 @@ fails, H9's verifier) and a second "already synced, not added" line (`already co
 **Amended 2026-10-14, §16.85 K65 (by §16.76 J6):** since v17 the "none" form also covers a missing sources.toml,
 which is all a stop before step 2 on a new Mac has: "or, if ~/agent-context/sources.toml does not exist yet or has
 no such kind = "local" source, "none: this Mac syncs no folder"".
+Amended 2026-10-16, §16.94 M28: since v20 a sources.toml that exists but does not load has a case of its own, which
+lists no folders and says "unknown: ~/agent-context/sources.toml does not load", with the report's reason.
 
 **At the folder wait the NEXT item is "none"** (H6; amends §16.43's H3 paragraph, "The finish names one NEXT
 line"). Step 3 lists the folder wait as a case with no report, so "the last NEXT: line printed before the report"
@@ -18093,7 +18096,9 @@ the checkout: M, no patch file in the setup folder's local-work (a keep with not
 neither, no line. Patches are the top-level, non-hidden regular `*.patch` files (L40's verifier kept any depth;
 L8's and L25's matching section 3 is built, since every keep command writes to the top). A branch whose sha (loose
 file, else `packed-refs`, no git process) equals `refs/heads/main`'s or `refs/remotes/origin/main`'s is not
-counted (L58's verifier; a branch cut from an older origin/main still counts). The bracket is
+counted (L58's verifier; a branch cut from an older origin/main still counts). Amended 2026-10-16, §16.94 M83:
+L58's prompt half is built in v20: a keep with nothing to keep deletes its branch, which sat at the old main, a
+commit this skip does not catch; the skip stays for branches earlier runs left. The bracket is
 `setup_report.LOCAL_WORK_WHERE` and install.sh's `LOCAL_WORK_WHERE`, one string. bring-back.md builds section 3
 first and prints the header's author sentence only when section 3 sends a patch; when every patch was in an
 earlier report it reads "Section 3 sends no patch this time: each was in an earlier report and is listed by its
@@ -18398,6 +18403,11 @@ words now read "not a checkout this setup can use" and name the local-work branc
 review found that loop: v18 cloned onto such a folder instead). The allow list gains `Bash([ -f
 ~/src/agent-context-sync/.git ])`, so step 1 needs the first eight rules. Test:
 `test_a_checkout_whose_git_is_a_file_pulls`.
+Amended 2026-10-16, §16.94 M17, M69: "lossless under the ancestor test" covered only the local-work commits: the
+runner's reset (Apple git 2.39.5's) moves the main another worktree has out under that checkout's files, which then
+hold a staged revert of the update. Since v20 every recovery goes back with a plain `switch main`, which refuses there
+on every git from 2.39.5 to 2.54, and the worktree case is a stop of its own that names both of git's phrases, the
+person's branch, the local-work branch and `git worktree move`.
 
 **A main the recovery keeps in full moves to the update** (L9). On a main with a commit of its own and no upstream,
 v18's no-tracking recovery went back to main as it was; the next pull said "Not possible to fast-forward", and the
@@ -18409,6 +18419,9 @@ exit-1 case), main stays as it was. `switch -C` from a remote-tracking branch se
 track" line comes before the count, and the upstream step is a no-op there. The optional `fetch` before format-patch
 is not built: step 1's pull fetched before it failed. Tests: `test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref`,
 `test_a_checkout_a_v15_keep_left_on_its_branch_goes_back_to_main`.
+Amended 2026-10-16, §16.94 M69, M83: since v20 the reset is `switch main && reset -q --keep origin/main`, which sets
+no upstream, so git's "set up to track" line comes from the upstream step, after the count, and only where main had
+none; a count of 0 also deletes the local-work branch, in the same chain.
 
 **A kept patch's name keeps its subject** (L17, L30: one defect, built once). git counts `--suffix` inside
 format-patch's 64-character file-name cap, so with the 33-character branch suffix a subject kept about 25 characters
@@ -18423,7 +18436,10 @@ ownership stop ran another account's script. Those two stops now run no `install
 "## Not used" section. The Xcode and other-git-failure stops, where no pull ran, first run `install.sh --version`
 (it checks for the developer tools before it calls git) and log and report only when it ends with this prompt's
 number; otherwise they tell the person the code on the Mac is not this prompt's version and setup stopped before it
-could be updated. The finish still applies after every one of these stops. Step 1's version check now reads "the
+could be updated. The finish still applies after every one of these stops.
+Amended 2026-10-16, §16.94 M16, M32: "where no pull ran" was so at the Xcode stop only; at the other-git-failure
+stop the pull ran and failed. Since v20 the prompt says step 1 did not update that copy, and the stop with no report
+also says the person has nothing more to do: the next paste tries the update first. Step 1's version check now reads "the
 --version inside step 1's one command", so the Xcode and git stops' own `--version` is not taken for it. Step 3's
 no-report cases are four. Test: `test_readme_step1_is_one_command`,
 `test_readme_report_step_after_any_failure`.
@@ -18450,6 +18466,9 @@ says about proxy variables comes from the shell the report ran in, which may not
 only labels both reports print (`setup_report.py`'s proxy fact and `install.sh`'s shell report), not "proxy
 environment", which only the shell report has, and no parenthesis, which H21 keeps out of the quote. Test:
 `test_readme_step1_is_one_command`.
+Amended 2026-10-16, §16.94 M21, M33: "say only set or not set" was false (both reports add a bracket to "set": the
+rewrite count, H20, and that git's proxy wins), and the unmarked labels read as a broken sentence. Since v20 the
+labels are in code marks and the entries "say whether each is set, never which host".
 
 Register: `docs/deploy/setup-feedback.md` K43.
 
@@ -18766,7 +18785,120 @@ Reserved for round 11 lane RB of B13.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
-Reserved for round 11 lane P of B13.
+The B13 round 11 items of lane P (specs `round11/items/M<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): M16, M17, M21, M28, M32, M33, M35, M69, M74, M83. All need prompt text, so the
+prompt is **setup prompt v20**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v20` and
+`setup-prompt-compat 20`, the issue form's placeholder and the block's digest move together, and a saved v19 copy is
+stopped at step 1 like every older copy. v20 moves no step, so it has no `PROMPT_LAYOUTS` entry. Lane RB sent words
+for its M4, built here; no other lane sent prompt words. None adds an agentsync command, an installer flag, a config
+key or a friction kind.
+
+**A recovery leaves the other checkout's main alone** (M69; amends §16.88 L27 and L9). In a second worktree of
+another checkout, v19's `switch -C main origin/main` runs on Apple git 2.39.5 (the Command Line Tools' git, and the
+CI runner's) even when the other checkout has main out: behind origin/main, that main moved under the other checkout,
+whose index then held a staged revert of the update (`D  b`, measured); diverged, git refused with "is already
+checked out at", which v19 did not name, so the agent gave the proxy advice. Each of the three recoveries now goes
+back with
+`git -C ~/src/agent-context-sync switch -q main && git -C ~/src/agent-context-sync reset -q --keep origin/main`: a
+plain `switch main` refuses a main checked out elsewhere on git 2.39.5, 2.50.1 and 2.54.0 (measured, behind, diverged
+and level), and the tree is clean after the keep's commit, so `reset --keep` loses nothing. Where main is free (the
+other checkout on another branch) the recovery still moves main to the update on all three; a blanket "linked
+worktree" stop (M69's finder) would have stopped that case, which L27 made pull. The keep command and its retry say
+"its last three steps (the fetch, the switch or the reset)". Not built: the verifier's allow rules for the reset. No
+recovery is allow-listed (each runs only after a failed pull and asks first, `KEEP_LOCAL_WORK`'s docstring), so a
+rule would cover no command of the block, which `test_readme_pre_allow_rules_cover_every_command` forbids, and would
+let a bare reset run unasked. A main a keep command leaves without an upstream (only when the pull ran on another
+branch with one) now gets it from the no-tracking recovery on the next paste, where `switch -C` set it. `-q` (the
+lane's review): a plain switch prints "Your branch is behind ... by N commits" before the count, false once the reset
+ran; git's refusal still prints. Tests: `test_a_recovery_in_a_second_worktree_leaves_the_other_checkouts_main`
+(parametrized over this machine's gits; v19's reset as the control),
+`test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref`.
+
+**The worktree stop says what is where and how to move it** (M17, M69; amends §16.88 L27). The not-a-checkout stop
+named only the local-work branch. The worktree case is now a stop of its own, keyed on main "is already used by
+worktree" or "is already checked out at" (git's version decides the words). It tells the person the branch they were
+on (as it was, with its commits), the local-work branch (checked out in the folder, holding the work and copied as
+patches), that the folder is a second worktree of the checkout at git's path, and to move it with
+`git -C <that path> worktree move ~/src/agent-context-sync <new place>`, or `worktree repair` after a move by hand.
+The lane's review found two more cases, both built. The same refusal comes when ~/src/agent-context-sync is the MAIN
+checkout and a worktree of it elsewhere has main out; there `worktree move` fails ("is a main working tree", measured
+on all three gits), so the stop splits on the `.git` test step 1 already has: for a folder, the person takes that
+worktree off main (`git -C <that path> switch --detach`, for example) and runs
+`git -C ~/src/agent-context-sync switch main`, and the next paste pulls. And the keep command's refusal sent the
+agent to its retry and then the no-tracking recovery (each refusing the same way on 2.39.5, two local-work branches
+and the same patch twice), so the stop covers the keep command and its retry and says to run no other recovery and
+not step 1's command again. The verifier's reason, "can still use the local-work branch", is not the difference (the
+other checkout cannot switch to it either way while the folder has it out); measured on all three gits: moved by
+hand, the folder is a prunable entry, and a prune (which `git gc` also runs on its own after
+`gc.worktreePruneExpire`) leaves the moved folder no checkout (status rc 128); after `move` or `repair` it stays one.
+The stop says that. "Those three stops end there, with no report", and step 3's no-report case names "not-a-checkout,
+worktree and ownership stops". Tests: `test_a_recovery_in_a_second_worktree_leaves_the_other_checkouts_main`,
+`test_the_worktree_stops_commands_keep_a_moved_worktree`,
+`test_a_recovery_in_the_main_checkout_whose_worktree_has_main_stops`.
+
+**A count of 0 deletes the empty branch** (M83; amends §16.88 L9 and §16.86 L58). On a main behind origin/main with
+no upstream and nothing of its own, v19's no-tracking recovery left `local-work-<time>` at the old main, a commit
+neither reader's skip (main's or origin/main's sha) catches, so every later public report said "local-work branch(es)
+in the checkout: 1". The count step is now
+`n=$(git -C ~/src/agent-context-sync rev-list --count origin/main..@{-1}) && echo "$n" && { [ "$n" -gt 0 ] || git -C ~/src/agent-context-sync branch -D @{-1}; }`,
+in the same chain right after the switch, where `@{-1}` is still the local-work branch. Lossless: 0 means origin/main
+holds every commit of the branch, and an uncommitted change would have made it at least 1. `-D`: on the `switch main`
+path the branch is an ancestor of origin/main, not of main. The words: "if it is 0, there was nothing to keep and the
+command removed that empty branch, so say that", and only otherwise the local-work branch's name. The readers keep
+their skip for branches earlier runs left. The block's Rules line, "do not delete, reset or stash anything", now
+names the exception: "(keeping local changes on a branch, moving main to the update and removing a local-work branch
+that kept nothing, as step 1 says, is none of these)" (the lane's review: the reset was covered by "moving main to
+the update", the delete by nothing). Tests: `test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref` (no branch
+and `_local_work_line()` None at 0; the branch and the line stay at 1 and 2),
+`test_an_empty_keep_on_the_way_back_to_a_main_of_its_own_is_deleted` (`-d` leaves the branch there, `-D` deletes it).
+
+**The git stop's report entries** (M21, M33; amends §16.88 L74). The quote now reads "its `proxy in git's config` and
+`URL rewrite in git's config` entries say whether each is set, never which host". M33: the labels stood unmarked, so
+"its entries proxy in git's config" read as a broken sentence; code marks, as the quote's commands have, do not clash
+with "git's", where single quotes would. M21: "only set or not set" was false, since both reports print "set (1)" and
+"set (git uses it before HTTPS_PROXY)". The count (H20) and the bracket stay; dropping them (M21's finder's second
+option) would reopen H20 and lose the precedence fact. No parenthesis enters the quote (H21). Test:
+`test_readme_step1_is_one_command`.
+
+**The Xcode and git stops say what step 1 did and what is left** (M16, M32; amends §16.88 L31). "no pull ran" was
+false at the other-git-failure stop: the pull ran and failed (rc 1, `FETCH_HEAD` emptied, HEAD unchanged). It now
+reads "step 1 did not update that copy (its pull did not run or did not finish)". At such a stop with an older
+installer the person heard the stop's action, then a bare "not this prompt's version", which read as a second
+problem; the stop now adds "and that this asks nothing more of me: once the Command Line Tools are installed (or git
+can reach GitHub), the next paste of this prompt tries to update that code first". "Tries", not "updates" (M16's
+verifier): local changes and a checkout off main have their own recoveries. Test: `test_readme_step1_is_one_command`.
+
+**The finish for a config that does not load** (M28; amends §16.72 H9 and §16.49 R11). A sources.toml that exists but
+does not load (mode 000, bad TOML, a schema error; probe H) had no words: "read after step 2" could not be done or
+parsed a file agentsync rejected, and the only other case, "none: this Mac syncs no folder", was false on a Mac that
+synced 2 folders until its config broke. The finish adds: "or, if that file exists but does not load (the report's
+Configuration section says "loads: no", or step 2 printed a "configuration error" for it), list no folders and do not
+parse it yourself: say "unknown: ~/agent-context/sources.toml does not load", followed by the reason the report
+gives". Keyed on "does not load", not "cannot be read" (the finder's), which missed a parse or schema failure; no
+claim about the folders it held, which nobody can check. Not on "step 2 stopped at its config step" (the verifier's):
+that step also stops on an add-source refusal ("no such folder", "must not contain each other") with a config that
+loads (the lane's review, from install.sh's config step and cli.py's add-source). `- loads: no: <error>` is
+`setup_report`'s line. Test: `test_readme_step3_runs_the_loop_then_the_report`.
+
+**bring-back.md's patches** (M35). The finish said the file holds "the patches of any work step 1 kept", false on a
+re-run after an earlier report, whose section 3 holds only "not repeated:" lines. It now adds "a patch an earlier
+report carried is not repeated, only listed by its hash", the header's own words, and claims nothing about what was
+copied back. Test: `test_prompt_routes_changes_to_the_source_not_the_checkout`.
+
+**Step 3 names the rule, not its place** (M74). "(also after step 2, as step 1's last sentence says)" pointed at the
+add-source sentence; it reads "(also when step 2 says no folder is synced yet, as step 1 says)". Step 2's "as step
+1's last sentences say, not its add-source" is accurate (the verifier) and stays. Test:
+`test_readme_report_step_after_any_failure`.
+
+**A signed-out OneDrive waits for the sign-in** (M4, lane RB's words; the installer half is §16.93's). On a Mac that
+already syncs folders, a signed-out OneDrive left the `[synced]` folders missing, and step 1's first exception sent
+an unattended agent on to a step 2 that fails. `--list-folders` now exits 3 there with a `NEXT:` that asks the person
+to sign in, and the first exception, before its "add none and go on to step 2", reads: "If the list's NEXT: line asks
+me to sign in, tell me which folders are kept and that I must sign in to OneDrive, and wait for me as for a click;
+once I say so, run --list-folders again and go by what it prints." Test:
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+
+Register: `docs/deploy/setup-feedback.md` K44.
 
 ### 16.95 Round 11: waits, alarms, status and doctor (2026-10-15, wave B13 round 11 lane B)
 

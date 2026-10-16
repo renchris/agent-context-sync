@@ -538,7 +538,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (19, "2d04721ecc5f939a2ad638e67fc66fa1acf559d1301c7e8af7ffa9659a297273")
+PROMPT = (20, "e8220f10e8bd8eb45f6ed04321eab2359c70f7d74d1c1bbb79173dcb2a74d6bb")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -587,6 +587,16 @@ branch suffix no longer cuts the subject to about 25 characters (B13 round 10 L1
 ``--filename-max-length`` option: git before 2.30 fails on it after the commit, where an unknown config key is
 ignored."""
 
+TO_THE_UPDATE = f"git -C {_CHECKOUT} switch -q main && git -C {_CHECKOUT} reset -q --keep origin/main"
+"""How each recovery moves main to the update since v20. Up to v19 it was ``switch -C main origin/main``,
+which Apple git 2.39.5 (the Command Line Tools' git, and the CI runner's) runs even when another worktree
+has main checked out: it moved that main under the other checkout, whose index and files then held a staged
+revert of the update (B13 round 11 M69, measured). A plain ``switch main`` refuses a main checked out
+elsewhere on every git from 2.39.5 to 2.54, with "is already checked out at" or "is already used by
+worktree"; the tree is clean after the keep's commit, so ``reset --keep`` loses nothing. ``-q``: a plain
+switch prints git's "Your branch is behind ... by N commits" before the count, false once the reset ran (the
+lane's review); the refusal still prints."""
+
 KEEP_LOCAL_WORK = (
     f"{CEILING} && git -C {_CHECKOUT} merge-base --is-ancestor main HEAD"
     f" && git -C {_CHECKOUT} switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C {_CHECKOUT} add -A"
@@ -594,7 +604,7 @@ KEEP_LOCAL_WORK = (
     f" || git -C {_CHECKOUT} -c user.name=agentsync -c user.email=agentsync@localhost commit -q"
     f" -m 'local changes kept before update'; }}"
     f" && {FORMAT_PATCH}"
-    f" && git -C {_CHECKOUT} fetch origin && git -C {_CHECKOUT} switch -C main origin/main"
+    f" && git -C {_CHECKOUT} fetch origin && {TO_THE_UPDATE}"
 )
 """Step 1's recovery when the pull fails on local changes (field report 2026-10-05: an agent
 stopped at step 1 because uncommitted work sat in the checkout and the prompt forbids stash and
@@ -604,10 +614,11 @@ pull, and the tool asks first. Since v16 (B13 round 7 H19) it also keeps a local
 pull reports as "Not possible to fast-forward": it commits only when something is staged, writes a
 patch for every commit the update lacks, and moves main to the update, where v15's commit failed on a
 clean tree and left the checkout on a branch with no upstream. Its first step stops it, changing nothing,
-when main has commits the checked-out branch lacks: the reset of main would leave them on no branch."""
+when main has commits the checked-out branch lacks: the reset of main would leave them on no branch. Since
+v20 main moves by :data:`TO_THE_UPDATE`."""
 
-KEEP_RETRY = f"{CEILING} && git -C {_CHECKOUT} fetch origin && git -C {_CHECKOUT} switch -C main origin/main"
-"""The keep command's last two steps, run again when only they failed (the changes are kept by then)."""
+KEEP_RETRY = f"{CEILING} && git -C {_CHECKOUT} fetch origin && {TO_THE_UPDATE}"
+"""The keep command's last three steps, run again when only they failed (the changes are kept by then)."""
 
 KEEP_BRANCH_WORK = (
     f"{CEILING} && git -C {_CHECKOUT} switch -c local-work-$(date +%Y%m%d-%H%M%S) && git -C {_CHECKOUT} "
@@ -617,8 +628,9 @@ KEEP_BRANCH_WORK = (
     f" -m 'local changes kept before update'; }}"
     f" && {FORMAT_PATCH}"
     f" && {{ if git -C {_CHECKOUT} merge-base --is-ancestor main HEAD; then"
-    f" git -C {_CHECKOUT} switch -C main origin/main; else git -C {_CHECKOUT} switch main; fi; }}"
-    f" && git -C {_CHECKOUT} rev-list --count origin/main..@{{-1}}"
+    f" {TO_THE_UPDATE}; else git -C {_CHECKOUT} switch -q main; fi; }}"
+    f' && n=$(git -C {_CHECKOUT} rev-list --count origin/main..@{{-1}}) && echo "$n"'
+    f' && {{ [ "$n" -gt 0 ] || git -C {_CHECKOUT} branch -D @{{-1}}; }}'
     f' && {{ test -n "$(git -C {_CHECKOUT} config --get branch.main.merge)"'
     f" || git -C {_CHECKOUT} branch --set-upstream-to=origin/main main; }}"
 )
@@ -634,19 +646,35 @@ Source's main as its upstream when it has none, so a main with no upstream does 
 Since v18 it prints how many commits the local-work branch keeps, the number the words after it key on, and
 tests main's upstream inside ``$( )``, so an upstream main already has prints no bare ``refs/heads/main``
 (B13 round 9 K12, K13). Each patch name carries its keep's branch (``--suffix``), so a second keep no longer
-overwrites a first keep's patch of the same number and subject (K28)."""
+overwrites a first keep's patch of the same number and subject (K28).
+
+Since v20 a count of 0 deletes that branch, in the same chain right after the switch, where ``@{-1}`` is still
+the local-work branch (B13 round 11 M83): it sat at the old main, a commit neither main nor origin/main is
+at, so both readers counted it and every later report carried a local-work line. A count of 0 means
+origin/main holds every commit of the branch, and an uncommitted change would have made it at least 1, so
+nothing is lost. ``-D``, since on the ``switch main`` path the branch is an ancestor of origin/main, not of
+main, and ``-d`` would refuse."""
 
 KEEP_BRANCH_TELL = (
-    "then tell me the name of the branch I was on and of the new local-work branch. The number it printed is"
-    " how many commits the local-work branch keeps: if it is 0, there was nothing to keep, so say that and"
-    " that I may delete that branch; otherwise say that all of my work, uncommitted changes included, is on"
-    " the local-work branch and copied as patches to ~/agent-context/setup/local-work, and, if the branch I"
-    " was on is not main, that my commits also stay on it. Then run step 1's command again."
+    "then tell me the name of the branch I was on. The number it printed is how many commits the local-work"
+    " branch keeps: if it is 0, there was nothing to keep and the command removed that empty branch, so say"
+    " that; otherwise tell me the name of the new local-work branch and say that all of my work, uncommitted"
+    " changes included, is on it and copied as patches to ~/agent-context/setup/local-work, and, if the"
+    " branch I was on is not main, that my commits also stay on it. Then run step 1's command again."
 )
 """What step 1 says after :data:`KEEP_BRANCH_WORK`. v17 always said "my commits stay on my branch" and that
 the work was "copied as patches": a main with no upstream and nothing of its own got neither (an empty
 branch, no patch), and on a main with a commit of its own the next keep's ``switch -C main origin/main``
-moves main (B13 round 9 K12)."""
+moves main (B13 round 9 K12). Since v20 the empty branch of a count of 0 is gone, so it is not named (M83)."""
+
+WORKTREE_MOVE = f"git -C <that path> worktree move {_CHECKOUT} <new place>"
+WORKTREE_REPAIR = "git -C <that path> worktree repair <new place>"
+WORKTREE_DETACH = "git -C <that path> switch --detach"
+WORKTREE_BACK = f"git -C {_CHECKOUT} switch main"
+"""The two commands the worktree stop gives the person since v20 (B13 round 11 M17): moved by hand, a second
+worktree leaves the other checkout an entry git marks prunable, and that checkout cannot switch to the
+local-work branch the person was told keeps the work ("already used by worktree", measured); ``worktree
+move`` moves it cleanly, ``worktree repair`` fixes a folder already moved."""
 
 PERSONS_COMMANDS = "(those three commands are mine to run in my own terminal: do not run them yourself)"
 """What follows the git stop's quote since v18: its three commands are the person's (B13 round 9 K31)."""
@@ -674,9 +702,16 @@ first sync (``FIRST_SYNC``). The plain sync downloads up to each folder's budget
 brings take the OCR time first, so twelve more of those cost up to 12 GiB a folder and read nothing again."""
 
 VERSION_CHECK = f"{INSTALL_SH} --version"
-"""What the Xcode and other-git-failure stops run before they log or report, since v19: no pull ran there,
-so the copy on disk may be older than the prompt, and only this prompt's installer logs and reports (B13
-round 10 L31). The not-a-checkout and ownership stops run no install.sh at all."""
+"""What the Xcode and other-git-failure stops run before they log or report, since v19: step 1 updated
+nothing there, so the copy on disk may be older than the prompt, and only this prompt's installer logs and
+reports (B13 round 10 L31). The not-a-checkout, worktree and ownership stops run no install.sh at all."""
+
+UNLOADED_CONFIG = (
+    'or, if that file exists but does not load (the report\'s Configuration section says "loads: no", or step'
+    ' 2 printed a "configuration error" for it), list no folders and do not parse it yourself: say "unknown:'
+    ' ~/agent-context/sources.toml does not load", followed by the reason the report gives'
+)
+"""The finish's case for a sources.toml that exists but does not load, since v20 (B13 round 11 M28)."""
 
 REPORT_COMMAND = f"{INSTALL_SH} --report-only"
 """Setup prompt v7 step 3's last command, the report, which first appends the friction log's end line (KISS
@@ -826,6 +861,10 @@ def test_readme_step1_is_one_command() -> None:
         KEEP_LOCAL_WORK,
         KEEP_RETRY,
         KEEP_BRANCH_WORK,
+        WORKTREE_MOVE,
+        WORKTREE_REPAIR,
+        WORKTREE_DETACH,
+        WORKTREE_BACK,
         GIT_REWRITE_QUERY,
         GIT_PROXY_QUERY,
         VERSION_CHECK,
@@ -867,11 +906,17 @@ def test_readme_step1_is_one_command() -> None:
         "prints and which wins over the terminal's; or the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or "
         "all_proxy, which `env | grep -i proxy` shows. Once git can reach GitHub from a terminal, start a "
         "new session from that terminal and paste this prompt again. If the setup report gets written, its "
-        "entries proxy in git's config and URL rewrite in git's config say only set or not set, never which "
-        "host, and what it says about proxy variables comes from the shell the report ran in, which may "
-        "not be "
+        "`proxy in git's config` and `URL rewrite in git's config` entries say whether each is set, never "
+        "which host, and what it says about proxy variables comes from the shell the report ran in, which "
+        "may not be "
         f"your terminal\" {PERSONS_COMMANDS}, and go to step {report}'s report."
     ) in flat
+    # B13 round 11 M33: the two labels stood unmarked in the quote ("its entries proxy in git's config and
+    # ..."), which read as a broken sentence; code marks, as the quote's commands have, and no clash with
+    # "git's". M21: "only set or not set" was false, since both reports add a bracket to "set" (a count of
+    # rewrites, and that git's proxy wins over HTTPS_PROXY); the count and the bracket stay (H20), and the
+    # quote says "whether".
+    assert "say only set or not set" not in flat and "its entries proxy" not in flat
     # B13 round 10 L74: round 9's verifier offered a pointer to the report's proxy lines. The quote names only
     # the two labels both reports print (the Python report has no "proxy environment" line), says the report
     # gives set or not set and no host, and that its proxy-variable reading is the agent's shell, not the
@@ -906,25 +951,33 @@ def test_readme_step1_is_one_command() -> None:
     # keyed on the folder ran an install.sh that does not exist (rc 127). The condition is the installer.
     # B13 round 9 K25: git's "detected dubious ownership" is a stop of its own, logged the same way.
     # B13 round 10 L31: those four stops ran whatever installer the copy held (a v14 archive's logged and
-    # reported, measured), and the ownership stop ran another account's script. The not-a-checkout and
-    # ownership stops run no install.sh at all; the Xcode and git stops, where no pull ran, log and report
-    # only
-    # when that copy's --version is this prompt's.
+    # reported, measured), and the ownership stop ran another account's script. The not-a-checkout, worktree
+    # (v20, M17) and ownership stops run no install.sh at all; the Xcode and git stops, where step 1 updated
+    # nothing, log and report only when that copy's --version is this prompt's.
     assert (
-        "Those two stops end there, with no report: the code in that folder is unknown or another account's, "
-        "so run no ~/src/agent-context-sync/scripts/install.sh command at all after them; your final message "
-        'still follows step 3\'s "Finish with".'
+        "Those three stops end there, with no report: the code in that folder is unknown, shared with "
+        "another checkout or another account's, so run no ~/src/agent-context-sync/scripts/install.sh "
+        'command at all after them; your final message still follows step 3\'s "Finish with".'
     ) in flat
     assert (
         "Before going to the report from the Xcode stop or the other-git-failure stop above, if "
         "~/src/agent-context-sync/scripts/install.sh exists, run "
-        f"`{INSTALL_SH} --version`: no pull ran, so that copy may be older than this prompt. If its output "
+        f"`{INSTALL_SH} --version`: step 1 did not update that copy (its pull did not run or did not "
+        "finish), so it may be older than this prompt. If its output "
         f'ends with "setup-prompt-compat {PROMPT[0]}", log the failed command as a step 1 error, starting '
         "its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
         "inside <agent>), and go to the report. Otherwise that stop has no report either: tell me that the "
-        "code on this Mac is not this prompt's version and that setup stopped before it could be updated."
+        "code on this Mac is not this prompt's version and that setup stopped before it could be updated, "
+        "and that this asks nothing more of me: once the Command Line Tools are installed (or git can reach "
+        "GitHub), the next paste of this prompt tries to update that code first."
     ) in flat
+    # B13 round 11 M32: "no pull ran" was false at the other-git-failure stop, where the pull ran and failed
+    # (rc 1, FETCH_HEAD emptied, HEAD unchanged: measured). M16: on a field Mac with an older installer, the
+    # person heard the stop's own action and then a bare "not this prompt's version", which read as a second
+    # problem to solve; it now says the next paste tries the update (not that it succeeds: local changes or a
+    # checkout off main have their own recoveries in step 1).
+    assert "no pull ran" not in flat
     assert "the not-a-checkout stop, the ownership stop" not in flat
     assert "either of these two stops" not in flat
     assert "and stop. If git pull failed" not in step1 and "HTTPS_PROXY set) and stop" not in step1
@@ -1016,11 +1069,17 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # B13 round 4 Q24: only --report-only writes bring-back.md, so a failed clone left none, and the stop for
     # a copy that is not the installer's could leave an earlier session's. The clause follows whether a report
     # ran.
-    assert finish.endswith(
-        'step 1 kept); if no report ran this session, or you are waiting for my folder answer, say "none" '
-        "for "
-        "that file instead, and do not point me to an older bring-back.md."
+    assert " ".join(finish.split()).endswith(
+        "step 1 kept; a patch an earlier report carried is not repeated, only listed by its hash); if no "
+        'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
+        "and do not point me to an older bring-back.md."
     )
+    # B13 round 11 M35: "the patches of any work step 1 kept" was false on a re-run after an earlier report:
+    # section 3 then holds only "not repeated:" lines, as the file's own header says. Not worded as what was
+    # copied back: the installer decides by file time and cannot know that.
+    assert "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash" in (
+        SCRIPTS[0].read_text(encoding="utf-8")
+    ), "the header the finish's words match"
     step3 = _prompt_steps()[3]
     assert 'add a "## Not used" section to the end of ~/agent-context/setup/fix-request.md' in step3
     assert (
@@ -1165,8 +1224,8 @@ def test_readme_keeps_local_work_then_runs_step_1_again(tmp_path: Path) -> None:
     step1 = " ".join(_prompt_steps()[1].split())
     assert (
         "then tell me the branch name (my changes are safe on it, and copied as patches to "
-        "~/agent-context/setup/local-work) and run step 1's command again. If only its last two steps (the "
-        "fetch or the switch) failed, my changes are already kept: tell me the branch name, run "
+        "~/agent-context/setup/local-work) and run step 1's command again. If only its last three steps (the "
+        "fetch, the switch or the reset) failed, my changes are already kept: tell me the branch name, run "
         f"`{KEEP_RETRY}`, then step 1's command again."
     ) in step1
     assert "only that command's last step, the pull" not in step1
@@ -1212,7 +1271,8 @@ def test_readme_keeps_a_local_commit_and_moves_main_to_the_update(tmp_path: Path
     assert step1.index(KEEP_BRANCH_WORK) < step1.index("If git failed any other way")
     rules = " ".join(_preamble().split())
     assert (
-        "keeping local changes on a branch and moving main to the update, as step 1 says, is none of these"
+        "keeping local changes on a branch, moving main to the update and removing a local-work branch that "
+        "kept nothing, as step 1 says, is none of these"
     ) in rules
     _upstream, home, checkout, env = _behind_upstream(tmp_path)
     (checkout / "ocr.py").write_text("local commit\n", encoding="utf-8")
@@ -1355,10 +1415,10 @@ def test_a_main_with_no_upstream_gets_the_sources_main_and_does_not_loop(tmp_pat
 
 @pytest.mark.parametrize(
     ("case", "count", "upstream_line"),
-    [("main-nothing", "0", True), ("main-commit", "1", True), ("branch-commit", "2", True)],
+    [("main-nothing", "0", True), ("main-commit", "1", True), ("branch-commit", "2", False)],
 )
 def test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref(
-    tmp_path: Path, case: str, count: str, upstream_line: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, count: str, upstream_line: bool
 ) -> None:
     """B13 round 9 K12, K13. On a main with no upstream and nothing of its own (G3m) v17's recovery kept
     nothing, while the words after it said "my commits stay on my branch" and "copied as patches"; it now
@@ -1370,7 +1430,14 @@ def test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref(
     Since v19 (B13 round 10 L9) each of these three cases moves main to the update, since the new branch keeps
     every commit of main: ``switch -C main origin/main`` prints that line before the count, and step 1's pull
     then reports nothing to do, where v18 left a main with a commit of its own behind and ahead, and the next
-    keep kept that commit again."""
+    keep kept that commit again.
+
+    Since v20 (B13 round 11 M69) main moves by ``switch main`` and ``reset --keep``, which set no upstream, so
+    git's "set up to track" line comes from the upstream step, after the count, and only where main had none.
+    M83: with a count of 0 (main behind, no upstream, nothing of its own) v19 left the local-work branch at
+    the old main, a commit neither main nor origin/main is at, so both readers counted it and every later
+    public report said "local-work branch(es) in the checkout: 1". The command now deletes that branch, and
+    keeps one that holds a commit."""
     assert f"`{KEEP_BRANCH_WORK}` {KEEP_BRANCH_TELL}" in " ".join(_prompt_steps()[1].split())
     _upstream, home, checkout, env = _behind_upstream(tmp_path)
     if case.startswith("main"):
@@ -1386,10 +1453,20 @@ def test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref(
     assert "no tracking information" in _pull(checkout, env).stderr
     proc = _zsh(KEEP_BRANCH_WORK, home, env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    # switch's own "Your branch is behind" lines aside (git's, not the command's), what it prints:
-    out = [ln for ln in proc.stdout.splitlines() if not ln.startswith(("Your branch", "  (use"))]
+    # v20's quiet switch prints no "Your branch is behind" line before the count (the lane's review)
+    out = proc.stdout.splitlines()
     assert "refs/heads/main" not in proc.stdout, proc.stdout
-    assert out == [*(["branch 'main' set up to track 'origin/main'."] if upstream_line else []), count], out
+    branches = _git_out(checkout, "branch", "--list", "local-work-*", "--format=%(refname:short)").split()
+    deleted = re.compile(r"Deleted branch local-work-\d{8}-\d{6} \(was [0-9a-f]+\)\.")
+    said = [ln for ln in out if not deleted.fullmatch(ln)]
+    assert said == [count, *(["branch 'main' set up to track 'origin/main'."] if upstream_line else [])], out
+    assert any(deleted.fullmatch(ln) for ln in out) is (count == "0"), out
+    assert len(branches) == (0 if count == "0" else 1), branches
+    from agentsync import setup_report  # noqa: PLC0415
+
+    monkeypatch.setenv("HOME", str(home))
+    line = setup_report._local_work_line()
+    assert (line is None) is (count == "0"), line
     assert _git_out(checkout, "rev-parse", "main") == _git_out(checkout, "rev-parse", "origin/main")
     pull = _pull(checkout, env)
     assert pull.returncode == 0 and "Already up to date" in pull.stdout, pull.stdout + pull.stderr
@@ -1397,6 +1474,33 @@ def test_the_branch_recovery_prints_what_it_kept_and_no_bare_ref(
     patches = list(local_work.iterdir()) if local_work.exists() else []
     assert len(patches) == int(count), patches
     assert _git_out(checkout, "rev-parse", "--abbrev-ref", "main@{upstream}") == "origin/main"
+
+
+def test_an_empty_keep_on_the_way_back_to_a_main_of_its_own_is_deleted(tmp_path: Path) -> None:
+    """B13 round 11 M83 on the ``switch main`` path (the lane's review: no test told ``-D`` from ``-d``). A
+    branch at origin/main with no upstream, and a main with a commit of its own: the recovery goes back to
+    main as it is, and the local-work branch keeps nothing (count 0). It is an ancestor of origin/main but not
+    of main, where ``-d`` refuses ("not fully merged") and leaves the empty branch both readers count."""
+    _upstream, home, checkout, env = _behind_upstream(tmp_path)
+    (checkout / "ocr.py").write_text("local commit\n", encoding="utf-8")
+    subprocess.run([*_GIT, "-C", str(checkout), "add", "-A"], check=True)
+    subprocess.run([*_GIT, "-C", str(checkout), "commit", "-q", "-m", "local ocr"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "fetch", "-q"], env=env, check=True)
+    mine = _git_out(checkout, "rev-parse", "main")
+    for command, left in ((KEEP_BRANCH_WORK.replace(" branch -D ", " branch -d "), 1), (KEEP_BRANCH_WORK, 0)):
+        _next_second()
+        subprocess.run(
+            [*_GIT, "-C", str(checkout), "switch", "-q", "--no-track", "-C", "old", "origin/main"], check=True
+        )
+        assert "no tracking information" in _pull(checkout, env).stderr
+        proc = _zsh(command, home, env)
+        assert proc.stdout.splitlines()[0] == "0", proc.stdout + proc.stderr
+        assert _git_out(checkout, "branch", "--show-current") == "main"
+        assert _git_out(checkout, "rev-parse", "main") == mine, "main keeps its own commit"
+        branches = _git_out(checkout, "branch", "--list", "local-work-*", "--format=%(refname:short)").split()
+        assert len(branches) == left, (command, branches, proc.stderr)
+        for branch in branches:  # -d's leftover, cleared for the -D run
+            subprocess.run(["git", "-C", str(checkout), "branch", "-D", branch], check=True)
 
 
 def test_a_second_keep_leaves_the_first_keeps_patch(tmp_path: Path) -> None:
@@ -1471,15 +1575,9 @@ def test_a_folder_at_the_checkouts_path_that_is_not_a_checkout_is_named(tmp_path
     step1 = " ".join(_prompt_steps()[1].split())
     said = (
         'If git clone says the folder "already exists and is not an empty directory", or git says "not a git '
-        'repository" or "invalid gitfile format", or that main "is already used by worktree" (a recovery '
-        "above "
-        "ran in a second worktree of another checkout), ~/src/agent-context-sync is not a checkout this "
-        "setup "
-        "can use: tell me that setup stopped at step 1 and to move that folder aside so step 1 clones it, "
-        "then "
-        "paste this prompt again, and, after a recovery, the name of the local-work branch it made, which "
-        "keeps "
-        "my work."
+        'repository" or "invalid gitfile format", ~/src/agent-context-sync is not a checkout this setup can '
+        "use: tell me that setup stopped at step 1 and to move that folder aside so step 1 clones it, then "
+        "paste this prompt again."
     )
     assert said in step1 and step1.index(said) < step1.index("If git failed any other way")
     upstream, home, checkout, env = _behind_upstream(tmp_path)
@@ -1500,7 +1598,7 @@ def test_a_folder_at_the_checkouts_path_that_is_not_a_checkout_is_named(tmp_path
         'If git says "detected dubious ownership", the folder belongs to another user account of this Mac: '
         "tell me that setup stopped at step 1 and to move it aside (do not run the safe.directory command "
         "git "
-        "suggests), then paste this prompt again. Those two stops end there, with no report"
+        "suggests), then paste this prompt again. Those three stops end there, with no report"
     ) in step1
     code = code.replace("https://github.com/renchris/agent-context-sync.git", str(upstream))
     for broken in ("empty", "no-head", "home-repo"):
@@ -1613,9 +1711,10 @@ def test_a_checkout_whose_git_is_a_file_pulls(tmp_path: Path) -> None:
     worktree) failed v18's ``[ -f .git/HEAD ]`` test, so step 1 cloned onto it and the person was told to move
     a good checkout aside. Step 1 also pulls when ``.git`` is a file. An empty or junk ``.git`` file then
     reaches the pull, whose "invalid gitfile format" the not-a-checkout stop names, as it names a dangling
-    gitdir's "not a git repository"; both need the allow rule the ``.git`` test has."""
+    gitdir's "not a git repository"; both need the allow rule the ``.git`` test has. A second worktree of
+    another checkout also pulls: ``test_a_recovery_in_a_second_worktree_leaves_the_other_checkouts_main``."""
     step1 = " ".join(_prompt_steps()[1].split())
-    assert 'or git says "not a git repository" or "invalid gitfile format", or that main' in (step1)
+    assert 'or git says "not a git repository" or "invalid gitfile format", ~/src/agent-context-sync' in step1
     assert "Bash([ -f ~/src/agent-context-sync/.git ])" in _claude_code_rules()
     upstream, home, checkout, env = _behind_upstream(tmp_path)
     shutil.rmtree(checkout)
@@ -1636,28 +1735,200 @@ def test_a_checkout_whose_git_is_a_file_pulls(tmp_path: Path) -> None:
     (checkout / ".git").write_text(f"gitdir: {home / 'nowhere'}\n", encoding="utf-8")
     proc = _zsh(_step1_pull(upstream), home, env)
     assert proc.returncode == 128 and "not a git repository" in proc.stderr, proc.stderr
-    # A second worktree of another checkout on a branch with no upstream reaches the no-tracking recovery.
-    # git 2.50 and 2.54 refuse to take main from the worktree that has it out: that is the not-a-checkout stop
-    # too (round 10 lane P review), with the work kept on the branch the recovery made. The CI runner's
-    # /usr/bin/git resets that main instead, which the recovery's ancestor test keeps lossless: every commit
-    # of main is on the local-work branch.
+
+
+WORKTREE_STOP = (
+    'If a recovery above, the keep command and its retry included, stops because main "is already used by'
+    ' worktree" or "is already checked out at" a path (git\'s version decides which words), run no other'
+    " recovery and not step 1's command again: ~/src/agent-context-sync and the checkout at that path share"
+    " one repository, and that checkout has main checked out, so this setup cannot use the folder as it is."
+    " Tell me that setup stopped at step 1; the name of the branch I was on, which is as it was, with its"
+    " commits; the name of the local-work branch the recovery made, which this folder now has checked out and"
+    " which holds my work, uncommitted changes included, also copied as patches to"
+    " ~/agent-context/setup/local-work; then, if ~/src/agent-context-sync/.git is a file, that this folder is"
+    " a second worktree of the checkout at that path, and to move it aside with"
+    f" `{WORKTREE_MOVE}` (put in git's path; the new place is mine to choose), not by hand: that checkout"
+    " marks a folder moved by hand as prunable, and pruning it, which git can also do on its own later,"
+    f" leaves the moved folder no longer a checkout; if I already moved it by hand, `{WORKTREE_REPAIR}`"
+    " fixes that; or, if .git is a folder, that this folder is the main checkout and the worktree at that"
+    f" path has main checked out, and to take that worktree off main, for example with `{WORKTREE_DETACH}`,"
+    f" and then run `{WORKTREE_BACK}`; then paste this prompt again (those commands are mine to run: do not"
+    " run them yourself)."
+)
+"""Step 1's worktree stop since v20 (B13 round 11 M17, M69). The lane's review: the same refusal comes when
+~/src/agent-context-sync is the MAIN checkout and a worktree of it elsewhere has main out, where ``worktree
+move`` fails ("is a main working tree", measured on 2.39.5, 2.50.1 and 2.54.0), so the stop splits on the
+``.git`` test step 1 already has; and after the keep command's refusal its retry and the no-tracking
+recovery refused the same way, leaving a second local-work branch and the same patch twice, so it says to
+run none of them."""
+
+
+def _gits() -> list[str]:
+    """The folders of the git programs this machine has, one per version: the PATH's ``/usr/bin/git`` and,
+    on a Mac with Xcode, the Command Line Tools' own (Apple git 2.39.5, where M69's reset was measured)."""
+    found: dict[str, str] = {}
+    for folder in ("/usr/bin", "/Library/Developer/CommandLineTools/usr/bin"):
+        if (Path(folder) / "git").exists():
+            version = subprocess.run(
+                [f"{folder}/git", "--version"], capture_output=True, text=True, check=False
+            ).stdout.strip()
+            if version:
+                found.setdefault(version, folder)
+    return list(found.values())
+
+
+@pytest.mark.parametrize("case", ["behind", "diverged", "level", "free"])
+@pytest.mark.parametrize("git_dir", _gits())
+def test_a_recovery_in_a_second_worktree_leaves_the_other_checkouts_main(
+    tmp_path: Path, git_dir: str, case: str
+) -> None:
+    """B13 round 11 M69. ~/src/agent-context-sync as a second worktree of another checkout, on a branch with
+    no upstream, reaches the no-tracking recovery. v19's ``switch -C main origin/main`` there: git 2.50 and
+    2.54 refuse ("is already used by worktree"), but Apple git 2.39.5, the Command Line Tools' git, and the CI
+    runner's ``/usr/bin/git`` run it, moving the main the OTHER checkout has out, whose index and files then
+    hold a staged revert of the update (behind), or refuse with "is already checked out at", words v19 did not
+    name, so the person got the proxy advice (diverged). Since v20 every recovery goes back with a plain
+    ``switch main``, which refuses a main checked out elsewhere on every version, then ``reset --keep``: the
+    other checkout's main and files are untouched in each case, the work stays on the local-work branch, and
+    the stop names both phrases. A worktree whose main is free still recovers (M69's verifier: a blanket
+    worktree stop would turn that into a stop).
+
+    M17: the stop named only the local-work branch. It names the branch the person was on and the
+    local-work branch, says the folder is a second worktree, and gives ``worktree move`` (moved by hand, the
+    other checkout marks the folder prunable, and a prune leaves the moved folder no checkout: measured)."""
+    step1 = " ".join(_prompt_steps()[1].split())
+    assert WORKTREE_STOP in step1 and step1.index(WORKTREE_STOP) < step1.index("If git failed any other way")
+    assert "switch -C" not in _one_prompt_block()
+    assert _one_prompt_block().count(TO_THE_UPDATE) == 3, (
+        "the keep command, its retry and the no-tracking one"
+    )
+    upstream, home, checkout, env = _behind_upstream(tmp_path)
+    env |= {"PATH": f"{git_dir}:/usr/bin:/bin"}
     shutil.rmtree(checkout)
     primary = home / "primary"
     subprocess.run([*_GIT, "clone", "-q", str(upstream), str(primary)], check=True)
     subprocess.run(
         [*_GIT, "-C", str(primary), "worktree", "add", "-q", "-b", "feat", str(checkout)], check=True
     )
+    if case == "free":
+        subprocess.run([*_GIT, "-C", str(primary), "switch", "-q", "-c", "other"], check=True)
+    if case == "diverged":
+        (primary / "mine.md").write_text("a commit of the other checkout\n", encoding="utf-8")
+        subprocess.run([*_GIT, "-C", str(primary), "add", "-A"], check=True)
+        subprocess.run([*_GIT, "-C", str(primary), "commit", "-q", "-m", "mine"], check=True)
+    if case != "level":
+        (upstream / "notes.md").write_text("v8\n", encoding="utf-8")
+        subprocess.run([*_GIT, "-C", str(upstream), "add", "-A"], check=True)
+        subprocess.run([*_GIT, "-C", str(upstream), "commit", "-q", "-m", "v8"], check=True)
+        subprocess.run(["git", "-C", str(primary), "fetch", "-q"], env=env, check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    feat = _git_out(checkout, "rev-parse", "feat")
     assert "no tracking information" in _zsh(_step1_pull(upstream), home, env).stderr
-    main_before = _git_out(primary, "rev-parse", "main")
+    before = (_git_out(primary, "rev-parse", "main"), _git_out(primary, "status", "--porcelain"))
     proc = _zsh(KEEP_BRANCH_WORK, home, env)
-    assert 'or that main "is already used by worktree"' in step1
     [kept] = _git_out(checkout, "branch", "--list", "local-work-*", "--format=%(refname:short)").split()
-    assert main_before in _git_out(checkout, "rev-list", kept), "every commit of main is kept"
-    if proc.returncode != 0:
-        assert "is already used by worktree" in proc.stderr, proc.stderr
-        assert _git_out(checkout, "branch", "--show-current") == kept, "the work is kept"
-    else:
+    assert _git_out(checkout, "show", f"{kept}:convert.py") == "local edit", "the work is kept"
+    assert _git_out(checkout, "rev-parse", "feat") == feat, "the person's branch is as it was"
+    (patch,) = (home / "agent-context" / "setup" / "local-work").iterdir()
+    assert "+local edit" in patch.read_text(encoding="utf-8")
+    if case == "free":
+        assert proc.returncode == 0, proc.stdout + proc.stderr
         assert _git_out(checkout, "rev-parse", "main") == _git_out(checkout, "rev-parse", "origin/main")
+        assert _git_out(primary, "status", "--porcelain") == before[1]
+        return
+    refused = ("is already used by worktree", "is already checked out at")
+    assert proc.returncode != 0 and any(words in proc.stderr for words in refused), proc.stderr
+    assert (_git_out(primary, "rev-parse", "main"), _git_out(primary, "status", "--porcelain")) == before
+    assert _git_out(checkout, "branch", "--show-current") == kept
+    # The keep command and its retry go back to main the same way, and refuse the same way.
+    _next_second()
+    for command in (KEEP_LOCAL_WORK, KEEP_RETRY):
+        proc = _zsh(command, home, env)
+        if (
+            command == KEEP_LOCAL_WORK and case == "diverged"
+        ):  # its ancestor test: main has a commit of its own
+            assert (proc.returncode, proc.stdout, proc.stderr) == (1, "", "")
+        else:
+            assert proc.returncode != 0 and any(words in proc.stderr for words in refused), proc.stderr
+        assert (_git_out(primary, "rev-parse", "main"), _git_out(primary, "status", "--porcelain")) == before
+    # v19's step back to main where its ancestor test allowed the reset (diverged went to a plain switch main,
+    # whose "is already checked out at" on 2.39.5 v19 did not name): on a git that runs it, main is checked
+    # out in two worktrees, and behind, moved under the other one's files.
+    if case == "diverged":
+        return
+    v19 = _zsh(f"git -C {_CHECKOUT} switch -C main origin/main", home, env)
+    if v19.returncode == 0:
+        assert (_git_out(primary, "status", "--porcelain") != before[1]) is (case == "behind")
+    else:
+        assert any(words in v19.stderr for words in refused), v19.stderr
+
+
+def test_the_worktree_stops_commands_keep_a_moved_worktree(tmp_path: Path) -> None:
+    """B13 round 11 M17: the worktree stop's two commands, run as the person would, with made-up paths.
+    Moved by hand, the folder is a prunable entry of the other checkout, and a prune leaves it no checkout;
+    ``worktree repair`` fixes that, and ``worktree move`` never makes it."""
+    assert f"`{WORKTREE_MOVE}`" in WORKTREE_STOP and f"`{WORKTREE_REPAIR}`" in WORKTREE_STOP
+    assert WORKTREE_STOP in " ".join(_prompt_steps()[1].split()), "the words this test runs are the prompt's"
+    primary, home = tmp_path / "code" / "acs", tmp_path / "home"
+    subprocess.run([*_GIT, "init", "-q", str(primary)], check=True)
+    subprocess.run([*_GIT, "-C", str(primary), "commit", "-q", "--allow-empty", "-m", "a"], check=True)
+    checkout = home / "src" / "agent-context-sync"
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    for how in ("move", "by hand", "repair"):
+        subprocess.run(
+            [*_GIT, "-C", str(primary), "worktree", "add", "-q", "-b", f"lw-{how[:2]}", str(checkout)],
+            check=True,
+        )
+        new = tmp_path / f"aside-{how[:2]}"
+        if how == "move":
+            command = WORKTREE_MOVE.replace("<that path>", str(primary)).replace("<new place>", str(new))
+            assert _zsh(command, home, env).returncode == 0
+        else:
+            checkout.rename(new)
+        if how == "repair":
+            command = WORKTREE_REPAIR.replace("<that path>", str(primary)).replace("<new place>", str(new))
+            assert _zsh(command, home, env).returncode == 0
+        prunable = "prunable" in _git_out(primary, "worktree", "list", "--porcelain")
+        assert prunable is (how == "by hand"), how
+        subprocess.run(["git", "-C", str(primary), "worktree", "prune"], check=True)
+        status = subprocess.run(["git", "-C", str(new), "status"], capture_output=True, check=False)
+        assert (status.returncode == 0) is (how != "by hand"), how
+
+
+@pytest.mark.parametrize("git_dir", _gits())
+def test_a_recovery_in_the_main_checkout_whose_worktree_has_main_stops(tmp_path: Path, git_dir: str) -> None:
+    """The lane's review of M17: ~/src/agent-context-sync can be the MAIN checkout, with a worktree of it
+    elsewhere that has main out. The recovery refuses with the same words, but "a second worktree" is then
+    backwards, and ``worktree move`` fails ("is a main working tree"). Its ``.git`` is a folder, which the
+    stop keys on: the person takes the other worktree off main and puts this checkout back on it, and step 1
+    pulls, with the work on the local-work branch."""
+    step1 = " ".join(_prompt_steps()[1].split())
+    assert "or, if .git is a folder, that this folder is the main checkout" in WORKTREE_STOP
+    assert WORKTREE_STOP in step1
+    upstream, home, checkout, env = _behind_upstream(tmp_path)
+    env |= {"PATH": f"{git_dir}:/usr/bin:/bin"}
+    linked = home / "linked"
+    subprocess.run([*_GIT, "-C", str(checkout), "switch", "-q", "--no-track", "-c", "feat"], check=True)
+    subprocess.run([*_GIT, "-C", str(checkout), "worktree", "add", "-q", str(linked), "main"], check=True)
+    (checkout / "convert.py").write_text("local edit\n", encoding="utf-8")
+    assert "no tracking information" in _zsh(_step1_pull(upstream), home, env).stderr
+    before = (_git_out(linked, "rev-parse", "HEAD"), _git_out(linked, "status", "--porcelain"))
+    proc = _zsh(KEEP_BRANCH_WORK, home, env)
+    refused = ("is already used by worktree", "is already checked out at")
+    assert proc.returncode != 0 and any(words in proc.stderr for words in refused), proc.stderr
+    assert (_git_out(linked, "rev-parse", "HEAD"), _git_out(linked, "status", "--porcelain")) == before
+    assert (checkout / ".git").is_dir(), "the case the stop tells apart"
+    [kept] = _git_out(checkout, "branch", "--list", "local-work-*", "--format=%(refname:short)").split()
+    move = WORKTREE_MOVE.replace("<that path>", str(linked)).replace("<new place>", str(home / "aside"))
+    moved = _zsh(move, home, env)
+    assert moved.returncode != 0 and "is a main working tree" in moved.stderr, moved.stderr
+    for command in (WORKTREE_DETACH.replace("<that path>", str(linked)), WORKTREE_BACK):
+        done = _zsh(command, home, env)
+        assert done.returncode == 0, done.stderr
+    pull = _zsh(_step1_pull(upstream), home, env)
+    assert pull.returncode == 0, pull.stderr
+    assert _git_out(checkout, "rev-parse", "main") == _git_out(checkout, "rev-parse", "origin/main")
+    assert _git_out(checkout, "show", f"{kept}:convert.py") == "local edit", "the work is kept"
 
 
 def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
@@ -2068,6 +2339,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         ' ~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this'
         ' Mac syncs no folder" (if setup stopped before step 2, say'
         " at which step);"
+        f" {UNLOADED_CONFIG};"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         ' answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the'
         " folders to choose is not a step for me), and under it each WAITING ON YOU: line the same command"
@@ -2076,6 +2348,15 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         "one NEXT line, the report's own excluded, and every wait the same command printed"
     )
     assert "marked [synced] and those step 2 added" not in finish
+    # B13 round 11 M28: a sources.toml that exists but does not load (mode 000, bad TOML, a schema error) had
+    # no words: "read after step 2" could not be done, or parsed a file agentsync rejected, and the only other
+    # case said "none: this Mac syncs no folder", false on a Mac that synced 2 folders until its config broke
+    # (probe H). The case keys on "does not load", and the key the report prints for it is its own.
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert 'out.append(f"- loads: no: {r.config_error}")' in Path(setup_report.__file__).read_text(
+        encoding="utf-8"
+    ), "the report's words the finish keys on"
     from agentsync import cli  # noqa: PLC0415
 
     assert 'f"added source {sid!r} to {config.config_path}{note}:"' in Path(cli.__file__).read_text(
@@ -2232,16 +2513,19 @@ def test_readme_report_step_after_any_failure() -> None:
     # other at a failed clone. The missing checkout is the third case, stated once, in the list.
     assert (
         '--report-only` Four cases have no report and no "## Not used" section: while you wait for my '
-        "folder answer in step 1 (also after step 2, as step 1's last sentence says); when step 1 stops "
-        "(after at most that one rerun) because this prompt is not the installer's (either check: the "
-        "--version line does not end with this prompt's number, or the command says so); at step 1's "
-        "not-a-checkout and ownership stops, and at its Xcode and other-git-failure stops when the installer "
-        "there is not this prompt's version (step 1 says what to tell me); and when "
+        "folder answer in step 1 (also when step 2 says no folder is synced yet, as step 1 says); when step "
+        "1 stops (after at most that one rerun) because this prompt is not the installer's (either check: "
+        "the --version line does not end with this prompt's number, or the command says so); at step 1's "
+        "not-a-checkout, worktree and ownership stops, and at its Xcode and other-git-failure stops when the "
+        "installer there is not this prompt's version (step 1 says what to tell me); and when "
         "~/src/agent-context-sync/scripts/install.sh does not exist (tell me "
         "instead that setup stopped before the code was downloaded). Every other stop still ends with the "
         "report. The report works out"
     ) in flat
     assert "Two cases have no report" not in flat
+    # B13 round 11 M74: "as step 1's last sentence says" pointed at the add-source sentence; the rule is
+    # earlier
+    assert "step 1's last sentence says" not in flat
     assert flat.count("~/src/agent-context-sync/scripts/install.sh does not exist") == 2, (
         "the one condition, once per part"
     )
@@ -2383,6 +2667,14 @@ ALREADY_SYNCED = "already synced on this Mac:"
 """How ``install.sh --list-folders`` starts its first line on a Mac whose config already syncs folders: the
 words setup prompt v9's step 1 keys on."""
 
+SIGNED_OUT = (
+    "If the list's NEXT: line asks me to sign in, tell me which folders are kept and that I must sign in to"
+    " OneDrive, and wait for me as for a click; once I say so, run --list-folders again and go by what it"
+    " prints."
+)
+"""Step 1's first exception, since v20, for a list whose synced folders are missing because OneDrive is signed
+out (B13 round 11 M4, lane RB: ``--list-folders`` exits 3 and its NEXT: asks for the sign-in)."""
+
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     """Field report 2026-10-07 (setup prompt v9). v8 was run on a Mac that already synced two folders. The
@@ -2400,12 +2692,17 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     kept = (
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
-        "path in the list). Then tell me which they are and ask only whether to add any unmarked folder. "
-        "If you cannot ask me then, add none "
+        f"path in the list). {SIGNED_OUT} Otherwise tell me which they are and ask only whether to add any "
+        "unmarked folder. If you cannot ask me then, add none "
         "and go on to step 2. That is not a deviation: do not log it or stop, and say in your final message "
         "that I gave no answer, so no folder was added."
     )
     assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
+    # B13 round 11 M4 (lane RB's words): with OneDrive signed out, a Mac that already syncs folders got
+    # "[synced]" lines for folders that are not on disk, and the exception sent an unattended agent on to a
+    # step 2 that fails. The list now exits 3 with a NEXT: that asks the person to sign in; the exception
+    # waits for that as for a click, before its "add none and go on", and reads the list again.
+    assert step1.index(SIGNED_OUT) < step1.index("If you cannot ask me then, add none")
     assert step1.index(stop) < step1.index(kept) and step1.count("log a deviation") == 2, "the wait and L10's"
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert script.count(f'say "{ALREADY_SYNCED} $synced folder(s) (') == 2, "both forms of the line start so"
@@ -2883,14 +3180,18 @@ def _copilot_rule_matches(rule: str, command: str) -> bool:
 
 
 def _agent_commands() -> list[str]:
-    """Every command the block has the agent run on its normal path (``xcode-select --install`` and the git
-    stop's two queries are the person's to run; :data:`KEEP_LOCAL_WORK`, :data:`KEEP_RETRY` and
-    :data:`KEEP_BRANCH_WORK` run only after a failed pull or keep, and ask first)."""
+    """Every command the block has the agent run on its normal path (``xcode-select --install``, the git
+    stop's two queries and the worktree stop's two commands are the person's to run; :data:`KEEP_LOCAL_WORK`,
+    :data:`KEEP_RETRY` and :data:`KEEP_BRANCH_WORK` run only after a failed pull or keep, and ask first)."""
     persons = (
         "xcode-select --install",
         KEEP_LOCAL_WORK,
         KEEP_RETRY,
         KEEP_BRANCH_WORK,
+        WORKTREE_MOVE,
+        WORKTREE_REPAIR,
+        WORKTREE_DETACH,
+        WORKTREE_BACK,
         GIT_REWRITE_QUERY,
         GIT_PROXY_QUERY,
     )
