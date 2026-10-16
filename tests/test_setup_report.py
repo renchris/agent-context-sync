@@ -10253,6 +10253,9 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
         " · 1 first read(s) of a stub whose bytes had never been read, also in the converted count\n" in part
     ), part
     assert "read(s) again" not in part
+    # B13 round 12 N49: when every re-read was a first read no kept clause follows, as cycle.py counts a kept
+    # re-read and returns before it counts a first read
+    assert setup_report._reread_clause(2, 2, 1).endswith("had never been read, also in the converted count")
     rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
     # B13 round 12 N15: one stub read for the first time is one file, not "1 (0), 1 first read"
     assert rows[0].endswith("| 0 + 0 | 1 first read | - |") and rows[1].endswith("| 0 (0) | - |"), rows

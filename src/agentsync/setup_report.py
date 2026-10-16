@@ -5499,12 +5499,11 @@ def _reread_clause(again: int, first: int, kept: int) -> str:
     """The OCR part's re-read count, sums over the runs read: the run records' ``reread_first`` (a stub read
     for the first time, which cycle.py counts in ``reread`` and in ``converted``) is no "read again", as the
     CLI's and the Summary's words say since B13 round 10 L34 (round 11 M12). A failed re-read that kept its
-    page is never a first read, so the two counts never overlap. A build before ``reread_first`` reads 0."""
+    page is never a first read, so the two counts never overlap. A build before ``reread_first`` reads 0.
+    When every re-read was a first read, kept is 0 (cycle.py counts a kept re-read and returns before it
+    counts a first read), so that branch has no kept clause (B13 round 12 N49)."""
     if first and first == again:
-        return (
-            f"{again} first read(s) of a stub whose bytes had never been read, also in the converted count"
-            + (f" ({kept} could not be converted and kept their page)" if kept else "")
-        )
+        return f"{again} first read(s) of a stub whose bytes had never been read, also in the converted count"
     if first:
         return (
             f"{again} read(s) again ({first} of them a first read of a stub whose bytes had never been read, "
