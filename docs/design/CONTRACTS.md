@@ -6215,6 +6215,9 @@ or empty for this case (a source sat incomplete for 900 passes):
     Amended 2026-10-14, §16.77 J33: written into STATE.md itself, the pointer reads `the alarm line under ## <id>
     below names ...` (`the alarm lines under ## <A> and ## <B> below name ...`); the terminal, `status`,
     install.sh and the setup report keep the STATE.md pointer.
+    Amended 2026-10-16, §16.101 N12, N38: the bracket names the cause by the kinds the walk stored (`refused with
+    EACCES`, ...), with `or a missing sentinel` only while one is set; a source with no stored kind keeps `no
+    access, or a missing folder or sentinel`, and sources share the line only with one cause and one fix.
 - doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
   an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
   while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
@@ -9840,7 +9843,7 @@ system.
 | `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again (if the line stays, report it: agentsync status -v prints where the check stopped)`; with no path it starts `run again (...` |
 | `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
 | `source.<id>.sentinel — <folder>/<sentinel>: <an OS error other than "missing" and "not permitted">` | the same as the listable line's |
-| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` (**Amended 2026-10-16, §16.95 M10:** by what is missing, `doctor._missing_source_fix`) |
+| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` (**Amended 2026-10-16, §16.95 M10:** by what is missing, `doctor._missing_source_fix`; **Amended 2026-10-16, §16.101 N53:** a missing SharePoint library beside its organization's OneDrive folder, sync the library) |
 | `materialise.policy — getiopolicy_np failed ...` and `unexpected process policy ...` | `report this line: agentsync cannot use this process's download policy on this macOS, and no setup step clears that` |
 | a `launchd.*` FAIL under `AGENTSYNC_AGENT_STEP_PENDING=1` | its own fix (below) |
 
@@ -12882,6 +12885,8 @@ and adding the folder to that source's exclude retires the pages under it at onc
 purge queued`. Sources with nothing missed share today's line, byte for byte. Test:
 `tests/test_loop.py::test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclude_retires`
 (today's text: `test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`).
+Amended 2026-10-16, §16.101 N12, N38: the bracket names the cause by the stored kinds (`refused with EACCES`, ...)
+and the sentinel only while one is set; `no access, or a missing folder or sentinel` only when no kind is stored.
 
 **R101.** An inbox pass stamps `last_seen_run`, and only that, on the present file rows of the files its walk
 withheld as changed within `quiescence_s` or future-dated (`ScanResult.withheld`, stable ids;
@@ -14658,6 +14663,7 @@ bare ones and older ones stayed, so `status` printed `~/.local/bin/agentsync pur
   device-code error texts (`<bin> graph login`, `<bin> login`, `<bin> logout`); discover's 401 advice.
   Amended 2026-10-15, §16.93 M13: the sources line reads `sources: no folder yet besides ... (run <bin> add-source
   <folder>)` when an inbox is configured, naming every inbox source.
+  Amended 2026-10-16, §16.101 N13: it reads `sources: no folder yet besides ...; run <bin> add-source <folder>`.
 Left as they are: docstrings, comments, the `--help` epilog and help strings (read, not pasted), and the comment line
 at the top of the sources.toml template. **Amended 2026-10-13, §16.63 G79:** the `--help` epilog, the help strings
 and the template's comment line now name `~/.local/bin/agentsync` too (a command in backticks is pasted); only the
@@ -18845,6 +18851,9 @@ run(s) in the lines read)`. M53: `_STOPPED_COPY_WARN`'s docstring sits under it 
 has its own; a test reads both with `ast`. M44's second half, one bracket on doctor's `[warn] heartbeat.<id>` line,
 is not built: install.sh's `cleared_listings` finds the line by `(deletions held)`, and cli.py swaps the note by
 equality, so a joined form would drop install.sh's "deletions are no longer held" line and the report's note swap.
+Amended 2026-10-16, §16.101 N17, N34, N74: that reason held only for the finder's `(deletions held; ...)`; the
+second half is built as `... passes; deletions held (<note>)`, install.sh's anchor is `deletions held` (old and new
+lines), and cli.py's swap compares the note, which is unchanged.
 
 ### 16.93 Round 11: installer and the shell report (2026-10-15, wave B13 round 11 lane RB)
 
@@ -18908,6 +18917,8 @@ yet besides the inbox`. It reads `sources: no folder yet besides the inbox (run 
 line's purpose); the finder's `only inbox sources (4)` was not built, as it dropped the pointer and named no source.
 The line is cli.py's (install.sh relays it unread). Tests: `test_init_counts_and_names_every_inbox_source`,
 `test_status_with_no_folder_source_is_a_next_line_and_exit_0`.
+Amended 2026-10-16, §16.101 N13: the names follow a colon and the pointer a `; `, `sources: no folder yet besides
+3 inbox sources: inbox, contoso-bridge, contoso-bridge-mail; run ...`, so no two brackets sit side by side.
 
 **A config that does not load is the person's to fix** (M23 and M39, one defect). The config step ended through
 `fail()`, whose NEXT `fix the error above, then re-run: install.sh` the prompt's step 2 rule ("do what NEXT: says only
@@ -19227,6 +19238,9 @@ test_a_walk_stats_with_no_recorded_reason_keeps_the_old_alarm`, `test_arm_local.
 test_a_privacy_refusal_keeps_the_grant_and_a_mixed_one_names_both_fixes`, `test_loop.py::
 test_a_could_not_list_wait_words_its_fix_by_how_the_folder_refused`, `test_loop.py::
 test_a_source_root_a_sync_cannot_list_never_offers_an_exclude`.
+Amended 2026-10-16, §16.101 N12, N38: the wait's bracket names the cause by the same kinds (`refused with EACCES`,
+...), with `or a missing sentinel` only while one is set; N36, N37: the alarm's fixes take their number from the
+folders of each kind, not from the number of kinds.
 
 **M46, M56: the alarm names the empty folders' wait by its subject (`agentsync.arm_local`; amends §16.89 L15).**
 Since round 10 L68 a source with empty folders and one it cannot read gets two waits, and the alarm's `the
@@ -19254,6 +19268,8 @@ above among them, and ...` when a gone folder is beside it; when it holds none, 
 that source's exclude` and the count stays on the empty folders' line. The count is never split: it also holds
 deletions held in readable folders. Dated line at §16.89 L68. Test: `test_loop.py::
 test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs`.
+Amended 2026-10-16, §16.101 N54: the same rule decides the wait with no empty folder and after exclude-empty, and a
+count of deletions held elsewhere gets a clause of its own beside the plain exclude.
 
 **M58: after exclude-empty the could-not-be-listed wait stays (`agentsync.loop`; amends §16.89 L68).** With every
 stored empty folder excluded and no sync since, `next_step` asked for another sync (rule 3), which would not
@@ -19261,6 +19277,7 @@ complete the listing, while `unlisted_dirs:<id>` still held an unexcluded folder
 could-not-be-listed wait and its `heartbeat.<id>` check; rule 3's docstring and `empty_cloud_folders_held`'s say
 so. Dated line at §16.89 L68. Test: `test_loop.py::
 test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits`.
+Amended 2026-10-16, §16.101 N52: with no empty folder stored, every stored folder excluded since is rule 3 too.
 
 **M59: a walk incomplete only for its sentinel gets a sentinel wait (`agentsync.loop`; amends §16.89 L48, L67).**
 A local source with a sentinel, no stored folder (raw `unlisted_dirs:<id>`, read before the exclude), no empty
@@ -19273,6 +19290,8 @@ last pass that failed (it stored nothing), keeps the folder wait. Dated line
 at §16.89 L48. Tests: `test_loop.py::test_a_walk_incomplete_only_for_its_sentinel_gets_a_sentinel_wait`,
 `test_loop.py::test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v` (a sentinel beside a folder),
 `test_loop.py::test_two_sources_that_cannot_be_listed_get_a_plural_wait` (now two unreadable folders).
+Amended 2026-10-16, §16.101 N51: the wait keys on the sentinel the walk stored as missed (`sentinel_missing:<id>`),
+not on today's config; removed or changed since, the source is rule 3, and no stored miss keeps the folder wait.
 
 **M63: one tuple of present-row states (`agentsync.model`, `agentsync.cycle`, `agentsync.manifest`,
 `agentsync.arm_local`).** `model.PRESENT_STATES` (live, dataless, quarantined, refused: all but a tombstone) is
@@ -19288,6 +19307,9 @@ the app, `<provider folder> is missing while another <app> folder is there: sign
 belongs to, or fix path ...`; the provider folder there, `fix path ..., or sync that folder in <app>`; outside
 ~/Library/CloudStorage, `fix path ...` alone. No parenthesis. Dated line in the doctor fix table. Test:
 `test_ops_doctor.py::test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cause`.
+Amended 2026-10-16, §16.101 N53, N56: a `OneDrive-SharedLibraries-<org>` folder missing beside `OneDrive-<org>`
+says to sync the library with Sync on its SharePoint page, or fix the path; the sign-in ends `then run
+~/.local/bin/agentsync status again`.
 
 **M11: one first-read stub is singular (`agentsync.cli`, `agentsync.setup_report`; amends §16.89 L34).** `first
 read 1 (a stub whose bytes had never been read, so also counted as converted)` and the report's `first read 1: a
@@ -19456,7 +19478,107 @@ Reserved for round 12 lane P of B13.
 
 ### 16.101 Round 12: waits, read advice, status and doctor (2026-10-16, wave B13 round 12 lane B)
 
-Reserved for round 12 lane B of B13.
+Lane B's round 12 items: N12, N13, N17, N34, N36, N37, N38, N40, N51, N52, N53, N54, N56, N74, all built. N12 and
+N38 are one defect from two finders, built once; so are N36 and N37, and N17, N34 and N74 (round 11 M44's second
+half). N12, N38, N51, N52 and N54 rewrite the could-not-be-listed wait and are built together.
+
+**N12, N38: the could-not-be-listed wait names its cause by the kinds the walk stored (`agentsync.loop`; amends
+§16.95 M42).** The bracket was `(no access, or a missing folder or sentinel; another sync does not clear it)`
+whatever was stored, beside an EACCES fix that rules out both, on a source with no sentinel.
+`loop._unlisted_cause(kinds, sentinel)` builds it: `refused with EACCES`, `refused with EPERM`, `refused with EPERM
+or EACCES`, `a sync-app error or a folder that vanished`, joined with `, or `; then `, or a missing sentinel` only
+while sources.toml sets one, since a walk that also missed it lands in this wait, not the sentinel wait. No
+stored kind, or one this build does not know, keeps `no access, or a missing folder or sentinel` (`_ANY_CAUSE`).
+The verifier's "no access: a folder's own permissions refuse this account" was not built: the fix beside it says
+that. Sources share the plural line only when cause and fix are both the same. Tests: `test_loop.py::
+test_a_could_not_list_wait_words_its_fix_by_how_the_folder_refused` (each kind's cause; older state keeps every
+cause), `test_loop.py::test_two_sources_with_one_fix_share_a_line_only_with_one_cause`, `test_loop.py::
+test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v` (a missing sentinel beside an EACCES folder).
+
+**N51: the sentinel wait keys on the sentinel the walk missed (`agentsync.cycle`, `agentsync.loop`; amends §16.95
+M59).** It keyed on today's sources.toml: removing the sentinel, as it says, turned it into `one or more folders
+in <id> could not be listed ... another sync does not clear it` with a grant or an exclude as the fix, though no
+such folder existed and one sync cleared it; changing it to a file that exists kept the sentinel wait; and a walk
+from before round 10 L68 (no stored folder) with a sentinel set got the sentinel wait whatever the cause.
+`cycle._Cycle._note_empty_dirs` stores manifest meta `sentinel_missing:<id>` (`cycle._SENTINEL_MISSING_META`): the
+sentinel the walk looked for and did not find, "" otherwise. The sentinel wait needs it to equal today's
+sentinel; removed or changed since, the source is rule 3 (sync again), and a changed sentinel still missing gets
+its wait after that sync. No stored miss (state from before this build) falls to the folder wait, whose cause
+keeps "or sentinel". A pass that failed after its walk keeps the folder wait, as before. Tests: `test_loop.py::
+test_a_sentinel_removed_or_changed_after_a_miss_says_sync_again` (removed, and changed to a file that exists),
+`test_loop.py::test_a_walk_from_before_the_stored_folders_never_blames_a_present_sentinel`.
+
+**N52: a folder excluded since the walk that could not list it is rule 3 (`agentsync.loop`; amends §16.95
+M58).** With no empty cloud folder stored, the folder wait stayed after the folder was added to the exclude, still
+saying another sync does not clear it, its fix fallen back to the grant (and, mirrored first, the warning against
+the exclude already made), though the next sync completed the listing. When the stored `unlisted_dirs:<id>` is not
+empty and sources.toml excludes all of it, the source is rule 3, as M58's twin with empty folders is; rule 3's
+docstring says so. Test: `test_loop.py::
+test_a_folder_excluded_since_the_walk_that_could_not_list_it_says_sync_again` (unmirrored and mirrored first).
+
+**N54: the held-below rule covers every branch (`agentsync.loop`; amends §16.95 M57).** With no empty folder, a
+locked folder holding no mirrored file beside a deletion held elsewhere got `<fix> (the safe fix); the last walk of
+<id> did not list N file(s) ... adding such a folder to that source's exclude retires the pages under it at once`,
+while the walk's alarm offered `or exclude it`. `loop._mirrored_below` (M57's rule, true when no folder is known,
+so it fails safe) now decides the M58 branch and the final one too: a folder holding none gets the plain `, or add
+each one to that source's exclude in <config>` and, when files were missed, its own clause, `; the last walk of
+<id> did not list N file(s) the mirror still has, and their deletion stays held until a sync lists <id> in full`,
+on a line of its own. Tests: `test_loop.py::
+test_a_folder_holding_no_mirrored_file_gets_the_plain_exclude_beside_a_held_deletion`, `test_loop.py::
+test_a_folder_holding_mirrored_files_keeps_the_safe_words_beside_a_held_deletion`.
+
+**N36, N37: the read advice takes its number from each kind's folders (`agentsync.arm_local`; amends §16.95
+M42).** `_read_advice` chose singular or plural by the number of kinds, so two mode-000 folders read `a folder's
+own permissions do not let this account read it` and one EACCES folder beside one EPERM folder `for those refused
+with EACCES, ... them`. It takes a `Counter` of kinds: EACCES alone reads `a folder's own permissions ... it: check
+its owner and mode with `ls -ld`[, or exclude it]` for one folder and `their own permissions do not let this
+account read them: check their owner and mode with `ls -ld`[, or exclude them]` for several; beside another kind
+`for the one refused with EACCES, its ...` or `for those refused with EACCES, their ...`; EPERM `grant the agent
+Files and Folders access[ for the one|those refused with EPERM]`; other `check that it opens` / `each one opens`,
+or beside another kind `the other one opens ... its sync app` / `the others open ... their sync app`. The mixed
+alarm reads `for the folder|folders it could not read` and `1 empty cloud folder` / `N empty cloud folders`. No
+reader parses the alarm. Tests: `test_arm_local.py::test_the_read_advice_follows_how_many_folders_have_each_kind`,
+and the pins in `test_a_privacy_refusal_keeps_the_grant_and_a_mixed_one_names_both_fixes`,
+`test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_reason`.
+
+**N17, N34, N74: the incomplete-listing warn has one bracket (`agentsync.ops.doctor`, `scripts/install.sh`; amends
+§16.92 M44).** It read `enumeration incomplete for N consecutive passes (deletions held) (held at its last walk:
+...)`, and `(deletions held) (fix: ...)`. What the listing holds follows a `; ` now: `... passes; deletions held
+(<note>)` and `... passes; deletions held (fix: ...)`, and a Graph source's `...; files missing from the listing
+are kept while deletions Graph reports still apply (fix: ...)`. Of the three designs this is N17's: N34's
+`(deletions held; <note>)` leaves the fix lines with two brackets, and N74's `(deletions held); <note>` keeps one
+side by side with a clause. install.sh's `cleared_listings` anchors on `deletions held`, which matches the new
+line and the bracketed one an older installed agentsync prints, and never a Graph line or the `[ok  ]` line
+below the threshold. cli.py's report-note swap compares `r.note`, which is unchanged; the setup report's
+`_yours_warn` reads a detail prefix. Tests: `test_ops_doctor.py::test_heartbeat_incomplete_fix_by_source_kind`,
+`test_install_oneshot.py::test_a_listing_the_first_sync_cleared_is_said_and_never_inferred` (both forms),
+`test_review_fixes.py::test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok`.
+
+**N53, N56: a missing SharePoint library is no sign-in, and the sign-in names its command (`agentsync.ops.doctor`;
+amends §16.95 M10).** `_missing_source_fix` reduced `OneDrive-SharedLibraries-Contoso` and `OneDrive-Contoso` to
+one app, so a library not synced on this Mac read `sign in to OneDrive with the account it belongs to`, an account
+already signed in. Missing beside its own organization's `OneDrive-<org>` (`it_request.org_of`), it reads `<provider
+folder> is missing while OneDrive-<org> is there: sync the SharePoint library to this Mac with Sync on its
+SharePoint page, or fix path ...`; beside another organization's it keeps the sign-in or the path. Add shortcut to
+My files was not offered: it puts the library under `OneDrive-<org>`, not the configured path. The sign-in fix
+read `then re-run`, naming nothing; it reads `then run ~/.local/bin/agentsync status again`, and so does the
+listing-timeout fix (`click Allow on the macOS prompt, then run ~/.local/bin/agentsync status again; if no prompt
+shows: ...`). Tests: `test_ops_doctor.py::test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cause`,
+`test_ops_doctor.py::test_cloud_source_listing_times_out_with_click_allow_hint`.
+
+**N13: the no-folder sources line has one bracket at most (`agentsync.cli`; amends §16.93 M13).** With several
+inbox sources it read `... besides 3 inbox sources (inbox, contoso-a, contoso-b) (run ...)`. It reads `sources: no
+folder yet besides the inbox; run ~/.local/bin/agentsync add-source <folder>`, `... besides 3 inbox sources:
+inbox, contoso-a, contoso-b; run ...`, and `sources: none yet; run ...`. The add-source pointer stays (§16.93's
+KISS K05 ruling); the finder's `step 2 with --source-local adds one` was not built, as it ties a CLI line to the
+setup prompt's step numbers, which mean nothing when install.sh is run by hand. Tests: `test_cli.py::
+test_init_counts_and_names_every_inbox_source`, `test_cli.py::test_status_with_no_folder_source_is_a_next_line_and_exit_0`.
+
+**N40: exclude-empty names its folders by their count (`agentsync.cli`).** After excluding one folder it said `the
+next sync lists <id> without them`, beside `files`. It reads `without that folder` or `without those folders`, and
+the left-folders clause points at the alarm that `names it` for one folder. Tests: `test_exclude_empty.py::
+test_every_empty_folder_is_excluded_once_and_the_listing_completes`, `test_exclude_empty.py::
+test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count`.
 
 ### 16.102 Round 12: per-source counts, speech and stubs (2026-10-16, wave B13 round 12 lane E)
 
