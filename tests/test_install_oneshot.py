@@ -2104,6 +2104,48 @@ def test_a_report_writer_that_cannot_finish_leaves_no_temp_file(
         assert not (report_path(env).parent / "bring-back.md").exists()
 
 
+@pytest.mark.parametrize("earlier", [False, True])
+@pytest.mark.parametrize("private", [False, True])
+def test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_review(
+    env: dict[str, str], tmp_path: Path, earlier: bool, private: bool
+) -> None:
+    """B13 round 12 N71: write_bring_back's failure was a warning only, and the NEXT still said "review
+    ~/agent-context/bring-back.md and copy that one file back", a file that was missing or an earlier
+    attempt's. It names what to copy back instead: the setup report, with the issue only where a link was
+    printed, and the fix request and kept work as private; an earlier file is said to be that, and left as
+    it is."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    old = tmp_path / "report.md"
+    old.write_text(
+        "# agentsync setup report\n\n## Redaction\n\n"
+        + "Private only: one of your folder, library or organization names is ...\n" * private
+        + f"Send it: ...\n\n{ISSUE_LINK}\n"
+    )
+    back = report_path(env).parent / "bring-back.md"
+    if earlier:
+        back.parent.mkdir(parents=True, exist_ok=True)
+        back.write_text("an earlier attempt's bring-back\n")
+    _failing_tool(env, "mv", "/.bring-back.")
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert f"warning: could not write {back}" in cp.stderr
+    setup = back.parent / "setup"
+    held = f" ({back} is an earlier attempt's file, not this one's, so do not send it)" if earlier else ""
+    link = "" if private else ", or paste it into the issue the link above opens"
+    assert last_line(cp) == (
+        f"NEXT: {back} could not be written (see the warning above){held}: copy {report_path(env)} back "
+        f"privately{link}, and if {setup}/fix-request.md or {setup}/local-work holds anything, copy it back "
+        "privately too (it is not redacted); or fix the cause and run this command again (nothing is sent "
+        f"for you) [setup report: {report_path(env)}]"
+    ), last_line(cp)
+    assert "review " not in last_line(cp)
+    assert back.exists() == earlier and (
+        not earlier or back.read_text() == "an earlier attempt's bring-back\n"
+    )
+
+
 def test_a_stopped_copy_note_that_cannot_finish_leaves_no_temp_file(env: dict[str, str]) -> None:
     """B13 round 11 M84: stopped_report_note's mv had no cleanup, so a failed one left a .stopped-report.*
     copy beside the report it was to replace."""

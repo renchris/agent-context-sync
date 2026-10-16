@@ -3459,7 +3459,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 }
 
 on_exit() {
-	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held
+	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held wrote
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
@@ -3513,12 +3513,20 @@ on_exit() {
 				# report that was not stopped), and nothing this attempt prints names it (B13 round 4 Q20).
 				# A dry run (2) and a report not written (*) leave it.
 				rm -f "$SETUP_DIR/stopped-copy-report.md"
-				write_bring_back || warn "could not write ${REPORT_PATH%/*}/bring-back.md"
+				if write_bring_back; then wrote=1; else wrote=0; warn "could not write $back"; fi
 				link="$(report_issue_link)"
 				if [ -n "$link" ]; then
 					[ "$REPORT_ONLY" -eq 0 ] ||
-						NEXT_MSG="review ${REPORT_PATH%/*}/bring-back.md and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
+						NEXT_MSG="review $back and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
 					say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
+				fi
+				# A bring-back.md this run could not write is not named as the file to review, with a link or
+				# without one: the files it would hold are, the ones not redacted as private, and one an earlier
+				# attempt wrote is said to be that, not this one (B13 round 12 N71). It is left as it is.
+				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 0 ]; then
+					held=""
+					[ ! -f "$back" ] || held=" ($back is an earlier attempt's file, not this one's, so do not send it)"
+					NEXT_MSG="$back could not be written (see the warning above)$held: copy $REPORT_PATH back privately${link:+, or paste it into the issue the link above opens}, and if $SETUP_DIR/fix-request.md or $SETUP_DIR/local-work holds anything, copy it back privately too (it is not redacted); or fix the cause and run this command again (nothing is sent for you)"
 				fi
 			fi
 			;;
