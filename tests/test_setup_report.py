@@ -13,6 +13,7 @@ import logging
 import os
 import plistlib
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -10229,3 +10230,107 @@ def test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary(
     assert note not in line, line
     if not note.startswith("converted-") and note != "waited-for-the-lock":
         assert f" ({words}) (install.log)" in line, line
+
+
+def _shell_local_work_line(home: Path, setup: Path) -> str | None:
+    """install.sh's ``fallback_local_work_line`` run alone under /bin/bash, as the shell report runs it."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [where] = re.findall(r'(?m)^LOCAL_WORK_WHERE=".*"$', script)
+    functions = [
+        re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}$", script)
+        for name in ("checkout_ref_sha", "checkout_git_dirs", "fallback_local_work_line")
+    ]
+    body = "\n".join(
+        [
+            "set -euo pipefail",
+            "say() { printf '%s\\n' \"$*\"; }",
+            where,
+            *(f.group(0) for f in functions if f),
+        ]
+    )
+    assert len([f for f in functions if f]) == 3
+    cp = subprocess.run(
+        ["/bin/bash", "-c", f"{body}\nfallback_local_work_line"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(home), "SETUP_DIR": str(setup), "LC_ALL": "C"},
+    )
+    return cp.stdout.removesuffix("\n") or None
+
+
+def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_mac: dict[str, Path]) -> None:
+    """B13 round 11 M49, M70 (one defect from two finders): v19 pulls a checkout whose ``.git`` is a file (a
+    ``--separate-git-dir`` clone, a linked worktree) and keeps work there, but both readers returned at once
+    when ``.git`` was no folder, so the public report said nothing while bring-back.md section 3 sent the
+    patch. The patches are counted whatever the checkout is; the branches are read from its common dir.
+    M54: a branch at main's commit with a patch named for it holds the work a keep whose fetch failed left.
+    M71: v19's recovery moves main on to origin/main, so an empty keep's branch sits at a commit origin/main
+    once had: its reflog says so, and the branch is not counted; a commit only local main had still is."""
+    home, setup = fake_mac["home"], fake_mac["setup"]
+    checkout = home / "src" / "agent-context-sync"
+    dot = checkout / ".git"
+    patches = setup / "local-work"
+    patches.mkdir(parents=True, exist_ok=True)
+    branch = "local-work-20261014-120000"
+    sha = {k: k * 40 for k in "abcdef"}
+
+    def repo(git: Path, *, branch_at: str = "a", main: str = "c", reflog: str = "") -> None:
+        (git / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+        (git / "refs" / "heads" / branch).write_text(sha[branch_at] + "\n", encoding="utf-8")
+        (git / "packed-refs").write_text(f"{sha[main]} refs/heads/main\n", encoding="utf-8")
+        if reflog:
+            (git / "logs" / "refs" / "remotes" / "origin").mkdir(parents=True, exist_ok=True)
+            (git / "logs" / "refs" / "remotes" / "origin" / "main").write_text(reflog, encoding="utf-8")
+
+    def both() -> str | None:
+        python = setup_report._local_work_line()
+        assert _shell_local_work_line(home, setup) == python, "the two reports print one line"
+        return python
+
+    def kept(n: int, b: int) -> str:
+        return (
+            f"- local work kept by setup prompt step 1: {n} patch file(s) in the setup folder's local-work, "
+            f"newest written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); {b} local-work "
+            "branch(es) in the checkout"
+        )
+
+    patch = patches / f"0001-keep.{branch}.patch"
+    patch.write_text("Subject: [PATCH] keep\n", encoding="utf-8")
+    os.utime(patch, (1791950084, 1791950084))
+    shutil.rmtree(dot, ignore_errors=True)
+    assert both() == kept(1, 0), "no checkout at all: the patch is still counted"
+    dot.parent.mkdir(parents=True, exist_ok=True)
+    dot.write_text("not a gitdir line\n", encoding="utf-8")
+    assert both() == kept(1, 0), "a .git file that names no git dir"
+    separate = home / "sep.git"
+    repo(separate)
+    dot.write_text(f"gitdir: {separate}\n", encoding="utf-8")
+    assert both() == kept(1, 1), "a --separate-git-dir clone, absolute"
+    dot.write_text("gitdir: ../../sep.git\n", encoding="utf-8")
+    assert both() == kept(1, 1), "relative to the checkout"
+    # a linked worktree: its git dir names the common dir, which holds the branches and packed-refs
+    common = home / "main-checkout" / ".git"
+    (common / "worktrees" / "wt").mkdir(parents=True)
+    (common / "worktrees" / "wt" / "commondir").write_text("../..\n", encoding="utf-8")
+    repo(common)
+    dot.write_text(f"gitdir: {common / 'worktrees' / 'wt'}\n", encoding="utf-8")
+    assert both() == kept(1, 1), "a linked worktree"
+    # M54: at main's commit, with a patch named for it: a keep whose fetch failed, work on it
+    repo(common, branch_at="c")
+    assert both() == kept(1, 1)
+    patch.rename(patches / "0001-keep.patch")
+    assert both() == kept(1, 0), "no patch names it: an empty keep, as before (L58)"
+    (patches / "0001-keep.patch").rename(patch)
+    # M71: v19's no-tracking keep with nothing to keep, then main moved on to origin/main
+    zero = "0" * 40
+    published = f"{zero} {sha['d']} x <x@example.invalid> 1791950000 +0000\tclone\n"
+    published += (
+        f"{sha['d']} {sha['e']} x <x@example.invalid> 1791950084 +0000\tpull --ff-only: fast-forward\n"
+    )
+    patch.unlink()
+    repo(common, branch_at="d", main="e", reflog=published)
+    assert both() is None, "the branch sits at a commit origin/main once had"
+    repo(common, branch_at="f", main="e", reflog=published)
+    neutral = "- local-work branch(es) in the checkout: 1, no patch file in the setup folder's local-work "
+    assert both() == neutral + "(a keep with nothing to keep writes none)", "a commit origin/main never had"

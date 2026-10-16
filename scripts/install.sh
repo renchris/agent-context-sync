@@ -1710,6 +1710,15 @@ pacv=\1/p' || true
 # ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
 # names the common dir (relative to the git dir). No git process: step 1 may have stopped without the tools.
 checkout_git_configs() { # DIR
+	local dirs
+	dirs="$(checkout_git_dirs "$1")"
+	[ -n "$dirs" ] || return 0
+	printf '%s\n' "${dirs#*$'\n'}/config" "${dirs%%$'\n'*}/config.worktree"
+}
+# The git dir and the common dir of checkout DIR, one a line, as setup_report._checkout_git_dirs reads them;
+# nothing when DIR has no .git, or a .git file that does not start "gitdir:". The common dir holds the
+# branches, packed-refs and reflogs of a linked worktree or a --separate-git-dir clone (B13 round 11 M49, M70).
+checkout_git_dirs() { # DIR
 	local dot="$1/.git" gd c=""
 	if [ -d "$dot" ]; then
 		gd="$dot"
@@ -1722,7 +1731,7 @@ checkout_git_configs() { # DIR
 	fi
 	[ ! -f "$gd/commondir" ] || c="$(LC_ALL=C sed -n '1p' "$gd/commondir" 2>/dev/null)"
 	case "$c" in "") c="$gd" ;; /*) ;; *) c="$gd/$c" ;; esac
-	printf '%s\n' "$c/config" "$gd/config.worktree"
+	printf '%s\n' "$gd" "$c"
 }
 repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's own locator
 	local s="${ISSUE_URL#https://github.com/}"
@@ -2229,27 +2238,38 @@ LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the p
 # The count-only line that says step 1 kept local work, as setup_report._local_work_line writes it (B13 round 9
 # K30, round 10 L8, L25, L40, L58). Patches are the measure of kept work: the *.patch files at the top of the
 # setup folder local-work, the files section 3 of bring-back.md reads, with the newest time. The checkout
-# local-work-* branches, read from its ref files (no git: without developer tools it offers to install them),
-# are counted beside them, less a branch at the main or origin/main commit, which holds no commit of its own.
-# With branches but no patch the line does not say kept.
+# local-work-* branches, read from the ref files of its common dir (no git: without developer tools it offers
+# to install them; a .git file names the git dir, B13 round 11 M49, M70), are counted beside them, less a
+# branch at the main or origin/main commit or at any commit the origin/main reflog names, which holds no commit
+# of its own, unless a patch is named for it (*.<branch>.patch; round 11 M54, M71). The patches are counted
+# whatever the checkout is. With branches but no patch the line does not say kept.
 fallback_local_work_line() {
-	local git="$HOME/src/agent-context-sync/.git" b=0 p n=0 at newest="" f s main origin
-	[ -d "$git" ] || return 0
-	main="$(checkout_ref_sha "$git" refs/heads/main)"
-	origin="$(checkout_ref_sha "$git" refs/remotes/origin/main)"
-	while IFS= read -r f; do
-		s="$(checkout_ref_sha "$git" "refs/heads/$f")"
-		[ -n "$s" ] && { [ "$s" = "$main" ] || [ "$s" = "$origin" ]; } && continue
-		b=$((b + 1))
-	done < <({
-		for f in "$git"/refs/heads/local-work-*; do [ -f "$f" ] && [ ! -L "$f" ] && printf '%s\n' "${f##*/}"; done
-		LC_ALL=C sed -n 's|^[^ ]* refs/heads/\(local-work-.*\)$|\1|p' "$git/packed-refs" 2>/dev/null
-	} | LC_ALL=C sort -u)
+	local git b=0 p n=0 at newest="" f s main origin patches published=" "
+	patches="$(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null)"
 	while IFS= read -r p; do
+		[ -n "$p" ] || continue
 		n=$((n + 1))
 		at="$(date -u -r "$p" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
 		[[ -z "$at" || "$at" < "$newest" ]] || newest="$at"
-	done < <(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null)
+	done <<<"$patches"
+	git="$(checkout_git_dirs "$HOME/src/agent-context-sync")"
+	git="${git#*$'\n'}"
+	if [ -n "$git" ]; then
+		main="$(checkout_ref_sha "$git" refs/heads/main)"
+		origin="$(checkout_ref_sha "$git" refs/remotes/origin/main)"
+		# every commit origin/main pointed at is published: both columns of its reflog, read as a file
+		published+="$(LC_ALL=C awk '{ for (i = 1; i <= 2; i++) if ($i ~ /^[0-9a-f]+$/ && (length($i) == 40 || length($i) == 64) && $i !~ /^0+$/) printf "%s ", $i }' "$git/logs/refs/remotes/origin/main" 2>/dev/null || true)"
+		while IFS= read -r f; do
+			s="$(checkout_ref_sha "$git" "refs/heads/$f")"
+			if [ -n "$s" ] && { [ "$s" = "$main" ] || [ "$s" = "$origin" ] || [[ "$published" == *" $s "* ]]; }; then
+				[[ $'\n'"$patches"$'\n' == *".$f.patch"$'\n'* ]] || continue
+			fi
+			b=$((b + 1))
+		done < <({
+			for f in "$git"/refs/heads/local-work-*; do [ -f "$f" ] && [ ! -L "$f" ] && printf '%s\n' "${f##*/}"; done
+			LC_ALL=C sed -n 's|^[^ ]* refs/heads/\(local-work-.*\)$|\1|p' "$git/packed-refs" 2>/dev/null
+		} | LC_ALL=C sort -u)
+	fi
 	if [ "$n" -gt 0 ]; then
 		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
 	elif [ "$b" -gt 0 ]; then

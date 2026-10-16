@@ -2729,15 +2729,28 @@ def _checkout_git_configs(checkout: Path) -> list[Path]:
     names it (a linked worktree, a submodule; a relative path is from the checkout), and its ``commondir``
     file, when there is one, names the common dir (relative to the git dir). A ``.git`` file that cannot be
     read gives ``.git/config``, which then cannot be read either (B13 round 3 R110)."""
+    dirs = _checkout_git_dirs(checkout)
+    if dirs is None:
+        return [checkout / ".git" / "config"]
+    gitdir, common = dirs
+    return [common / "config", gitdir / "config.worktree"]
+
+
+def _checkout_git_dirs(checkout: Path) -> tuple[Path, Path] | None:
+    """``(git dir, common dir)`` of ``checkout``, read as files (:func:`_checkout_git_configs`): ``.git`` is
+    the git dir, or a file whose ``gitdir: <path>`` names it (relative to the checkout), and the git dir's
+    ``commondir`` file names the common dir (relative to the git dir), which holds the branches,
+    ``packed-refs`` and the reflogs of a linked worktree or a ``--separate-git-dir`` clone. None when there
+    is no ``.git``, or it is a file that cannot be read or does not start ``gitdir:``."""
     dot = checkout / ".git"
     gitdir = dot
     if not dot.is_dir():
         try:
             first = dot.read_text(encoding="utf-8", errors="replace").splitlines()[0]
         except (OSError, IndexError):
-            return [dot / "config"]
+            return None
         if not first.startswith("gitdir:"):
-            return [dot / "config"]
+            return None
         named = Path(first.removeprefix("gitdir:").strip())
         gitdir = named if named.is_absolute() else checkout / named
     common = gitdir
@@ -2746,7 +2759,7 @@ def _checkout_git_configs(checkout: Path) -> list[Path]:
             (gitdir / "commondir").read_text(encoding="utf-8", errors="replace").splitlines()[0].strip()
         )
         common = named if named.is_absolute() else gitdir / named
-    return [common / "config", gitdir / "config.worktree"]
+    return gitdir, common
 
 
 def _git_proxy_urls() -> list[str]:
@@ -8176,6 +8189,19 @@ LOCAL_WORK_WHERE = (
 nothing this report cannot know (which patches an earlier report carried), B13 round 10 L8, L25."""
 
 
+def _published_shas(git: Path) -> set[str]:
+    """Every commit ``origin/main`` has pointed at, from its reflog (``logs/refs/remotes/origin/main``, both
+    columns, read as a file): a commit there is published, so a branch on it holds no work of its own. Empty
+    when there is no reflog (disabled or expired): the count then errs toward counting (B13 round 11 M71)."""
+    shas: set[str] = set()
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for line in (
+            (git / "logs" / "refs" / "remotes" / "origin" / "main").read_text(encoding="utf-8").splitlines()
+        ):
+            shas.update(w for w in line.split()[:2] if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", w))
+    return {sha for sha in shas if sha.strip("0")}
+
+
 def _checkout_ref_shas(git: Path, refs: Iterable[str]) -> dict[str, str]:
     """The sha each of ``refs`` names in the checkout's ref files, with no git process: the loose file first,
     else its ``packed-refs`` line; "" when neither holds it."""
@@ -8204,34 +8230,48 @@ def _local_work_line() -> str | None:
     ``local-work-*`` branches of the checkout, read from its ref files with no git process (an unset-up
     Mac's git offers to install the developer tools), are counted beside them: they outlive a patch folder
     the person moved or deleted, and v15 to v17 keeps wrote patches without a branch name (a v15 keep wrote
-    none). A branch at main's or origin/main's own commit holds no commit of its own (a keep with nothing to
-    keep made it) and is not counted (L58). With branches but no patch the line says so without "kept"
-    (L40). No name, subject, author or content is shown. None when both are 0 or there is no checkout.
+    none). A branch at main's or origin/main's own commit, or at any commit origin/main's reflog names, holds
+    no commit of its own (a keep with nothing to keep made it, and v19's recovery may then move main on to
+    origin/main) and is not counted, unless a patch is named for it (``.<branch>.patch``, which v18 on
+    writes): a keep whose fetch failed leaves its branch at main's commit with work on it (L58; B13 round 11
+    M54, M71). With branches but no patch the line says so without "kept" (L40). The patches are counted
+    whatever the checkout is; the branches are read from its common dir, so a ``.git`` file (a
+    ``--separate-git-dir`` clone, a linked worktree) has its count too (round 11 M49, M70). No name,
+    subject, author or content is shown. None when there are no patches and no counted branches.
     install.sh's fallback writes the same line (``fallback_local_work_line``)."""
-    git = expand(INSTALL_SH).parents[1] / ".git"
-    if not git.is_dir():
-        return None
-    heads = git / "refs" / "heads"
-    names = {p.name for p in heads.glob("local-work-*") if p.is_file() and not p.is_symlink()}
-    with contextlib.suppress(OSError, UnicodeDecodeError):
-        for line in (git / "packed-refs").read_text(encoding="utf-8", errors="surrogateescape").splitlines():
-            ref = line.partition(" ")[2]
-            if ref.startswith("refs/heads/local-work-"):
-                names.add(ref.removeprefix("refs/heads/"))
-    trunk = ("refs/heads/main", "refs/remotes/origin/main")
-    shas = _checkout_ref_shas(git, [*trunk, *(f"refs/heads/{name}" for name in names)])
-    empty = {shas[ref] for ref in trunk} - {""}
-    branches = [name for name in names if shas[f"refs/heads/{name}"] not in empty]
     kept = default_setup_log().parent / "local-work"
-    times = (
+    patches = (
         []
         if kept.is_symlink()  # as find, which does not follow it
         else [
-            path.stat().st_mtime
+            path
             for path in kept.glob("*.patch")
             if not path.name.startswith(".") and not path.is_symlink() and path.is_file()
         ]
     )
+    times = [path.stat().st_mtime for path in patches]
+    dirs = _checkout_git_dirs(expand(INSTALL_SH).parents[1])
+    branches: list[str] = []
+    if dirs is not None:
+        git = dirs[1]
+        heads = git / "refs" / "heads"
+        names = {p.name for p in heads.glob("local-work-*") if p.is_file() and not p.is_symlink()}
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            for line in (
+                (git / "packed-refs").read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+            ):
+                ref = line.partition(" ")[2]
+                if ref.startswith("refs/heads/local-work-"):
+                    names.add(ref.removeprefix("refs/heads/"))
+        trunk = ("refs/heads/main", "refs/remotes/origin/main")
+        shas = _checkout_ref_shas(git, [*trunk, *(f"refs/heads/{name}" for name in names)])
+        empty = ({shas[ref] for ref in trunk} | _published_shas(git)) - {""}
+        branches = [
+            name
+            for name in names
+            if shas[f"refs/heads/{name}"] not in empty
+            or any(p.name.endswith(f".{name}.patch") for p in patches)
+        ]
     if times:
         newest = datetime.fromtimestamp(max(times), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         return (

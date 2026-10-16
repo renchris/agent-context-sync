@@ -154,8 +154,10 @@ words) is yours to remove. The CLI always redacts.
   the end of the shell fallback's Summary: `- local work kept by setup prompt step 1: N patch file(s) in the setup folder's local-work, newest written
   <time> (no patch text is in this report: each patch goes once to the private bring-back.md section 3; one an
   earlier report already carried is listed there by its hash); M local-work branch(es) in the checkout`. It counts
-  the patches at the top of `local-work` (the files section 3 reads) and the local-work branches that hold a commit
-  of their own; with branches and no patch it reads `- local-work branch(es) in the checkout: M, no patch file in
+  the patches at the top of `local-work` (the files section 3 reads), whatever the checkout is, and the local-work
+  branches that hold a commit of their own (one at main's or origin/main's commit, or at any commit origin/main's
+  reflog names, is not counted unless a patch is named for it), read from the checkout's common dir, so a checkout
+  whose `.git` is a file (a `--separate-git-dir` clone, a linked worktree) is counted too; with branches and no patch it reads `- local-work branch(es) in the checkout: M, no patch file in
   the setup folder's local-work (a keep with nothing to keep writes none)`, which is no kept work. A public report
   shows that the work exists, never the patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
