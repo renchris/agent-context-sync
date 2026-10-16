@@ -37,8 +37,9 @@ A coding agent can run every step below for you: paste the block in the top-leve
 [one-prompt setup](../../README.md#set-up-on-a-new-mac-one-prompt).
 
 Get the code, pick the folders to sync (`install.sh --list-folders` prints the OneDrive and SharePoint folders this
-Mac syncs, one full path per line; it exits 3 when there are none and 4 when macOS denied this terminal access, and
-its `NEXT:` line says which), then pass one `--source-local` per folder:
+Mac syncs, one full path per line; it exits 3 when there are none, or when a folder this Mac already syncs under
+`~/Library/CloudStorage` is missing (OneDrive signed out), and 4 when macOS denied this terminal access, and its
+`NEXT:` line says which), then pass one `--source-local` per folder:
 
 ```sh
 git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync
@@ -59,8 +60,14 @@ and `install.sh` with no `--source-local` keeps every source, updates agentsync 
 A sync reads everything under a synced folder, so a listed folder inside one has `[inside a synced folder]`
 before it, and one that holds one has `[contains a synced folder]`. Add only an unmarked folder: a marked one
 would be read twice. A synced folder the list does not reach (deeper than two levels, or outside
-`~/Library/CloudStorage`) is printed first with the same mark. Such a Mac gets that line and exit 0 even when
-nothing else can be listed, and the line and the marks even when the list ends on a click (exit 4).
+`~/Library/CloudStorage`) is printed first with the same mark. When no synced folder under `~/Library/CloudStorage`
+is missing, such a Mac gets that line and exit 0 even when nothing else can be listed (for example, OneDrive signed
+out and only a folder outside `~/Library/CloudStorage` synced). When a synced folder under `~/Library/CloudStorage` is missing (OneDrive
+signed out or still setting up), it gets the line, the `[synced]` lines and exit 3, logged
+`note=not-signed-in synced=N`. Its `NEXT:` asks for the OneDrive sign-in and a re-run, and says the `[synced]`
+folders are kept. Since v20, step 1 of the one-prompt setup waits for that sign-in instead of going on to a step 2
+that would fail. It gets the line and the marks even when the list ends on a click (exit 4), which comes before
+the missing check.
 
 ### Optional: background sync (the operator's choice)
 

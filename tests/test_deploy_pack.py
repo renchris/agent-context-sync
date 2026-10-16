@@ -5332,3 +5332,37 @@ def test_the_readme_says_what_a_recording_page_reads_of_speech_and_which_decks_g
         "template's master and layouts are not read)"
     ) in readme
     assert ".potx" in pptx.PptxConverter.extensions
+
+
+def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> None:
+    """B13 round 12 N62: since round 11 M4, `--list-folders` on a set-up Mac whose synced folder under
+    ~/Library/CloudStorage is missing exits 3 with a NEXT that asks for the sign-in, and v20's step 1 waits
+    for it. docs/deploy/README.md still said such a Mac "gets that line and exit 0 even when nothing else can
+    be listed", and that the list exits 3 only "when there are none"."""
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'step_end failed "$rc" "not-signed-in synced=$synced"' in installer
+    deploy = _page("docs/deploy/README.md")
+    assert "Such a Mac gets that line and exit 0 even when nothing else can be listed" not in deploy
+    assert (
+        "it exits 3 when there are none, or when a folder this Mac already syncs under "
+        "`~/Library/CloudStorage` is missing (OneDrive signed out), and 4 when macOS denied this terminal "
+        "access"
+    ) in deploy
+    assert (
+        "When no synced folder under `~/Library/CloudStorage` is missing, such a Mac gets that line and exit "
+        "0 even when nothing else can be listed"
+    ) in deploy
+    assert (
+        "When a synced folder under `~/Library/CloudStorage` is missing (OneDrive signed out or still "
+        "setting up), it gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
+        "synced=N`."
+    ) in deploy
+    assert "Since v20, step 1 of the one-prompt setup waits for that sign-in" in deploy
+    assert "even when the list ends on a click (exit 4), which comes before the missing check." in deploy
+    feedback = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "- A set-up Mac whose synced folder under `~/Library/CloudStorage` is missing (OneDrive signed out, "
+        "or still setting up) gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
+        "synced=N` (B13 round 11 M4)."
+    ) in feedback
+    assert "Since v20, step 1 waits for that sign-in as for a click, then lists the folders again" in feedback

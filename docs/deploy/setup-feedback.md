@@ -494,6 +494,11 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   cannot ask adds none and goes on to step 2. That is not a deviation and is not logged; the agent says it in
   its final message. On a Mac with no synced folder nothing changed: an agent that cannot ask logs a deviation,
   stops and waits.
+- A set-up Mac whose synced folder under `~/Library/CloudStorage` is missing (OneDrive signed out, or still setting
+  up) gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in synced=N` (B13 round 11 M4). Its
+  `NEXT:` asks for the OneDrive sign-in and a re-run, and says the folders marked `[synced]` are kept. A click the
+  list ends on (exit 4) comes first. Since v20, step 1 waits for that sign-in as for a click, then lists the folders
+  again, before the folder question above.
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:
   if it was set up before, <install.sh> with no --source-local keeps whatever that config syncs, and each
