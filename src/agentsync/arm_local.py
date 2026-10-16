@@ -31,6 +31,7 @@ import threading
 import time
 import unicodedata
 import uuid
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -153,41 +154,63 @@ def _errno_kind(code: int | None) -> str:
     return UNKNOWN_MODE if code == errno_mod.EACCES else UNKNOWN_OTHER
 
 
-def _read_advice(kinds: Collection[str], *, root: bool, excludable: bool) -> str:
-    """The fix for folders a walk could not read, by their kinds (B13 round 11 M42): a privacy refusal
+def _read_advice(counts: Mapping[str, int], *, root: bool, excludable: bool) -> str:
+    """The fix for folders a walk could not read, by their kinds and how many folders have each (``counts``;
+    B13 round 11 M42): a privacy refusal
     (EPERM) takes the Files and Folders grant; a folder's own permissions (EACCES) take no grant, which cannot
     override them, and never a chmod, since the folder may belong to another account; anything else (a
     provider error, a folder that vanished) is the sync app's, as doctor's fix for a listing error says.
     ``root``: the source folder alone. ``excludable``: no mirrored file is known below the folders and the
     root is not among them, so an exclude retires nothing and is offered; otherwise never (an exclude retires
     the pages under a folder at once, the loop's could-not-be-listed wait warns, and a root cannot be
-    excluded). No promise of a retry: the loop's wait says another sync does not clear it."""
-    several = len(kinds) > 1
+    excluded). No promise of a retry: the loop's wait says another sync does not clear it. Each fix is
+    singular or plural by the folders of its kind, and names its kind ("for the one refused with EACCES",
+    "for those ...") only beside another kind (B13 round 12 N36, N37: the number followed how many kinds,
+    so two EACCES folders read "a folder's own permissions ... it")."""
+    mixed = len(counts) > 1
+
+    def which(kind: str, errno_name: str) -> str:
+        return f"for {'the one' if counts[kind] == 1 else 'those'} refused with {errno_name}"
+
     parts: list[str] = []
-    if UNKNOWN_PRIVACY in kinds:
+    if counts.get(UNKNOWN_PRIVACY):
         parts.append(
-            "grant the agent Files and Folders access" + (" for those refused with EPERM" if several else "")
+            "grant the agent Files and Folders access"
+            + (f" {which(UNKNOWN_PRIVACY, 'EPERM')}" if mixed else "")
         )
-    if UNKNOWN_MODE in kinds:
+    if n := counts.get(UNKNOWN_MODE, 0):
         # no nested parentheses: the alarm's advice is itself in parentheses
-        parts.append(
-            "the source folder's own permissions do not let this account read it: check its owner and mode "
-            "with `ls -ld`"
-            if root
-            else "for those refused with EACCES, their own permissions do not let this account read them: "
-            "check their owner and mode with `ls -ld`" + (", or exclude them" if excludable else "")
-            if several
-            else "a folder's own permissions do not let this account read it: check its owner and mode with "
-            "`ls -ld`" + (", or exclude it" if excludable else "")
-        )
-    if UNKNOWN_OTHER in kinds or not parts:
-        parts.append(
-            "check that the source folder opens in Finder and that its sync app is running"
-            if root
-            else "check that the others open in Finder and that their sync app is running"
-            if several
-            else "check that each one opens in Finder and that its sync app is running"
-        )
+        if root:
+            parts.append(
+                "the source folder's own permissions do not let this account read it: check its owner and "
+                "mode with `ls -ld`"
+            )
+        elif n == 1:
+            parts.append(
+                (f"{which(UNKNOWN_MODE, 'EACCES')}, its" if mixed else "a folder's")
+                + " own permissions do not let this account read it: check its owner and mode with `ls -ld`"
+                + (", or exclude it" if excludable else "")
+            )
+        else:
+            parts.append(
+                (f"{which(UNKNOWN_MODE, 'EACCES')}, " if mixed else "")
+                + "their own permissions do not let this account read them: check their owner and mode with "
+                "`ls -ld`" + (", or exclude them" if excludable else "")
+            )
+    if counts.get(UNKNOWN_OTHER) or not parts:
+        one = counts.get(UNKNOWN_OTHER) == 1
+        if root:
+            parts.append("check that the source folder opens in Finder and that its sync app is running")
+        elif mixed:
+            parts.append(
+                "check that the other one opens in Finder and that its sync app is running"
+                if one
+                else "check that the others open in Finder and that their sync app is running"
+            )
+        else:
+            parts.append(
+                f"check that {'it' if one else 'each one'} opens in Finder and that its sync app is running"
+            )
     return "; ".join(parts)
 
 
@@ -1121,7 +1144,7 @@ class LocalArm:
         ]
         # every failed folder with its recorded reason; a WalkStats from elsewhere may carry none
         known = all(d in why for d in failed)
-        kinds = {why[d].kind for d in failed if d in why}
+        kinds = Counter(why[d].kind for d in failed if d in why)
         # an exclude is offered only when it retires nothing: no root among them, and no mirrored file known
         # below them (B13 round 11 M42 review: a mirrored folder chmod 000 was offered "or exclude it")
         excludable = "." not in failed and self._mirrored_below(failed) is False
@@ -1178,10 +1201,13 @@ class LocalArm:
             if known
             else "grant the agent Files and Folders access"
         )
+        # the number by each count, as the advice's (B13 round 12 N36, N37: "folder(s)" beside "it")
         empty = "one" if len(empties) == 1 else "ones"
+        folders = "folder" if len(empties) == 1 else "folders"
+        unread = "folder" if len(failed) == 1 else "folders"
         return (
             f"{head}{len(failed)} could not be read: {listed(failed, reasons=known)}; {len(empties)} empty "
-            f"cloud folder(s), zero children in a cloud tree: {listed(empties)}{tail} (for the folder(s) it "
+            f"cloud {folders}, zero children in a cloud tree: {listed(empties)}{tail} (for the {unread} it "
             f"could not read, {read}; for the empty {empty}, {where})"
         )
 

@@ -509,6 +509,8 @@ def _row(rel: str, state: str = "live") -> object:
 
 
 _MODE = "a folder's own permissions do not let this account read it: check its owner and mode with `ls -ld`"
+_MODES = "their own permissions do not let this account read them: check their owner and mode with `ls -ld`"
+"""``_MODE`` for two or more folders (B13 round 12 N36, N37)."""
 
 
 def test_an_unreadable_folder_with_no_empty_cloud_folder_names_its_reason() -> None:
@@ -583,12 +585,48 @@ def test_a_privacy_refusal_keeps_the_grant_and_a_mixed_one_names_both_fixes(
     )
     _refusing(monkeypatch, {"Private": errno.EPERM, "Shut": errno.EACCES, "Slow": errno.EDEADLK})
     (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
+    # B13 round 12 N36, N37: one folder of each kind, so each fix is singular
     assert alarm.endswith(
-        "(grant the agent Files and Folders access for those refused with EPERM; for those refused with "
-        "EACCES, their own permissions do not let this account read them: check their owner and mode with "
-        "`ls -ld`; check that the others open in Finder and that their sync app is running)"
+        "(grant the agent Files and Folders access for the one refused with EPERM; for the one refused with "
+        "EACCES, its own permissions do not let this account read it: check its owner and mode with "
+        "`ls -ld`; check that the other one opens in Finder and that its sync app is running)"
     ), alarm
     assert f"'Shut' ({_DENIED})" in alarm and "'Slow' (EDEADLK: " in alarm
+
+
+def test_the_read_advice_follows_how_many_folders_have_each_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 12 N36, N37: the number followed how many kinds there were, not how many folders: two
+    mode-000 folders read "a folder's own permissions do not let this account read it", and one EACCES folder
+    beside one EPERM folder read "for those refused with EACCES, ... them". Each fix now takes the number of
+    the folders of its kind, with the exclude offered or not as before."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    for name in ("Locked A", "Locked B", "Private", "Slow"):
+        _write(root / name / "b.docx")
+    _write(root / "a.docx")
+    with _chmod(root / "Locked A", 0), _chmod(root / "Locked B", 0):
+        for known, offered in ((None, False), ({}, True), ({"x": _row("Locked A/b.docx")}, False)):
+            arm = al.LocalArm(_cfg(root))
+            arm.known_h0 = known
+            (alarm,) = arm.scan(None, full=True).alarms
+            assert alarm.endswith(f"({_MODES}, or exclude them)" if offered else f"({_MODES})"), alarm
+    codes = {"Locked A": errno.EACCES, "Private": errno.EPERM}
+    _refusing(monkeypatch, codes)  # one patch, its codes changed in place: a second would wrap the first
+    (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
+    assert alarm.endswith(
+        "(grant the agent Files and Folders access for the one refused with EPERM; for the one refused with "
+        "EACCES, its own permissions do not let this account read it: check its owner and mode with `ls -ld`)"
+    ), alarm
+    codes.clear()
+    codes.update({"Locked A": errno.EACCES, "Locked B": errno.EACCES, "Slow": errno.EDEADLK})
+    (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
+    assert alarm.endswith(
+        f"(for those refused with EACCES, {_MODES}; check that the other one opens in Finder and that its "
+        "sync app is running)"
+    ), alarm
+    codes.clear()
+    codes["Slow"] = errno.EDEADLK
+    (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
+    assert alarm.endswith("(check that it opens in Finder and that its sync app is running)"), alarm
 
 
 def test_an_unreadable_folder_behind_five_empty_ones_is_named_in_its_own_clause() -> None:
@@ -605,7 +643,7 @@ def test_an_unreadable_folder_behind_five_empty_ones_is_named_in_its_own_clause(
         (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
     pointer = "(+1 more; `~/.local/bin/agentsync sync -v` logs each one)"
     assert alarm.startswith(
-        f"7 unknown dir(s) — 1 could not be read: 'Zeta Locked' ({_DENIED}); 6 empty cloud folder(s), zero "
+        f"7 unknown dir(s) — 1 could not be read: 'Zeta Locked' ({_DENIED}); 6 empty cloud folders, zero "
         f"children in a cloud tree: 'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E' {pointer}; "
     ), alarm
     for n in "ABCDEF":
@@ -618,7 +656,7 @@ def test_an_unreadable_folder_behind_five_empty_ones_is_named_in_its_own_clause(
             locked.enter_context(_chmod(root / f"Locked {n}", 0))
         locked.enter_context(_chmod(root / "Zeta Locked", 0))
         (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
-    assert "; 1 empty cloud folder(s), zero children in a cloud tree: 'Empty A'; " in alarm, alarm
+    assert "; 1 empty cloud folder, zero children in a cloud tree: 'Empty A'; " in alarm, alarm
     assert "7 could not be read: 'Locked 1' (" in alarm and "'Locked 5' (" in alarm and "(+2 more; " in alarm
 
 
@@ -634,8 +672,9 @@ def test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude() -
         res = al.LocalArm(_cfg(root)).scan(None, full=True)
     (alarm,) = res.alarms
     assert alarm == (
-        f"2 unknown dir(s) — 1 could not be read: 'Locked' ({_DENIED}); 1 empty cloud folder(s), zero "
-        "children in a cloud tree: 'One'; enumeration incomplete, no deletions this pass (for the folder(s) "
+        # B13 round 12 N36, N37: singular throughout for one folder of each
+        f"2 unknown dir(s) — 1 could not be read: 'Locked' ({_DENIED}); 1 empty cloud folder, zero "
+        "children in a cloud tree: 'One'; enumeration incomplete, no deletions this pass (for the folder "
         f"it could not read, {_MODE}; for the empty one, the WAITING ON YOU line about the empty cloud "
         "folder(s) in local-test at the end of a sync's output says what to do, and "
         "`~/.local/bin/agentsync status` prints it too)"
@@ -808,9 +847,10 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
     (alarm,) = res.alarms
     # B13 round 11 M5, M45: the alarm names them too, in their own clause, not behind the five empty ones
     assert alarm == (
+        # B13 round 12 N36, N37: two folders refused with EACCES take the plural advice
         f"7 unknown dir(s) — 2 could not be read: 'Shut' ({denied}), 'Zeta' ({denied}); 5 empty cloud "
-        "folder(s), zero children in a cloud tree: 'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E'; "
-        f"enumeration incomplete, no deletions this pass (for the folder(s) it could not read, {_MODE}; for "
+        "folders, zero children in a cloud tree: 'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E'; "
+        f"enumeration incomplete, no deletions this pass (for the folders it could not read, {_MODES}; for "
         "the empty ones, each WAITING ON YOU line about empty cloud folders in local-test at the end of a "
         "sync's output says what to do, and `~/.local/bin/agentsync status` prints each one too)"
     )
