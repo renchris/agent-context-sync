@@ -2046,8 +2046,9 @@ redact_stream() {
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
 		for (k = 1; k <= nh; k++) heading[hd[k]] = 1
 		# the identifiers of agentsync itself, held whole beside an organisation of flag o ("One", "Cloud"):
-		# setup_report._HELD_IDENTIFIERS, a test keeps them equal (B13 round 11 M50)
-		nw = split("OneDrive GoogleDrive SharedLibraries Dropbox Box Egnyte CloudStorage SharePoint GitHub", hw, " ")
+		# setup_report._HELD_IDENTIFIERS, a test keeps them equal (B13 round 11 M50); and CamelCase words the
+		# report prints itself, FluidAudio and LaunchAgent(s) (B13 round 12 N57)
+		nw = split("OneDrive GoogleDrive SharedLibraries Dropbox Box Egnyte CloudStorage SharePoint GitHub FluidAudio LaunchAgent LaunchAgents", hw, " ")
 	}
 	# and the opener of the friction fence, a line the report itself writes (a "~~~" in the log is broken up
 	# before it gets here): a folder or a source id named "text" does not turn it into a placeholder (B13 round 7 H41)

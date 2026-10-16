@@ -8097,6 +8097,11 @@ def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held
             "xBox, dropBox, 2Box, DropBox, BoxGroup",
             "x<org-1>, drop<org-1>, 2<org-1>, DropBox, <org-1>Group",
         ),
+        # the report's own CamelCase words stay whole: the speech line's engine and the LaunchAgent (B13
+        # round 12 N57: "<org-1>Audio" and "<org-1>Agents" decoded the placeholder)
+        ("Fluid", "FluidAudio 04e363c, FluidGroup", "FluidAudio 04e363c, <org-1>Group"),
+        ("Audio", "FluidAudio, AcmeAudio", "FluidAudio, Acme<org-1>"),
+        ("Launch", "LaunchAgent, LaunchAgents, LaunchGroup", "LaunchAgent, LaunchAgents, <org-1>Group"),
     ],
 )
 def test_an_organisation_is_redacted_inside_a_longer_word(

@@ -519,10 +519,20 @@ names no other (B13 round 6 G45, G75): with those of this Mac's entries and sour
 report's own words (``~/agent-<org-1>``). agentsync's own path names (``~/agent-context``,
 ``~/src/agent-context-sync``) are held whole for an organisation matched everywhere too (B13 round 7 H74)."""
 
-_HELD_IDENTIFIERS = _CONTEXT_HEADS | {"CloudStorage", "SharePoint", "GitHub"}
+_HELD_IDENTIFIERS = _CONTEXT_HEADS | {
+    "CloudStorage",
+    "SharePoint",
+    "GitHub",
+    "FluidAudio",
+    "LaunchAgent",
+    "LaunchAgents",
+}
 """agentsync's own identifiers that an organisation matched inside a longer word (mode ``org``) never
-cuts: an organisation "One" or "Cloud" leaves OneDrive and CloudStorage whole (B13 round 11 M50).
-scripts/install.sh holds the same list (a test keeps them equal)."""
+cuts: an organisation "One" or "Cloud" leaves OneDrive and CloudStorage whole (B13 round 11 M50). It also
+holds the report's own CamelCase words: the speech line's ``FluidAudio <sha>`` (convert/speech.py) and
+LaunchAgent, LaunchAgents, both forms since a trailing lookahead after one does not cover the other (B13
+round 12 N57: an organisation "Launch" read ``<org-1>Agents``, which decodes the placeholder for anyone
+who knows agentsync). scripts/install.sh holds the same list (a test keeps them equal)."""
 
 _HELD_PATH_NORMS = frozenset({"agentcontext", "agentcontextsync", "agentcontextsync.git"})
 """agentsync's own path names as :func:`_norm` gives them: a value that is one of them is the held path
