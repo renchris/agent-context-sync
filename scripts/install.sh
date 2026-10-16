@@ -702,6 +702,7 @@ COMMIT_TRIED=0 # read_commit ran: a "-" after it is git that could not read the 
 DIRTY="" # the SOURCE checkout's local-change fingerprint (tree_fingerprint), empty when clean or unknown
 PARSED=0       # 1 once the arguments are read: from then on every exit writes the report and a NEXT line
 NEXT_MSG=""    # the NEXT line the EXIT trap prints
+FAIL_NEXT=""   # the NEXT fail() writes in place of its own, set by a step that knows better (config_failed)
 RERUN=""       # the command a stopped run names (default: this script with the same arguments)
 LAST_ERROR=""  # the last error message, for the shell report
 DOCTOR_LOG=""  # this run's doctor output, for the shell report
@@ -719,7 +720,7 @@ fail() {
 	step_end failed "$rc"
 	printf 'error: %s\n' "$*" >&2
 	LAST_ERROR="$*"
-	NEXT_MSG="fix the error above, then re-run: $SELF$ORIG_ARGS"
+	NEXT_MSG="${FAIL_NEXT:-fix the error above, then re-run: $SELF$ORIG_ARGS}"
 	exit 1
 }
 usage_error() {
@@ -4007,6 +4008,16 @@ synced_count() {
 	esac
 	printf '%s' "$n"
 }
+# A config that was there before and does not load with this agentsync (exit 78, EX_CONFIG: "configuration
+# error: ...") is the person's to fix: a re-run fails the same way, and the agent's own mistakes here (a
+# folder that is not there, one inside the docs repo) exit 2, which keeps fail's "fix the error above". So the
+# NEXT names the owner and leads with what the agent does now (B13 round 11 M23, M39).
+config_failed() { # MESSAGE (the failed agentsync call's status is $?)
+	local rc=$?
+	[ "$rc" -ne 78 ] || [ "$CONFIG_STATE" = "created" ] ||
+		FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$ORIG_ARGS"
+	(exit "$rc") || fail "$@"
+}
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
 [ "$CONFIG_STATE" = "created" ] || KEPT="$(synced_count)"
 # add-source ends every call on two summary lines, "docs repo ..." and "sources: ..." (cli._ensure_setup).
@@ -4046,12 +4057,12 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" || {
 			HELD_RC=$?
 			[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
-			(exit "$HELD_RC") || fail "agentsync add-source $f failed (see the error above)"
+			(exit "$HELD_RC") || config_failed "agentsync add-source $f failed (see the error above)"
 		}
 	done
 	[ -z "$HELD" ] || rm -f "$HELD"
 else
-	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || fail "agentsync init failed (see the error above)"
+	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || config_failed "agentsync init failed (see the error above)"
 	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists (inbox ensured)"
 fi
 # What became of the folder choice, as counts: a re-run with no --source-local keeps what the person chose

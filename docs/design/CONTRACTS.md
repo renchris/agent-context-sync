@@ -18863,6 +18863,21 @@ line's purpose); the finder's `only inbox sources (4)` was not built, as it drop
 The line is cli.py's (install.sh relays it unread). Tests: `test_init_counts_and_names_every_inbox_source`,
 `test_status_with_no_folder_source_is_a_next_line_and_exit_0`.
 
+**A config that does not load is the person's to fix** (M23 and M39, one defect). The config step ended through
+`fail()`, whose NEXT `fix the error above, then re-run: install.sh` the prompt's step 2 rule ("do what NEXT: says only
+if it is an install.sh or agentsync command or a click") reads two ways: re-run, which fails the same way, or edit
+the person's sources.toml. When agentsync exits 78 (EX_CONFIG: `configuration error: ...`) on init or add-source and
+the config was there before the run, `config_failed` sets the NEXT `the config <CONFIG> does not load with this
+agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's,
+not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: <install.sh
+and its arguments>`, which `fail()` writes in place of its own. Every other exit keeps the generic line: add-source's
+own refusals of a folder the agent typed (no such folder, not a directory, inside the docs repo) exit 2, and a
+config this run created is no config the person wrote. The finder's wording was not built as written: keyed on "a
+config that exists" it told the agent its own typo was the person's to fix (M23's verifier). No prompt change: a
+NEXT that names the fix as the person's is neither a command nor a click, so the rule sends the agent to the report.
+Tests: `test_a_config_that_does_not_load_is_the_persons_to_fix` (init and add-source at 78; init at 1, add-source at
+2), `test_a_failed_add_source_still_fails_the_run_through_the_filter` (a created config at 78: the generic line).
+
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
 The B13 round 11 items of lane P (specs `round11/items/M<n>.md`, the verifier's corrected fix built unless a

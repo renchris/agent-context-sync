@@ -133,7 +133,10 @@ done
 setup() { [ -f "$cfg" ] || { mkdir -p "$(dirname "$cfg")"; echo "# stub" > "$cfg"; }; }
 inbox() { grep -q "^kind = .inbox." "$cfg" || printf '[[source]]\\nkind = "inbox"\\n' >> "$cfg"; }
 case "$sub" in
-  init) setup; inbox; hint "agentsync doctor" ;;
+  init)
+    [ -z "${STUB_INIT_RC:-}" ] ||
+      { echo "configuration error: $cfg: not valid TOML (stub)" >&2; exit "$STUB_INIT_RC"; }
+    setup; inbox; hint "agentsync doctor" ;;
   add-source)
     [ -z "${STUB_ADD_SOURCE_RC:-}" ] || { echo "add-source failed (stub)" >&2; exit "$STUB_ADD_SOURCE_RC"; }
     [ "$pos" != "${STUB_ADD_SOURCE_FAIL:-}" ] || { echo "add-source failed (stub)" >&2; exit 1; }
@@ -4522,7 +4525,41 @@ def test_a_failed_add_source_still_fails_the_run_through_the_filter(
         "the second folder is not tried"
     )
     assert ("config", "failed", "78", "") in steps(install_log(env))
+    # a config this run created is no config the person wrote: the generic NEXT (B13 round 11 M23, M39)
     assert one_next(cp) and last_line(cp).startswith("NEXT: fix the error above, then re-run: ")
+
+
+@pytest.mark.parametrize(
+    ("call", "knob", "rc"),
+    [
+        ("init", "STUB_INIT_RC", "78"),
+        ("add-source", "STUB_ADD_SOURCE_RC", "78"),
+        ("init", "STUB_INIT_RC", "1"),
+        ("add-source", "STUB_ADD_SOURCE_RC", "2"),
+    ],
+)
+def test_a_config_that_does_not_load_is_the_persons_to_fix(
+    env: dict[str, str], folder: Path, wheel: Path, call: str, knob: str, rc: str
+) -> None:
+    """B13 round 11 M23, M39: a config that was there and does not load (agentsync's exit 78) got fail's
+    "fix the error above, then re-run: install.sh", which the prompt's step 2 rule reads two ways (re-run,
+    which fails the same way, or edit the person's sources.toml). Its NEXT names the config and its owner.
+    Any other exit (add-source's 2 for a folder the agent typed, a failed init) keeps the generic line."""
+    cfg = _write_config(env, _inbox(env))
+    args = [str(wheel), "--source-local", str(folder)] if call == "add-source" else [str(wheel)]
+    cp = install_sh({**env, knob: rc}, *args)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", rc, "") in steps(install_log(env))
+    assert one_next(cp)
+    if rc == "78":
+        assert last_line(cp).startswith(
+            f"NEXT: the config {cfg} does not load with this agentsync (the configuration error above; "
+            "~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the "
+            "agent, so show them the error and go on to the report; once it loads, the next run is: "
+            f"{INSTALL_SH} "
+        )
+    else:
+        assert last_line(cp).startswith("NEXT: fix the error above, then re-run: ")
 
 
 def _mode(path: Path) -> int:
