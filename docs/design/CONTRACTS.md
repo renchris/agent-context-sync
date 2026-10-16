@@ -5247,6 +5247,8 @@ that call fails.
 Amended 2026-10-16, §16.92 M34: the Summary's `- friction (attempt N)` line is left out when it would only repeat the
 agent-friction line (every event a deviation, prompt or error, and no legacy line); where it prints, its counts still
 add up.
+Amended 2026-10-16, §16.98 N20: and left out too when the rest is the closing `end | finished` line (every event a
+deviation, prompt or error, or the closing `end | finished` line, and no legacy line); its counts still include it.
 
 KISS K16b revision (2026-10-05; supersedes the paragraphs above where they differ). **Loop line.** The Summary's
 second bullet is `- Loop: <stage>; NEXT: <step>[; WAITING ON YOU: <first wait>[ (+N more)]]`: `loop_stage(baseline, topics, synced)` gives the furthest
@@ -18905,6 +18907,8 @@ second half is built as `... passes; deletions held (<note>)`, install.sh's anch
 lines), and cli.py's swap compares the note, which is unchanged.
 Amended 2026-10-16, §16.103 N79 (by §16.92 M36): "organization" in the IT request draft's `<org>` note too, and in
 docs/deploy/README.md and it-request.md's `<org>` row, which the person reads as well.
+Amended 2026-10-16, §16.98 N20: the closing `end | finished` line no longer prints the M34 line on its own, so a
+clean attempt and a stopped copy print none.
 
 ### 16.93 Round 11: installer and the shell report (2026-10-15, wave B13 round 11 lane RB)
 

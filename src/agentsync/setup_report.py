@@ -7971,9 +7971,11 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"sources.toml already syncs ({why_unread}){',' if again is None else ';'} {marked}"
             )
         out.append(_agent_friction_line(att, stop))
-        # only when it says more than the agent-friction line: a kind other than the problem kinds, or a
-        # legacy line (B13 round 11 M34)
-        if att.legacy or any(n for k, n in att.kinds().items() if k not in PROBLEM_KINDS):
+        # only when it says more than the agent-friction line: a kind other than the problem kinds and the
+        # closing "end | finished" line, or a legacy line (B13 round 11 M34). The end line alone added only
+        # "1 finished", on every attempt that reached a report (B13 round 12 N20): a missing one has its own
+        # WARNING, and the friction log section still counts it
+        if att.legacy or any(k not in (*PROBLEM_KINDS, "finished") for k in att.kinds()):
             extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
             counted = f"{len(att.events)} event line(s): {_kind_counts(att)}{extra}"
             out.append(f"- friction (attempt {att.number}): {counted}")

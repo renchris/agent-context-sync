@@ -3154,7 +3154,7 @@ def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
         "- expected turns: the folder question (step 1; not logged as a question) · Allow clicks: none "
         "possible (launchd simulated)" in summary
     )
-    assert "- friction (attempt 1): 1 event line(s): 1 finished" in summary
+    assert "- friction (attempt" not in summary, "only its end line: it adds nothing (B13 round 12 N20)"
     assert f"- IT draft: {setup_report.IT_DRAFT} not written (prompt step 3:" in summary, "v6's step 3"
     assert "WARNING" not in summary, "--log-end's line closes the attempt"
     assert (
@@ -5245,7 +5245,7 @@ def test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attemp
     )
     assert "- attempt 3 (lines 6-9; started 2026-10-03T09:00:00Z; prompt v7; " in fr
     assert "- attempt: 3 of 3; earlier: attempt 1 fully one command, attempt 2 failed at step 1" in summary
-    assert "- friction (attempt 3): 1 event line(s): 1 finished" in summary
+    assert "- friction (attempt" not in summary, "only its end line: it adds nothing (B13 round 12 N20)"
 
 
 def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
@@ -5527,6 +5527,61 @@ def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
     write_friction(fake_mac, V7_HAPPY + "2026-09-29T10:12:00Z | step 1 | error | git pull exited 1 | -\n")
     summary = summary_at(20)[1]
     assert "- note: attempt 2 has no Attempt: line." in summary and note not in summary
+
+
+@pytest.mark.parametrize(
+    ("friction", "has_log", "outcome", "line"),
+    [
+        (  # a stopped copy: a step 1 error and the end line --report-only wrote, no install run
+            "2026-09-29T10:20:00Z | step 1 | error | prompt v12, Contoso Bot: git pull exited 1 | -\n"
+            "2026-09-29T10:21:00Z | end | finished\n",
+            False,
+            "failed at step 1",
+            None,
+        ),
+        (  # the same with a header
+            V12_HAPPY.replace(
+                "2026-09-29T10:01:10Z | end | finished\n",
+                "2026-09-29T10:00:00Z | step 1 | error | git pull exited 1 | -\n"
+                "2026-09-29T10:01:10Z | end | finished\n",
+            ),
+            False,
+            "failed at step 1",
+            None,
+        ),
+        (V12_HAPPY, True, "fully one command", None),  # clean: only the end line
+        (  # a question is more than the agent-friction line says: the line stays, its counts add up
+            V12_HAPPY.replace(
+                "2026-09-29T10:01:10Z | end | finished\n",
+                "2026-09-29T10:00:00Z | step 1 | question | asked which terminal app this is | say it\n"
+                "2026-09-29T10:01:10Z | end | finished\n",
+            ),
+            True,
+            None,
+            "- friction (attempt 1): 2 event line(s): 1 question, 1 finished",
+        ),
+    ],
+    ids=["stopped-copy", "headed-stop", "clean", "question"],
+)
+def test_the_friction_line_is_left_out_when_it_adds_only_the_end_line(
+    fake_mac: dict[str, Path], friction: str, has_log: bool, outcome: str | None, line: str | None
+) -> None:
+    """B13 round 12 N20: M34 left the ``- friction (attempt N)`` line out only for an attempt with no end
+    line, so every attempt that reached a report printed it to add "1 finished", and a stopped copy put "1
+    finished" beside "failed at step 1". The end line is not counted toward printing it; when the line
+    prints, its counts still include it."""
+    if has_log:
+        write_install_log(fake_mac)
+    else:
+        (fake_mac["setup"] / "install.log").unlink(missing_ok=True)
+    write_friction(fake_mac, friction)
+    _text, summary = summary_of(fake_mac)
+    if outcome is not None:
+        assert summary.strip().splitlines()[0].startswith(f"- **outcome: {outcome}**"), summary
+    if line is None:
+        assert "- friction (attempt" not in summary, summary
+    else:
+        assert line in summary.splitlines(), summary
 
 
 def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[str, Path]) -> None:
