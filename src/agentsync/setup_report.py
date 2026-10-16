@@ -3678,7 +3678,10 @@ def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[
     return [(run_id, fields, lines) for run_id, (fields, lines) in runs.items()]
 
 
-_AGENTSYNC_NOTE_WORDS = {"waited-for-a-background-sync": "waited for another sync to end"}
+_AGENTSYNC_NOTE_WORDS = {
+    "waited-for-a-background-sync": "waited for another sync to end",
+    "current": "already current, not reinstalled",  # B13 round 12 N33: "agentsync 0s, current" read as code
+}
 """install.log's agentsync-step note -> the report's words (B13 round 9 K35): the note does not say who
 started the sync step 2 waited for (H33; install.sh's wait line names it only when the holder's sidecar says,
 B13 round 11 M43), so "background" claimed one. The token stays, in install.log and for its readers."""
@@ -3687,8 +3690,9 @@ B13 round 11 M43), so "background" claimed one. The token stays, in install.log 
 def _agentsync_note(note: str) -> str:
     """install.log's agentsync-step note in the report's words: ``waited-for-a-background-sync``
     (:data:`_AGENTSYNC_NOTE_WORDS`), ``wait-ran-out-after-<N>s`` and ``lock-not-taken-rc<N>``, the two that
-    carry a number (B13 round 10 L35: shown as their raw tokens). No parenthesis: the Summary puts the note in
-    one. A note none of these is shown as it is."""
+    carry a number (B13 round 10 L35: shown as their raw tokens). No parenthesis: the Installer table puts
+    the note in one, and the Summary's step list puts it after a comma (B13 round 12 N33). A note none of
+    these is shown as it is."""
     if (ran_out := re.fullmatch(r"wait-ran-out-after-(\d+)s", note)) is not None:
         return f"waited {ran_out.group(1)}s for another sync, then reinstalled while it was still running"
     if (untaken := re.fullmatch(r"lock-not-taken-rc(\d+)", note)) is not None:
@@ -7349,7 +7353,9 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             if note.group(4) or note.group(5):
                 text += ", after waiting for another sync to end"
         elif v.get("note"):
-            text += f" ({_first_sync_note(v['note'])})"
+            # after a comma, not in a bracket of its own: the source tag is the line's one trailing bracket
+            # (round 6 G34; B13 round 12 N14, N33 found "(lock busy: ...) (install.log)")
+            text += f", {_first_sync_note(v['note'])}"
         if borrowed:
             text += (
                 f" (install.log: the install run of {_iso(pool[-1].started)}, before this attempt; this "
@@ -7696,10 +7702,11 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: dateti
     last = installs[-1]
     status = _exit_text(last, r.install_runs) if last.rc is not None else f"no end line ({_open_state(last)})"
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
-    # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts.
+    # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
+    # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33)
     steps = " · ".join(
         f"{k} {v.get('seconds', '?')}s"
-        + (f" ({_agentsync_note(v['note'])})" if k == "agentsync" and v.get("note") else "")
+        + (f", {_agentsync_note(v['note'])}" if k == "agentsync" and v.get("note") else "")
         for k, v in last.steps
         if k != "report"
     )

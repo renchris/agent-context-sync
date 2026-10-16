@@ -1908,7 +1908,7 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
     r.install_runs = runs
     assert setup_report._install_line(r, runs, scoped=False) == (
         "- install.sh: 1 install run; the last exit 0 after 60s "
-        "(agentsync 59s (waited for another sync to end) · config 1s)"
+        "(agentsync 59s, waited for another sync to end · config 1s)"
     )
     # B13 round 9 K35: the install note does not say who started the sync (H33, round 11 M80), so neither line
     # says "background"; install.log keeps its token, and a note the map does not know is shown as it is
@@ -1931,7 +1931,7 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
         table = "\n".join(setup_report._step_table(list(runs[-1].steps)))
         assert f"| done ({words}) |" in table and token not in table and "background" not in table, table
         line = setup_report._install_line(r, runs, scoped=False)
-        assert f"(agentsync 59s ({words}) · config 1s)" in line and token not in line, line
+        assert f"(agentsync 59s, {words} · config 1s)" in line and token not in line, line
         log.write_text(noted.replace(f"note={token}", "note=waited-for-a-background-sync"), encoding="utf-8")
 
 
@@ -10236,6 +10236,53 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     assert " · 1 read(s) again (0 of them could not be converted and kept their page)\n" in part, part
 
 
+@pytest.mark.parametrize(
+    "note",
+    [
+        *setup_report._FIRST_SYNC_NOTE_WORDS,
+        *(f"agentsync:{n}" for n in setup_report._AGENTSYNC_NOTE_WORDS),
+        "agentsync:wait-ran-out-after-600s",
+        "agentsync:lock-not-taken-rc75",
+    ],
+)
+def test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side(
+    fake_mac: dict[str, Path], note: str
+) -> None:
+    """B13 round 12 N14, N33: ``agentsync 62s (waited for another sync to end)`` sat inside the step list's
+    own bracket, and ``rc 75 (lock busy: ...) (install.log)`` put two brackets side by side, also on the
+    borrowed line of an attempt that ran no install.sh. A note follows a comma; the source tag is the line's
+    one trailing bracket (round 6 G34)."""
+    if note.startswith("agentsync:"):
+        agentsync = f"seconds=62 rc=0 result=done note={note.split(':', 1)[1]}"
+        first_sync = "seconds=34 rc=0 result=done"
+    else:
+        agentsync = "seconds=41 rc=0 result=done"
+        first_sync = f"seconds=9 rc={'75' if note == 'lock-busy' else '0'} result=skipped note={note}"
+    write_install_log(fake_mac, first_sync=first_sync)
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(
+        log.read_text(encoding="utf-8").replace(
+            "step=agentsync seconds=41 rc=0 result=done", f"step=agentsync {agentsync}"
+        ),
+        encoding="utf-8",
+    )
+    for friction in (V5_HAPPY, STOPPED_V8):  # this attempt's run, and the borrowed earlier run
+        write_friction(fake_mac, friction)
+        _text, summary = summary_of(fake_mac)
+        lines = [
+            ln
+            for ln in summary.splitlines()
+            if ln.startswith(("- install.sh: ", "- first sync: ", "- sync: "))
+        ]
+        assert len(lines) == 2, summary
+        for line in lines:
+            assert not re.search(r"\([^()]*\(", line), line  # no bracket inside another
+            assert not re.search(r"\)\s*\(", line), line  # no two side by side
+    if not note.startswith("agentsync:") and note != "waited-for-the-lock":  # that one is the counts' clause
+        [line] = [ln for ln in summary.splitlines() if ln.startswith(("- first sync: ", "- sync: "))]
+        assert f", {setup_report._first_sync_note(note)} (install.log: the install run of " in line, line
+
+
 def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
     """B13 round 12 N48: the helpers row read ``skipped (config-unreadable)`` beside worded first-sync and
     agentsync rows, and ``no-interpreter`` is explained nowhere else in the report. install.log keeps its
@@ -10290,7 +10337,8 @@ def test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary(
     [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
     assert note not in line, line
     if not note.startswith("converted-") and note != "waited-for-the-lock":
-        assert f" ({words}) (install.log)" in line, line
+        # B13 round 12 N14, N33: after a comma; the source tag is the line's one trailing bracket
+        assert f", {words} (install.log)" in line and ") (" not in line, line
 
 
 def _shell_local_work_line(home: Path, setup: Path) -> str | None:

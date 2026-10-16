@@ -18873,6 +18873,9 @@ M82: `_SPLIT_RE` reads the CLI's `, K of them withheld by the label rule` after 
 older line parses as before. M12: the OCR part's re-read count names first reads (`reread_first`), as the CLI and
 the Summary have since L34. Tests: `test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary`,
 `test_first_sync_clause_carries_the_read_again_count`, `test_the_ocr_part_calls_a_first_read_a_first_read`.
+Amended 2026-10-16, §16.98 N14, N33: in the Summary a note follows a comma, not a bracket of its own: `skipped in
+601s, rc 75, lock busy: another sync held the lock past the wait (install.log)`, `(uv 0s · agentsync 62s, waited for
+another sync to end · config 1s)`; the Installer table keeps one bracket.
 
 **The local-work line in a checkout whose `.git` is a file, and which branches are empty** (M49, M70, M54, M71;
 dated lines at §16.86 L58 and §16.80 K30). v19 pulls a checkout whose `.git` is a file and keeps work there, but both readers
