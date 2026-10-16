@@ -4786,6 +4786,7 @@ longest run of them, so none can close the span; **§16.68 H48:** alarm lines ar
 **§16.68 H73:** a source a run did not select shows the last selecting run's lines as `alarm (run N):`);
 QUARANTINE.tsv and new CHANGELOG month files start with an untrusted-names line; `policy.BOUNDARY_TEXT` names
 `_sync/`, CHANGELOG, `_manifest/` and sidecars as untrusted.
+Amended 2026-10-16, §16.102 N73: alarm lines are cut at 16,000 characters, not 6000.
 
 **Governance (security-governance-10/11/14).** A successful RECONCILE runs `compact_history(lock=False)` when
 `compaction_due`; a hold suspends it and STATE.md says so under `## Retention`. `governance.compaction_state(repo,
@@ -16071,6 +16072,9 @@ take `_ALARM_MAX` (6000: five relative paths at macOS's 1024-character limit fit
 messages keep 300. No name is cut: a tail cut makes sibling paths with a shared start identical. Tests:
 `test_loop.py::test_state_md_keeps_the_five_long_folder_names_the_empty_folder_wait_points_at`,
 `test_loop.py::test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at`.
+Amended 2026-10-16, §16.102 N73: `_ALARM_MAX` is 16,000. Since §16.95 M5, M45 the mixed alarm names up to ten
+folders, five it could not read, each with its reason, and five empty ones; at 6000 one with 1024-character names
+lost its advice and its last names.
 
 **H37: quoted text keeps its backticks, inside a fence they cannot close (`agentsync.publish`).** `_quoted`
 turned every backtick into a single quote, so the command an alarm quotes in backticks read otherwise in STATE.md
@@ -19870,6 +19874,14 @@ the caller to the YAML parse. J55's test reads the decoded `reason:` through `_f
 and M79's test the verdict. Tests: `test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`,
 `test_cycle.py::test_a_stub_pages_lines_say_withheld_as_its_yaml_parse_does`,
 `test_deploy_pack.py::test_a_page_read_that_says_neither_can_disagree_with_the_tsv`.
+
+**STATE.md keeps the mixed unknown-folder alarm whole (N73; `agentsync.publish`; amends §16.68 H48).** `_ALARM_MAX`
+was 6000, sized for five names, and since §16.95 M5, M45 the mixed alarm names up to ten: five folders it could not
+read, each with its reason, which may name a 255-character child (`lstat '<child>': EACCES: ...`), and five empty
+cloud folders. With 1024-character names STATE.md cut it inside the empty folders' names, so the advice and the
+words the wait legend points at were gone. It is 16,000: ten such names with their reasons came to 12,257 characters
+(the finder's 12,000 is too small). No test pinned 6000. Test:
+`test_publish.py::test_state_md_keeps_a_mixed_unknown_folder_alarm_whole`.
 
 ### 16.103 Round 12: deploy docs and CONTRACTS cross-references (2026-10-16, wave B13 round 12 lane D)
 

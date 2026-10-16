@@ -1443,6 +1443,34 @@ def test_state_md_carries_the_read_side_contract(env: Env) -> None:
     assert gitops.has_changes(env.repo, ["_sync"]) is False  # gitignored
 
 
+def test_state_md_keeps_a_mixed_unknown_folder_alarm_whole(env: Env) -> None:
+    """B13 round 12 N73: since round 11 M5, M45 the mixed unknown-folder alarm names up to ten folders, five
+    it could not read (each with its reason, which may name a 255-character child) and five empty cloud
+    folders, but ``_ALARM_MAX`` was 6000, sized for five names: at 1024-character names STATE.md cut the line
+    inside the empty folders' names, so the advice and the words the wait legend points at were gone."""
+    from agentsync import arm_local  # noqa: PLC0415
+
+    sid = "contoso-onedrive-projects-alpha-and-beta-shared-2026"
+    arm = arm_local.LocalArm(SourceConfig(id=sid, kind=SourceKind.LOCAL, path=env.repo.parent / "source"))
+    failed = [f"Locked {i}/" + "a" * (1024 - 9) for i in range(5)]
+    empty = [f"Empty {i}/" + "b" * (1024 - 8) for i in range(5)]
+    reason = f"lstat {'c' * 255!r}: EACCES: Permission denied"
+    why = (
+        *(arm_local.UnknownDir(d, arm_local.UNKNOWN_MODE, reason) for d in failed),
+        *(arm_local.UnknownDir(d, arm_local.UNKNOWN_EMPTY, "zero children") for d in empty),
+    )
+    stats = arm_local.WalkStats(
+        1, 10, 0, 0, 0, tuple(failed + empty), None, empty_cloud_dirs=tuple(empty), unknown_why=why
+    )
+    alarm = arm._unknown_alarm(stats, [])  # known_h0 unset: the multi-wait wording, the longer one
+    assert len(alarm) > 12_000 and len(alarm) <= publish._ALARM_MAX, len(alarm)
+    rep = report(SourceReport(sid, SourceKind.LOCAL, PassKind.FULL, False, alarms=(alarm,)))
+    env.pub.write_state(rep, [status(sid)])
+    (line,) = [ln for ln in env.text("_sync/STATE.md").splitlines() if ln.startswith("alarm: ")]
+    assert line.endswith("prints each one too)``") and "…" not in line, line[-200:]
+    assert repr(empty[-1]) in line and repr(failed[-1]) in line
+
+
 def test_state_snapshot_is_committable_and_cursorless(env: Env) -> None:
     env.pub.write_state_snapshot(
         [status("lib", cursor_age_s=5 * 3600 + 100, cursor_fingerprint="abcdef012345")]

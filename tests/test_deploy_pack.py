@@ -5112,6 +5112,7 @@ _ROUND_12_PARAGRAPH_AMENDS = (
     ("16.56", "- cli.py's sign-in lines (`<bin> graph login`)", "§16.101 N13"),
     ("16.29", "- **A set-up Mac with nothing to list is still set up**", "§16.99 N41, N61"),
     ("16.53", "- **It ends without inviting a send** (Q10, Q18, one defect).", "§16.99 N22"),
+    ("16.12", "STATE.md quotes alarms, errors, skipped reasons and lint text in code spans", "§16.102 N73"),
 )
 """Round 12's dated lines at sections its claims name with no item, as :data:`_ROUND_11_PARAGRAPH_AMENDS`."""
 
@@ -5136,9 +5137,10 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     green): 14 at sections a target list names with no item, the class round 11 M81 pinned for round 10 only,
     and 5 beside a line that satisfies the same claim. Each is pinned in its block, as round 10's are; the
     rule that reads one claim's line alone also finds §16.86's M54 line. Round 12's §16.103 N58 has two, and
-    §16.101 (lane B) four."""
+    §16.101 (lane B) four, §16.99 (lane RB) two, §16.102 (lane E) one: N73's at §16.12's STATE.md
+    paragraph."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
-    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 8
+    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 9
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:

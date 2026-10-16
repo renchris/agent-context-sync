@@ -309,11 +309,14 @@ _STATE_WAIT_LEGEND = (
 """The line STATE.md's ``## Next`` ends with when it holds a wait and an alarm here names that wait (B13
 round 8 J33, round 9 K38 and K42): a stored alarm names the wait where a sync prints it, which in this file is
 above the alarm, not after it."""
-_ALARM_MAX = 6000
+_ALARM_MAX = 16_000
 """An alarm line's cap in STATE.md: the waits send the reader there for the folder names an alarm holds, and
-an alarm names up to five, each in full (five relative paths at macOS's 1024-character limit fit); at
-:data:`_REASON_MAX` five nested OneDrive paths lost their last names and the ``(+N more ...)`` tail (B13 round
-7 H48). Errors, skipped reasons and lint messages keep 300."""
+an alarm names up to ten, each in full: five it could not read, each with its reason, which may name a
+255-character child (``lstat '<child>': EACCES: ...``), and five empty cloud folders (B13 round 11 M5,
+M45), so ten relative paths at macOS's 1024-character limit fit with their reasons, the ``(+N more ...)``
+tails and the advice; at 6000, sized for five, the mixed alarm lost its advice and its last names (round
+12 N73), and at :data:`_REASON_MAX` five nested OneDrive paths lost their last names and the tail (round 7
+H48). Errors, skipped reasons and lint messages keep 300."""
 STUB_RENDER = 6
 """The version of a stub page's rendering (``Publisher._plan_stub``): bump it whenever a stub's text changes
 for a reason the stored state already holds. An unchanged refused row is never planned again, so the cycle
