@@ -902,6 +902,26 @@ the lane's own pane. A queued push was rejected each time an earlier lane landed
 Round 12: the round 11 workflow on `8814baa0` with prompt v20 (run `wf_af97f220-5f1`, outputs `round12/`); scenario B
 copies built helpers instead of building the v10 ones (M20).
 
+### B13 round 12: v20 rehearsal, cross-lane review, harvest (2026-10-16)
+
+Run `wf_af97f220-5f1` on `8814baa0` (91 agents, 0 errors). All six scenarios pass their EXPECTED, and the field
+Mac's path is clean (v10 build with copied helpers, pulled to v20, no stop, "fully one command"). 80 findings, 76
+confirmed (3 turn, 14 wrong, 59 small), 4 refuted; 8 need prompt text, so the next prompt is v21. All three turns are
+one regression from round 11's new sign-in exit (M4): it fires on a Mac that is signed in when a synced folder was
+only renamed or moved, or when the installed build is current and the config is unreadable, and v20 then asks for
+a sign-in (N29, N41, N61; N53 is the same in doctor). Rehearsal safety: scenario E's v10 build also wrote the real
+home's SwiftPM cache (N77), and a real-home mtime check cannot tell scenarios apart (N19); round 13's kit copies
+helpers for every pre-`8b47c900` build and checks each sandbox's own TMPDIR instead.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76 over rounds 2 and 4 to 12; turns 3, 0, 0, 1, 5, 2, 4,
+1, 1, 3; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14. The total has held between 74 and 99 for nine rounds. The
+operator's stop question expired unanswered, so the loop goes on to a round that confirms nothing.
+
+Lanes (`--account auto`, CONTRACTS §16.98 to §16.103, brief `lanes/COMMON11.md`, which adds a both-states test rule
+for any new stop or exit): RA 19 (setup_report.py), RB 14 (install.sh, the sign-in exit), P 6 (prompt v21), B 14
+(loop, arm_local, cli, doctor), E 7 (cycle counts, speech, publish), D 13 (docs/deploy, CONTRACTS). Lead: N19 and
+N77 (round 13's kit), N80 (one operator cleanup, `b13-r11`, replacing the `b13-r10` one).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

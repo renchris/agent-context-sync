@@ -19441,3 +19441,27 @@ is lane RB's file, so its build stands and this lane built none of its own (`234
 rewording the line to `(the background job, or one started outside it)` without reading the sidecar, was written
 before that landed and dropped at the rebase. The one place §16.93 left, a comment in `test_setup_report.py`'s K35
 test that still said the lock does not say who started the sync, now says the install note does not.
+
+### 16.98 Round 12: setup report (2026-10-16, wave B13 round 12 lane RA)
+
+Reserved for round 12 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 12").
+
+### 16.99 Round 12: installer, the sign-in exit and the shell report (2026-10-16, wave B13 round 12 lane RB)
+
+Reserved for round 12 lane RB of B13.
+
+### 16.100 Round 12: setup prompt v21 (2026-10-16, wave B13 round 12 lane P)
+
+Reserved for round 12 lane P of B13.
+
+### 16.101 Round 12: waits, read advice, status and doctor (2026-10-16, wave B13 round 12 lane B)
+
+Reserved for round 12 lane B of B13.
+
+### 16.102 Round 12: per-source counts, speech and stubs (2026-10-16, wave B13 round 12 lane E)
+
+Reserved for round 12 lane E of B13.
+
+### 16.103 Round 12: deploy docs and CONTRACTS cross-references (2026-10-16, wave B13 round 12 lane D)
+
+Reserved for round 12 lane D of B13.
