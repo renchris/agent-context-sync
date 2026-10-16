@@ -11,8 +11,9 @@ rule wins:
    yet: sync again (online-only files waiting for a download budget are a note, and a folder listing a sync
    ran but could not finish is an operator wait, never this rule: another sync would not clear either,
    unless sources.toml by now excludes every empty cloud folder that stopped it and no other folder the last
-   walk could not list remains unexcluded; a recording still being read is a note, or a wait while no
-   background sync is installed to read it, never this rule);
+   walk could not list remains unexcluded, also when it stored no empty cloud folder (B13 round 12 N52), or
+   no longer sets the sentinel that walk missed (N51); a recording still being read is a note, or a wait
+   while no background sync is installed to read it, never this rule);
 4. no curated page and no ``_eval/questions.md``: draft the baseline questions;
 5. ``_eval`` is still a draft: stop, the operator confirms;
 6. no curated page and no ``_eval/results-*-before.md``: run the 'before' baseline in a fresh session;
@@ -69,6 +70,7 @@ from agentsync.cycle import (
     _ROOT_UNLISTED_META,
     _SCOPE_ROOT_META,
     _SEED_PAGE_NAMES,
+    _SENTINEL_MISSING_META,
     _UNLISTED_DIRS_META,
     _UNLISTED_KINDS_META,
     HYDRATION_REFUSED,
@@ -177,8 +179,9 @@ def _shown(path: Path) -> str:
 # to five folders does not hold). Count-free, since no wait's own count equals the alarm's.
 _UP_TO_FIVE = "up to five, and past five how to list the rest"
 # what a could-not-be-listed wait says the alarm names: no count and no cause (B13 round 10 L67); a walk
-# incomplete only for its missing sentinel has its own wait since B13 round 11 M59, but a walk from before the
-# folders were stored, with a sentinel, may still land here, and its alarm names the sentinel, no folder
+# incomplete only for its missing sentinel has its own wait since B13 round 11 M59, keyed on the sentinel
+# the walk stored as missing (round 12 N51), so a walk from before that was stored, with a sentinel, may
+# still land here, and its alarm names the sentinel, no folder
 _WHAT_FAILED = f"what could not be listed, {_UP_TO_FIVE}"
 
 
@@ -554,6 +557,37 @@ def _access_fix(kinds: frozenset[str] | None) -> str:
     return ", and ".join(parts)
 
 
+# the cause a could-not-be-listed wait names when the walk stored no kind it knows (B13 round 12 N12, N38)
+_ANY_CAUSE = "no access, or a missing folder or sentinel"
+
+
+def _unlisted_cause(kinds: frozenset[str] | None, sentinel: str | None) -> str:
+    """The cause a could-not-be-listed wait names, before "; another sync does not clear it", for folders of
+    ``kinds`` (:func:`_unlisted_kinds`) in a source whose sources.toml sets ``sentinel`` (B13 round 12 N12,
+    N38): it said "no access, or a missing folder or sentinel" beside an EACCES fix, on a source with no
+    sentinel. The refusal by its errno (the fix beside it says what that means), a provider error or a folder
+    that vanished as the walk's alarm says; "or a missing sentinel" only while one is set, since a walk that
+    also missed it lands here, not in the sentinel wait. No kind, or one this build does not know: every
+    cause."""
+    if not kinds or not kinds <= {UNKNOWN_PRIVACY, UNKNOWN_MODE, UNKNOWN_OTHER}:
+        return _ANY_CAUSE
+    refused = [code for kind, code in ((UNKNOWN_PRIVACY, "EPERM"), (UNKNOWN_MODE, "EACCES")) if kind in kinds]
+    parts = [f"refused with {' or '.join(refused)}"] if refused else []
+    if UNKNOWN_OTHER in kinds:
+        parts.append("a sync-app error or a folder that vanished")
+    return ", or ".join(parts) + (", or a missing sentinel" if sentinel else "")
+
+
+def _mirrored_below(manifest: Manifest, src: SourceConfig, folders: Sequence[str]) -> bool:
+    """Whether the mirror holds a file at or below any of ``folders``, folders the source's last walk could
+    not list (B13 round 11 M57): then excluding one retires pages at once, and its wait keeps the safe words.
+    True when ``folders`` is empty: no folder is known, so no plain exclude is offered (B13 round 12 N54)."""
+    if not folders:
+        return True
+    rows = manifest.iter_items(src.id, states=_PRESENT)
+    return any(files_below(folders, (r.rel_path for r in rows if not r.is_dir))[0].values())
+
+
 def _missed(manifest: Manifest, source_id: str) -> int:
     """The mirrored files the source's last walk did not list, of those last listed under the root it has
     now (manifest meta ``scope_root:<id>``, ``<run>:<path>``): a complete pass retires a row last listed under
@@ -642,6 +676,27 @@ def next_step(
         for sid in sources:
             about[sid] = about.get(sid, 0) + 1
 
+    def cannot_list(manifest: Manifest, src: SourceConfig, other: list[str], missed: int) -> None:
+        """``src`` gets the could-not-be-listed wait for ``other``, the folders its last walk could not list:
+        its fix and cause by their kinds, and ``missed`` with the safe words (B13 round 12 N12, N38)."""
+        unlisted.append((src.id, missed))
+        kinds = _unlisted_kinds(manifest, src, other)
+        access_fixes[src.id] = _access_fix(kinds)
+        causes[src.id] = _unlisted_cause(kinds, src.sentinel)
+
+    def cannot_list_any(manifest: Manifest, src: SourceConfig, other: list[str]) -> None:
+        """As :func:`cannot_list` with the files the last walk missed, where no empty cloud folder takes that
+        count: folders holding no mirrored file get the plain exclude, as the walk's alarm offers it, and the
+        count a clause of its own, with no exclude warning, since excluding them retires nothing (B13 round 12
+        N54: the wait warned against the exclude the alarm offered)."""
+        missed = _missed(manifest, src.id)
+        if other and not _mirrored_below(manifest, src, other):
+            cannot_list(manifest, src, other, 0)
+            if missed:
+                held_elsewhere[src.id] = missed
+        else:
+            cannot_list(manifest, src, other, missed)
+
     # a kept upstream deletion is no wait: no run clears it while its file is listed; once the file is gone it
     # is a queued purge again, and the wait returns. A kept label escalation is no wait either: its file is
     # published again, and running it would erase that page (B13 round 6 G30)
@@ -669,8 +724,13 @@ def next_step(
     files = _Files()
     incomplete: list[str] = []
     unlisted: list[tuple[str, int]] = []  # a local listing ran but could not finish: the operator's to fix
-    # ... the fix for each such source's folders, by their kinds (:func:`_access_fix`)
+    # ... the fix for each such source's folders, by their kinds (:func:`_access_fix`), and the cause
+    # (:func:`_unlisted_cause`)
     access_fixes: dict[str, str] = {}
+    causes: dict[str, str] = {}
+    # ... whose folders hold no mirrored file, with the files its last walk missed elsewhere (B13 round 12
+    # N54)
+    held_elsewhere: dict[str, int] = {}
     root_kinds: dict[str, frozenset[str] | None] = {}  # the kind of each root it could not list
     in_all: set[str] = (
         set()
@@ -732,20 +792,10 @@ def next_step(
                             # on the empty folders' line, as with no such folder.
                             other = _unlisted_dirs(manifest, src)
                             also = bool(other) and src.kind is SourceKind.LOCAL
-                            held_below = also and any(
-                                files_below(
-                                    other,
-                                    (
-                                        r.rel_path
-                                        for r in manifest.iter_items(src.id, states=_PRESENT)
-                                        if not r.is_dir
-                                    ),
-                                )[0].values()
-                            )
+                            held_below = also and _mirrored_below(manifest, src, other)
                             empty.append((src, below, clear, collides, 0 if held_below else missed))
                             if also:
-                                unlisted.append((src.id, missed if held_below else 0))
-                                access_fixes[src.id] = _access_fix(_unlisted_kinds(manifest, src, other))
+                                cannot_list(manifest, src, other, missed if held_below else 0)
                                 if held_below and any(below.values()):
                                     in_all.add(src.id)
                             elif other:
@@ -756,28 +806,35 @@ def next_step(
                             # Every empty cloud folder is excluded since that walk, but a folder it could not
                             # read beside them is not: another sync does not complete the listing (B13 round
                             # 11 M58), so its wait stays.
-                            unlisted.append((src.id, _missed(manifest, src.id)))
-                            access_fixes[src.id] = _access_fix(_unlisted_kinds(manifest, src, other))
+                            cannot_list_any(manifest, src, other)
                         elif stored:
                             incomplete.append(src.id)  # all excluded since that walk: the next sync lists it
                         elif manifest.get_meta(_ROOT_UNLISTED_META + src.id):
                             root_unlisted.append(src.id)
                             root_kinds[src.id] = _unlisted_kinds(manifest, src, ["."])
-                        elif (
-                            src.sentinel
-                            and last is not None
-                            and not last.error
-                            and not manifest.get_meta(_UNLISTED_DIRS_META + src.id)
+                        elif other := _unlisted_dirs(manifest, src):
+                            cannot_list_any(manifest, src, other)
+                        elif (missed_sentinel := manifest.get_meta(_SENTINEL_MISSING_META + src.id)) and not (
+                            last is not None and last.error
                         ):
-                            # No empty folder, no unlisted root and no other folder stored (read before the
-                            # exclude, which may prune one): a walk of this build is then incomplete only for
-                            # its missing sentinel, which no grant or exclude clears (B13 round 11 M59); a
-                            # pass that failed after its walk stored nothing, so it keeps the folder wait
-                            sentinel_missing.append(src.id)
+                            # No empty folder, no unlisted root and no other folder left unexcluded: the walk
+                            # stored the sentinel it missed, which no grant or exclude clears (B13 round 11
+                            # M59), while sources.toml still sets it; removed or changed since, the next sync
+                            # looks again (round 12 N51: keyed on today's config, a removed sentinel turned
+                            # this into a could-not-be-listed wait no sync kept). A pass that failed after its
+                            # walk stored nothing new, so it keeps the folder wait.
+                            if src.sentinel == missed_sentinel:
+                                sentinel_missing.append(src.id)
+                            else:
+                                incomplete.append(src.id)
+                        elif manifest.get_meta(_UNLISTED_DIRS_META + src.id):
+                            # every folder that walk could not list is excluded since: the next sync lists
+                            # it, as with the empty folders above (B13 round 12 N52)
+                            incomplete.append(src.id)
                         else:
-                            unlisted.append((src.id, _missed(manifest, src.id)))
-                            other = _unlisted_dirs(manifest, src)
-                            access_fixes[src.id] = _access_fix(_unlisted_kinds(manifest, src, other))
+                            # nothing stored that names the cause: state from before B13 round 10 L68 or
+                            # round 12 N51, or a pass that failed after its walk
+                            cannot_list_any(manifest, src, [])
                     else:
                         incomplete.append(src.id)
                 if row is not None and row.breaker_tripped_at is not None:
@@ -874,23 +931,32 @@ def next_step(
             names_source(src.id)
     # A source whose last walk missed mirrored files gets its own line: excluding the folder retires their
     # pages at once (the gone line's warning), so that line never offers the exclude as a plain choice.
-    # One line for every such source with the same fix (B13 round 11 M42: the fix follows the kinds the walk
-    # stored, so sources whose folders were refused differently cannot share one).
-    by_fix: dict[str, list[str]] = {}
+    # One line for every such source with the same fix and cause (B13 round 11 M42: the fix follows the kinds
+    # the walk stored, so sources whose folders were refused differently cannot share one; round 12 N12, N38:
+    # nor can a source with a sentinel and one without, or one of no stored kind). A source whose last walk
+    # missed files elsewhere has a line of its own, which counts them (B13 round 12 N54).
+    by_fix: dict[tuple[str, str, str], list[str]] = {}
     for sid in sorted(s for s, missed in unlisted if not missed):
-        by_fix.setdefault(access_fixes.get(sid, _access_fix(None)), []).append(sid)
-    for fix, bare in by_fix.items():
+        key = (causes.get(sid, _ANY_CAUSE), access_fixes.get(sid, _access_fix(None)))
+        by_fix.setdefault((*key, sid if sid in held_elsewhere else ""), []).append(sid)
+    for (cause, fix, _own), bare in by_fix.items():
+        held_there = (
+            f"; the last walk of {bare[0]} did not list {held_elsewhere[bare[0]]} file(s) the mirror still "
+            f"has, and their deletion stays held until a sync lists {bare[0]} in full"
+            if bare[0] in held_elsewhere
+            else ""
+        )
         waits.append(
             # "one or more", never "a folder", and the alarm named by what it names (B13 round 10 L48, L67):
             # the wait does not count the folders, and the alarm names five of six
-            f"one or more folders in {bare[0]} could not be listed (no access, or a missing folder or "
-            f"sentinel; another sync does not clear it): {named(bare, _WHAT_FAILED)}; {fix}, or add each one "
-            f"to that source's exclude in {_shown(config.config_path)}"
+            f"one or more folders in {bare[0]} could not be listed ({cause}; another sync does not clear "
+            f"it): {named(bare, _WHAT_FAILED)}; {fix}, or add each one to that source's exclude in "
+            f"{_shown(config.config_path)}{held_there}"
             if len(bare) == 1
             # One line for every such source, plural throughout (B13 round 7 H50): "a folder in A, B" and
             # "that source's exclude" read as one folder of one source.
             else f"one or more folders in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed "
-            "(no access, or a missing folder or sentinel; another sync does not clear it): "
+            f"({cause}; another sync does not clear it): "
             f"{named(bare, _WHAT_FAILED)}; {fix}, or add each to its source's "
             # the config by its path, as the empty-folder wait names it (B13 round 9 K43)
             f"exclude in {_shown(config.config_path)}"
@@ -898,7 +964,7 @@ def next_step(
         names_source(*bare)
     for sid, missed in sorted((s, m) for s, m in unlisted if m):
         waits.append(
-            f"one or more folders in {sid} could not be listed (no access, or a missing folder or sentinel; "
+            f"one or more folders in {sid} could not be listed ({causes.get(sid, _ANY_CAUSE)}; "
             f"another sync does not clear it): {named([sid], _WHAT_FAILED)}; "
             f"{access_fixes.get(sid, _access_fix(None))} (the safe fix); "
             + (

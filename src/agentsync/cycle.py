@@ -288,6 +288,12 @@ other than an empty cloud folder ("." for the root), each with its kind (``arm_l
 EPERM, ``UNKNOWN_MODE`` for EACCES, ``UNKNOWN_OTHER``), a JSON object ("" when there were none).
 ``loop.next_step`` words the fix of a could-not-be-listed wait by it; a folder it does not hold (state from
 before B13 round 11 M42) keeps the generic words."""
+_SENTINEL_MISSING_META = "sentinel_missing:"
+"""Manifest meta ``sentinel_missing:<source id>``: the sentinel the source's last walk looked for and did not
+find, as sources.toml set it then ("" when it found it, or none was set). ``loop.next_step`` gives the source
+its sentinel wait by it while sources.toml still sets that sentinel, and says sync again once it is removed or
+changed (B13 round 12 N51: keyed on today's config, removing the sentinel turned the wait into a false
+could-not-be-listed one)."""
 HYDRATION_REFUSED = "hydration-refused"
 """``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
 later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
@@ -3007,11 +3013,11 @@ class _Cycle:
         )
         return scan, pc, rows, fast_ids, restamp
 
-    def _note_empty_dirs(self, source_id: str, stats: WalkStats | None) -> None:
+    def _note_empty_dirs(self, source_id: str, stats: WalkStats | None, sentinel: str | None = None) -> None:
         """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), whether its root was
         unlisted (:data:`_ROOT_UNLISTED_META`), the other folders it could not list
-        (:data:`_UNLISTED_DIRS_META`) and the kind of each (:data:`_UNLISTED_KINDS_META`), each written only
-        on a change."""
+        (:data:`_UNLISTED_DIRS_META`), the kind of each (:data:`_UNLISTED_KINDS_META`) and the ``sentinel`` it
+        did not find (:data:`_SENTINEL_MISSING_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
         root = stats is None or stats.unknown_dirs == (".",)
         other = sorted(set(stats.unknown_dirs) - set(found) - {"."}) if stats is not None else []
@@ -3024,6 +3030,10 @@ class _Cycle:
             (
                 _UNLISTED_KINDS_META + source_id,
                 json.dumps(kinds, ensure_ascii=False, sort_keys=True) if kinds else "",
+            ),
+            (
+                _SENTINEL_MISSING_META + source_id,
+                (sentinel or "") if stats is not None and stats.sentinel_present is False else "",
             ),
         ):
             if (self.manifest.get_meta(key) or "") != value:
@@ -3088,7 +3098,7 @@ class _Cycle:
                 if scan.pass_kind is PassKind.FULL:
                     self.manifest.set_enumeration_complete(src.id, scan.enumeration_complete, self.run_id)
                 if isinstance(arm, LocalArm):
-                    self._note_empty_dirs(src.id, arm.last_stats)
+                    self._note_empty_dirs(src.id, arm.last_stats, src.sentinel)
                 self.manifest.record_source_pass(
                     self.run_id,
                     src.id,
