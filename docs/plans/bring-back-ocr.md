@@ -922,6 +922,30 @@ for any new stop or exit): RA 19 (setup_report.py), RB 14 (install.sh, the sign-
 (loop, arm_local, cli, doctor), E 7 (cycle counts, speech, publish), D 13 (docs/deploy, CONTRACTS). Lead: N19 and
 N77 (round 13's kit), N80 (one operator cleanup, `b13-r11`, replacing the `b13-r10` one).
 
+### B13 round 12 landed (2026-10-16)
+
+All six lanes landed; CI green on `2551fd70` (prompt v21). Notes `lanes/r12-<lane>.md`. No item is recorded as making
+things worse; a few optional extras the verifiers offered were left out with a reason in the notes (N6's no-report
+variant, N53's "Add shortcut to My files"). The sign-in exit regression (N29, N41, N61) is fixed in install.sh and
+v21, with guide and pin follow-ons for lane D's new text. N5 is split: prompt half in v21 (`2c583924`), report half
+by lane RA (`f2a97b10`).
+
+| Lane | Landed (lane commits; ranges can hold another lane's) |
+|---|---|
+| B | `48ca7e9c..c3b1915b`, 7 commits |
+| D | `0089aa9f^..579261da`, 7 commits |
+| P | `2c583924` (v21, with lane RB's words) |
+| RB | `2c583924..6dc84f79`, 13 commits |
+| E | `e5fd9f5d^..c2130fdb`, 4 commits |
+| RA | `c2130fdb..2551fd70`, 19 commits |
+
+Learnings: lane D's new completeness test (every dated line from §16.92 on must be claimed or pinned) made each later
+lane add pins at rebase; relaying it to the lanes still building kept their gates green. A lane that finishes early
+cannot take a later sha from another lane, so cross-lane splits are recorded here.
+
+Round 13: the round 12 workflow on `2551fd70` with prompt v21 (run `wf_54651985-298`, outputs `round13/`); scenarios B
+and E copy built helpers for every pre-`8b47c900` build and check their own TMPDIR (N19, N77).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
