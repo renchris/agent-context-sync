@@ -16839,6 +16839,8 @@ Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
 `test_the_summary_says_why_a_folder_list_could_not_read_the_config`.
 Amended 2026-10-14, §16.80 K23: the row reads `done (listed-6: could not read which folders are synced, because
 <why>)`, with one colon.
+Amended 2026-10-16, §16.98 N4: the note is in words, `done (listed 6 folder(s): 2 already synced)`; install.log keeps
+`listed-6`.
 
 **The all-zero re-read line** (J3, J15, J41). The clause naming the early OCR build on every Mac is gone ("from before
 OCR" covers it) and the run sentence is one clause; every branch stays. Where a bracket follows the term's first
@@ -17437,6 +17439,8 @@ Amended 2026-10-14, §16.86 L22, L45: the cell reads `could not read which folde
 <why>`, so "could not load it" refers to the file.
 Amended 2026-10-14, §16.87 L37: the `failed` words read `the installed agentsync failed while reading it`, and
 install.sh's warning now names the class too (`... failed while reading it and raised SyntaxError`).
+Amended 2026-10-16, §16.98 N4: every list row starts `listed N folder(s): ` in place of `listed-6: `, with one
+colon still.
 
 **An older copy's stop followed within two minutes stays a failure** (K11; dated line at §16.74 J9). A rehearsal
 copied a fresh prompt into a new session 23 s after the installer stopped a stale copy, and the report called the

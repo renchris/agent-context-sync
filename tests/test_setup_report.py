@@ -9716,10 +9716,10 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
 
     head = "seconds=2 rc=0 result=done note=listed-6"
     # one colon, after the note: the words join the identifier as a clause (B13 round 9 K23, K36)
-    unread = "done (listed-6: could not read which folders sources.toml syncs, because "
-    assert cell(f"{head} synced=2") == "done (listed-6: 2 already synced)"
-    assert cell(f"{head} synced=0") == "done (listed-6: 0 already synced)"
-    assert cell(head) == "done (listed-6)"
+    unread = "done (listed 6 folder(s): could not read which folders sources.toml syncs, because "
+    assert cell(f"{head} synced=2") == "done (listed 6 folder(s): 2 already synced)"
+    assert cell(f"{head} synced=0") == "done (listed 6 folder(s): 0 already synced)"
+    assert cell(head) == "done (listed 6 folder(s))"
     assert cell(f"{head} synced=unreadable marks=no-tool") == f"{unread}no agentsync was installed)"
     assert cell(f"{head} synced=unreadable marks=timeout") == f"{unread}the reader took over 10 s)"
     assert cell(f"{head} synced=unreadable marks=older:is_under") == (
@@ -9735,8 +9735,23 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
     assert cell(f"{head} synced=unreadable marks=failed:Bad-Name!x") == (
         f"{unread}the installed agentsync failed while reading it)"
     )
-    assert cell(f"{head} synced=Contoso") == "done (listed-6)"
-    assert cell(f"{head} synced=1234567") == "done (listed-6)"
+    assert cell(f"{head} synced=Contoso") == "done (listed 6 folder(s))"
+    assert cell(f"{head} synced=1234567") == "done (listed 6 folder(s))"
+    # B13 round 12 N4: every note install.sh writes for the list is in words, as first-sync's are (M40);
+    # install.log keeps its tokens, and a note the report does not know is shown as it is
+    failed = "seconds=0 rc=3 result=failed"
+    assert cell(f"{failed} note=no-folders") == "failed, rc 3 (no folders are synced yet in CloudStorage)"
+    assert cell(f"{failed} note=not-signed-in synced=2") == (
+        "failed, rc 3 (OneDrive is not signed in on this Mac: 2 already synced)"
+    )
+    assert cell("seconds=0 rc=4 result=failed note=denied") == (
+        "failed, rc 4 (this terminal app was denied access to the folders)"
+    )
+    assert cell("seconds=0 rc=4 result=failed note=tcc-pending") == (
+        "failed, rc 4 (macOS is asking whether this terminal app may read the folders)"
+    )
+    assert cell(f"{failed} note=some-new-note") == "failed, rc 3 (some-new-note)"
+    assert "listed-" not in cell(f"{head} synced=2")
     # only the list step reads synced=: another step that logged one is as before
     config = setup_report._step_table([("config", {"result": "done", "note": "created", "synced": "2"})])[-1]
     assert config.split("|")[3].strip() == "done (created)"

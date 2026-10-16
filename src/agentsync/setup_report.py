@@ -3720,6 +3720,25 @@ def _first_sync_note(note: str) -> str:
     return _FIRST_SYNC_NOTE_WORDS.get(note, note)
 
 
+_LIST_FOLDERS_NOTE_WORDS = {
+    "denied": "this terminal app was denied access to the folders",
+    "tcc-pending": "macOS is asking whether this terminal app may read the folders",
+    "not-signed-in": "OneDrive is not signed in on this Mac",
+    "no-folders": "no folders are synced yet in CloudStorage",
+}
+"""install.log's list-folders notes with no number -> the report's words (B13 round 12 N4)."""
+
+
+def _list_folders_note(note: str) -> str:
+    """install.log's list-folders note in the report's words, as :func:`_first_sync_note` gives the first-sync
+    step's (B13 round 12 N4: the row read ``done (listed-6)`` beside worded first-sync and agentsync rows).
+    ``listed-N`` is ``listed N folder(s)``; the others are :data:`_LIST_FOLDERS_NOTE_WORDS`. No parenthesis;
+    a note none of these is shown as it is. install.log keeps its tokens."""
+    if (listed := re.fullmatch(r"listed-(\d+)", note)) is not None:
+        return f"listed {listed.group(1)} folder(s)"
+    return _LIST_FOLDERS_NOTE_WORDS.get(note, note)
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
     rows = [("step", "seconds", "result")]
     for name, v in steps:
@@ -3732,10 +3751,10 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
         # one that did (B13 round 7 H10); install.sh's note stays, the first-sync label reads it
         counts = f"kept {kept}, added {added}" if kept is not None and added is not None else ""
         if name == "list-folders":
-            # what the list read of the config, which "(listed-6)" alone hid: a list that marked two folders
-            # and one that could not read the config were the same row (B13 round 8 J10, J31). Fixed words
-            # and a count only, never the log's own marks= text. The clause names sources.toml, which the
-            # words' "it" refers back to, as the Summary's note does (B13 round 10 L22, L45).
+            # what the list read of the config, which "(listed 6 folder(s))" alone hid: a list that marked two
+            # folders and one that could not read the config were the same row (B13 round 8 J10, J31). Fixed
+            # words and a count only, never the log's own marks= text. The clause names sources.toml, which
+            # the words' "it" refers back to, as the Summary's note does (B13 round 10 L22, L45).
             synced, unread = _count(v, "synced"), _unread_words(v)
             if synced is not None:
                 counts = f"{synced} already synced"
@@ -3746,6 +3765,8 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
             said = _agentsync_note(said)
         elif name == "first-sync":
             said = _first_sync_note(said)
+        elif name == "list-folders":
+            said = _list_folders_note(said)
         note = ": ".join(part for part in (said, counts) if part)
         if note:
             result += f" ({note})"
