@@ -5110,6 +5110,8 @@ _ROUND_12_PARAGRAPH_AMENDS = (
     ("16.32", "| FAIL | Its fix now |", "§16.101 N53"),
     ("16.45", "**R102.** The wait for a local source whose listing a folder blocks", "§16.101 N12, N38"),
     ("16.56", "- cli.py's sign-in lines (`<bin> graph login`)", "§16.101 N13"),
+    ("16.29", "- **A set-up Mac with nothing to list is still set up**", "§16.99 N41, N61"),
+    ("16.53", "- **It ends without inviting a send** (Q10, Q18, one defect).", "§16.99 N22"),
 )
 """Round 12's dated lines at sections its claims name with no item, as :data:`_ROUND_11_PARAGRAPH_AMENDS`."""
 
@@ -5136,7 +5138,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     rule that reads one claim's line alone also finds §16.86's M54 line. Round 12's §16.103 N58 has two, and
     §16.101 (lane B) four."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
-    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 6
+    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 8
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5650,9 +5652,9 @@ def test_the_guide_names_every_source_of_a_proxy_number() -> None:
         "earlier line stays redacted"
     ) in page
     assert (
-        "`--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one lower-case host a "
-        "line: the proxy, git proxy and URL rewrite hosts in force at that call). It is never embedded; both "
-        "reports use it only to redact."
+        "`--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one host a line, in "
+        "lower case and, where it differs, as written: the proxy, git proxy and URL rewrite hosts in force "
+        "at that call). It is never embedded; both reports use it only to redact."
     ) in page
     assert "Three sources feed one file" in page
 
