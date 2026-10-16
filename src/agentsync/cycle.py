@@ -52,6 +52,7 @@ from typing import Any, Literal
 from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
 from agentsync import policy as content_policy
 from agentsync.arm_local import (
+    UNKNOWN_EMPTY,
     InboxArm,
     LocalArm,
     SettleBudget,
@@ -281,6 +282,12 @@ list for a cause other than an empty cloud folder (no access, a provider error),
 to its root ("" when there were none). ``loop.next_step`` gives a source whose walk also stored empty cloud
 folders the could-not-be-listed wait beside theirs, on the first sync, not after exclude-empty and another
 (B13 round 10 L68)."""
+_UNLISTED_KINDS_META = "unlisted_kinds:"
+"""Manifest meta ``unlisted_kinds:<source id>``: the folders the source's last walk could not list for a cause
+other than an empty cloud folder ("." for the root), each with its kind (``arm_local.UNKNOWN_PRIVACY`` for
+EPERM, ``UNKNOWN_MODE`` for EACCES, ``UNKNOWN_OTHER``), a JSON object ("" when there were none).
+``loop.next_step`` words the fix of a could-not-be-listed wait by it; a folder it does not hold (state from
+before B13 round 11 M42) keeps the generic words."""
 HYDRATION_REFUSED = "hydration-refused"
 """``state_reason`` of a live/dataless row whose download the OS refused (EDEADLK) on its last attempt: a
 later sync's budget never clears it, so ``loop`` makes it an operator wait. Cleared when the row is next
@@ -2987,15 +2994,22 @@ class _Cycle:
 
     def _note_empty_dirs(self, source_id: str, stats: WalkStats | None) -> None:
         """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), whether its root was
-        unlisted (:data:`_ROOT_UNLISTED_META`) and the other folders it could not list
-        (:data:`_UNLISTED_DIRS_META`), each written only on a change."""
+        unlisted (:data:`_ROOT_UNLISTED_META`), the other folders it could not list
+        (:data:`_UNLISTED_DIRS_META`) and the kind of each (:data:`_UNLISTED_KINDS_META`), each written only
+        on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
         root = stats is None or stats.unknown_dirs == (".",)
         other = sorted(set(stats.unknown_dirs) - set(found) - {"."}) if stats is not None else []
+        why = stats.unknown_why if stats is not None else ()
+        kinds = {u.name: u.kind for u in why if u.kind != UNKNOWN_EMPTY}
         for key, value in (
             (_EMPTY_DIRS_META + source_id, json.dumps(list(found), ensure_ascii=False) if found else ""),
             (_ROOT_UNLISTED_META + source_id, "1" if root else ""),
             (_UNLISTED_DIRS_META + source_id, json.dumps(other, ensure_ascii=False) if other else ""),
+            (
+                _UNLISTED_KINDS_META + source_id,
+                json.dumps(kinds, ensure_ascii=False, sort_keys=True) if kinds else "",
+            ),
         ):
             if (self.manifest.get_meta(key) or "") != value:
                 self.manifest.set_meta(key, value)

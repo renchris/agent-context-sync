@@ -2013,6 +2013,7 @@ class WalkStats:
     sentinel_present: bool | None  # None when no sentinel is configured
     empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
     empty_cloud_root: bool = False  # 2026-10-12 (§16.56 F86)
+    unknown_why: tuple[UnknownDir, ...] = ()  # 2026-10-16 (§16.95 M42, M47): each unknown folder's kind, reason
 
 LISTING_TIMEOUT_S = 120.0  # one directory listing; past it macOS is holding the read for an Allow prompt
 INBOX_SETTLE_MAX_S = 60.0  # the most one interactive sync waits for settling inbox files, all inboxes
@@ -9812,7 +9813,7 @@ system.
 | `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again (if the line stays, report it: agentsync status -v prints where the check stopped)`; with no path it starts `run again (...` |
 | `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
 | `source.<id>.sentinel — <folder>/<sentinel>: <an OS error other than "missing" and "not permitted">` | the same as the listable line's |
-| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` |
+| `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` (**Amended 2026-10-16, §16.95 M10:** by what is missing, `doctor._missing_source_fix`) |
 | `materialise.policy — getiopolicy_np failed ...` and `unexpected process policy ...` | `report this line: agentsync cannot use this process's download policy on this macOS, and no setup step clears that` |
 | a `launchd.*` FAIL under `AGENTSYNC_AGENT_STEP_PENDING=1` | its own fix (below) |
 
@@ -11443,6 +11444,12 @@ exclude:
   incomplete, nothing is deleted`; an empty cloud root with nothing mirrored, `source root <root> has zero
   children in a cloud tree: enumeration incomplete, nothing is deleted`. A root that cannot be listed keeps the
   old cause, with the advice `(grant the agent Files and Folders access)` only.
+  **Amended 2026-10-16, §16.95 M47:** a folder the walk could not read is named with the reason it recorded,
+  `could not be read: 'X' (EACCES: Permission denied)`, with the fix for its kind and no empty-folder exclude;
+  the old text stays, byte for byte, only for a folder with no recorded reason. **Amended 2026-10-16, §16.95 M5
+  (by §16.95 M45, M46, M56):** the mixed form has one clause per kind, each capped at five with its own `sync -v`
+  pointer, and names the wait it means by its subject: `the WAITING ON YOU line about the empty cloud folder(s)
+  in <id>`.
 
 An inbox whose newest FULL pass stored empty cloud folders that today's `exclude` does not prune gets the
 local source's two waits (§16.22), with N26's count (which in an inbox also includes a present file the last
@@ -12827,6 +12834,9 @@ folder) keeps the generic cause with the advice `(grant the agent Files and Fold
 changed: an empty cloud source root still gets the old alarm's exclude advice" and N27's third alarm bullet ("...
 an empty cloud root): the old text, byte for byte"); both carry dated lines. Test:
 `tests/test_arm_local.py::test_an_empty_root_alarm_never_advises_an_exclude`.
+**Amended 2026-10-16, §16.95 M42 (by §16.95 M47):** a root that cannot be listed is named with its reason, `could not be
+read: '.' (EPERM: ...)`; EPERM keeps the grant, and EACCES reads `the source folder's own permissions do not let
+this account read it: check its owner and mode with ls -ld`, with no grant.
 
 **R102.** The wait for a local source whose listing a folder blocks (no access, a missing folder or sentinel) is
 per source when the source's last walk missed mirrored files (`loop._missed` > 0): `a folder in <id> could not be
@@ -18415,7 +18425,8 @@ K40. Tests: `test_loop.py::test_one_empty_folder_is_never_sent_to_a_full_sync`, 
 unreadable folders the wait said `a folder in work could not be listed ... which names it`, while the alarm names
 five and `+1 more`. The three unlisted-folder waits now say `one or more folders in <id>` (`in each of A and B`),
 that the alarm names `what could not be listed, up to five, and past five how to list the rest`
-(`loop._WHAT_FAILED`: a missing sentinel lands on the same wait, and its alarm names the sentinel, no folder), and
+(`loop._WHAT_FAILED`: a missing sentinel lands on the same wait, and its alarm names the sentinel, no folder;
+**Amended 2026-10-16, §16.95 M59:** a walk incomplete only for its sentinel has its own wait), and
 `add each one to that source's exclude` or `adding such a folder`. Tests: `test_loop.py::
 test_state_md_keeps_the_five_long_folder_names_the_could_not_list_wait_points_at`, `test_loop.py::
 test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`.
@@ -18431,6 +18442,10 @@ with no empty folder. Names, not the verifier's count, so an exclude added since
 A manifest from before this build has no key and reads as none. Tests: `test_loop.py::
 test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits`, `test_loop.py::
 test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words`.
+**Amended 2026-10-16, §16.95 M57:** the missed count moves to that line only when the folder it could not read holds
+mirrored files, and beside a gone folder it is said `in all`; otherwise the line offers the plain exclude and the
+count stays on the empty folders' line. **Amended 2026-10-16, §16.95 M58:** after exclude-empty, before another sync,
+the wait stays. **Amended 2026-10-16, §16.95 M42:** its fix follows the kind each folder was refused with.
 
 **L15: the empty-folder alarm counts the waits by the loop's rule (`agentsync.arm_local`, `agentsync.loop`; amends
 §16.83 K41).** Six empty folders on one exclude-empty wait read `each WAITING ON YOU line ... prints each one
@@ -18440,6 +18455,10 @@ The alarm counts the kinds present from `known_h0`: one kind reads `the WAITING 
 or more, or no `known_h0` (count unknown), keep `each`. One folder keeps the singular (round 5 F11). Dated lines at
 §16.63 G57 and §16.83 K41. Tests: `test_arm_local.py::test_the_empty_folder_alarm_counts_the_waits_by_the_loops_rule`,
 `test_arm_local.py::test_an_empty_folder_that_held_files_is_its_own_wait_in_the_alarm`.
+**Amended 2026-10-16, §16.95 M55:** the count takes the files this walk listed as well as `known_h0`'s, which is empty
+on a first sync. **Amended 2026-10-16, §16.95 M56 (by §16.95 M46):** the line is named by its subject, `the WAITING ON
+YOU line about the empty cloud folder(s) in <id>` (`each WAITING ON YOU line about empty cloud folders in <id>`),
+since a folder the walk could not read beside them gets a wait about the same source.
 
 **L33, L50: the sync line counts every stub the label rule withheld (`agentsync.cycle`, `agentsync.cli`,
 `agentsync.model`; amends §16.83 K33).** Under a label rule a binary .msg on this Mac is read, then refused on its
@@ -18463,6 +18482,7 @@ test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`, `
 test_first_sync_clause_carries_the_read_again_count`, `test_setup_report.py::
 test_the_converted_line_parses_with_the_read_again_clause_in_either_form`, `test_install_oneshot.py::
 test_first_sync_note_reads_the_count_after_the_first_read_head`.
+**Amended 2026-10-16, §16.95 M11:** for R = 1 both read `a stub whose bytes had never been read`.
 
 **L73: the lock holder says who started the sync (`agentsync.ops.lock`, `agentsync.ops.launchd`, `agentsync.cycle`,
 `agentsync.ops.doctor`; amends §16.83 K37).** K37's optional `started_by` key is built, from the environment: the
@@ -18620,7 +18640,129 @@ Reserved for round 11 lane P of B13.
 
 ### 16.95 Round 11: waits, alarms, status and doctor (2026-10-15, wave B13 round 11 lane B)
 
-Reserved for round 11 lane B of B13.
+Lane B's round 11 items: M5, M10, M11, M26, M42, M45, M46, M47, M48, M55, M56, M57, M58, M59, M63, all built. M5
+and M45 are one defect from two finders, built once; so are M46 and M56. M5, M45, M42, M46, M47, M55 and M56
+rewrite one alarm and are built together.
+
+**M5, M45: each kind of unknown folder has its own clause in the alarm (`agentsync.arm_local`; amends §16.39
+N27).** The alarm named the first five of one sorted list, so five empty folders hid an unreadable one in `+2
+more`, while the could-not-be-listed wait says the alarm `names what could not be listed, up to five`. With both
+kinds present it reads `N unknown dir(s) — F could not be read: 'X' (<reason>), ...; E empty cloud folder(s),
+zero children in a cloud tree: 'A', ...; enumeration incomplete, no deletions this pass (for the folder(s) it
+could not read, <fix>; for the empty one(s), <where>)`, each list capped at five with its own `(+k more;
+`~/.local/bin/agentsync sync -v` logs each one)`. With one kind the single clause stays. The waits' words are
+unchanged and now true of each kind. Tests: `test_arm_local.py::
+test_an_unreadable_folder_behind_five_empty_ones_is_named_in_its_own_clause`, `test_arm_local.py::
+test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_reason`.
+
+**M47, M42: the alarm names the reason and the fix for how a folder refused (`agentsync.arm_local`,
+`agentsync.cycle`, `agentsync.loop`; amends §16.39 N27 and §16.45 R103).** With no empty folder the alarm gave
+the three-way cause and offered to exclude an empty folder, and every refusal got the Files and Folders grant,
+which cannot override a folder's own mode. The walk records each unknown folder's kind and reason:
+`WalkStats.unknown_why`, a tuple of `UnknownDir(name, kind, reason)`, with `kind` one of `UNKNOWN_EMPTY`,
+`UNKNOWN_PRIVACY` (EPERM: TCC), `UNKNOWN_MODE` (EACCES: the folder's owner, mode or ACL) and `UNKNOWN_OTHER`.
+Only failed folders: `N unknown dir(s) — could not be read: 'X' (EACCES: Permission denied); enumeration
+incomplete, no deletions this pass (<fix>)`. The fix by kind (`arm_local._read_advice`, no nested parentheses):
+EPERM `grant the agent Files and Folders access`; EACCES `a folder's own permissions do not let this account read
+it: check its owner and mode with `ls -ld`` (never a chmod: the folder may be another account's), with `, or
+exclude it` only when no mirrored file is known below the folders (`LocalArm._mirrored_below` over `known_h0`)
+and the root is not among them; anything else `check that each one opens in Finder and that its sync app is
+running`, never a promised retry, since the wait says another sync does not clear it; several kinds name each.
+An lstat failure's reason carries its errno code too (`lstat 'x': EACCES: Permission denied`). A folder with no recorded reason keeps the old text. `cycle._note_empty_dirs` stores the
+kinds as manifest meta `unlisted_kinds:<id>` (`cycle._UNLISTED_KINDS_META`, a JSON object, "" when none, root as
+"."), and `loop._access_fix` words the could-not-be-listed waits by them: EACCES only, `check the owner and mode of
+each one with `ls -ld`, since a folder's own permissions keep this account out and no Files and Folders grant
+overrides them`; a provider error, `check that each one opens in Finder and that its sync app is running`;
+several kinds, each fix for its own (`for those refused with EPERM`, `of those refused with EACCES`, `the
+others`); EPERM, and state from before this build, `grant Files and Folders access`. Sources share the plural line only when their fix is the same. A root refused with EACCES gets
+`the folder of <id> itself could not be listed: its own permissions do not let this account read it (EACCES; no
+Files and Folders grant overrides them, and another sync does not clear it): check its owner and mode with `ls
+-ld`; to stop syncing it on purpose, set state = "paused" in [[source]] id = "<id>" in <config>`. Dated lines at
+§16.39 N27, §16.45 R103 and §16.89 L68. Tests: `test_arm_local.py::
+test_an_unreadable_folder_with_no_empty_cloud_folder_names_its_reason`, `test_arm_local.py::
+test_a_walk_stats_with_no_recorded_reason_keeps_the_old_alarm`, `test_arm_local.py::
+test_a_privacy_refusal_keeps_the_grant_and_a_mixed_one_names_both_fixes`, `test_loop.py::
+test_a_could_not_list_wait_words_its_fix_by_how_the_folder_refused`, `test_loop.py::
+test_a_source_root_a_sync_cannot_list_never_offers_an_exclude`.
+
+**M46, M56: the alarm names the empty folders' wait by its subject (`agentsync.arm_local`; amends §16.89 L15).**
+Since round 10 L68 a source with empty folders and one it cannot read gets two waits, and the alarm's `the
+WAITING ON YOU line about <id>` fit both. It reads `the WAITING ON YOU line about the empty cloud folder(s) in
+<id> at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` prints it too` (plural:
+`each WAITING ON YOU line about empty cloud folders in <id> ... prints each one too`), in the pure-empty form too.
+`the`/`each` still counts only the empty-folder waits; counting the could-not-be-listed wait in would send the
+reader to the wrong line. No numbered prefix is quoted: up to three empty-folder waits each start with their own
+count. `SYNC_OUTPUT_END` stays in the text, so STATE.md's legend still applies. Dated line at §16.89 L15. Tests:
+`test_arm_local.py::test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude`, `test_loop.py::
+test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits`.
+
+**M55: the alarm counts the waits over this walk's files too (`agentsync.arm_local`; amends §16.89 L15).** On a
+first sync `known_h0` is empty, so the alarm said `the line` while the loop, reading the rows the cycle wrote for
+this walk, printed a `[` collision wait beside the exclude-empty one. `LocalArm._empty_waits` counts over
+`known_h0`'s files plus this walk's listed files; `known_h0` None still reads `each`. Dated line at §16.89 L15.
+Test: `test_arm_local.py::test_the_alarm_counts_the_waits_over_the_files_this_walk_listed`.
+
+**M57: the could-not-be-listed line follows its folder (`agentsync.loop`; amends §16.89 L68).** Beside a gone
+folder it carried the whole missed count without `in all`, and the gone files alone gave it the safe words, so a
+locked folder holding no mirrored file lost the plain exclude. Now, when the folder it could not read holds
+mirrored files (`files_below` over the source's present rows), the line keeps the safe words and takes the count,
+`in all, the last walk of <id> did not list N file(s) the mirror still has, the ones under the empty folders
+above among them, and ...` when a gone folder is beside it; when it holds none, the line offers `add each one to
+that source's exclude` and the count stays on the empty folders' line. The count is never split: it also holds
+deletions held in readable folders. Dated line at §16.89 L68. Test: `test_loop.py::
+test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs`.
+
+**M58: after exclude-empty the could-not-be-listed wait stays (`agentsync.loop`; amends §16.89 L68).** With every
+stored empty folder excluded and no sync since, `next_step` asked for another sync (rule 3), which would not
+complete the listing, while `unlisted_dirs:<id>` still held an unexcluded folder. That source now gets the
+could-not-be-listed wait and its `heartbeat.<id>` check; rule 3's docstring and `empty_cloud_folders_held`'s say
+so. Dated line at §16.89 L68. Test: `test_loop.py::
+test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits`.
+
+**M59: a walk incomplete only for its sentinel gets a sentinel wait (`agentsync.loop`; amends §16.89 L48, L67).**
+A local source with a sentinel, no stored folder (raw `unlisted_dirs:<id>`, read before the exclude), no empty
+folder and no unlisted root got `one or more folders in <id> could not be listed ...; grant Files and Folders
+access, or add each one ...`, neither of which clears a sentinel. It reads `the sentinel set for <id> was
+missing at its last sync, so its listing is incomplete and deletions in <id> are held (another sync does not clear
+it): restore it in the folder of <id>, or change or remove sentinel in [[source]] id = "<id>" in <config>`, names
+no file (a sentinel may be a folder) and adds `heartbeat.<id>`. A source with no sentinel, a stored folder, or a
+last pass that failed (it stored nothing), keeps the folder wait. Dated line
+at §16.89 L48. Tests: `test_loop.py::test_a_walk_incomplete_only_for_its_sentinel_gets_a_sentinel_wait`,
+`test_loop.py::test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v` (a sentinel beside a folder),
+`test_loop.py::test_two_sources_that_cannot_be_listed_get_a_plural_wait` (now two unreadable folders).
+
+**M63: one tuple of present-row states (`agentsync.model`, `agentsync.cycle`, `agentsync.manifest`,
+`agentsync.arm_local`).** `model.PRESENT_STATES` (live, dataless, quarantined, refused: all but a tombstone) is
+`cycle._PRESENT` and `manifest._PRESENT_STATES`, and `arm_local._PRESENT_STATES` is its values as strings, so the
+alarm's count of waits cannot drift from the loop's. Test: `test_arm_local.py::
+test_the_alarm_counts_rows_by_the_one_present_state_tuple`.
+
+**M10: doctor's fix for a missing source names what is missing (`agentsync.ops.doctor`).** Every missing source
+read `fix path in [[source]] id = "<id>", or sign in to the sync client`. `doctor._missing_source_fix`, used by
+the listable, volume and launcher-probe checks: its provider folder missing with no other folder of that app,
+`sign in to <app> on this Mac, since <provider folder> is missing, then re-run`; missing beside another folder of
+the app, `<provider folder> is missing while another <app> folder is there: sign in to <app> with the account it
+belongs to, or fix path ...`; the provider folder there, `fix path ..., or sync that folder in <app>`; outside
+~/Library/CloudStorage, `fix path ...` alone. No parenthesis. Dated line in the doctor fix table. Test:
+`test_ops_doctor.py::test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cause`.
+
+**M11: one first-read stub is singular (`agentsync.cli`, `agentsync.setup_report`; amends §16.89 L34).** `first
+read 1 (a stub whose bytes had never been read, so also counted as converted)` and the report's `first read 1: a
+stub whose bytes ...`; R > 1 stays plural. No parser reads these words. Dated line at §16.89 L34. Tests:
+`test_cli.py::test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`, the pins in
+`test_setup_report.py`.
+
+**M26: init loads the config before it says it uses it (`agentsync.cli`).** `using existing <config>` printed
+before `load_config`, and in a pipe stdout is block-buffered, so it landed after the configuration error. init
+loads first; `cli._err` also flushes stdout before it writes, for any command that prints and then fails (not a
+guarantee in install.out, whose two streams go through separate tee processes). Test: `test_cli.py::
+test_init_names_a_config_it_cannot_load_by_its_error_alone`.
+
+**M48: a file is counted once, under its final verdict (`agentsync.cycle`).** Phase 1 counted a new file as
+`created` and phase 2 as `changed`, so one new file read `changed=1, created=1`. `_SourceAcc.settle` moves a
+file's phase-1 CREATED or MAYBE_CHANGED count (kept by stable id in `_SourceAcc.unsettled`) to the verdict a later
+phase gives it (deferred, error, touched_not_changed, refused, output_unchanged, changed, quarantined).
+Phase-1-only verdicts keep their counts. Test: `test_cli.py::test_a_new_file_is_counted_once_under_its_final_verdict`.
 
 ### 16.96 Round 11: recordings, speech, OCR and stubs (2026-10-15, wave B13 round 11 lane E)
 

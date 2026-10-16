@@ -5,6 +5,7 @@ file."""
 from __future__ import annotations
 
 import dataclasses
+import errno
 import json
 import os
 import re
@@ -856,29 +857,51 @@ def test_an_empty_folder_in_a_plain_provider_folder_gets_no_wait(tmp_path: Path)
         assert manifest.get_meta("empty_cloud_dirs:work") in (None, "")
 
 
-def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_path: Path) -> None:
-    """A missing sentinel also leaves every local walk incomplete, with no empty folder to name: the wait
-    says what names the cause and offers no exclude line."""
+def test_a_walk_incomplete_only_for_its_sentinel_gets_a_sentinel_wait(tmp_path: Path) -> None:
+    """A missing sentinel also leaves every local walk incomplete, with no empty folder to name. B13 round 11
+    M59: the wait said folders could not be listed and offered a grant or an exclude, though every folder
+    was listed and neither clears a sentinel; with no folder stored by that walk the sentinel is the only
+    cause, so the wait says so, offers no exclude, and names where the sentinel is set. A sentinel beside a
+    folder the walk stored keeps the folder wait."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
     config = _setup(tmp_path, local_source_table("work", root) + 'sentinel = "KEEP.txt"\n')
     run_cycle(config, mode=None)
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait == (
-        "WAITING ON YOU: one or more folders in work could not be listed (no access, or a missing folder or "
-        "sentinel; another sync does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + "; grant "
-        "Files and Folders access, or add each one to that source's exclude in "
+        "WAITING ON YOU: the sentinel set for work was missing at its last sync, so its listing is "
+        "incomplete and deletions in work are held (another sync does not clear it): restore it in the "
+        'folder of work, or change or remove sentinel in [[source]] id = "work" in '
         f"{loop._shown(config.config_path)}"
     )
-    # B13 round 10 L67: the alarm here names the sentinel and no folder, so the wait says what it names by
-    # what could not be listed, never "names it" or "the folder(s)"
+    assert "could not be listed" not in wait and "exclude" not in wait and "KEEP.txt" not in wait
     (alarm,) = [ln for ln in _kept_alarms(config) if "sentinel" in ln]
     assert "unknown dir(s)" not in alarm, alarm
+    # §16.39 N16: the wait explains that source's heartbeat warn
+    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+
+
+def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_path: Path) -> None:
+    """A sentinel beside a folder the walk could not read keeps the folder wait (B13 round 11 M59: only a walk
+    incomplete for its sentinel alone gets the sentinel wait), and the wait says what names the cause."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("work", root) + 'sentinel = "KEEP.txt"\n')
+    _write(root / "Zz Locked" / "memo.txt", "Memo for Project Alpha.\n")
+    (root / "Zz Locked").chmod(0)
+    try:
+        run_cycle(config, mode=None)
+    finally:
+        (root / "Zz Locked").chmod(0o755)
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert wait.startswith(
+        "WAITING ON YOU: one or more folders in work could not be listed (no access, or a "
+        "missing folder or sentinel; another sync does not clear it): "
+    ), wait
+    # B13 round 10 L67: the alarm names what could not be listed, so the wait says that, never "names it"
     assert (
         "names it" not in wait and "names the folder" not in wait and "names what could not be listed" in wait
     )
-    # §16.39 N16: the wait explains that source's heartbeat warn
-    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
 
 
 def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> None:
@@ -886,24 +909,31 @@ def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> 
     line ("the alarm line a sync prints for alpha, beta, also kept in ..."), one folder ("a folder in alpha,
     beta") and one source ("that source's exclude"). Each source has its own alarm, so the line is plural
     throughout and its ids are joined with "and"."""
-    tables = []
+    tables, locked = [], []
     for sid in ("alpha", "beta"):
         root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / sid.title()
         _write(root / NOTE_NAME, "The purchase order is approved.\n")
-        tables.append(local_source_table(sid, root) + 'sentinel = "KEEP.txt"\n')
+        _write(root / "Locked" / "memo.txt", "Memo for Project Alpha.\n")
+        locked.append(root / "Locked")
+        tables.append(local_source_table(sid, root))
     config = _setup(tmp_path, *tables)
-    run_cycle(config, mode=None)
+    for path in locked:
+        path.chmod(0)
+    try:
+        run_cycle(config, mode=None)
+    finally:
+        for path in locked:
+            path.chmod(0o755)
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     state = loop._shown(config.docs_repo / "_sync" / "STATE.md")
     assert wait == (
         "WAITING ON YOU: one or more folders in each of alpha and beta could not be listed (no access, or a "
         f"missing folder or sentinel; another sync does not clear it): {state} keeps the alarm lines for "
-        f"alpha and beta, which name {loop._WHAT_FAILED} (a plain `{BIN} sync` prints them too); grant "
-        "Files and Folders access, or "
-        f"add each to its source's exclude in {loop._shown(config.config_path)}"
+        f"alpha and beta, which name {loop._WHAT_FAILED} (a plain `{BIN} sync` prints them too); "
+        f"{_MODE_FIX}, or add each to its source's exclude in {loop._shown(config.config_path)}"
     )
     alarms = [
-        ln for ln in (config.docs_repo / "_sync" / "STATE.md").read_text().splitlines() if "sentinel" in ln
+        ln for ln in (config.docs_repo / "_sync" / "STATE.md").read_text().splitlines() if "'Locked'" in ln
     ]
     assert len([ln for ln in alarms if ln.startswith("alarm: ")]) == 2, "one alarm line per source"
 
@@ -925,12 +955,64 @@ def test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclu
         (folder / "Locked").chmod(0o755)
     assert waits == [
         "WAITING ON YOU: one or more folders in work could not be listed (no access, or a missing folder or "
-        "sentinel; another sync does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + "; grant "
-        "Files and Folders access (the safe fix); the last walk of work did not list 30 file(s) the mirror "
-        "still has, and adding such a folder to that source's exclude retires the pages under it at once, "
-        "with no deletion check and no purge queued"
+        "sentinel; another sync does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + "; "
+        f"{_MODE_FIX} (the safe fix); the last walk of work did not list 30 file(s) the mirror still has, "
+        "and adding such a folder to that source's exclude retires the pages under it at once, with no "
+        "deletion check and no purge queued"
     ]
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+
+
+_MODE_FIX = (
+    "check the owner and mode of each one with `ls -ld`, since a folder's own permissions keep this account "
+    "out and no Files and Folders grant overrides them"
+)
+
+
+def test_a_could_not_list_wait_words_its_fix_by_how_the_folder_refused(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 11 M42: a folder unreadable by its own mode (EACCES) was told to grant Files and Folders
+    access, which no grant overrides; TCC refuses with EPERM. The walk stores each folder's kind, and the
+    wait gives EACCES the owner-and-mode check, EPERM the grant, and both of them each fix; state from before
+    the kinds were stored keeps the generic words."""
+    _write(folder / "Locked" / "memo.txt", "Memo for Project Alpha.\n")
+    _write(folder / "Private" / "memo.txt", "Memo for Project Alpha.\n")
+    config = _setup(tmp_path, local_source_table("work", folder))
+    tail = f", or add each one to that source's exclude in {loop._shown(config.config_path)}"
+    real = arm_local._list_dir
+    codes: dict[str, int] = {}
+
+    def refuse(path: Path, *, dir_dataless: bool) -> list[os.DirEntry[str]]:
+        if (code := codes.get(path.name)) is not None:
+            raise PermissionError(code, os.strerror(code), str(path))
+        return real(path, dir_dataless=dir_dataless)
+
+    monkeypatch.setattr(arm_local, "_list_dir", refuse)
+    # neither folder is ever listed, so the mirror holds nothing under them: the plain wait each time
+    for refused, fix in (
+        ({"Locked": errno.EACCES, "Private": errno.EACCES}, _MODE_FIX),
+        ({"Locked": errno.EPERM, "Private": errno.EPERM}, "grant Files and Folders access"),
+        # a provider error is the sync app's (B13 round 11 review: the grant cannot clear it either)
+        (
+            {"Locked": errno.EDEADLK, "Private": errno.EDEADLK},
+            "check that each one opens in Finder and that its sync app is running",
+        ),
+        (
+            {"Locked": errno.EACCES, "Private": errno.EPERM},
+            "grant Files and Folders access for those refused with EPERM, and check the owner and mode "
+            "(`ls -ld`) of those refused with EACCES",
+        ),
+    ):
+        codes.clear()
+        codes.update(refused)
+        run_cycle(config, mode=None)
+        (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+        assert wait.endswith(f"; {fix}{tail}"), (refused, wait)
+    with Manifest(config.state_paths.db) as manifest:  # a walk from before B13 round 11 M42
+        manifest.set_meta(cycle_module._UNLISTED_KINDS_META + "work", "")
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert wait.endswith(f"; grant Files and Folders access{tail}"), wait
 
 
 def test_a_source_root_a_sync_cannot_list_never_offers_an_exclude(tmp_path: Path, folder: Path) -> None:
@@ -949,7 +1031,13 @@ def test_a_source_root_a_sync_cannot_list_never_offers_an_exclude(tmp_path: Path
         waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     finally:
         folder.chmod(0o755)
-    assert waits == [root_wait]
+    # B13 round 11 M42: a mode-000 root refuses with EACCES: no unmounted volume, and no grant overrides it
+    assert waits == [
+        "WAITING ON YOU: the folder of work itself could not be listed: its own permissions do not let this "
+        "account read it (EACCES; no Files and Folders grant overrides them, and another sync does not clear "
+        "it): check its owner and mode with `ls -ld`; to stop syncing it on purpose, set "
+        f'state = "paused" in [[source]] id = "work" in {config.config_path}'
+    ]
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
     folder.rename(folder.with_name("Work unmounted"))
     run_cycle(config, mode=None)
@@ -1773,8 +1861,20 @@ def test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits(tmp_
         assert waits[1].startswith("WAITING ON YOU: one or more folders in work could not be listed"), waits
         assert sum("did not list" in w for w in waits) <= 1, waits
         assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+        # B13 round 11 M46, M56: two waits are about work, so the alarm names the one it means by its subject
+        (alarm,) = [ln for ln in _kept_alarms(config) if "unknown dir(s)" in ln]
+        assert "the WAITING ON YOU line about the empty cloud folder(s) in work" in alarm, alarm
+        assert "the WAITING ON YOU line about work" not in alarm, alarm
         # exclude-empty takes the empty folders; the could-not-be-listed wait stays
         assert cli.main(["exclude-empty", "work", "--config", str(config.config_path)]) == cli.EXIT_OK
+        # B13 round 11 M58: before another sync too: the folder it could not read is not excluded, so status
+        # keeps its wait and its check, and never asks for a sync that would not complete the listing
+        step = loop.next_step(load_config(config.config_path), count_queue=False)
+        assert step.rule != 3, step
+        assert [
+            w for w in step.waits if w.startswith("one or more folders in work could not be listed")
+        ] == list(step.waits) and len(step.waits) == 1, step.waits
+        assert step.checks == ("heartbeat.work",)
         assert cli.main(["sync", "--config", str(config.config_path)]) == cli.EXIT_OK
         (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
         assert wait.startswith("WAITING ON YOU: one or more folders in work could not be listed"), wait
@@ -1806,6 +1906,47 @@ def test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words(tmp_p
     assert "did not list" not in waits[0], waits
     assert "(the safe fix); the last walk of work did not list 1 file(s) the mirror still has" in waits[1]
     assert "add each one to that source's exclude" not in waits[1], waits
+
+
+def test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs(tmp_path: Path) -> None:
+    """B13 round 11 M57: beside a gone folder (an emptied one whose file the mirror holds), the
+    could-not-be-listed line carried the whole missed count with no "in all", and the gone files alone gave
+    it the safe words, so a locked folder that holds no mirrored file lost the plain exclude. The line follows
+    the folder: holding none, it offers the exclude and the count stays on the gone line ("in all"); holding
+    some, it keeps the safe words and says the count in all, the gone files among them."""
+    root = _mixed_root(0)
+    _write(root / "Was Full" / "old.txt", "An old memo.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    (root / "Zz Locked").chmod(0)  # never listed: the mirror holds nothing under it
+    try:
+        run_cycle(config, mode=None)
+        (root / "Was Full" / "old.txt").unlink()
+        run_cycle(config, mode=None)
+        waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    finally:
+        (root / "Zz Locked").chmod(0o755)
+    assert len(waits) == 2, waits
+    assert waits[0].startswith("WAITING ON YOU: 1 empty cloud folder(s) in work held 1 file(s)"), waits
+    assert "; in all, the last walk of work did not list 1 file(s)" in waits[0], waits
+    assert "add each one to that source's exclude" in waits[1] and "did not list" not in waits[1], waits
+    assert sum(w.count("did not list 1 file(s)") for w in waits) == 1, waits
+    # the locked folder now holds a mirrored file: the safe words, the count in all
+    run_cycle(config, mode=None)
+    _write(root / "Was Full" / "old.txt", "An old memo.\n")
+    run_cycle(config, mode=None)
+    (root / "Was Full" / "old.txt").unlink()
+    (root / "Zz Locked").chmod(0)
+    try:
+        run_cycle(config, mode=None)
+        waits = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    finally:
+        (root / "Zz Locked").chmod(0o755)
+    assert len(waits) == 2, waits
+    assert "did not list" not in waits[0], waits
+    assert (
+        "(the safe fix); in all, the last walk of work did not list 2 file(s) the mirror still has, the ones "
+        "under the empty folders above among them, and adding such a folder"
+    ) in waits[1], waits
 
 
 def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:

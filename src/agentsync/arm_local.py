@@ -35,7 +35,7 @@ from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, S
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Protocol, TypeVar, cast
+from typing import NamedTuple, Protocol, TypeVar, cast
 
 from agentsync.config import SourceConfig, always_excluded
 from agentsync.errors import ConfigError, MaterialiseError
@@ -129,6 +129,68 @@ class _KnownStat(Protocol):
     def created_ns(self) -> int | None: ...
 
 
+UNKNOWN_EMPTY = "empty"  # zero children in a cloud tree
+UNKNOWN_PRIVACY = "privacy"  # EPERM: macOS privacy access (TCC) or the sandbox refused the listing
+UNKNOWN_MODE = (
+    "mode"  # EACCES: the folder's own owner, mode or ACL keep this account out; no grant overrides it
+)
+UNKNOWN_OTHER = "other"  # a provider error, a folder that vanished, anything else
+
+
+class UnknownDir(NamedTuple):
+    """One folder a walk could not take as listed (``WalkStats.unknown_why``)."""
+
+    name: str  # relative POSIX path, "." for the root
+    kind: str  # UNKNOWN_EMPTY, UNKNOWN_PRIVACY, UNKNOWN_MODE or UNKNOWN_OTHER
+    reason: str  # as the walk logged it, e.g. "EACCES: Permission denied"
+
+
+def _errno_kind(code: int | None) -> str:
+    """The kind of a failed listing or lstat by its errno: TCC refuses with EPERM, a folder's own permissions
+    with EACCES (B13 round 11 M42)."""
+    if code == errno_mod.EPERM:
+        return UNKNOWN_PRIVACY
+    return UNKNOWN_MODE if code == errno_mod.EACCES else UNKNOWN_OTHER
+
+
+def _read_advice(kinds: Collection[str], *, root: bool, excludable: bool) -> str:
+    """The fix for folders a walk could not read, by their kinds (B13 round 11 M42): a privacy refusal
+    (EPERM) takes the Files and Folders grant; a folder's own permissions (EACCES) take no grant, which cannot
+    override them, and never a chmod, since the folder may belong to another account; anything else (a
+    provider error, a folder that vanished) is the sync app's, as doctor's fix for a listing error says.
+    ``root``: the source folder alone. ``excludable``: no mirrored file is known below the folders and the
+    root is not among them, so an exclude retires nothing and is offered; otherwise never (an exclude retires
+    the pages under a folder at once, the loop's could-not-be-listed wait warns, and a root cannot be
+    excluded). No promise of a retry: the loop's wait says another sync does not clear it."""
+    several = len(kinds) > 1
+    parts: list[str] = []
+    if UNKNOWN_PRIVACY in kinds:
+        parts.append(
+            "grant the agent Files and Folders access" + (" for those refused with EPERM" if several else "")
+        )
+    if UNKNOWN_MODE in kinds:
+        # no nested parentheses: the alarm's advice is itself in parentheses
+        parts.append(
+            "the source folder's own permissions do not let this account read it: check its owner and mode "
+            "with `ls -ld`"
+            if root
+            else "for those refused with EACCES, their own permissions do not let this account read them: "
+            "check their owner and mode with `ls -ld`" + (", or exclude them" if excludable else "")
+            if several
+            else "a folder's own permissions do not let this account read it: check its owner and mode with "
+            "`ls -ld`" + (", or exclude it" if excludable else "")
+        )
+    if UNKNOWN_OTHER in kinds or not parts:
+        parts.append(
+            "check that the source folder opens in Finder and that its sync app is running"
+            if root
+            else "check that the others open in Finder and that their sync app is running"
+            if several
+            else "check that each one opens in Finder and that its sync app is running"
+        )
+    return "; ".join(parts)
+
+
 @dataclass(frozen=True, slots=True)
 class WalkStats:
     """Counters from one walk (reported in STATE.md and the CycleReport)."""
@@ -142,6 +204,8 @@ class WalkStats:
     sentinel_present: bool | None  # None when no sentinel is configured
     empty_cloud_dirs: tuple[str, ...] = ()  # the zero-child cloud dirs below the root (part of unknown_dirs)
     empty_cloud_root: bool = False  # the root itself has zero children in a cloud tree ("." in unknown_dirs)
+    # every folder of unknown_dirs with its kind and the reason the walk recorded (B13 round 11 M42, M47)
+    unknown_why: tuple[UnknownDir, ...] = ()
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -386,6 +450,7 @@ class _WalkState:
     excluded: int = 0
     symlinks: int = 0
     unknown: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> reason
+    kinds: dict[str, str] = dataclasses.field(default_factory=dict)  # rel dir -> UNKNOWN_* kind
     empty: list[str] = dataclasses.field(default_factory=list)  # zero-child cloud dirs below the root
     unlisted: list[str] = dataclasses.field(default_factory=list)  # dirs whose listing raised OSError
     empty_root: bool = False  # the root itself has zero children in a cloud tree
@@ -599,6 +664,7 @@ def walk(
             code = errno_mod.errorcode.get(exc.errno or 0, "E?")
             reason = f"{code}: {exc.strerror or exc}"
             state.unknown[shown] = reason
+            state.kinds[shown] = _errno_kind(exc.errno)
             state.unlisted.append(shown)
             # info, as a zero-child cloud folder: ``_warn_unlisted`` names it with its reason once a walk.
             log.info("%s: directory %r is unknown (%s)", source_id, shown, reason)
@@ -608,6 +674,7 @@ def walk(
             state.unknown[shown] = "zero children in a cloud tree" + (
                 " (dataless)" if is_dataless(dir_st) else ""
             )
+            state.kinds[shown] = UNKNOWN_EMPTY
             if rel_dir:
                 state.empty.append(rel_dir)
             else:
@@ -635,7 +702,9 @@ def walk(
                 log.debug("%s: %r vanished during the walk", source_id, rel)
                 continue
             except OSError as exc:
-                state.unknown[shown] = f"lstat {name!r}: {exc.strerror}"
+                code = errno_mod.errorcode.get(exc.errno or 0, "E?")
+                state.unknown[shown] = f"lstat {name!r}: {code}: {exc.strerror}"
+                state.kinds[shown] = _errno_kind(exc.errno)
                 log.warning("%s: cannot lstat %r (%s); %r is unknown", source_id, rel, exc.strerror, shown)
                 continue
             mode = st.st_mode
@@ -701,6 +770,7 @@ def walk(
         sentinel_present=None,
         empty_cloud_dirs=tuple(sorted(state.empty)),
         empty_cloud_root=state.empty_root,
+        unknown_why=tuple(UnknownDir(d, state.kinds[d], state.unknown[d]) for d in sorted(state.unknown)),
     )
     return items, stats
 
@@ -995,10 +1065,12 @@ class LocalArm:
         except OSError:
             return False
 
-    def _empty_waits(self, empty: Sequence[str]) -> int | None:
+    def _empty_waits(self, empty: Sequence[str], listed: Sequence[SourceItem] = ()) -> int | None:
         """How many WAITING ON YOU lines the loop gives ``empty`` (this walk's empty cloud folders): one per
-        kind of :func:`split_empty` present, at most 3, from the files ``known_h0`` holds; None when that is
-        not set, so the count is unknown (B13 round 10 L15)."""
+        kind of :func:`split_empty` present, at most 3, from the files ``known_h0`` holds plus those this walk
+        listed (``listed``), which the cycle writes before the loop reads them: on a first sync ``known_h0``
+        is empty, and a file new in this walk can make a ``[`` folder collide (B13 round 11 M55); None when
+        ``known_h0`` is not set, so the count is unknown (B13 round 10 L15)."""
         if self.known_h0 is None:
             return None
         files = [
@@ -1008,8 +1080,23 @@ class LocalArm:
         ]
         if not all(isinstance(rel, str) for rel in files):
             return None  # a row with no path: the count is unknown
-        below, holding = files_below(empty, cast(list[str], files))
+        merged = set(cast(list[str], files)) | {i.rel_path for i in listed if not i.is_dir}
+        below, holding = files_below(empty, sorted(merged))
         return sum(1 for kind in split_empty(below, holding) if kind)
+
+    def _mirrored_below(self, folders: Sequence[str]) -> bool | None:
+        """Whether ``known_h0`` holds a mirrored file below any of ``folders``; None when it is not set or a
+        row has no path, so it is not known."""
+        if self.known_h0 is None:
+            return None
+        files = [
+            getattr(row, "rel_path", None)
+            for row in self.known_h0.values()
+            if not getattr(row, "is_dir", False) and str(getattr(row, "state", "live")) in _PRESENT_STATES
+        ]
+        if not all(isinstance(rel, str) for rel in files):
+            return None
+        return any(files_below(folders, cast(list[str], files))[0].values())
 
     def _known_file_count(self) -> int:
         """Files the manifest holds for this source (from ``known_h0``, the cycle's observation index)."""
@@ -1019,6 +1106,83 @@ class LocalArm:
             1
             for row in self.known_h0.values()
             if not getattr(row, "is_dir", False) and str(getattr(row, "state", "live")) != "tombstone"
+        )
+
+    def _unknown_alarm(self, stats: WalkStats, items: Sequence[SourceItem]) -> str:
+        """The alarm for ``stats.unknown_dirs`` (a walk whose root is not empty), one clause per kind: the
+        folders it could not read, each with the reason the walk recorded, and the empty cloud folders, each
+        group capped at five with its own pointer at ``sync -v``. A wait points here for its own kind
+        ("names what could not be listed, up to five"; "names the folder(s), up to five"), so one sorted list
+        capped at five hid an unreadable folder behind five empty ones (B13 round 11 M5, M45)."""
+        why = {u.name: u for u in stats.unknown_why}
+        empties = stats.empty_cloud_dirs
+        failed = [
+            d for d in stats.unknown_dirs if d not in empties and not (d == "." and stats.empty_cloud_root)
+        ]
+        # every failed folder with its recorded reason; a WalkStats from elsewhere may carry none
+        known = all(d in why for d in failed)
+        kinds = {why[d].kind for d in failed if d in why}
+        # an exclude is offered only when it retires nothing: no root among them, and no mirrored file known
+        # below them (B13 round 11 M42 review: a mirrored folder chmod 000 was offered "or exclude it")
+        excludable = "." not in failed and self._mirrored_below(failed) is False
+
+        def listed(names: Sequence[str], reasons: bool = False) -> str:
+            # The cap is applied here, so only here is it known that names were held back: the pointer at
+            # ``sync -v`` (which logs each folder) is given then, and the waits that point at this alarm
+            # never give it (B13 round 7 H12: they named it for a single folder).
+            shown = ", ".join(repr(d) + (f" ({why[d].reason})" if reasons else "") for d in names[:5])
+            more = len(names) - min(len(names), 5)
+            return shown + (f" (+{more} more; `{AGENTSYNC_BIN} sync -v` logs each one)" if more else "")
+
+        head = f"{len(stats.unknown_dirs)} unknown dir(s) — "
+        tail = "; enumeration incomplete, no deletions this pass"
+        if failed and not known:  # no reason recorded: the cause is not known, the old text
+            cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
+            if not empties:
+                advice = "grant the agent Files and Folders access"  # a root cannot be excluded
+                if stats.unknown_dirs != (".",):
+                    advice = f"exclude a deliberately empty cloud folder, or {advice}"
+                return f"{head}{cause}: {listed(stats.unknown_dirs)}{tail} ({advice})"
+        if not empties:
+            # Only folders it could not read: their reasons, and the fix for those (B13 round 11 M47: "zero
+            # children in a cloud tree" and the empty-folder exclude were offered with no empty folder).
+            advice = _read_advice(kinds, root=failed == ["."], excludable=excludable)
+            return f"{head}could not be read: {listed(failed, reasons=True)}{tail} ({advice})"
+        # The loop's WAITING ON YOU lines give the step for the empty cloud folders, and warn against
+        # excluding one that held mirrored files (that retires its pages unchecked): point there, never at an
+        # exclude. Each folder lands on one of three waits (the exclude-empty line, the `[` collision line,
+        # the held-files line; B13 round 5 F11, F65), so one folder means one line, and two or more make one
+        # line per wait kind present, at most 3, however many folders (round 6 G57; round 9 K41: the plural
+        # "prints them" was false for six folders on the one exclude-empty line). The singular is chosen by
+        # those kinds, counted by the loop's own rule (:meth:`_empty_waits`, over the files the cycle writes
+        # for this walk too: round 11 M55), not by the folders: six on one wait read "the line"; "each" only
+        # for two kinds or more, or an unknown count (round 10 L15). The line is named by its subject, the
+        # empty folders, since a folder it could not read beside them gets a wait about the same source (round
+        # 11 M46, M56). The waits name this alarm as where the folders are named, so it names them for the
+        # step, not the step's command for the folders (round 6 G13, G42): the end of a sync's output, where
+        # its waits print, and status, which prints them too, by its full path, which works with ~/.local/bin
+        # off PATH (round 5 F44, as §16.51 Q49).
+        status = f"`{AGENTSYNC_BIN} status`"
+        where = (
+            f"the WAITING ON YOU line about the empty cloud folder(s) in {self.source_id} {SYNC_OUTPUT_END} "
+            f"says what to do, and {status} prints it too"
+            if len(empties) == 1 or self._empty_waits(empties, items) == 1
+            else f"each WAITING ON YOU line about empty cloud folders in {self.source_id} {SYNC_OUTPUT_END} "
+            f"says what to do, and {status} prints each one too"
+        )
+        if not failed:
+            cause = "empty cloud folder(s), zero children in a cloud tree"
+            return f"{head}{cause}: {listed(empties)}{tail} ({where})"
+        read = (
+            _read_advice(kinds, root=False, excludable=excludable)
+            if known
+            else "grant the agent Files and Folders access"
+        )
+        empty = "one" if len(empties) == 1 else "ones"
+        return (
+            f"{head}{len(failed)} could not be read: {listed(failed, reasons=known)}; {len(empties)} empty "
+            f"cloud folder(s), zero children in a cloud tree: {listed(empties)}{tail} (for the folder(s) it "
+            f"could not read, {read}; for the empty {empty}, {where})"
         )
 
     def _walk_scan(self) -> tuple[list[SourceItem], WalkStats, list[str]] | ScanResult:
@@ -1095,54 +1259,7 @@ class LocalArm:
                 f"sentinel {self.cfg.sentinel!r} missing under {self.root}: enumeration treated as incomplete"
             )
         if stats.unknown_dirs and not empty_root:
-            shown = ", ".join(repr(d) for d in stats.unknown_dirs[:5])
-            # The cap is applied here, so only here is it known that names were held back: the pointer at
-            # ``sync -v`` (which logs each folder) is given then, and the waits that point at this alarm
-            # never give it (B13 round 7 H12: they named it for a single folder).
-            more = (
-                f" (+{len(stats.unknown_dirs) - 5} more; `{AGENTSYNC_BIN} sync -v` logs each one)"
-                if len(stats.unknown_dirs) > 5
-                else ""
-            )
-            cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
-            advice = "exclude a deliberately empty cloud folder, or grant the agent Files and Folders access"
-            if stats.unknown_dirs == (".",):  # the root could not be listed, and a root cannot be excluded
-                advice = "grant the agent Files and Folders access"
-            elif stats.empty_cloud_dirs:
-                # The loop's WAITING ON YOU lines give the step for the empty cloud folders, and warn against
-                # excluding one that held mirrored files (that retires its pages unchecked): point there,
-                # never at an exclude. Only an unreadable folder keeps the access advice. Each folder lands on
-                # one of three waits (the exclude-empty line, the `[` collision line, the held-files line; B13
-                # round 5 F11, F65), so one folder means one line, and two or more make one line per wait kind
-                # present, at most 3, however many folders (round 6 G57; round 9 K41: the plural "prints them"
-                # was false for six folders on the one exclude-empty line). The singular is chosen by those
-                # kinds, counted by the loop's own rule (:meth:`_empty_waits`), not by the folders: six on
-                # one wait read "the line"; "each" only for two kinds or more, or an unknown count (round 10
-                # L15). The waits name this alarm as where
-                # the folders are named, so it names them for the step, not the step's command for the folders
-                # (round 6 G13, G42): the end of a sync's output, where its waits print, and status, which
-                # prints them too, by its full path, which works with ~/.local/bin off PATH (round 5 F44, as
-                # §16.51 Q49).
-                status = f"`{AGENTSYNC_BIN} status`"
-                where = (
-                    f"the WAITING ON YOU line about {self.source_id} {SYNC_OUTPUT_END} says what to do, "
-                    f"and {status} prints it too"
-                    if len(stats.empty_cloud_dirs) == 1 or self._empty_waits(stats.empty_cloud_dirs) == 1
-                    else f"each WAITING ON YOU line about {self.source_id} {SYNC_OUTPUT_END} says what to "
-                    f"do, and {status} prints each one too"
-                )
-                if stats.unknown_dirs == stats.empty_cloud_dirs:
-                    cause, advice = "empty cloud folder(s), zero children in a cloud tree", where
-                else:
-                    empty = "one" if len(stats.empty_cloud_dirs) == 1 else "ones"
-                    advice = (
-                        "grant the agent Files and Folders access for the other folders; for the empty "
-                        f"{empty}, {where}"
-                    )
-            alarms.append(
-                f"{len(stats.unknown_dirs)} unknown dir(s) — {cause}: {shown}{more}; enumeration "
-                f"incomplete, no deletions this pass ({advice})"
-            )
+            alarms.append(self._unknown_alarm(stats, items))
         return items, stats, alarms
 
     # -- SourceArm -----------------------------------------------------------------------------------------
