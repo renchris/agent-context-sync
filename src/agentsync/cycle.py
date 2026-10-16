@@ -1495,6 +1495,19 @@ class _SourceAcc:
     auth_required: bool = False
     failed: bool = False
     escalations: Counter[str] = field(default_factory=Counter)  # files, removed, queued: one alarm (G38)
+    # stable id -> the CREATED or MAYBE_CHANGED phase 1 counted it under, until a later phase settles it
+    unsettled: dict[str, Verdict] = field(default_factory=dict)
+
+    def settle(self, stable_id: str, verdict: Verdict) -> None:
+        """Count a file under its final verdict, once: when a later phase settles a file phase 1 counted as
+        CREATED or MAYBE_CHANGED, that count moves to ``verdict`` (B13 round 11 M48: a new file read
+        ``changed=1, created=1``, as if two). Phase-1-only verdicts (unchanged, dataless, ...) stay."""
+        first = self.unsettled.pop(stable_id, None)
+        if first is not None:
+            self.counts[first] -= 1
+            if self.counts[first] <= 0:
+                del self.counts[first]
+        self.counts[verdict] += 1
 
     def report(self, cursor_advanced: bool) -> SourceReport:
         """Freeze into the model's SourceReport."""
@@ -2981,6 +2994,8 @@ class _Cycle:
         )
         for c in pc.verdicts:
             acc.counts[c.verdict] += 1
+            if c.verdict in (Verdict.CREATED, Verdict.MAYBE_CHANGED):
+                acc.unsettled[c.stable_id] = c.verdict
         if pc.deletion_candidates:
             acc.counts[Verdict.DELETION_CANDIDATE] += len(pc.deletion_candidates)
         acc.breaker_tripped = pc.breaker_tripped and bool(pc.deletion_candidates or active)
@@ -3570,7 +3585,7 @@ class _Cycle:
             return
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
         acc.deferred += 1
-        acc.counts[Verdict.DEFERRED] += 1
+        acc.settle(row.stable_id, Verdict.DEFERRED)
         waits = row.state in (RowState.LIVE, RowState.DATALESS) and row.state_reason is None
         if waits:  # never over a quarantine's or a refused download's own reason
             self.manifest.set_state(row.source_id, row.stable_id, row.state, RECORDING_WAITS)
@@ -4395,12 +4410,12 @@ class _Cycle:
             raise
         except FileNotFoundError:
             self.manifest.set_verdict(sid, stable, Verdict.ERROR)
-            acc.counts[Verdict.ERROR] += 1
+            acc.settle(stable, Verdict.ERROR)
             log.info("%s: %s vanished before it could be read; re-classified next cycle", sid, row.rel_path)
             return
         except Exception as exc:  # per-item failure: a row, never a crash of the source
             self.manifest.set_verdict(sid, stable, Verdict.ERROR)
-            acc.counts[Verdict.ERROR] += 1
+            acc.settle(stable, Verdict.ERROR)
             acc.errors.append(_one_line(f"{row.rel_path}: {type(exc).__name__}: {exc}"))
             log.warning("%s: fetch of %s failed: %s", sid, row.rel_path, exc)
             return
@@ -4439,7 +4454,7 @@ class _Cycle:
         saw local that materialise found dataless) passes True."""
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
         acc.deferred += 1
-        acc.counts[Verdict.DEFERRED] += 1
+        acc.settle(row.stable_id, Verdict.DEFERRED)
         cost = _download_cost(src, row)
         if online_only is None:
             online_only = cost > 0 and budget.used + cost > budget.max_bytes
@@ -4515,7 +4530,7 @@ class _Cycle:
                     return result  # published, or its pages came out the same: the row is settled
                 fresh, outs = now, self.manifest.outputs_for(sid, stable)  # kept as it was: settle it below
             if self._rewrite_if_moved(src, fresh, outs, acc):
-                acc.counts[Verdict.TOUCHED_NOT_CHANGED] += 1
+                acc.settle(stable, Verdict.TOUCHED_NOT_CHANGED)
                 self.manifest.set_verdict(sid, stable, Verdict.TOUCHED_NOT_CHANGED)
             return result
         if not reread:
@@ -4602,7 +4617,7 @@ class _Cycle:
             self._tally["rescreened_unchanged"] += 1
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.REFUSED, made_by=result)
             if self._rewrite_if_moved(src, fresh, outs, acc):
-                acc.counts[Verdict.REFUSED] += 1
+                acc.settle(stable, Verdict.REFUSED)
                 self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
             return result
         c3 = classify_output(outs, result) if intact else Verdict.CHANGED
@@ -4611,10 +4626,10 @@ class _Cycle:
                 self._tally["rescreened_unchanged"] += 1
             self._move_key(sid, stable, outs, result.action_key, OutputStatus.OK)
             if self._rewrite_if_moved(src, fresh, outs, acc):
-                acc.counts[Verdict.OUTPUT_UNCHANGED] += 1
+                acc.settle(stable, Verdict.OUTPUT_UNCHANGED)
                 self.manifest.set_verdict(sid, stable, Verdict.OUTPUT_UNCHANGED)
             return result
-        acc.counts[Verdict.CHANGED] += 1
+        acc.settle(stable, Verdict.CHANGED)
         self._publish(src, fresh, result, acc, quarantine_reason=None if duplicate is None else result.reason)
         return result
 
@@ -4815,7 +4830,7 @@ class _Cycle:
         if refused and quarantine_reason is None:
             self.manifest.set_state(sid, stable, RowState.REFUSED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.REFUSED)
-            acc.counts[Verdict.REFUSED] += 1
+            acc.settle(stable, Verdict.REFUSED)
             if unread and self.publisher.withheld(result.reason, Path(row.name).suffix.lower()):
                 acc.withheld_unread += 1
             elif unread:
@@ -4823,12 +4838,12 @@ class _Cycle:
         elif result.status is ConversionStatus.FAILED:
             self.manifest.set_state(sid, stable, RowState.QUARANTINED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.ERROR)  # not cached: retried next cycle
-            acc.counts[Verdict.ERROR] += 1
+            acc.settle(stable, Verdict.ERROR)
             acc.errors.append(_one_line(f"{row.rel_path}: {reason}"))
         else:
             self.manifest.set_state(sid, stable, RowState.QUARANTINED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.QUARANTINED)
-            acc.counts[Verdict.QUARANTINED] += 1
+            acc.settle(stable, Verdict.QUARANTINED)
 
     def _label_escalation(self, row: ItemRow, prior_ok: Sequence[OutputRow]) -> None:
         """A published item is now refused by the label policy (relabel, or a tightened [policy]): drop the

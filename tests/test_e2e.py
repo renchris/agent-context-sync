@@ -159,7 +159,8 @@ def test_b_touch_only_reads_bytes_but_commits_nothing(synced: Config, local_sour
     os.utime(target, ns=(st.st_atime_ns, st.st_mtime_ns - 7_000_000_000))  # a past mtime: not racily clean
     report = run(synced)
     assert report.exit_code == 0
-    assert counts(report).get(Verdict.MAYBE_CHANGED) == 1
+    # counted once, under its final verdict (B13 round 11 M48): no maybe_changed beside it
+    assert counts(report).get(Verdict.MAYBE_CHANGED) is None
     assert counts(report).get(Verdict.TOUCHED_NOT_CHANGED) == 1
     assert report.commit_sha is None and report.changes == ()
     assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""

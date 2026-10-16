@@ -53,6 +53,23 @@ from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock
 from conftest import zone
 
 
+def test_a_new_file_is_counted_once_under_its_final_verdict(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 11 M48: phase 1 counted a new file as created and phase 2 as changed, so one new file read
+    ``changed=1, created=1`` beside ``1 change(s)``. A file a later phase settles counts once, under its
+    final verdict; one phase 1 settles (unchanged) keeps its count."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    (local_source_dir / "projects" / "New Memo.txt").write_text("A new memo for Project Alpha.\n")
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    (line,) = [x for x in out if x.startswith("  source: ")]
+    assert "changed=1" in line and "created=" not in line and "unchanged=" in line, line
+    assert any(" · 1 change(s)" in x for x in out), out
+
+
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
 
