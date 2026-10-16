@@ -2582,7 +2582,9 @@ class _Run:
         self.run_type: str | None = None
         self.loop_stage: str | None = None
         self.loop_line: str | None = None  # the Summary's Loop line, computed after Doctor (build_report)
-        self.agent_named: tuple[int | None, int] | None = None  # folders named with agent words only
+        # folders named with agent words only: listed and not configured (None: no listing), configured, and
+        # the listed-only ones' words (B13 round 11 M2)
+        self.agent_named: tuple[int | None, int, frozenset[str]] | None = None
         self.evidence_steps = 0  # the evidence parts' looks at the clock while SQLite worked (_Mirror.steps)
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
@@ -3073,8 +3075,14 @@ def _build_redactor(r: _Run) -> Redactor:
             r.listing_late = late
     configured = sum(1 for _sid, _provider, comps in cloud_sources for c in comps if _agent_words(c))
     configured += sum(1 for path in project_paths if _agent_words(path.name))
-    agent_listed = sum(1 for _provider, _depth, name in listed if _agent_words(name))
-    r.agent_named = (agent_listed if listing_ok else None, configured)
+    # a listed folder that is also a configured one is redacted, so it is not counted as unredacted, and its
+    # words never decide the Configuration line's clause, which would hint at a redacted name (B13 round 11
+    # M2)
+    mine = {c.casefold() for _sid, _provider, comps in cloud_sources for c in comps}
+    mine |= {path.name.casefold() for path in project_paths}
+    only = [name for _provider, _depth, name in listed if _agent_words(name) and name.casefold() not in mine]
+    only_words = frozenset(w for name in only for w in _SEP_RE.split(name.casefold()) if w)
+    r.agent_named = (len(only) if listing_ok else None, configured, only_words)
     # Then the folders step 1's lists printed into install.out, the ones the agent saw and may quote: after
     # the listing, so a listing that finished keeps its numbers, and in its place when it did not. A listing
     # that did not finish with no list in install.out makes the report private only (B13 round 8 J69).
@@ -3958,14 +3966,22 @@ def _configuration(r: _Run) -> list[str]:
         f"- state dir: {expand(c.state_dir)} ({'exists' if expand(c.state_dir).is_dir() else 'missing'})"
     )
     if r.agent_named is not None:
-        listed, configured = r.agent_named
+        listed, configured, words = r.agent_named
+        # the consequence only when an Agent: line has a word of such a folder's name: every attempt's, as the
+        # report embeds the whole friction log (B13 round 11 M2)
+        agents = " ".join(a.said("Agent") for a in (r.friction.attempts if r.friction is not None else ()))
+        said = set(re.findall(r"[^\W_]+", agents.casefold()))
+        so = (
+            ", so the product name in the friction log's Agent: line stays as written"
+            if said & words & _AGENT_WORDS
+            else ""
+        )
         out.append(
             "- folders whose name is made only of coding-agent product words: "
             + (
                 "could not list ~/Library/CloudStorage"
                 if listed is None
-                else f"{listed} under ~/Library/CloudStorage, which this report does not redact, so the "
-                "product name in the friction log's Agent: line stays as written"
+                else f"{listed} under ~/Library/CloudStorage, which this report does not redact{so}"
             )
             + f"; {configured} of the configured source folders, which are redacted to <folder-N> like any "
             "other"
@@ -6735,16 +6751,24 @@ def _headerless_kind(fr: Friction, index: int) -> str | None:
     """How attempt ``index`` came to have no header, when it is a session that stopped before ``install.sh
     --log-start`` (:func:`parse_friction`): ``"finished"``, it follows a finished attempt; ``"open"``, it
     starts at a step 1 error that left an attempt with no end line (B13 round 4 Q21); ``"first"``, it is the
-    log's first attempt and starts at a step 1 error (Q38). None otherwise: a v4 log, whose attempt opens on a
-    ``Prompt:`` header or ``F<n>`` lines, is not one."""
+    log's first attempt and holds a step 1 error (Q38). None otherwise: a v4 log, whose attempt opens on a
+    ``Prompt:`` header or ``F<n>`` lines, is not one. The error need not be the first line: step 1 lines
+    before it are the same session's, the run :func:`parse_friction` reads the stated words with (B13 round
+    10 L26; round 11 M30, M73)."""
     att = fr.attempts[index]
     if att.header or att.started is not None:
         return None
     if index > 0 and fr.attempts[index - 1].finished:
         return "finished"
-    if att.legacy or not att.events or (att.events[0].step, att.events[0].kind) != (1, "error"):
+    error = _headerless_error(att)
+    if att.legacy or error is None or any(e.step != 1 for e in att.events[: att.events.index(error)]):
         return None
     return "open" if index > 0 else "first"
+
+
+def _headerless_error(att: Attempt) -> FrictionEvent | None:
+    """The first step 1 error of an attempt with no header (:func:`_headerless_kind`), or None."""
+    return next((e for e in att.events if (e.step, e.kind) == (1, "error")), None)
 
 
 _HEADERLESS_LABEL = {
@@ -6829,6 +6853,35 @@ def _stopped_before_the_list(att: Attempt, runs: Sequence[InstallRun]) -> bool:
     return bool(_prompt_copy_note(att)) and not runs
 
 
+_LIST_STOPS = {
+    "not-signed-in": "OneDrive is not signed in",
+    "no-folders": "no folders are synced yet",
+    "denied": "",
+    "tcc-pending": "",
+}
+"""The ``note=`` words of a failed step 1 list (install.sh's ``list_folders``), and for the two exits 3 the
+report's words for why nothing was listed; the two exits 4 end on an Allow click instead."""
+
+
+def _list_stopped(runs: Sequence[InstallRun]) -> str | None:
+    """The ``note=`` word of the folder list that ended these runs (an attempt's) on a failure, when no
+    install run is among them: ``not-signed-in`` or ``no-folders`` (exit 3, nothing listed: no folder
+    question and no Allow click), ``denied`` or ``tcc-pending`` (exit 4: the list ended on the Allow click,
+    which is the turn). None when an install run followed, any list finished (it printed the folders to ask
+    about), or the note is another (B13 round 11 M7: a list that only failed still counted the folder
+    question). An exit 3 after an exit 4 is the exit 4's: its Allow click was announced all the same."""
+    if install_runs_only(runs):
+        return None
+    lists = [(r.step("list-folders") or {}) for r in runs if r.list_only]
+    if not lists or any(listed.get("result") != "failed" for listed in lists):
+        return None
+    notes = [listed.get("note", "") for listed in lists]
+    if notes[-1] not in _LIST_STOPS:
+        return None
+    clicked = [note for note in notes if note in _LIST_STOPS and not _LIST_STOPS[note]]
+    return clicked[-1] if clicked else notes[-1]
+
+
 def _turns_line(
     att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False, unasked: bool = False
 ) -> str:
@@ -6874,6 +6927,7 @@ def _expected_turns_line(
     unread: int | None = None,
     kept_unread: int | None = None,
     unasked: bool = False,
+    list_stop: str | None = None,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -6885,8 +6939,15 @@ def _expected_turns_line(
     synced folders the list could not read: no folder question was due, and the one asked is an Item. With
     ``kept_unread`` instead, the prompt (v18 on) asked at most whether to add one, as with ``synced``, and so
     with ``unasked`` (:func:`unread_unknown`), where no count says how many folders were synced (B13 round 10
-    L7)."""
+    L7). With ``list_stop`` (:func:`_list_stopped`) step 1's list stopped before the folder question: on an
+    exit 3 nothing was listed, so there is no turn at all; on an exit 4 the Allow click is the turn (B13 round
+    11 M7)."""
     layout = att.layout
+    if list_stop and _LIST_STOPS.get(list_stop) and not synced and not layout.logs_expected_turns:
+        return (
+            f"- expected turns: none (step {layout.folder_question_step}'s list stopped: "
+            f"{_LIST_STOPS[list_stop]}, so no folder was listed: no folder question and no Allow click)"
+        )
     if unstarted:
         return (
             f"- expected turns: none (step {layout.folder_question_step}'s command stopped before install.sh "
@@ -6912,6 +6973,10 @@ def _expected_turns_line(
             parts = [
                 f"no folder question ({_plural(synced, 'folder')} already synced: step {step} asks at most "
                 "whether to add one; not logged)"
+            ]
+        elif list_stop:
+            parts = [
+                f"no folder question (step {step}'s list ended on an Allow click, before the folder question)"
             ]
         elif unread:
             parts = [
@@ -7542,10 +7607,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             "open": f"logged by another session after attempt {att.number - 1}, which has no end line",
             "first": "logged before any attempt was started",
         }[headerless]
+        # the error by its number: step 1 lines can come before it (B13 round 11 M30)
+        error = _headerless_error(att)
+        holds = f"It holds a step 1 error (F{error.line})" if error is not None else "Its lines were"
         out.append(
-            f"- note: attempt {att.number} has no Attempt: line. It starts at a step 1 error {after}: that "
-            "session stopped before `install.sh --log-start`, so `install.sh --report-only` had no attempt "
-            "to close."
+            f"- note: attempt {att.number} has no Attempt: line. {holds} {after}: that session stopped "
+            "before `install.sh --log-start`, so `install.sh --report-only` had no attempt to close."
         )
     elif att is not None and not att.finished:
         step = att.layout.report_step
@@ -7599,7 +7666,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         # stopped one (B13 round 3 R15). Any run, list or install, keeps the usual rules.
         no_run = not runs and not att.layout.logs_expected_turns
         copy_stopped = _stopped_before_the_list(att, runs)
-        stopped = copy_stopped or unstarted or no_run
+        # a list that stopped on a sign-in (exit 3) listed nothing, and one that stopped on a click (exit 4)
+        # was asked no folder question yet; a Mac that already syncs folders keeps its own words (B13 round 11
+        # M7)
+        list_stop = _list_stopped(runs) if not synced else None
+        nothing_listed = bool(list_stop and _LIST_STOPS[list_stop])
+        stopped = copy_stopped or unstarted or no_run or nothing_listed
         # from prompt v18 a list that could not read the config asks at most whether to add one (round 9 K20)
         unread, asked = unread_synced(runs), unread_asked(att, runs)
         kept_unread = unread if unread and not asked else None
@@ -7613,7 +7685,11 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             and not kept_unread
             and unread_unknown(runs)
         )
-        out.append(_turns_line(att, run_type, synced or kept_unread, stopped=stopped, unasked=unasked))
+        out.append(
+            _turns_line(
+                att, run_type, synced or kept_unread, stopped=stopped, unasked=unasked or bool(list_stop)
+            )
+        )
         out.append(
             _expected_turns_line(
                 att,
@@ -7625,6 +7701,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 unread=asked,
                 kept_unread=kept_unread,
                 unasked=unasked,
+                list_stop=list_stop,
             )
         )
         why_unread = unread_why(runs)

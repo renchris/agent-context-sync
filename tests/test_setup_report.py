@@ -5137,7 +5137,7 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
     )
     assert "- attempt: 2 of 2; earlier: attempt 1 fully one command" in summary
     assert (
-        "- note: attempt 2 has no Attempt: line. It starts at a step 1 error logged after attempt 1"
+        "- note: attempt 2 has no Attempt: line. It holds a step 1 error (F5) logged after attempt 1"
         in summary
     )
     assert "WARNING" not in summary, "install.sh --report-only cannot close an attempt that has no header"
@@ -5463,7 +5463,7 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
     assert "no Attempt: line, since its session stopped before `install.sh --log-start`" in fr, fr
     assert "v4 format" not in fr and "may be stale" not in summary
     assert (
-        "It starts at a step 1 error logged before any attempt was started: that session stopped" in summary
+        "It holds a step 1 error (F1) logged before any attempt was started: that session stopped" in summary
     )
     # B13 round 11 M34: the friction line would only repeat the agent-friction line's one error
     assert "- agent friction: 0 deviation, 0 prompt, 1 error (F1)" in summary
@@ -5477,6 +5477,48 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
         assert att.stated == {} and att.events[0].what.startswith("prompt v12, "), first
     _text, _summary, fr, _link = report("F1 | step 2 | the pull failed | -\n")
     assert "no Attempt: line, since it is in the v4 format" in fr, fr
+
+
+def test_a_step_1_line_before_the_stated_step_1_error_keeps_the_header_less_label(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 11 M30, M73: round 10's L26 reads the stated words from a step 1 error with step 1 lines
+    before it, but the label still looked at the first line alone: a deviation, then the error, read "since it
+    is in the v4 format" (0 legacy lines), lost the Summary's note and gained a stale WARNING that names a
+    command with no attempt to close. After a finished attempt the note said the attempt starts at the error,
+    though it starts at the deviation."""
+    v6_install_log(fake_mac)
+    agent = "Contoso Agent model-b"
+    lines = (
+        f"2026-09-29T10:19:00Z | step 1 | deviation | prompt v19, {agent}: the pull asked for a key | -\n"
+        f"2026-09-29T10:20:00Z | step 1 | error | prompt v19, {agent}: git pull exited 1 | -\n"
+    )
+
+    def report(friction: str) -> tuple[str, str]:
+        write_friction(fake_mac, friction)
+        now = datetime(2026, 9, 29, 10, 30, tzinfo=UTC)
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
+        return section(text, "Agent friction log"), section(text, "Summary")
+
+    fr, summary = report(lines)
+    assert "no Attempt: line, since its session stopped before `install.sh --log-start`" in fr, fr
+    assert "v4 format" not in fr and "WARNING" not in summary, summary
+    assert (
+        "- note: attempt 1 has no Attempt: line. It holds a step 1 error (F2) logged before any attempt was "
+        "started: that session stopped" in summary
+    ), summary
+    # after a finished attempt: the note names the error, never "starts at" it
+    fr, summary = report(V7_HAPPY + lines.replace("2026-09-29T10:", "2026-10-06T10:"))
+    assert "It holds a step 1 error (F6) logged after attempt 1 finished" in summary, summary
+    assert "starts at a step 1 error" not in summary
+    # an error and then a later step's line is still the session's own; a later step's line first is not
+    error = lines.splitlines(keepends=True)[1]
+    fr, summary = report(error + "2026-09-29T10:21:00Z | step 2 | deviation | x | -\n")
+    assert "since its session stopped before `install.sh --log-start`" in fr, fr
+    fr, summary = report("2026-09-29T10:18:00Z | step 2 | deviation | x | -\n" + error)
+    assert "since it is in the v4 format" in fr, fr
+    fr, summary = report("F1 | step 1 | the pull failed | -\n" + error)
+    assert "since it is in the v4 format" in fr, fr
 
 
 def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line() -> None:
@@ -8528,22 +8570,51 @@ def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: di
     line = "- folders whose name is made only of coding-agent product words: "
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
     conf = section(text, "Configuration")
+    # no such folder: nothing follows from it (B13 round 11 M2)
     assert (
-        line + "0 under ~/Library/CloudStorage, which this report does not redact, so the product name in "
-        "the friction log's Agent: line stays as written; 0 of the configured source folders, which are "
-        "redacted to <folder-N> like any other\n"
+        line + "0 under ~/Library/CloudStorage, which this report does not redact; 0 of the configured "
+        "source folders, which are redacted to <folder-N> like any other\n"
     ) in conf, conf
     assert "keeps its name" not in conf and "a placeholder like any other" not in conf
     # The line gives no example: a product word is a folder name a source can have, and a redacted example
     # in fixed text gives that name back.
     cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
     (cloud / "Copilot").mkdir()
+    so = ", so the product name in the friction log's Agent: line stays as written"
+
+    def conf_for(agent: str) -> str:
+        write_friction(
+            fake_mac, V11_HAPPY.replace("Agent: Claude Code, claude-opus-5-5\n", f"Agent: {agent}\n")
+        )
+        text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+        return section(text, "Configuration")
+
+    # a listed folder "Copilot": the clause only when the Agent: line has its word
+    assert line + "1 under ~/Library/CloudStorage, which this report does not redact; " in conf_for(
+        "Claude Code claude-opus-5-5"
+    )
+    assert line + f"1 under ~/Library/CloudStorage, which this report does not redact{so}; " in conf_for(
+        "GitHub Copilot model-x1"
+    )
+    # an earlier attempt's Agent: line is in the report too
+    write_friction(
+        fake_mac,
+        V11_HAPPY.replace("Agent: Claude Code, claude-opus-5-5\n", "Agent: GitHub Copilot model-x1\n")
+        + V11_HAPPY.replace("2026-09-29T", "2026-09-30T"),
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    assert line + f"1 under ~/Library/CloudStorage, which this report does not redact{so}; " in text
+    # A configured "GitHub Copilot" is redacted: it is not counted as unredacted, and its words never decide
+    # the clause, which would say a redacted folder is named like the agent.
     (cloud / "GitHub Copilot").mkdir()
     assert cli.main(["add-source", str(cloud / "GitHub Copilot"), "--config", str(fake_mac["config"])]) == 0
-    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
-    conf = section(text, "Configuration")
-    assert line + "2 under ~/Library/CloudStorage, which" in conf, "GitHub Copilot, two product words, counts"
-    assert "; 1 of the configured source folders, which" in conf
+    conf = conf_for("GitHub model-x1")
+    assert (
+        line + "1 under ~/Library/CloudStorage, which this report does not redact; 1 of the configured"
+        in conf
+    )
+    conf = conf_for("Copilot model-x1")
+    assert line + f"1 under ~/Library/CloudStorage, which this report does not redact{so}; 1 of the" in conf
 
 
 def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:
@@ -9942,3 +10013,73 @@ def test_each_stopped_copy_constant_keeps_its_own_docstring() -> None:
             docs[node.targets[0].id] = doc
     assert str(docs["_STOPPED_COPY_WARN"]).startswith("Why ``install.commit`` warns on a stopped copy")
     assert str(docs["_STOPPED_COPY_BEYOND"]).startswith('What follows "nothing for this setup to do"')
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_step_1_list_that_stopped_on_a_sign_in_asked_no_folder_question(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 11 M7: step 1's list exited 3 (OneDrive not signed in) and listed nothing, yet the report
+    counted the unlogged folder question (``human turns: 1``, ``the folder question``). A list that stopped on
+    an Allow click (exit 4) was asked no folder question either, but the click stays its turn. A failed list
+    that a later list or an install run followed keeps the usual rules, as does a Mac that already syncs."""
+    happy = V11_HAPPY.replace("Prompt: v11", f"Prompt: v{setup_report.PROMPT_VERSION}")
+    write_friction(fake_mac, happy)
+
+    def lines(list_step: str, *, relist: bool = False) -> tuple[str, str]:
+        log = set_up_log(fake_mac, listed="", list_step=list_step)
+        if relist:
+            again = LIST_RUN.replace(" launchd=simulated", "").replace("T09:58:0", "T09:59:0")
+            again = again.replace("20260929T095805Z-11", "20260929T095905Z-12")
+            log.write_text(
+                log.read_text(encoding="utf-8")
+                + again.replace("result=done\n", "result=done note=listed-25\n"),
+                encoding="utf-8",
+            )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        return _line(summary, "- human turns: "), _line(summary, "- expected turns: ")
+
+    for note, why in (
+        ("not-signed-in", "OneDrive is not signed in"),
+        ("no-folders", "no folders are synced yet"),
+    ):
+        human, expected = lines(f"failed note={note}")
+        assert human.startswith("- human turns: 0 (0 questions; "), (note, human)
+        assert "beyond the announced" not in human, "no provider folder: no Allow click was announced"
+        assert expected == (
+            f"- expected turns: none (step 1's list stopped: {why}, so no folder was listed: no folder "
+            "question and no Allow click)"
+        ), expected
+        # the person signed in and step 1 listed again: the folder question was asked
+        human, expected = lines(f"failed note={note}", relist=True)
+        assert human.startswith("- human turns: 1 (1 question; "), (note, human)
+        assert expected.startswith("- expected turns: the folder question (step 1; not logged as a question)")
+    for note in ("denied", "tcc-pending"):
+        human, expected = lines(f"failed note={note}")
+        assert human.startswith("- human turns: 0 (0 questions; "), (note, human)
+        assert expected.startswith(
+            "- expected turns: no folder question (step 1's list ended on an Allow click, before the folder "
+            "question) · "
+        ), expected
+        assert "Allow click" in expected.split(" · ", 1)[1], "the click is the turn"
+    # a list that finished printed the folders, whatever failed after it: the question was due (review)
+    log = set_up_log(fake_mac, listed="", list_step="done note=listed-25")
+    again = LIST_RUN.replace(" launchd=simulated", "").replace("T09:58:0", "T09:59:0")
+    again = again.replace("20260929T095805Z-11", "20260929T095905Z-12")
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + again.replace("result=done\n", "result=failed note=not-signed-in\n"),
+        encoding="utf-8",
+    )
+    runs = setup_report.read_install_runs(log)
+    assert setup_report._list_stopped(runs) is None
+    # an exit 3 after an exit 4 is the exit 4's: its Allow click was announced
+    log.write_text(
+        log.read_text(encoding="utf-8").replace("result=done note=listed-25", "result=failed note=denied"),
+        encoding="utf-8",
+    )
+    assert setup_report._list_stopped(setup_report.read_install_runs(log)) == "denied"
+    # a Mac that already syncs folders keeps its own words, whatever the list's failure
+    human, expected = lines("failed note=not-signed-in synced=2")
+    assert expected.startswith("- expected turns: no folder question (2 folders already synced: "), expected
