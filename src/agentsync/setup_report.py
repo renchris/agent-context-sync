@@ -7344,6 +7344,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     numbered). The baseline clause is live state and keeps its words (B13 round 3 R19, R28)."""
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     borrowed = scoped and not runs and bool(pool)
+    missing = not r.install_log.is_file()
     parts: list[str] = []
     counts: tuple[int, int, int] | None = None
     label = "first sync"
@@ -7374,7 +7375,10 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             text += " (install.log)"
         parts.append(text)
     elif scoped and not runs:
-        parts.append("no install.sh run during this attempt (install.log)")
+        # the tag names install.log only when there is one, as the install.sh line does (B13 round 12 N24)
+        parts.append(
+            "no install.sh run during this attempt" + (" (no install log)" if missing else " (install.log)")
+        )
     elif scoped and not install_runs_only(runs):
         # a list-only attempt never reaches a first-sync step (B13 round 11 M22)
         parts.append("this attempt ran only install.sh --list-folders, no first sync (install.log)")
@@ -7387,7 +7391,11 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         where = f": the last stopped at its {failing[0]} step" if failing else ""
         parts.append(f"no install run of this attempt reached its first sync (install.log{where})")
     else:
-        parts.append("no install.sh run with a first-sync step (install.log)")
+        parts.append(
+            "no install.sh run (no install log)"
+            if missing
+            else "no install.sh run with a first-sync step (install.log)"
+        )
     source = "install.log: that earlier run" if borrowed else "install.log"
     # install.out's last sync line is this step's only when the step ran a sync and the line is in its run's
     # output: a skipped sync (lock-busy, no-sources, status-failed) or one that printed no counts left an

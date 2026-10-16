@@ -3962,6 +3962,24 @@ NO_TURN = (
 )
 
 
+def test_the_first_sync_line_cites_no_install_log_when_there_is_none(fake_mac: dict[str, Path]) -> None:
+    """B13 round 12 N24: on a Mac with no install.log the Summary read ``- install.sh: no install log`` and on
+    the next line ``- first sync: no install.sh run during this attempt (install.log)``: the tag names the log
+    only when there is one, as the install.sh line's check does."""
+    (fake_mac["setup"] / "install.log").unlink(missing_ok=True)
+    write_friction(fake_mac, STOPPED_V8)  # an attempt: the scoped branch
+    _text, summary = summary_of(fake_mac)
+    assert "- install.sh: no install log" in summary, summary
+    [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
+    assert line.startswith("- first sync: no install.sh run during this attempt (no install log)"), line
+    assert "(install.log" not in line, line
+    (fake_mac["setup"] / "friction.md").unlink()  # no attempt: the unscoped branch
+    _text, summary = summary_of(fake_mac)
+    [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
+    assert line.startswith("- first sync: no install.sh run (no install log)"), line
+    assert "(install.log" not in line, line
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_reads(
     fake_mac: dict[str, Path],
