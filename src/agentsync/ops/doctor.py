@@ -33,6 +33,7 @@ from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_prov
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _holds_home, _sync_leaves
 from agentsync.errors import AgentSyncError, ConfigError
+from agentsync.it_request import org_of
 from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, SourceKind
@@ -887,8 +888,11 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     app is signed out, so the fix is the sign-in alone; with another folder of the app there (another
     account, a renamed organization) the sign-in is not clear-cut, so it keeps the path; a provider folder
     that is there means the person is signed in, so the subfolder is the path or a folder the app does not
-    sync; a folder outside ~/Library/CloudStorage has no sync client to sign in to. No parenthesis: a FAIL
-    line puts its fix in one. One rule for the listing, the volume and the launcher's probe."""
+    sync; a folder outside ~/Library/CloudStorage has no sync client to sign in to. A SharePoint library
+    folder (``OneDrive-SharedLibraries-<org>``) missing beside its organization's ``OneDrive-<org>`` is a
+    library not synced on this Mac, never a sign-in, since that account is signed in (B13 round 12 N53). The
+    sign-in names the command to run after it (round 12 N56: "then re-run" named none). No parenthesis: a
+    FAIL line puts its fix in one. One rule for the listing, the volume and the launcher's probe."""
     fix_path = f'fix path in [[source]] id = "{src.id}"'
     if not is_cloud_path(root):
         return fix_path
@@ -898,6 +902,12 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     app = provider.name.split("-", 1)[0] or "the sync client"
     if os.path.lexists(provider):
         return f"{fix_path}, or sync that folder in {app}"
+    org = org_of(provider.name) if provider.name.startswith("OneDrive-SharedLibraries-") else None
+    if org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}"):
+        return (
+            f"{provider} is missing while OneDrive-{org} is there: sync the SharePoint library to this Mac "
+            f"with Sync on its SharePoint page, or {fix_path}"
+        )
     others: list[str] = []
     with contextlib.suppress(OSError):
         others = [
@@ -910,7 +920,7 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
             f"{provider} is missing while another {app} folder is there: sign in to {app} with the account "
             f"it belongs to, or {fix_path}"
         )
-    return f"sign in to {app} on this Mac, since {provider} is missing, then re-run"
+    return f"sign in to {app} on this Mac, since {provider} is missing, then run {BIN} status again"
 
 
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:
@@ -964,7 +974,9 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
                 f"{base}.listable",
                 f"{root}: listing did not return within {_LISTING_TIMEOUT_S:.0f}s; macOS is most likely "
                 "waiting for you to click Allow on a privacy prompt (it can sit behind other windows)",
-                fix=f"click Allow on the macOS prompt, then re-run; if no prompt shows: {_fda_fix(image)}",
+                # the command to run after, as the sign-in's (B13 round 12 N56)
+                fix=f"click Allow on the macOS prompt, then run {BIN} status again; if no prompt shows: "
+                f"{_fda_fix(image)}",
             )
         )
         return out

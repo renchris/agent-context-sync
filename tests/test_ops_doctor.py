@@ -1174,6 +1174,10 @@ def test_cloud_source_listing_times_out_with_click_allow_hint(
     listable = r["source.local-fixture.listable"]
     assert not listable.ok and listable.severity is Severity.ERROR, listable
     assert "did not return" in listable.detail and "click Allow" in (listable.fix or "")
+    # B13 round 12 N56: the fix names what to run once Allow is clicked, as the sign-in's does
+    assert (listable.fix or "").startswith(
+        "click Allow on the macOS prompt, then run ~/.local/bin/agentsync status again; if no prompt shows: "
+    ), listable.fix
     assert "source.local-fixture.sentinel" not in r and "source.local-fixture.volume" not in r
 
 
@@ -1912,12 +1916,33 @@ def test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cau
         r = by_name(run_checks(cfg))
         return {r["source.docs.listable"].fix, r["source.docs.volume"].fix}
 
-    assert fixes() == {f"sign in to OneDrive on this Mac, since {gone} is missing, then re-run"}
+    # B13 round 12 N56: "then re-run" named no command; status is the read-only check that reads it again
+    assert fixes() == {
+        f"sign in to OneDrive on this Mac, since {gone} is missing, then run ~/.local/bin/agentsync status "
+        "again"
+    }
     (cloud / "OneDrive-Fabrikam").mkdir(parents=True)
     assert fixes() == {
         f"{gone} is missing while another OneDrive folder is there: sign in to OneDrive with the account it "
         f"belongs to, or {table}"
     }
+    # B13 round 12 N53: a SharePoint library folder missing beside its own organization's OneDrive folder is a
+    # library not synced here, never a sign-in (that account is signed in); beside another one's, as above
+    library = cloud / "OneDrive-SharedLibraries-Contoso"
+    lib = dataclasses.replace(src, path=library / "Team Site - Documents")
+    cfg = dataclasses.replace(sample_config, sources=(lib,))
+    assert fixes() == {
+        f"{library} is missing while another OneDrive folder is there: sign in to OneDrive with the account "
+        f"it belongs to, or {table}"
+    }
+    gone.mkdir()
+    shared = {
+        f"{library} is missing while OneDrive-Contoso is there: sync the SharePoint library to this Mac with "
+        f"Sync on its SharePoint page, or {table}"
+    }
+    assert fixes() == shared and all("(" not in (f or "") for f in fixes())
+    gone.rmdir()
+    cfg = dataclasses.replace(sample_config, sources=(src,))
     gone.mkdir()
     assert fixes() == {f"{table}, or sync that folder in OneDrive"}
     plain = dataclasses.replace(src, path=sample_config.config_path.parent / "gone")
