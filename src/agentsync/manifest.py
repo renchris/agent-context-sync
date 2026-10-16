@@ -33,6 +33,7 @@ from agentsync import tm_exclude
 from agentsync.config import SourceConfig, always_excluded
 from agentsync.errors import ConfigError, ManifestSchemaError
 from agentsync.model import (
+    PRESENT_STATES,
     ChangeOp,
     CycleMode,
     ExtraValue,
@@ -395,12 +396,7 @@ _PENDING_VERDICTS: tuple[Verdict, ...] = (
 )
 """Row verdicts that mean "observed but not yet published" (CONTRACTS.md section 5, pending work)."""
 
-_PRESENT_STATES: tuple[RowState, ...] = (
-    RowState.LIVE,
-    RowState.DATALESS,
-    RowState.QUARANTINED,
-    RowState.REFUSED,
-)
+_PRESENT_STATES = PRESENT_STATES
 """Row states of an object that exists upstream (everything except a tombstone)."""
 
 _EXPORT_STATES: tuple[RowState, ...] = (*_PRESENT_STATES, RowState.TOMBSTONE)

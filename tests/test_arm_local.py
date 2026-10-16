@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 
 from agentsync import arm_local as al
+from agentsync import cycle, manifest, model
 from agentsync import materialise as mat
 from agentsync.config import DEFAULT_EXCLUDES, SourceConfig
 from agentsync.errors import BudgetExhaustedError, ConfigError, MaterialiseError
@@ -576,6 +577,26 @@ def test_an_empty_folder_that_held_files_is_its_own_wait_in_the_alarm() -> None:
     (root / "Plain").rmdir()
     alarm = _waits_alarm(root, known)
     assert alarm.endswith("prints it too)"), alarm
+
+
+def test_the_alarm_counts_rows_by_the_one_present_state_tuple() -> None:
+    """B13 round 11 M63: the walk's alarm, the cycle and the manifest read one tuple of present-row states, so
+    a state added to one copy only cannot make the alarm's count of waits drift from the loop's. A quarantined
+    row under an emptied folder is a file the mirror still holds (the held-files wait); a tombstone is not."""
+    assert cycle._PRESENT is model.PRESENT_STATES and manifest._PRESENT_STATES is model.PRESENT_STATES
+    assert frozenset(s.value for s in model.PRESENT_STATES) == al._PRESENT_STATES
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    _write(root / "a.docx")
+    (root / "Was Full").mkdir(parents=True)
+    (root / "Plain").mkdir()
+    for state, ending in (("quarantined", "prints each one too)"), ("tombstone", "prints it too)")):
+        arm = al.LocalArm(_cfg(root))
+        row = dataclasses.make_dataclass("Row", ["rel_path", "is_dir", "state"])(
+            "Was Full/old.docx", False, state
+        )
+        arm.known_h0 = {"x": row}
+        (alarm,) = arm.scan(None, full=True).alarms
+        assert alarm.endswith(ending), (state, alarm)
 
 
 def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:

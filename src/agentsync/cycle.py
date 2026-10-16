@@ -122,6 +122,7 @@ from agentsync.manifest import (
     redacted_path,
 )
 from agentsync.model import (
+    PRESENT_STATES,
     ByteBudget,
     CanonicalHash,
     CarriedLines,
@@ -176,7 +177,7 @@ log = logging.getLogger(__name__)
 
 _RUN_TRAILER = re.compile(r"^Agentsync-Run:\s*(\d+)\s*$", re.MULTILINE)
 _SETTLED_PUBLISHED = Verdict.UNCHANGED  # a published row is in sync; CHANGED would be pending work again
-_PRESENT = (RowState.LIVE, RowState.DATALESS, RowState.QUARANTINED, RowState.REFUSED)
+_PRESENT = PRESENT_STATES
 _NEVER_TRIPS = BreakerConfig(fraction=1.0, floor=10**12, hold_days=0)
 _WORK_BATCH = 256  # work-queue rows per manifest transaction (one commit + fsync per batch)
 _LABEL_CAPABLE = (*content_policy.OOXML_SUFFIXES, ".pdf", ".eml", ".msg", *ImageConverter.extensions)

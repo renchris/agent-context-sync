@@ -47,6 +47,7 @@ from agentsync.materialise import (
     sha256_file,
 )
 from agentsync.model import (
+    PRESENT_STATES,
     SYNC_OUTPUT_END,
     ByteBudget,
     ExtraValue,
@@ -105,8 +106,8 @@ _S_IFDIR = stat.S_IFDIR
 _S_IFREG = stat.S_IFREG
 _NO_HASHES = RemoteHashes()  # frozen: shared by every local item (a local file has no provider hash)
 _NO_EXTRA: Mapping[str, ExtraValue] = MappingProxyType({})
-# the row states of a file the mirror holds (``cycle._PRESENT``, which imports this module)
-_PRESENT_STATES = frozenset({"live", "dataless", "quarantined", "refused"})
+# the row states of a file the mirror holds, as strings: an observation row may carry a str or a RowState
+_PRESENT_STATES = frozenset(s.value for s in PRESENT_STATES)
 
 
 class _KnownStat(Protocol):

@@ -58,6 +58,17 @@ class RowState(enum.StrEnum):
     REFUSED = "refused"
 
 
+PRESENT_STATES: tuple[RowState, ...] = (
+    RowState.LIVE,
+    RowState.DATALESS,
+    RowState.QUARANTINED,
+    RowState.REFUSED,
+)
+"""Row states of an object the mirror holds (everything except a tombstone): one tuple for the cycle, the
+manifest and the walk's alarm, so the alarm's count of waits cannot drift from the loop's (B13 round 11
+M63)."""
+
+
 class Verdict(enum.StrEnum):
     """Per-object classifier verdicts, exactly the states of design section 4.3.
 
