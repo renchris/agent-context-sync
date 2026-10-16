@@ -23,7 +23,7 @@ import threading
 import time
 import tomllib
 import zlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -97,12 +97,14 @@ from test_convert_builders import (
 from test_convert_image import picture, picture_bytes, reads, text_png
 from test_e2e import (
     GRAPH_SOURCE,
+    LABEL,
     SID,
     FakeDrive,
     FakeTokens,
     clock,
     config_with,
     git,
+    label_ooxml,
     page,
     porcelain,
     source_report,
@@ -6372,3 +6374,72 @@ def test_a_no_converter_stub_read_in_part_is_counted_with_the_minutes_read(
     assert run(config).exit_code == 0 and _recording_page(config, MEETING)[0]["status"] == "current"
     with Manifest(config.state_paths.db) as m:
         assert loop._unpublished(m, config.sources).recording == {}
+
+
+# ---------------------------------------------------------------------------------------------------------
+# per-source counts: a file two later phases settle in one cycle is counted once (B13 round 12 N30, N39, N50)
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _files(counts: Mapping[Verdict, int]) -> int:
+    return sum(v for k, v in counts.items() if k is not Verdict.DELETION_CANDIDATE)
+
+
+@pytest.mark.parametrize("case", ["labelled", "broken", "credential"])
+def test_a_new_file_publish_settles_again_is_counted_once_under_that_verdict(
+    tmp_path: Path, local_source_dir: Path, fixture_files: dict[str, Path], case: str
+) -> None:
+    """B13 round 12 N30, N50: ``_convert_and_publish`` settled a new file CHANGED and ``_publish`` then
+    settled it again, REFUSED (a label rule), QUARANTINED (a file not the type its name says, a credential
+    re-stub) or ERROR, so one new file read ``changed=1, refused=1``. The last settle moves the count."""
+    config = config_with(tmp_path, local_source_dir, f'\n[policy]\nexclude_label_ids = ["{LABEL}"]\n')
+    before = _files(run(config).sources[0].counts)
+    projects = local_source_dir / "projects"
+    if case == "labelled":
+        label_ooxml(fixture_files["sample.docx"], projects / "Contoso Board.docx")
+    elif case == "broken":
+        (projects / "broken.docx").write_bytes(b"this is not a zip archive\n")
+    else:
+        (projects / "keys.txt").write_text(f"aws key {AWS_KEY}\n", encoding="utf-8")
+    report = run(config)
+    assert report.exit_code == 0, report
+    (rep,) = report.sources
+    final = Verdict.REFUSED if case == "labelled" else Verdict.QUARANTINED
+    assert rep.counts.get(final) == 1 and Verdict.CHANGED not in rep.counts, rep.counts
+    assert _files(rep.counts) == before + 1 and rep.new == 0, rep.counts
+
+
+def test_a_new_recording_read_in_the_cycle_that_deferred_it_is_counted_once(
+    tmp_path: Path, meetings: Path, rec: Rec
+) -> None:
+    """B13 round 12 N50: ``_recording_defer`` settled a new recording DEFERRED and the same poll cycle's
+    recording pass settled it CHANGED, so three files read ``changed=3, deferred=1``."""
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / MEETING, 12)
+    report = run(config)
+    assert report.exit_code == 0 and rec.opened, report
+    (rep,) = report.sources
+    assert dict(rep.counts) == {Verdict.CHANGED: 3} and rep.new == 3, rep.counts
+
+
+def test_a_new_file_the_os_will_not_hydrate_is_counted_deferred(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 12 N50: a fetch refused by the OS set the row DEFERRED but never settled the count, so a new
+    file refused hydration still read ``created=1``."""
+    config = config_with(tmp_path, local_source_dir)
+    before = _files(run(config).sources[0].counts)
+    (local_source_dir / "projects" / "Evicted Memo.txt").write_text(
+        "A memo from Fabrikam.\n", encoding="utf-8"
+    )
+    copy = al.materialise
+
+    def refused(src: Path, dest: Path, budget: Any, **kwargs: Any) -> Any:
+        if src.name == "Evicted Memo.txt":
+            raise DatalessRefusedError(str(src), errno.EDEADLK, "materialisation refused (EDEADLK)")
+        return copy(src, dest, budget, **kwargs)
+
+    monkeypatch.setattr(al, "materialise", refused)
+    (rep,) = run(config).sources
+    assert rep.counts.get(Verdict.DEFERRED) == 1 and Verdict.CREATED not in rep.counts, rep.counts
+    assert _files(rep.counts) == before + 1 and rep.deferred == 1, rep.counts

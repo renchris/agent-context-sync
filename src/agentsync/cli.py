@@ -92,7 +92,7 @@ from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import Manifest
-from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind
+from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout, default_config_path, expand, is_under, provider_link_resolved
@@ -454,7 +454,10 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
-        counts = ", ".join(f"{k.value}={v}" for k, v in sorted(s.counts.items(), key=lambda kv: kv[0].value))
+        counts = ", ".join(
+            f"{k.value}={v}" + (f" ({s.new} new)" if k is Verdict.CHANGED and s.new else "")
+            for k, v in sorted(s.counts.items(), key=lambda kv: kv[0].value)
+        )
         if s.pass_kind is None:  # no listing this run: no completeness word, no cursor
             bits = [f"skipped ({s.skipped_reason or '-'})"]
         else:

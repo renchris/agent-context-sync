@@ -1000,6 +1000,7 @@ class SourceReport:
     withheld_read: int = 0  # 2026-10-14 (§16.89 L33): of ``refused``, the stubs that say a label rule withheld them
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
     withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
+    new: int = 0  # 2026-10-16 (§16.102 N39): of the changed files, those new this run (``changed=N (K new)``)
 
 class CarriedLines(NamedTuple):  # 2026-10-13 (§16.68 H73): an unselected source's lines in STATE.md
     run_id: int  # the last run that selected the source
@@ -19385,6 +19386,9 @@ test_init_names_a_config_it_cannot_load_by_its_error_alone`.
 file's phase-1 CREATED or MAYBE_CHANGED count (kept by stable id in `_SourceAcc.unsettled`) to the verdict a later
 phase gives it (deferred, error, touched_not_changed, refused, output_unchanged, changed, quarantined).
 Phase-1-only verdicts keep their counts. Test: `test_cli.py::test_a_new_file_is_counted_once_under_its_final_verdict`.
+Amended 2026-10-16, §16.102 N30, N39, N50: `unsettled` is `counted_as`, the verdict each file is counted under
+now: phase 1's for every file it counts, then each settle's, so a second settle in one cycle moves the count again.
+A new file that converts reads `changed=1 (1 new)`.
 
 ### 16.96 Round 11: recordings, speech, OCR and stubs (2026-10-15, wave B13 round 11 lane E)
 
@@ -19830,7 +19834,28 @@ test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count`.
 
 ### 16.102 Round 12: per-source counts, speech and stubs (2026-10-16, wave B13 round 12 lane E)
 
-Reserved for round 12 lane E of B13.
+Lane E's round 12 items (`docs/plans/bring-back-ocr.md`, "B13 round 12"; specs `round12/items/N<n>.md`, the
+verifier's corrected fix built): N18, N30, N39, N50, N59, N60 and N73. N30, N39 and N50 are one defect, a file
+counted twice, from three finders, built in one commit. A dated line this round writes reads `Amended 2026-10-16,
+§16.102 N<n>`. No item needs prompt words, so none went to lane P.
+
+**A file is counted once however many phases settle it, and a new one says so (N30, N39, N50; `agentsync.cycle`,
+`agentsync.model`, `agentsync.cli`; amends §16.95 M48).** `_SourceAcc.settle` moved a file's phase-1 count only on
+its first settle, so a second settle in the same cycle added a count: a new file settled `changed` and then refused,
+failed or quarantined by `_publish` (a label rule, a file not the type its name says, a credential re-stub) read
+`changed=1, refused=1` or `changed=1, quarantined=1`, and a new recording deferred and then read in the same poll
+cycle read `changed=3, deferred=1` for three files. `_SourceAcc.counted_as` holds the verdict each stable id is
+counted under now; phase 1 sets it for every file it counts and each settle moves the count from it, so the last
+settle wins. A fetch the OS refused (`DatalessRefusedError`) set the row `deferred` but never settled it, so a new
+file read `created=1`; it settles `deferred` now. `acc.deferred` and `deferred_online_only` still count events. The
+moving count dropped the fact that a file was new (N39); `SourceReport.new` counts the files phase 1 counted
+`created` whose final verdict is `changed`, and the sync line reads `changed=1 (1 new)`, never a bare `created=`.
+The counts feed only the sync line, STATE.md's `this_run:` and the run record; no gate reads them. Tests:
+`test_cycle.py::test_a_new_file_publish_settles_again_is_counted_once_under_that_verdict` (labelled, broken,
+credential), `test_cycle.py::test_a_new_recording_read_in_the_cycle_that_deferred_it_is_counted_once`,
+`test_cycle.py::test_a_new_file_the_os_will_not_hydrate_is_counted_deferred`,
+`test_cli.py::test_a_new_file_is_counted_once_under_its_final_verdict` (an edited file reads `changed=1`, not new),
+`test_cli.py::test_a_new_file_publish_quarantines_reads_quarantined_and_not_changed`.
 
 ### 16.103 Round 12: deploy docs and CONTRACTS cross-references (2026-10-16, wave B13 round 12 lane D)
 

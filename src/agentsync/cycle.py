@@ -1501,19 +1501,29 @@ class _SourceAcc:
     auth_required: bool = False
     failed: bool = False
     escalations: Counter[str] = field(default_factory=Counter)  # files, removed, queued: one alarm (G38)
-    # stable id -> the CREATED or MAYBE_CHANGED phase 1 counted it under, until a later phase settles it
-    unsettled: dict[str, Verdict] = field(default_factory=dict)
+    # stable id -> the verdict it is counted under now: phase 1's, then each later settle's (B13 round 12 N50)
+    counted_as: dict[str, Verdict] = field(default_factory=dict)
+    created: set[str] = field(default_factory=set)  # the stable ids phase 1 counted as CREATED (N39)
 
     def settle(self, stable_id: str, verdict: Verdict) -> None:
-        """Count a file under its final verdict, once: when a later phase settles a file phase 1 counted as
-        CREATED or MAYBE_CHANGED, that count moves to ``verdict`` (B13 round 11 M48: a new file read
-        ``changed=1, created=1``, as if two). Phase-1-only verdicts (unchanged, dataless, ...) stay."""
-        first = self.unsettled.pop(stable_id, None)
-        if first is not None:
-            self.counts[first] -= 1
-            if self.counts[first] <= 0:
-                del self.counts[first]
+        """Count a file under its final verdict, once: each settle moves the file's count from the verdict it
+        was counted under, phase 1's or an earlier settle's, to ``verdict`` (B13 round 11 M48: a new file read
+        ``changed=1, created=1``, as if two). The last settle wins: a new file settled CHANGED and then
+        refused, failed or quarantined by ``_publish``, or deferred and then read in the same cycle, counts
+        once (round 12 N30, N50). A file no later phase settles keeps phase 1's verdict."""
+        prev = self.counted_as.get(stable_id)
+        if prev is not None:
+            self.counts[prev] -= 1
+            if self.counts[prev] <= 0:
+                del self.counts[prev]
         self.counts[verdict] += 1
+        self.counted_as[stable_id] = verdict
+
+    @property
+    def new(self) -> int:
+        """Of the CHANGED count: files phase 1 counted as CREATED (B13 round 12 N39: a new file read
+        ``changed=1`` and nothing said it was new)."""
+        return sum(1 for sid in self.created if self.counted_as.get(sid) is Verdict.CHANGED)
 
     def report(self, cursor_advanced: bool) -> SourceReport:
         """Freeze into the model's SourceReport."""
@@ -1540,6 +1550,7 @@ class _SourceAcc:
             withheld_read=self.withheld_read,
             refused_unread=self.refused_unread,
             withheld_unread=self.withheld_unread,
+            new=self.new,
         )
 
 
@@ -2999,9 +3010,9 @@ class _Cycle:
             unchanged=fast,
         )
         for c in pc.verdicts:
-            acc.counts[c.verdict] += 1
-            if c.verdict in (Verdict.CREATED, Verdict.MAYBE_CHANGED):
-                acc.unsettled[c.stable_id] = c.verdict
+            acc.settle(c.stable_id, c.verdict)
+            if c.verdict is Verdict.CREATED:
+                acc.created.add(c.stable_id)
         if pc.deletion_candidates:
             acc.counts[Verdict.DELETION_CANDIDATE] += len(pc.deletion_candidates)
         acc.breaker_tripped = pc.breaker_tripped and bool(pc.deletion_candidates or active)
@@ -4410,6 +4421,9 @@ class _Cycle:
                 if withheld is not None:
                     return
             self.manifest.set_verdict(sid, stable, Verdict.DEFERRED)
+            acc.settle(
+                stable, Verdict.DEFERRED
+            )  # a new file reads deferred=1, not created=1 (B13 round 12 N50)
             if row.state in (RowState.LIVE, RowState.DATALESS):  # never over a quarantine's own reason
                 self.manifest.set_state(sid, stable, row.state, HYDRATION_REFUSED)
             acc.deferred += 1

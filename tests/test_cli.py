@@ -66,8 +66,32 @@ def test_a_new_file_is_counted_once_under_its_final_verdict(
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out.splitlines()
     (line,) = [x for x in out if x.startswith("  source: ")]
-    assert "changed=1" in line and "created=" not in line and "unchanged=" in line, line
+    assert "changed=1 (1 new)" in line and "created=" not in line and "unchanged=" in line, line
     assert any(" · 1 change(s)" in x for x in out), out
+    # B13 round 12 N39: the count says the file is new; an edited file is changed and not new
+    (local_source_dir / "projects" / "New Memo.txt").write_text("An edited memo for Project Alpha.\n")
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source: ")]
+    assert re.search(r"\bchanged=1\b", line) and "new" not in line, line
+
+
+def test_a_new_file_publish_quarantines_reads_quarantined_and_not_changed(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 12 N30, N50: a new file settled CHANGED and then quarantined by ``_publish`` (here a
+    credential re-stub) read ``changed=1, quarantined=1`` beside ``1 change(s)``: one file counted twice."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    first = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source: ")]
+    (local_source_dir / "projects" / "keys.txt").write_text("aws key AKIA" + "ABCDEFGHIJKLMNOP\n")
+    assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source: ")]
+    assert "quarantined=1" in line and not re.search(r"\bchanged=", line), line
+
+    def total(text: str) -> int:
+        return sum(int(m) for m in re.findall(r"\b[a-z_]+=(\d+)", text.rsplit(" · ", 1)[-1]))
+
+    assert total(line) == total(first[0]) + 1, (first, line)
 
 
 def git(repo: Path, *args: str) -> str:

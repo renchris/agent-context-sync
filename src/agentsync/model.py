@@ -440,6 +440,9 @@ class SourceReport:
     # in the source's REFUSED count, never in ``converted``, never in ``refused_unread`` (B13 round 8 J29,
     # round 9 K54; a .msg on this Mac is read, so a refused one is in ``refused``)
     withheld_unread: int = 0
+    # of ``counts[CHANGED]``: files new this run (phase 1 counted them as created); the sync line reads
+    # ``changed=N (K new)`` (B13 round 12 N39)
+    new: int = 0
 
 
 SYNC_OUTPUT_END = "at the end of a sync's output"
