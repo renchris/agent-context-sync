@@ -18117,9 +18117,12 @@ reads `so step 1 asks at most whether to add one`. Tests:
 `test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn`,
 `test_a_folder_list_run_again_before_the_install_is_what_step_1_printed`,
 `test_from_prompt_v18_a_list_that_could_not_read_the_config_costs_no_turn`.
-Amended 2026-10-16, §16.92 M7: an attempt whose runs are only step 1 lists that all failed counts no folder question:
-after an exit 3 (`not-signed-in`, `no-folders`) nothing was listed and the expected turns are none; after an exit 4
-(`denied`, `tcc-pending`, or an exit 3 after one) the Allow click stays the turn.
+Amended 2026-10-16, §16.92 M7: an attempt whose runs are only step 1 lists that all failed, on a Mac that syncs no
+folder, counts no folder question: after an exit 3 (`not-signed-in`, `no-folders`) nothing was listed and the
+expected turns are none; after an exit 4 (`denied`, `tcc-pending`, or an exit 3 after one) the Allow click stays the
+turn. A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the already-synced
+line. Amended 2026-10-16, §16.103 N67: the line above gained "on a Mac that syncs no folder" and its last sentence,
+the condition §16.92 M7 states and `_list_stopped`'s caller applies (`if not synced`).
 
 **The local-work line says only what it can know** (L8, L25, L40, L58; dated lines at §16.80 K30 and §16.75 J65).
 `- local work kept by setup prompt step 1: 1 local-work branch(es) in the checkout, 0 patch file(s) ... (the

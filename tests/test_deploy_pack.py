@@ -5395,3 +5395,38 @@ def test_the_guide_names_every_source_of_a_proxy_number() -> None:
         "reports use it only to redact."
     ) in page
     assert "Three sources feed one file" in page
+
+
+def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
+    """B13 round 12 N66: since round 11 M44 the Summary's `installer output:` bracket reads `(this attempt's
+    runs only; the Installer section also counts the N earlier run(s) in the lines read)`; the guide quoted
+    the old `this attempt's runs only: ...`. N67: the `expected turns: none (step 1's list stopped ...)` row
+    and §16.86's M7 line left out M7's own condition, a Mac that syncs no folder: the report reads a stopped
+    list only `if not synced`, so M4's sign-in exit (`synced=N`) keeps the already-synced line."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    assert (
+        '(this attempt\'s runs only; the Installer section also counts the "\n        f"{total - k} earlier '
+        'run(s) in the lines read)"'
+    ) in source
+    assert "list_stop = _list_stopped(runs) if not synced else None" in source
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "this attempt's runs only: ..." not in page
+    assert (
+        "and a bracket says so and names the earlier runs the Installer section also counts (`(this "
+        "attempt's runs only; the Installer section also counts the N earlier run(s) in the lines read)`)"
+    ) in page
+    assert (
+        "| On a Mac that syncs no folder (no list logged `synced=N`, N at least 1), the attempt's only runs "
+        "are step 1 lists, every one failed"
+    ) in page
+    assert (
+        "A list that finished, an install run, or a Mac that already syncs keeps the usual rules: "
+        "install.sh's sign-in exit on a set-up Mac (§16.93 M4, `not-signed-in synced=N`) printed the "
+        "`[synced]` folders, so the line is the already-synced one, as it is for an exit 4 that logged "
+        "`synced=N`."
+    ) in page
+    m7 = " ".join(_contracts_section("Amended 2026-10-16, §16.92 M7:", "\n\n").split())
+    assert "that all failed, on a Mac that syncs no folder, counts no folder question" in m7
+    assert "A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the" in m7
