@@ -5366,3 +5366,32 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
         "synced=N` (B13 round 11 M4)."
     ) in feedback
     assert "Since v20, step 1 waits for that sign-in as for a click, then lists the folders again" in feedback
+
+
+def test_the_guide_names_every_source_of_a_proxy_number() -> None:
+    """B13 round 12 N47: since round 11 M29 both reports also number a host a friction line's resolver error
+    names and the hosts `--log-start` and `--log` keep in `proxy-hosts`; the guide's `<proxy-N>` row named
+    only config, environment and LaunchAgent proxies, and its section 1 did not name the file. Both legends
+    are pinned in
+    `test_install_oneshot.py::test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy`."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert setup_report._RESOLVER_HOST_RE.pattern.startswith(r"Could not resolve (?:proxy|host): ")
+    assert "Failed to connect to" in setup_report._RESOLVER_HOST_RE.pattern
+    assert {"github.com", "astral.sh", "pypi.org"} <= setup_report._PUBLIC_HOSTS
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'printf \'%s\' "$out" >>"$d/proxy-hosts"' in installer
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "any host other than the installer's public hosts (github.com, astral.sh, pypi.org and their "
+        "API and download hosts) that a `Could not resolve proxy:`, `Could not resolve host:` or `Failed to "
+        "connect to <host> port N` message in friction.md names, which need not be a proxy, and the hosts "
+        "`--log-start` and `--log` kept in `~/agent-context/setup/proxy-hosts`, so a proxy unset since an "
+        "earlier line stays redacted"
+    ) in page
+    assert (
+        "`--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one lower-case host a "
+        "line: the proxy, git proxy and URL rewrite hosts in force at that call). It is never embedded; both "
+        "reports use it only to redact."
+    ) in page
+    assert "Three sources feed one file" in page

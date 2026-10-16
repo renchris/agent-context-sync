@@ -2768,7 +2768,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "- <proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a"
 		say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
 		say "  kept) and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be"
-		say "  missing here (an environment proxy this report names only by its variable keeps its number)"
+		say "  missing here (an environment proxy this report names only by its variable keeps its number); also a host"
+		say "  a friction line's resolver error names (it need not be a proxy)"
 		;;
 	esac
 	case "$used" in *" <folder-[0-9] "*) say_item "$folder_item" ;; esac

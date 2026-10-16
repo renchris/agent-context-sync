@@ -1939,9 +1939,28 @@ def test_both_legends_say_a_proxy_number_can_be_missing(env: dict[str, str]) -> 
         "and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be "
         "missing here (an environment proxy this report names only by its variable keeps its number)"
     ) in legend
-    assert setup_report._LEGEND["proxy"].endswith(
-        "numbered as in the shell fallback report, so a number can be missing"
+    assert (
+        "numbered as in the shell fallback report, so a number can be missing;"
+        in setup_report._LEGEND["proxy"]
     )
+
+
+def test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy(env: dict[str, str]) -> None:
+    """B13 round 12 N47: since round 11 M29 both reports number a host a friction line's resolver error names
+    ("Could not resolve host: ...", "Failed to connect to ... port N") as a `<proxy-N>`, and the pattern also
+    catches a company git server that is no proxy. Both legends called every `<proxy-N>` a proxy host."""
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-16T00:00:00Z\nPrompt: v20\nAgent: x\n2026-10-16T00:00:01Z | step 1 | failure | "
+        "fatal: unable to access: Could not resolve host: git.contoso.example | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "git.contoso.example" not in text and "<proxy-" in text.split("\n## Redaction\n", 1)[0]
+    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
+    said = "also a host a friction line's resolver error names (it need not be a proxy)"
+    assert said in legend, legend
+    assert setup_report._LEGEND["proxy"].endswith(f"so a number can be missing; {said}")
 
 
 def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
