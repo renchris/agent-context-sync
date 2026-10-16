@@ -3350,6 +3350,59 @@ def test_the_shell_report_keeps_an_earlier_friction_log_past_a_stray_byte(env: d
 PIDLESS = "(run ids without their process id):"
 
 
+def _n21_run(stamp: str, pid: int, kind: str) -> str:
+    """One install.log run started at ``stamp`` (``20261016T155217Z``) by process ``pid``: a list or an
+    install."""
+    at = datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").strftime("%Y-%m-%dT%H:%M:%SZ")
+    run = f"run={stamp}-{pid}"
+    args, step = (
+        ("--list-folders", "step=list-folders seconds=0 rc=0 result=done note=listed-6")
+        if kind == "list"
+        else ("--source-local x", "step=config seconds=1 rc=0 result=done note=created")
+    )
+    return (
+        f"{at} {run} start install.sh compat=20 commit=0123456789ab kind=checkout source=- args={args}\n"
+        f"{at} {run} {step}\n{at} {run} end rc=0 seconds=0\n"
+    )
+
+
+@pytest.mark.parametrize("window", [False, True], ids=["both-shown", "only-the-second-shown"])
+def test_runs_started_in_one_second_are_numbered_alike_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, window: bool
+) -> None:
+    """B13 round 12 N21: step 1's --list-folders and the install started in the same second, and with the
+    process id stripped both read "run 20261016T155217Z": two Installer headings, two Every-run rows and the
+    raw lines under one id, in both reports. Runs that share a second are numbered over the whole log, the
+    first keeping the bare stamp, so a label does not change as the window of shown runs slides; no pid
+    returns."""
+    stamp = "20261016T155217Z"
+    log = _n21_run(stamp, 30077, "list") + _n21_run(stamp, 30586, "install")
+    if (
+        window
+    ):  # the first of the pair out of both windows: the Python report's last 3 runs, the shell's 60 lines
+        log = _n21_run(stamp, 30077, "list") + "".join(f"note {i}\n" for i in range(70))
+        log += _n21_run(stamp, 30586, "install")
+        log += _n21_run("20261016T160000Z", 11, "install") + _n21_run("20261016T160100Z", 12, "install")
+    install_log_path(env).parent.mkdir(parents=True)
+    install_log_path(env).write_text(log)
+    assert install_sh(env, "--report-only").returncode == 0
+    shell = report_path(env).read_text().split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    monkeypatch.setenv("HOME", env["HOME"])
+    runs = setup_report.read_install_runs(install_log_path(env))
+    assert [run.display_id for run in runs][:2] == [stamp, f"{stamp}.2"]
+    text, _red = setup_report.build_report(None, hooks=setup_report.ReportHooks())
+    python = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    for part in (shell, python):
+        assert "30077" not in part and "30586" not in part, part
+        assert f"run={stamp}.2 " in part, part
+        assert (f"run={stamp} " in part) is not window, part
+    assert f"run {stamp}.2: exit 0" in python and f"| {stamp}.2 " in python, python
+    if not window:
+        assert f"run {stamp}: exit 0" in python and f"| {stamp} " in python, python
+    for part in (shell, python):  # the lead-in says what ".2" is
+        assert "(run ids without their process id, numbered .2 on for runs started in one second):" in part
+
+
 @pytest.mark.parametrize(
     ("lines", "head"),
     [

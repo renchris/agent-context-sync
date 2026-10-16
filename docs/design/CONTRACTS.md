@@ -15104,6 +15104,9 @@ built here.
   from `run=<YYYYMMDD>T<HHMMSS>Z-<pid>` only, in the Installer tail and in Recent errors alike, as
   `setup_report._PID_SUFFIX_RE` does; the Installer lead-in says "(run ids without their process id)".
   `test_the_shell_report_shows_run_ids_without_their_process_id`.
+  Amended 2026-10-16, §16.98 N21: runs started in one second are numbered over the whole of install.log in its order,
+  the first keeping the bare stamp (`<stamp>.2`, `.3`), in both readers; `strip_run_pids` is an awk that reads
+  install.log first. The Python lead-in adds `, numbered .2 on for runs started in one second` when one is shown.
 - **The `--report-only` install.sh line** (F29, F30). No install log reads `no install log (no install run on
   this Mac)`, and the Python report's `- install.sh: no install log` matches it; a log with no install run keeps
   `no install run in the install log`. A last run that started before the friction log's latest attempt began

@@ -1663,6 +1663,7 @@ class InstallRun:
     simulated: bool  # a line says launchd=simulated
     lines: tuple[str, ...]
     args: str = ""  # the start line's arguments, as install.sh logged them (shell-quoted)
+    label: str = ""  # display_id, numbered over the whole log (read_install_runs)
 
     def step(self, name: str) -> dict[str, str] | None:
         """The fields of step ``name``, if the run logged it."""
@@ -1675,8 +1676,9 @@ class InstallRun:
 
     @property
     def display_id(self) -> str:
-        """The run id without its process-id suffix (a weak fingerprint, of no use to triage)."""
-        return re.sub(r"-\d+$", "", self.run_id)
+        """The run id without its process-id suffix (a weak fingerprint, of no use to triage); a later run
+        started in the same second as an earlier one is ``<stamp>.2``, ``.3`` (:func:`read_install_runs`)."""
+        return self.label or re.sub(r"-\d+$", "", self.run_id)
 
     @property
     def report_after_end(self) -> bool:
@@ -1698,9 +1700,17 @@ def install_runs_only(runs: Sequence[InstallRun]) -> list[InstallRun]:
 
 
 def read_install_runs(log: Path) -> list[InstallRun]:
-    """install.log's runs, oldest first."""
+    """install.log's runs, oldest first. Each is labelled by its run id less the process id; runs started in
+    the same second are numbered in log order over the whole log, the first keeping the bare stamp
+    (``20261016T155217Z``, ``20261016T155217Z.2``): step 1's ``--list-folders`` and the install run often
+    start in one second, and both read as one id (B13 round 12 N21). Counted over the whole log, so a label
+    does not change as the window of shown runs slides; a "." inside the token, which neither pid strip
+    removes again, as "-2" would be."""
     out: list[InstallRun] = []
+    seen: Counter[str] = Counter()
     for run_id, fields, lines in _install_runs(log):
+        stamp = re.sub(r"-\d+$", "", run_id)
+        seen[stamp] += 1
         end = fields.get("end", {})
         rc_text, secs = end.get("rc", ""), end.get("seconds", "")
         steps = tuple((k, v) for k, v in fields.items() if k not in ("start", "end"))
@@ -1714,9 +1724,26 @@ def read_install_runs(log: Path) -> list[InstallRun]:
                 simulated=any(_SIMULATED_RE.search(ln) for ln in lines),
                 lines=tuple(lines),
                 args=fields.get("start", {}).get("args", ""),
+                label=stamp if seen[stamp] == 1 else f"{stamp}.{seen[stamp]}",
             )
         )
     return out
+
+
+def _numbered(runs: Sequence[InstallRun]) -> str:
+    """The lead-in's clause for a numbered label among ``runs`` (:func:`read_install_runs`), else nothing."""
+    return (
+        ", numbered .2 on for runs started in one second"
+        if any("." in run.display_id for run in runs)
+        else ""
+    )
+
+
+def _labelled(line: str, runs: Sequence[InstallRun]) -> str:
+    """``line`` with each ``run=<stamp>-<pid>`` as its run's label (:attr:`InstallRun.display_id`), or the
+    stamp alone for a run install.log does not hold (:data:`_PID_SUFFIX_RE`)."""
+    labels = {run.run_id: run.display_id for run in runs}
+    return _PID_SUFFIX_RE.sub(lambda m: f"run={labels.get(m.group(0)[4:], m.group(1)[4:])}", line)
 
 
 def _count(fields: dict[str, str] | None, key: str) -> int | None:
@@ -4017,7 +4044,7 @@ def _installer_output(r: _Run) -> list[str]:
             r.facts.first_sync_first_read = (converted, again, again)
         elif read_first is not None:
             r.facts.first_sync_first_read = (converted, again, int(read_first.group(1)))
-    shown = [_PID_SUFFIX_RE.sub(r"\1", ln) for ln in lines[-INSTALL_OUT_TAIL:]]
+    shown = [_labelled(ln, r.install_runs) for ln in lines[-INSTALL_OUT_TAIL:]]
     # An attempt that ran no install.sh (a stopped copy) saw none of these lines: say whose they are, as the
     # Summary's installer output line does (B13 round 5 F20)
     att = r.friction.latest if r.friction is not None else None
@@ -4123,7 +4150,8 @@ def _run_list(runs: Sequence[InstallRun]) -> list[str]:
     open_runs = [run for run in runs if run.rc is None]
     out = [
         "",
-        f"Every run, oldest first (the last {len(listed)} of {len(runs)}; run ids without their process id):",
+        f"Every run, oldest first (the last {len(listed)} of {len(runs)}; run ids without their process "
+        f"id{_numbered(listed)}):",
         "",
         *_table(
             ("run", "started (UTC)", "kind", "step lines", "last step logged", "end"), rows, _RUNS_LISTED
@@ -4165,7 +4193,7 @@ def _installer_runs(r: _Run) -> list[str]:
     held = "; this run's report step not counted" if _provisional(runs[-1], runs) else ""
     out = [
         f"{len(runs)} install.sh run(s) in {log}, {sum(totals)}s in total (runs with an end line{held}); "
-        f"the last {len(shown)} (run ids without their process id):"
+        f"the last {len(shown)} (run ids without their process id{_numbered(shown)}):"
     ]
     for run in shown:
         steps = [(k, v) for k, v in run.steps]
@@ -4183,7 +4211,7 @@ def _installer_runs(r: _Run) -> list[str]:
         if run is runs[-1]:
             r.facts.last_install = status
     out += _run_list(runs)
-    raw = [_PID_SUFFIX_RE.sub(r"\1", ln) for run in shown for ln in run.lines]
+    raw = [_labelled(ln, r.install_runs) for run in shown for ln in run.lines]
     out += [
         "",
         "<details><summary>raw install.log lines of these runs</summary>",

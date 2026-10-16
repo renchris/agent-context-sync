@@ -2530,7 +2530,7 @@ fallback_local_work_line() {
 	return 0
 }
 fallback_body() {
-	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o
+	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o numbered
 	say "# agentsync setup report"
 	say ""
 	say "## Summary"
@@ -2659,10 +2659,19 @@ fallback_body() {
 		if [ "${n:-0}" -eq 0 ]; then
 			say "$SETUP_LOG is empty."
 		else
+			# strip_run_pids numbers runs started in one second (B13 round 12 N21): the lead-in says so when a
+			# numbered one is among the lines shown, as setup_report._numbered does
+			numbered="$(LC_ALL=C awk -v from="$((n > 60 ? n - 59 : 1))" '
+				match($0, /run=[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-[0-9]+/) {
+					r = substr($0, RSTART + 4, RLENGTH - 4)
+					if (!(r in k)) k[r] = ++c[substr(r, 1, 16)]
+					if (NR >= from && k[r] > 1) hit = 1
+				}
+				END { if (hit) printf ", numbered .2 on for runs started in one second" }' "$SETUP_LOG" 2>/dev/null || true)"
 			if [ "$n" -le 60 ]; then
-				say "All $n line(s) of $SETUP_LOG (run ids without their process id):"
+				say "All $n line(s) of $SETUP_LOG (run ids without their process id$numbered):"
 			else
-				say "The last 60 of $n lines of $SETUP_LOG (run ids without their process id):"
+				say "The last 60 of $n lines of $SETUP_LOG (run ids without their process id$numbered):"
 			fi
 			say ""
 			say "~~~"
@@ -3092,8 +3101,33 @@ scrub_exclude_lists() {
 }
 # A run id is "<UTC stamp>-<pid>" (RUN_ID): the shell report shows it without its process id, as the Python
 # report does (setup_report._PID_SUFFIX_RE; B13 round 5 F5, F15), in the Installer tail and in Recent errors
-# alike. Anchored to the run id's shape, so no other number is touched; LC_ALL=C, as every stage here.
-strip_run_pids() { LC_ALL=C sed -E 's/(run=[0-9]{8}T[0-9]{6}Z)-[0-9]+([^0-9A-Za-z_-]|$)/\1\2/g'; }
+# alike. Anchored to the run id's shape, so no other number is touched; LC_ALL=C, as every stage here. Runs
+# started in one second are numbered as setup_report.read_install_runs numbers them, over the whole of
+# install.log in its order, the first keeping the bare stamp: <stamp>.2, .3 (B13 round 12 N21: step 1 lists
+# and the install starts in the same second, and both read as one id).
+strip_run_pids() {
+	LC_ALL=C awk -v file="$SETUP_LOG" '
+		BEGIN {
+			id = "run=[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-[0-9]+"
+			while ((getline ln < file) > 0)
+				if (match(ln, id)) {
+					r = substr(ln, RSTART + 4, RLENGTH - 4)
+					if (!(r in label)) { st = substr(r, 1, 16); n = ++seen[st]; label[r] = n == 1 ? st : st "." n }
+				}
+			close(file)
+		}
+		{
+			out = ""; rest = $0
+			while (match(rest, id)) {
+				r = substr(rest, RSTART + 4, RLENGTH - 4)
+				if (substr(rest, RSTART + RLENGTH, 1) ~ /[0-9A-Za-z_-]/) {
+					out = out substr(rest, 1, RSTART + RLENGTH - 1)
+				} else out = out substr(rest, 1, RSTART + 3) ((r in label) ? label[r] : substr(r, 1, 16))
+				rest = substr(rest, RSTART + RLENGTH)
+			}
+			print out rest
+		}'
+}
 write_fallback_report() { # RC WHY
 	local dir tmp friction c used
 	# --report-only reads no SOURCE: its Summary names this installer's checkout, as --version does. Only here,
