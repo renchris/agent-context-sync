@@ -202,6 +202,23 @@ def test_add_source_writes_a_valid_config_repo_and_scaffold(
     ).is_file()
 
 
+def test_init_names_a_config_it_cannot_load_by_its_error_alone(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 11 M26: init printed "using existing <config>" before loading it, and in a pipe stdout is
+    block-buffered, so the line landed after the configuration error, as if init went on. It loads first."""
+    path = initialised.config_path
+    path.chmod(0)
+    try:
+        assert cli.main(["init", "--config", str(path)]) == cli.EXIT_CONFIG
+    finally:
+        path.chmod(0o600)
+    out = capsys.readouterr()
+    assert "using existing" not in out.out and "cannot read" in out.err, out
+    assert cli.main(["init", "--config", str(path)]) == cli.EXIT_OK
+    assert capsys.readouterr().out.startswith(f"using existing {path}")
+
+
 def test_init_is_hidden_idempotent_and_takes_no_options(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

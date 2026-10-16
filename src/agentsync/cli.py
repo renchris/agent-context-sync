@@ -140,6 +140,10 @@ def _out(text: str = "") -> None:
 
 
 def _err(text: str) -> None:
+    # stdout first: in a pipe it is block-buffered and stderr is not, so a line printed before an error
+    # landed after it (B13 round 11 M26)
+    with contextlib.suppress(OSError, ValueError):
+        sys.stdout.flush()
     sys.stderr.write(text + "\n")
 
 
@@ -657,8 +661,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
     """Hidden since KISS K14 (add-source does the same and adds a folder): idempotent, no options."""
     cfg_path = expand(args.config or default_config_path())
     if cfg_path.exists():
-        _out(f"using existing {cfg_path}")
+        # loaded first: a config that fails to load is named by its error, never announced as in use
+        # (B13 round 11 M26)
         config = load_config(cfg_path)
+        _out(f"using existing {cfg_path}")
     else:
         text = default_config_text()
         config = parse_config(text, config_path=cfg_path)  # validate before writing anything
