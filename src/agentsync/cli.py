@@ -651,9 +651,13 @@ def _ensure_setup(config: Config) -> int:
         _out(f"time machine: {line}")
     if any(s.kind is not SourceKind.INBOX for s in config.sources):
         _out(f"sources: {', '.join(s.id for s in config.sources)}")
-    else:  # the inbox alone is not a source to sync (KISS K05): point at the one verb that adds one
-        besides = " besides the inbox" if config.sources else ""
-        _out(f"sources: none yet{besides} (run {loop.BIN} add-source <folder>)")
+    elif config.sources:  # an inbox is not a source to sync (KISS K05): point at the one verb that adds one
+        # a Mac may hold hand-added inbox sources too: they are counted and named (B13 round 11 M13)
+        inbox = [s.id for s in config.sources]
+        besides = "the inbox" if len(inbox) == 1 else f"{len(inbox)} inbox sources ({', '.join(inbox)})"
+        _out(f"sources: no folder yet besides {besides} (run {loop.BIN} add-source <folder>)")
+    else:
+        _out(f"sources: none yet (run {loop.BIN} add-source <folder>)")
     return EXIT_FAILED if findings else EXIT_OK
 
 

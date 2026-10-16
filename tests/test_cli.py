@@ -2422,8 +2422,8 @@ def test_status_with_no_folder_source_is_a_next_line_and_exit_0(
     assert cli.main(["init", "--config", str(cfg)]) == 0
     skill.write_skill(load_config(cfg).docs_repo)
     init_out = capsys.readouterr().out.splitlines()
-    assert (
-        init_out[-1] == "sources: none yet besides the inbox (run ~/.local/bin/agentsync add-source <folder>)"
+    assert init_out[-1] == (
+        "sources: no folder yet besides the inbox (run ~/.local/bin/agentsync add-source <folder>)"
     )
     rc, out = _status(str(cfg), capsys)
     assert rc == cli.EXIT_OK and not any(ln.startswith("[FAIL]") for ln in out)
@@ -2818,7 +2818,25 @@ def test_add_source_on_the_inbox_folder_of_an_inbox_less_config_keeps_it_the_inb
     fresh = initialised.config_path.parent.parent / "fresh" / "sources.toml"  # no sources.toml yet
     assert cli.main(["add-source", str(box.path), "--config", str(fresh)]) == cli.EXIT_OK
     assert [(s.kind, s.path) for s in load_config(fresh).sources] == [(SourceKind.INBOX, box.path)]
-    assert "sources: none yet besides the inbox" in capsys.readouterr().out
+    assert "sources: no folder yet besides the inbox" in capsys.readouterr().out
+
+
+def test_init_counts_and_names_every_inbox_source(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """B13 round 11 M13: with three hand-added inbox sources beside the inbox, init said "none yet besides the
+    inbox". It counts and names them, and still points at add-source."""
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["init", "--config", str(cfg)]) == 0
+    tables = ""
+    for name in ("contoso-bridge", "contoso-bridge-mail"):
+        (tmp_path / name).mkdir()
+        tables += inbox_source_table(name, tmp_path / name)
+    cfg.write_text(cfg.read_text(encoding="utf-8") + tables, encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["init", "--config", str(cfg)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "sources: no folder yet besides 3 inbox sources (inbox, contoso-bridge, contoso-bridge-mail) "
+        "(run ~/.local/bin/agentsync add-source <folder>)"
+    )
 
 
 def test_add_source_warns_when_the_inbox_cannot_be_added(

@@ -14644,11 +14644,12 @@ bare ones and older ones stayed, so `status` printed `~/.local/bin/agentsync pur
   `<bin> it-request --out ...` (the line and its run-again text). Q81's secret-scan fix at `(fix: agentsync sync from
   this shell)` is round 5 lane RA's (F57, F83) and is not changed here.
 - cli.py's sign-in lines (`<bin> graph login`), `renamed: run <bin> status|curate`, `sources: none yet ... (run <bin>
-  add-source <folder>)` (amended 2026-10-15, §16.93 M13: `sources: no folder yet besides ...` when an inbox is
-  configured), `reconcile --accept-deletions` without a source (`run <bin> accept-deletions SOURCE`),
+  add-source <folder>)`, `reconcile --accept-deletions` without a source (`run <bin> accept-deletions SOURCE`),
   adopt's `the next <bin> sync`, the File Provider `check: <bin> status` and setup-report's
   `<bin> status probes it`; config's missing-file error (`run <bin> add-source <folder>`); graph.auth's Entra and
   device-code error texts (`<bin> graph login`, `<bin> login`, `<bin> logout`); discover's 401 advice.
+  Amended 2026-10-15, §16.93 M13: the sources line reads `sources: no folder yet besides ... (run <bin> add-source
+  <folder>)` when an inbox is configured, naming every inbox source.
 Left as they are: docstrings, comments, the `--help` epilog and help strings (read, not pasted), and the comment line
 at the top of the sources.toml template. **Amended 2026-10-13, §16.63 G79:** the `--help` epilog, the help strings
 and the template's comment line now name `~/.local/bin/agentsync` too (a command in backticks is pasted); only the
@@ -18852,6 +18853,15 @@ code §16.96 M25 gives it (78, EX_CONFIG), and install.sh's own media and speech
 say `not checked` too. Tests: `test_install_oneshot.py::test_helpers_step_is_skipped_when_the_config_cannot_be_read`,
 `test_the_module_entry_point_builds_under_the_configured_cache_dir` (a built helper, then a broken config: the
 line, and the helper still there).
+
+**The sources line counts and names every inbox source** (M13; amends §16.56's list of bare commands). With hand-added
+inbox sources beside the inbox (a Mac may hold them: `config.ensure_inbox`), `_ensure_setup` printed `sources: none
+yet besides the inbox`. It reads `sources: no folder yet besides the inbox (run ~/.local/bin/agentsync add-source
+<folder>)` for one, `sources: no folder yet besides 3 inbox sources (inbox, contoso-bridge, contoso-bridge-mail) (run
+...)` for several, and `sources: none yet (run ...)` with none. The add-source pointer stays (KISS K05: it is the
+line's purpose); the finder's `only inbox sources (4)` was not built, as it dropped the pointer and named no source.
+The line is cli.py's (install.sh relays it unread). Tests: `test_init_counts_and_names_every_inbox_source`,
+`test_status_with_no_folder_source_is_a_next_line_and_exit_0`.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
