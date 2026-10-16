@@ -10236,6 +10236,21 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     assert " · 1 read(s) again (0 of them could not be converted and kept their page)\n" in part, part
 
 
+def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
+    """B13 round 12 N48: the helpers row read ``skipped (config-unreadable)`` beside worded first-sync and
+    agentsync rows, and ``no-interpreter`` is explained nowhere else in the report. install.log keeps its
+    tokens; a note the report does not know is shown as it is."""
+
+    def cell(note: str) -> str:
+        v = {"seconds": "2", "rc": "0", "result": "skipped", "note": note}
+        return setup_report._step_table([("helpers", v)])[-1].split("|")[3].strip()
+
+    assert cell("config-unreadable") == "skipped (sources.toml could not be read, so no helper was built)"
+    assert cell("no-devtools") == "skipped (no Xcode or Command Line Tools, so no helper was built)"
+    assert cell("no-interpreter") == "skipped (agentsync's own Python is missing, so no helper was built)"
+    assert cell("some-new-note") == "skipped (some-new-note)"
+
+
 @pytest.mark.parametrize(
     ("note", "rc", "result", "words"),
     [

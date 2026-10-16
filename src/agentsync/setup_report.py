@@ -3739,6 +3739,16 @@ def _list_folders_note(note: str) -> str:
     return _LIST_FOLDERS_NOTE_WORDS.get(note, note)
 
 
+_HELPERS_NOTE_WORDS = {
+    "config-unreadable": "sources.toml could not be read, so no helper was built",
+    "no-devtools": "no Xcode or Command Line Tools, so no helper was built",
+    "no-interpreter": "agentsync's own Python is missing, so no helper was built",
+}
+"""install.log's helpers-step notes -> the Installer table's words (B13 round 12 N48: the cell read
+``skipped (config-unreadable)``; no-interpreter has no ``say`` line to explain it anywhere else). A note none
+of these is shown as it is; install.log keeps its tokens."""
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
     rows = [("step", "seconds", "result")]
     for name, v in steps:
@@ -3767,6 +3777,8 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
             said = _first_sync_note(said)
         elif name == "list-folders":
             said = _list_folders_note(said)
+        elif name == "helpers":
+            said = _HELPERS_NOTE_WORDS.get(said, said)
         note = ": ".join(part for part in (said, counts) if part)
         if note:
             result += f" ({note})"

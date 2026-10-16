@@ -6703,6 +6703,8 @@ Amended 2026-10-15, §16.96 M25: a config the modules cannot read is `result=ski
 `not built (the config cannot be read)`.
 Amended 2026-10-15, §16.93 M8 (by §16.96 M25): those lines, and the OCR module's, read `not checked (the config
 cannot be read)`.
+Amended 2026-10-16, §16.98 N48: the report's Installer table words the helpers notes, `skipped (sources.toml could
+not be read, so no helper was built)`; install.log keeps `config-unreadable`.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -10857,6 +10859,8 @@ still holds no path, and the live `agentsync status` wait keeps the full path.
   helper's first build took about 100 s in the rehearsal, logged on a `launcher` line that said `skipped
   note=not-requested`. The report reads step names generically, so an older log parses as before.
   Amended 2026-10-15, §16.96 M25: `skipped note=config-unreadable` when the config cannot be read.
+  Amended 2026-10-16, §16.98 N48: the report's Installer table words the helpers notes
+  (`config-unreadable`, `no-devtools`, `no-interpreter`); install.log keeps the tokens.
 - **The helper builds print a progress line.** A ticker beside each build prints `helpers: building the
   <OCR|media|speech> helper, still running, <N>s` every `PROGRESS_EVERY` seconds; it is killed after that
   build and in `on_exit` (see the last part of this section). The builds stay in the foreground, so a signal
@@ -19426,6 +19430,8 @@ code is `done`, as before; an installed build older than this exits 1 there, whi
 at §16.25's and §16.37's helpers text. Tests:
 `test_install_oneshot.py::test_helpers_step_is_skipped_when_the_config_cannot_be_read`,
 `test_ocr.py::test_the_module_entry_point_builds_under_the_configured_cache_dir`.
+Amended 2026-10-16, §16.98 N48: the cell reads `skipped (sources.toml could not be read, so no helper was built)`;
+`no-devtools` and `no-interpreter` have words too.
 
 Amended 2026-10-16, §16.103 N65 (by §16.93 M8): those media and speech lines, and the OCR module's own
 (`ocr._entry`), read `not checked (the config cannot be read)`, not `not built`: the helpers may already be built.
