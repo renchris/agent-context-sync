@@ -11970,6 +11970,9 @@ engine).`, and the kinds of file a re-read looks at are said in the table's lead
     for it to end (at most <N>s)`, `agentsync: reinstalling after the other sync ends, still running, <N>s` and
     `agentsync: the other sync is still running after <N>s; reinstalling without waiting longer`. The install
     log's note `waited-for-a-background-sync` is a machine word the setup report reads, and stays.
+  - Amended 2026-10-15, §16.93 M43, M60: the first line reads `another sync is running (<who>)`, `<who>` from the
+    holder sidecar for the lock body's pid (`the background job, its pass: poll`, `a sync not started by the
+    background job, its pass: poll`), else `the background job, or a sync started another way`; no `terminal`.
   - lockf writes no body, keeps the file and its mode and never creates one, so the next sync breaks no stale
     lock that lockf left. A crashed cycle's body is kept as it was (the next sync still breaks it and runs
     FULL passes); while the reinstall holds the lock, a job, status or doctor then names that dead pid as
@@ -16131,6 +16134,9 @@ reinstall a sync). Still one text per label, so Recent errors merges repeats. Te
 `test_install_oneshot.py` (`REINSTALL_WAITS`, `REINSTALL_TICK`).
 Amended 2026-10-14, §16.81 K35: the setup report renders that word as `waited for another sync to end`, in the
 Summary and the Installer table; install.log keeps it.
+Amended 2026-10-15, §16.93 M43, M60: since §16.87 (round 10 L73) the holder sidecar records who started a cycle;
+install.sh names it from there for the lock body's own pid, and the either-or words read `the background job, or a
+sync started another way`, not `one started in a terminal`.
 
 **H34: a provider link keeps the form of the root that held it (`agentsync.paths`).** Under a home reached through
 a link (`/tmp` is `/private/tmp`), a provider link whose absolute target is written in the unresolved form was read
@@ -18917,6 +18923,23 @@ provider being present take the same exit. A Mac whose synced folders are all th
 in, and wait as for a click) is lane P's (§16.94). Test:
 `test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing` (no CloudStorage, an empty one, an empty
 provider folder, a notes folder beside them; signed in again, exit 0).
+
+**The reinstall's wait line names who started the sync, when the sidecar says** (M43 and M60, one defect; amends
+§16.68 H33). Since round 10 L73 the lock's holder sidecar (`<lock>.json`) records `started_by` (`launchd` or `other`)
+and agentsync's skip line, doctor, status and the report name it, but install.sh still printed `another sync is
+running (the background job, or one started in a terminal)`, and its comments said the lock cannot tell. A
+terminal is one of several `other` starters (cron, an agent's shell), which L73 ruled out of every line. install.sh
+records which lock the probe found busy, and `holder_words` reads that lock's body (`<pid> <boot> <iso> <label>`)
+and, with an LC_ALL=C sed anchored on the sidecar's fixed layout (sorted keys, 2-space indent), the sidecar's `pid`
+and `started_by`; it imports nothing (the installed build is the older one) and never reads the sidecar's host. When
+the two pids are equal it prints `ops/lock.py`'s `_STARTED_BY` words, `the background job` or `a sync not started by
+the background job`, with `, its pass: <label>` for `poll`, `reconcile` or `dry_run` as `_describe_holder` adds it;
+otherwise (no sidecar, none of `started_by`, another pid, an empty body as lockf leaves it, anything unreadable)
+`the background job, or a sync started another way`. The ticker, the timeout line and AGENTSYNC_NOTE are unchanged.
+M43's verifier built the sidecar read and M60's the rewording alone; both are here, the rewording as the fallback.
+The header's step 2 paragraph, the comments, setup-feedback.md and `setup_report._AGENTSYNC_NOTE_WORDS`'s docstring
+say so. Tests: `test_the_reinstall_names_who_started_the_sync_it_waits_for` (other, launchd, no `started_by`, another
+pid, an empty body; the host never printed), the `REINSTALL_WAITS` pins.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

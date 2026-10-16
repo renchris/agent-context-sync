@@ -107,7 +107,8 @@
 #      (they can differ).
 #      It waits for a running sync, at most $AGENTSYNC_REINSTALL_WAIT_SECONDS (default 120 s, for all its locks
 #      together; 0 never waits), with "agentsync: reinstalling after the other sync ends, still running, <N>s" lines
-#      (the lock does not say who started the sync: the background job, or one started in a terminal).
+#      naming who started the sync when its holder sidecar (agentsync.lock.json, B13 round 10 L73 on) says so for
+#      the lock body's own pid, else "the background job, or a sync started another way" (B13 round 11 M43, M60).
 #      A background sync that starts meanwhile and reaches its lock is skipped (exit 75); a launchd tick that
 #      starts while the environment is being recreated ends in the launcher's SPAWN_FAILED (exit 71) or an
 #      import error instead, and uv itself may fail on the half-removed environment, so a failed locked
@@ -3816,9 +3817,34 @@ hold_locks() { # LOCKS: sets the caller's held to the nested holds, with one dea
 		held+=(/bin/sh -c "$HOLD_SH" sh "$deadline" "$LOCKF" "$l")
 	done <<<"$1"
 }
+# Who started the sync that holds the lock $1, in the words of agentsync's own lines (ops/lock.py _STARTED_BY,
+# with its pass as _describe_holder adds it). The lock body ("<pid> <boot_time> <iso> <label>") names no
+# starter; the holder sidecar <lock>.json does since B13 round 10 L73, for the body's own pid only. A holder
+# from an older build (the usual one during a reinstall: the installed build is the older one), a sidecar of
+# another pid, an empty body (lockf, a probe, a cycle starting) or anything unreadable gets the either-or
+# words. The environment cannot tell a terminal from cron or an agent's shell, so no line says "terminal".
+# The sidecar's host (the Mac's name) is never read. Nothing is imported: sed over the sidecar's fixed layout
+# (sorted keys, 2-space indent), LC_ALL=C (B13 round 11 M43, M60).
+holder_words() { # LOCK
+	local pid="" pass="" spid="" by="" who="the background job, or a sync started another way"
+	{ read -r pid _ _ pass; } <"$1" 2>/dev/null || true
+	case "$pid" in "" | *[!0-9]*) pid="" ;; esac
+	if [ -n "$pid" ] && [ -f "$1.json" ]; then
+		spid="$(LC_ALL=C sed -n 's/^  "pid": \([0-9][0-9]*\),\{0,1\}$/\1/p' "$1.json" 2>/dev/null || true)"
+		by="$(LC_ALL=C sed -n 's/^  "started_by": "\([a-z]*\)",\{0,1\}$/\1/p' "$1.json" 2>/dev/null || true)"
+	fi
+	[ "$spid" = "$pid" ] || by=""
+	case "$by" in
+	launchd) who="the background job" ;;
+	other) who="a sync not started by the background job" ;;
+	*) pass="" ;;
+	esac
+	case "$pass" in poll | reconcile | dry_run) who="$who, its pass: $pass" ;; esac
+	printf '%s' "$who"
+}
 uv_tool_install() {
 	local args=(tool install --force --reinstall-package agentsync --python 3.11 "$SOURCE") locks l
-	local held=() busy=0 rc=0
+	local held=() busy=0 rc=0 busy_lock=""
 	AGENTSYNC_NOTE=""
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "$UV" "${args[@]}"
@@ -3827,13 +3853,13 @@ uv_tool_install() {
 	locks="$(sync_locks)"
 	if [ -n "$locks" ] && [ -x "$LOCKF" ]; then
 		while IFS= read -r l; do
-			[ "$busy" -eq 75 ] || { "$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || busy=$?; }
+			[ "$busy" -eq 75 ] || { "$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || { busy=$? && busy_lock="$l"; }; }
 		done <<<"$locks"
 		[ "$busy" -eq 75 ] || busy=0
 		if [ "$busy" -eq 75 ]; then
-			# The lock does not say who started the holder: the background job and a sync typed in a terminal
-			# hold it alike (B13 round 7 H33). AGENTSYNC_NOTE keeps its machine word below.
-			say "agentsync: another sync is running (the background job, or one started in a terminal); the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
+			# Who started the holder, of the lock that is busy, when its sidecar says (holder_words; B13 round 7
+			# H33, round 11 M43, M60). AGENTSYNC_NOTE keeps its machine word below.
+			say "agentsync: another sync is running ($(holder_words "$busy_lock")); the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
 			ticker "agentsync: reinstalling after the other sync ends" &
 		else # a sync that starts after this probe is waited for too, so a line still comes
 			ticker "agentsync: reinstalling" &

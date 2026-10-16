@@ -3584,9 +3584,9 @@ def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[
 
 
 _AGENTSYNC_NOTE_WORDS = {"waited-for-a-background-sync": "waited for another sync to end"}
-"""install.log's agentsync-step note -> the report's words (B13 round 9 K35): the lock does not say who
-started the sync step 2 waited for (H33), a background job or one typed in a terminal, so "background" claimed
-one. The token stays, in install.log and for its readers."""
+"""install.log's agentsync-step note -> the report's words (B13 round 9 K35): the note does not say who
+started the sync step 2 waited for (H33; install.sh's wait line names it only when the holder's sidecar says,
+B13 round 11 M43), so "background" claimed one. The token stays, in install.log and for its readers."""
 
 
 def _agentsync_note(note: str) -> str:

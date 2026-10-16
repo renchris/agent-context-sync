@@ -578,15 +578,19 @@ fix, means a file there belongs to another user or the folder is a symlink: the 
 
 On a re-run, step 2 waits for a running sync before it reinstalls agentsync, at most 2 minutes
 ([CONTRACTS §16.41](../design/CONTRACTS.md), "The reinstall holds the background sync's lock"). The lines are
-`agentsync: another sync is running (the background job, or one started in a terminal); ...` and
-`agentsync: reinstalling after the other sync ends, still running, <N>s`: the lock does not say who started the
-sync, and one typed in a terminal holds it as the background job does (B13 round 7 H33). A poll that exits 75 at that
+`agentsync: another sync is running (<who>); ...` and
+`agentsync: reinstalling after the other sync ends, still running, <N>s`. `<who>` is what the lock's holder sidecar
+says for the lock body's own pid, in doctor's words: `the background job, its pass: poll` or `a sync not started by
+the background job, its pass: poll` (a build since B13 round 10 L73 records it). For a holder that records nothing,
+usually the older installed build that is being replaced, it reads `the background job, or a sync started another
+way`: the environment cannot tell a terminal from cron or an agent's shell (B13 round 7 H33, round 11 M43, M60). A poll that exits 75 at that
 time was skipped on purpose: the reinstall held its lock, and launchd starts the next at its interval. The
 report's Recent errors shows that skip as `WARNING agentsync.cli: skipped: lock held by an unrecorded holder
 (install.sh while it reinstalls agentsync, a status or doctor check, or a cycle starting)`, and doctor's lock line during the wait
 reads `held by an unrecorded holder (...)` with no cycle named: the reinstall writes no lock body.
 The install log's `step=agentsync` line notes what step 2 saw: `waited-for-a-background-sync` (the setup report
-shows it as "waited for another sync to end", since the lock does not say who started that sync),
+shows it as "waited for another sync to end": the note does not say who started that sync, and doctor's lock line
+names it when the sidecar says),
 `wait-ran-out-after-<N>s` (the reinstall then ran without the lock; the report says "waited <N>s for another sync,
 then reinstalled while it was still running") or `lock-not-taken-rc<N>` ("could not take the sync lock, lockf exit
 <N>; reinstalled without waiting"); with no note, the
