@@ -7789,6 +7789,42 @@ def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held
     assert shell == python and "<folder-1>" in shell and "fabrikam" not in shell.lower(), (shell, python)
 
 
+@pytest.mark.parametrize(
+    ("org", "said", "want"),
+    [
+        (
+            "Contoso",
+            "ContosoGroup, Contoso2026, ContosoCorp.com, AcmeContoso, Contosoft, contosogroup, CONTOSOX",
+            "<org-1>Group, <org-1>2026, <org-1>Corp.com, Acme<org-1>, Contosoft, contosogroup, CONTOSOX",
+        ),
+        # an organisation that begins or ends one of agentsync's own identifiers leaves that one whole
+        ("Storage", "CloudStorage, StorageGroup, AcmeStorage", "CloudStorage, <org-1>Group, Acme<org-1>"),
+        # one that is such an identifier is still cut where the word beside it completes none (reviewer)
+        (
+            "Box",
+            "xBox, dropBox, 2Box, DropBox, BoxGroup",
+            "x<org-1>, drop<org-1>, 2<org-1>, DropBox, <org-1>Group",
+        ),
+    ],
+)
+def test_an_organisation_is_redacted_inside_a_longer_word(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, org: str, said: str, want: str
+) -> None:
+    """B13 round 11 M50: since round 10 L66 both readers matched an organisation as a whole word only, so
+    "ContosoGroup", "Contoso2026", "ContosoCorp.com" and "AcmeContoso" printed it in clear. An organisation
+    matched everywhere is also cut out at a CamelCase, digit or leading-capital boundary, never inside a word
+    ("Contosoft") and never out of OneDrive, GoogleDrive, CloudStorage and the like."""
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said, org=org)
+    assert shell == want and python == want, (shell, python)
+
+
+def test_both_readers_hold_the_same_identifiers_whole() -> None:
+    """B13 round 11 M50: install.sh's held identifiers are setup_report._HELD_IDENTIFIERS."""
+    m = re.search(r'nw = split\("([^"]*)", hw, " "\)', INSTALL_SH.read_text())
+    assert m is not None
+    assert set(m.group(1).split()) == set(setup_report._HELD_IDENTIFIERS)
+
+
 def test_another_spelling_of_an_organisation_shares_its_number_and_is_redacted(env: dict[str, str]) -> None:
     """Review of B13 round 10 L66: an organisation spelled with an accent or other separators in a second
     CloudStorage folder took the first one's number and no pair, and the first one's pattern does not match

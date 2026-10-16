@@ -519,6 +519,11 @@ names no other (B13 round 6 G45, G75): with those of this Mac's entries and sour
 report's own words (``~/agent-<org-1>``). agentsync's own path names (``~/agent-context``,
 ``~/src/agent-context-sync``) are held whole for an organisation matched everywhere too (B13 round 7 H74)."""
 
+_HELD_IDENTIFIERS = _CONTEXT_HEADS | {"CloudStorage", "SharePoint", "GitHub"}
+"""agentsync's own identifiers that an organisation matched inside a longer word (mode ``org``) never
+cuts: an organisation "One" or "Cloud" leaves OneDrive and CloudStorage whole (B13 round 11 M50).
+scripts/install.sh holds the same list (a test keeps them equal)."""
+
 _HELD_PATH_NORMS = frozenset({"agentcontext", "agentcontextsync", "agentcontextsync.git"})
 """agentsync's own path names as :func:`_norm` gives them: a value that is one of them is the held path
 itself, and any longer value that begins with them is matched before the path is held (B13 round 7 H74).
@@ -526,6 +531,31 @@ itself, and any longer value that begins with them is matched before the path is
 
 _REPORT_WORD_RE = re.compile(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])")
 _URL_RE = re.compile(r"\b[A-Za-z]+://\S*|\bgithub\.com[:/]\S*")
+
+
+@functools.cache
+def _org_edges(form: str, lead: str, trail: str) -> tuple[str, str]:
+    """The lookarounds of an organisation matched inside a longer word (mode ``org``, B13 round 11 M50):
+    after a small letter or a digit when the match starts with a capital ("AcmeContoso"), and before a capital
+    that a small letter follows ("ContosoGroup") or a digit ("Contoso2026"), as install.sh's pair flag o.
+    Never where the organisation and the CamelCase word beside it spell one of :data:`_HELD_IDENTIFIERS`
+    ("One" in OneDrive).  Case-sensitive, inside the literal's ``(?i:...)``."""
+    key = _norm(form)
+    if lead:
+        before = "".join(
+            f"(?<!{re.escape(h[: len(h) - len(key)])})"
+            for h in sorted(_HELD_IDENTIFIERS)
+            if len(h) > len(key) and h.lower().endswith(key)
+        )
+        lead = f"(?-i:(?<![A-Z])(?:(?<![a-z0-9])|(?=[A-Z]){before}))"
+    if trail:
+        after = "".join(
+            f"(?!{re.escape(h[len(key) :])}(?![a-z]))"
+            for h in sorted(_HELD_IDENTIFIERS)
+            if len(h) > len(key) and h.lower().startswith(key)
+        )
+        trail = f"(?-i:(?![a-z])(?![A-Z](?![a-z])){after})"
+    return lead, trail
 
 
 @functools.cache
@@ -1012,7 +1042,11 @@ class Redactor:
             self._literals.append((value, "context"))
         elif fuzzy and len(_norm(value)) >= 3 and _tokens(value):
             self._fuzzy.setdefault(_norm(value), placeholder)
-            self._literals.append((value, "fuzzy"))
+            # an organisation is also matched inside a longer word at a CamelCase, digit or leading-capital
+            # boundary ("ContosoGroup", "Contoso2026", "AcmeContoso"), unless it spells a report word (B13
+            # round 11 M50); folders and libraries stay whole-word
+            org = kind == "org" and _norm(value) not in report_words()
+            self._literals.append((value, "org" if org else "fuzzy"))
         elif url:
             self._url_hosts[_bare(value).lower()] = placeholder
             self._literals.append((value, "url"))
@@ -1078,7 +1112,7 @@ class Redactor:
             forms = [(form, _nfc(value), mode) for value, mode in self._literals for form in _forms(value)]
             forms.sort(key=lambda item: (-len(_norm(item[0])), -len(item[0])))
             for form, edge, mode in forms:
-                if mode == "fuzzy":
+                if mode in ("fuzzy", "org"):
                     body = _FUZZY_SEP.join(_word_pattern(t) for t in _tokens(form))
                 elif mode == "joined":  # "Ho Me", "ho_me", "HoMe"; never "home", "HOME" or "Home"
                     words = _tokens(form)
@@ -1117,6 +1151,10 @@ class Redactor:
                     trail = r"(?![A-Za-z0-9])"  # as install.sh's pair flag e allows (B13 round 9 K46)
                 if not edge[-1].isalnum() and not edge.startswith("/"):
                     trail = ""
+                if (
+                    mode == "org"
+                ):  # B13 round 11 M50: and inside a longer word at a CamelCase or digit boundary
+                    lead, trail = _org_edges(form, lead, trail)
                 literals.append(f"(?i:{lead}{body}{trail})" if mode != "exact" else f"{lead}{body}{trail}")
                 if _norm(form).startswith("agentcontext") and _norm(form) not in _HELD_PATH_NORMS:
                     longer.append(literals[-1])

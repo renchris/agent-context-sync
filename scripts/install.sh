@@ -1445,6 +1445,10 @@ redaction_pairs() {
 			esac
 			orgs_seen+="$org"$'\n'"$k$x"$'\n'
 			fuzzy_flag "$org"
+			# flag o: an organisation matched everywhere is also cut out of a longer word at a CamelCase, digit or
+			# leading-capital boundary (ContosoGroup, Contoso2026, AcmeContoso), as setup_report's org mode; one
+			# whose words spell a report word stays whole-word (B13 round 11 M50)
+			[ "$FUZZY" != f ] || report_word "$(id_key "$org")" || FUZZY=o
 			add_pair "$org" "<org-$x>" "$FUZZY"
 		done
 	fi
@@ -1786,7 +1790,7 @@ redact_stream() {
 	# regex match (the placeholder match, the word test) under UTF-8 exits at a byte that is not UTF-8 on its
 	# own ("Jane" + U+2019), and the placeholder match runs on every line.
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
-		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
+		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
 	# placeholder an earlier one wrote ("<name>" stays whole beside a folder named "name"), as in the Python
@@ -1850,6 +1854,32 @@ redact_stream() {
 		for (i = 1; i < k; i++) if ((i in rx) && rx[i] == a && ph[i] == ph[k]) delete rx[k] # one form of many
 	}
 	function keep(text, isheld) { if (text != "") { m++; tx[m] = text; th[m] = isheld } }
+	# Flag o (B13 round 11 M50): an organisation is cut out of a longer word where a small letter or a digit comes
+	# before a capital it starts with (AcmeContoso), and where a capital and a small letter (ContosoGroup) or a
+	# digit (Contoso2026) follow it; never where the text before or after it, as written, completes one of the
+	# identifiers hw (an organisation Drive after One, or One before Drive): setup_report._org_edges, case for case.
+	function org_lead(k, before, hit,    i, h, p, n) {
+		if (!og[k] || substr(before, length(before), 1) !~ /[a-z0-9]/ || substr(hit, 1, 1) !~ /[A-Z]/) return 0
+		n = length(okey[k])
+		for (i = 1; i <= nw; i++) {
+			h = hw[i]
+			if (length(h) <= n || tolower(substr(h, length(h) - n + 1)) != okey[k]) continue
+			p = substr(h, 1, length(h) - n)
+			if (length(before) >= length(p) && substr(before, length(before) - length(p) + 1) == p) return 0
+		}
+		return 1
+	}
+	function org_trail(k, hit, after,    i, h, r, n) {
+		if (!og[k] || (substr(after, 1, 1) !~ /[0-9]/ && substr(after, 1, 2) !~ /^[A-Z][a-z]/)) return 0
+		n = length(okey[k])
+		for (i = 1; i <= nw; i++) {
+			h = hw[i]
+			if (length(h) <= n || tolower(substr(h, 1, n)) != okey[k]) continue
+			r = substr(h, n + 1)
+			if (substr(after, 1, length(r)) == r && substr(after, length(r) + 1, 1) !~ /[a-z]/) return 0
+		}
+		return 1
+	}
 	function covered(s, c, L, k, v, t, i, off, rs, rl, hit) { # 1: a pair longer than L spans s from c on, for L chars or more
 		for (k = 1; k <= np; k++) {
 			if (k in rx) { # a fuzzy pair by its pattern, as Python checks a longer value (B13 round 10 L66);
@@ -1914,11 +1944,15 @@ redact_stream() {
 		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
 		for (k = 1; k <= np; k++) {
 			split(rows[k], f, "\t"); val[k] = f[1]; ph[k] = f[2]
-			if (f[3] == "f" || f[3] == "j") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j") }
+			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
+			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
 		}
 		nh = split("# agentsync setup report|## Summary|## Agent friction log|## Environment|## Installer|" \
 			"## Configuration|## Doctor|## Status|## Background runs|## Recent errors", hd, "|")
 		for (k = 1; k <= nh; k++) heading[hd[k]] = 1
+		# the identifiers of agentsync itself, held whole beside an organisation of flag o ("One", "Cloud"):
+		# setup_report._HELD_IDENTIFIERS, a test keeps them equal (B13 round 11 M50)
+		nw = split("OneDrive GoogleDrive SharedLibraries Dropbox Box Egnyte CloudStorage SharePoint GitHub", hw, " ")
 	}
 	# and the opener of the friction fence, a line the report itself writes (a "~~~" in the log is broken up
 	# before it gets here): a folder or a source id named "text" does not turn it into a placeholder (B13 round 7 H41)
@@ -1951,7 +1985,8 @@ redact_stream() {
 						i = RSTART; n = RLENGTH
 						pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 						post = substr(s, i + n, 1)
-						if ((lead[k] && pre ~ /[A-Za-z0-9]/) || (trail[k] && post ~ /[A-Za-z0-9]/)) {
+						if ((lead[k] && pre ~ /[A-Za-z0-9]/ && !org_lead(k, acc substr(s, 1, i - 1), substr(s, i, n))) ||
+							(trail[k] && post ~ /[A-Za-z0-9]/ && !org_trail(k, substr(s, i, n), substr(s, i + n)))) {
 							acc = acc substr(s, 1, i); s = substr(s, i + 1); continue
 						}
 						keep(acc substr(s, 1, i - 1), 0); acc = ""

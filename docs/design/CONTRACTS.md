@@ -18408,6 +18408,8 @@ state, K4's test (b) restored), `test_the_shell_reports_fuzzy_match_keeps_words_
 `test_a_context_organisation_keeps_the_prose_word`, `test_the_shell_report_gives_a_repeated_organisation_one_number`,
 `test_another_spelling_of_an_organisation_shares_its_number_and_is_redacted`,
 `test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held_names`.
+Amended 2026-10-15, §16.93 M50: an organisation matched everywhere (flag o; mode `org`) is also cut out of a longer
+word at a CamelCase, digit or leading-capital boundary, in both readers; folders stay whole-word.
 
 ### 16.88 Round 10: setup prompt v19 (2026-10-14, wave B13 round 10 lane P)
 
@@ -18989,6 +18991,21 @@ item at 115 columns with two-space continuation lines. `fallback_redaction` read
 before it writes the first legend line, and runs `redaction_pairs` once, as before. Test:
 `test_the_folder_legend_explains_only_the_names_the_report_shows` (the plain state, a friction line quoting
 `Copilot under Documents`, a configured `Documents`), and the `$'..'` folder case of the legend test.
+
+**An organisation is redacted inside a longer word** (M50; amends §16.87 L66). L66 made the shell match an
+organisation as the Python report's fuzzy mode does, a whole word, so both reports printed it in `ContosoGroup`,
+`Contoso2026`, `ContosoCorp.com` and `AcmeContoso`; the shell before L66 redacted them (and `Contosoft` too). An
+organisation matched everywhere (not a context organisation, not one whose words spell a report word) gets pair flag
+`o` in install.sh and literal mode `org` in `setup_report.Redactor`: also matched where a capital and a small letter
+or a digit follow it, and where a small letter or a digit comes before a capital it starts with. Never inside a
+word (`Contosoft`, `contosogroup`, `CONTOSOX`), and never where it and the CamelCase word beside it spell one of
+agentsync's own identifiers, `_HELD_IDENTIFIERS` (`_CONTEXT_HEADS` with CloudStorage, SharePoint and GitHub; one list
+in both readers; compared case for case, as written), so an organisation `Storage` leaves `CloudStorage` whole, and one
+named `Box` is still cut out of `dropBox` but not out of `DropBox`. A `.` after it was already allowed. The
+finder's "a capital next" alone was not built: it turned `OneDrive` into `<org-1>Drive` for an organisation `One`.
+Folders, libraries, generic pairs, context organisations and joined (`j`) pairs stay whole-word. Tests:
+`test_an_organisation_is_redacted_inside_a_longer_word` (both readers: Contoso, Storage, Box),
+`test_both_readers_hold_the_same_identifiers_whole`, and L66's tests.
 
 **A checkout git cannot read takes no commit from a repository around it** (M51). In a home that is itself a git
 repository, a checkout whose `.git` holds only `HEAD` (not a valid gitdir) made git search upward, so `install.sh
