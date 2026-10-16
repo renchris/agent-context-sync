@@ -10142,6 +10142,9 @@ recordings = false)` (or OCR's reason when OCR is off), `media helper: not built
 tools the installer prints `media helper: not built (no Xcode or Command Line Tools)`. `status`, the `doctor`
 alias, the setup report, a dry run, a sync and the LaunchAgent never compile. It reads a recording with
 AVFoundation; nothing leaves the Mac.
+Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that cannot be read exits 78 (EX_CONFIG) with
+`media helper: not checked (the config cannot be read)`; scripts/install.sh, after OCR's 78, does not run this
+module and prints that line itself.
 
 - **Protocol** (pinned by `tests/media_kit.py`). `--version`; `info FILE`; `scan FILE --out DIR [--step-ms]
   [--first-tick K] [--max-ticks N]` writing `grids.bin`, one 320x180 box-averaged luma grid (57,600 bytes) per
@@ -10382,6 +10385,9 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
 refusal; a build step a signal stopped says so, `swift build was stopped by SIGKILL (signal 9); scripts/install.sh
 tries the build again on its next run`, and a check that a signal stopped or that does not run keeps its own
 reason.)
+Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that cannot be read exits 78 (EX_CONFIG) with
+`speech: not checked (the config cannot be read)`; scripts/install.sh, after OCR's 78, does not run this module and
+prints that line itself.
 
 Amended 2026-10-11 by §16.48 (R90): SwiftPM's cache, configuration and security folders are `swiftpm/` beside the
 build tree, passed to both swift steps, instead of the real `~/Library` ones.
@@ -18137,9 +18143,7 @@ the checkout: M, no patch file in the setup folder's local-work (a keep with not
 neither, no line. Patches are the top-level, non-hidden regular `*.patch` files (L40's verifier kept any depth;
 L8's and L25's matching section 3 is built, since every keep command writes to the top). A branch whose sha (loose
 file, else `packed-refs`, no git process) equals `refs/heads/main`'s or `refs/remotes/origin/main`'s is not
-counted (L58's verifier; a branch cut from an older origin/main still counts). Amended 2026-10-16, §16.94 M83:
-L58's prompt half is built in v20: a keep with nothing to keep deletes its branch, which sat at the old main, a
-commit this skip does not catch; the skip stays for branches earlier runs left. The bracket is
+counted (L58's verifier; a branch cut from an older origin/main still counts). The bracket is
 `setup_report.LOCAL_WORK_WHERE` and install.sh's `LOCAL_WORK_WHERE`, one string. bring-back.md builds section 3
 first and prints the header's author sentence only when section 3 sends a patch; when every patch was in an
 earlier report it reads "Section 3 sends no patch this time: each was in an earlier report and is listed by its
@@ -18154,6 +18158,10 @@ any commit origin/main's reflog names is not counted, since v19's recovery moves
 checkout is, and the branches read from its common dir, so a `.git` file is no reason for no line.
 Amended 2026-10-15, §16.93 M18: the bracket reads `...; any patch an earlier report already carried is listed there
 by its hash`, and the header's no-patch sentence is `its one patch was in an earlier report` for one patch.
+Amended 2026-10-16, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20, so the sentence
+above saying it was not built no longer holds. A keep with nothing to keep deletes its branch. That branch sat at
+the old main, a commit the sha skip does not catch and M71's reflog skip catches only when origin/main's reflog
+names it. Both skips stay for branches earlier runs left.
 
 **The OCR part folds the document kinds with no page** (L5; dated lines at §16.28's OCR part and §16.48's
 `.potx` paragraph). A Mac with no deck template or OpenDocument page printed `0 with an OCR identity, 0 without an
@@ -18499,13 +18507,15 @@ ownership stop ran another account's script. Those two stops now run no `install
 "## Not used" section. The Xcode and other-git-failure stops, where no pull ran, first run `install.sh --version`
 (it checks for the developer tools before it calls git) and log and report only when it ends with this prompt's
 number; otherwise they tell the person the code on the Mac is not this prompt's version and setup stopped before it
-could be updated. The finish still applies after every one of these stops.
+could be updated. The finish still applies after every one of these stops. Step 1's version check now reads "the
+--version inside step 1's one command", so the Xcode and git stops' own `--version` is not taken for it. Step 3's
+no-report cases are four. Test: `test_readme_step1_is_one_command`, `test_readme_report_step_after_any_failure`.
 Amended 2026-10-16, §16.94 M16, M32: "where no pull ran" was so at the Xcode stop only; at the other-git-failure
 stop the pull ran and failed. Since v20 the prompt says step 1 did not update that copy, and the stop with no report
-also says the person has nothing more to do: the next paste tries the update first. Step 1's version check now reads "the
---version inside step 1's one command", so the Xcode and git stops' own `--version` is not taken for it. Step 3's
-no-report cases are four. Test: `test_readme_step1_is_one_command`,
-`test_readme_report_step_after_any_failure`.
+also says the person has nothing more to do: the next paste tries the update first. Test:
+`test_readme_step1_is_one_command`.
+Amended 2026-10-16, §16.103 N68: the version check and the four no-report cases are v19's (this paragraph's own
+text, as 93cedc51 wrote it); v20's line had been spliced in before them, so it read as if v20 made them.
 
 **The second exception follows the last list** (L62, L11). After a timed-out list, a re-run that read an inbox-only
 config prints no unread clause, but v18's "if no list marked a folder" still told the person the config could not be
@@ -18962,10 +18972,13 @@ already syncs: sign in to OneDrive (or let it finish setting up), then re-run: <
 folders marked [synced] are kept`. It keys on missing folders, not on no provider, so a stale empty provider folder and another
 provider being present take the same exit. A Mac whose synced folders are all there (one syncing only
 `~/Documents/notes` too) keeps exit 0; a mixed Mac stops at step 1, where step 2 would have failed. The prompt half
-(step 1's first exception: unless its NEXT asks me to sign in, tell me which folders are kept and that I must sign
-in, and wait as for a click) is lane P's (§16.94). Test:
+(step 1's first exception: "If the list's NEXT: line asks me to sign in, tell me which folders are kept and that I
+must sign in to OneDrive, and wait for me as for a click; once I say so, run --list-folders again and go by what it
+prints.") is lane P's (§16.94). Test:
 `test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing` (no CloudStorage, an empty one, an empty
 provider folder, a notes folder beside them; signed in again, exit 0).
+Amended 2026-10-16, §16.103 N64: the prompt half above quotes v20's words; it paraphrased them as "unless its NEXT
+asks me to sign in", which reads the condition backwards.
 
 **The reinstall's wait line names who started the sync, when the sidecar says** (M43 and M60, one defect; amends
 §16.68 H33). Since round 10 L73 the lock's holder sidecar (`<lock>.json`) records `started_by` (`launchd` or `other`)
@@ -19349,6 +19362,9 @@ code is `done`, as before; an installed build older than this exits 1 there, whi
 at §16.25's and §16.37's helpers text. Tests:
 `test_install_oneshot.py::test_helpers_step_is_skipped_when_the_config_cannot_be_read`,
 `test_ocr.py::test_the_module_entry_point_builds_under_the_configured_cache_dir`.
+
+Amended 2026-10-16, §16.103 N65 (by §16.93 M8): those media and speech lines, and the OCR module's own
+(`ocr._entry`), read `not checked (the config cannot be read)`, not `not built`: the helpers may already be built.
 
 **`_reason_line` is gone and `_stub_says` returns its verdict alone (M62; amends §16.90 L47, §16.78 J55).** After
 L54 nothing in `src` called `publish._reason_line`, and `write_quarantine`, the one caller of `_stub_says`, read only

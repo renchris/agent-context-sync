@@ -5430,3 +5430,44 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     m7 = " ".join(_contracts_section("Amended 2026-10-16, §16.92 M7:", "\n\n").split())
     assert "that all failed, on a Mac that syncs no folder, counts no folder question" in m7
     assert "A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the" in m7
+
+
+def test_round_12s_contract_quotes_and_moves_read_as_written() -> None:
+    """B13 round 12 N64: §16.93 M4 paraphrased v20's sign-in rule as "unless its NEXT asks me to sign in",
+    which reads it backwards; it quotes v20's words now. N68: v20's M16/M32 line in §16.88 L31 sat before
+    v19's version-check and no-report sentences, so "now" read as v20's; they are L31's text again, before it.
+    N70:
+    §16.94 M83's line sat mid-paragraph in §16.86 L58, above the "was not built" sentence it overturns; it
+    follows the paragraph's other dated lines, and says when M71's reflog skip catches the old main."""
+    m4 = " ".join(
+        _contracts_section("**Step 1 asks for the sign-in when synced folders are missing**", "\n\n").split()
+    )
+    v20 = (
+        "(step 1's first exception: \"If the list's NEXT: line asks me to sign in, tell me which folders are "
+        "kept and that I must sign in to OneDrive, and wait for me as for a click; once I say so, run "
+        "--list-folders again and go by what it prints.\") is lane P's (§16.94)."
+    )
+    assert v20 in m4 and m4.index(v20) < m4.index("Amended 2026-10-16, §16.103 N64:")
+    assert "(step 1's first exception: unless" not in m4
+    l31 = " ".join(
+        _contracts_section(
+            "**Only this prompt's installer logs or reports at a step 1 stop**", "\n\n"
+        ).split()
+    )
+    v19 = (
+        "The finish still applies after every one of these stops. Step 1's version check now reads \"the "
+        "--version inside step 1's one command\", so the Xcode and git stops' own `--version` is not taken "
+        "for it. Step 3's no-report cases are four. Test: `test_readme_step1_is_one_command`, "
+        "`test_readme_report_step_after_any_failure`. Amended 2026-10-16, §16.94 M16, M32:"
+    )
+    assert v19 in l31
+    v20_line = l31[
+        l31.index("Amended 2026-10-16, §16.94 M16, M32:") : l31.index("Amended 2026-10-16, §16.103 N68:")
+    ]
+    assert v20_line.endswith("Test: `test_readme_step1_is_one_command`. "), v20_line
+    l58 = " ".join(_contracts_section("**The local-work line says only what it can know**", "\n\n").split())
+    m83 = "Amended 2026-10-16, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20"
+    assert l58.count("§16.94 M83") == 1
+    assert l58.index("L58's prompt half (delete the empty branch) was not built") < l58.index(m83)
+    assert l58.index("Amended 2026-10-15, §16.93 M18:") < l58.index(m83)
+    assert "M71's reflog skip catches only when origin/main's reflog names it" in l58
