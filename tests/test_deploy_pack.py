@@ -2824,8 +2824,8 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     # false
     assert (
         "It stops and waits for you only on a Mac that syncs no folder yet, or, on a Mac that already syncs "
-        "folders, when the list asks you to sign in to OneDrive first; once you say you have, it lists the "
-        "folders again."
+        "folders, when the list asks you to sign in to OneDrive (or the app it names) first; once you say "
+        "you have, it lists the folders again."
     ) in flat_intro and SIGNED_OUT in step1
     # B13 round 9 K73: the intro says what the agent does when the list could not read the config
     assert "When the list cannot read which folders the Mac syncs, it marks none, and the agent says so" in (
@@ -5598,26 +5598,33 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
     assert "Such a Mac gets that line and exit 0 even when nothing else can be listed" not in deploy
     assert (
         "it exits 3 when there are none, or when a folder this Mac already syncs under "
-        "`~/Library/CloudStorage` is missing (OneDrive signed out), and 4 when macOS denied this terminal "
-        "access"
+        "`~/Library/CloudStorage` is missing because its app is signed out, and 4 when macOS denied this "
+        "terminal access"
     ) in deploy
     assert (
         "When no synced folder under `~/Library/CloudStorage` is missing, such a Mac gets that line and exit "
         "0 even when nothing else can be listed"
     ) in deploy
     assert (
-        "When a synced folder under `~/Library/CloudStorage` is missing (OneDrive signed out or still "
-        "setting up), it gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
+        "When a synced folder under `~/Library/CloudStorage` is missing and its app is signed out (its "
+        "provider folder, such as `OneDrive-Contoso`, is gone with no other folder of that app beside it, or "
+        "is there and empty), it gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
         "synced=N`."
     ) in deploy
+    # B13 round 12 N41, N61: a folder gone while its app is signed in keeps exit 0
+    assert (
+        "(renamed, moved or deleted there, or under another account's provider folder) keeps exit 0" in deploy
+    )
     assert "Since v20, step 1 of the one-prompt setup waits for that sign-in" in deploy
     assert "even when the list ends on a click (exit 4), which comes before the missing check." in deploy
     feedback = _page("docs/deploy/setup-feedback.md")
     assert (
-        "- A set-up Mac whose synced folder under `~/Library/CloudStorage` is missing (OneDrive signed out, "
-        "or still setting up) gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
-        "synced=N` (B13 round 11 M4)."
+        "- A set-up Mac whose synced folder under `~/Library/CloudStorage` is missing because its app is "
+        "signed out, or still setting up (its provider folder gone with no other folder of that app beside "
+        "it, or there and empty), gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
+        "synced=N` (B13 round 11 M4, narrowed by round 12 N41, N61)."
     ) in feedback
+    assert "(renamed, moved or deleted there) keeps exit 0, logged `gone=N`" in feedback
     assert "Since v20, step 1 waits for that sign-in as for a click, then lists the folders again" in feedback
 
 
