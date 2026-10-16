@@ -5590,7 +5590,8 @@ def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[s
     assert "no Attempt: line, since its session stopped before `install.sh --log-start`" in fr, fr
     assert "v4 format" not in fr and "may be stale" not in summary
     assert (
-        "It holds a step 1 error (F1) logged before any attempt was started: that session stopped" in summary
+        "It holds a step 1 error (F1) logged before any attempt was started: attempt 1's session stopped"
+        in summary
     )
     # B13 round 11 M34: the friction line would only repeat the agent-friction line's one error
     assert "- agent friction: 0 deviation, 0 prompt, 1 error (F1)" in summary
@@ -5632,11 +5633,14 @@ def test_a_step_1_line_before_the_stated_step_1_error_keeps_the_header_less_labe
     assert "v4 format" not in fr and "WARNING" not in summary, summary
     assert (
         "- note: attempt 1 has no Attempt: line. It holds a step 1 error (F2) logged before any attempt was "
-        "started: that session stopped" in summary
+        "started: attempt 1's session stopped" in summary
     ), summary
     # after a finished attempt: the note names the error, never "starts at" it
     fr, summary = report(V7_HAPPY + lines.replace("2026-09-29T10:", "2026-10-06T10:"))
-    assert "It holds a step 1 error (F6) logged after attempt 1 finished" in summary, summary
+    # B13 round 12 N28: the session by its own attempt, not "that session", which read as attempt 1's
+    finished = "It holds a step 1 error (F6) logged after attempt 1 finished: attempt 2's session stopped"
+    assert finished in summary, summary
+    assert "that session" not in summary, summary
     assert "starts at a step 1 error" not in summary
     # an error and then a later step's line is still the session's own; a later step's line first is not
     error = lines.splitlines(keepends=True)[1]

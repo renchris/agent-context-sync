@@ -7841,9 +7841,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         # the error by its number: step 1 lines can come before it (B13 round 11 M30)
         error = _headerless_error(att)
         holds = f"It holds a step 1 error (F{error.line})" if error is not None else "Its lines were"
+        # the session by its attempt: "that session" read as attempt N-1's, the one session the sentence
+        # named, which did run --log-start (B13 round 12 N28)
         out.append(
-            f"- note: attempt {att.number} has no Attempt: line. {holds} {after}: that session stopped "
-            "before `install.sh --log-start`, so `install.sh --report-only` had no attempt to close."
+            f"- note: attempt {att.number} has no Attempt: line. {holds} {after}: attempt {att.number}'s "
+            "session stopped before `install.sh --log-start`, so `install.sh --report-only` had no attempt "
+            "to close."
         )
     elif att is not None and not att.finished:
         step = att.layout.report_step
