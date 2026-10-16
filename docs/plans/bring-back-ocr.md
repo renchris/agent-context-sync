@@ -878,6 +878,30 @@ trunk's CI, M87): RA 22 (setup_report.py), RB 20 (install.sh), P 10 (prompt v20)
 doctor), E 8 (recordings, speech, OCR, publish), D 9 (docs/deploy, CONTRACTS). Lead: M20 (round 12's scenario B
 method), M86 (one operator cleanup, `b13-r10`, replacing the round 7 and round 9 ones), M87 (COMMON10).
 
+### B13 round 11 landed (2026-10-16)
+
+All six lanes landed; CI green on `8814baa0` (prompt v20). Notes `lanes/r11-<lane>.md`. Not built, with a measured
+reason: M44's part b (install.sh parses "(deletions held)" and cli.py swaps that note by equality, so one bracket
+would break both). The operator's stop question (`eb3dbe1e5e94`) expired unanswered on 2026-10-15, so its default
+holds: keep looping until a round confirms nothing.
+
+| Lane | Landed (lane commits; ranges can hold another lane's) |
+|---|---|
+| E | `f85bd80d..453e2b42`, 5 commits |
+| B | `5ffecbbe^..93b42c42`, 6 commits |
+| RA | `93b42c42..7c41eaba`, 6 commits |
+| P | `0189665d` (v20, with lane RB's M4 words) |
+| RB | `0189665d..e3c09b12`, 17 commits |
+| D | `e3c09b12..8814baa0`, 5 commits |
+
+Learnings: kitty crashed at 00:01 on 2026-10-15 before any round 11 lane had fired; the lead came back as window
+20, so the briefs and `--notify-back` had to name the new window, and `cc-await-ping` needs the window id as its
+first argument. The classifier refused lane RB's rebase and cherry-pick until the operator typed an approval into
+the lane's own pane. A queued push was rejected each time an earlier lane landed, as in rounds 8 to 10.
+
+Round 12: the round 11 workflow on `8814baa0` with prompt v20 (run `wf_af97f220-5f1`, outputs `round12/`); scenario B
+copies built helpers instead of building the v10 ones (M20).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
