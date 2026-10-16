@@ -3087,7 +3087,8 @@ def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
 ) -> None:
     """B13 round 8 J55: H52 had every run YAML-parse the page of each stub a label rule may withhold, about
     1.2 s per 2000 image stubs on every poll. The page's ``reason:`` line is decoded as the emitter wrote it
-    now, which gives what the YAML parse gives for any wording."""
+    now, which gives what the YAML parse gives for any wording.  Round 11 M62: the reader is
+    ``_withheld_on_page``, the one ``Publisher._stub_says`` uses; ``_reason_line`` had no caller left."""
     engine = fake_engine(tmp_path / "ocr-bin")
     picture(local_source_dir / SITE_PLAN, "Loading dock")
     config = config_with(tmp_path, local_source_dir, LABEL_RULE)
@@ -3106,9 +3107,11 @@ def test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse(
     page = (config.docs_repo / slug.mirror_rel_path(SID, SITE_PLAN)).read_text(encoding="utf-8")
     for reason in (withheld, "no converter for .png", 'a "quoted" naïve — reason: x', "true", "12"):
         text = render_frontmatter({"status": "refused", "reason": reason}) + "body\n"
-        assert publish_mod._reason_line(text) == real(text)[0]["reason"] == reason
-    assert publish_mod._reason_line(page) == real(page)[0]["reason"] == withheld
-    assert publish_mod._reason_line("---\nstatus: refused\n---\nbody\n") is None
+        fast = publish_mod._withheld_on_page(text)
+        assert fast is not None and fast[0] == real(text)[0]["reason"] == reason
+    fast = publish_mod._withheld_on_page(page)
+    assert fast == (withheld, True) and real(page)[0]["reason"] == withheld
+    assert publish_mod._withheld_on_page("---\nstatus: refused\n---\nbody\n") is None
 
 
 def test_a_run_with_no_engine_reads_an_online_only_images_stub_without_a_yaml_parse(

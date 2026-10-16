@@ -4408,8 +4408,8 @@ class _NoManifestError(Exception):
 
 def _page_strings(fm: str) -> tuple[str | None, str | None] | None:
     """A stub page's ``reason:`` and ``summary:`` read from their own front matter lines, as
-    ``render_frontmatter`` writes them (one JSON string each, read as ``publish._reason_line`` does: no YAML
-    parse per page), or None when a line holds anything else, for a full parse."""
+    ``render_frontmatter`` writes them (one JSON string each, read as ``publish._frontmatter_lines`` does: no
+    YAML parse per page), or None when a line holds anything else, for a full parse."""
     found: dict[str, str | None] = {"reason": None, "summary": None}
     for line in fm.splitlines():
         key = line.partition(": ")[0]

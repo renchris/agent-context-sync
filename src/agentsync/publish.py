@@ -559,13 +559,6 @@ def _frontmatter_lines(text: str, keys: tuple[str, ...]) -> tuple[dict[str, str 
     return found, body
 
 
-def _reason_line(text: str) -> str | None:
-    """A page's ``reason:`` read from its own frontmatter line (a JSON string, ``render_frontmatter``), or
-    None when there is no such line or it does not decode to a non-empty string."""
-    read = _frontmatter_lines(text, ("reason",))
-    return (read[0].get("reason") or None) if read is not None else None
-
-
 def _withheld_on_page(text: str) -> tuple[str, bool] | None:
     """A stub page's ``reason:`` and whether the page says a label rule withheld its file
     (:func:`policy.page_says_withheld`: its reason, its summary or its body), read from its frontmatter lines
@@ -1152,10 +1145,11 @@ class Publisher:
         the sync line and the page never disagree on why a file was not read (B13 round 8 J29)."""
         return self._withheld(reason, suffix)
 
-    def _stub_says(self, source_id: str, stable_id: str) -> tuple[str | None, bool | None]:
-        """The ``reason:`` of the stub published for one item and whether its page says a label rule withheld
-        the file (:func:`policy.page_says_withheld`), from one read; (None, None) when it has no reason on
-        disk. (It was ``_stub_reason``, the reason alone, until B13 round 10 L54.)
+    def _stub_says(self, source_id: str, stable_id: str) -> bool | None:
+        """Whether the page of the stub published for one item says a label rule withheld the file
+        (:func:`policy.page_says_withheld`), or None when it has no reason on disk. (It was ``_stub_reason``,
+        the reason alone, until B13 round 10 L54, and gave the reason beside the verdict until round 11 M62:
+        no caller read it.)
 
         ``_sync/QUARANTINE.tsv`` follows the page for a row a label rule may withhold, as
         :func:`policy.page_says_withheld` reads it, the test the cycle and the setup report use (L54): a page
@@ -1173,7 +1167,7 @@ class Publisher:
             if text is None:
                 continue
             if (fast := _withheld_on_page(text)) is not None:
-                return fast
+                return fast[1]
             try:
                 data, body = parse_frontmatter(text)
             except FrontmatterError:
@@ -1181,8 +1175,8 @@ class Publisher:
             reason, summary = data.get("reason"), data.get("summary")
             if isinstance(reason, str) and reason:
                 summary = summary if isinstance(summary, str) else None
-                return reason, policy.page_says_withheld(reason, summary, body)
-        return None, None
+                return policy.page_says_withheld(reason, summary, body)
+        return None
 
     def _plan_stub(
         self, source: SourceConfig, item: ItemRow, result: ConversionResult, *, withheld: bool | None = None
@@ -2079,7 +2073,7 @@ class Publisher:
                 if (
                     item.state is RowState.REFUSED
                     and self._withheld_eligible(item.state_reason, suffix)
-                    and self._stub_says(source.id, item.stable_id)[1]
+                    and self._stub_says(source.id, item.stable_id)
                 ):
                     reason = _withheld_reason(suffix)
                 shown = self._shown_path(source.id, item.stable_id, item.rel_path)

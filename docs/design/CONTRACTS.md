@@ -17111,6 +17111,8 @@ parses YAML only when that fails, so it gives what the YAML read gives for any w
 `test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`.
 Amended 2026-10-14, §16.90 L54: `_stub_reason` is `Publisher._stub_says`, which also decodes the
 `summary:` line (`publish._withheld_on_page`), still with no YAML parse.
+Amended 2026-10-15, §16.96 M62: the test reads `_withheld_on_page`, the reader `_stub_says` uses; `_reason_line`, which
+it read, had no caller left and is removed.
 
 **J74: the banner re-render reaches a deleted source's tombstones (`agentsync.cycle`).** Dated line at §16.73 H68:
 the tombstone pass walks the configured ids and the source of every TOMBSTONE output, each once, and
@@ -18498,6 +18500,9 @@ such a page makes one TSV-only commit the first time. Tests:
 `test_cycle.py::test_a_run_with_no_engine_reads_an_online_only_images_stub_without_a_yaml_parse`,
 `test_cycle.py::test_a_stub_pages_lines_say_withheld_as_its_yaml_parse_does`,
 `test_cycle.py::test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_the_report_does`.
+Amended 2026-10-15, §16.96 M62: `_reason_line` had no caller left and is removed; `_frontmatter_lines`, through
+`_withheld_on_page`, is the reader. `_stub_says` returns the verdict alone (`bool | None`): `write_quarantine`, its
+one caller, never read the reason.
 
 **L51: the recording index revision is in the cache options (`agentsync.convert.recording`; amends §16.84 K63).**
 K63 changed How to read without moving the action key, so a copy of bytes converted under the old legend, or a
@@ -18611,6 +18616,14 @@ code is `done`, as before; an installed build older than this exits 1 there, whi
 at §16.25's and §16.37's helpers text. Tests:
 `test_install_oneshot.py::test_helpers_step_is_skipped_when_the_config_cannot_be_read`,
 `test_ocr.py::test_the_module_entry_point_builds_under_the_configured_cache_dir`.
+
+**`_reason_line` is gone and `_stub_says` returns its verdict alone (M62; amends §16.90 L47, §16.78 J55).** After
+L54 nothing in `src` called `publish._reason_line`, and `write_quarantine`, the one caller of `_stub_says`, read only
+the verdict of the `(reason, verdict)` pair. `_reason_line` is removed and `_stub_says` returns `bool | None`; the
+YAML fallback still yields None for a page with no reason. J55's test, which proved `_reason_line`, reads
+`_withheld_on_page`, the reader production uses, and `setup_report._page_strings` names `_frontmatter_lines`. Test:
+`test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`. Code removal: the test
+passes before the change as after it; it pins the reader production uses, where it pinned one production did not.
 
 ### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
 
