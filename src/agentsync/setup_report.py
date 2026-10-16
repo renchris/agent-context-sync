@@ -680,9 +680,13 @@ _RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+
 _RESIDUE_RE = re.compile(
     rf"{_RESIDUE_PLACEHOLDER}[ /_-]+([A-Z][\w&]*)|([A-Z][\w&]*)[ /_-]+(?={_RESIDUE_PLACEHOLDER})"
     rf"|{_RESIDUE_PLACEHOLDER}[-_]([A-Za-z][\w&]*)|([A-Za-z][\w&]*)[-_](?={_RESIDUE_PLACEHOLDER})"
+    rf"|{_RESIDUE_PLACEHOLDER}([A-Za-z][\w&]*)|(?<![\w&])([A-Za-z][\w&]*)(?={_RESIDUE_PLACEHOLDER})"
 )
 """A capitalised word next to a placeholder, or a word of any case joined to one by ``-`` or ``_`` with no
-space (``abc-<folder-1>``: a leftover piece of a longer name; of ``alpha-beta-<folder-1>`` only ``beta``)."""
+space (``abc-<folder-1>``: a leftover piece of a longer name; of ``alpha-beta-<folder-1>`` only ``beta``), or
+glued to one with no separator at all (``<org-1>Drive``, ``Acme<org-1>``: the forms the organisation's cut
+inside a longer word leaves, B13 round 11 M50; round 12 N8 found the check blind to them). The separated
+forms come first, so they keep their groups."""
 _USER_HOME_RE = re.compile(r"(?<![\w.-])/Users/<user>/")  # a login's home in a redacted path: like ~/
 _HOME_CONTAINER_RE = re.compile(
     rf"(?<![\w.-])~/[\"']?(?:(?:{'|'.join(sorted(_GENERIC_HOME_DIRS))})/)+", re.IGNORECASE
@@ -8105,17 +8109,18 @@ def _section(title: str, fn: Callable[[], list[str]]) -> list[str]:
 
 
 def residue(text: str, *, ignore: frozenset[str] = frozenset()) -> list[str]:
-    """Capitalised words right next to a name, organisation, library, folder or source placeholder in
-    ``text`` (redacted text), and words of any case joined to one by ``-`` or ``_``: what redaction may have
+    """Capitalised words right next to a name, organisation, library, folder or source placeholder in ``text``
+    (redacted text), and words of any case joined to one by ``-`` or ``_`` or glued to one with no separator
+    (``<org-1>Drive``, as the organisation's cut inside a longer word leaves it): what redaction may have
     missed (a project's second word, an abbreviation in front of a folder's name). A login's home
     ``/Users/<user>/`` is a path prefix like ``~/`` (the folder after it is a path component, not a name's
-    second word), and so is the home with :data:`_GENERIC_HOME_DIRS` below it (``~/Development/<folder-1>``
-    is no hit, ``<folder-1> Development`` is one). The fixed macOS path components (Users, Library,
-    Application Support, ...) are no hit, and neither is a word in ``ignore`` (a CloudStorage folder's app
-    name before its ``<org-N>``)."""
+    second word), and so is the home with :data:`_GENERIC_HOME_DIRS` below it (``~/Development/<folder-1>`` is
+    no hit, ``<folder-1> Development`` is one). The fixed macOS path components (Users, Library, Application
+    Support, ...) are no hit, and neither is a word in ``ignore`` (a CloudStorage folder's app name before its
+    ``<org-N>``)."""
     found: list[str] = []
     for m in _RESIDUE_RE.finditer(_HOME_CONTAINER_RE.sub("~/", _USER_HOME_RE.sub("~/", text))):
-        word = m.group(1) or m.group(2) or m.group(3) or m.group(4)
+        word = next((g for g in m.groups() if g), None)
         known = word in _RESIDUE_IGNORED or word in _GENERIC_FOLDERS or word in ignore
         if word and not known and word not in found:
             found.append(word)

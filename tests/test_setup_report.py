@@ -2234,6 +2234,24 @@ def test_the_macos_line_gives_the_version_and_build_as_the_shell_report_does(
     assert "- macOS: ? (24F74)\n" in section(text, "Environment")
 
 
+def test_the_residue_check_names_a_word_glued_to_the_organisation(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 12 N8: M50 cuts the organisation out of a longer word at a CamelCase boundary, so
+    ``ContosoDrive`` reads ``<org-1>Drive``, and the Redaction section's residue check said no word was next
+    to a placeholder: it matched only a word with a separator between."""
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY.replace("| 1 folder chosen |", f"| chose the {ORG}Drive folder |"))
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    assert "<org-1>Drive" in section(text, "Agent friction log"), section(text, "Agent friction log")
+    red = section(text, "Redaction")
+    assert (
+        "Residue check: 1 capitalized or joined word(s) next to a placeholder in this report (Agent friction "
+        "log: Drive); check them." in red
+    ), red
+
+
 def test_every_placeholder_kind_is_one_the_report_reads_back() -> None:
     """A path component or source id that redacts to a placeholder is kept as one only if _PLACEHOLDER_RE
     reads it, and a hyphen there means a number: a kind spelled ``<mdm-host>`` would be cut to ``<path>`` or
@@ -6249,6 +6267,13 @@ def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     assert "<tmp> this account's temporary folder" in red
     assert setup_report.residue("/Users/<user>/Library/Application Support/<folder-1> Board <org-1>") == [
         "Board"
+    ]
+    # B13 round 12 N8: a word glued to a placeholder with no separator, as M50's cut inside a longer word
+    # leaves it; "2026" starts with a digit, and "My" is an ignored word
+    assert setup_report.residue("<org-1>Drive, <org-1>2026, My<org-1>Team and Acme<org-1>") == [
+        "Drive",
+        "Team",
+        "Acme",
     ]
     assert setup_report.residue("/Users/<user>/Development/x and /Volumes/<folder-1>/Roadmap") == [
         "Roadmap"
