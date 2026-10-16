@@ -631,6 +631,22 @@ def test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree(
     assert loose == [], "a failed build leaves SwiftPM's folder owner-only too"
 
 
+def test_the_build_says_which_real_home_path_its_flags_do_not_cover() -> None:
+    """B13 round 12 N18: R90 read as if the three SwiftPM flags keep the build out of the whole home, but on
+    Swift 6.2.4 both steps re-create the real ``~/.swiftpm/security`` symlink whatever the flags (or HOME)
+    say, and no flag moves it. ``_compile`` and R90's paragraph say so; the build is unchanged (an outer deny
+    sandbox would need ``--disable-sandbox``)."""
+    assert "``~/.swiftpm/security``" in (speech._compile.__doc__ or "")
+    text = (Path(__file__).parents[1] / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
+    r90 = " ".join(
+        text.split("SwiftPM's own folders live beside the build tree (R90).", 1)[1].split("\n\n")[0].split()
+    )
+    assert (
+        "Amended 2026-10-16, §16.102 N18: the flags keep SwiftPM out of the real `~/Library` folders" in r90
+    )
+    assert "re-create the account's real `~/.swiftpm/security` symlink" in r90 and "is in `$TMPDIR`" in r90
+
+
 def test_the_persons_swiftpm_mirrors_and_registries_reach_the_build_and_leave_with_them(
     tools: Path, tmp_path: Path
 ) -> None:

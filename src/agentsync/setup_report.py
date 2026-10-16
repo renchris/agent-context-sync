@@ -4404,7 +4404,8 @@ def quarantine_class(reason: str | None, *, withheld: Collection[str] = ()) -> s
     so the report prints the class and never the reason. A file with no converter whose suffix is in
     ``withheld`` is ``withheld by label rule``: the suffixes a label rule now leaves without one
     (:data:`_LABEL_WITHHELD`; an image when its stub page says so, and by this report's OCR probe only when
-    the page could not be read, B13 round 8 J52, J54: :meth:`_Mirror.withheld_for`)."""
+    the page could not be read or says neither withheld nor no converter, B13 round 8 J52, J54; round 11 M79;
+    round 12 N59: :meth:`_Mirror.withheld_for`)."""
     text = " ".join((reason or "").split()).casefold()
     if not text:
         return "no reason recorded"
@@ -4611,7 +4612,7 @@ class _Mirror:
         self.withheld: set[str] = set(_LABEL_WITHHELD.difference(_IMAGE_SUFFIXES)) if labels_active else set()
         self.image_pages: dict[tuple[str, str], bool] = {}
         self.images_by_probe = False
-        self.pages_unread = 0  # withheld-eligible image stubs whose page could not be read
+        self.pages_unread = 0  # withheld-eligible image stubs whose page could not be read or says neither
         self.pages_failed = False  # the query for those stubs failed: every one goes by the probe
         self.deadline = time.monotonic() + budget_s
         self.latest = latest
@@ -4652,8 +4653,8 @@ class _Mirror:
 
     def withheld_for(self, reason: str | None, source_id: object, stable_id: object) -> Collection[str]:
         """The suffixes one row's ``no converter`` reason reads as withheld by a label rule: :attr:`withheld`,
-        and the row's image suffix when its stub page says withheld (or, with no page read, when the OCR
-        probe is ready)."""
+        and the row's image suffix when its stub page says withheld (or, with no page read, or one read that
+        says neither, when the OCR probe is ready)."""
         text = " ".join((reason or "").split()).casefold()
         tail = text[len(_NO_CONVERTER) :] if text.startswith(_NO_CONVERTER) else ""
         if not self.labels_active or tail not in _IMAGE_SUFFIXES:

@@ -6444,3 +6444,29 @@ def test_a_new_file_the_os_will_not_hydrate_is_counted_deferred(
     (rep,) = run(config).sources
     assert rep.counts.get(Verdict.DEFERRED) == 1 and Verdict.CREATED not in rep.counts, rep.counts
     assert _files(rep.counts) == before + 1 and rep.deferred == 1, rep.counts
+
+
+def test_every_m66_site_names_a_page_read_that_says_neither() -> None:
+    """B13 round 12 N59: round 11 M79 found the report uses its OCR probe for a stub page read that says
+    neither withheld nor ``no converter``, as for one it cannot read, and corrected the ``_Mirror`` comment;
+    the M66 sites still said only "cannot read". Each says both now, and the recorded M66 text has a dated
+    line at §16.71 H56 and §16.96 M66."""
+    from agentsync import setup_report  # noqa: PLC0415
+    from agentsync.convert import registry  # noqa: PLC0415
+
+    for doc in (
+        registry.label_withheld_suffixes.__doc__,
+        setup_report.quarantine_class.__doc__,
+        setup_report._Mirror.withheld_for.__doc__,
+    ):
+        assert "says neither" in " ".join((doc or "").split()), doc
+    text = (Path(__file__).parents[1] / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
+    flat = " ".join(text.split())
+    line = (
+        "Amended 2026-10-16, §16.102 N59: so does a stub whose page was read but says neither withheld nor "
+        "`no converter for` (§16.97 M79)"
+    )
+    for head in ("**The no-converter docstrings (H56).**", "**The registry docstring says the TSV classes"):
+        para = " ".join(text.split(head, 1)[1].split("\n\n", 1)[0].split())
+        assert line in para, head
+    assert flat.count(line) == 2

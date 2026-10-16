@@ -13518,6 +13518,12 @@ folders). The folder is made owner-only in the build's `finally`, as the build t
 reuses a FluidAudio clone that happens to sit in the user's shared SwiftPM cache. Pinned by
 `tests/test_speech.py::test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree` and
 `test_the_build_resolves_checks_the_floor_pins_the_commit_and_leaves_everything_owner_only`.
+Amended 2026-10-16, §16.102 N18: the flags keep SwiftPM out of the real `~/Library` folders, not out of the whole
+home. On Swift 6.2.4, with all three (and `--swift-sdks-path` too), both `swift package resolve` and `swift build`
+re-create the account's real `~/.swiftpm/security` symlink (to `~/Library/org.swift.swiftpm/security`): SwiftPM
+finds it through Foundation, so `HOME` is ignored, and no flag moves it (measured with a sandbox that kills the
+process on a write there). The `~/Library` cache, configuration and security folders are not written. SwiftPM's
+lock, `_Users_<login>_.swiftpm.lock`, is in `$TMPDIR`, not in the home.
 
 Behind a proxy set only in the environment the speech build seeds SwiftPM's cache itself (R83). SwiftPM downloads
 FluidAudio's one remote binary target, `NemoTextProcessing.xcframework.zip` from text-processing-rs v0.3.1, with
@@ -16544,6 +16550,8 @@ only.
 Amended 2026-10-15, §16.96 M66: `label_withheld_suffixes()` still said the TSV copies the page's `reason:`. Since
 §16.90 L54 the TSV and the setup report class the row by the page as `policy.page_says_withheld` reads it; for a
 stub whose page it cannot read, the report goes by its own OCR probe and the TSV keeps the stored reason.
+Amended 2026-10-16, §16.102 N59: so does a stub whose page was read but says neither withheld nor `no converter
+for` (§16.97 M79); the report goes by the probe there too.
 
 **A re-rendered tombstone with no `last_commit` names the commit that holds its content (H77; amends §16.60 F68,
 §16.66 G77).** Compaction leaves a tombstone row with no `last_commit` (its commit squashed; the page keeps the
@@ -19460,6 +19468,8 @@ setup report class the row by the page as `policy.page_says_withheld` reads it (
 for a stub whose page it cannot read, the report goes by its own OCR probe and the TSV keeps the stored reason.
 Docstring only: `test_cycle.py::test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_the_report_does`
 already pins the behaviour.
+Amended 2026-10-16, §16.102 N59: so does a stub whose page was read but says neither withheld nor `no converter
+for` (§16.97 M79); the report goes by the probe there too.
 
 **The speech seed reads git's config as clone does (M68; `agentsync.convert.speech`; amends §16.60 F78).**
 `_git_config` ran `git config --get-urlmatch http` from `<cache>/speech/build`; with HOME itself a git repository,
@@ -19865,6 +19875,28 @@ credential), `test_cycle.py::test_a_new_recording_read_in_the_cycle_that_deferre
 `test_cycle.py::test_a_new_file_the_os_will_not_hydrate_is_counted_deferred`,
 `test_cli.py::test_a_new_file_is_counted_once_under_its_final_verdict` (an edited file reads `changed=1`, not new),
 `test_cli.py::test_a_new_file_publish_quarantines_reads_quarantined_and_not_changed`.
+
+**The speech build's flags keep `~/Library`, not the whole home (N18; `agentsync.convert.speech`; amends §16.48
+R90).** R90 said the build wrote the real `~/Library` SwiftPM folders before it passed `--cache-path`,
+`--config-path` and `--security-path`, which read as if nothing in the home is written now. On Swift 6.2.4 both
+`swift package resolve` and `swift build` still re-create the real `~/.swiftpm/security` symlink, with
+`--swift-sdks-path` too and whatever `HOME` says; `swift build --help` lists no other path flag (verifier's
+measurement with a kill-on-write sandbox). The finder's lock is not in the home: `_Users_<login>_.swiftpm.lock` is
+in `$TMPDIR`. On a person's Mac this re-creates the same symlink in their own home. Not built as code: wrapping
+swift in an outer deny sandbox blocks the write but needs `--disable-sandbox`, which drops SwiftPM's own sandbox
+around FluidAudio's manifest and plugin code, a security regression. `_compile`'s docstring points here. A rehearsal
+tells a sandbox's own build by the lock files in its `$TMPDIR` and the `manifest.db.lock` under its own cache path,
+never by `~/.swiftpm` mtimes, which every build on the Mac moves. Tests:
+`test_speech.py::test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree` (unchanged: the three
+paths) and `test_speech.py::test_the_build_says_which_real_home_path_its_flags_do_not_cover`.
+
+**A page read that says neither goes by the probe in every docstring (N59; `agentsync.convert.registry`,
+`agentsync.setup_report`; amends §16.71 H56, §16.96 M66).** §16.97 M79 corrected the `_Mirror` comment and the
+guide, and left the M66 sites saying the report uses its OCR probe only for a stub whose page it cannot read:
+`label_withheld_suffixes()`, `quarantine_class`, `withheld_for` and the `pages_unread` comment now also name a page
+read that says neither withheld nor `no converter`, and the registry sentence is one block again. The legend keeps
+`could not be read`, as M79 pinned it. The recorded M66 text stands; dated lines follow it at §16.71 H56 and §16.96
+M66. Test: `test_cycle.py::test_every_m66_site_names_a_page_read_that_says_neither`.
 
 **`_withheld_on_page` returns the verdict alone (N60; `agentsync.publish`, `agentsync.cycle`; amends §16.90 L47,
 §16.96 M62).** M62 took the unread reason out of `_stub_says`; it sat one level down, in `_withheld_on_page`'s

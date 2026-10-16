@@ -676,7 +676,9 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
     the floor, write ``Pin.swift``, build release.  The tree ``<folder>/build`` is kept (a rebuild is then
     incremental) and owner-only, and so is ``<folder>/swiftpm``: both steps get its ``cache``, ``config``
     and ``security`` folders, since SwiftPM on Darwin finds its user-level folders through Foundation, which
-    ignores HOME, and would otherwise write the real ``~/Library``.  Raises SpeechError or OSError."""
+    ignores HOME, and would otherwise write the real ``~/Library``.  They do not keep SwiftPM off the real
+    ``~/.swiftpm/security`` symlink, which both steps re-create whatever the flags say (CONTRACTS §16.102
+    N18).  Raises SpeechError or OSError."""
     developer = ocr._tool([ocr._XCODE_SELECT, "-p"])
     if not developer or not Path(developer).is_dir():
         raise SpeechError("no Xcode or Command Line Tools (xcode-select -p names no folder)")
