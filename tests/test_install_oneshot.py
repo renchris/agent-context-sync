@@ -2500,6 +2500,34 @@ def test_report_only_falls_back_when_setup_report_fails(env: dict[str, str]) -> 
     assert report_path(env).read_text().startswith("# agentsync setup report\n")
 
 
+@pytest.mark.parametrize("why", ["agentsync is not installed", "agentsync setup-report failed with exit 2"])
+def test_the_shell_report_says_it_did_not_check_whether_the_config_loads(
+    env: dict[str, str], why: str
+) -> None:
+    """B13 round 12 N25: with a broken last table the shell report printed "- [[source]] tables: 2" and no
+    loads line, so the prompt's finish, which keys "does not load" on the report's "loads: no", sent the agent
+    to parse a file agentsync rejects. The shell checks no TOML (a syntax-only check reads yes for a schema
+    error): it says the file was not checked, and why, and that the count reads headers only."""
+    home = Path(env["HOME"])
+    cs = _cloud(env)
+    tables = [local_source_table(n, cs / "OneDrive-Contoso" / n) for n in ("alpha", "beta")]
+    cfg = _write_config(env, *tables)
+    cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]\nid = \n", encoding="utf-8")
+    e = env
+    if why != "agentsync is not installed":
+        (home / ".local" / "bin").mkdir(parents=True)
+        _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+        e = {**env, "STUB_REPORT_RC": "2"}
+    cp = install_sh(e, "--report-only")
+    assert cp.returncode == 0 and f"(shell fallback: {why})" in cp.stdout, cp.stdout + cp.stderr
+    section = report_path(env).read_text().split("\n## Configuration\n\n", 1)[1].split("\n\n", 1)[0]
+    assert section.splitlines()[:3] == [
+        "- config: ~/agent-context/sources.toml (exists)",
+        f"- loads: not checked ({why})",
+        "- [[source]] table headers (not parsed): 2",
+    ], section
+
+
 def test_the_shell_report_shows_an_exclude_list_as_path(env: dict[str, str]) -> None:
     """The loop's wait for an empty cloud folder prints an exclude line naming folders below a source root,
     which the shell report's redaction has never seen. An agent may log that line: agentsync's own globs are

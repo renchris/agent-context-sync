@@ -2628,7 +2628,11 @@ fallback_body() {
 	say ""
 	if [ -f "$CONFIG" ]; then
 		say "- config: $CONFIG (exists)"
-		say "- [[source]] tables: $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
+		# Whether it loads is agentsync's to say (setup_report's "- loads: no: <error>"): a syntax-only check here
+		# would read yes for a schema error. So the line says it was not checked and why, which the finish reads
+		# as it reads "loads: no", and the count says it reads headers only (B13 round 12 N25).
+		say "- loads: not checked ($why)"
+		say "- [[source]] table headers (not parsed): $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
 		say "$(source_excludes_line "$CONFIG")"
 	else
 		say "- config: $CONFIG (missing)"
