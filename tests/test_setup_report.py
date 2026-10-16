@@ -10382,9 +10382,143 @@ def test_a_step_1_list_that_stopped_on_a_sign_in_asked_no_folder_question(
         encoding="utf-8",
     )
     assert setup_report._list_stopped(setup_report.read_install_runs(log)) == "denied"
-    # a Mac that already syncs folders keeps its own words, whatever the list's failure
+    # B13 round 12 N31: on a Mac that already syncs folders an exit 3 is the sign-in, with words of its own
     human, expected = lines("failed note=not-signed-in synced=2")
+    assert expected == (
+        "- expected turns: none (step 1's list stopped: OneDrive is not signed in, so folders this Mac "
+        "already syncs (2) are missing; they are kept: no folder question and no Allow click)"
+    ), expected
+    assert "beyond the announced" not in human, human
+    # an exit 4 on such a Mac keeps its Allow click
+    human, expected = lines("failed note=denied synced=2")
     assert expected.startswith("- expected turns: no folder question (2 folders already synced: "), expected
+    assert "Allow click" in expected.split(" · ", 1)[1], expected
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_synced_macs_sign_in_stop_is_named_and_asks_no_allow_click(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 12 N31: step 1's list exited 3 not-signed-in on a Mac that already syncs folders, and the
+    Summary kept the synced Mac's words: no stop named anywhere, and on a real Mac "the announced Allow click"
+    in the expected turns and "beyond the announced Allow click" in the human turns, though OneDrive's folder
+    was missing, so no Allow click was announced. The outcome now says why the list stopped, synced or not.
+    Both states: the stopped synced Mac, and the same Mac's exit 4, which keeps its Allow click."""
+    monkeypatch.setattr(setup_report, "is_sandbox_home", lambda home: False)  # a real Mac's run type
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", f"Prompt: v{setup_report.PROMPT_VERSION}"))
+
+    def summary(list_step: str) -> str:
+        set_up_log(fake_mac, listed="", list_step=list_step)
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        return section(text, "Summary")
+
+    for note, why in (("not-signed-in synced=2", "OneDrive is not signed in"), ("no-folders", "no folders")):
+        got = summary(f"failed note={note}")
+        assert got.strip().splitlines()[0] == (
+            "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran, "
+            f"in step 1; it stopped: {setup_report._LIST_STOPS[note.split()[0]]})"
+        ), got
+        assert why in setup_report._LIST_STOPS[note.split()[0]]
+        for start in ("- human turns: ", "- expected turns: "):
+            assert "Allow click" not in _line(got, start).replace("no Allow click", ""), _line(got, start)
+    got = summary("failed note=denied synced=2")
+    assert "the announced Allow click (step 1; not logged)" in _line(got, "- expected turns: "), got
+    assert "it stopped:" not in got.strip().splitlines()[0], "an exit 4 ended on its click, not a stop"
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_sign_in_step_1_asked_for_is_no_extra_click(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 12 N5 (lane P builds the prompt half): on a set-up Mac signed out of OneDrive, step 1's list
+    exited 3 not-signed-in, the person signed in, and the agent logged it as a click: the report said "worked
+    with help (1 click beyond the Allow clicks)" and "1 click logged, though none is possible". From prompt
+    v20 one step 1 click after such a list, which a later run followed, is the sign-in step 1 asked for: an
+    expected turn, never an extra or impossible one. Any other click still counts; v19 is as before."""
+    click = "2026-09-29T09:59:00Z | step 1 | click | I signed in to OneDrive and said so | -\n"
+    relist = (
+        LIST_RUN.replace(" launchd=simulated", "")
+        .replace("T09:58:0", "T09:59:0")
+        .replace("20260929T095805Z-11", "20260929T095905Z-12")
+        .replace("result=done\n", "result=done note=listed-25 synced=2\n")
+    )
+
+    def summary(version: int, extra: str = "", *, logged: bool = True, synced: str = " synced=2") -> str:
+        friction = V11_HAPPY.replace("Prompt: v11", f"Prompt: v{version}").replace(
+            "2026-09-29T10:01:10Z | end", (click if logged else "") + extra + "2026-09-29T10:01:10Z | end"
+        )
+        write_friction(fake_mac, friction)
+        log = set_up_log(
+            fake_mac,
+            ("--confirm-install-agent", "done note=exists kept=2 added=0"),
+            listed=synced,
+            list_step="failed note=not-signed-in",
+        )
+        text = log.read_text(encoding="utf-8")
+        cut = text.index("2026-09-29T10:00:00Z")
+        log.write_text(text[:cut] + relist.replace(" synced=2", synced) + text[cut:], encoding="utf-8")
+        _rc, report_text, _ = report(tmp_path, fake_mac["config"])
+        return section(report_text, "Summary")
+
+    got = summary(20)
+    assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
+    assert "the OneDrive sign-in step 1 asked for (F4)" in _line(got, "- expected turns: "), got
+    human = _line(got, "- human turns: ")
+    assert (
+        "1 click logged: the OneDrive sign-in step 1 asked for, F4; Allow clicks: none possible" in human
+    ), human
+    assert "though none is possible" not in got, got
+    items = got.split("Items that were not one command", 1)[1]
+    assert "click" not in items, items
+    # the wait with no click line: still expected, "not logged"
+    got = summary(20, logged=False)
+    assert "the OneDrive sign-in step 1 asked for (not logged)" in _line(got, "- expected turns: "), got
+    assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
+    # a second click is still one beyond the Allow clicks
+    got = summary(20, "2026-09-29T10:00:30Z | step 2 | click | clicked a dialog | -\n")
+    assert (
+        got.strip()
+        .splitlines()[0]
+        .startswith(
+            "- **outcome: worked with help** (computed: install.sh exit 0; 1 click(s) beyond the Allow clicks"
+        )
+    ), got
+    assert "2 clicks logged, one of them: the OneDrive sign-in step 1 asked for, F4" in _line(
+        got, "- human turns: "
+    )
+    # on a real Mac the sign-in follows the Allow clause, with no bracket of its own (review)
+    sandbox = setup_report.is_sandbox_home
+    monkeypatch.setattr(setup_report, "is_sandbox_home", lambda home: False)
+    human = _line(summary(20), "- human turns: ")
+    assert (
+        "1 click beyond the announced Allow click (not logged), which is F4, the OneDrive sign-in step 1 "
+        "asked for;" in human
+    ), human
+    monkeypatch.setattr(setup_report, "is_sandbox_home", sandbox)
+    # the list stopped again after the sign-in: that sign-in is still the one expected turn (review)
+    write_friction(
+        fake_mac,
+        V11_HAPPY.replace("Prompt: v11", "Prompt: v20").replace(
+            "2026-09-29T10:01:10Z | end", click + "2026-09-29T10:01:10Z | end"
+        ),
+    )
+    log = set_up_log(fake_mac, listed=" synced=2", list_step="failed note=not-signed-in")
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + relist.replace("result=done note=listed-25 synced=2", "result=failed note=not-signed-in synced=2"),
+        encoding="utf-8",
+    )
+    _rc, report_text, _ = report(tmp_path, fake_mac["config"])
+    expected = _line(section(report_text, "Summary"), "- expected turns: ")
+    assert expected.startswith(
+        "- expected turns: the OneDrive sign-in step 1 asked for (F4) and no other (step 1's list stopped: "
+    ), expected
+    # a prompt before v20 never asked for the sign-in that way: as before
+    got = summary(19)
+    assert got.strip().splitlines()[0].startswith("- **outcome: worked with help**"), got
+    # a new Mac (round 11 M7's relist) with a logged sign-in click: no extra click either
+    got = summary(20, synced="")
+    assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
 
 
 def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path]) -> None:

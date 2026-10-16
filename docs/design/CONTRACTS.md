@@ -18161,6 +18161,10 @@ expected turns are none; after an exit 4 (`denied`, `tcc-pending`, or an exit 3 
 turn. A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the already-synced
 line. Amended 2026-10-16, §16.103 N67: the line above gained "on a Mac that syncs no folder" and its last sentence,
 the condition §16.92 M7 states and `_list_stopped`'s caller applies (`if not synced`).
+Amended 2026-10-16, §16.98 N31: `_list_stopped` is read on a Mac that already syncs too: its exit 3 (M4's sign-in
+exit, `not-signed-in synced=N`) has a line of its own, `none (step 1's list stopped: OneDrive is not signed in, so
+folders this Mac already syncs (N) are missing; they are kept: ...)`, with no Allow click; an exit 4 keeps the
+already-synced line.
 
 **The local-work line says only what it can know** (L8, L25, L40, L58; dated lines at §16.80 K30 and §16.75 J65).
 `- local work kept by setup prompt step 1: 1 local-work branch(es) in the checkout, 0 patch file(s) ... (the

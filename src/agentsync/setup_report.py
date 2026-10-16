@@ -1867,6 +1867,38 @@ UNREAD_GOES_ON = 18
 that marked the folders already synced: it asks at most whether to add a folder, and an agent that cannot
 ask adds none and goes on to step 2 (B13 round 9 K9, K20, K32: v17 had it log a deviation and wait)."""
 
+SIGN_IN_WAITS = 20
+"""The first setup prompt whose step 1 waits, as for a click, for the OneDrive sign-in that a list exiting 3
+``not-signed-in`` asks for, then lists again (B13 round 11 M4; round 12 N5)."""
+
+
+def _signed_in_on_request(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+    """Whether step 1 asked for the OneDrive sign-in and the attempt went on: the attempt's prompt is
+    :data:`SIGN_IN_WAITS` or later (by its stated version, not its layout: every version from v8 reads as
+    one layout), a list run failed ``note=not-signed-in``, and a later list or install run followed it."""
+    if att.version is None or att.version < SIGN_IN_WAITS:
+        return False
+    for n, run in enumerate(runs):
+        listed = (run.step("list-folders") or {}) if run.list_only else {}
+        if listed.get("result") == "failed" and listed.get("note") == "not-signed-in" and runs[n + 1 :]:
+            return True
+    return False
+
+
+def _sign_in_click(att: Attempt, runs: Sequence[InstallRun]) -> FrictionEvent | None:
+    """The click line of the OneDrive sign-in step 1 asked for (:func:`_signed_in_on_request`): the first
+    click logged at step 1, at most one; None when step 1 asked for none or none was logged (B13 round 12
+    N5: an agent logged the person's sign-in as a click, which turned a clean run into "worked with help")."""
+    if not _signed_in_on_request(att, runs):
+        return None
+    return next((e for e in att.of_kind("click") if e.step == FOLDER_QUESTION_STEP), None)
+
+
+def _extra_clicks(att: Attempt, runs: Sequence[InstallRun]) -> list[FrictionEvent]:
+    """:meth:`Attempt.extra_clicks` less the sign-in step 1 asked for (:func:`_sign_in_click`)."""
+    sign_in = _sign_in_click(att, runs)
+    return [e for e in att.extra_clicks() if e is not sign_in]
+
 
 def unread_asked(attempt: Attempt | None, runs: Sequence[InstallRun]) -> int | None:
     """:func:`unread_synced` when its folder question was a turn agentsync caused: the attempt's prompt is
@@ -2104,8 +2136,9 @@ def compute_outcome(
                 why.append("human turns unknown: the attempt has no Attempt: line (install.sh --log-start)")
             if attempt.extra_questions():
                 why.append(f"{len(attempt.extra_questions())} question(s) beyond the folder question")
-            if attempt.extra_clicks():
-                why.append(f"{len(attempt.extra_clicks())} click(s) beyond the Allow clicks")
+            extra = _extra_clicks(attempt, runs)  # the sign-in step 1 asked for is no extra click (N5)
+            if extra:
+                why.append(f"{len(extra)} click(s) beyond the Allow clicks")
             approvals = len(attempt.of_kind("approval"))
             if approvals:
                 why.append(f"{approvals} approval(s)")
@@ -2172,8 +2205,11 @@ def compute_outcome(
         why_step = f"no install.sh run and no error; the last step logged is {steps[-1]}"
         return Outcome("failed", steps[-1], (why_step,), version)
     if runs and not layout.logs_steps:  # v6: only --list-folders ran (step 1), and nothing was logged
+        # and why its list stopped, when it stopped with nothing listed (B13 round 12 N31)
+        stopped = _list_stopped(runs)
+        said = f"; it stopped: {_LIST_STOPS[stopped]}" if stopped and _LIST_STOPS[stopped] else ""
         return Outcome(
-            "failed", 1, ("no install run: only install.sh --list-folders ran, in step 1",), version
+            "failed", 1, (f"no install run: only install.sh --list-folders ran, in step 1{said}",), version
         )
     return Outcome("unknown", None, ("no install.sh run in this attempt and no step logged",), version)
 
@@ -7108,7 +7144,13 @@ def _list_stopped(runs: Sequence[InstallRun]) -> str | None:
 
 
 def _turns_line(
-    att: Attempt, run_type: str, synced: int | None = None, *, stopped: bool = False, unasked: bool = False
+    att: Attempt,
+    run_type: str,
+    synced: int | None = None,
+    *,
+    stopped: bool = False,
+    unasked: bool = False,
+    sign_in: FrictionEvent | None = None,
 ) -> str:
     """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
     folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
@@ -7120,7 +7162,10 @@ def _turns_line(
     ``install.sh --log-start`` (a header-less attempt with no install.sh run): nobody was asked anything.
     An attempt that names no agent cannot vouch for zero approvals either: "not observable" (B13 round 3
     R24). Nor is it counted when ``unasked`` (:func:`unread_unknown` under prompt v18 or later): the list
-    could not read the config and nothing says it synced no folder (B13 round 10 L7)."""
+    could not read the config and nothing says it synced no folder (B13 round 10 L7). ``sign_in``
+    (:func:`_sign_in_click`) is the click line of the OneDrive sign-in step 1 asked for: a turn, in its own
+    words, and never one called impossible; a click line of prompt v6 or later is never an Allow click, so
+    with none possible it says the Allow clicks are none possible, not the clicks (B13 round 12 N5)."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
     # v6: the folder question is not logged
@@ -7130,12 +7175,22 @@ def _turns_line(
     hidden = a == 0 and (not agent or any(t in agent for t in APPROVAL_HIDDEN_TOOLS))
     approvals = "approvals: not observable" if hidden else _plural(a, "approval")
     no_clicks = _no_clicks_why(run_type)
+    signed = f": the OneDrive sign-in step {sign_in.step} asked for, F{sign_in.line}" if sign_in else ""
+    if signed and c > 1:
+        signed = f", one of them{signed}"
     if no_clicks is None:
         clicks = _plural(c, "click")
         if not att.layout.logs_expected_turns and not stopped:  # stopped: no Allow click was announced
             clicks += f" beyond the announced {_allow_clicks(att.layout)} (not logged)"
+        if sign_in is not None:  # after the Allow clause, which it would run into, and with no bracket
+            which = "one of them" if c > 1 else "which"
+            clicks += f", {which} is F{sign_in.line}, the OneDrive sign-in step {sign_in.step} asked for"
     elif c == 0:
         clicks = "clicks: none possible"
+    elif (
+        not att.layout.logs_expected_turns
+    ):  # a v6+ click line is no Allow click, the kind none is possible of
+        clicks = f"{_plural(c, 'click')} logged{signed}; Allow clicks: none possible"
     else:
         clicks = f"{_plural(c, 'click')} logged, though none is possible"
     return f"- human turns: {q + c + a} ({_plural(q, 'question')}; {clicks}; {approvals})"
@@ -7153,6 +7208,8 @@ def _expected_turns_line(
     kept_unread: int | None = None,
     unasked: bool = False,
     list_stop: str | None = None,
+    signed_in: bool = False,
+    sign_in: FrictionEvent | None = None,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -7166,11 +7223,26 @@ def _expected_turns_line(
     with ``unasked`` (:func:`unread_unknown`), where no count says how many folders were synced (B13 round 10
     L7). With ``list_stop`` (:func:`_list_stopped`) step 1's list stopped before the folder question: on an
     exit 3 nothing was listed, so there is no turn at all; on an exit 4 the Allow click is the turn (B13 round
-    11 M7)."""
+    11 M7). On a Mac that already syncs folders an exit 3 is the sign-in: still no turn, with words of its own
+    (B13 round 12 N31). With ``signed_in`` (:func:`_signed_in_on_request`) the OneDrive sign-in step 1 asked
+    for is one of the turns: ``sign_in`` is its click line, if one was logged (B13 round 12 N5)."""
     layout = att.layout
+    # a list that stopped again after the sign-in step 1 asked for: that sign-in is the one turn
+    none = (
+        f"the OneDrive sign-in step {layout.folder_question_step} asked for "
+        f"({f'F{sign_in.line}' if sign_in is not None else 'not logged'}) and no other"
+        if signed_in
+        else "none"
+    )
+    if list_stop == "not-signed-in" and synced and not layout.logs_expected_turns:
+        return (
+            f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: OneDrive is not "
+            f"signed in, so folders this Mac already syncs ({synced}) are missing; they are kept: no folder "
+            "question and no Allow click)"
+        )
     if list_stop and _LIST_STOPS.get(list_stop) and not synced and not layout.logs_expected_turns:
         return (
-            f"- expected turns: none (step {layout.folder_question_step}'s list stopped: "
+            f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: "
             f"{_LIST_STOPS[list_stop]}, so no folder was listed: no folder question and no Allow click)"
         )
     if unstarted:
@@ -7219,6 +7291,9 @@ def _expected_turns_line(
                 f"no folder question (step {step}'s list could not read the config, so step {step} asks at "
                 "most whether to add one; not logged)"
             ]
+        if signed_in:
+            said = f"F{sign_in.line}" if sign_in is not None else "not logged"
+            parts.append(f"the OneDrive sign-in step {step} asked for ({said})")
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
         else:
@@ -7941,8 +8016,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         # a list that stopped on a sign-in (exit 3) listed nothing, and one that stopped on a click (exit 4)
         # was asked no folder question yet; a Mac that already syncs folders keeps its own words (B13 round 11
         # M7)
-        list_stop = _list_stopped(runs) if not synced else None
+        # On one that does, an exit 3 is the sign-in step 1 asks for, and it listed nothing new either (B13
+        # round 12 N31: the synced Mac's words hid the stop and named an Allow click that was never announced)
+        list_stop = _list_stopped(runs)
         nothing_listed = bool(list_stop and _LIST_STOPS[list_stop])
+        signed_in = _signed_in_on_request(att, runs)
+        sign_in = _sign_in_click(att, runs)
         stopped = copy_stopped or unstarted or no_run or nothing_listed
         # from prompt v18 a list that could not read the config asks at most whether to add one (round 9 K20)
         unread, asked = unread_synced(runs), unread_asked(att, runs)
@@ -7959,7 +8038,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         )
         out.append(
             _turns_line(
-                att, run_type, synced or kept_unread, stopped=stopped, unasked=unasked or bool(list_stop)
+                att,
+                run_type,
+                synced or kept_unread,
+                stopped=stopped,
+                unasked=unasked or bool(list_stop),
+                sign_in=sign_in,
             )
         )
         out.append(
@@ -7974,6 +8058,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 kept_unread=kept_unread,
                 unasked=unasked,
                 list_stop=list_stop,
+                signed_in=signed_in,
+                sign_in=sign_in,
             )
         )
         why_unread = unread_why(runs)
@@ -8075,8 +8161,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     items: list[FrictionEvent] = []
     if att is not None:
         items = [stop] if stop is not None else []
+        sign_in = _sign_in_click(att, runs)  # the sign-in step 1 asked for is no item (B13 round 12 N5)
         items += sorted(
-            (e for e in att.of_kind(*TURN_KINDS) if not att.expected(e)),
+            (e for e in att.of_kind(*TURN_KINDS) if not att.expected(e) and e is not sign_in),
             key=lambda e: (TURN_KINDS.index(e.kind), e.line),
         )
     retried = retried_runs(att, runs) if outcome.kind == "worked with help" else []  # one of its reasons

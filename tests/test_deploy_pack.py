@@ -5676,7 +5676,8 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
         '(this attempt\'s runs only; the Installer section also counts the "\n        f"{total - k} earlier '
         'run(s) in the lines read)"'
     ) in source
-    assert "list_stop = _list_stopped(runs) if not synced else None" in source
+    # B13 round 12 N31: read on a Mac that already syncs too, whose sign-in stop has a line of its own
+    assert "list_stop = _list_stopped(runs)\n" in source
     page = _page("docs/deploy/setup-feedback.md")
     assert "this attempt's runs only: ..." not in page
     assert (
@@ -5688,10 +5689,9 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
         "are step 1 lists, every one failed"
     ) in page
     assert (
-        "A list that finished, an install run, or a Mac that already syncs keeps the usual rules: "
-        "install.sh's sign-in exit on a set-up Mac (§16.93 M4, `not-signed-in synced=N`) printed the "
-        "`[synced]` folders, so the line is the already-synced one, as it is for an exit 4 that logged "
-        "`synced=N`."
+        "A list that finished, or an install run, keeps the usual rules, and so does an exit 4 that logged "
+        "`synced=N`. install.sh's sign-in exit on a set-up Mac (§16.93 M4, `not-signed-in synced=N`) has the "
+        "next row's line."
     ) in page
     m7 = " ".join(_contracts_section("Amended 2026-10-16, §16.92 M7:", "\n\n").split())
     assert "that all failed, on a Mac that syncs no folder, counts no folder question" in m7
