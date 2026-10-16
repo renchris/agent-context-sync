@@ -19607,4 +19607,77 @@ Reserved for round 12 lane E of B13.
 
 ### 16.103 Round 12: deploy docs and CONTRACTS cross-references (2026-10-16, wave B13 round 12 lane D)
 
-Reserved for round 12 lane D of B13.
+Docs, dated lines and tests that lagged round 11's code and contract text (`docs/plans/bring-back-ocr.md`, "B13
+round 12"; specs `round12/items/N<n>.md`, the verifier's corrected fix built). Each item is pinned by a test that
+fails on the text it replaced. A dated line this round writes reads `Amended 2026-10-16, §16.103 N<n>`, and one that
+records another round's change adds `(by §16.NN M<n>)`; the older text stays as it was, except where N64, N67, N68
+and N70 corrected or moved it, each with a dated line there. No item needs prompt words,
+so none went to lane P.
+
+**The README intro says step 1 also waits for a sign-in** (N9, N63: one defect, built once). Since v20 step 1
+waits, on a Mac that already syncs folders, for the OneDrive sign-in its list asks for (§16.93 M4, §16.94), but the
+intro still said the agent waits "only on a Mac that syncs no folder yet". It now reads `It stops and waits for you
+only on a Mac that syncs no folder yet, or, on a Mac that already syncs folders, when the list asks you to sign in
+to OneDrive first; once you say you have, it lists the folders again.` The intro is outside the prompt block, so
+v20's digest is unchanged. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (the sentence, and
+step 1's sign-in rule beside it).
+
+**The deploy guides say a set-up Mac's list can exit 3** (N62). docs/deploy/README.md said `--list-folders` exits 3
+"when there are none" and that a set-up Mac "gets that line and exit 0 even when nothing else can be listed". Since
+§16.93 M4 a synced folder under `~/Library/CloudStorage` that is missing gives exit 3, `note=not-signed-in synced=N`
+and a NEXT that asks for the sign-in; a click (exit 4) still comes first, and a synced folder outside CloudStorage
+is never counted missing. Both guides say so, and that v20 waits for the sign-in. Test:
+`test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+**The guide and both legends name M29's proxy sources** (N47). setup-feedback.md's `<proxy-N>` row adds a host a
+friction line's resolver message names (`Could not resolve proxy:`, `Could not resolve host:`, `Failed to connect
+to <host> port N`; the installer's public hosts kept) and the hosts kept in `proxy-hosts`; a sentence under the
+section 1 table says `--log-start` and `--log` keep that file and that it is never embedded (no fourth row: "Three
+sources" stays true). Both legends end `also a host a friction line's resolver error names (it need not be a
+proxy)`: the pattern also takes a company git server that is no proxy. Test:
+`test_install_oneshot.py::test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy`,
+`test_the_guide_names_every_source_of_a_proxy_number`.
+
+**Guide rows that quoted round 11's code from before it changed** (N66, N67). The Summary's `installer output:`
+row quotes M44's bracket, `(this attempt's runs only; the Installer section also counts the N earlier run(s) in the
+lines read)`. The `expected turns: none (step 1's list stopped ...)` row, and §16.86's M7 line, apply only on a Mac
+that syncs no folder: `_list_stopped` runs `if not synced`, so M4's sign-in exit (`synced=N`) and an exit 4 that
+logged `synced=N` keep the already-synced line. Test: `test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`.
+
+**§16.93 M4 quotes v20's sign-in rule** (N64; dated line at §16.93 M4). Its parenthetical paraphrased the rule as
+"unless its NEXT asks me to sign in", which reads the condition backwards; it now quotes README's words, as §16.94
+does. Test: `test_round_12s_contract_quotes_and_moves_read_as_written`.
+
+**Two dated lines in §16.86 and §16.88 sit where they read right** (N67, N68, N70; dated lines at §16.86 L7 and
+§16.88 L31). v20's M16/M32 line in §16.88 L31 had been spliced in before v19's version-check and no-report sentences,
+so "now" read as v20's change: those sentences are back in L31's text, before the dated line, which cites only its
+own test. §16.94 M83's line sat mid-paragraph in §16.86 L58, above the unamended "was not built" sentence; it is
+after the paragraph's other dated lines now, and qualified: M71's reflog skip catches the old main when origin/main's
+reflog names it. N67's line in §16.86 L7's paragraph is the one the guide item above describes; this head's claim
+holds it. Test: `test_round_12s_contract_quotes_and_moves_read_as_written`.
+
+**The helpers' contracts say "not checked" for a config that cannot be read** (N58, N65; dated lines at §16.34's
+media helper, §16.35's speech engine and §16.96 M25). §16.34 and §16.35 still said exit 0 or 1, and §16.96 M25 said
+the media and speech lines read `not built (the config cannot be read)`; since §16.93 M8 they read `not checked`,
+and M25 exits 78. Each paragraph has a dated line `(by ...)` naming the two round 11 items. No heading of §16.93 or
+§16.96 is changed: this section's own claims hold the lines (the scan reads round 12's sections). Test: the
+dated-line scan and `test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`.
+
+**"organization" in the IT request's note and the deploy guides** (N79; dated line at §16.92 M36). M36 spelled it
+"organization" in both reports and setup-feedback.md; the IT request draft's `<org>` note, docs/deploy/README.md and
+it-request.md's `<org>` row still said "organisation". Test: `test_it_request.py::
+test_unknown_values_stay_open_and_two_organisations_are_the_persons_choice`,
+`test_the_person_facing_docs_spell_organization`.
+
+**Every dated line from round 11 on is held by a test** (N72). 19 of round 11's 74 dated lines were held by nothing:
+14 at sections a target list names with no item (§16.14, §16.22, §16.25, §16.29, §16.30, §16.32, §16.37, §16.41,
+§16.56), the class round 11 M81 pinned for round 10 only, and 5 beside a claim another line already satisfies. The
+scan now records which dated lines hold a claim, a line counting only when it is its claim's one line (beside a
+second, deleting it fails nothing; this also finds §16.86's M54 line, a twentieth), and reads every section from
+§16.68 on, round 12's included. `_ROUND_11_PARAGRAPH_AMENDS` and `_ROUND_12_PARAGRAPH_AMENDS` pin the rest by
+section, a phrase of the amended block and the line's marker; the round 12 table also holds §16.101's four lines
+at paragraphs with no item (N12/N38 in §16.22 and §16.45, N53 in §16.32, N13 in §16.56), which this test found
+when lane B landed first. A completeness test fails on any
+`Amended <date>, §16.<home>` line with a home of §16.92 or later that neither holds a claim alone nor is pinned, and
+on a bare section a claim from §16.92 on names with no pin there. Rounds 7 to 10 (homes §16.68 to §16.91) are not
+in it: their lines were never mutation-tested. Test: `test_every_dated_line_from_round_11_on_is_held_by_a_test`.

@@ -4779,6 +4779,105 @@ def test_round_8s_prompt_items_have_dated_lines_at_the_text_they_amend() -> None
     assert 'Amended 2026-10-14, §16.85 K65: "a rule found nowhere else in §16" was not so.' in j66
 
 
+def _contracts_numbered_sections_at() -> list[tuple[str, int, str]]:
+    """:func:`_contracts_numbered_sections` with each section's offset in CONTRACTS.md."""
+    raw, found, offset = CONTRACTS.read_text(encoding="utf-8"), [], 0
+    for number, text in _contracts_numbered_sections():
+        assert raw[offset : offset + len(text)] == text
+        found.append((number, offset, text))
+        offset += len(text) + 1
+    return found
+
+
+def _contracts_blocks(text: str, start: int, separator: str) -> list[tuple[int, str]]:
+    """``re.split(separator, text)``, each block with its offset in CONTRACTS.md (``text`` at ``start``)."""
+    blocks: list[tuple[int, str]] = []
+    pos = 0
+    for cut in re.finditer(separator, text):
+        blocks.append((start + pos, text[pos : cut.start()]))
+        pos = cut.end()
+    return [*blocks, (start + pos, text[pos:])]
+
+
+def _dated_lines_at(start: int, block: str, marker: re.Pattern[str]) -> list[int]:
+    """The CONTRACTS.md offsets of the dated lines ``marker`` matches in ``block`` (at ``start``), read on the
+    block's flattened text as every dated-line test reads it. ``marker`` starts at the word "Amended"."""
+    flat = " ".join(block.split())
+    words = [found.start() for found in re.finditer("Amended", block)]
+    return [start + words[flat[: hit.start()].count("Amended")] for hit in marker.finditer(flat)]
+
+
+def _dated_line_scan() -> tuple[
+    list[tuple[str, list[str], str, str]], set[tuple[str, str]], set[int], list[str]
+]:
+    """The claims of every round 7 or later section but §16.72 (home, its items, target section, target item),
+    the bare sections a target list names (home, section: "§16.14" with no item after it), the offsets of the
+    dated lines that alone hold a claim, and the claims none holds. See
+    `test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`."""
+    numbered = _contracts_numbered_sections_at()
+    sections = {number: (start, text) for number, start, text in numbered}
+    claims: list[tuple[str, list[str], str, str]] = []
+    bare: set[tuple[str, str]] = set()
+    heading = (
+        r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*(?:; [^;()]*)*?; (?:amends|corrects|dated lines? at) ([^)]*)\)"
+    )
+    tok = r"(?:§\d+\.\d+(?:'s)?(?: [A-Z]\d+\b)?|[A-Z]\d+\b)"
+    # the "." inside "§16.68" ends no sentence, so the targets are tokens, not a [^.]* run
+    sentence = rf"^\*\*([A-Z]\d+)\b[^*]*\*\*.*?\bDated lines? at ({tok}(?:(?:, | and ){tok})*)"
+    # "**L42: ... (`agentsync.setup_report`; amends §16.80 K6).**": the bracket's first clause names modules
+    lead = r"^\*\*((?:[A-Z]\d+(?:, | and )?)+):[^*]*?\((?:[^()]*?; )?(?:amends|corrects) ([^()]*)\)\.?\*\*"
+    # every round from 7 on, the sections round 12 and later add included (B13 round 12 N72)
+    homes = [n for n, _, _ in numbered if re.fullmatch(r"16\.\d+", n) and int(n[3:]) >= 68 and n != "16.72"]
+    for home in homes:
+        for para in re.split(r"\n\s*\n", sections[home][1]):
+            flat = " ".join(para.split())
+            found = re.findall(heading, flat) + re.findall(sentence, flat) + re.findall(lead, flat)
+            for items, targets in found:
+                section = ""
+                for number, item in re.findall(r"(?:§(\d+\.\d+)(?:'s)? )?([A-Z]\d+)\b", targets):
+                    section = number or section
+                    claims.append((home, re.findall(r"[A-Z]\d+", items), section, item))
+                bare.update(
+                    (home, n) for n in re.findall(r"§(\d+\.\d+)(?!\d)(?!(?:'s)? [A-Z]\d+\b)", targets)
+                )
+    held_at: set[int] = set()
+    unheld: list[str] = []
+    for home, items, section, item in claims:
+        at = "|".join(re.escape(f"§{home} {i}") for i in items)
+        either = "|".join(items)
+        marker = re.compile(
+            rf"Amended 2026-10-1\d, (?:§{re.escape(home)} (?:[A-Z]\d+, )*(?:{either})\b"
+            rf"|§16\.\d+ [A-Z]\d+(?:, [A-Z]\d+)* \((?:by )?(?:{at})(?:, [A-Z]\d+)*\)"
+            rf"|§{re.escape(home)} [A-Z]\d+(?:, [A-Z]\d+)*: [^;]*?; (?:[A-Z]\d+, )*(?:{either})\b)"
+        )
+        start, body = sections[section]
+        paragraphs = _contracts_blocks(body, start, r"\n\s*\n")
+        flats = [" ".join(p.split()) for _, p in paragraphs]
+        # the paragraph that names the item, or a dated paragraph right after it
+        units = [
+            unit
+            for n, (_, _) in enumerate(paragraphs)
+            if re.search(rf"\b{item}\b", flats[n])
+            for unit in paragraphs[
+                n : n + (2 if n + 1 < len(flats) and "Amended" in flats[n + 1][:12] else 1)
+            ]
+        ]
+        # an item with a "#### N27: ..." heading of its own spans paragraphs: its whole subsection holds it
+        units += [
+            unit
+            for sub_at, sub in _contracts_blocks(body, start, r"\n(?=#### )")
+            if " ".join(sub.split()).startswith(f"#### {item}:")
+            for unit in _contracts_blocks(sub, sub_at, r"\n\s*\n")
+        ]
+        lines = {line for unit_at, unit in units for line in _dated_lines_at(unit_at, unit, marker)}
+        # a line holds the claim only when it is the claim's one line: beside a second, deleting it fails
+        # nothing (B13 round 12 N72, §16.86's M71 and M49 lines)
+        held_at.update(lines if len(lines) == 1 else ())
+        if not lines:
+            unheld.append(f"§{section} {item} has no dated line for §{home} {items}")
+    return claims, bare, held_at, unheld
+
+
 def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() -> None:
     """B13 round 8 J73: §16.71 H47 and H52 corrected §16.66 G52 and G29, and H77 its "`STUB_RENDER` is
     4", with no dated line at any of them, the defect class H54 fixed for round 6, whose test reads only G
@@ -4804,29 +4903,13 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     without dropping the items after it; a dated line may name its items after a "; " ("§16.89 L14, L36, L38:
     ...; L48, L67: ...") or name several items "(by §<home> <item>)"; §16.88 names L61's target in the heading
     form; the scan reads round 11's §16.92 to §16.97 too; and the lines at paragraphs, not items, are pinned
-    by `test_round_10s_lines_at_unlettered_paragraphs_are_there`."""
+    by `test_round_10s_lines_at_unlettered_paragraphs_are_there`.  B13 round 12 N72: the scan
+    (:func:`_dated_line_scan`) reads every section from §16.68 on, round 12's included, and records the line
+    that holds each claim alone; `test_every_dated_line_from_round_11_on_is_held_by_a_test` reads those."""
     from agentsync import publish  # noqa: PLC0415
 
+    claims, bare, _held_at, unheld = _dated_line_scan()
     sections = dict(_contracts_numbered_sections())
-    claims: list[tuple[str, list[str], str, str]] = []
-    heading = (
-        r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*(?:; [^;()]*)*?; (?:amends|corrects|dated lines? at) ([^)]*)\)"
-    )
-    tok = r"(?:§\d+\.\d+(?:'s)?(?: [A-Z]\d+\b)?|[A-Z]\d+\b)"
-    # the "." inside "§16.68" ends no sentence, so the targets are tokens, not a [^.]* run
-    sentence = rf"^\*\*([A-Z]\d+)\b[^*]*\*\*.*?\bDated lines? at ({tok}(?:(?:, | and ){tok})*)"
-    # "**L42: ... (`agentsync.setup_report`; amends §16.80 K6).**": the bracket's first clause names modules
-    lead = r"^\*\*((?:[A-Z]\d+(?:, | and )?)+):[^*]*?\((?:[^()]*?; )?(?:amends|corrects) ([^()]*)\)\.?\*\*"
-    homes = [f"16.{n}" for n in range(68, 98) if n != 72]
-    for home in homes:
-        for para in re.split(r"\n\s*\n", sections[home]):
-            flat = " ".join(para.split())
-            found = re.findall(heading, flat) + re.findall(sentence, flat) + re.findall(lead, flat)
-            for items, targets in found:
-                section = ""
-                for number, item in re.findall(r"(?:§(\d+\.\d+)(?:'s)? )?([A-Z]\d+)\b", targets):
-                    section = number or section
-                    claims.append((home, re.findall(r"[A-Z]\d+", items), section, item))
     assert ("16.71", ["H52"], "16.66", "G29") in claims, "the scan is broken"
     assert ("16.74", ["J39"], "16.68", "H32") in claims and ("16.78", ["J50"], "16.68", "H37") in claims
     assert ("16.80", ["K5", "K16"], "16.40", "N37") in claims  # an N target
@@ -4844,37 +4927,14 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     assert ("16.90", ["L54"], "16.78", "J55") in claims  # L54's second line, which its head does not name
     assert ("16.89", ["L48", "L67"], "16.83", "K40") in claims  # held after a "; " in L14's line
     assert ("16.88", ["L61"], "16.82", "K25") in claims and ("16.87", ["L16"], "16.89", "L34") in claims
-    assert len({(h, tuple(i), s, t) for h, i, s, t in claims}) >= 203, "the scan is broken"
+    assert len({(h, tuple(i), s, t) for h, i, s, t in claims}) >= 208, "the scan is broken"
+    # B13 round 12 N72: a bare section in a target list is read too, and a pin holds its line
+    assert ("16.92", "16.14") in bare and ("16.89", "16.37") in bare and ("16.92", "16.64") not in bare
     # §16.83 K75's line in §16.22's unlettered bullet names no item the scan can read
     assert "Amended 2026-10-14, §16.83 K75: so does an inbox no wait names" in " ".join(
         sections["16.22"].split()
     )
-    for home, items, section, item in claims:
-        at = "|".join(re.escape(f"§{home} {i}") for i in items)
-        bare = "|".join(items)
-        marker = re.compile(
-            rf"Amended 2026-10-1\d, (?:§{re.escape(home)} (?:[A-Z]\d+, )*(?:{bare})\b"
-            rf"|§16\.\d+ [A-Z]\d+(?:, [A-Z]\d+)* \((?:by )?(?:{at})(?:, [A-Z]\d+)*\)"
-            rf"|§{re.escape(home)} [A-Z]\d+(?:, [A-Z]\d+)*: [^;]*?; (?:[A-Z]\d+, )*(?:{bare})\b)"
-        )
-        paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", sections[section])]
-        held = [
-            p
-            + (
-                " " + paragraphs[n + 1]
-                if n + 1 < len(paragraphs) and "Amended" in paragraphs[n + 1][:12]
-                else ""
-            )
-            for n, p in enumerate(paragraphs)
-            if re.search(rf"\b{item}\b", p)
-        ]
-        # an item with a "#### N27: ..." heading of its own spans paragraphs: its whole subsection holds it
-        held += [
-            flat
-            for flat in (" ".join(b.split()) for b in re.split(r"\n(?=#### )", sections[section]))
-            if flat.startswith(f"#### {item}:")
-        ]
-        assert any(marker.search(p) for p in held), f"§{section} {item} has no dated line for §{home} {items}"
+    assert unheld == []
     render = next(p for p in re.split(r"\n\s*\n", sections["16.66"]) if p.startswith("**`STUB_RENDER` is 4"))
     assert "**Amended 2026-10-14, §16.79 J73 (by §16.71 H77):** `STUB_RENDER` is 5" in " ".join(
         render.split()
@@ -4910,6 +4970,95 @@ def test_round_10s_lines_at_unlettered_paragraphs_are_there() -> None:
         _contracts_section("**The friction section's attempt line has one bracket** (L32)", "\n\n").split()
     )
     assert "Amended 2026-10-15, §16.97 M78: the first of those labels and its dated line are in §16.22" in l32
+
+
+_ROUND_11_PARAGRAPH_AMENDS = (
+    ("16.14", "v5 revision 2 (2026-09-30, judge findings", "§16.92 M36"),
+    ("16.14", "v6 revision (2026-09-30, setup prompt v6", "§16.92 M34"),
+    ("16.22", "**setup-report: two wording fixes.**", "§16.92 M36"),
+    ("16.22", "- `bring-back.md`: the headings of sections 2 and 3", "§16.93 M1"),
+    ("16.25", "**Who builds.** Only `scripts/install.sh`", "§16.93 M8"),
+    ("16.25", "**Installer** (`scripts/install.sh`, inside the `launcher` step", "§16.96 M25"),
+    ("16.25", "**Installer** (`scripts/install.sh`, inside the `launcher` step", "§16.93 M8 (by §16.96 M25)"),
+    ("16.29", "- **Every synced folder is printed, with its mark**", "§16.93 M9"),
+    ("16.29", "- **A set-up Mac with nothing to list is still set up**", "§16.93 M4"),
+    ("16.30", "- **`read(s) again (N of them could not be converted", "§16.92 M12"),
+    ("16.30", "- **The title says what is hidden.**", "§16.92 M19"),
+    ("16.32", "| FAIL | Its fix now |", "§16.95 M10"),
+    ("16.37", "- **The helper builds have a step of their own.**", "§16.96 M25"),
+    ("16.41", "the first line reads `another sync is running (<who>)`", "§16.93 M43, M60"),
+    ("16.56", "- cli.py's sign-in lines (`<bin> graph login`)", "§16.93 M13"),
+    ("16.75", "**Step 1's NEXT over an unread config**", "§16.93 M37 (by §16.87 L11)"),
+    ("16.86", "**The local-work line says only what it can know**", "§16.92 M71"),
+    ("16.86", "**The local-work line says only what it can know**", "§16.92 M54"),
+    ("16.86", "**The local-work line says only what it can know**", "§16.92 M49 (M70 the same defect)"),
+    ("16.89", "**L68: a source with empty folders and one it cannot read", "§16.95 M42"),
+)
+"""Round 11's dated lines no claim holds alone (B13 round 12 N72): the section, a phrase only the amended
+block holds, and the line's marker. Most sit at a section a target list names with no item
+("§16.30's run table, §16.64 G23, §16.14, §16.22"), which no claim can hold; the rest beside a line that
+satisfies the same claim, so deleting either left the suite green."""
+
+_ROUND_12_PARAGRAPH_AMENDS = (
+    ("16.34", "**The media helper** (`agentsync.convert.media`", "§16.103 N58 (by §16.96 M25, §16.93 M8)"),
+    ("16.35", "**The speech engine** (`agentsync.convert.speech`", "§16.103 N58 (by §16.96 M25, §16.93 M8)"),
+    ("16.22", "- nothing stored (no access, a missing folder or sentinel)", "§16.101 N12, N38"),
+    ("16.32", "| FAIL | Its fix now |", "§16.101 N53"),
+    ("16.45", "**R102.** The wait for a local source whose listing a folder blocks", "§16.101 N12, N38"),
+    ("16.56", "- cli.py's sign-in lines (`<bin> graph login`)", "§16.101 N13"),
+)
+"""Round 12's dated lines at sections its claims name with no item, as :data:`_ROUND_11_PARAGRAPH_AMENDS`."""
+
+
+def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
+    """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
+    bullet) of its section that holds its phrase."""
+    sections = {number: (start, text) for number, start, text in _contracts_numbered_sections_at()}
+    found: set[int] = set()
+    for section, anchor, marker in table:
+        start, body = sections[section]
+        blocks = _contracts_blocks(body, start, r"\n\s*\n|\n(?=\s*- )")
+        [(at, block)] = [(at, b) for at, b in blocks if anchor in " ".join(b.split())]
+        lines = _dated_lines_at(at, block, re.compile(rf"Amended 2026-10-1\d, {re.escape(marker)}:"))
+        assert lines, f"§{section} {anchor[:40]} has no {marker} line"
+        found.update(lines)
+    return found
+
+
+def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
+    """B13 round 12 N72: 19 of round 11's 74 dated lines were held by no test (renaming all 19 left the suite
+    green): 14 at sections a target list names with no item, the class round 11 M81 pinned for round 10 only,
+    and 5 beside a line that satisfies the same claim. Each is pinned in its block, as round 10's are; the
+    rule that reads one claim's line alone also finds §16.86's M54 line. Round 12's §16.103 N58 has two, and
+    §16.101 (lane B) four."""
+    assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
+    assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 6
+
+
+def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
+    """B13 round 12 N72: the bare-section gap recurred for a third round, because nothing said which dated
+    lines a test holds. Every `Amended <date>, §16.<home> ...` line with a home of §16.92 or later (not a
+    template's `M<n>`) is the one line of a claim the scan reads, or is pinned; a bare section that a claim
+    from §16.92 on names has a pin there. Rounds 7 to 10's lines are not read: never mutation-tested."""
+    _claims, bare, held_at, unheld = _dated_line_scan()
+    assert unheld == []
+    pins = (*_ROUND_11_PARAGRAPH_AMENDS, *_ROUND_12_PARAGRAPH_AMENDS)
+    pinned = _pinned_dated_lines(pins)
+    text = CONTRACTS.read_text(encoding="utf-8")
+    lines = [
+        found.start()
+        for found in re.finditer(r"Amended\s+\d{4}-\d\d-\d\d,\s+§16\.(\d+)\b(?!\s+[A-Z]<n>)", text)
+        if int(found.group(1)) >= 92
+    ]
+    assert len(lines) >= 81, "the scan is broken"
+    loose = [" ".join(text[at : at + 100].split()) for at in lines if at not in held_at | pinned]
+    assert loose == [], "a dated line no test holds: give it a claim of its own, or pin it"
+    later = sorted((home, section) for home, section in bare if int(home[3:]) >= 92)
+    assert ("16.92", "16.14") in later and ("16.103", "16.34") in later
+    for home, section in later:
+        assert any(s == section and m.startswith(f"§{home} ") for s, _, m in pins), (
+            f"§{home} names §{section}"
+        )
 
 
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
