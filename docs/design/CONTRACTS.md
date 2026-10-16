@@ -19376,4 +19376,68 @@ and the later `git -C` steps share. Test:
 
 ### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
 
-Reserved for round 11 lane D of B13.
+Docs, dated lines and tests that lagged round 10's code and contract text (`docs/plans/bring-back-ocr.md`, "B13
+round 11"; specs `round11/items/M<n>.md`, the verifier's corrected fix built). Each item is pinned by a test that
+fails on the text it replaced. A dated line this round writes reads `Amended 2026-10-15, §16.97 M<n>`, and one that
+records another round's change adds `(by §16.NN L<n>)`; the older text stays as it was. No item needs prompt
+words, so none went to lane P.
+
+**§16.89 L34's head has the dated line L16 owed it** (M61, M77: one defect, built once; dated line at §16.89 L34
+and §16.87 L16). §16.87 L16 changed the F = R head's bracket to `so also counted as converted)` and said so of
+§16.89 L34, whose paragraph still quoted `now in the count above)` with no dated line. L34 has one now, `(by §16.87
+L16)`; it names `_CONVERTED_LINE_RE`, which reads R at `, first read R` before the bracket, not M77's
+`_FIRST_READ_RE`, which reads the F < R bracket (measured: setup_report.py's two regexes). L16's paragraph gains a
+line in the heading form, so the scan holds L34's. Test: the dated-line scan below.
+
+**Two "dated lines at" claims name their sections** (M78; dated lines at §16.89 L34 and §16.86 L32). §16.89 L34's
+line "at §16.37" is in §16.14, at the setup log's note that carries §16.37's amendment; §16.86 L32's first label
+is in §16.22, not §16.28. Each claim keeps its words and gets a dated line naming the right section. Test:
+`test_deploy_pack.py::test_round_10s_lines_at_unlettered_paragraphs_are_there`.
+
+**The dated-line scan reads round 10's bold leads** (M81; dated lines at §16.88 L61, §16.90 L54 and §16.89 L34).
+The scan read 129 claims, none of §16.88 or §16.90, and missed §16.89 L34, so 12 round 10 dated lines were held by
+nothing: renaming all 12 left the suite green. It now reads a bold item lead closed by a `(...; amends §A X)`
+bracket (§16.90's heads, §16.89's L34 and L48/L67), a target list with a bare section in it (`§16.37 and §16.83
+K34` keeps K34), a dated line that names items after a `; ` (`§16.89 L14, L36, L38: ...; L48, L67: ...`), after
+another item (`§16.97 M78, M81`) or several items `(by ...)`, and round 11's §16.92 to §16.97; an item under a
+`#### <item>:` heading of its own (§16.39 N27) is held by its whole subsection. Reading round 11 found one claim
+unheld, §16.95 M47's at §16.89 L68 (lane B had landed); it has a line `(by §16.95 M47)` from this lane. Two dated lines carry heading-form claims: §16.88's for L61's line
+at §16.82 K25, and §16.90's for L54's second line, at §16.78 J55, which L47/L54's head does not name (measured: with
+the new readers alone, renaming that line left the suite green). Lines at paragraphs that carry no item (§16.86 L5 in
+§16.28 and §16.48, L32 in §16.22 and §16.52, §16.89 L34 in §16.14) are pinned by phrase. The floor is the 203
+distinct claims read at this land, 8 of them this section's. Renaming any one of the 12 markers now fails the suite. Tests: `test_deploy_pack.py::
+test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`, `test_deploy_pack.py::
+test_round_10s_lines_at_unlettered_paragraphs_are_there`.
+
+**The guide says what v19 changed at step 1's stops** (M72). It said every failure goes to its report, "Three stops
+have no report", "step 3's three cases" and that the Xcode and git stops always log their error. Since v19 step 3
+lists four: the fourth is step 1's not-a-checkout and ownership stops, which run no install.sh, and its Xcode and
+other-git-failure stops when the folder's `install.sh --version` is not the prompt's. The guide names the fourth
+and the condition; the dated v14 and v15 sentences stay. A v20 sentence names the worktree stop v20 split out of
+the not-a-checkout one (§16.94). Test: `test_deploy_pack.py::
+test_the_guide_names_step_3s_four_cases_with_no_report`.
+
+**The guide's unread-config paragraph reaches v19** (M76). It stopped at v18; a "Since v19" sentence gives L62 (a
+re-run that reads the config is followed as on any Mac), L11's agent side (the `marks=failed` line in its own words,
+no keep claim; the installer side was already there) and L10 (after step 2's "no folder is synced yet": no report,
+`none` in the finish, step 2 again with `--source-local`). Test: `test_deploy_pack.py::
+test_the_guides_unread_config_paragraph_says_what_v19_changed`.
+
+**The README intro withdraws the keep L11 withdrew** (M75). The paragraph above the prompt said a run with no
+folder keeps whatever was synced; after `marks=failed` step 2 may stop at its config step and keep nothing, as
+the prompt and install.sh's `NEXT:` say. The intro says so; it is outside the prompt block, so the digest and the
+prompt version stay. Test: `test_deploy_pack.py::test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+
+**A page read that says neither can disagree with the TSV too** (M79; dated line at §16.91 L52). The guide's
+Quarantine row, §16.91 and `_Mirror`'s comment said only a stub whose page could not be read can disagree with
+`_sync/QUARANTINE.tsv`. A page read that says neither withheld nor `no converter for` leaves `says` None in
+`read_image_pages`, so the report goes by the OCR probe, while `write_quarantine` keeps the row's reason. The
+legend string, which counts both as `could not be read`, is pinned and stays. Test: `test_deploy_pack.py::
+test_a_page_read_that_says_neither_can_disagree_with_the_tsv`.
+
+**The reinstall's wait line is §16.93's** (M80). M80 is the defect lane RB built as §16.93 M43 and M60 (the
+wait line said `one started in a terminal`, and the guide that the lock does not say who started the sync); install.sh
+is lane RB's file, so its build stands and this lane built none of its own (`234d1eca`). This lane's M80 build,
+rewording the line to `(the background job, or one started outside it)` without reading the sidecar, was written
+before that landed and dropped at the rebase. The one place §16.93 left, a comment in `test_setup_report.py`'s K35
+test that still said the lock does not say who started the sync, now says the install note does not.

@@ -1910,8 +1910,8 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
         "- install.sh: 1 install run; the last exit 0 after 60s "
         "(agentsync 59s (waited for another sync to end) · config 1s)"
     )
-    # B13 round 9 K35: the lock does not say who started the sync (H33), so neither line says "background";
-    # install.log keeps its token, and a note the map does not know is shown as it is
+    # B13 round 9 K35: the install note does not say who started the sync (H33, round 11 M80), so neither line
+    # says "background"; install.log keeps its token, and a note the map does not know is shown as it is
     table = "\n".join(setup_report._step_table(list(runs[-1].steps)))
     assert "| done (waited for another sync to end) |" in table and "background" not in table, table
     assert re.search(r"\| done \(created\) +\|", table), table
