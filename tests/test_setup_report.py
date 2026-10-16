@@ -2192,6 +2192,30 @@ def test_a_hosted_mdm_server_host_is_redacted(
     assert "contosoltd" not in text.lower() and "mdm.example" not in text
 
 
+def test_the_macos_line_gives_the_version_and_build_as_the_shell_report_does(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 12 N26: the Environment line read ``- macOS: macOS 15.5 (24F74)``, the product's name under a
+    label that already is it, where the shell report prints ``- macOS: 15.5 (24F74)``."""
+    real = setup_report._Run.run
+    said = "ProductName:\tmacOS\nProductVersion:\t15.5\nBuildVersion:\t24F74\n"
+
+    def run(self: setup_report._Run, argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
+        if list(argv) == ["/usr/bin/sw_vers"]:
+            return 0, said
+        return real(self, argv, timeout)
+
+    monkeypatch.setattr(setup_report._Run, "run", run)
+    write_install_log(fake_mac)
+    write_friction(fake_mac, V5_HAPPY)
+    text, _summary = summary_of(fake_mac)
+    assert "- macOS: 15.5 (24F74)\n" in section(text, "Environment"), section(text, "Environment")
+    assert "macOS: macOS" not in text
+    said = "ProductName:\tmacOS\nBuildVersion:\t24F74\n"  # no version: "?", as the shell's || echo '?'
+    text, _summary = summary_of(fake_mac)
+    assert "- macOS: ? (24F74)\n" in section(text, "Environment")
+
+
 def test_every_placeholder_kind_is_one_the_report_reads_back() -> None:
     """A path component or source id that redacts to a placeholder is kept as one only if _PLACEHOLDER_RE
     reads it, and a hyphen there means a number: a kind spelled ``<mdm-host>`` would be cut to ``<path>`` or

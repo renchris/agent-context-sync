@@ -3488,10 +3488,10 @@ def _environment(r: _Run) -> list[str]:
         rc, text = r.run(["/usr/bin/sw_vers"], 3.0)
         if rc != 0:
             return f"sw_vers {_exited(rc, text)}"
-        kv = dict(ln.split(":", 1) for ln in text.splitlines() if ":" in ln)
-        return " ".join(
-            v.strip() for k, v in kv.items() if k.strip() in ("ProductName", "ProductVersion")
-        ) + (f" ({kv['BuildVersion'].strip()})" if "BuildVersion" in kv else "")
+        # the version and build only, as the shell report prints them: the label already is the product's
+        # name, so "macOS: macOS 15.5" repeated it (B13 round 12 N26)
+        kv = {k.strip(): v.strip() for k, v in (ln.split(":", 1) for ln in text.splitlines() if ":" in ln)}
+        return kv.get("ProductVersion", "?") + (f" ({kv['BuildVersion']})" if "BuildVersion" in kv else "")
 
     def arch() -> str:
         machine = platform.machine()
