@@ -18318,6 +18318,8 @@ variable keeps its number)`, and `_LEGEND["proxy"]` ends `, numbered as in the s
 can be missing` (L3; numbering each report on its own was not built: it would undo J78). Tests:
 `test_the_shell_legend_lists_only_the_kinds_its_report_shows`, `test_both_legends_say_a_proxy_number_can_be_missing`,
 `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+Amended 2026-10-15, §16.93 M3: within the `<folder-N>` item each clause is printed only where the report shows what
+it explains (step 1's list, the whole-word rule, the list-only rule).
 
 **bring-back.md's header names only what the file holds** (L4; amends §16.75 J65). The header said sections 2 and
 3 name real folders and files, and that section 3's patches start with author lines, when both sections read
@@ -18970,6 +18972,23 @@ and `... to choose from the Installer section, which has this attempt's install 
 install run (`attempt_ran_no_install` is false). The `- outcome: not computed (` prefix stays.
 docs/deploy/setup-feedback.md says both. Tests: `test_an_uncomputed_outcome_names_step_lines_only_when_the_attempt_has_them`,
 `test_the_shell_report_computes_no_other_outcome` (no friction log).
+
+**The folder legend explains only the names its report shows** (M3; amends §16.87 L1). The shell legend's
+`<folder-N>` item always gave four lines: step 1's list, the whole-word rule for a name every drive has, and the
+list-only rule, whose example was the report's only `Copilot`, though the plain report kept no such name (round
+10's L1/L5 pattern, inside one item). The item is built from clauses: the base (`... that --source-local,
+sources.toml or install.log name`, with `, install.log or step 1's folder list in install.out name` when a name the
+lists printed was registered); `; a name every OneDrive or Google Drive has, such as Documents, only where it stands
+as a whole word` when a configured name every drive has (a pair of flag w) has its placeholder in the body; and the
+list-only clause when a name only step 1's list gave, which `folder_parts` skips (every drive's name or coding-agent
+product words), is in the body as a whole word in any case (`; not a name every ... nor one made of coding-agent
+product words (Copilot, GitHub Copilot), where only step 1's list names it`, or after the whole-word clause its old
+`, and neither such a name nor ...` form). The skipped names come from `listed_folder_names`, which reads install.out
+as `redaction_pairs` does (both through `listed_folder_lines`), never through the pair stream. `say_item` wraps the
+item at 115 columns with two-space continuation lines. `fallback_redaction` reads the body (its third argument)
+before it writes the first legend line, and runs `redaction_pairs` once, as before. Test:
+`test_the_folder_legend_explains_only_the_names_the_report_shows` (the plain state, a friction line quoting
+`Copilot under Documents`, a configured `Documents`), and the `$'..'` folder case of the legend test.
 
 **A checkout git cannot read takes no commit from a repository around it** (M51). In a home that is itself a git
 repository, a checkout whose `.git` holds only `HEAD` (not a valid gitdir) made git search upward, so `install.sh

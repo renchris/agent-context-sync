@@ -1845,10 +1845,8 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
         "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly "
         "apostrophe, an en dash or an accent"
     ), "the Redaction text is not itself redacted, and reads plainly (B13 R7)"
-    assert (
-        "a name every OneDrive or Google Drive has, such as Documents, only where it stands"
-        in item["<folder-N>"]
-    )
+    # B13 round 11 M3: no name every drive has is in this report, so its rule is not explained
+    assert "such as Documents" not in item["<folder-N>"], item["<folder-N>"]
 
 
 _LEGEND_KINDS = (
@@ -7954,6 +7952,66 @@ def _listed(cs: Path, *paths: str) -> str:
     return "# run=20261010T000000Z-1 2026-10-10T00:00:00Z install.sh --list-folders\n" + "".join(
         f"{cs}/{p}\n" for p in paths
     )
+
+
+def _folder_item(text: str) -> str:
+    """The shell legend's <folder-N> item, its lines joined (each at most 115 characters)."""
+    legend = text.split("\n## Redaction\n", 1)[1].split("\n\n", maxsplit=1)[0].strip().splitlines()
+    start = next(i for i, ln in enumerate(legend) if ln.startswith("- <folder-N>: "))
+    end = next((i for i in range(start + 1, len(legend)) if not legend[i].startswith("  ")), len(legend))
+    assert max(len(ln) for ln in legend[start:end]) <= 115, legend[start:end]
+    return " ".join(" ".join(legend[start:end]).split())
+
+
+@pytest.mark.parametrize("state", ["plain", "list-only names quoted", "a configured Documents"])
+def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[str, str], state: str) -> None:
+    """B13 round 11 M3: the shell legend's <folder-N> item always explained step 1's list, the whole-word rule
+    for a name every drive has and the list-only rule for coding-agent product words, with "Copilot" as its
+    example, though the report kept no such name: its only "Copilot". Each clause is printed only where the
+    report shows what it explains."""
+    cs = _cloud(env)
+    lib = cs / "OneDrive-Contoso"
+    for d in ("Project Alpha", "Documents/Copilot"):
+        (lib / d).mkdir(parents=True)
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    picked = lib / ("Documents" if state == "a configured Documents" else "Project Alpha")
+    (setup / "install.log").write_text(
+        "2026-10-10T00:00:02Z run=20261010T000002Z-1 start install.sh compat=15 commit=- kind=- source=- "
+        f"args=--source-local {shlex.quote(str(picked))}\n"
+    )
+    install_out(env).write_text(
+        _listed(
+            cs,
+            "OneDrive-Contoso/Project Alpha",
+            "OneDrive-Contoso/Documents",
+            "OneDrive-Contoso/Documents/Copilot",
+        )
+    )
+    quoted = {"plain": "Project Alpha", "list-only names quoted": "Copilot under Documents"}.get(
+        state, "Documents"
+    )
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | deviation | "
+        f"picked {quoted} | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    item = _folder_item(report_path(env).read_text())
+    base = (
+        "- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml, "
+        "install.log or step 1's folder list in install.out name"
+    )
+    whole = (
+        "; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole word"
+    )
+    only = (
+        "; not a name every OneDrive or Google Drive has, such as Documents, nor one made of coding-agent "
+        "product words (Copilot, GitHub Copilot), where only step 1's list names it"
+    )
+    want = {"plain": base, "list-only names quoted": base + only, "a configured Documents": base + whole}[
+        state
+    ]
+    assert item == want, item
 
 
 def test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name(env: dict[str, str]) -> None:

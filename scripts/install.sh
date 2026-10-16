@@ -1208,6 +1208,33 @@ GENERIC_SOURCE_IDS="agent agentsync archive calendar chats config docs drive fil
 GENERIC_SOURCE_IDS="$GENERIC_SOURCE_IDS onedrive sharepoint source sources status sync teams"
 # "value<TAB>placeholder<TAB>w" lines (w: whole words only; t: not followed by a word character, a dot or a
 # hyphen) for redact_stream; the %q form too, since install.log quotes paths that way.
+# The folder paths step 1's lists wrote to install.out ("$cs/<provider>/<name>[/<name>]"), less their
+# marks: what redaction_pairs registers from the lists, and what the legend reads (B13 round 9 K45).
+listed_folder_lines() {
+	local cs="$HOME/Library/CloudStorage" line
+	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] || return 0
+	while IFS= read -r line; do
+		case "$line" in "$cs"/*/*) printf '%s\n' "$line" ;; esac
+	done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
+		list { sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
+}
+# Each name part of those paths, as folder_parts reads them: "skip<TAB><name>" for one it does not register
+# (every drive's name, or coding-agent product words only), else "keep<TAB><name>" (B13 round 11 M3).
+listed_folder_names() {
+	local cs="$HOME/Library/CloudStorage" f rel part
+	while IFS= read -r f; do
+		rel="${f#"$cs"/*/}"
+		while [ -n "$rel" ]; do
+			part="${rel%%/*}"
+			[ "$part" = "$rel" ] && rel="" || rel="${rel#*/}"
+			if generic_folder "$part" || agent_words_name "$part"; then
+				printf 'skip\t%s\n' "$part"
+			else
+				printf 'keep\t%s\n' "$part"
+			fi
+		done
+	done < <(listed_folder_lines)
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
@@ -1272,12 +1299,9 @@ redaction_pairs() {
 	# folder or one that holds one: SYNCED_MARK, INSIDE_MARK, CONTAINS_MARK (B13 round 9 K45). Kept apart from the
 	# configured ones: a listed name that every drive has or that is coding-agent product words only is not
 	# registered, as in the Python report (B13 round 9 K1, K47).
-	if [ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ]; then
-		while IFS= read -r line; do
-			case "$line" in "$cs"/*/*) listed+=("$line") ;; esac
-		done < <(LC_ALL=C awk '/^# run=/ { list = ($0 ~ / install[.]sh( .*)? --list-folders( |$)/); next }
-			list { sub(/^\[(synced|inside a synced folder|contains a synced folder)\] /, ""); print }' "$INSTALL_OUT" 2>/dev/null)
-	fi
+	while IFS= read -r line; do
+		listed+=("$line")
+	done < <(listed_folder_lines)
 	emit_pair() { # VALUE PLACEHOLDER [w] [utf8]: the pair and its printf %q form; with utf8, %q in UTF-8 too
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
 		local q u
@@ -2575,9 +2599,53 @@ legend_kinds() { # BODY
 	done
 	printf '%s' "$used"
 }
-fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds]
-	local used="${2:-}"
+# One legend item, wrapped at 115 columns and continued on lines indented by two spaces (B13 round 9 K3, K15).
+say_item() { # TEXT
+	printf '%s\n' "$1" | LC_ALL=C awk '{
+		n = split($0, w, " "); line = ""
+		for (i = 1; i <= n; i++) {
+			if (line != "" && length(line) + 1 + length(w[i]) > 115) { print line; line = "  " w[i] }
+			else line = (line == "" ? w[i] : line " " w[i])
+		}
+		if (line != "") print line
+	}'
+}
+fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
+	local used="${2:-}" folder_item in_list="" whole="" skipped="" v p fl
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
+	local pairs generic=" "
+	pairs="$(redaction_pairs 2>/dev/null || true)"
+	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
+	# round 10 L1 for the items): step 1's list where one of its folders was registered; the whole-word rule
+	# where a configured name every drive has (a pair of flag w) has its placeholder in the body; the list-only
+	# rule where a name step 1's list alone gave, and folder_parts skipped, is in the body as a whole word.
+	if [ -n "${3:-}" ]; then
+		while IFS=$'\t' read -r fl v; do
+			case "$fl" in
+			keep) in_list=1 ;;
+			skip) [ -n "$skipped" ] || ! LC_ALL=C grep -qiwF -- "$v" "$3" 2>/dev/null || skipped=1 ;;
+			esac
+		done < <(listed_folder_names)
+		while IFS=$'\t' read -r v p fl; do
+			case "$p" in "<folder-"*) ;; *) continue ;; esac
+			if [ "$fl" != w ] || ! generic_folder "$v"; then continue; fi
+			! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || whole=1
+		done <<<"$pairs"
+	else # no body to read: every clause, as before
+		in_list=1 whole=1 skipped=1
+	fi
+	folder_item="- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml"
+	if [ -n "$in_list" ]; then
+		folder_item+=", install.log or step 1's folder list in install.out name"
+	else
+		folder_item+=" or install.log name"
+	fi
+	[ -z "$whole" ] || folder_item+="; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole word"
+	if [ -n "$skipped" ] && [ -n "$whole" ]; then
+		folder_item+=", and neither such a name nor one made of coding-agent product words (Copilot, GitHub Copilot) where only step 1's list names it"
+	elif [ -n "$skipped" ]; then
+		folder_item+="; not a name every OneDrive or Google Drive has, such as Documents, nor one made of coding-agent product words (Copilot, GitHub Copilot), where only step 1's list names it"
+	fi
 	say "## Redaction"
 	say ""
 	# One placeholder kind a list item, continued on lines indented by two spaces; no blank line inside, so the
@@ -2602,13 +2670,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  missing here (an environment proxy this report names only by its variable keeps its number)"
 		;;
 	esac
-	case "$used" in *" <folder-[0-9] "*)
-		say "- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml, install.log or"
-		say "  step 1's folder list in install.out name; a name every OneDrive or Google Drive has, such as Documents,"
-		say "  only where it stands as a whole word, and neither such a name nor one made of coding-agent product words"
-		say "  (Copilot, GitHub Copilot) where only step 1's list names it"
-		;;
-	esac
+	case "$used" in *" <folder-[0-9] "*) say_item "$folder_item" ;; esac
 	case "$used" in *" <source-[0-9] "*)
 		say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
 		say "  agentsync's own words, such as docs or inbox, only for a cloud folder"
@@ -2626,8 +2688,6 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# organisation since G46 registers bare whatever is not context_org_word). The send advice is one "Send it: "
 	# line in either case, as the agentsync report's, which a stopped copy's report drops whole (B13 round 6
 	# G50; round 7 H4: the report that may be sent had none, and ended on a bare link).
-	local v p pairs generic=" "
-	pairs="$(redaction_pairs 2>/dev/null || true)"
 	# A name every OneDrive or Google Drive has (Documents) reads back as nothing private (B13 round 6 G48), and
 	# so does whatever else shares its placeholder: its source id, which is that name in slug form (G8 gave
 	# the id "downloads" the folder's <folder-N>, and the id is a word this report prints; round 7 H39, H57).
@@ -2874,8 +2934,9 @@ write_fallback_report() { # RC WHY
 		# What it fills is read from the redacted Summary just written.
 		fallback_issue_link "$tmp"
 		used="$(legend_kinds "$tmp")"
+		# shellcheck disable=SC2094 # the body is read before the first legend line is appended
 		{
-			fallback_redaction "$LINK_FIELDS" "$used"
+			fallback_redaction "$LINK_FIELDS" "$used" "$tmp"
 			[ -n "$PRIVATE_ONLY" ] || printf '\n%s\n' "$LINK"
 		} >>"$tmp"
 	) 2>/dev/null || {
