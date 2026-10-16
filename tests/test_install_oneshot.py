@@ -6451,25 +6451,32 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
     older agentsync's, is left as it is."""
     (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
     shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
-    tail = [f"filler {n}" for n in range(56)] + [
+    end = [
         "report: ~/agent-context/setup-report.md",
         "bring back: ~/agent-context/bring-back.md (one file: report, fix request, local work)",
         f"issue link (review the report first): {setup_report.ISSUE_URL}&title=Contoso",
         "NEXT: stop: the operator confirms the baseline questions in Contoso Docs; session done",
     ]
+    tail = [f"filler {n}" for n in range(56)] + end
     old = tmp_path / "old-report.md"
-    old.write_text(_old_renderer_report(["- install.sh: exit 0 (finished)"], tail))
     side = report_path(env).parent / "setup" / "stopped-copy-report.md"
-    assert install_sh(env, "--log-start", "x").returncode == 2
-    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
-    head, fenced = _embed(side)
     gone = "(an earlier run's bring-back and issue link lines are left out of this report)"
-    found = re.fullmatch(
-        r"<details><summary>the last (\d+) line\(s\) of \S+, (\d+) of them left out \(.*\)</summary>", head
-    )
-    assert found is not None, head
-    assert (int(found[1]), int(found[2])) == (60, 2) and fenced.count(gone) == 1
-    assert int(found[1]) == len(fenced) - 1 + int(found[2]), "the marker is no install.out line"
+    # B13 round 12 N22: the count sits at the end of the renderer's bracket, which says whose output all the
+    # lines are, so the bracket is not read as why they were left out; two earlier runs in the tail give 4
+    for runs, k in ((tail, 2), ([f"filler {n}" for n in range(52)] + end + end, 4)):
+        old.write_text(_old_renderer_report(["- install.sh: exit 0 (finished)"], runs))
+        assert install_sh(env, "--log-start", "x").returncode == 2
+        assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+        head, fenced = _embed(side)
+        found = re.fullmatch(
+            r"<details><summary>the last (\d+) line\(s\) of \S+ \(.*; (\d+) of them left out: the bring-back "
+            r"and issue link lines\)</summary>",
+            head,
+        )
+        assert found is not None, head
+        assert (int(found[1]), int(found[2])) == (60, k) and fenced.count(gone) == 1
+        assert int(found[1]) == len(fenced) - 1 + int(found[2]), "the marker is no install.out line"
+        assert "an earlier run's" not in head and head.count(" (") == 1, head
     _sends_nothing(side)
     old.write_text(
         _old_renderer_report(["- install.sh: exit 0 (finished)"], tail).replace(" line(s) of ", " lines of ")
@@ -6519,7 +6526,9 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
         "the earlier run's NEXT is kept, and the line above it does not say otherwise (B13 round 6 G14)"
     )
     head, fenced = _embed(side)
-    found = re.search(r"the last (\d+) line\(s\) of \S+, (\d+) of them left out \(", head)
+    found = re.search(
+        r"the last (\d+) line\(s\) of \S+ \(.*; (\d+) of them left out: the bring-back and issue ", head
+    )
     assert found is not None and int(found[1]) == len(fenced) - 1 + int(found[2]) == 5, (head, fenced)
     _backdate(real_env, 11)
     assert install_sh(real_env, "--log", "1", "error", "git pull failed (exit 1)", "-").returncode == 0

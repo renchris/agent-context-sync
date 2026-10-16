@@ -3282,8 +3282,10 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # without it Markdown reads the closing line into the Redaction part (B13 round 6 G18).
 # Two reads of the report. The first counts the lines left out of the install.out embed, between its
 # "<details><summary>the last N line(s) of ..." line and "</details>", and the second says so in that summary
-# line (", K of them left out"): the fence holds fewer lines than N (G16). An older summary wording is left as
-# it is. The second read also gives the summary F20's label where the agentsync that rendered the report is
+# line, at the end of the renderer's bracket ("; K of them left out: the bring-back and issue link lines"): the
+# fence holds fewer lines than N (G16). Inside it, so the bracket, which says whose output all N lines are, is
+# not read as why K were left out, and with no "an earlier run's": K can span runs (B13 round 12 N22). An
+# older summary wording is left as it is. The second read also gives the summary F20's label where the agentsync that rendered the report is
 # older than F20 (a stopped copy stops before step 2 reinstalls it): only where the report's own Summary says
 # no run of this attempt is in install.out's tail, as the renderer's condition is, and with its two texts (G17).
 # And an agentsync older than c6aa4485 (B13 round 8 J18) read the install.commit warn of a stopped copy as
@@ -3356,10 +3358,8 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					n = length($0) - length(saw)
 					if (noout && n > 0 && substr($0, n + 1) == saw)
 						$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
-					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line\(s\) of .* \(.*\)<\/summary>$/) {
-						for (j = 0; (i = index(substr($0, j + 1), " (")) > 0;) j += i
-						$0 = substr($0, 1, j - 1) ", " k " of them left out" substr($0, j)
-					}
+					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line\(s\) of .* \(.*\)<\/summary>$/)
+						$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
 				}
 				index($0, "## ") == 1 { sec = $0 }
 				sec == "## Summary" { $0 = prompt_line($0) }
