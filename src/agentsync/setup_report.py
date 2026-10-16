@@ -2601,6 +2601,9 @@ class _Run:
             self.config = load_config(self.config_path)
         except Exception as exc:  # a missing or invalid config is a finding, not a crash
             self.config_error = f"{type(exc).__name__}: {exc}"
+        # no sources.toml yet (setup's step 2 writes it) is no config that "does not load", and add-source,
+        # which the error points at, is a command the prompt says not to use (B13 round 12 N11)
+        self.config_missing = self.config is None and not self.config_path.exists()
         self.system_proxy: net.SystemProxy | None = None
         with contextlib.suppress(Exception):
             self.system_proxy = net.system_proxy()
@@ -3456,7 +3459,7 @@ def _last_rescreen(r: _Run) -> str:
     ``_SECRET_RULES_META``, ``lints.secret_rules_identity()``): "with gitleaks" or "builtin patterns only".
     One read of a read-only connection; the identity's path, size and time are never printed."""
     if r.config is None:
-        return "not read (the config does not load)"
+        return "not read (no sources.toml yet)" if r.config_missing else "not read (the config does not load)"
     db = expand(r.config.state_paths.db)
     if not db.exists():
         return "none recorded (no manifest yet)"
@@ -4116,7 +4119,10 @@ def _installer_runs(r: _Run) -> list[str]:
 def _configuration(r: _Run) -> list[str]:
     out = [f"- config: {r.config_path} ({'exists' if r.config_path.exists() else 'missing'})"]
     if r.config is None:
-        out.append(f"- loads: no: {r.config_error}")
+        if r.config_missing:  # never "loads: no" (nor "loads: not ..."), the prompt's finish's failing config
+            out.append("- loads: pending: no sources.toml yet (setup's step 2 writes it)")
+        else:
+            out.append(f"- loads: no: {r.config_error}")
         return out
     c = r.config
     out.append("- loads: yes")
@@ -4234,6 +4240,8 @@ def _doctor_skipped(config: Config) -> str:
 
 def _doctor(r: _Run) -> list[str]:
     if r.config is None:
+        if r.config_missing:
+            return ["Not run: no sources.toml yet."]
         return [f"Not run: the config does not load ({r.config_error})."]
     if r.hooks.doctor is None:
         return ["Not run: no doctor hook."]
@@ -4294,6 +4302,8 @@ def _doctor(r: _Run) -> list[str]:
 
 def _status(r: _Run) -> list[str]:
     if r.config is None:
+        if r.config_missing:
+            return ["Not run: no sources.toml yet."]
         return [f"Not run: the config does not load ({r.config_error})."]
     if r.hooks.status is None:
         return ["Not run: no status hook."]
@@ -7642,7 +7652,8 @@ def _loop_line(r: _Run) -> str:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
     if r.config is None:
-        return f"- Loop: {stage}; NEXT: not read (the config does not load)"
+        why = "no sources.toml yet" if r.config_missing else "the config does not load"
+        return f"- Loop: {stage}; NEXT: not read ({why})"
     if r.hooks.loop_next is None:
         return f"- Loop: {stage}; NEXT: not read (no loop hook)"
     config, next_fn = r.config, r.hooks.loop_next

@@ -730,12 +730,30 @@ def test_a_crashing_or_hanging_hook_never_takes_the_report_down(fake_mac: dict[s
 
 
 def test_missing_config_is_a_finding(tmp_path: Path) -> None:
+    """B13 round 12 N11: a missing sources.toml read ``- loads: no: ConfigError: ...: not found; run
+    `~/.local/bin/agentsync add-source <folder>` to create it`` and ``NEXT: not read (the config does not
+    load)``: the prompt's finish reads "loads: no" as a config that fails, and tells the agent not to run
+    add-source. No file yet is its own words; a file that exists and fails keeps "loads: no"."""
     rc = cli.main(["setup-report", "--out", str(tmp_path / "r.md"), "--config", str(tmp_path / "none.toml")])
     text = (tmp_path / "r.md").read_text(encoding="utf-8")
     assert rc == 0
+    configuration = section(text, "Configuration")
+    assert "- loads: pending: no sources.toml yet (setup's step 2 writes it)" in configuration, configuration
+    assert "loads: no" not in configuration and "add-source" not in configuration, configuration
+    assert "- Loop: unknown (no status loop line); NEXT: not read (no sources.toml yet)" in section(
+        text, "Summary"
+    )
+    assert "Not run: no sources.toml yet." in section(text, "Doctor")
+    assert "does not load" not in text and "add-source" not in text, text
+    assert "No install log at" in section(text, "Installer")
+    # a file that exists and does not load keeps its words, and the error's own
+    (tmp_path / "bad.toml").write_text("[[source]]\nid = \n", encoding="utf-8")
+    rc = cli.main(["setup-report", "--out", str(tmp_path / "r.md"), "--config", str(tmp_path / "bad.toml")])
+    text = (tmp_path / "r.md").read_text(encoding="utf-8")
     assert "- loads: no: ConfigError" in section(text, "Configuration")
     assert "Not run: the config does not load" in section(text, "Doctor")
-    assert "No install log at" in section(text, "Installer")
+    assert "NEXT: not read (the config does not load)" in section(text, "Summary")
+    assert "no sources.toml yet" not in text
 
 
 # ---- the v5 friction log -------------------------------------------------------------------------------
