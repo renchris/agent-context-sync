@@ -18711,6 +18711,9 @@ test pinned those sentences. The row now gives the three routes, the pre-G29 pag
 case that goes by the probe, and the legend's words. Test:
 `test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe` (classes a pre-G29 page through
 `page_says_withheld`, and reads the legend's words from `_unread_pages`).
+Amended 2026-10-15, §16.97 M79: so can a stub whose page was read but says neither withheld nor `no converter
+for`, which the TSV leaves under its row's reason while the report goes by the probe; the legend counts both as
+`could not be read`.
 
 **K52's constants live in policy** (L55; dated line at §16.84 K52). §16.84 K52 said J47's `_WITHHELD_BODY` and
 `_WITHHELD_WORDS` sit below `_STUB_RENDER_META`'s docstring in `agentsync.cycle`; §16.80 K48 moved them to

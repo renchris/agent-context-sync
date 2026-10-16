@@ -4601,8 +4601,9 @@ class _Mirror:
         # The suffixes reason_class and refused_type read as withheld by a label rule: .msg while one is on.
         # An image is withheld as its stub page says (image_pages, read by read_image_pages: the wording of
         # the run that planned the stub, as _sync/QUARANTINE.tsv reads it since B13 round 10 L54), and only
-        # a stub whose page could not be read goes by this report's OCR probe (images_by_probe, set when the
-        # OCR part finds the engine ready; without it no image converter exists) (B13 round 8 J52, J54). An
+        # a stub whose page could not be read or says neither (read, but saying neither withheld nor no
+        # converter: B13 round 11 M79) goes by this report's OCR probe (images_by_probe, set when the OCR
+        # part finds the engine ready; without it no image converter exists) (B13 round 8 J52, J54). An
         # engine that comes or goes later changes the class of those stubs only, and the Quarantine part
         # says how many they are (B13 round 9 K58).
         self.labels_active = labels_active

@@ -4946,6 +4946,34 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
     )
 
 
+def test_a_page_read_that_says_neither_can_disagree_with_the_tsv() -> None:
+    """B13 round 11 M79: the guide's Quarantine row and §16.91 said only a stub whose page could not be read
+    can disagree with `_sync/QUARANTINE.tsv`.  A page read that says neither withheld nor `no converter
+    for` also goes by the report's OCR probe (`read_image_pages` leaves it out of `image_pages`), while the
+    TSV keeps the row's `no converter for` reason, so with OCR ready the two disagree there too."""
+    from agentsync import policy, publish, setup_report  # noqa: PLC0415
+
+    text = '---\nreason: "unsupported image layout"\nsummary: "an image"\n---\n\n# a.png\n\nthe page body\n'
+    shown, withheld = publish._withheld_on_page(text) or ("", True)
+    assert not withheld  # the TSV keeps the row's reason
+    assert not policy.page_says_withheld(shown, "an image", "the page body")
+    assert not shown.casefold().startswith(setup_report._NO_CONVERTER)  # so read_image_pages counts it unread
+    mirror = setup_report._Mirror.__new__(setup_report._Mirror)
+    mirror.labels_active, mirror.withheld, mirror.images_by_probe = True, {".msg"}, True
+    mirror.image_pages = {}
+    assert ".png" in mirror.withheld_for(f"{setup_report._NO_CONVERTER}.png", "s", "neither")  # the probe's
+    page = " ".join(_page("docs/deploy/setup-feedback.md").split())
+    assert (
+        "Only a stub whose page could not be read, or that was read but says neither withheld nor "
+        "`no converter for` (the legend below counts both as 'could not be read'), can disagree with the TSV"
+        in page
+    )
+    s91 = " ".join(_contracts_section("### 16.91 ", "### 16.92 ").split())
+    assert (
+        "Amended 2026-10-15, §16.97 M79: so can a stub whose page was read but says neither withheld" in s91
+    )
+
+
 def test_k52s_withheld_constants_are_named_where_they_live() -> None:
     """B13 round 10 L55: §16.84 K52 said J47's `_WITHHELD_BODY` and `_WITHHELD_WORDS` sit below
     `_STUB_RENDER_META`'s docstring in agentsync.cycle; round 9's K48 moved them to agentsync.policy, where
