@@ -1106,8 +1106,9 @@ def test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok(
     [line] = [r for r in doctor._check_heartbeat(config) if r.name == f"heartbeat.{DRIVE}"]
     assert not line.ok and "deletions held" not in line.detail, line
     assert line.detail == (
-        "enumeration incomplete for 3 consecutive passes (files missing from the listing are kept while "
-        "deletions Graph reports still apply)"
+        # B13 round 12 N17: no bracket of its own, so the fix's is the line's only one
+        "enumeration incomplete for 3 consecutive passes; files missing from the listing are kept while "
+        "deletions Graph reports still apply"
     )
     # B13 round 6 G54: the fix is sync -v, as the loop's; a plain sync of a drive is FULL in the cases
     # that reach three, and a delta otherwise resets the count.

@@ -1744,7 +1744,10 @@ def _check_heartbeat(
                 )
             )
         elif isinstance(incomplete, int) and incomplete >= _INCOMPLETE_RUNS:
-            detail = f"enumeration incomplete for {incomplete} consecutive passes ({_held(src)})"
+            # one bracket on the line, the fix's or the note's: what it holds follows a "; " (B13 round 11
+            # M44's second half, built in round 12 N17, N34, N74; install.sh's cleared_listings finds the line
+            # by "deletions held", with or without the bracket an older build printed)
+            detail = f"enumeration incomplete for {incomplete} consecutive passes; {_held(src)}"
             # status passes the loop's own checks (R151): a wait the loop prints decides. Without them (the
             # setup report), an inbox held by empty cloud folders gets the loop's pointer too, read from the
             # manifest's stored state (B13 round 3 R53).

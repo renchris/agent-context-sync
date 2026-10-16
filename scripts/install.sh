@@ -4819,10 +4819,11 @@ loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status -
 # A local listing the step-5 status warned was held, that this closing status reads as ok, was cleared by this run's
 # sync: say so, by source id as the heartbeat lines do, rather than leave the reader to infer it from a WAITING
 # line that is missing (B13 round 6 G33). Run only when the sync ran: a [FAIL] that skipped it prints none.
+# The warn says "; deletions held" since B13 round 12 N17 and "(deletions held)" before: the anchor matches both.
 cleared_listings() {
 	[ -n "$DOCTOR_LOG" ] && [ -s "$DOCTOR_LOG" ] && [ -s "$LOOP_OUT" ] || return 0
 	LC_ALL=C awk '
-		FNR == NR { if ($0 ~ /^\[warn\] heartbeat\./ && index($0, "(deletions held)")) held[substr($2, 11)] = 1; next }
+		FNR == NR { if ($0 ~ /^\[warn\] heartbeat\./ && index($0, "deletions held")) held[substr($2, 11)] = 1; next }
 		$0 ~ /^\[ok  \] heartbeat\./ && (substr($3, 11) in held) { print substr($3, 11) }
 	' "$DOCTOR_LOG" "$LOOP_OUT" | LC_ALL=C sort -u | while IFS= read -r id; do
 		printf "heartbeat.%s: this run's sync listed it in full; deletions are no longer held\n" "$id"

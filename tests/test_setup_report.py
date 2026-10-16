@@ -9135,7 +9135,7 @@ def test_an_all_zero_re_read_line_keeps_each_caveat_in_a_sentence_of_its_own(
 
 # ---- §16.39 N16: the Summary's doctor line names the person's own waits -----------------------------------
 
-_INCOMPLETE = "[warn] heartbeat.project-x — enumeration incomplete for 4 consecutive passes (deletions held)"
+_INCOMPLETE = "[warn] heartbeat.project-x — enumeration incomplete for 4 consecutive passes; deletions held"
 
 
 def _yours_step() -> loop.NextStep:
@@ -9201,7 +9201,7 @@ def test_the_report_doctor_never_points_at_the_end_of_its_run(
     held = doctor.CheckResult(
         "heartbeat.project-x",
         False,
-        "enumeration incomplete for 4 consecutive passes (deletions held)",
+        "enumeration incomplete for 4 consecutive passes; deletions held",
         doctor.Severity.WARN,
         note=doctor._LISTING_YOURS_NOTE,
     )
@@ -9211,7 +9211,7 @@ def test_the_report_doctor_never_points_at_the_end_of_its_run(
     monkeypatch.setattr(cli, "_status_checks", lambda config, offline: [held, agent])
     lines = [" ".join(ln.split()) for ln in cli._report_hooks().doctor(load_config(fake_mac["config"]))]
     assert lines == [
-        "[warn] heartbeat.project-x — enumeration incomplete for 4 consecutive passes (deletions held) "
+        "[warn] heartbeat.project-x — enumeration incomplete for 4 consecutive passes; deletions held "
         f"({doctor.LISTING_YOURS_REPORT_NOTE})",
         f"[warn] launchd.poll — every run exits 64 ({doctor._AGENT_YOURS_NOTE})",
     ]

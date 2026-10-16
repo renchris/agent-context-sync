@@ -729,15 +729,19 @@ def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
 
 
 _HELD_WARN = (
-    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes (deletions held) (held "
+    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes; deletions held (held "
     "at its last walk: the end of this run says whether this run's sync cleared it)"
 )
+"""Step 5's warn on a held listing; an installed agentsync from before B13 round 12 N17 bracketed the
+"(deletions held)", which install.sh's anchor matches too."""
+_HELD_WARN_BEFORE_N17 = _HELD_WARN.replace("passes; deletions held (held", "passes (deletions held) (held")
 _CLEARED = "heartbeat.fy26-projects: this run's sync listed it in full; deletions are no longer held"
 
 
+@pytest.mark.parametrize("warn", [_HELD_WARN, _HELD_WARN_BEFORE_N17], ids=["one bracket", "before N17"])
 @pytest.mark.parametrize("case", ["cleared", "still held", "fail skips the sync"])
 def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
-    env: dict[str, str], folder: Path, wheel: Path, case: str
+    env: dict[str, str], folder: Path, wheel: Path, case: str, warn: str
 ) -> None:
     """B13 round 6 G33: the status step warns that a listing was held at its last walk; when this run's sync
     clears it, the end of the run says so in a line of its own, rather than leaving the reader to infer it
@@ -745,14 +749,14 @@ def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
     the sync: neither."""
     ok = "[ok  ] heartbeat.fy26-projects — last success 2026-10-13T10:00:00Z (0s ago, full_enumeration)"
     wait = "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of fy26-projects incomplete (stub)"
-    e = {**env, "STUB_DOCTOR_OUT": _HELD_WARN}
+    e = {**env, "STUB_DOCTOR_OUT": warn}
     if case == "cleared":
         e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{ok}"
     elif case == "still held":
-        e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{wait}\n" + _HELD_WARN.partition(" (held")[0]
+        e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{wait}\n" + warn.partition(" (held")[0]
     else:
         fail = "[FAIL] docs_repo.git — /x/docs does not exist and /x is not writable (fix: mkdir -p /x/docs)"
-        e |= {"STUB_DOCTOR_OUT": f"{_HELD_WARN}\n{fail}", "STUB_DOCTOR_RC": "1", "STUB_STATUS_OUT": ok}
+        e |= {"STUB_DOCTOR_OUT": f"{warn}\n{fail}", "STUB_DOCTOR_RC": "1", "STUB_STATUS_OUT": ok}
     cp = install_sh(e, str(wheel), "--source-local", str(folder))
     lines = cp.stdout.splitlines()
     assert (_CLEARED in lines) is (case == "cleared"), cp.stdout + cp.stderr

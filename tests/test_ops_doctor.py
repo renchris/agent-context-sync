@@ -1696,7 +1696,13 @@ def test_heartbeat_incomplete_fix_by_source_kind(
     assert not r.ok and r.severity is Severity.WARN and r.fix is None
     assert r.note == doctor._LISTING_YOURS_NOTE
     [line] = format_results([r]).splitlines()
-    assert line.endswith(f"consecutive passes (deletions held) ({doctor._LISTING_YOURS_NOTE})")
+    # B13 round 12 N17, N34, N74: one bracket, the note's; what is held follows a "; "
+    assert line.endswith(f"consecutive passes; deletions held ({doctor._LISTING_YOURS_NOTE})")
+    assert line.count("(") == 1, line
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV)
+    r = by_name(doctor._check_heartbeat(cloud))["heartbeat.local-fixture"]
+    [line] = format_results([r]).splitlines()
+    assert "consecutive passes; deletions held (fix: each WAITING ON YOU line about " in line, line
 
 
 def test_the_pre_sync_listing_note_promises_no_waiting_line(
