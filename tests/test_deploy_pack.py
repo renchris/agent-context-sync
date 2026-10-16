@@ -4782,7 +4782,14 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     "dated lines at" (§16.80 K10, K46; §16.75 J37, J78, J71) did not match: deleting §16.80's K5, K10 and K46
     lines left the suite green.  Any capital and digits is a target now, a heading may carry such clauses (a
     "; " still comes right before the keyword, so "K72's dated line at §16.79 is lane D's" names nothing),
-    §16.83 names its targets in that form, and the scan reads round 10's §16.86 to §16.91."""
+    §16.83 names its targets in that form, and the scan reads round 10's §16.86 to §16.91.  B13 round 11 M81:
+    it read none of §16.88's or §16.90's claims and missed §16.89 L34, so 12 round 10 dated lines were held by
+    nothing (renaming all 12 left the suite green).  §16.90's heads are a bold item lead closed by a "(...;
+    amends §A X)" bracket, read now as `lead`; a target list may hold a bare section ("§16.37 and §16.83 K34")
+    without dropping the items after it; a dated line may name its items after a "; " ("§16.89 L14, L36, L38:
+    ...; L48, L67: ...") or name several items "(by §<home> <item>)"; §16.88 names L61's target in the heading
+    form; the scan reads round 11's §16.92 to §16.97 too; and the lines at paragraphs, not items, are pinned
+    by `test_round_10s_lines_at_unlettered_paragraphs_are_there`."""
     from agentsync import publish  # noqa: PLC0415
 
     sections = dict(_contracts_numbered_sections())
@@ -4790,14 +4797,16 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     heading = (
         r"\(((?:[A-Z]\d+(?:, | and )?)+)[^;()]*(?:; [^;()]*)*?; (?:amends|corrects|dated lines? at) ([^)]*)\)"
     )
-    tok = r"(?:§\d+\.\d+(?:'s)? )?[A-Z]\d+\b"
+    tok = r"(?:§\d+\.\d+(?:'s)?(?: [A-Z]\d+\b)?|[A-Z]\d+\b)"
     # the "." inside "§16.68" ends no sentence, so the targets are tokens, not a [^.]* run
     sentence = rf"^\*\*([A-Z]\d+)\b[^*]*\*\*.*?\bDated lines? at ({tok}(?:(?:, | and ){tok})*)"
-    homes = [f"16.{n}" for n in range(68, 92) if n != 72]
+    # "**L42: ... (`agentsync.setup_report`; amends §16.80 K6).**": the bracket's first clause names modules
+    lead = r"^\*\*((?:[A-Z]\d+(?:, | and )?)+):[^*]*?\((?:[^()]*?; )?(?:amends|corrects) ([^()]*)\)\.?\*\*"
+    homes = [f"16.{n}" for n in range(68, 98) if n != 72]
     for home in homes:
         for para in re.split(r"\n\s*\n", sections[home]):
             flat = " ".join(para.split())
-            found = re.findall(heading, flat) + re.findall(sentence, flat)
+            found = re.findall(heading, flat) + re.findall(sentence, flat) + re.findall(lead, flat)
             for items, targets in found:
                 section = ""
                 for number, item in re.findall(r"(?:§(\d+\.\d+)(?:'s)? )?([A-Z]\d+)\b", targets):
@@ -4809,15 +4818,29 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
     assert ("16.80", ["K10", "K46"], "16.74", "J20") in claims  # middle "; ..." clauses
     assert ("16.75", ["J37", "J78", "J71"], "16.69", "H74") in claims
     assert ("16.83", ["K33"], "16.68", "H32") in claims and ("16.83", ["K75"], "16.77", "J12") in claims
-    assert len(claims) >= 90, "the scan is broken"
+    assert ("16.90", ["L42"], "16.80", "K6") in claims  # a bold lead's bracket
+    assert ("16.90", ["L47", "L54"], "16.71", "H52") in claims and (
+        "16.90",
+        ["L51"],
+        "16.84",
+        "K63",
+    ) in claims
+    assert ("16.89", ["L34"], "16.83", "K34") in claims  # after a bare §16.37
+    assert ("16.90", ["L54"], "16.78", "J55") in claims  # L54's second line, which its head does not name
+    assert ("16.89", ["L48", "L67"], "16.83", "K40") in claims  # held after a "; " in L14's line
+    assert ("16.88", ["L61"], "16.82", "K25") in claims and ("16.87", ["L16"], "16.89", "L34") in claims
+    assert len({(h, tuple(i), s, t) for h, i, s, t in claims}) >= 203, "the scan is broken"
     # §16.83 K75's line in §16.22's unlettered bullet names no item the scan can read
     assert "Amended 2026-10-14, §16.83 K75: so does an inbox no wait names" in " ".join(
         sections["16.22"].split()
     )
     for home, items, section, item in claims:
         at = "|".join(re.escape(f"§{home} {i}") for i in items)
+        bare = "|".join(items)
         marker = re.compile(
-            rf"Amended 2026-10-1\d, (?:(?:{at})\b|§16\.\d+ [A-Z]\d+ \((?:by )?(?:{at})(?:, [A-Z]\d+)*\))"
+            rf"Amended 2026-10-1\d, (?:§{re.escape(home)} (?:[A-Z]\d+, )*(?:{bare})\b"
+            rf"|§16\.\d+ [A-Z]\d+(?:, [A-Z]\d+)* \((?:by )?(?:{at})(?:, [A-Z]\d+)*\)"
+            rf"|§{re.escape(home)} [A-Z]\d+(?:, [A-Z]\d+)*: [^;]*?; (?:[A-Z]\d+, )*(?:{bare})\b)"
         )
         paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", sections[section])]
         held = [
@@ -4830,12 +4853,48 @@ def test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there() ->
             for n, p in enumerate(paragraphs)
             if re.search(rf"\b{item}\b", p)
         ]
+        # an item with a "#### N27: ..." heading of its own spans paragraphs: its whole subsection holds it
+        held += [
+            flat
+            for flat in (" ".join(b.split()) for b in re.split(r"\n(?=#### )", sections[section]))
+            if flat.startswith(f"#### {item}:")
+        ]
         assert any(marker.search(p) for p in held), f"§{section} {item} has no dated line for §{home} {items}"
     render = next(p for p in re.split(r"\n\s*\n", sections["16.66"]) if p.startswith("**`STUB_RENDER` is 4"))
     assert "**Amended 2026-10-14, §16.79 J73 (by §16.71 H77):** `STUB_RENDER` is 5" in " ".join(
         render.split()
     )
     assert publish.STUB_RENDER >= 5
+
+
+_ROUND_10_PARAGRAPH_AMENDS = (
+    ("16.14", "logs it as the step's `note=converted-N-deferred-M`", "§16.89 L34"),
+    ("16.22", "The friction section labels the attempt", "§16.86 L32"),
+    ("16.28", "PDF, deck, deck template, Word and OpenDocument files with a page", "§16.86 L5"),
+    ("16.48", "`_OCR_DOCUMENTS` gains `.potx` as `deck template`", "§16.86 L5"),
+    ("16.52", "`test_the_installer_and_the_report_end_a_stopped_attempt_at_the_same_line`", "§16.86 L32"),
+)
+"""Round 10's dated lines at paragraphs and bullets that carry no item (B13 round 11 M81): the section, a
+phrase only that paragraph or bullet holds, and the item whose line it carries. No claim names them as items,
+so the heading scan cannot hold them."""
+
+
+def test_round_10s_lines_at_unlettered_paragraphs_are_there() -> None:
+    """B13 round 11 M81, M78: §16.86 L5 (§16.28 and §16.48), §16.86 L32 (§16.22 and §16.52) and §16.89 L34
+    (§16.14) left dated lines no test read, and two claims named the wrong section: §16.89 L34's "Dated lines
+    at §16.37" is in §16.14, at the note §16.37 amended, and §16.86 L32's "quoted in §16.28" is in §16.22.
+    Each line is pinned in its block, and each wrong section has a dated line naming the right one."""
+    sections = dict(_contracts_numbered_sections())
+    for section, anchor, item in _ROUND_10_PARAGRAPH_AMENDS:
+        blocks = [" ".join(b.split()) for b in re.split(r"\n\s*\n|\n(?=\s*- )", sections[section])]
+        [block] = [b for b in blocks if anchor in b]
+        assert re.search(rf"Amended 2026-10-1\d, {re.escape(item)}:", block), f"§{section} has no {item} line"
+    l34 = " ".join(_contracts_section("**L34: when every file read again was a first read", "\n\n").split())
+    assert "Amended 2026-10-15, §16.97 M78, M81: the dated line for §16.37 is in §16.14" in l34
+    l32 = " ".join(
+        _contracts_section("**The friction section's attempt line has one bracket** (L32)", "\n\n").split()
+    )
+    assert "Amended 2026-10-15, §16.97 M78: the first of those labels and its dated line are in §16.22" in l32
 
 
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:

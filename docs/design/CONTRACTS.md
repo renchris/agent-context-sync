@@ -18191,6 +18191,8 @@ has no end line`, `since its session stopped before `install.sh --log-start``, `
 `_stated_note` keeps its brackets: the Summary's prompt line strips them. The labels quoted in §16.28 and
 §16.52 have dated lines. Tests: `test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attempt`
 and the friction tests that pin the attempt line.
+Amended 2026-10-15, §16.97 M78: the first of those labels and its dated line are in §16.22, not §16.28, which
+quotes no attempt label.
 
 **The Summary keeps a newer-copy stop's second remedy** (L41; dated line at §16.81 K18). K18 kept the installer's
 stop-line fix to 400 characters, but install.sh's `newer_copy_fix` writes 431 to about 583 with the second remedy
@@ -18386,6 +18388,8 @@ test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`,
 `test_install_oneshot.py::test_first_sync_note_reads_the_read_again_count_past_the_first_read_bracket` (both
 wordings), `test_setup_report.py::test_first_sync_clause_carries_the_read_again_count` (the new words added, the old
 kept as an older install.out).
+Amended 2026-10-15, §16.97 M61: the head it names is §16.89 L34's, whose paragraph now has the dated line for it
+(L16; dated line at §16.89 L34).
 
 **The shell report matches a folder or organisation in every spelling** (L66; amends §16.81 K4). The shell matched
 a folder or organisation byte for byte, so `kestrel-ridge`, `KESTREL RIDGE`, `KestrelRidge` or `contoso` printed in
@@ -18422,6 +18426,7 @@ placeholder and the block's digest move together, and a saved v18 copy is stoppe
 v19 moves no step, so it has no `PROMPT_LAYOUTS` entry. Lane RB sent words for its L11, built here; no other lane
 sent prompt words. None adds an agentsync command, an installer flag, a config key or a friction kind. Where this
 section changes what §16.82 describes, §16.82 stays the record of v18; the one dated line is where L61's spec asks.
+Amended 2026-10-15, §16.97 M81: that line is in §16.82's broken-checkout paragraph (L61; dated line at §16.82 K25).
 
 **Git never searches above ~/src** (L6, L61: one defect, built once). In a home that is itself a git repository,
 a checkout whose `.git` git does not accept (HEAD alone, or a HEAD that names no ref, even beside `objects/` and
@@ -18561,6 +18566,9 @@ test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words`.
 mirrored files, and beside a gone folder it is said `in all`; otherwise the line offers the plain exclude and the
 count stays on the empty folders' line. **Amended 2026-10-16, §16.95 M58:** after exclude-empty, before another sync,
 the wait stays. **Amended 2026-10-16, §16.95 M42:** its fix follows the kind each folder was refused with.
+**Amended 2026-10-16, §16.97 M81 (by §16.95 M47):** `_note_empty_dirs` also stores each such folder's kind as
+manifest meta `unlisted_kinds:<id>` beside `unlisted_dirs:<id>`, and `loop._access_fix` words the wait's fix by it;
+§16.95 M47 names a dated line here that no line carried.
 
 **L15: the empty-folder alarm counts the waits by the loop's rule (`agentsync.arm_local`, `agentsync.loop`; amends
 §16.83 K41).** Six empty folders on one exclude-empty wait read `each WAITING ON YOU line ... prints each one
@@ -18599,6 +18607,11 @@ test_the_summary_line_counts_the_files_read_again_apart_from_those_converted`, `
 test_first_sync_clause_carries_the_read_again_count`, `test_setup_report.py::
 test_the_converted_line_parses_with_the_read_again_clause_in_either_form`, `test_install_oneshot.py::
 test_first_sync_note_reads_the_count_after_the_first_read_head`.
+Amended 2026-10-15, §16.97 M61, M77 (by §16.87 L16): when F = R the head's bracket ends `so also counted as
+converted)`, not `now in the count above)`; the report's clause (`also in the converted count`) is unchanged, and
+`_CONVERTED_LINE_RE` reads R at `, first read R` before the bracket, so an install.out with the older words still
+parses. Amended 2026-10-15, §16.97 M78, M81: the dated line for §16.37 is in §16.14, at the setup log's
+`converted-N-deferred-M` note that carries §16.37's amendment; §16.37 itself holds none.
 **Amended 2026-10-16, §16.95 M11:** for R = 1 both read `a stub whose bytes had never been read`.
 
 **L73: the lock holder says who started the sync (`agentsync.ops.lock`, `agentsync.ops.launchd`, `agentsync.cycle`,
@@ -18656,6 +18669,8 @@ such a page makes one TSV-only commit the first time. Tests:
 Amended 2026-10-15, §16.96 M62: `_reason_line` had no caller left and is removed; `_frontmatter_lines`, through
 `_withheld_on_page`, is the reader. `_stub_says` returns the verdict alone (`bool | None`): `write_quarantine`, its
 one caller, never read the reason.
+Amended 2026-10-15, §16.97 M81: L54 also amends §16.78 J55's `_stub_reason`, where its second line is (L54; dated
+line at §16.78 J55).
 
 **L51: the recording index revision is in the cache options (`agentsync.convert.recording`; amends §16.84 K63).**
 K63 changed How to read without moving the action key, so a copy of bytes converted under the old legend, or a
