@@ -15831,6 +15831,9 @@ every deck's key, so a new conversion of those bytes gets the new rendering. It 
 (`PptxConverter.outdated` is unchanged), so an existing page keeps round 4's rendering until its bytes change.
 Pinned by `tests/test_convert_formats.py::test_a_template_round_4_cached_gets_the_whole_table_rendering_under_a_new_name`
 and the `pptx-python-pptx@1.0.1+` pins in `tests/test_cycle.py`.
+Amended 2026-10-15, §16.96 M65: the bump cures only a new conversion (a copy, a new name, a label-only re-save that
+is converted again). A page the repair path rebuilds (`cycle._republish_from_cache`) is re-rendered from the round 4
+entry its outputs row names, and keeps round 4's rendering until its bytes change.
 
 **The template de-duplication is tested (G60).** `build_empty_template` puts the master's footer box on a second
 layout and `build_table_template` puts the first table, whole, on a third, so the existing assertions fail when
@@ -17834,6 +17837,12 @@ until its recording is converted again. Tests:
 Amended 2026-10-14, §16.90 L51: a page keeps the legend it has until its bytes, converter version or options
 change; the index revision is in the options, so a new conversion of the same bytes (a copy, a repair rebuild)
 gets the new legend from no cache entry.
+Amended 2026-10-15, §16.96 M64, M65: the line above is wrong twice. A version or options change alone converts
+nothing again, and a repair rebuild re-renders the cache entry under its outputs row's stored key, so a page keeps
+the legend it has until its recording is converted again (new bytes, or a re-read: `outdated()`, or a capability or
+converter it was read without, per `_lacks`). The index revision is in the options, so a new conversion of the same
+bytes, such as a copy, no longer gets the cached index, and reads every frame and the sound again once the cycle
+has deleted that recording's pieces.
 
 **K74: a DEL or C1 character in a title or a file name is written as an escape (`agentsync.frontmatter`).**
 `_render_scalar` wrote strings with `json.dumps`, which leaves DEL, U+0080-009F, U+FFFE/FFFF and lone surrogates
@@ -18511,6 +18520,13 @@ repair rebuild, was served the old index from the converter cache. `_INDEX_REVIS
 `_key()`, `_speech_key`, `version()` and `outdated_key` stay, so no frame or speech is read again and no page is
 re-read by itself, as §16.66 G59 did for the deck emitter. Raise it whenever a fixed wording of the index page
 changes. Test: `test_convert_recording.py::test_a_copy_of_bytes_converted_under_an_older_legend_gets_the_new_one`.
+Amended 2026-10-15, §16.96 M64, M65: "or a repair rebuild" and "no frame or speech is read again" were not so. A
+page the repair path rebuilds (`_republish_from_cache`) still gets the old index: it re-renders the entry under its
+row's stored action key. A new conversion of the same bytes is a read: once the cycle has finished a recording it
+deletes its piece folder, so a copy reads every frame and the sound again, and even with its pieces stored the
+keyframe stage (diff, pills, frames) runs again. Still true: `_key()`, `_speech_key`, `version()` and
+`outdated_key` do not move, so no existing page is read again by itself. §16.96 M85 pins the wording beside the
+revision.
 
 **L75: the group-stop test's child takes SIGINT whatever pytest's launch ignored (`tests/test_ocr.py`).**
 `test_a_stop_of_the_whole_process_group_leaves_no_compiler_running[SIGINT]` timed out at 120 s in a loaded gate.
@@ -18624,6 +18640,32 @@ YAML fallback still yields None for a page with no reason. J55's test, which pro
 `_withheld_on_page`, the reader production uses, and `setup_report._page_strings` names `_frontmatter_lines`. Test:
 `test_cycle.py::test_quarantine_tsv_reads_a_withheld_stubs_reason_without_a_yaml_parse`. Code removal: the test
 passes before the change as after it; it pins the reader production uses, where it pinned one production did not.
+
+**A copy of a read recording is read again once the index revision rises; a repair rebuild keeps the old legend
+(M64, M65; `agentsync.convert.recording`; amends §16.90 L51, §16.84 K63, §16.66 G59).** L51 said raising
+`_INDEX_REVISION` reads no frame or speech again and gives a repair rebuild the new legend. Neither holds. The cycle
+deletes a recording's piece folder once its read finishes, so the whole-file cache entry is all that spares a copy
+of the same bytes a second read: once the revision rises, the copy reads every frame and the sound again, and even
+with its pieces stored the keyframe stage (diff, pills, frames) runs again. `_republish_from_cache` re-renders the
+entry under the outputs row's stored action key, so a page the repair path rebuilds keeps the old legend, as does an
+existing page until its recording is converted again. The revision stays in the options (the finder's option (b),
+taking it out, brings back the stale legend L51 fixed); the `_INDEX_REVISION` docstring, L51, K63's dated line, G59
+and L51's test docstring say what happens. Tests:
+`test_cycle.py::test_a_copy_of_a_finished_recording_is_read_again_in_full_once_the_index_revision_rises` (raised:
+both pieces of the copy are read again; not raised: none) and
+`test_convert_recording.py::test_a_second_conversion_with_its_pieces_stored_runs_the_keyframe_stage_again` (no scan,
+the keyframe stage again). They pin the behaviour the corrected text states, which the code already had.
+
+**The index wording and its revision move together (M85, M67; `tests/test_convert_recording.py`).** Only a
+docstring asked anyone to raise `_INDEX_REVISION`, so a wording change without a raise (K63's defect) passed every
+test once the grammar tests' copies were updated with it. `INDEX_WORDINGS` pins the SHA-256 of the fixed wording at
+each revision, append only (1: before K63, 2: K63's), taken by rule: `recording_page`'s `_HOW_TO_READ`,
+`_NOT_DETECTED`, `_TIMES_FACT` and every `_*_NOTE`, and `recording`'s every `_NOTE_*`, as sorted `module.name=value`
+lines, a tuple joined by newlines. naming's notes are out: they reach the version through `NAMING_REVISION`. The
+test fails when the digest moves without the revision, or when it equals an older revision's, with "raise
+_INDEX_REVISION in recording.py and add <n+1>: <digest> to INDEX_WORDINGS". Test:
+`test_convert_recording.py::test_the_index_wording_and_its_revision_move_together` (fails on a one-word edit of How
+to read).
 
 ### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
 

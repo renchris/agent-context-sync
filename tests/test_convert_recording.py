@@ -9,6 +9,7 @@ screen is what OCR reads back.  Names are made up (Contoso).
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import itertools
 import json
 import random
@@ -678,8 +679,9 @@ def test_a_copy_of_bytes_converted_under_an_older_legend_gets_the_new_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B13 round 10 L51: round 9 K63 changed How to read without moving the action key, so a copy of bytes
-    converted under the old legend (or a repair rebuild) was served the old index from the cache.  The index
-    revision is in the options, outside a picture piece's key: the copy is converted again, no frame is."""
+    converted under the old legend was served the old index from the cache.  The index revision is in the
+    options, outside a picture piece's key: the copy is converted again and gets the new legend, and the piece
+    key stays where it was (round 11 M64, M65: what the copy reads again is pinned in test_cycle)."""
     src = staged(tmp_path, teams(share(3, FIRST)))
     cache = ConverterCache(tmp_path / "cache")
 
@@ -714,6 +716,68 @@ def test_a_copy_of_bytes_converted_under_an_older_legend_gets_the_new_one(
     result = through(copied, "meeting copy.mp4")
     assert not result.from_cache and "`SAID vN:`" in result.units[0].body
     assert converter(tmp_path)._key() == piece_key
+
+
+def test_a_second_conversion_with_its_pieces_stored_runs_the_keyframe_stage_again(tmp_path: Path) -> None:
+    """B13 round 11 M64: what a new conversion of the same bytes (a copy after an ``_INDEX_REVISION`` raise)
+    costs when its pieces are still stored: no scan and no gated read, but the keyframe stage (diff, pills,
+    frames) runs again.  The cycle deletes the pieces once a read finishes, so there the copy reads it all
+    (``test_cycle.py::test_a_copy_of_a_finished_recording_is_read_again_in_full_once_the_index_revision_rises``)."""
+    store = PieceStore(tmp_path / "recordings")
+    src = staged(tmp_path, teams(share(3, FIRST)))
+    conv = converter(tmp_path, pieces=store)
+    helper = tmp_path / "helpers" / "fake-media"
+    conv.convert(src, name="meeting.mp4")
+    first = [c["args"][0] for c in media_calls(helper)]
+    assert "scan" in first
+    conv.convert(src, name="meeting copy.mp4")
+    again = [c["args"][0] for c in media_calls(helper)][len(first) :]
+    assert "scan" not in again and {"diff", "pills", "frames"} <= set(again), again
+    assert again.count("frames") < first.count("frames"), (first, again)
+
+
+INDEX_WORDINGS = {
+    1: "c8d0a650d9f965e0e3f1c56a2f8ef09a031f3ae83c87af1ed5ade7232111bf7a",  # before round 9 K63
+    2: "80a737f227a271778b2dcc64e8e738500be8a8674e64ecdc72fa01c28de60357",  # K63's SAID vN and SPEAKING
+}
+"""The SHA-256 of the index page's fixed wording at each ``_INDEX_REVISION``; append only."""
+
+
+def _index_wording_digest() -> str:
+    """recording_page's How to read, Not on this page, the times fact and every ``_*_NOTE``, and recording's
+    every ``_NOTE_*``, taken by name so a new NOTE is covered without a list to keep.  naming's notes are out:
+    they reach the version through ``NAMING_REVISION``."""
+    fixed = ("_HOW_TO_READ", "_NOT_DETECTED", "_TIMES_FACT")
+    lines = []
+    for module, keep in (
+        (rec_page, lambda name: name in fixed or (name.startswith("_") and name.endswith("_NOTE"))),
+        (rec, lambda name: name.startswith("_NOTE_")),
+    ):
+        for name, value in vars(module).items():
+            if not keep(name):
+                continue
+            joined = value
+            if isinstance(value, tuple) and all(isinstance(v, str) for v in value):
+                joined = "\n".join(value)
+            if isinstance(joined, str):
+                lines.append(f"{module.__name__.rsplit('.', 1)[1]}.{name}={joined}")
+    return hashlib.sha256("\n".join(sorted(lines)).encode("utf-8")).hexdigest()
+
+
+def test_the_index_wording_and_its_revision_move_together() -> None:
+    """B13 round 11 M85 (and M67): round 9 K63 changed How to read without moving the cache key, and only a
+    docstring asked anyone to raise ``_INDEX_REVISION``.  The wording's digest is pinned beside the revision
+    it was taken at, so a wording change fails here until the revision is raised with it (raising it moves
+    every recording's file cache key: a copy of one already read is read again, round 11 M64)."""
+    found = _index_wording_digest()
+    latest = max(INDEX_WORDINGS)
+    message = (
+        f"the index page's fixed wording changed (its SHA-256 is now {found}): raise _INDEX_REVISION in "
+        f"recording.py and add {latest + 1}: {found!r} to INDEX_WORDINGS"
+    )
+    assert latest == rec._INDEX_REVISION, "_INDEX_REVISION and the newest INDEX_WORDINGS key differ"
+    assert found not in [INDEX_WORDINGS[rev] for rev in INDEX_WORDINGS if rev != latest], message
+    assert found == INDEX_WORDINGS[latest], message
 
 
 def test_a_recording_past_the_tick_limit_is_read_to_the_limit_and_says_so(

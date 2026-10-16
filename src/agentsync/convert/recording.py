@@ -77,10 +77,16 @@ only for a change worth reading every local recording again for, never above ``_
 _SELECTION_REVISION = 2  # ``-s<n>`` of the version: the profiles, the gate, the back-offs, the kind rules
 _INDEX_REVISION = 2
 """The fixed wording of the index page (``recording_page``'s ``_HOW_TO_READ``, ``_NOT_DETECTED``,
-``_TIMES_FACT``, a NOTE): raise it whenever one changes.  It is in ``options`` only, never in a piece's key,
-so it moves the whole file's cache key and a new conversion of the same bytes (a copy, a repair rebuild) gets
-the new wording, while no frame or speech is read again (B13 round 10 L51, as round 6 G59 for the deck
-emitter)."""
+``_TIMES_FACT``, a NOTE): raise it whenever one changes, as
+``test_the_index_wording_and_its_revision_move_together`` checks (B13 round 11 M85).  It is in ``options``
+only, never in a piece's key, so it moves the whole file's cache key: a new conversion of the same bytes (a
+copy) gets the new wording (B13 round 10 L51, as round 6 G59 for the deck emitter).  That conversion is a
+read: once the cycle has finished a recording it deletes its piece folder, so the copy reads every frame and
+the sound again, and even with its pieces stored the keyframe stage (diff, pills, frames) runs again (round
+11 M64).  ``_key()``, ``_speech_key``, ``version()`` and ``outdated_key`` do not move, so no existing page is
+read again by itself: a page the repair path rebuilds is re-rendered from the cache entry its outputs row
+names and keeps the old wording, as does an existing page until its recording is converted again (round 11
+M65)."""
 
 WINDOW_MS = 300_000
 """One window unit of the page (spec 3.1, 2.2); the renderer cuts the recording at it."""

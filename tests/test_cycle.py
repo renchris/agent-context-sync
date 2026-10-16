@@ -5500,6 +5500,33 @@ def test_a_stored_piece_is_never_redone_and_three_cycles_equal_one_byte_for_byte
     assert _recording_page(one, MEETING)[1] == over_three, "the body; the front matter names the file"
 
 
+@pytest.mark.parametrize("raised", [False, True])
+def test_a_copy_of_a_finished_recording_is_read_again_in_full_once_the_index_revision_rises(
+    tmp_path: Path, meetings: Path, rec: Rec, monkeypatch: pytest.MonkeyPatch, raised: bool
+) -> None:
+    """B13 round 11 M64: a finished read leaves no pieces, so the file's cache entry is all that spares a copy
+    of the same bytes a second read.  The index revision is in the options (round 10 L51): once it rises, the
+    copy reads every piece again, frames and sound; with the revision where it was, the copy reads none."""
+    monkeypatch.setattr(
+        StubRecording,
+        "options",
+        lambda _self: {"piece_ms": PIECE_MS, "recording_index_revision": recording_mod._INDEX_REVISION},
+    )
+    config = config_with(tmp_path, meetings)
+    path = stub_recording(meetings / MEETING, 10)
+    assert run(config).exit_code == 0
+    assert rec.worked == [("Contoso weekly sync.mp4", 0), ("Contoso weekly sync.mp4", 1)]
+    assert not _pieces_of(config, path).exists()
+    rec.worked.clear()
+    if raised:
+        monkeypatch.setattr(recording_mod, "_INDEX_REVISION", recording_mod._INDEX_REVISION + 1)
+    shutil.copy2(path, path.with_name("Contoso weekly sync copy.mp4"))
+    assert run(config).exit_code == 0
+    again = [("Contoso weekly sync copy.mp4", 0), ("Contoso weekly sync copy.mp4", 1)]
+    assert rec.worked == (again if raised else [])
+    assert "Contoso weekly sync" in _recording_page(config, "meetings/Contoso weekly sync copy.mp4")[1]
+
+
 def test_a_piece_that_times_out_leaves_the_recording_waiting_never_failed(
     tmp_path: Path, meetings: Path, rec: Rec
 ) -> None:
