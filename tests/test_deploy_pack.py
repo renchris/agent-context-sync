@@ -2726,6 +2726,14 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     assert "When the list cannot read which folders the Mac syncs, it marks none, and the agent says so" in (
         flat_intro
     )
+    # B13 round 11 M75: not after `marks=failed`, where round 10 L11 withdrew the keep (step 2 may stop at its
+    # config step and keep nothing), as the prompt's step 1 and install.sh's NEXT: line say
+    assert "do not say step 2 keeps my folders" in step1
+    assert "step 2 stops at its config step and nothing is kept or added until the config is" in script
+    assert (
+        "a run with no folder keeps whatever was synced, unless the installed agentsync failed while reading "
+        "that config. Then step 2 may stop at its config step and keep nothing until the config is fixed"
+    ) in flat_intro
 
 
 UNREAD_CONFIG = (

@@ -307,7 +307,9 @@ option; it is for this step and the installer.
 On a Mac that already runs agentsync the same block is a re-run. The folders you chose before are kept: the
 list marks them, the agent asks only whether to add one, and when it cannot ask you it adds none and goes on.
 When the list cannot read which folders the Mac syncs, it marks none, and the agent says so and does the same:
-a run with no folder keeps whatever was synced. It stops and waits for your answer only on a Mac that syncs no
+a run with no folder keeps whatever was synced, unless the installed agentsync failed while reading that config.
+Then step 2 may stop at its config step and keep nothing until the config is fixed, so the agent shows you the
+list's own words instead of promising a keep. It stops and waits for your answer only on a Mac that syncs no
 folder yet.
 
 ```text
