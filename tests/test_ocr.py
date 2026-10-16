@@ -1276,6 +1276,13 @@ def test_the_module_entry_point_builds_under_the_configured_cache_dir(
     assert capsys.readouterr().out == "OCR helper: ready (stub-vision revision 7, helper 9.9.9)\n"
     assert ocr._helper_path(cache).is_file()
 
+    # B13 round 11 M8: a built helper beside a config that cannot be read was said to be "not built"
+    config_file.write_text(f'[agentsync]\ncache_dir = "{cache}"\n[convert]\nocr = maybe\n')
+    assert ocr._main() == 78
+    assert capsys.readouterr().out == "OCR helper: not checked (the config cannot be read)\n"
+    assert ocr._helper_path(cache).is_file()
+    config_file.write_text(f'[agentsync]\ncache_dir = "{cache}"\n')
+
     script(tools / "xcode-select", "exit 2")
     ocr._helper_path(cache).unlink()
     assert ocr._main() == 1
@@ -1284,13 +1291,13 @@ def test_the_module_entry_point_builds_under_the_configured_cache_dir(
 
     config_file.write_text("[convert]\nocr = maybe\n")
     assert ocr._main() == 78  # EX_CONFIG: install.sh logs the helpers step skipped (B13 round 11 M25)
-    assert capsys.readouterr().out == "OCR helper: not built (the config cannot be read)\n"
+    assert capsys.readouterr().out == "OCR helper: not checked (the config cannot be read)\n"
     config_file.write_text("")
     config_file.chmod(0)
     try:
         if not os.access(config_file, os.R_OK):  # root reads it anyway
             assert ocr._main() == 78
-            assert capsys.readouterr().out == "OCR helper: not built (the config cannot be read)\n"
+            assert capsys.readouterr().out == "OCR helper: not checked (the config cannot be read)\n"
     finally:
         config_file.chmod(0o600)
     assert len(lines_of(tools / "swiftc.calls")) == 1

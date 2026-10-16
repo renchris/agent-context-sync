@@ -3971,8 +3971,8 @@ if have_devtools; then
 			build_helper speech "speech helper" "speech: not built (the build did not run)" || true
 			step_end "done"
 		else
-			say "media helper: not built (the config cannot be read)"
-			say "speech: not built (the config cannot be read)"
+			say "media helper: not checked (the config cannot be read)"
+			say "speech: not checked (the config cannot be read)"
 			step_end skipped 0 config-unreadable
 		fi
 	else

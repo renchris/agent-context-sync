@@ -6604,6 +6604,9 @@ the defaults), prints one line and exits 0 when OCR is ready or switched off, 1 
 `OCR helper: not built (<reason>)`. A switched-off OCR builds nothing. `probe` and `engine` never compile, so
 `status`, a dry run and the LaunchAgent never start `xcrun` or `swiftc`. (Doctor itself asks
 `/usr/bin/xcode-select -p` to word its line; see Doctor.)
+Amended 2026-10-15, §16.93 M8: a config that cannot be read prints `OCR helper: not checked (the config cannot be
+read)` (exit 78, §16.96 M25), not `not built`: the helper is not looked at, and may be built. Media and speech
+share the entry.
 
 **Where.** `<cache_dir>/ocr/agentsync-ocr-<digest>`: the first 16 hex digits of sha256 over the Swift source
 and the build flags, so a new source gets a new name. The file is 0700 in a 0700 folder under any umask
@@ -6693,6 +6696,8 @@ does not meet one either).
 Amended 2026-10-15, §16.96 M25: a config the modules cannot read is `result=skipped note=config-unreadable`, not
 `done`: the OCR module exits 78 (EX_CONFIG) then, and the media and speech modules are not run, their lines saying
 `not built (the config cannot be read)`.
+Amended 2026-10-15, §16.93 M8 (by §16.96 M25): those lines, and the OCR module's, read `not checked (the config
+cannot be read)`.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -18837,6 +18842,15 @@ temp file's name forces it. `stopped_report_note` and `write_fallback_report` ra
 removes its temp file and returns 1, the status it returned before. Tests:
 `test_a_report_writer_that_cannot_finish_leaves_no_temp_file` (bring-back.md's mv and chmod, the shell report's mv),
 `test_a_stopped_copy_note_that_cannot_finish_leaves_no_temp_file`.
+
+**A helper not looked at is "not checked"** (M8; amends §16 OCR's "Who builds"). With a config that cannot be read,
+step 2 printed `OCR helper: not built (the config cannot be read)`, and the same for media and speech, though all
+three were built: the line is install.sh's relay of `ocr._entry`, shared by the three modules, which reads the
+config before it looks at the helper. It prints `<label>: not checked (the config cannot be read)`, with the exit
+code §16.96 M25 gives it (78, EX_CONFIG), and install.sh's own media and speech lines for that case, which M25 added,
+say `not checked` too. Tests: `test_install_oneshot.py::test_helpers_step_is_skipped_when_the_config_cannot_be_read`,
+`test_the_module_entry_point_builds_under_the_configured_cache_dir` (a built helper, then a broken config: the
+line, and the helper still there).
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

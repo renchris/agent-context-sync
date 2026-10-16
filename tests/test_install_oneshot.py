@@ -6905,7 +6905,7 @@ def test_helpers_step_is_skipped_when_the_config_cannot_be_read(
     tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
     tool_py.parent.mkdir(parents=True, exist_ok=True)
     _write_exe(tool_py, STUB_TOOL_PYTHON)
-    unread = "OCR helper: not built (the config cannot be read)"
+    unread = "OCR helper: not checked (the config cannot be read)"  # B13 round 11 M8
     cp = install_sh(
         {**env, "STUB_OCR_OUT": unread, "STUB_OCR_RC": "78"}, str(wheel), "--source-local", str(folder)
     )
@@ -6913,8 +6913,8 @@ def test_helpers_step_is_skipped_when_the_config_cannot_be_read(
     out = cp.stdout.splitlines()
     at = out.index(unread)
     assert out[at + 1 : at + 3] == [
-        "media helper: not built (the config cannot be read)",
-        "speech: not built (the config cannot be read)",
+        "media helper: not checked (the config cannot be read)",
+        "speech: not checked (the config cannot be read)",
     ], cp.stdout
     ran = [c for c in calls(env) if c.startswith("python -I -m agentsync.convert.")]
     assert [c.split(" config=")[0] for c in ran] == ["python -I -m agentsync.convert.ocr"], ran

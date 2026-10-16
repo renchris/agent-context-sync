@@ -790,8 +790,9 @@ def _entry(
     """What ``python -m`` of a helper's module runs: read the config, build unless switched off, and print
     one ``<label>: <state> (<detail>)`` line (``label`` defaults to ``kind.name``).  Exit 0 when ready or
     off, 1 when not built, 78 (EX_CONFIG) when the config cannot be read: scripts/install.sh then logs its
-    ``helpers`` step skipped, note config-unreadable (B13 round 11 M25).  Switched off, it builds nothing and
-    still tidies the folder an earlier build left."""
+    ``helpers`` step skipped, note config-unreadable (B13 round 11 M25).  That config is said before the
+    helper is looked at, so a built one is "not checked", never "not built" (B13 round 11 M8).  Switched off,
+    it builds nothing and still tidies the folder an earlier build left."""
     os.umask(0o077)
     label = label or kind.name
     cfg, cache_dir = ConvertConfig(), default_cache_dir()
@@ -800,7 +801,7 @@ def _entry(
             config = load_config()
             cfg, cache_dir = config.convert, config.cache_dir
     except (ConfigError, OSError):
-        sys.stdout.write(f"{label}: not built (the config cannot be read)\n")
+        sys.stdout.write(f"{label}: not checked (the config cannot be read)\n")
         return _CONFIG_UNREADABLE
     off = switched_off(cfg)
     if off:
@@ -821,8 +822,8 @@ def _entry(
 def _main() -> int:
     """``python -m agentsync.convert.ocr``: what scripts/install.sh runs to build the helper.  It is not an
     agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built, 78
-    when the config cannot be read.  Switched off, it builds nothing and still tidies the folder an earlier
-    build left."""
+    when the config cannot be read (it is then not checked).  Switched off, it builds nothing and still tidies
+    the folder an earlier build left."""
     return _entry(_OCR, _switched_off, build, probe)
 
 
