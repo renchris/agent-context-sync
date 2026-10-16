@@ -716,7 +716,10 @@ _FIRST_READ_RE = re.compile(
 )
 # and since B13 round 6 G35 ", R refused" after it (a sync line that prints it is named "the
 # unreadable/failed/refused split" in its source tag since round 7 H46)
-_SPLIT_RE = re.compile(r"\bof the converted: (\d+) unreadable, (\d+) failed\b(?:, (\d+) refused\b)?")
+_SPLIT_RE = re.compile(  # K, of the refused, withheld by the label rule: the CLI prints it after R (M82)
+    r"\bof the converted: (\d+) unreadable, (\d+) failed\b"
+    r"(?:, (\d+) refused\b(?:, (\d+) of them withheld by the label rule\b)?)?"
+)
 # and since B13 round 7 H32 "; Q refused without a read (...)", files refused with no conversion (B13 round 8
 # J39); "without a read" is required, so the split's "R refused)" never matches
 _UNREAD_RE = re.compile(r"\b(\d+) refused without a read\b")
@@ -2512,9 +2515,9 @@ class _Facts:
     out_counted: list[str] = dataclasses.field(default_factory=list)
     # the last "converted N, deferred M online-only[, read again R]" in install.out (R 0 when absent)
     first_sync: tuple[int, int, int] | None = None
-    # that line's "(of the converted: U unreadable, F failed, R refused)" as (N, U, F, R), R 0 when an older
-    # line has none; None: the line has no split
-    first_sync_unreadable: tuple[int, int, int, int] | None = None
+    # that line's "(of the converted: U unreadable, F failed, R refused, K of them withheld by the label
+    # rule)" as (N, U, F, R, K), R and K 0 when an older line has none; None: the line has no split
+    first_sync_unreadable: tuple[int, int, int, int, int] | None = None
     # its first-read count F (either wording, B13 round 9 K34) as (N, R, F); None: the line has none
     first_sync_first_read: tuple[int, int, int] | None = None
     # its "Q refused without a read" as (N, Q); None: the line has none
@@ -3585,6 +3588,30 @@ def _agentsync_note(note: str) -> str:
     return _AGENTSYNC_NOTE_WORDS.get(note, note)
 
 
+_FIRST_SYNC_NOTE_WORDS = {
+    "waited-for-the-lock": "waited for another sync to end",
+    "lock-busy": "lock busy: another sync held the lock past the wait",
+    "no-sources": "no folder to sync in sources.toml",
+    "status-failed": "agentsync status reported a failure, so no sync ran",
+    "tcc-denied": "this terminal app may not read the folders",
+}
+"""install.log's first-sync notes with no number -> the report's words (B13 round 11 M40)."""
+
+
+def _first_sync_note(note: str) -> str:
+    """install.log's first-sync note in the report's words, as :func:`_agentsync_note` gives the agentsync
+    step's (B13 round 11 M40: the Installer table showed ``converted-2-deferred-0-reread-2``, ``lock-busy``).
+    ``reread-R`` is neutral: install.sh adds the sync's "read again" and "first read" heads into R, so R alone
+    never says which. No parenthesis; a note none of these is shown as it is."""
+    m = _CONVERTED_NOTE_RE.fullmatch(note)
+    if m is not None and m.group(1) is not None:
+        words = f"converted {m.group(1)}, deferred {m.group(2)} online-only"
+        if m.group(3) is not None:
+            words += f", {m.group(3)} read again or read for the first time"
+        return words + (", after waiting for another sync to end" if m.group(4) else "")
+    return _FIRST_SYNC_NOTE_WORDS.get(note, note)
+
+
 def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
     rows = [("step", "seconds", "result")]
     for name, v in steps:
@@ -3606,7 +3633,11 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
                 counts = f"{synced} already synced"
             elif unread is not None:
                 counts = f"could not read which folders sources.toml syncs, because {unread}"
-        said = _agentsync_note(v.get("note", "")) if name == "agentsync" else v.get("note", "")
+        said = v.get("note", "")
+        if name == "agentsync":
+            said = _agentsync_note(said)
+        elif name == "first-sync":
+            said = _first_sync_note(said)
         note = ": ".join(part for part in (said, counts) if part)
         if note:
             result += f" ({note})"
@@ -3746,8 +3777,8 @@ def _installer_output(r: _Run) -> list[str]:
         r.facts.first_sync = (converted, int(last.group("d")), again)
         split = _SPLIT_RE.search(last.group("tail"))
         if split is not None:
-            u, f, refused = (int(g or 0) for g in split.groups())
-            r.facts.first_sync_unreadable = (converted, u, f, refused)
+            u, f, refused, of_refused = (int(g or 0) for g in split.groups())
+            r.facts.first_sync_unreadable = (converted, u, f, refused, of_refused)
         unread = _UNREAD_RE.search(last.group("tail"))
         if unread is not None:
             r.facts.first_sync_refused_unread = (converted, int(unread.group(1)))
@@ -5243,8 +5274,7 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
         f"{total('ocr_failed')} the engine failed on (a helper failure, or the file's own time limit) · "
         f"{total('ocr_page_cap')} that say pages past the OCR page limit were not read · "
         f"{total('ocr_picture_cap')} that say pictures past the picture limit were not read · "
-        f"{total('reread')} read(s) again ({total('reread_kept')} of them could not be converted and kept "
-        "their page)",
+        + _reread_clause(total("reread"), total("reread_first"), total("reread_kept")),
     ]
     shown = (engine or runs)[:_RUNS_SHOWN]
     rows = []
@@ -5265,7 +5295,8 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
                 x.n("ocr_failed"),
                 f"{x.n('ocr_page_cap')} + {x.n('ocr_picture_cap')}",
                 f"{x.n('A')} + {x.n('M')}",
-                f"{x.n('reread')} ({x.n('reread_kept')})",
+                f"{x.n('reread')} ({x.n('reread_kept')})"
+                + (f", {x.n('reread_first')} first read" if x.n("reread_first") else ""),
                 # A run that looked says what it left (0 is left out of its record); one that did not look
                 # (an earlier build's, a ``materialise PATH`` run) has no count to give.
                 x.n("reread_left") if "reread_for" in x.counts else "-",
@@ -5305,6 +5336,24 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
         "background job's"
     )
     return [*out, "", f"{title}. {notes}:", "", *_table(header, rows)]
+
+
+def _reread_clause(again: int, first: int, kept: int) -> str:
+    """The OCR part's re-read count, sums over the runs read: the run records' ``reread_first`` (a stub read
+    for the first time, which cycle.py counts in ``reread`` and in ``converted``) is no "read again", as the
+    CLI's and the Summary's words say since B13 round 10 L34 (round 11 M12). A failed re-read that kept its
+    page is never a first read, so the two counts never overlap. A build before ``reread_first`` reads 0."""
+    if first and first == again:
+        return (
+            f"{again} first read(s) of a stub whose bytes had never been read, also in the converted count"
+            + (f" ({kept} could not be converted and kept their page)" if kept else "")
+        )
+    if first:
+        return (
+            f"{again} read(s) again ({first} of them a first read of a stub whose bytes had never been read, "
+            f"also in the converted count; {kept} could not be converted and kept their page)"
+        )
+    return f"{again} read(s) again ({kept} of them could not be converted and kept their page)"
 
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
@@ -7157,7 +7206,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             if note.group(4) or note.group(5):
                 text += ", after waiting for another sync to end"
         elif v.get("note"):
-            text += f" ({v['note']})"
+            text += f" ({_first_sync_note(v['note'])})"
         if borrowed:
             text += (
                 f" (install.log: the install run of {_iso(pool[-1].started)}, before this attempt; this "
@@ -7168,6 +7217,14 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         parts.append(text)
     elif scoped and not runs:
         parts.append("no install.sh run during this attempt (install.log)")
+    elif scoped and not install_runs_only(runs):
+        # a list-only attempt never reaches a first-sync step (B13 round 11 M22)
+        parts.append("this attempt ran only install.sh --list-folders, no first sync (install.log)")
+    elif scoped:
+        # install.log can hold an earlier run's first sync: name whose run stopped (B13 round 11 M6, M22, M38)
+        failing = install_runs_only(runs)[-1].failed_step()
+        where = f": the last stopped at its {failing[0]} step" if failing else ""
+        parts.append(f"no install run of this attempt reached its first sync (install.log{where})")
     else:
         parts.append("no install.sh run with a first-sync step (install.log)")
     source = "install.log: that earlier run" if borrowed else "install.log"
@@ -7180,11 +7237,30 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         (shown.step("first-sync") or {}).get("result") != "skipped"
         and r.facts.first_sync_run in ("", shown.run_id)
     )
+    out_source = (
+        "install.out: an earlier run's; this attempt ran none" if scoped and not runs else "install.out"
+    )
+    if shown is None and runs:
+        # Runs that logged no first-sync step: install.out's last sync line is theirs only under one of their
+        # own headers (an install.sh that printed a sync and logged no step). An attempt's runs that stopped
+        # before the sync left an earlier run's line there, which read as theirs (B13 round 11 M6, M22, M38).
+        ids = {run.run_id for run in runs}
+        printed_by = next((run for run in r.install_runs if run.run_id == r.facts.first_sync_run), None)
+        if r.facts.first_sync_run in ids:
+            pass
+        elif not scoped:
+            own_line = r.facts.first_sync_run == ""  # a headerless install.out, as before
+        elif r.facts.first_sync_run:
+            out_source = (
+                f"install.out: the install run of {_iso(printed_by.started)}, before this attempt"
+                if printed_by is not None
+                else "install.out: an earlier run's, before this attempt"
+            )
+        else:
+            out_source = "install.out: which run printed it is not recorded"
     if counts is None and r.facts.first_sync is not None and own_line:
         counts = r.facts.first_sync
-        source = (
-            "install.out: an earlier run's; this attempt ran none" if scoped and not runs else "install.out"
-        )
+        source = out_source
     if counts is not None:
         converted, deferred, again = counts
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
@@ -7210,6 +7286,10 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         split = r.facts.first_sync_unreadable
         if split is not None and split[0] == converted and any(split[1:]):
             refused = f", {split[3]} refused" if split[3] else ""  # B13 round 6 G35
+            if (
+                split[3] and split[4]
+            ):  # K of the R pages say withheld, as on the CLI's line (B13 round 11 M82)
+                refused += f", {split[4]} of them withheld by the label rule"
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
             # the tag names refused only when its count was printed (B13 round 7 H46)
             named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")

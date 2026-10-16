@@ -3217,6 +3217,15 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 3 refused "
             "(install.log; the unreadable/failed/refused split: install.out)",
         ),
+        (  # B13 round 11 M82: K of the R refused say withheld, as on the CLI's line (K + W say withheld)
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 1 "
+            "refused, 1 of them withheld by the label rule); 1 withheld unread by the label rule (a file "
+            "whose label cannot be read: an image or a .msg not on this Mac)",
+            "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 1 refused, 1 of "
+            "them withheld by the label rule; 1 withheld unread by the label rule (install.log; the "
+            "unreadable/failed/refused split and the withheld-unread count: install.out)",
+        ),
         (  # B13 round 8 J39: the files refused without a read, after the split as on the CLI's line
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 3 "
@@ -3279,7 +3288,7 @@ def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -
         match = setup_report._CONVERTED_LINE_RE.search(line)
         assert match is not None and match.group("c", "d") == ("3", "0"), line
         split = setup_report._SPLIT_RE.search(match.group("tail"))
-        assert split is not None and split.groups() == ("1", "0", None), line
+        assert split is not None and split.groups() == ("1", "0", None, None), line
     match = setup_report._CONVERTED_LINE_RE.search("converted 1, deferred 0 online-only, read again 4")
     assert match is not None and match.group("c", "d", "r", "tail") == ("1", "0", "4", "")
     assert setup_report._SPLIT_RE.search(match.group("tail")) is None
@@ -3290,7 +3299,7 @@ def test_the_converted_line_parses_with_the_read_again_clause_in_either_form() -
     )
     assert match is not None and match.group("c", "d", "r", "r1") == ("3", "0", None, "2")
     split = setup_report._SPLIT_RE.search(match.group("tail"))
-    assert split is not None and split.groups() == ("1", "0", None)
+    assert split is not None and split.groups() == ("1", "0", None, None)
 
 
 @pytest.mark.usefixtures("clean_doctor")
@@ -3929,6 +3938,68 @@ def test_an_attempt_that_ran_no_installer_names_the_earlier_run_its_sync_line_re
     write_friction(fake_mac, STOPPED_V8)
     _text, summary = summary_of(fake_mac)
     assert "- first sync: no install.sh run during this attempt (install.log)" in summary, summary
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_counts_as_its_own(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 11 M6, M22, M38 (one defect from three finders): an attempt whose install run stopped at its
+    config step, after an earlier attempt's run synced, printed "no install.sh run with a first-sync step
+    (install.log) · converted 7, deferred 3 online-only (install.out)": the earlier run's counts, untagged,
+    though install.log has that run. install.out's line is the attempt's only under one of its own headers;
+    an earlier run's is named as such, and a headerless install.out cannot say whose it is."""
+    write_install_log(fake_mac)  # 10:00, synced
+    stopped = (
+        "2026-09-29T11:05:00Z run=20260929T110500Z-4343 start install.sh compat=10 commit=0123456789ab "
+        "kind=checkout source=- args=--source-local x\n"
+        "2026-09-29T11:05:00Z run=20260929T110500Z-4343 step=uv seconds=0 rc=0 result=skipped note=present\n"
+        "2026-09-29T11:05:00Z run=20260929T110500Z-4343 step=agentsync seconds=0 rc=0 result=skipped "
+        "note=current\n"
+        "2026-09-29T11:05:01Z run=20260929T110500Z-4343 step=config seconds=1 rc=78 result=failed\n"
+        "2026-09-29T11:05:01Z run=20260929T110500Z-4343 end rc=1 seconds=1\n"
+    )
+    log = fake_mac["setup"] / "install.log"
+    earlier = log.read_text(encoding="utf-8")
+    log.write_text(earlier + stopped, encoding="utf-8")
+    write_friction(
+        fake_mac, "Attempt: 2026-09-29T11:00:00Z\nPrompt: v11\nAgent: Claude Code, claude-opus-5-5\n"
+    )
+    sync = "first sync: converted 7, deferred 3 online-only\n"
+    early = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh\n"
+    late = "# run=20260929T110500Z-4343 2026-09-29T11:05:00Z install.sh\n"
+    out = fake_mac["setup"] / "install.out"
+
+    def first_sync(text: str, *, outcome: bool = True) -> str:
+        out.write_text(text, encoding="utf-8")
+        _text, summary = summary_of(fake_mac)
+        assert not outcome or summary.strip().splitlines()[0] == (
+            "- **outcome: failed at step 2** (computed: install.sh exited 1: its config step failed with "
+            "rc 78)"
+        ), summary
+        [line] = [ln for ln in summary.splitlines() if ln.startswith(("- first sync: ", "- sync: "))]
+        return line
+
+    head = (
+        "- first sync: no install run of this attempt reached its first sync (install.log: the last stopped "
+        "at its config step) · converted 7, deferred 3 online-only (install.out"
+    )
+    later = "background sync downloads and converts the 3)"
+    assert first_sync(early + sync + late + "error: config\n") == (
+        f"{head}: the install run of 2026-09-29T10:00:00Z, before this attempt; {later}"
+    )
+    # an install.sh that printed its sync under this attempt's own header and logged no first-sync step
+    assert first_sync(early + late + sync) == f"{head}; {later}"
+    # an install.out with no header (an older install.sh) cannot say whose the line is
+    assert first_sync(sync) == f"{head}: which run printed it is not recorded; {later}"
+    # an attempt that ran only step 1's list never reaches a first-sync step
+    listed = LIST_RUN.replace("2026-09-29T09:58:0", "2026-09-29T11:01:0").replace("T095805Z-", "T110105Z-")
+    log.write_text(earlier + listed, encoding="utf-8")
+    assert first_sync(early + sync, outcome=False).startswith(
+        "- first sync: this attempt ran only install.sh --list-folders, no first sync (install.log) · "
+        "converted 7, deferred 3 online-only (install.out: the install run of 2026-09-29T10:00:00Z, before "
+        "this attempt;"
+    )
 
 
 def test_an_attempt_with_no_installer_run_is_given_no_folder_question(
@@ -10083,3 +10154,78 @@ def test_a_step_1_list_that_stopped_on_a_sign_in_asked_no_folder_question(
     # a Mac that already syncs folders keeps its own words, whatever the list's failure
     human, expected = lines("failed note=not-signed-in synced=2")
     assert expected.startswith("- expected turns: no folder question (2 folders already synced: "), expected
+
+
+def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path]) -> None:
+    """B13 round 11 M12: a stub read for the first time is counted in a run's ``reread`` and ``converted``
+    (cycle.py), and its record says so in ``reread_first``. The Summary called it "first read" and the OCR
+    part "read again". The part now splits the sum over the runs as the CLI does since round 10 L34: all first
+    reads say "first read(s)", some say "of them a first read", none read as before."""
+    seed_ocr(fake_mac)
+
+    def ocr_part(*counts: dict[str, int]) -> str:
+        seed = Seed(fake_mac["config"])
+        for run_id, record in zip((5, 4), counts, strict=True):
+            seed.m._db.execute(
+                "UPDATE runs SET counts_json = ? WHERE run_id = ?", (json.dumps(record), run_id)
+            )
+        seed.close()
+        return status_parts(fake_mac)[1]["OCR"]
+
+    first = {"converted": 1, "reread": 1, "reread_first": 1, "ocr_ms": 1000}
+    part = ocr_part(first, {"converted": 0, "ocr_ms": 1000})
+    assert (
+        " · 1 first read(s) of a stub whose bytes had never been read, also in the converted count\n" in part
+    ), part
+    assert "read(s) again" not in part
+    rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
+    assert rows[0].endswith("| 0 + 0 | 1 (0), 1 first read | - |") and rows[1].endswith("| 0 (0) | - |"), rows
+    part = ocr_part(first, {"converted": 2, "reread": 2, "reread_kept": 1, "ocr_ms": 1000})
+    assert (
+        " · 3 read(s) again (1 of them a first read of a stub whose bytes had never been read, also in the "
+        "converted count; 1 could not be converted and kept their page)\n" in part
+    ), part
+    part = ocr_part({"converted": 1, "reread": 1, "ocr_ms": 1000}, {"converted": 0, "ocr_ms": 1000})
+    assert " · 1 read(s) again (0 of them could not be converted and kept their page)\n" in part, part
+
+
+@pytest.mark.parametrize(
+    ("note", "rc", "result", "words"),
+    [
+        (
+            "converted-2-deferred-0-reread-2",
+            "0",
+            "done",
+            "converted 2, deferred 0 online-only, 2 read again or read for the first time",
+        ),
+        (
+            "converted-0-deferred-0-waited-for-the-lock",
+            "0",
+            "done",
+            "converted 0, deferred 0 online-only, after waiting for another sync to end",
+        ),
+        ("waited-for-the-lock", "0", "done", "waited for another sync to end"),
+        ("lock-busy", "75", "skipped", "lock busy: another sync held the lock past the wait"),
+        ("no-sources", "0", "skipped", "no folder to sync in sources.toml"),
+        ("status-failed", "0", "skipped", "agentsync status reported a failure, so no sync ran"),
+        ("tcc-denied", "80", "failed", "this terminal app may not read the folders"),
+    ],
+)
+def test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary(
+    fake_mac: dict[str, Path], note: str, rc: str, result: str, words: str
+) -> None:
+    """B13 round 11 M40: the Installer table showed install.log's first-sync tokens (``reread-2``, which
+    contradicts the Summary's "first read 2"; ``lock-busy``) while the agentsync row had words (round 10 L35),
+    and the Summary's sync clause printed ``(lock-busy)``. install.log keeps its tokens; R is neutral, since
+    install.sh adds the sync's "read again" and "first read" heads into it."""
+    write_install_log(
+        fake_mac, rc=0 if rc == "0" else 1, first_sync=f"seconds=9 rc={rc} result={result} note={note}"
+    )
+    write_friction(fake_mac, V5_HAPPY)
+    text, summary = summary_of(fake_mac)
+    [row] = [ln for ln in section(text, "Installer").splitlines() if ln.startswith("| first-sync ")]
+    assert f"({words})" in row and note not in row, row
+    [line] = [ln for ln in summary.splitlines() if ln.startswith("- first sync: ")]
+    assert note not in line, line
+    if not note.startswith("converted-") and note != "waited-for-the-lock":
+        assert f" ({words}) (install.log)" in line, line
