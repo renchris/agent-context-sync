@@ -2721,7 +2721,14 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     assert "On a Mac that already runs agentsync the same block is a re-run." in intro
     assert "when it cannot ask you it adds none and goes on" in intro
     flat_intro = " ".join(intro.split())
-    assert "It stops and waits for your answer only on a Mac that syncs no folder yet." in flat_intro
+    # B13 round 12 N9, N63 (one defect): since v20 step 1 also waits on a set-up Mac for the sign-in its
+    # list asks for (round 11 M4, SIGNED_OUT above): the intro's "only on a Mac that syncs no folder yet" was
+    # false
+    assert (
+        "It stops and waits for you only on a Mac that syncs no folder yet, or, on a Mac that already syncs "
+        "folders, when the list asks you to sign in to OneDrive first; once you say you have, it lists the "
+        "folders again."
+    ) in flat_intro and SIGNED_OUT in step1
     # B13 round 9 K73: the intro says what the agent does when the list could not read the config
     assert "When the list cannot read which folders the Mac syncs, it marks none, and the agent says so" in (
         flat_intro

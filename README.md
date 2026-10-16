@@ -309,8 +309,9 @@ list marks them, the agent asks only whether to add one, and when it cannot ask 
 When the list cannot read which folders the Mac syncs, it marks none, and the agent says so and does the same:
 a run with no folder keeps whatever was synced, unless the installed agentsync failed while reading that config.
 Then step 2 may stop at its config step and keep nothing until the config is fixed, so the agent shows you the
-list's own words instead of promising a keep. It stops and waits for your answer only on a Mac that syncs no
-folder yet.
+list's own words instead of promising a keep. It stops and waits for you only on a Mac that syncs no folder yet,
+or, on a Mac that already syncs folders, when the list asks you to sign in to OneDrive first; once you say you
+have, it lists the folders again.
 
 ```text
 Set up agentsync on this Mac (setup prompt v20). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
