@@ -2915,6 +2915,47 @@ Any other host with no dot (``contosogw``) can carry the company's name and is m
 print it ("Could not resolve proxy: contosogw"). ``scripts/install.sh`` holds the same list."""
 
 
+_PUBLIC_HOSTS = frozenset(
+    {
+        "github.com",
+        "api.github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com",
+        "astral.sh",
+        "pypi.org",
+        "files.pythonhosted.org",
+    }
+)
+"""The public hosts the installer reaches, which a resolver message in the friction log may name and which
+stay readable (scripts/download_hosts.py lists where they come from; scripts/install.sh's ``PUBLIC_HOSTS``
+is the same set, B13 round 11 M29)."""
+_RESOLVER_HOST_RE = re.compile(
+    r"Could not resolve (?:proxy|host): ([A-Za-z0-9._-]+)|Failed to connect to ([A-Za-z0-9._-]+) port [0-9]+"
+)
+
+
+def _resolver_hosts(text: str) -> list[str]:
+    """The hosts a resolver message names ("Could not resolve proxy: <host>", "Could not resolve host:
+    <host>", "Failed to connect to <host> port <n>"), in order, lower case, less a trailing dot or hyphen, and
+    none of :data:`_PUBLIC_HOSTS`: a proxy the report's shell no longer has set is still named in an earlier
+    friction line (B13 round 11 M29).  install.sh's ``friction_proxy_hosts`` reads the same."""
+    hosts: list[str] = []
+    for found in _RESOLVER_HOST_RE.finditer(text):
+        host = (found.group(1) or found.group(2) or "").rstrip(".-").lower()
+        if host and host not in _PUBLIC_HOSTS:
+            hosts.append(host)
+    return hosts
+
+
+def _recorded_proxy_hosts() -> list[str]:
+    """The ``proxy-hosts`` file beside the friction log, which install.sh's ``--log-start`` and ``--log``
+    keep: the proxy and rewrite hosts in force when the agent logged a line, one a line (B13 round 11 M29)."""
+    with contextlib.suppress(OSError, ValueError):
+        text = (default_friction_path().parent / "proxy-hosts").read_text(encoding="utf-8", errors="replace")
+        return [ln for ln in text.splitlines() if re.fullmatch(r"[a-z0-9._-]+", ln)]
+    return []
+
+
 def _add_proxy_host(red: Redactor, host: str) -> None:
     generic = "." not in host and ":" not in host and host.lower() in _GENERIC_PROXY_HOSTS
     red.add("proxy", host, url=generic, ignore_case=True)
@@ -3190,6 +3231,14 @@ def _build_redactor(r: _Run) -> Redactor:
             job = r.hooks.job_proxy
             for host in _proxy_hosts(r.call(lambda: job(r.config), timeout=_PROXY_S)):
                 _add_proxy_host(red, host)
+    # A host an earlier friction line's resolver message names, then the hosts install.sh's --log lines kept:
+    # after the LaunchAgent's, in install.sh's order, so no shared <proxy-N> moves (B13 round 11 M29). A proxy
+    # the person unset since (the git stop asks them to) is no longer in force, yet the line still names it.
+    with contextlib.suppress(OSError, UnicodeDecodeError):
+        for host in _resolver_hosts(default_friction_path().read_text(encoding="utf-8", errors="replace")):
+            _add_proxy_host(red, host)
+    for host in _recorded_proxy_hosts():
+        _add_proxy_host(red, host)
     # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
     # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
     for word in (w.strip(".,") for w in tail_words):

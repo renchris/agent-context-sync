@@ -16958,6 +16958,8 @@ Amended 2026-10-14, §16.80 K46: "as in Python" was false for a URL path, which 
 letter, digit, dot, hyphen or underscore; both readers now use the end boundary. A rewrite path's pair is flag `p`.
 Amended 2026-10-14, §16.87 L3: each report shows only some shared numbers, so both legends' proxy items say a
 number can be missing; the numbers are unchanged.
+Amended 2026-10-15, §16.93 M29: after the LaunchAgent's proxies both readers register the hosts a friction line's
+resolver message names, then the hosts `--log-start` and `--log` kept in `proxy-hosts`, in that order.
 
 **Two stale docstrings** (J44; J79 is the same test docstring). The private-copy test describes an agentsync from
 before H75, which its stub writes; `compute_outcome`'s "stopped at step 1" names H40's `_WAIT_OK_KINDS` (that half
@@ -19006,6 +19008,31 @@ finder's "a capital next" alone was not built: it turned `OneDrive` into `<org-1
 Folders, libraries, generic pairs, context organisations and joined (`j`) pairs stay whole-word. Tests:
 `test_an_organisation_is_redacted_inside_a_longer_word` (both readers: Contoso, Storage, Box),
 `test_both_readers_hold_the_same_identifiers_whole`, and L66's tests.
+
+**A proxy host an earlier line names stays redacted once the proxy is unset** (M29; amends §16.75 J78). Both readers
+registered only the proxies in force when the report ran, so a friction line from an attempt whose git stop named a
+stale proxy (`... Could not resolve proxy: <host>`) printed that host once the person unset it, which is what the
+stop asks; a host with no organisation word was not caught by any other pair. Two sources are registered after the
+LaunchAgent's proxies, in the same order in both readers, so no shared `<proxy-N>` moves (J78, R68): (1) every host a
+resolver message in the friction log names, `Could not resolve proxy: <host>`, `Could not resolve host: <host>` and
+`Failed to connect to <host> port <n>` (with or without `via proxy` after it), in log order, lower case, less a
+trailing dot or hyphen (`friction_proxy_hosts`, which also registers the host as written, since the shell matches it
+byte for byte; `setup_report._resolver_hosts`), but none of the public hosts the
+installer reaches (`PUBLIC_HOSTS`, `_PUBLIC_HOSTS`: github.com, api.github.com, objects.githubusercontent.com,
+release-assets.githubusercontent.com, astral.sh, pypi.org, files.pythonhosted.org; a test holds them equal), which
+stay readable as diagnostics; this rule is stateless and also covers lines an older build logged; (2) the hosts in
+`proxy-hosts` beside the friction log, which `--log-start` and `--log` now keep (`record_proxy_hosts`): the hosts of
+the six proxy variables, git's proxies and git's rewrite bases (not github.com) in force at that moment, one a line,
+lower case, never userinfo or a port, appended once each, mode 0600 (a symlinked file is left alone). git's proxy and
+rewrite readers moved above the friction-log commands, which run before the rest of the script, and
+`record_proxy_hosts` names the checkout holding the script itself, whose config they read too. Each host is
+registered as any proxy host is (`_add_proxy_host`; a generic one only after `//` or `@` or before `:<port>`). The
+finder's `407 from proxy` pattern was not built: curl's message names no host. The sidecar is no report section and
+bring-back.md does not embed it. An installed agentsync older than this redacts neither (the installer runs its
+report); the shell fallback reads both. Tests: `test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset`
+(both readers equal; github.com and astral.sh kept), `test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset`
+(the sidecar's content and mode, the shell report, bring-back.md, the Python redactor),
+`test_both_readers_keep_the_same_public_hosts`.
 
 **A checkout git cannot read takes no commit from a repository around it** (M51). In a home that is itself a git
 repository, a checkout whose `.git` holds only `HEAD` (not a valid gitdir) made git search upward, so `install.sh

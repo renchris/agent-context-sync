@@ -328,6 +328,131 @@ friction_append() {
 	printf '%s' "$1" >>"$f" || return 1
 	if [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ]; then chmod 600 "$f" 2>/dev/null || true; fi
 }
+# The proxy values in the config files git reads, one a line: the files setup_report._git_proxy_urls reads,
+# the global ones and the repository config of two checkouts (checkout_git_configs, a linked worktree too):
+# the one holding this script, which agentsync is installed from, and the one the prompt clones. Read as files: the logged git error names git's proxy, and step 1 may have stopped
+# with no git. An empty "proxy =" (git's off switch) prints nothing.
+git_proxy_values() {
+	local g
+	git_config_files | while IFS= read -r g; do
+		# An unreadable file is skipped: under set -e a failed sed would end the caller's whole list (the
+		# LaunchAgent's proxies after it went unread).
+		[ ! -f "$g" ] ||
+			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g" ||
+			true
+	done 2>/dev/null
+}
+# The config files git reads that the report reads too, one a line (setup_report._git_config_names).
+git_config_files() {
+	printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
+	[ -z "${repo:-}" ] || checkout_git_configs "$repo"
+	checkout_git_configs "$HOME/src/agent-context-sync"
+}
+# The bases of git's URL rewrites ([url "<base>"] with an insteadOf key), one a line, from the same files, as
+# setup_report._git_rewrite_bases reads them (B13 round 7 H20): v15's git stop names a rewrite as a cause, and
+# git's error then names its host. As files, with no git process; pushInsteadOf is left out.
+git_rewrite_bases() {
+	local g
+	git_config_files | while IFS= read -r g; do
+		[ ! -f "$g" ] || LC_ALL=C awk '
+			/^[ \t]*\[/ {
+				base = ""
+				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
+					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+				}
+				next
+			}
+			base != "" && tolower($0) ~ /^[ \t]*insteadof[ \t]*(=|$)/ { print base }
+		' "$g" || true
+	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
+}
+# The repository config files git reads for checkout DIR, one a line, as setup_report._checkout_git_configs
+# reads them: <common dir>/config and <git dir>/config.worktree, where .git is the git dir or a file naming it
+# ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
+# names the common dir (relative to the git dir). No git process: step 1 may have stopped without the tools.
+checkout_git_configs() { # DIR
+	local dirs
+	dirs="$(checkout_git_dirs "$1")"
+	[ -n "$dirs" ] || return 0
+	printf '%s\n' "${dirs#*$'\n'}/config" "${dirs%%$'\n'*}/config.worktree"
+}
+# The git dir and the common dir of checkout DIR, one a line, as setup_report._checkout_git_dirs reads them;
+# nothing when DIR has no .git, or a .git file that does not start "gitdir:". The common dir holds the
+# branches, packed-refs and reflogs of a linked worktree or a --separate-git-dir clone (B13 round 11 M49, M70).
+checkout_git_dirs() { # DIR
+	local dot="$1/.git" gd c=""
+	if [ -d "$dot" ]; then
+		gd="$dot"
+	elif [ -f "$dot" ]; then
+		# trailing white space (a CRLF line) dropped, as Python's strip() drops it
+		gd="$(LC_ALL=C sed -n '1s/^gitdir:[[:space:]]*//p' "$dot" 2>/dev/null | LC_ALL=C sed 's/[[:space:]]*$//')"
+		[ -n "$gd" ] || return 0
+		case "$gd" in /*) ;; *) gd="$1/$gd" ;; esac
+	else
+		return 0
+	fi
+	[ ! -f "$gd/commondir" ] || c="$(LC_ALL=C sed -n '1{s/^[[:space:]]*//;s/[[:space:]]*$//;p;}' "$gd/commondir" 2>/dev/null)"
+	case "$c" in "") c="$gd" ;; /*) ;; *) c="$gd/$c" ;; esac
+	printf '%s\n' "$gd" "$c"
+}
+# The public hosts the installer reaches, which a resolver message may name and which stay readable:
+# setup_report._PUBLIC_HOSTS (a test keeps them equal; scripts/download_hosts.py lists where they come from).
+PUBLIC_HOSTS="github.com api.github.com objects.githubusercontent.com release-assets.githubusercontent.com"
+PUBLIC_HOSTS="$PUBLIC_HOSTS astral.sh pypi.org files.pythonhosted.org"
+# The proxy and rewrite hosts in force when the agent logs a line, kept in the friction log's folder as
+# proxy-hosts (one host a line, lower case, no userinfo or port, 0600), so a report written after the person
+# unset a stale proxy (the git stop asks them to) still redacts the host an earlier line quotes: both readers
+# register them last (B13 round 11 M29). github.com, which every rewrite of this repository names, is left out.
+record_proxy_hosts() {
+	# repo: the checkout holding this script, whose config git_config_files reads too; --log-start and --log
+	# run before the script sets it
+	local f d u h out="" repo
+	repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" || repo=""
+	f="$(friction_file)"
+	d="${f%/*}"
+	[ "$d" != "$f" ] || d="."
+	[ -d "$d" ] && [ ! -L "$d/proxy-hosts" ] || return 0
+	while IFS= read -r u; do
+		h="${u#*://}"
+		h="${h%%[/?#]*}"
+		h="${h##*@}"
+		h="$(printf '%s' "${h%%:*}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		case "$h" in "" | github.com | direct | none | off | *[!a-z0-9._-]*) continue ;; esac
+		case $'\n'"$out" in *$'\n'"$h"$'\n'*) continue ;; esac
+		[ ! -f "$d/proxy-hosts" ] || ! LC_ALL=C grep -qxF -- "$h" "$d/proxy-hosts" 2>/dev/null || continue
+		out+="$h"$'\n'
+	done < <(
+		printf '%s\n' "${HTTPS_PROXY:-}" "${https_proxy:-}" "${ALL_PROXY:-}" "${all_proxy:-}" "${HTTP_PROXY:-}" \
+			"${http_proxy:-}"
+		git_proxy_values
+		git_rewrite_bases
+	)
+	[ -n "$out" ] || return 0
+	(
+		umask 077
+		printf '%s' "$out" >>"$d/proxy-hosts"
+	) 2>/dev/null || return 0
+	if [ -O "$d/proxy-hosts" ]; then chmod 600 "$d/proxy-hosts" 2>/dev/null || true; fi
+}
+# The hosts a resolver message in the friction log names ("Could not resolve proxy: <host>", "Could not resolve
+# host: <host>", "Failed to connect to <host> port <n>"), in log order, lower case, less a trailing dot or
+# hyphen, and none of PUBLIC_HOSTS: a proxy the report's shell no longer has set is still named there (B13 round
+# 11 M29). setup_report._resolver_hosts reads the same.
+friction_proxy_hosts() {
+	local f h w
+	f="$(friction_file)"
+	[ -f "$f" ] || return 0
+	LC_ALL=C grep -oE "Could not resolve (proxy|host): [A-Za-z0-9._-]+|Failed to connect to [A-Za-z0-9._-]+ port [0-9]+" "$f" 2>/dev/null |
+		LC_ALL=C sed -E -e 's/^Could not resolve (proxy|host): //' -e 's/^Failed to connect to //' -e 's/ port [0-9]+$//' \
+			-e 's/[.-]+$//' | while IFS= read -r w; do
+		h="$(printf '%s' "$w" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		case " $PUBLIC_HOSTS " in *" $h "*) continue ;; esac
+		# lower case first, the number's key; then as written, since the shell matches a host byte for byte
+		# where the Python report matches it in any case
+		[ -z "$h" ] || printf '%s\n' "$h"
+		[ "$w" = "$h" ] || printf '%s\n' "$w"
+	done
+}
 # What to tell the person when the pasted copy is newer than this installer (B13 round 5 F17): step 1's
 # git pull --ff-only has just run, so the checkout did not update to the README's version. Either the copy
 # came from another branch or a fork, and copying it again from the README fixes it, or the checkout does not
@@ -518,6 +643,7 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 		;;
 	esac
 	[ "$rc" -ne 1 ] || printf 'error: could not write the friction log %s\n' "$(friction_file)" >&2
+	[ "$op" = --log-end ] || record_proxy_hosts
 	return "$rc"
 }
 # Whether the attempt the setup report judges is one --log-start stopped (a copy of the prompt that is not
@@ -1151,44 +1277,6 @@ generic_proxy_host() {
 	esac
 	return 1
 }
-# The proxy values in the config files git reads, one a line: the files setup_report._git_proxy_urls reads,
-# the global ones and the repository config of two checkouts (checkout_git_configs, a linked worktree too):
-# the one holding this script, which agentsync is installed from, and the one the prompt clones. Read as files: the logged git error names git's proxy, and step 1 may have stopped
-# with no git. An empty "proxy =" (git's off switch) prints nothing.
-git_proxy_values() {
-	local g
-	git_config_files | while IFS= read -r g; do
-		# An unreadable file is skipped: under set -e a failed sed would end the caller's whole list (the
-		# LaunchAgent's proxies after it went unread).
-		[ ! -f "$g" ] ||
-			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g" ||
-			true
-	done 2>/dev/null
-}
-# The config files git reads that the report reads too, one a line (setup_report._git_config_names).
-git_config_files() {
-	printf '%s\n' "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config" /etc/gitconfig
-	[ -z "${repo:-}" ] || checkout_git_configs "$repo"
-	checkout_git_configs "$HOME/src/agent-context-sync"
-}
-# The bases of git's URL rewrites ([url "<base>"] with an insteadOf key), one a line, from the same files, as
-# setup_report._git_rewrite_bases reads them (B13 round 7 H20): v15's git stop names a rewrite as a cause, and
-# git's error then names its host. As files, with no git process; pushInsteadOf is left out.
-git_rewrite_bases() {
-	local g
-	git_config_files | while IFS= read -r g; do
-		[ ! -f "$g" ] || LC_ALL=C awk '
-			/^[ \t]*\[/ {
-				base = ""
-				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
-					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
-				}
-				next
-			}
-			base != "" && tolower($0) ~ /^[ \t]*insteadof[ \t]*(=|$)/ { print base }
-		' "$g" || true
-	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
-}
 # What setup_report._norm keeps of an id or folder name: no blank, "_", "\" or "-", no accent, lower case. The
 # accents go as add_forms drops them: the NFD form (iconv UTF-8-MAC) without its combining marks, U+0300-U+036F,
 # so the id "cafe-plans" is the folder "Café Plans" in either Unicode form (B13 round 7 H76). A value that is
@@ -1740,6 +1828,13 @@ redaction_pairs() {
 			[ "$SIMULATE" -eq 1 ] || for k in HTTPS_PROXY https_proxy ALL_PROXY all_proxy HTTP_PROXY http_proxy; do
 				with_timeout 5 "$LAUNCHCTL" getenv "$k" </dev/null || true
 			done
+			# a host that a resolver message in an earlier friction line names, then the proxy-hosts that the
+			# --log lines of the agent kept: after the LaunchAgent proxies, in the order of the Python report, so no
+			# shared number moves (B13 round 11 M29)
+			friction_proxy_hosts
+			f="$(friction_file)"
+			f="${f%/*}/proxy-hosts"
+			[ ! -f "$f" ] || LC_ALL=C sed -n 's/^\([a-z0-9._-][a-z0-9._-]*\)$/\1/p' "$f"
 			# every other system proxy host (a flag of 0, or below the top level) and PAC URL (a per-interface one,
 			# by host and by value): redacted still, numbered last
 			printf '%s\n' "$sp" | LC_ALL=C sed -n -e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' \
@@ -1747,35 +1842,6 @@ redaction_pairs() {
 pacv=\1/p' || true
 		} 2>/dev/null
 	)
-}
-# The repository config files git reads for checkout DIR, one a line, as setup_report._checkout_git_configs
-# reads them: <common dir>/config and <git dir>/config.worktree, where .git is the git dir or a file naming it
-# ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
-# names the common dir (relative to the git dir). No git process: step 1 may have stopped without the tools.
-checkout_git_configs() { # DIR
-	local dirs
-	dirs="$(checkout_git_dirs "$1")"
-	[ -n "$dirs" ] || return 0
-	printf '%s\n' "${dirs#*$'\n'}/config" "${dirs%%$'\n'*}/config.worktree"
-}
-# The git dir and the common dir of checkout DIR, one a line, as setup_report._checkout_git_dirs reads them;
-# nothing when DIR has no .git, or a .git file that does not start "gitdir:". The common dir holds the
-# branches, packed-refs and reflogs of a linked worktree or a --separate-git-dir clone (B13 round 11 M49, M70).
-checkout_git_dirs() { # DIR
-	local dot="$1/.git" gd c=""
-	if [ -d "$dot" ]; then
-		gd="$dot"
-	elif [ -f "$dot" ]; then
-		# trailing white space (a CRLF line) dropped, as Python's strip() drops it
-		gd="$(LC_ALL=C sed -n '1s/^gitdir:[[:space:]]*//p' "$dot" 2>/dev/null | LC_ALL=C sed 's/[[:space:]]*$//')"
-		[ -n "$gd" ] || return 0
-		case "$gd" in /*) ;; *) gd="$1/$gd" ;; esac
-	else
-		return 0
-	fi
-	[ ! -f "$gd/commondir" ] || c="$(LC_ALL=C sed -n '1{s/^[[:space:]]*//;s/[[:space:]]*$//;p;}' "$gd/commondir" 2>/dev/null)"
-	case "$c" in "") c="$gd" ;; /*) ;; *) c="$gd/$c" ;; esac
-	printf '%s\n' "$gd" "$c"
 }
 repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's own locator
 	local s="${ISSUE_URL#https://github.com/}"

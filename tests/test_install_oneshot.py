@@ -7818,6 +7818,58 @@ def test_an_organisation_is_redacted_inside_a_longer_word(
     assert shell == want and python == want, (shell, python)
 
 
+def test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 11 M29: both readers redacted only the proxies in force when the report ran, so after the
+    person unset a stale proxy (the git stop asks them to) the friction line git's error left printed its
+    host. A host a resolver message names is redacted in both reports, with one number; the public hosts the
+    installer reaches stay readable."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    said = (
+        "fatal: unable to access the repository: Could not resolve proxy: WebGW.nwtrd-lan.invalid; Could not "
+        "resolve host: github.com; Failed to connect to astral.sh port 443; Failed to connect to "
+        "relay.fabrikam-lan.invalid port 3128 after 9 ms"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == python, (shell, python)
+    assert "webgw" not in shell and "fabrikam" not in shell, shell
+    assert "Could not resolve proxy: <proxy-" in shell and "Failed to connect to <proxy-" in shell, shell
+    assert (
+        "Could not resolve host: github.com" in shell and "Failed to connect to astral.sh port 443" in shell
+    )
+
+
+def test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 11 M29: --log-start and --log keep the proxy hosts in force (hosts only, 0600) beside the
+    friction log, and both readers redact them in every later report, also where a line quotes one in its own
+    words."""
+    proxied = {**env, "HTTPS_PROXY": "http://ops:s3cret@egress.northwind-lan.invalid:8080"}
+    assert install_sh(proxied, "--log-start", f"prompt v{COMPAT}, Contoso Agent").returncode == 0
+    said = "the proxy egress.northwind-lan.invalid timed out"
+    assert install_sh(proxied, "--log", "2", "error", said, "-").returncode == 0
+    side = friction_path(env).parent / "proxy-hosts"
+    assert side.read_text() == "egress.northwind-lan.invalid\n" and side.stat().st_mode & 0o777 == 0o600
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "northwind" not in text and "the proxy <proxy-" in text
+    assert "northwind" not in (report_path(env).parent / "bring-back.md").read_text()
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(None, setup_report.ReportHooks(), 12.0))
+    assert "northwind" not in red.redact(said)
+
+
+def test_both_readers_keep_the_same_public_hosts() -> None:
+    """B13 round 11 M29: install.sh's PUBLIC_HOSTS is setup_report._PUBLIC_HOSTS."""
+    words = re.findall(r'^PUBLIC_HOSTS="(?:\$PUBLIC_HOSTS )?([^"]*)"$', INSTALL_SH.read_text(), re.M)
+    assert {h for line in words for h in line.split()} == set(setup_report._PUBLIC_HOSTS)
+
+
 def test_both_readers_hold_the_same_identifiers_whole() -> None:
     """B13 round 11 M50: install.sh's held identifiers are setup_report._HELD_IDENTIFIERS."""
     m = re.search(r'nw = split\("([^"]*)", hw, " "\)', INSTALL_SH.read_text())
