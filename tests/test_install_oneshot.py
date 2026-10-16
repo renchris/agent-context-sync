@@ -8075,27 +8075,35 @@ def test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset(
     )
 
 
+@pytest.mark.parametrize("host", ["egress.northwind-lan.invalid", "Egress.Northwind-LAN.invalid"])
 def test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset(
-    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, host: str
 ) -> None:
     """B13 round 11 M29: --log-start and --log keep the proxy hosts in force (hosts only, 0600) beside the
     friction log, and both readers redact them in every later report, also where a line quotes one in its own
-    words."""
-    proxied = {**env, "HTTPS_PROXY": "http://ops:s3cret@egress.northwind-lan.invalid:8080"}
+    words. B13 round 12 N42: a mixed-case host was kept in lower case only, which the shell, matching byte for
+    byte, did not find in the line's own spelling: it printed in clear. It is kept as written too, and both
+    reports give it one number."""
+    proxied = {**env, "HTTPS_PROXY": f"http://ops:s3cret@{host}:8080"}
     assert install_sh(proxied, "--log-start", f"prompt v{COMPAT}, Contoso Agent").returncode == 0
-    said = "the proxy egress.northwind-lan.invalid timed out"
+    said = f"the proxy {host} timed out"
     assert install_sh(proxied, "--log", "2", "error", said, "-").returncode == 0
     side = friction_path(env).parent / "proxy-hosts"
-    assert side.read_text() == "egress.northwind-lan.invalid\n" and side.stat().st_mode & 0o777 == 0o600
+    want = "".join(dict.fromkeys(["egress.northwind-lan.invalid\n", f"{host}\n"]))
+    assert side.read_text() == want and side.stat().st_mode & 0o777 == 0o600
+    assert install_sh(proxied, "--log", "2", "error", said, "-").returncode == 0
+    assert side.read_text() == want, "a spelling already kept is not kept twice"
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
-    assert "northwind" not in text and "the proxy <proxy-" in text
-    assert "northwind" not in (report_path(env).parent / "bring-back.md").read_text()
+    assert "northwind" not in text.lower() and "the proxy <proxy-" in text
+    assert "northwind" not in (report_path(env).parent / "bring-back.md").read_text().lower()
     for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("HOME", env["HOME"])
     red = setup_report._build_redactor(setup_report._Run(None, setup_report.ReportHooks(), 12.0))
-    assert "northwind" not in red.redact(said)
+    assert "northwind" not in red.redact(said).lower()
+    shown = re.search(r"the proxy (<proxy-\d+>) timed out", text)
+    assert shown is not None and red.redact(said) == f"the proxy {shown[1]} timed out", "one number in both"
 
 
 def test_both_readers_keep_the_same_public_hosts() -> None:

@@ -407,13 +407,16 @@ checkout_git_dirs() { # DIR
 PUBLIC_HOSTS="github.com api.github.com objects.githubusercontent.com release-assets.githubusercontent.com"
 PUBLIC_HOSTS="$PUBLIC_HOSTS astral.sh pypi.org files.pythonhosted.org"
 # The proxy and rewrite hosts in force when the agent logs a line, kept in the friction log's folder as
-# proxy-hosts (one host a line, lower case, no userinfo or port, 0600), so a report written after the person
-# unset a stale proxy (the git stop asks them to) still redacts the host an earlier line quotes: both readers
-# register them last (B13 round 11 M29). github.com, which every rewrite of this repository names, is left out.
+# proxy-hosts (one host a line, no userinfo or port, 0600), so a report written after the person unset a stale
+# proxy (the git stop asks them to) still redacts the host an earlier line quotes: both readers register them
+# last (B13 round 11 M29). Lower case, then as written where that differs (B13 round 12 N42), as
+# friction_proxy_hosts gives them: the shell matches a host byte for byte, so a mixed-case one needs its own
+# spelling, which takes the lower-case key's number; the Python reader keeps the lower-case lines and matches
+# them in any case. github.com, which every rewrite of this repository names, is left out.
 record_proxy_hosts() {
 	# repo: the checkout holding this script, whose config git_config_files reads too; --log-start and --log
 	# run before the script sets it
-	local f d u h out="" repo
+	local f d u h w x out="" repo
 	repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" || repo=""
 	f="$(friction_file)"
 	d="${f%/*}"
@@ -423,11 +426,14 @@ record_proxy_hosts() {
 		h="${u#*://}"
 		h="${h%%[/?#]*}"
 		h="${h##*@}"
-		h="$(printf '%s' "${h%%:*}" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		w="${h%%:*}"
+		h="$(printf '%s' "$w" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
 		case "$h" in "" | github.com | direct | none | off | *[!a-z0-9._-]*) continue ;; esac
-		case $'\n'"$out" in *$'\n'"$h"$'\n'*) continue ;; esac
-		[ ! -f "$d/proxy-hosts" ] || ! LC_ALL=C grep -qxF -- "$h" "$d/proxy-hosts" 2>/dev/null || continue
-		out+="$h"$'\n'
+		for x in "$h" "$w"; do
+			case $'\n'"$out" in *$'\n'"$x"$'\n'*) continue ;; esac
+			[ ! -f "$d/proxy-hosts" ] || ! LC_ALL=C grep -qxF -- "$x" "$d/proxy-hosts" 2>/dev/null || continue
+			out+="$x"$'\n'
+		done
 	done < <(
 		printf '%s\n' "${HTTPS_PROXY:-}" "${https_proxy:-}" "${ALL_PROXY:-}" "${all_proxy:-}" "${HTTP_PROXY:-}" \
 			"${http_proxy:-}"
@@ -1841,7 +1847,7 @@ redaction_pairs() {
 			friction_proxy_hosts
 			f="$(friction_file)"
 			f="${f%/*}/proxy-hosts"
-			[ ! -f "$f" ] || LC_ALL=C sed -n 's/^\([a-z0-9._-][a-z0-9._-]*\)$/\1/p' "$f"
+			[ ! -f "$f" ] || LC_ALL=C sed -n 's/^\([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$f"
 			# every other system proxy host (a flag of 0, or below the top level) and PAC URL (a per-interface one,
 			# by host and by value): redacted still, numbered last
 			printf '%s\n' "$sp" | LC_ALL=C sed -n -e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' \
