@@ -6830,6 +6830,32 @@ def test_helpers_step_prints_progress_lines_while_the_builds_run(
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (the helpers are built only with them)")
+def test_helpers_step_is_skipped_when_the_config_cannot_be_read(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 11 M25: with a sources.toml it could not read, each helper printed ``not built (the config
+    cannot be read)`` and install.log said ``helpers ... done``.  The OCR module exits 78 (EX_CONFIG) then;
+    the media and speech modules read the same config, so they are not run, their lines say why, and the step
+    is skipped, note config-unreadable.  Exit 1, any other helper failure, is still done."""
+    tool_py = Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / "bin" / "python"
+    tool_py.parent.mkdir(parents=True, exist_ok=True)
+    _write_exe(tool_py, STUB_TOOL_PYTHON)
+    unread = "OCR helper: not built (the config cannot be read)"
+    cp = install_sh(
+        {**env, "STUB_OCR_OUT": unread, "STUB_OCR_RC": "78"}, str(wheel), "--source-local", str(folder)
+    )
+    assert _helpers_row(steps(install_log(env))) == ("helpers", "skipped", "0", "config-unreadable")
+    out = cp.stdout.splitlines()
+    at = out.index(unread)
+    assert out[at + 1 : at + 3] == [
+        "media helper: not built (the config cannot be read)",
+        "speech: not built (the config cannot be read)",
+    ], cp.stdout
+    ran = [c for c in calls(env) if c.startswith("python -I -m agentsync.convert.")]
+    assert [c.split(" config=")[0] for c in ran] == ["python -I -m agentsync.convert.ocr"], ran
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (the helpers are built only with them)")
 def test_a_run_stopped_during_the_helper_builds_lets_the_build_end_first(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:

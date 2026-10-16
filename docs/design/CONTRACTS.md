@@ -6680,6 +6680,9 @@ stopped by a signal to its own process lets the build under way finish before it
 NEXT line names never meets a second build in the same SwiftPM tree (**amended 2026-10-11, B13 (§16.41):** a stop
 of the whole process group, even SIGKILL, stops the build tool and its compilers within seconds, so that re-run
 does not meet one either).
+Amended 2026-10-15, §16.96 M25: a config the modules cannot read is `result=skipped note=config-unreadable`, not
+`done`: the OCR module exits 78 (EX_CONFIG) then, and the media and speech modules are not run, their lines saying
+`not built (the config cannot be read)`.
 
 **Test switch.** `AGENTSYNC_OCR=0` is set for every test by `tests/conftest.py` and in the hand-built
 environments that start a real agentsync (`tests/test_install_next_line.py`, `tests/test_launcher.py`,
@@ -10811,6 +10814,7 @@ still holds no path, and the live `agentsync status` wait keeps the full path.
   stops the run during it, so the exit status is unchanged, and `launcher` times the launcher alone. The speech
   helper's first build took about 100 s in the rehearsal, logged on a `launcher` line that said `skipped
   note=not-requested`. The report reads step names generically, so an older log parses as before.
+  Amended 2026-10-15, §16.96 M25: `skipped note=config-unreadable` when the config cannot be read.
 - **The helper builds print a progress line.** A ticker beside each build prints `helpers: building the
   <OCR|media|speech> helper, still running, <N>s` every `PROGRESS_EVERY` seconds; it is killed after that
   build and in `on_exit` (see the last part of this section). The builds stay in the foreground, so a signal
@@ -18592,7 +18596,21 @@ Reserved for round 11 lane B of B13.
 
 ### 16.96 Round 11: recordings, speech, OCR and stubs (2026-10-15, wave B13 round 11 lane E)
 
-Reserved for round 11 lane E of B13.
+Lane E's round 11 items (`docs/plans/bring-back-ocr.md`, "B13 round 11"; specs `round11/items/M<n>.md`, the
+verifier's corrected fix built): M25, M62, M64, M65, M66, M67, M68 and M85. M64, M65, M67 and M85 are the
+recording index's one defect from four finders, built in one commit: M64 and M65 as one change of text and tests,
+M67 and M85 as one test.
+
+**The helpers step is skipped when the config cannot be read (M25; `agentsync.convert.ocr`, `scripts/install.sh`).**
+Each helper module printed `not built (the config cannot be read)` and exited 1, and `build_helper` threw the code
+away (`|| true`), so install.log said `step=helpers rc=0 result=done` for builds never tried. `ocr._entry` exits 78
+(EX_CONFIG) for an unreadable config; `build_helper` keeps the code, and on 78 from the OCR module the media and
+speech modules, which read the same config, are not run: their lines say `not built (the config cannot be read)`
+and the step ends `skipped 0 config-unreadable`, so the report's cell reads `skipped (config-unreadable)`. Any other
+code is `done`, as before; an installed build older than this exits 1 there, which is `done`, as before. Dated lines
+at §16.25's and §16.37's helpers text. Tests:
+`test_install_oneshot.py::test_helpers_step_is_skipped_when_the_config_cannot_be_read`,
+`test_ocr.py::test_the_module_entry_point_builds_under_the_configured_cache_dir`.
 
 ### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
 

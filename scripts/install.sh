@@ -123,8 +123,10 @@
 #      rebuilt, because an ad-hoc rebuild is a new TCC identity and macOS would ask again (the developer
 #      variable AGENTSYNC_REBUILD_LAUNCHER=1 rebuilds it anyway)
 #      Then, with or without that option, a step of its own, logged `helpers` (done when the modules ran;
-#      skipped, note no-devtools, without developer tools). When developer tools exist: the on-device OCR
-#      helper (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever compiles it).
+#      skipped, note no-devtools, without developer tools; skipped, note config-unreadable, when the config
+#      cannot be read: the media and speech lines then say so, unrun). When developer tools exist: the
+#      on-device OCR helper (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever
+#      compiles it).
 #      It prints one "OCR helper: ..." line; [convert] ocr = false builds nothing, and a helper that does not
 #      build is that line, never a failed run. Without developer tools nothing is tried, and the line says so.
 #      The media helper that reads recordings follows the same way (python -I -m agentsync.convert.media, one
@@ -3917,19 +3919,28 @@ if have_devtools; then
 	elif [ -x "$TOOL_PY" ]; then
 		# One build with a ticker naming its helper, killed before the helper's line, so the ticks between
 		# the media line and the speech line say they were the speech helper's build.
+		# Exit 78 (EX_CONFIG) is a config the module cannot read: the three read the same one, so the other
+		# two are not run, their lines say why, and the step is skipped, not done (B13 round 11 M25). An
+		# installed build older than that exits 1 there, which is done, as before.
 		build_helper() { # MODULE WHAT FALLBACK
-			local line
+			local line rc
 			ticker "helpers: building the $2" &
 			TICKER=$!
-			line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m "agentsync.convert.$1" </dev/null 2>/dev/null | head -n 1)" || true
+			line="$(AGENTSYNC_CONFIG="$CONFIG" "$TOOL_PY" -I -m "agentsync.convert.$1" </dev/null 2>/dev/null | head -n 1)" && rc=0 || rc=$?
 			kill "$TICKER" 2>/dev/null || true
 			TICKER=""
 			say "${line:-$3}"
+			return "$rc"
 		}
-		build_helper ocr "OCR helper" "OCR helper: not built (the build did not run)"
-		build_helper media "media helper" "media helper: not built (the build did not run)"
-		build_helper speech "speech helper" "speech: not built (the build did not run)"
-		step_end "done"
+		if build_helper ocr "OCR helper" "OCR helper: not built (the build did not run)" || [ $? -ne 78 ]; then
+			build_helper media "media helper" "media helper: not built (the build did not run)" || true
+			build_helper speech "speech helper" "speech: not built (the build did not run)" || true
+			step_end "done"
+		else
+			say "media helper: not built (the config cannot be read)"
+			say "speech: not built (the config cannot be read)"
+			step_end skipped 0 config-unreadable
+		fi
 	else
 		step_end skipped 0 no-interpreter
 	fi

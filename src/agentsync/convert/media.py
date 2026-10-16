@@ -430,7 +430,8 @@ def build(cache_dir: Path) -> Path:
 
 def _main() -> int:
     """``python -m agentsync.convert.media``: what scripts/install.sh runs to build the helper.  Prints one
-    ``media helper: ...`` line; exit 0 when ready or switched off, 1 when it is not built."""
+    ``media helper: ...`` line; exit 0 when ready or switched off, 1 when it is not built, 78 when the config
+    cannot be read."""
     return ocr._entry(MEDIA, _switched_off, build, probe)
 
 

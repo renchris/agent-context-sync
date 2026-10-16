@@ -776,6 +776,9 @@ def build(cache_dir: Path) -> Path:
     return _build(cache_dir, _OCR, _open)
 
 
+_CONFIG_UNREADABLE = 78  # EX_CONFIG, as cli.EXIT_CONFIG: a helper's module when the config cannot be read
+
+
 def _entry(
     kind: Helper,
     switched_off: Callable[[ConvertConfig], str],
@@ -786,8 +789,9 @@ def _entry(
 ) -> int:
     """What ``python -m`` of a helper's module runs: read the config, build unless switched off, and print
     one ``<label>: <state> (<detail>)`` line (``label`` defaults to ``kind.name``).  Exit 0 when ready or
-    off, 1 when not built.  Switched off, it builds nothing and still tidies the folder an earlier build
-    left."""
+    off, 1 when not built, 78 (EX_CONFIG) when the config cannot be read: scripts/install.sh then logs its
+    ``helpers`` step skipped, note config-unreadable (B13 round 11 M25).  Switched off, it builds nothing and
+    still tidies the folder an earlier build left."""
     os.umask(0o077)
     label = label or kind.name
     cfg, cache_dir = ConvertConfig(), default_cache_dir()
@@ -797,7 +801,7 @@ def _entry(
             cfg, cache_dir = config.convert, config.cache_dir
     except (ConfigError, OSError):
         sys.stdout.write(f"{label}: not built (the config cannot be read)\n")
-        return 1
+        return _CONFIG_UNREADABLE
     off = switched_off(cfg)
     if off:
         with contextlib.suppress(OSError):  # the packaged source, which names the helper, cannot be read
@@ -816,8 +820,9 @@ def _entry(
 
 def _main() -> int:
     """``python -m agentsync.convert.ocr``: what scripts/install.sh runs to build the helper.  It is not an
-    agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built.
-    Switched off, it builds nothing and still tidies the folder an earlier build left."""
+    agentsync command.  Prints one line; exit 0 when OCR is ready or switched off, 1 when it is not built, 78
+    when the config cannot be read.  Switched off, it builds nothing and still tidies the folder an earlier
+    build left."""
     return _entry(_OCR, _switched_off, build, probe)
 
 
