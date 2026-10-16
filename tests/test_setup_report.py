@@ -3990,7 +3990,10 @@ def test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_
         f"{head}: the install run of 2026-09-29T10:00:00Z, before this attempt; {later}"
     )
     # an install.sh that printed its sync under this attempt's own header and logged no first-sync step
-    assert first_sync(early + late + sync) == f"{head}; {later}"
+    assert first_sync(early + late + sync) == (
+        "- first sync: no install run of this attempt logged a first-sync step (install.log) · converted 7, "
+        f"deferred 3 online-only (install.out; {later}"
+    )
     # an install.out with no header (an older install.sh) cannot say whose the line is
     assert first_sync(sync) == f"{head}: which run printed it is not recorded; {later}"
     # an attempt that ran only step 1's list never reaches a first-sync step
@@ -10295,10 +10298,18 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
             "branch(es) in the checkout"
         )
 
+    shutil.rmtree(patches)
+    repo(home / "sep.git")
+    (home / "src" / "agent-context-sync").mkdir(parents=True, exist_ok=True)
+    dot.write_text(f"gitdir: {home / 'sep.git'}\r\n", encoding="utf-8")  # a CRLF line, and no local-work
+    neutral = "- local-work branch(es) in the checkout: 1, no patch file in the setup folder's local-work "
+    neutral += "(a keep with nothing to keep writes none)"
+    assert both() == neutral
+    patches.mkdir()
     patch = patches / f"0001-keep.{branch}.patch"
     patch.write_text("Subject: [PATCH] keep\n", encoding="utf-8")
     os.utime(patch, (1791950084, 1791950084))
-    shutil.rmtree(dot, ignore_errors=True)
+    dot.unlink()
     assert both() == kept(1, 0), "no checkout at all: the patch is still counted"
     dot.parent.mkdir(parents=True, exist_ok=True)
     dot.write_text("not a gitdir line\n", encoding="utf-8")
@@ -10332,5 +10343,9 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
     repo(common, branch_at="d", main="e", reflog=published)
     assert both() is None, "the branch sits at a commit origin/main once had"
     repo(common, branch_at="f", main="e", reflog=published)
-    neutral = "- local-work branch(es) in the checkout: 1, no patch file in the setup folder's local-work "
-    assert both() == neutral + "(a keep with nothing to keep writes none)", "a commit origin/main never had"
+    assert both() == neutral, "a commit origin/main never had"
+    # a reflog line that is not UTF-8 (a Latin-1 committer name) is read all the same, by both readers
+    latin = published.replace("x <x@", "Jos\xe9 <x@").encode("latin-1")
+    (common / "logs" / "refs" / "remotes" / "origin" / "main").write_bytes(latin)
+    repo(common, branch_at="d", main="e")
+    assert both() is None

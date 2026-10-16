@@ -7233,6 +7233,9 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     elif scoped and not install_runs_only(runs):
         # a list-only attempt never reaches a first-sync step (B13 round 11 M22)
         parts.append("this attempt ran only install.sh --list-folders, no first sync (install.log)")
+    elif scoped and r.facts.first_sync_run in {run.run_id for run in runs}:
+        # an install.sh that printed its sync under this attempt's header and logged no step: counts follow
+        parts.append("no install run of this attempt logged a first-sync step (install.log)")
     elif scoped:
         # install.log can hold an earlier run's first sync: name whose run stopped (B13 round 11 M6, M22, M38)
         failing = install_runs_only(runs)[-1].failed_step()
@@ -7259,14 +7262,12 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         # before the sync left an earlier run's line there, which read as theirs (B13 round 11 M6, M22, M38).
         ids = {run.run_id for run in runs}
         printed_by = next((run for run in r.install_runs if run.run_id == r.facts.first_sync_run), None)
-        if r.facts.first_sync_run in ids:
-            pass
-        elif not scoped:
-            own_line = r.facts.first_sync_run == ""  # a headerless install.out, as before
+        if r.facts.first_sync_run in ids or not scoped:
+            pass  # unscoped, the whole log's runs: as before
         elif r.facts.first_sync_run:
             out_source = (
                 f"install.out: the install run of {_iso(printed_by.started)}, before this attempt"
-                if printed_by is not None
+                if printed_by is not None and printed_by.started is not None
                 else "install.out: an earlier run's, before this attempt"
             )
         else:
@@ -8195,9 +8196,8 @@ def _published_shas(git: Path) -> set[str]:
     when there is no reflog (disabled or expired): the count then errs toward counting (B13 round 11 M71)."""
     shas: set[str] = set()
     with contextlib.suppress(OSError, UnicodeDecodeError):
-        for line in (
-            (git / "logs" / "refs" / "remotes" / "origin" / "main").read_text(encoding="utf-8").splitlines()
-        ):
+        reflog = git / "logs" / "refs" / "remotes" / "origin" / "main"
+        for line in reflog.read_text(encoding="utf-8", errors="surrogateescape").splitlines():
             shas.update(w for w in line.split()[:2] if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", w))
     return {sha for sha in shas if sha.strip("0")}
 

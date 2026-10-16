@@ -1723,13 +1723,14 @@ checkout_git_dirs() { # DIR
 	if [ -d "$dot" ]; then
 		gd="$dot"
 	elif [ -f "$dot" ]; then
-		gd="$(LC_ALL=C sed -n '1s/^gitdir:[[:space:]]*//p' "$dot" 2>/dev/null)"
+		# trailing white space (a CRLF line) dropped, as Python's strip() drops it
+		gd="$(LC_ALL=C sed -n '1s/^gitdir:[[:space:]]*//p' "$dot" 2>/dev/null | LC_ALL=C sed 's/[[:space:]]*$//')"
 		[ -n "$gd" ] || return 0
 		case "$gd" in /*) ;; *) gd="$1/$gd" ;; esac
 	else
 		return 0
 	fi
-	[ ! -f "$gd/commondir" ] || c="$(LC_ALL=C sed -n '1p' "$gd/commondir" 2>/dev/null)"
+	[ ! -f "$gd/commondir" ] || c="$(LC_ALL=C sed -n '1{s/^[[:space:]]*//;s/[[:space:]]*$//;p;}' "$gd/commondir" 2>/dev/null)"
 	case "$c" in "") c="$gd" ;; /*) ;; *) c="$gd/$c" ;; esac
 	printf '%s\n' "$gd" "$c"
 }
@@ -2245,7 +2246,7 @@ LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the p
 # whatever the checkout is. With branches but no patch the line does not say kept.
 fallback_local_work_line() {
 	local git b=0 p n=0 at newest="" f s main origin patches published=" "
-	patches="$(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null)"
+	patches="$(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null || true)"
 	while IFS= read -r p; do
 		[ -n "$p" ] || continue
 		n=$((n + 1))

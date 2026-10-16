@@ -17471,6 +17471,10 @@ Amended 2026-10-14, §16.86 L8, L25, L40, L58: the line reads by the patch count
 main's or origin/main's own commit is not counted, and branches with no patch get a line without "kept". Branches
 are still counted because they outlive a patch folder the person moved or deleted and v15 to v17 keeps wrote
 patches without a branch name; the overwrite reason ended with §16.82 K28's `--suffix`.
+Amended 2026-10-16, §16.92 M49 (M70 the same defect), M54, M71: the line is left out only when there is no patch and
+no counted branch, a missing or `.git`-file checkout included (the branches are read from its common dir); a branch
+at main's or origin/main's own commit counts when a patch is named for it, and one at any commit origin/main's reflog
+names does not.
 
 **A CloudStorage listing that finishes late is used** (K76, J69's step 5). A listing past `_LISTING_S` (3 s) was
 thrown away, so with no list of step 1 in install.out the report was private only. The listing now also hands its
@@ -18685,8 +18689,9 @@ attempt's own `# run=` headers (an install.sh that printed a sync and logged no 
 its counts as `(install.out: the install run of <start>, before this attempt; ...)`, and a headerless install.out's
 as `(install.out: which run printed it is not recorded; ...)`. The head reads `no install run of this attempt reached
 its first sync (install.log: the last stopped at its <step> step)`, or for a list-only attempt `this attempt ran only
-install.sh --list-folders, no first sync (install.log)`. The unscoped line keeps install.out's counts under one of
-install.log's runs or in a headerless file, as before. Test:
+install.sh --list-folders, no first sync (install.log)`; when the counts sit under the attempt's own header, `no
+install run of this attempt logged a first-sync step (install.log)`. The unscoped line, over the whole log's runs,
+is as before. Test:
 `test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_counts_as_its_own`.
 
 **The outcome names whose each exit code is, with one bracket** (M24, M41; dated line at §16.40 H14). `(computed:
@@ -18734,7 +18739,7 @@ the Summary have since L34. Tests: `test_the_first_sync_steps_note_is_in_words_i
 `test_first_sync_clause_carries_the_read_again_count`, `test_the_ocr_part_calls_a_first_read_a_first_read`.
 
 **The local-work line in a checkout whose `.git` is a file, and which branches are empty** (M49, M70, M54, M71;
-dated line at §16.86 L58). v19 pulls a checkout whose `.git` is a file and keeps work there, but both readers
+dated lines at §16.86 L58 and §16.80 K30). v19 pulls a checkout whose `.git` is a file and keeps work there, but both readers
 returned when `.git` was no folder, so the public report said nothing while bring-back.md section 3 sent the patch.
 `_local_work_line` and `fallback_local_work_line` count the patches first, whatever the checkout is, and read the
 branches from its common dir (`_checkout_git_dirs`, `checkout_git_dirs`, which the git-config readers now share).
