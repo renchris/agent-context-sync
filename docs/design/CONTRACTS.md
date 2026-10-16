@@ -8568,6 +8568,9 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   `not-signed-in synced=N`, the `[synced]` lines, and `NEXT: OneDrive is not signed in on this Mac, so it is missing
   M of the folders this Mac already syncs: sign in to OneDrive (or let it finish setting up), then re-run:
   install.sh --list-folders; the folders marked [synced] are kept`. The `~/Documents/notes` Mac keeps exit 0.
+  Amended 2026-10-16, §16.99 N41, N61: only a missing folder whose app is signed out (its provider folder gone
+  with no other folder of that app, or there and showing nothing) takes that exit, and its `NEXT:` names that app;
+  one gone from a signed-in provider keeps exit 0 and is named in the `NEXT:`.
 - **Who reads the config.** The installed agentsync does, through its own interpreter
   (`<uv tool dir>/agentsync/bin/python -I`, the path step 2 names `TOOL_PY`; `tool_python`): `load_config`,
   then `canonical_source_root` on each listed path, compared with each source's `path` (`synced_folders`).
@@ -14337,6 +14340,8 @@ item amends an older section, a dated line sits at that section too.
   Amended 2026-10-13, §16.65 G14: an earlier run's `NEXT:` line is no longer dropped (see §16.65).
   Amended 2026-10-13, §16.65 G16, G17: it also edits the install.out embed's summary line: `, K of them left
   out` where lines of the embed were dropped, and F20's label where an agentsync older than F20 rendered it.
+  Amended 2026-10-16, §16.99 N22: the count now ends the renderer's bracket, `; K of them left out: the
+  bring-back and issue link lines)`.
   Amended 2026-10-13, §16.70 H24: the shell fallback's link is filled in one case (a step 1 failure that
   states its prompt and agent); it still starts with `ISSUE_URL`, so the drop is unchanged.
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
@@ -15719,6 +15724,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   strays, or a hand-run `--report-only`. Tests: `test_a_stopped_copys_embed_counts_the_lines_it_leaves_out`,
   `test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it_quotes` (the agentsync stub
   copies `STUB_REPORT_FILE`), and `test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
+  Amended 2026-10-16, §16.99 N22: the count now ends the renderer's bracket (`(...; 2 of them left out: the
+  bring-back and issue link lines)`), not before it.
 - **A stopped copy's note and NEXT read in order** (G9, G19, one defect). The first line reads `> This report
   is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or
   bring it back.` and the NEXT starts the same way (the subject, verb and object were split by a relative
@@ -18962,6 +18969,9 @@ the sentence after `status prints why.` reads `The installed agentsync is alread
 or added until the person fixes the config`; otherwise it is L11's. The clause's opening words, which the prompt's
 step 1 exception reads, are unchanged. Test: `test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load`
 (this checkout's stamp, an older commit's, a changed tree; step 2's own `agentsync` step agrees each time).
+Amended 2026-10-16, §16.99 N29: in that case the `NEXT:` no longer opens with `choose the folders`: it reads
+`no folder can be added until the config is fixed: run <install.sh> with no --source-local, which shows the error`
+before the same clause.
 
 **Step 1 asks for the sign-in when synced folders are missing** (M4, the round's turn; amends §16.29's "A set-up
 Mac with nothing to list"). On a Mac that syncs two OneDrive folders, with OneDrive signed out, step 1 printed the
@@ -18981,6 +18991,9 @@ prints.") is lane P's (§16.94). Test:
 provider folder, a notes folder beside them; signed in again, exit 0).
 Amended 2026-10-16, §16.103 N64: the prompt half above quotes v20's words; it paraphrased them as "unless its NEXT
 asks me to sign in", which reads the condition backwards.
+Amended 2026-10-16, §16.99 N41, N61: "keys on missing folders" was too wide. A missing folder counts only when its
+app is signed out, decided by its provider folder as doctor decides it; the `NEXT:` names that app, not always
+OneDrive. A folder renamed or deleted in a signed-in provider keeps exit 0 (note `gone=N`), and the `NEXT:` names it.
 
 **The reinstall's wait line names who started the sync, when the sidecar says** (M43 and M60, one defect; amends
 §16.68 H33). Since round 10 L73 the lock's holder sidecar (`<lock>.json`) records `started_by` (`launchd` or `other`)
@@ -19012,6 +19025,8 @@ its `v`; `7 or older` stays words, which no note reads) and agent with a third f
 one, and leaves out ` · agent:` when the header has none. `OUTCOME_LINE_HEAD` is unchanged, so the link still reads
 the line. A stopped attempt with a late line of another step stays uncomputed. Test:
 `test_the_shell_report_computes_a_stopped_copys_failure` (v3, v99, no version, a late step 3 line).
+Amended 2026-10-16, §16.99 N44: the note is now read from the stop line as `_prompt_copy_note` reads it, for
+`7 or older` and a newer copy too, so the shell's clause is the agentsync report's word for word.
 
 **The uncomputed outcome names step lines only where there are some** (M15; amends §16.87 L2). With a friction log
 of a header and an end line only, the line still said `the Outcome is yours to choose from the friction log's step
@@ -19040,6 +19055,8 @@ item at 115 columns with two-space continuation lines. `fallback_redaction` read
 before it writes the first legend line, and runs `redaction_pairs` once, as before. Test:
 `test_the_folder_legend_explains_only_the_names_the_report_shows` (the plain state, a friction line quoting
 `Copilot under Documents`, a configured `Documents`), and the `$'..'` folder case of the legend test.
+Amended 2026-10-16, §16.99 N45, N16: the list-only clause names only the kind of name the body shows (a name
+every drive has, coding-agent words, or both), and the `<org-N>` item is built from clauses the same way.
 
 **An organisation is redacted inside a longer word** (M50; amends §16.87 L66). L66 made the shell match an
 organisation as the Python report's fuzzy mode does, a whole word, so both reports printed it in `ContosoGroup`,
@@ -19080,6 +19097,9 @@ report); the shell fallback reads both. Tests: `test_a_proxy_host_an_earlier_lin
 (both readers equal; github.com and astral.sh kept), `test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset`
 (the sidecar's content and mode, the shell report, bring-back.md, the Python redactor),
 `test_both_readers_keep_the_same_public_hosts`.
+Amended 2026-10-16, §16.99 N42: `proxy-hosts` holds each host in lower case and then, where it differs, as
+written, since the shell matches byte for byte; the shell reader takes both, under one number. §16.99 N69: the
+deploy docs list the file.
 
 **A checkout git cannot read takes no commit from a repository around it** (M51). In a home that is itself a git
 repository, a checkout whose `.git` holds only `HEAD` (not a valid gitdir) made git search upward, so `install.sh
@@ -19092,6 +19112,8 @@ git still reads the checkout itself, so a healthy checkout and a linked worktree
 an unreadable `.git` falls to the existing words (`unknown`, `git cannot read its .git`). Tests:
 `test_a_checkout_git_cannot_read_takes_no_commit_from_a_repository_around_it` (`--version`, the shell report, a
 linked worktree), `test_the_install_source_reads_no_commit_from_a_repository_around_the_checkout`.
+Amended 2026-10-16, §16.99 N75: `--version` gives the reason too (`unknown (git cannot read ~/.../.git)`), from
+the same helper as the shell report.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 
@@ -19197,6 +19219,8 @@ claim about the folders it held, which nobody can check. Not on "step 2 stopped 
 that step also stops on an add-source refusal ("no such folder", "must not contain each other") with a config that
 loads (the lane's review, from install.sh's config step and cli.py's add-source). `- loads: no: <error>` is
 `setup_report`'s line. Test: `test_readme_step3_runs_the_loop_then_the_report`.
+Amended 2026-10-16, §16.99 N25: the shell report's Configuration section says `- loads: not checked (<reason>)`,
+which the v21 finish reads as "unknown: ... was not checked".
 
 **bring-back.md's patches** (M35). The finish said the file holds "the patches of any work step 1 kept", false on a
 re-run after an earlier report, whose section 3 holds only "not repeated:" lines. It now adds "a patch an earlier
@@ -19340,6 +19364,9 @@ belongs to, or fix path ...`; the provider folder there, `fix path ..., or sync 
 Amended 2026-10-16, §16.101 N53, N56: a `OneDrive-SharedLibraries-<org>` folder missing beside `OneDrive-<org>`
 says to sync the library with Sync on its SharePoint page, or fix the path; the sign-in ends `then run
 ~/.local/bin/agentsync status again`.
+Amended 2026-10-16, §16.99 N61: a provider folder there but showing nothing (hidden entries only) is stale, so
+the fix is `sign in to <app> on this Mac or let it finish setting up, since <provider folder> is empty, then
+run ~/.local/bin/agentsync status again`, the rule install.sh's list keys its sign-in exit on.
 
 **M11: one first-read stub is singular (`agentsync.cli`, `agentsync.setup_report`; amends §16.89 L34).** `first
 read 1 (a stub whose bytes had never been read, so also counted as converted)` and the report's `first read 1: a
@@ -19503,7 +19530,118 @@ Reserved for round 12 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.99 Round 12: installer, the sign-in exit and the shell report (2026-10-16, wave B13 round 12 lane RB)
 
-Reserved for round 12 lane RB of B13.
+The installer's findings of the v20 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 12"). Each item has a test that fails without it. Where an item changes what an older section states,
+that section has a dated line (`Amended 2026-10-16, §16.99 N<n>`) and its text is otherwise as it was. The prompt
+words of N25, N29, N41/N61 and N71 are lane P's (§16.100, v21).
+
+**The sign-in exit fires only when the folder's app is signed out** (N41, N61, one defect, the round's turn; amends
+§16.93 M4 and §16.95 M10; dated line at §16.29's "A set-up Mac with nothing to list"). M4 counted every synced
+folder under `~/Library/CloudStorage` that was not on disk as a signed-out OneDrive, so a folder renamed or deleted
+in a signed-in OneDrive, or a missing Dropbox folder, gave exit 3 and `sign in to OneDrive`, and every re-run of the
+list stopped the same way, with no report. `list_folders` now decides each such folder by its provider folder
+(`signed_out`), as doctor does: gone with no other folder of that app (the name before its first `-`) beside it, or
+there and showing nothing (hidden entries do not count: a stale one), is a signed-out app and keeps exit 3, note
+`not-signed-in synced=N`, with `NEXT: <app> is not signed in on this Mac, so it is missing M of the folders this Mac
+already syncs: sign in to <app> (or let it finish setting up), then re-run: ...` (`provider_label`; several apps
+are listed in the list's order, `... are not signed in on this Mac, so this Mac is missing ...`). A symlinked
+provider folder, dangling or not, is there, and one this account cannot read counts as signed in, as doctor's
+`lexists` and `iterdir` read them. Any other missing folder keeps exit 0 and the usual `this Mac already syncs ...
+a re-run keeps them` `NEXT:` (note `... gone=N`), which adds, for a provider folder that lists other folders, `; 1
+of them is no longer on disk although its app is signed in (renamed, moved or deleted there): <path>. Step 2's
+status fails on it and names the fix, and nothing syncs until the folder is back under that name or its [[source]]
+path in <config> is fixed`, and for a provider folder gone while another folder of the app is there (another
+account), `; 1 of them is not on disk because its provider folder is missing while another folder of that app is
+there: <path>. Step 2's status fails on it and names the fix (sign in to that app with the account it belongs to,
+or fix its [[source]] path in <config>), and nothing syncs until then`, doctor's two fixes. While a provider is
+denied or still asking, no provider folder is read (exit 4 comes first, and a read could wait on the same prompt
+past the list's cap). Not N41's exit 3 with a wait (N61's verifier):
+step 2 runs, its doctor names the folder and its fix, and the report is written, as before M4; an exit 3 would
+need a new prompt wait and still loop until the person edits the config. Not "provider folder absent" alone
+(N61's finder): that drops M4's stale empty provider folder back to exit 0. doctor's `_missing_source_fix` takes
+the same empty-folder rule, so the list and doctor agree. Tests:
+`test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing` (adds a provider folder with hidden
+entries only), `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2` (renamed in a signed-in
+provider; a symlinked provider folder; another account's folder of the app; a re-run is the same exit 0),
+`test_list_folders_names_the_app_whose_folder_is_signed_out` (Dropbox, Google Drive, Box),
+`test_list_folders_names_every_app_whose_folder_is_signed_out`, `test_signed_out_reads_a_provider_folder_as_doctor_does`
+(gone, beside another account's, empty, hidden entries only, a folder, a dangling symlink inside or as the folder,
+unreadable), `test_ops_doctor.py::test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cause`.
+
+**Step 1 asks for no folder that step 2 cannot add** (N29; amends §16.93 M37). With the installed build this
+checkout's and failing on the config, step 2 does not reinstall it and every `--source-local` fails at add-source,
+yet the `NEXT:` opened `choose the folders ...`. Then (and only then) it opens `no folder can be added until the
+config is fixed: run <install.sh> with no --source-local, which shows the error`, followed by M37's clause byte for
+byte (the prompt's second exception reads its opening words). An older stamp or a changed tree keeps `choose the
+folders`: there step 2 reinstalls first and may load the config. The prompt keys its skip on "does not reinstall it",
+which the older-stamp clause does not hold. Test: `test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load`.
+
+**The header states the narrowed exit 3** (N46). `install.sh --help` (the header comment) and `list_folders`'s
+comment said a set-up Mac with nothing to list exits 0, and "3 none"; they now name the exit 3 for a synced folder
+whose app is signed out, listed or not, and the exit 0 for one gone from a signed-in provider. Comments only.
+
+**A stopped copy's left-out count sits inside its bracket** (N22; amends §16.65 G16). The count was spliced in
+before the renderer's last ` (`, so `(what the agent saw)` read as why lines were left out. It now ends the bracket:
+`the last 60 line(s) of ~/agent-context/setup/install.out (what the agent saw; 2 of them left out: the bring-back
+and issue link lines)`, with no singular "an earlier run's", since K can span runs. The marker line is unchanged.
+Tests: `test_a_stopped_copys_embed_counts_the_lines_it_leaves_out` (two earlier runs, K=4),
+`test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
+
+**The shell legend's items explain only what the body shows** (N16, N45; amends §16.93 M3). The `<org-N>` item
+always named `Dropbox-<org-N>` and an email address and never the organization cut out of a longer word (M50's
+`<org-1>Drive`). It now gives up to two app prefixes the body shows before an `<org-N>` (else `OneDrive-<org-N>`),
+`, and an account's email address` only where an `<org-*>` pair whose value holds `@` has its placeholder in the
+body, and `, also where it stands inside a longer word (such as <org-1>Drive)` only where a letter or digit touches
+an `<org-N>`; `say_item` wraps it. The `<folder-N>` item's list-only clause had one flag for two kinds: it named
+Copilot for a quoted Documents and Documents for a quoted Copilot. Two flags now (a name every drive has, checked
+first as `folder_parts` does, else coding-agent words), and the clause names only the kinds set, after the
+whole-word clause too. With no body every clause is printed. Tests:
+`test_the_org_legend_explains_only_what_the_report_shows`, `test_the_shell_report_never_redacts_inside_a_placeholder`,
+`test_the_folder_legend_explains_only_the_names_the_report_shows` (three new states).
+
+**The shell report says it did not check whether the config loads** (N25; amends §16.94 M28). The fallback printed
+`- [[source]] tables: N` and no loads line, so a broken last table went uncounted silently and the finish, keyed on
+`loads: no`, had the agent parse a file agentsync rejects. It prints `- loads: not checked (<the report's reason>)`
+and `- [[source]] table headers (not parsed): N`. No TOML check: a syntax-only one reads yes for a schema error, and
+`/usr/bin/python3` 3.9 has no tomllib. Test: `test_the_shell_report_says_it_did_not_check_whether_the_config_loads`
+(agentsync not installed; setup-report failed).
+
+**A mixed-case proxy host stays redacted after it is unset** (N42; amends §16.93 M29). `record_proxy_hosts` kept the
+lower-case host only, and the shell matches a plain pair byte for byte, so `Egress.Northwind-LAN.invalid` in a
+friction line printed in clear once the proxy was unset. It keeps the lower-case key, then the spelling as written
+where it differs, each once; the shell reader takes `[A-Za-z0-9._-]` lines, and the as-written spelling shares the
+key's number. The Python reader is unchanged (lower-case lines, matched in any case). A third spelling not seen when a
+line was logged still leaks in the shell. Test: `test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset`
+(mixed case: the file, both reports, one number).
+
+**The shell's stopped-copy prompt clause is the agentsync report's** (N44; amends §16.93 M14). `7 or older` had no
+note and a newer copy H23's build note. `friction_step1_stated`'s header field is now `header:<version>:<old|new>:
+<fork|remote|>`, read from the stop line (the stopping installer's version, its reason, and the cause its fix column
+names), and the clause is `_prompt_copy_note`'s. Only the header branch: a version a step 1 error line states keeps
+H23's causeless note (K26). Test: `test_the_shell_report_computes_a_stopped_copys_failure` (equal to
+`_prompt_line_note` for the same log).
+
+**A bring-back.md that could not be written is not the file the NEXT names** (N71). `--report-only`'s `NEXT:` said
+to review `bring-back.md` after `write_bring_back` failed: a missing file, or an earlier attempt's. Then it reads
+`<bring-back.md> could not be written (see the warning above)[ (<it> is an earlier attempt's file, not this one's,
+so do not send it)]: copy <setup-report.md> back privately[, or paste it into the issue the link above opens], and
+if <setup>/fix-request.md or <setup>/local-work holds anything, copy it back privately too (it is not redacted); or
+fix the cause and run this command again (nothing is sent for you)`, with or without an issue link. The earlier
+file is left as it is. Test: `test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_review`.
+
+**`--version` says why the source commit is unknown** (N75; amends §16.93 M51). `unread_reason DIR` reads the
+reason from the folder alone (git refuses it as another account's; git cannot read it; with no developer tools,
+git never ran and its `.git/HEAD` names no commit), the folder as `~/...` under the home; `--version` and
+`commit_shown` both use it. The compat line stays last. Tests: `test_version_prints_the_prompt_compat_line_last`,
+`test_a_checkout_git_cannot_read_takes_no_commit_from_a_repository_around_it`.
+
+**The deploy docs list `proxy-hosts`** (N69). docs/deploy/README.md's setup-folder row and setup-feedback.md
+section 1 and its `<proxy-N>` row name the file, which holds proxy hosts in clear (0600, redaction only, never in
+bring-back.md). Test: `test_the_deploy_docs_list_the_proxy_hosts_file`.
+
+**The cross-provider cap test has room under load** (N78). Test only: a 20 s per-list timeout, a 3 s cap and a
+12 s bound (it was 2, 3 and 6, failing at high load). It fails with no total cap (60 s) and with a first list not
+cut to the cap (21.2 s measured, which the old bound passed). Test: `test_list_folders_caps_the_wait_across_providers`.
 
 ### 16.100 Round 12: setup prompt v21 (2026-10-16, wave B13 round 12 lane P)
 
