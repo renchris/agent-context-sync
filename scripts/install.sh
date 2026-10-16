@@ -2953,9 +2953,9 @@ write_bring_back() {
 		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
 		printf 'Section 1 is redacted.'
 		if [ "$fix" -eq 1 ] && [ "$sent" -gt 0 ]; then
-			printf ' Sections 2 and 3 are not: they name real folders and files, so review\nthem before sending.\n'
+			printf ' Sections 2 and 3 are not redacted: they may name a real folder, file or person, so\nreview them before sending.\n'
 		elif [ "$fix" -eq 1 ] || [ "$sent" -gt 0 ]; then
-			printf ' Section %s is not: it names real folders and files, so review it before\nsending.\n' "$((fix ? 2 : 3))"
+			printf ' Section %s is not redacted: it may name a real folder, file or person, so review it\nbefore sending.\n' "$((fix ? 2 : 3))"
 		else
 			printf '\n'
 		fi

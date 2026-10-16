@@ -6324,6 +6324,9 @@ opened by its name from a descriptor on the folder that holds it, not by its ful
   Amended 2026-10-14, §16.75 J65: the line goes on "Section 3 holds one patch per kept commit, and each starts
   with its author's name and email and the commit's date and message; ...", since v16's keep sends a person's
   own commit with its `From:` line, which stays unredacted so the triage can tell it from the keep's.
+  Amended 2026-10-15, §16.93 M1: the review sentence reads `Sections 2 and 3 are not redacted: they may name a
+  real folder, file or person, so review them before sending.` (or `Section N is not redacted: it may name ...`),
+  since the prompt has the agent name things by role and section 2 often names none.
 
 **Setup prompt (still v7: wording only, nothing new for the installer to do; §16.28 "Setup prompt v8" ends
 that practice: the version now moves with every change of the text).** Step 1 ends: if the agent
@@ -18294,6 +18297,8 @@ author line). Tests: `test_the_bring_back_header_names_only_what_the_file_holds`
 only, both, a patch not repeated), `test_report_only_writes_one_bring_back_file`. Landed beside §16.86 L25 (lane RA), which
 built the same author rule and adds "Section 3 sends no patch this time: ..." when only `not repeated:` lines
 remain; the two are one function.
+Amended 2026-10-15, §16.93 M1: the review sentences read `... is not redacted: it may name a real folder, file or
+person, so review it before sending.` (`they may name` for sections 2 and 3), not `it names real folders and files`.
 
 **A config the installed agentsync failed on: neutral words, and no keep claimed** (L11 and L37; amends §16.75
 J17 and §16.80 K23). L37: step 1's warning and the report said `the installed agentsync could not load it` for
@@ -18781,7 +18786,16 @@ equality, so a joined form would drop install.sh's "deletions are no longer held
 
 ### 16.93 Round 11: installer and the shell report (2026-10-15, wave B13 round 11 lane RB)
 
-Reserved for round 11 lane RB of B13.
+The installer's findings of the v19 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 11"). Each item has a test that fails without it. Where an item changes what an older section states,
+that section has a dated line (`Amended 2026-10-15, §16.93 M<n>`) and its text is otherwise as it was.
+
+**bring-back.md's header says a section may name things** (M1; amends §16.87 L4 and the bring-back paragraph of
+§16.75 J65's section). The header said section 2 `names real folders and files`, though the prompt has the agent name
+each folder, file or person by its role, and a section 2 of `No change requested.` and its `## Not used` lines names
+none. The sentences read `Section N is not redacted: it may name a real folder, file or person, so review it
+before sending.` and `Sections 2 and 3 are not redacted: they may name ...`; which one is printed is chosen as
+before. docs/deploy/setup-feedback.md says so. Test: `test_the_bring_back_header_names_only_what_the_file_holds`.
 
 ### 16.94 Round 11: setup prompt v20 (2026-10-15, wave B13 round 11 lane P)
 

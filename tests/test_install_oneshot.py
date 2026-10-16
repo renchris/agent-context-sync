@@ -1963,7 +1963,7 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     assert text.splitlines()[2] == (
         "Private: copy this file back as it is, and never paste it into the public issue form."
     )
-    assert "Sections 2 and 3 are not: they name real folders and files" in text
+    assert "Sections 2 and 3 are not redacted: they may name a real folder, file or person" in text
     # B13 round 8 J65: a person's own kept commit brings its From: line, which the header now names
     assert " ".join(text.split("\n## 1. Setup report", 1)[0].split()).endswith(
         "review them before sending. Section 3 holds one patch per kept commit, and each starts with its "
@@ -1988,12 +1988,23 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     ("fix", "patch", "review"),
     [
         (False, None, None),
-        (True, None, "Section 2 is not: it names real folders and files, so review it before sending."),
-        (False, "new", "Section 3 is not: it names real folders and files, so review it before sending."),
+        (
+            True,
+            None,
+            "Section 2 is not redacted: it may name a real folder, file or person, so review it before "
+            "sending.",
+        ),
+        (
+            False,
+            "new",
+            "Section 3 is not redacted: it may name a real folder, file or person, so review it before "
+            "sending.",
+        ),
         (
             True,
             "new",
-            "Sections 2 and 3 are not: they name real folders and files, so review them before sending.",
+            "Sections 2 and 3 are not redacted: they may name a real folder, file or person, so review them "
+            "before sending.",
         ),
         (False, "old", None),  # a patch not repeated: one line, no author line, nothing named
     ],
@@ -2004,7 +2015,8 @@ def test_the_bring_back_header_names_only_what_the_file_holds(
     """B13 round 10 L4: the header said sections 2 and 3 name real folders and files, and that section 3's
     patches start with author lines, when both sections read "none" or section 3 held only a "not repeated"
     line. The review sentence names only the sections that hold something, and the author sentence comes
-    only with a patch embedded."""
+    only with a patch embedded. B13 round 11 M1: the sentence said a section "names real folders and files",
+    though the prompt has the agent name things by role, so it says the section "may name" one."""
     setup = Path(env["HOME"]) / "agent-context" / "setup"
     setup.mkdir(parents=True)
     if fix:
