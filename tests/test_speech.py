@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from collections.abc import Iterator
@@ -952,6 +953,32 @@ def test_a_proxy_in_the_machines_system_gitconfig_never_reaches_the_tests_git(
     real_git_config(tools, str(wrapped / "git"))
     assert speech.build(tmp_path / "cache").is_file()
     assert not curl.with_name("curl.calls").exists()
+
+
+def test_the_seed_never_reads_the_config_of_a_home_folder_that_is_a_git_repository(tmp_path: Path) -> None:
+    """B13 round 11 M68: the seed asks git from ``<cache>/speech/build``, under ``~/Library/Caches``; with
+    HOME itself a git repository, git read that repository's ``.git/config`` there, which SwiftPM's ``git
+    clone`` never reads, so the seed's curl took a proxy the clone did not use.  It reads the system, global
+    and XDG config only now, as clone does; a global value still counts, ``~`` expanded."""
+    real = shutil.which("git")
+    assert real is not None
+    home = Path.home()
+    (home / ".gitconfig").write_text("[http]\n\tsslCAInfo = ~/contoso-ca.pem\n")
+    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1"}
+    subprocess.run([real, "init", "-q", str(home)], env=env, check=True, capture_output=True)
+    subprocess.run(
+        [real, "-C", str(home), "config", "--local", "http.proxy", "http://dotfiles.contoso.example:8"],
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+    build = home / "Library" / "Caches" / "agentsync" / "speech" / "build"
+    build.mkdir(parents=True)
+    git = tmp_path / "bin" / "git"
+    git.parent.mkdir()
+    script(git, f'GIT_CONFIG_NOSYSTEM=1 exec {real} "$@"')  # the machine's own system config stays out
+    found = speech._git_config(str(git), cwd=build, deadline=speech._clock() + 30)
+    assert found == {"http.sslcainfo": f"{home}/contoso-ca.pem"}
 
 
 @pytest.mark.parametrize("shell", [{}, {"HTTPS_PROXY": "http://env-proxy.contoso.example:8080"}])

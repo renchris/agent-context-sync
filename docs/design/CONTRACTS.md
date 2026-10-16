@@ -15168,6 +15168,10 @@ drops every proxy variable for it. The tests' git stub runs the real git with `G
 renamed `test_a_proxy_git_scopes_to_fluidinference_on_github_routes_the_seed`, and
 `test_a_proxy_git_scopes_to_fluidaudios_own_repository_routes_the_clone_and_not_the_seed` pins a scope on
 FluidAudio's own repository, which routes the clone and not the seed.
+Amended 2026-10-15, §16.96 M68: the query also read an enclosing repository's config, which the build's `git clone`
+never reads: run from `<cache>/speech/build` under `~/Library/Caches`, it took the `.git/config` of a home folder
+that is itself a git repository. It runs with `GIT_DIR=/dev/null` now, for that one call, so it reads the system,
+global and XDG files only, as clone does.
 
 **A MIME message with an encrypted Office attachment only lists it (F98).** Test only: an `.eml`, and a `.msg` that
 holds MIME text with and without a label rule, carrying a protected `.docx` is converted with the attachment
@@ -18676,6 +18680,14 @@ setup report class the row by the page as `policy.page_says_withheld` reads it (
 for a stub whose page it cannot read, the report goes by its own OCR probe and the TSV keeps the stored reason.
 Docstring only: `test_cycle.py::test_quarantine_tsv_classes_a_page_from_before_its_reason_said_withheld_as_the_report_does`
 already pins the behaviour.
+
+**The speech seed reads git's config as clone does (M68; `agentsync.convert.speech`; amends §16.60 F78).**
+`_git_config` ran `git config --get-urlmatch http` from `<cache>/speech/build`; with HOME itself a git repository,
+git read that repository's `.git/config` there, which SwiftPM's `git clone` never reads, so the seed's curl could take
+a proxy or CA the clone did not use (measured with Xcode's git 2.50.1). That one call runs with `GIT_DIR=/dev/null`:
+system, global and XDG config only, url-scoped values and `~` expansion kept. It is not in `_build_env`, which swift
+and the later `git -C` steps share. Test:
+`test_speech.py::test_the_seed_never_reads_the_config_of_a_home_folder_that_is_a_git_repository`.
 
 ### 16.97 Round 11: deploy docs and CONTRACTS cross-references (2026-10-15, wave B13 round 11 lane D)
 

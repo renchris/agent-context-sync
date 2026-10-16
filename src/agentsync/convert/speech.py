@@ -469,8 +469,11 @@ verification is never turned off."""
 
 
 def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
-    """git's own values of :data:`_GIT_SETTINGS` for :data:`_GIT_URL`, as the build's git reads its config
-    files: one ``git config --type=path --get-urlmatch http <url>``, so a url-scoped
+    """git's own values of :data:`_GIT_SETTINGS` for :data:`_GIT_URL`, from the config files the build's
+    ``git clone`` reads (the system, global and XDG ones, never an enclosing repository's: ``GIT_DIR`` is
+    /dev/null for this one call, since a home folder that is itself a git repository would otherwise lend its
+    ``.git/config`` to a call run under ``~/Library/Caches``, B13 round 11 M68): one
+    ``git config --type=path --get-urlmatch http <url>``, so a url-scoped
     ``[http "https://github.com"]`` value counts and a ``~`` path is expanded (``--type=path`` changes no
     value that does not start with ``~``; measured with Xcode's git 2.50.1).  Nothing set (git exits 1), a
     git that does not run and the build's time running out all read as nothing set.  An empty http.proxy is
@@ -483,7 +486,7 @@ def _git_config(git: str, *, cwd: Path, deadline: float) -> dict[str, str]:
         cp = subprocess.run(
             [git, "config", "--type=path", "--get-urlmatch", "http", _GIT_URL],
             cwd=cwd,
-            env=_build_env(),
+            env={**_build_env(), "GIT_DIR": os.devnull},  # only here: swift and git -C share _build_env
             stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=min(left, ocr._TOOL_TIMEOUT_S),
