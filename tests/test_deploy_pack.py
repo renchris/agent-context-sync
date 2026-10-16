@@ -5471,3 +5471,15 @@ def test_round_12s_contract_quotes_and_moves_read_as_written() -> None:
     assert l58.index("L58's prompt half (delete the empty branch) was not built") < l58.index(m83)
     assert l58.index("Amended 2026-10-15, §16.93 M18:") < l58.index(m83)
     assert "M71's reflog skip catches only when origin/main's reflog names it" in l58
+
+
+def test_the_person_facing_docs_spell_organization() -> None:
+    """B13 round 12 N79: round 11 M36 spelled it "organization" in both reports and setup-feedback.md, as
+    the prompt does; the IT request draft's `<org>` note, docs/deploy/README.md and it-request.md's `<org>`
+    row (which the wheel ships) still said "organisation". The note is pinned in test_it_request.py."""
+    pages = [ROOT / "README.md", *sorted(DEPLOY.rglob("*.md"))]
+    assert DEPLOY / "it-request.md" in pages
+    assert [p.relative_to(ROOT) for p in pages if "organisation" in p.read_text(encoding="utf-8")] == []
+    assert "| the organization name, also the app's display name" in (DEPLOY / "it-request.md").read_text(
+        encoding="utf-8"
+    )

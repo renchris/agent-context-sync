@@ -18867,6 +18867,8 @@ equality, so a joined form would drop install.sh's "deletions are no longer held
 Amended 2026-10-16, §16.101 N17, N34, N74: that reason held only for the finder's `(deletions held; ...)`; the
 second half is built as `... passes; deletions held (<note>)`, install.sh's anchor is `deletions held` (old and new
 lines), and cli.py's swap compares the note, which is unchanged.
+Amended 2026-10-16, §16.103 N79 (by §16.92 M36): "organization" in the IT request draft's `<org>` note too, and in
+docs/deploy/README.md and it-request.md's `<org>` row, which the person reads as well.
 
 ### 16.93 Round 11: installer and the shell report (2026-10-15, wave B13 round 11 lane RB)
 

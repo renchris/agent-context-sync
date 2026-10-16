@@ -133,7 +133,7 @@ names a host other than github.com, step 1 of the setup prompt lists where git m
 | the Command Line Tools | Self Service or a ticket | — |
 
 `agentsync it-request --out ~/agent-context/it-request-draft.md` writes [it-request.md](it-request.md) as an email
-draft for this Mac: your name, the serial number, the CPU, the organisation and the sources you already sync are
+draft for this Mac: your name, the serial number, the CPU, the organization and the sources you already sync are
 filled in, the links point at this repository on GitHub, and the first line lists what you still fill ("You fill:
 ..."). It never sends anything; you send it.
 

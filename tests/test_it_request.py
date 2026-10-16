@@ -129,7 +129,7 @@ def test_unknown_values_stay_open_and_two_organisations_are_the_persons_choice()
         "<arms-today>",
         "<wanted-by>",
     ]
-    assert draft.notes == ["<org>: this Mac syncs more than one organisation (Contoso, Fabrikam); pick one"]
+    assert draft.notes == ["<org>: this Mac syncs more than one organization (Contoso, Fabrikam); pick one"]
     assert draft.notes[0] in draft.text.split("\n---\n", 1)[0]
 
 

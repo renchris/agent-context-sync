@@ -206,7 +206,7 @@ class MacFacts:
 
     @property
     def org(self) -> str | None:
-        """The organisation when exactly one was found (two or more: the person chooses)."""
+        """The organization when exactly one was found (two or more: the person chooses)."""
         return self.orgs[0] if len(self.orgs) == 1 else None
 
 
@@ -236,7 +236,7 @@ def org_of(provider: str) -> str | None:
 
 
 def find_orgs(cloud_root: Path, source_paths: Iterable[Path] = ()) -> tuple[str, ...]:
-    """Distinct organisations, those of the configured sources' paths first, then those of the provider
+    """Distinct organizations, those of the configured sources' paths first, then those of the provider
     folders in ``cloud_root`` (names only; no provider's files are listed)."""
     found: list[str] = []
     roots = [cloud_root]
@@ -392,7 +392,7 @@ def render(
     it_fills = [p.name for p in table if p.name in left and p.by_it]
     notes: list[str] = []
     if len(facts.orgs) > 1 and "<org>" in you_fill:
-        notes.append(f"<org>: this Mac syncs more than one organisation ({', '.join(facts.orgs)}); pick one")
+        notes.append(f"<org>: this Mac syncs more than one organization ({', '.join(facts.orgs)}); pick one")
     head = [
         f"You fill: {', '.join(you_fill) if you_fill else 'nothing'}",
         f"IT fills (leave them as they are): {', '.join(it_fills) if it_fills else 'nothing'}",

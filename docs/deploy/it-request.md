@@ -19,7 +19,7 @@ it-request`". Setup prompt v7 has no IT request step, and `it-request` is a hidd
 | `<team>` | the requester's team, also the owner note in `entra-app.json` | you fill in |
 | `<serial>` | the Mac's serial number | `system_profiler SPHardwareDataType`, its `Serial Number` line |
 | `<arch>` | the Mac's CPU (`arm64` or `x86_64`) | `uname -m` |
-| `<org>` | the organisation name, also the app's display name in `entra-app.json` | `ls ~/Library/CloudStorage`: the name after `OneDrive-` or `OneDrive-SharedLibraries-`, never `Personal` (you choose if there are two) |
+| `<org>` | the organization name, also the app's display name in `entra-app.json` | `ls ~/Library/CloudStorage`: the name after `OneDrive-` or `OneDrive-SharedLibraries-`, never `Personal` (you choose if there are two) |
 | `<arms-today>` | the sources this Mac already syncs without IT | `grep '^kind' ~/agent-context/sources.toml`: each `kind` and how many sources have it |
 | `<date>` | the day the request is written | `date +%F` |
 | `<wanted-by>` | the date you need it by | you fill in |
