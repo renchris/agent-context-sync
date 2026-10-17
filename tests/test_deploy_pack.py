@@ -5975,6 +5975,32 @@ def test_the_guides_summary_table_has_the_unread_config_line_that_asks_nothing()
     assert "the left-out clause says the installed agentsync is already this checkout's build" in page
 
 
+def test_the_guides_sync_row_names_the_newest_earlier_runs_sync() -> None:
+    """B13 round 14 Q70: since round 13 O32 a one-attempt report whose install.out counts an earlier run
+    printed adds the result of a newer earlier run's first-sync step and leaves those counts out
+    (``_newer_sync``), but the guide's sync row said without condition that an earlier run's counts read
+    `(install.out: the install run of <time>, before this attempt; ...)`."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    newest = source[source.index("            newest = _newer_sync(") :]
+    newest = newest[: newest.index("        else:\n")]
+    assert 'f"the newest earlier run\'s sync: {said} (install.log: "' in newest
+    assert "own_line = False" in newest
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "an earlier run's read `(install.out: the install run of <time>, before this attempt; ...)`, unless "
+        "a newer earlier run, one that began after the run that printed those counts, logged a first-sync "
+        "step (a sync skipped on a busy lock, say): then the line adds `· the newest earlier run's sync: "
+        "<result> (install.log: the install run of <time>, before this attempt)`"
+    ) in page
+    assert "and leaves install.out's older counts out, since they are not the Mac's latest sync" in page
+    assert (
+        "and those of an install.out with no header `(install.out: which run printed it is not recorded"
+        in page
+    )
+
+
 def test_section_5_counts_the_sign_in_step_1_waits_for() -> None:
     """B13 round 13 O64: section 5 listed the OneDrive sign-in only as a precondition at which "the prompt
     stops at step 1", though since v20 step 1 waits for it on a set-up Mac and the report counts it among the
