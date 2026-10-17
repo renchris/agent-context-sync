@@ -4341,7 +4341,9 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
     doctor's rule: one that lists other folders (a symlink too, as lexists reads it), or another folder of
     the same app beside a missing one, is no signed-out app, so the list keeps exit 0 and names the folder,
     and step 2's doctor names its fix. Only a folder whose provider folder is there is said to have a
-    signed-in app."""
+    signed-in app. B13 round 13 O6: the clause said "nothing syncs until" then, but a sync still mirrors every
+    other folder (test_e2e.py::test_a_sync_with_one_source_root_gone_still_mirrors_the_others): only step 2's
+    first sync waits."""
     cs = _cloud(env)
     lib = cs / "OneDrive-Contoso"
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
@@ -4352,8 +4354,8 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
         clause = (
             "; 1 of them is not on disk because its provider folder is missing while another folder of "
             f"that app is there: {gone}. Step 2's status fails on it and names the fix (sign in to that app "
-            f"with the account it belongs to, or fix its [[source]] path in {cfg}), and nothing syncs until "
-            "then"
+            f"with the account it belongs to, or fix its [[source]] path in {cfg}), so step 2 runs no first "
+            "sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
         )
     else:
         real = tmp_path / "real-provider" if layout == "a symlinked provider folder" else lib
@@ -4365,8 +4367,9 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
         kept = lib / "Project Alpha"
         clause = (
             "; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted "
-            f"there): {gone}. Step 2's status fails on it and names the fix, and nothing syncs until the "
-            f"folder is back under that name or its [[source]] path in {cfg} is fixed"
+            f"there): {gone}. Step 2's status fails on it and names the fix, so step 2 runs no first sync "
+            "(and installs no LaunchAgents) until the folder is back under that name or its [[source]] path "
+            f"in {cfg} is fixed; a sync still mirrors the other folders, and that folder's pages are kept"
         )
     _write_config(
         env, local_source_table("project-alpha", kept), local_source_table("project-beta", gone), _inbox(env)
@@ -4377,6 +4380,7 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
     assert f"[synced] {gone}" in cp.stdout.splitlines()
     assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: ")
     assert last_line(cp).endswith(clause), last_line(cp)
+    assert "nothing syncs" not in last_line(cp)
     assert steps(install_log(env))[-1][:3] == ("list-folders", "done", "0")
     assert install_log(env)[-2].endswith(" synced=2 gone=1")
     cp = install_sh(env, "--list-folders")  # no loop: a re-run gives the same exit 0

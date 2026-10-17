@@ -4013,18 +4013,19 @@ list_folders() {
 		fi
 		# A folder gone while its app is signed in: no sign-in (a re-run of this list would stop the same way),
 		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause
-		# says so, so the keep is not read as a sync (B13 round 12 N41, N61).
+		# says so, so the keep is not read as a sync (B13 round 12 N41, N61). Only step 2's first sync waits: a sync
+		# still mirrors every other source, and deletes nothing of the gone one (B13 round 13 O6).
 		if [ "$gone" -eq 1 ]; then
-			NEXT_MSG="$NEXT_MSG; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on it and names the fix, and nothing syncs until the folder is back under that name or its [[source]] path in $CONFIG is fixed"
+			NEXT_MSG="$NEXT_MSG; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on it and names the fix, so step 2 runs no first sync (and installs no LaunchAgents) until the folder is back under that name or its [[source]] path in $CONFIG is fixed; a sync still mirrors the other folders, and that folder's pages are kept"
 		elif [ "$gone" -gt 1 ]; then
-			NEXT_MSG="$NEXT_MSG; $gone of them are no longer on disk although their app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on each and names the fix, and nothing syncs until each folder is back under its name or its [[source]] path in $CONFIG is fixed"
+			NEXT_MSG="$NEXT_MSG; $gone of them are no longer on disk although their app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on each and names the fix, so step 2 runs no first sync (and installs no LaunchAgents) until each folder is back under its name or its [[source]] path in $CONFIG is fixed; a sync still mirrors the other folders, and those folders' pages are kept"
 		fi
 		# its provider folder gone while another folder of the app is there: not "signed in", as doctor's fix
 		# names the sign-in with the account it belongs to, or the path
 		if [ "$others" -eq 1 ]; then
-			NEXT_MSG="$NEXT_MSG; 1 of them is not on disk because its provider folder is missing while another folder of that app is there: $other. Step 2's status fails on it and names the fix (sign in to that app with the account it belongs to, or fix its [[source]] path in $CONFIG), and nothing syncs until then"
+			NEXT_MSG="$NEXT_MSG; 1 of them is not on disk because its provider folder is missing while another folder of that app is there: $other. Step 2's status fails on it and names the fix (sign in to that app with the account it belongs to, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
 		elif [ "$others" -gt 1 ]; then
-			NEXT_MSG="$NEXT_MSG; $others of them are not on disk because their provider folders are missing while another folder of each app is there: $other. Step 2's status fails on each and names the fix (sign in to that app with the account each belongs to, or fix its [[source]] path in $CONFIG), and nothing syncs until then"
+			NEXT_MSG="$NEXT_MSG; $others of them are not on disk because their provider folders are missing while another folder of each app is there: $other. Step 2's status fails on each and names the fix (sign in to that app with the account each belongs to, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
 		fi
 		gone=$((gone + others))
 		[ "$gone" -eq 0 ] || more=" gone=$gone"

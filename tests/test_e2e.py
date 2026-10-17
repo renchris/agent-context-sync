@@ -1045,3 +1045,31 @@ def test_confirmed_deletion_queues_a_purge_that_removes_the_tombstone(
     assert gone.returncode != 0
     assert "sample.csv" not in git(repo, "log", "--all", "-p")
     assert run(synced).exit_code == 0 and porcelain(repo) == ""
+
+
+def test_a_sync_with_one_source_root_gone_still_mirrors_the_others(
+    sample_config: Config, tmp_path: Path
+) -> None:
+    """B13 round 13 O6: step 1's list said "nothing syncs until" a gone folder is back, but only step 2's
+    first sync waits on it (its status fails): a sync skips the gone source's walk, deletes none of its
+    pages, and still mirrors every other source."""
+    beta = tmp_path / "project-beta"
+    beta.mkdir()
+    (beta / "README.txt").write_text("sentinel\n", encoding="utf-8")
+    (beta / "a.txt").write_text("first\n", encoding="utf-8")
+    text = sample_config.config_path.read_text(encoding="utf-8") + (
+        f'\n[[source]]\nid = "project-beta"\nkind = "local"\npath = "{beta}"\nsentinel = "README.txt"\n'
+    )
+    sample_config.config_path.write_text(text, encoding="utf-8")
+    config = parse_config(text, config_path=sample_config.config_path)
+    assert run(config).exit_code == 0
+    repo = config.docs_repo
+    kept = sorted(p.relative_to(repo).as_posix() for p in (repo / "mirror" / SID).rglob("*.md"))
+    assert kept, "the first sync mirrored the source that goes away"
+    shutil.move(str(config.sources[0].path), str(tmp_path / "renamed-away"))
+    (beta / "c.txt").write_text("new\n", encoding="utf-8")
+    report = run(config)
+    assert report.exit_code == 0, report
+    assert (repo / "mirror" / "project-beta" / "c.txt.md").is_file(), "the other source is mirrored"
+    assert sorted(p.relative_to(repo).as_posix() for p in (repo / "mirror" / SID).rglob("*.md")) == kept
+    assert porcelain(repo) == ""
