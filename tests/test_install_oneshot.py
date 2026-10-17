@@ -2249,6 +2249,47 @@ def _stamp(text: str) -> float:
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
 
 
+@pytest.mark.parametrize("readable", [False, True])
+def test_a_patch_this_account_cannot_read_is_counted_not_sent(env: dict[str, str], readable: bool) -> None:
+    """B13 round 13 O25: a mode-000 patch opened section 3's fence and was counted before its cat failed
+    unseen, so bring-back.md held an empty diff block under a header saying section 3 holds one patch per
+    kept commit, with no warning. Such a patch is now counted on a "not sent:" line (no file name: it
+    carries the commit's subject) and in a warning; a readable one beside it is still sent in full."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    locked = _keep_patch(env, "2026-10-07T16:00:00Z", body="+def contoso(): ...\n", name="0002-x.patch")
+    if readable:
+        _keep_patch(env, "2026-10-07T16:00:00Z")
+    locked.chmod(0)
+    try:
+        cp = install_sh(env, "--report-only")
+    finally:
+        locked.chmod(0o600)
+    assert cp.returncode == 0, cp.stderr
+    shown = "~/agent-context/setup/local-work"
+    setup = home / "agent-context" / "setup"
+    assert (
+        f"warning: 1 patch file(s) in {setup}/local-work could not be read, so "
+        f"{report_path(env).parent / 'bring-back.md'} does not hold them"
+    ) in cp.stderr
+    text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    head, section3 = text.split("\n## 1. Setup report", 1)[0], text.split("## 3. Local work", 1)[1]
+    assert section3.rstrip("\n").endswith(
+        f"not sent: 1 patch file(s) in {shown} this account cannot read; make them readable (chmod u+r) and "
+        "run this command again"
+    ), section3
+    assert "contoso" not in section3 and "0002-x" not in section3
+    if readable:
+        assert "~diff\n+def ocr(): ...\n~~~" in section3 and section3.count("~diff\n") == 1
+        assert "Section 3 holds one patch per kept commit" in " ".join(head.split())
+    else:
+        assert "diff" not in section3 and "\nnone\n" not in section3
+        assert "holds one patch per kept commit" not in " ".join(head.split())
+        assert "Section 3 sends no patch: 1 patch file(s) could not be read; see its last line." in head
+        assert "Section 3 is not redacted" not in " ".join(head.split())
+
+
 def _keep_patch(
     env: dict[str, str], written: str, body: str = "+def ocr(): ...\n", name: str = PATCH_NAME
 ) -> Path:
@@ -2258,6 +2299,40 @@ def _keep_patch(
     patch.write_text(body, encoding="utf-8")
     os.utime(patch, (_stamp(written), _stamp(written)))
     return patch
+
+
+@pytest.mark.parametrize("beside", ["one sent before", "a long tilde line"])
+def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, str], beside: str) -> None:
+    """Review of B13 round 13 O25: beside a patch skipped by its hash, the header still said section 3's
+    patch was in an earlier report, though one was unread; and the unreadable file stopped fence_for's awk,
+    so the fence fell back to 40 tildes, which a readable patch's own 40-tilde line closed early."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    if beside == "one sent before":
+        _two_attempts(env)
+        _keep_patch(env, "2026-10-06T16:00:00Z")
+    else:
+        _keep_patch(env, "2026-10-07T16:00:00Z", body="+" + "~" * 39 + "\n" + "~" * 40 + "\n")
+    locked = _keep_patch(env, "2026-10-07T16:00:00Z", name="0002-x.patch")
+    locked.chmod(0)
+    try:
+        text = _local_work(env)
+        whole = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    finally:
+        locked.chmod(0o600)
+    head = " ".join(whole.split("\n## 1. Setup report", 1)[0].split())
+    if beside == "one sent before":
+        assert "earlier report and is listed by its hash" not in head, head
+        assert (
+            "Section 3 sends no patch: 1 patch file(s) could not be read; see its last line, and the others "
+            "were in an earlier report and are listed by their hash." in head
+        ), head
+        assert "not repeated: " in text and "not sent: 1 patch file(s)" in text
+    else:
+        fence = text.split("diff\n", 1)[0]
+        assert set(fence) == {"~"} and len(fence) == 41, fence
+        assert text.count(fence + "\n") == 1 and "~" * 40 + "\n" in text
 
 
 def _two_attempts(env: dict[str, str], *, ended: str = f"{ENDED} | end | finished", extra: str = "") -> None:

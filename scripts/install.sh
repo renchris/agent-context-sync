@@ -3272,7 +3272,7 @@ source_excludes_line() { # CONFIG
 }
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
-	local prev at sha sent=0 skipped="" fix=0 nskip=0
+	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=()
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
@@ -3288,11 +3288,22 @@ write_bring_back() {
 	# Section 3 first, so the header names only what the file holds: the review sentence only the sections that
 	# hold something, and the author lines only when a patch is embedded (a patch not repeated has none; B13
 	# round 10 L4)
+	# the fence fits the patches that can be read: one that cannot stops the awk, which then gave the
+	# 40-tilde default whatever the others hold (B13 round 13 O25)
+	for p in "$SETUP_DIR"/local-work/*.patch; do
+		[ ! -r "$p" ] || readable+=("$p")
+	done
+	fence="$(fence_for ${readable[@]+"${readable[@]}"} /dev/null)"
 	{
-		fence="$(fence_for "$SETUP_DIR"/local-work/*.patch)"
 		for p in "$SETUP_DIR"/local-work/*.patch; do
 			# a symlink, or a symlinked local-work, is no patch the report counts, so none is sent (B13 round 10 L8)
 			[ -e "$p" ] && [ ! -L "$p" ] && [ -f "$p" ] && [ ! -L "$SETUP_DIR/local-work" ] || continue
+			# a patch this account cannot read is counted, not sent: its cat failed unseen, under a fence
+			# already opened, and the header said section 3 held it (B13 round 13 O25)
+			[ -r "$p" ] || {
+				unread=$((unread + 1))
+				continue
+			}
 			at=""
 			[ -z "$prev" ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
 			if [ -n "$at" ] && [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ]; then
@@ -3307,12 +3318,19 @@ write_bring_back() {
 			fi
 			[ "$sent" -gt 0 ] || printf '%sdiff\n' "$fence"
 			sent=$((sent + 1))
-			cat "$p"
+			cat "$p" || catfail=1
 		done
 		[ "$sent" -eq 0 ] || printf '%s\n' "$fence"
 		printf '%s' "$skipped"
-		[ "$sent" -gt 0 ] || [ -n "$skipped" ] || printf 'none\n'
+		# no file name: a patch's name carries its commit's subject
+		[ "$unread" -eq 0 ] || printf 'not sent: %s patch file(s) in %s/local-work this account cannot read; make them readable (chmod u+r) and run this command again\n' "$unread" "$shown"
+		[ "$sent" -gt 0 ] || [ -n "$skipped" ] || [ "$unread" -gt 0 ] || printf 'none\n'
 	} >"$local_work" 2>/dev/null || {
+		rm -f "$tmp" "$local_work"
+		return 1
+	}
+	# a read that failed partway would leave a patch cut short in section 3
+	[ "$catfail" -eq 0 ] || {
 		rm -f "$tmp" "$local_work"
 		return 1
 	}
@@ -3334,6 +3352,8 @@ write_bring_back() {
 			printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
 				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
 				"set, a name and address git filled in from this Mac's account), so check those lines too."
+		elif [ "$unread" -gt 0 ]; then # before the hash sentences, which would call every patch an earlier one
+			printf '%s\n' "Section 3 sends no patch: $unread patch file(s) could not be read; see its last line${skipped:+, and the others were in an earlier report and are listed by their hash}."
 		elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
 			printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
 		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
@@ -3357,6 +3377,7 @@ write_bring_back() {
 		return 1
 	fi
 	say "bring back: $out (one file: report, fix request, local work)"
+	[ "$unread" -eq 0 ] || warn "$unread patch file(s) in $SETUP_DIR/local-work could not be read, so $out does not hold them"
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
