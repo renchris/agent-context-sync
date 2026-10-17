@@ -1975,17 +1975,16 @@ O59)."""
 
 _SIGN_IN_APPS = {
     "onedrive": "OneDrive",
-    "sharedlibraries": "OneDrive",
     "dropbox": "Dropbox",
     "googledrive": "Google Drive",
-    "google%20drive": "Google Drive",
     "box": "Box",
     "egnyte": "Egnyte",
     "other": "another sync app",
 }
 """install.sh's ``apps=`` tokens on a sign-in exit (``note=not-signed-in``, any case) -> the apps' names. A
 fixed map: a token none of these is dropped, so no text of the log's own reaches the report (B13 round 13
-O1, O29, O39, O42, O58, O66: the report said OneDrive whichever app's folder was missing)."""
+O1, O29, O39, O42, O58, O66: the report said OneDrive whichever app's folder was missing). The tokens
+install.sh writes, and only those (B13 round 14 Q52)."""
 
 
 _TERMINAL_APPS = {
@@ -4004,11 +4003,10 @@ def _first_sync_note(note: str) -> str:
 _LIST_FOLDERS_NOTE_WORDS = {
     "denied": "this terminal app was denied access to the folders",
     "tcc-pending": "macOS is asking whether this terminal app may read the folders",
-    "not-signed-in": "OneDrive is not signed in on this Mac",
     "no-folders": "no folders are synced yet in CloudStorage",
 }
-"""install.log's list-folders notes with no number -> the report's words (B13 round 12 N4). The sign-in
-exit's are its own line's (:func:`_signed_out`, B13 round 13 O1); this one is for a caller with no line."""
+"""install.log's list-folders notes with no number -> the report's words (B13 round 12 N4). A sign-in exit's
+note is worded by its own branch in the Installer row (:func:`_signed_out`, B13 round 13 O1), never here."""
 
 
 def _list_folders_note(note: str) -> str:

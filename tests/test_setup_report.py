@@ -11023,6 +11023,19 @@ def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
     assert "listable FAIL" in _line(got, "- doctor: ").split(" · unexpected ", 1)[1], _line(got, "- doctor: ")
 
 
+def test_the_sign_in_app_map_holds_the_tokens_install_sh_writes_and_no_others() -> None:
+    """B13 round 14 Q52: ``_SIGN_IN_APPS`` held ``sharedlibraries`` and ``google%20drive``, which install.sh
+    never logs, and ``_LIST_FOLDERS_NOTE_WORDS`` a ``not-signed-in`` entry no caller reaches (the Installer
+    row words that note in its own branch). The map is install.sh's tokens: each label its ``case`` names,
+    in lower case with no space, then ``other`` (and ``apps=onedrive``, the exit with no provider folder)."""
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [labels] = re.findall(r'^\s*(OneDrive \| "Google Drive" \|[^)]*)\) tok="\$\(printf', script, re.MULTILINE)
+    tokens = {label.strip().strip('"').replace(" ", "").lower() for label in labels.split("|")}
+    assert "apps=onedrive" in script and re.search(r"^\s*\*\) tok=other ;;$", script, re.MULTILINE)
+    assert set(setup_report._SIGN_IN_APPS) == tokens | {"other"}
+    assert "not-signed-in" not in setup_report._LIST_FOLDERS_NOTE_WORDS
+
+
 @pytest.mark.parametrize(
     ("apps", "stop", "sign_in"),
     [

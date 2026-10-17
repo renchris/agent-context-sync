@@ -2320,9 +2320,10 @@ friction_step1_stated() {
 			}
 		}' "$f" 2>/dev/null || true
 }
-# Whether the friction log's latest attempt holds a timed "<UTC> | step N | ..." line, with the attempt
-# boundaries friction_step1_stated takes. Its Attempt:, Prompt: and Agent: lines and its "| end | finished" line
-# are no step line (B13 round 11 M15).
+# Whether the friction log's latest attempt holds a timed "<UTC> | step N | ..." line, with parse_friction's
+# attempt boundaries: the unbroken run of step 1 lines after an end line goes to the next Attempt: header (B13
+# round 13 O24), which friction_step1_stated does not carry. Its Attempt:, Prompt: and Agent: lines and its
+# "| end | finished" line are no step line (B13 round 11 M15).
 friction_latest_has_step() {
 	local f
 	f="$(friction_file)"
