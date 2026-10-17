@@ -278,6 +278,26 @@ def test_a_speech_build_out_of_time_leaves_no_compiler_running(
     assert gone(compiler_pid(pidfile)), "swift build's compiler outlived the build's time limit"
 
 
+def test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_too(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q83: the test above's late case. swift build's compiler starts 2.5 s in, after the 2 s
+    limit's SIGINT, so the SIGINT always comes before its pid; ``compiling``'s hold is what leaves one to
+    find and stop (test_ocr's late case says more)."""
+    pidfile = tmp_path / "compiler.pid"
+    script(
+        tools / "swift",
+        'case "$1" in package) mkdir -p .build/checkouts/FluidAudio ;; build)\n'
+        + compiling(pidfile, start_after=2.5)
+        + ";; esac",
+    )
+    monkeypatch.setattr(speech, "_BUILD_TIMEOUT_S", 2.0)
+    monkeypatch.setattr(speech, "_clock", lambda: 0.0)
+    with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
+        speech.build(tmp_path / "cache")
+    assert gone(compiler_pid(pidfile)), "swift build's compiler outlived the build's time limit"
+
+
 def test_probe_and_status_never_compile_and_take_no_digest(
     tmp_path: Path, no_compiler: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

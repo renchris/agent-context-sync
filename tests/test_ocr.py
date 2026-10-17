@@ -794,16 +794,19 @@ def loose_umask() -> Iterator[None]:
         os.umask(previous)
 
 
-def compiling(pidfile: Path) -> str:
+def compiling(pidfile: Path, start_after: float = 0.0) -> str:
     """A stub tool body that starts a "compiler" in a session of its own, which writes its pid, and stops it
     on SIGINT only, as swiftc and SwiftPM do (measured: their compilers outlive a SIGTERM or SIGKILL).  On
     SIGINT it writes a line before it stops the compiler: a tool whose output has no reader left dies of
     SIGPIPE there.  The first trap is set before the compiler starts, so a SIGINT never finds it unset; it
     only notes the stop until the compiler has written its pid, so a time limit counts from the compiler's
     start: a SIGINT before then killed the compiler before it wrote one, and the test waited 30 s for a pid
-    that never came (B13 round 13 O73, under load)."""
+    that never came (B13 round 13 O73, under load).  ``start_after`` holds the compiler that long after it
+    has its session and before it writes its pid, so a test can make the SIGINT come first, every time
+    (B13 round 14 Q83)."""
+    late = f"time.sleep({start_after!r}); " if start_after > 0 else ""
     child = (
-        "import os, sys, time; os.setsid(); open(sys.argv[1] + '.tmp', 'w').write(str(os.getpid())); "
+        f"import os, sys, time; os.setsid(); {late}open(sys.argv[1] + '.tmp', 'w').write(str(os.getpid())); "
         "os.replace(sys.argv[1] + '.tmp', sys.argv[1]); time.sleep(300)"
     )
     pid = shlex.quote(str(pidfile))
@@ -1003,6 +1006,22 @@ def test_a_build_that_hangs_is_stopped_and_recorded(
     assert str(error.value) == "swiftc ran out of time building the OCR helper"
     assert ocr.probe(CFG, tmp_path) == ("failed", "swiftc ran out of time building the OCR helper")
     assert [p.name for p in (tmp_path / "ocr").iterdir()] == [ocr._marker(ocr._helper_path(tmp_path)).name]
+    assert gone(compiler_pid(pidfile)), "the compiler outlived the build's time limit"
+
+
+def test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q83: round 13's O73 made ``compiling`` hold a SIGINT until its compiler has written its
+    pid, and no test failed when the hold was taken out. Here the compiler starts 1.5 s in, after the 1 s
+    limit's SIGINT, so the SIGINT always comes first: without the hold the stub killed its compiler before
+    it wrote a pid ("no compiler started"), and without the build's wait after SIGINT the compiler outlives
+    the build. One window stays, as in the test above: a SIGINT before the stub's first trap line kills it."""
+    pidfile = tmp_path / "compiler.pid"
+    script(tools / "swiftc", compiling(pidfile, start_after=1.5))
+    monkeypatch.setattr(ocr, "_BUILD_TIMEOUT_S", 1.0)
+    with pytest.raises(ocr.OcrError, match=r"^swiftc ran out of time building the OCR helper$"):
+        ocr.build(tmp_path)
     assert gone(compiler_pid(pidfile)), "the compiler outlived the build's time limit"
 
 
