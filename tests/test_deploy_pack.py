@@ -6088,9 +6088,13 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     ) in page
     assert (
         "A list that finished, or an install run, keeps the usual rules, and so does an exit 4 that logged "
-        "`synced=N`. install.sh's sign-in exit on a set-up Mac (§16.93 M4, `not-signed-in synced=N`) has the "
+        "`synced=N`. install.sh's sign-in exit on a set-up Mac (§16.93 M4, `not-signed-in apps=<app> "
+        "missing=M synced=N`; `not-signed-in synced=N` from an install.sh before B13 round 13 O5) has the "
         "next row's line."
     ) in page
+    # B13 round 14 Q71: since round 13 O5 that exit logs the apps and the missing count before synced=N
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'not-signed-in apps=$tokens missing=$missing synced=$synced"' in installer
     m7 = " ".join(_contracts_section("Amended 2026-10-16, §16.92 M7:", "\n\n").split())
     assert "that all failed, on a Mac that syncs no folder, counts no folder question" in m7
     assert "A list that logged `synced=N`, N at least 1 (§16.93 M4's sign-in exit included), keeps the" in m7
