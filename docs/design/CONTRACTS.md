@@ -11247,6 +11247,11 @@ said `quarantined 11` beside a Quarantine part with 0 quarantined and 11 refused
 (the status line), `tests/test_publish.py` (STATE.md, its contract line, the snapshot).
 
 #### N36: the purge headline spells its cache count (`agentsync.cli`)
+Amended 2026-10-17, §16.111 Q39, Q44: a known count beside a line the agent
+relays takes its number from the count now: step 1's list says `1 folder` or `N folders` (and a re-run keeps `it`
+or `them`), the scaffold count `1 scaffold file`, the converters' summaries `1 slide`, `1 layout`, `1 page`, `1
+comment`, `text of 1 picture read`, and the report's `listed 1 folder`, `1 of 2 sources` and the label rule's
+`1 excluded id`, `1 name` (`agentsync.text.plural`). Other `(s)` counts are as this note says.
 
 The cache count in the purge headline reads `1 cache entry` or `N cache entries` (0 included), followed by `would
 be removed` on a dry run and `removed` on a real run; it never reads `entr(ies)`. The other counts keep `(s)`
@@ -20326,6 +20331,11 @@ the attempt still begins at its `Attempt:` time. The optional guard for a `--log
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_a_new_sessions_step_1_line_before_its_error_leaves_the_finished_attempt`,
 `test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report`.
+Amended 2026-10-17, §16.111 Q30: section 3's branches-only line goes on
+`; to send them, for each branch ... run git -C ~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch"
+origin/main..<branch> -o ~/agent-context/setup/local-work (a branch that writes nothing holds no new commit), then run
+this command again`, and the header says `Section 3 sends no patch: M local-work branch(es) hold commits this file
+does not carry; its line says how to add them.`
 
 **Redaction and pronouns** (O10, O38, O54, O68; dated lines at §16.98 N57, §16.52 Q17 and §16.58 F48). O10: the
 folder legend's list-only clause is not printed for the agent's own name: both readers take every whole-word copy
@@ -20340,6 +20350,9 @@ it refers to (`still empty on this Mac, by its link count of 2`, `it is not excl
 `test_an_organisation_environment_leaves_the_plist_key_whole`, `test_every_camelcase_word_the_report_prints_is_held_whole`,
 `test_the_environment_names_the_terminal_app_as_the_shell_report_does`,
 `test_empty_cloud_folders_part_says_its_zeros_in_words`.
+Amended 2026-10-17, §16.111 Q49: the shell takes the `Agent:` values out
+longest first, as the Python report does, so a name inside another ("Copilot" in "GitHub Copilot") leaves no part of
+it.
 
 ### 16.105 Round 13: installer, the sign-in stop and the shell report (2026-10-17, wave B13 round 13 lane RB)
 
@@ -20366,6 +20379,9 @@ folder is back under that name or its [[source]] path in <config> is fixed; a sy
 and that folder's pages are kept`, and for another account's folder `... until then; a sync still mirrors the folders
 that are there`. Tests: `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2`,
 `test_e2e.py::test_a_sync_with_one_source_root_gone_still_mirrors_the_others`.
+Amended 2026-10-17, §16.111 Q16: the clauses
+read `..., so step 2 runs no first sync until ...`: the bracket `(and installs no LaunchAgents)` is gone, since step
+2 never installs them (the prompt passes no `--confirm-install-agent`) and a run that does warns for itself.
 
 **A SharePoint library not synced beside its organization's OneDrive folder is no sign-in** (O41, O48, O57, one
 defect, with O52's list half for lane B's §16.107; amends §16.99 N41). `signed_out` read `OneDrive-SharedLibraries-<org>`
@@ -20393,6 +20409,9 @@ the unredacted file into it as `.bring-back.*` and exited 0, so the run named a 
 `write_bring_back` refuses such a path before it builds anything and again at the mv, so §16.99 N71's `NEXT:` follows,
 with no earlier-file note. A link to a file is replaced as before. Test:
 `test_a_folder_at_the_bring_back_path_takes_no_file` (a folder, a link to one).
+Amended 2026-10-17, §16.111 Q19: the warning
+names the cause, `could not write <path>: a folder, or a link to a folder, is at that path; move it away`, as each
+other failure of `write_bring_back` names its own.
 
 **N71's NEXT keeps the earlier-file note in its one bracket** (O14; amends §16.99 N71). The note was a second
 bracket right after the first, and printed the path again. Test:
@@ -20406,6 +20425,10 @@ commit's subject) and in a warning; with nothing sent the header says `Section 3
 could not be read; see its last line.` A read that fails partway fails the write, so N71's `NEXT:` applies. Not
 the finder's whole-write failure: it drops the one-file bundle for one bad patch. Test:
 `test_a_patch_this_account_cannot_read_is_counted_not_sent` (alone, beside a readable one).
+Amended 2026-10-17, §16.111 Q20, Q29: the
+`--report-only` NEXT gives the remedy before `copy that one file back`, the header gives it too, both readers'
+local-work line count such a patch apart, and a later report sends it once it is readable
+(`local-work/.not-sent`), where it was `not repeated` before.
 
 **A stopped copy's left-out marker is number-neutral** (O70; amends §16.99 N22). One marker stands for the lines of
 every earlier run in the tail, yet read "an earlier run's". Test:
@@ -20432,6 +20455,8 @@ spellings and a longer host ending in it, one number in both readers),
 this Mac's own CloudStorage heads, letters only), after no letter or digit. Test:
 `test_the_org_legend_explains_only_what_the_report_shows` (a quoted word beside the app's folder and alone, a Mac's
 own app).
+Amended 2026-10-17, §16.111 Q5: the in-word clause's
+example is a whole word the body shows (`My<org-1>Team`, `<org-2>Hub`), no longer always `<org-1>Drive`.
 
 **A stopped copy drops the older renderer's quiet friction count** (O20). Round 12 N20's rule is the renderer's,
 and a stopped copy is rendered by the older installed agentsync, which still wrote `- friction (attempt N): 2 event
@@ -20450,6 +20475,9 @@ started in one second` clause, and the Summary's retry line and the doctor's fir
 matches, or that logged its status step). Only where the report holds no numbered label and install.log has a
 shared second. Test: `test_a_stopped_copy_rendered_by_an_older_agentsync_numbers_runs_started_in_one_second` (and a
 numbered report left as it is).
+Amended 2026-10-17, §16.111 Q26: the Summary's `the
+install run of <start>` gains `, run <label>` there too when that run's stamp is shared, as round 13 O22 gave the
+renderer.
 
 **A comment and a tighter test** (O46, O72). `friction_step1_stated`'s comment gives its third field as
 `header:<V>:<old|new>:<fork|remote>` (a comment: no test can fail on it). The shell report's macOS line is held to
@@ -20491,6 +20519,9 @@ do not add another folder in its place unless I name it." (`GONE_FOLDER`; "any o
 person's [FAIL] doctor prints, from doctor itself, in step 2 and the closing status; fails on v21's installer),
 `test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next` (a timeout, a held listing, each alone and beside a
 renamed folder), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+Amended 2026-10-17, §16.111 Q45, Q54,
+Q63: `persons_fails` also reads `<provider> is empty while OneDrive-<org> ...` (round 13 O52's fix for a SharePoint
+library there but empty) as the person's; the test's cases include it.
 
 **The finish names the files the NEXT: line says to copy back** (O15; amends §16.100 N71). v21's "name the files the
 NEXT: line names instead" took in bring-back.md, which that NEXT (`--report-only` after `write_bring_back` failed
@@ -20751,7 +20782,99 @@ Reserved for round 14 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.111 Round 14: installer, persons_fails and the shell report (2026-10-17, wave B13 round 14 lane RB)
 
-Reserved for round 14 lane RB of B13.
+The installer's findings of the v22 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 14"; specs `round14/items/Q<n>.md`, the verifier's corrected fix built). Each item has a test that fails
+without it, but Q82 (a comment). Where an item changes what an older section states, that section has a dated line
+(`Amended 2026-10-17, §16.111 Q<n>`). No item needs prompt words; Q22's NEXT and Q16's clauses keep the words v23
+keys on (`not a step for the agent`, `on disk`), which lane P was told.
+
+**An empty SharePoint library's [FAIL] is the person's** (Q45, Q54, Q63: one defect from three finders, built once;
+amends §16.106 O11). Round 13 O52 gave doctor `<provider> is empty while OneDrive-<org> is there: sync the SharePoint
+library ...` for a library folder that is there but empty, and `persons_fails` read only `is missing while`, so step 2
+and the closing status said `fix the [FAIL] lines above ..., then re-run`. Its arm reads `/.* is (missing|empty) while
+(OneDrive-|another )`; doctor's `_missing_source_fix` is the one producer of that text. Test:
+`test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report` (its cases add `library-empty`, from doctor).
+
+**Step 1's gone-folder clauses promise no LaunchAgents** (Q16; amends §16.105 O6). Six clauses said step 2 runs no
+first sync `(and installs no LaunchAgents) until` the folder is back, as if it would install them after; the prompt's
+step 2 never does. Tests: `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2`,
+`test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does`.
+
+**bring-back.md's failures and missing patches name their remedy** (Q19, Q20, Q29, Q30; amends §16.105 O7, O25 and
+§16.104 O23). Q19: every failure of `write_bring_back` sets `BACK_WHY`, which the warning names (`a folder, or a link
+to a folder, is at that path; move it away`; a temporary file; a patch read cut short; `chmod or mv failed (its error
+is above)`), since N71's NEXT says to fix the cause. Q20, Q29: with a kept patch this account cannot read, the
+`--report-only` NEXT reads `<file> does not hold N kept patch file(s) this account cannot read (see the warning
+above): make them readable (chmod u+r on the files in <setup>/local-work) and run this command again, then review
+<file> and copy that one file back privately[, or paste ...] (nothing is sent for you)`; the header gives the remedy
+beside a patch that was sent too; both readers' local-work line add `, U of them unreadable and not in bring-back.md
+(chmod u+r, then run ~/src/agent-context-sync/scripts/install.sh --report-only again)` (`LOCAL_WORK_AGAIN`). Such a
+patch is listed in `local-work/.not-sent` (no `*.patch` glob reads it) by its identity (device, inode, time, size:
+chmod changes none) and the report's time, and is sent whatever its time while the earlier attempt's end is not
+after that record. Corrected by measurement: the verifier's rule, which rewrote the list from each run's unreadable
+patches, dropped it again at a second report of the same later attempt; the record stays while the patch is
+unchanged, and goes with it. Not ctime, which Finder, Spotlight and a moved folder change. Q30: the branches-only
+line gives a count-only remedy with the keep's `--suffix`, and the header says section 3 sends no patch. Tests:
+`test_a_folder_at_the_bring_back_path_takes_no_file`,
+`test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_review`,
+`test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable` (with the issue link and without),
+`test_a_patch_this_account_cannot_read_is_counted_not_sent`,
+`test_setup_report.py::test_both_readers_count_a_patch_this_account_cannot_read_apart`,
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
+`test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+**The first sync's config refusal is the person's** (Q22). An exit 78 at the first sync is a config that loads but the
+sync cycle refuses (`cycle._refuse_vanished_sources`: a source still mirrored, gone from sources.toml), so the config
+step passed and status never shows it. Its NEXT reads `the first sync refused the config <config> (the configuration
+error above; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so
+show them the error and go on to the report; once it is fixed, the next run is: <install.sh and its options>`, in
+`config_failed`'s shape; the re-run keeps its `%q` form. Another exit code keeps `fix what the first sync printed
+above`. Test: `test_first_sync_failure_fails_the_run_before_the_agent` (78, 1).
+
+**A known count takes its noun from the count** (Q39, Q44: Q44 is Q39's install.sh half, built once; amends §16.39
+N36). Step 1's list says `already synced on this Mac: 1 folder (marked ...)` or `N folders`, and its keep NEXTs
+`already syncs 1 folder, and a re-run keeps it`; the prefix up to the colon, which the prompt quotes and the report
+reads, and `synced=N` are unchanged. Q39's other lines: `1 scaffold file written`, the converters' `Presentation: 1
+slide`, `1 layout`, `PDF: 1 page`, `1 comment on 1 page`, `text of 1 picture read by on-device OCR`, a diagram's `1
+page`, and the report's `listed 1 folder`, `1 of 2 sources` and `(1 excluded id, 2 names, ...)`, through one helper,
+`plural` in `agentsync.text` (setup_report's `_plural` before it). No emitter version moved: a page converted before keeps
+its `(s)` until it is converted again for another reason. Tests: `test_deploy_pack.py::test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`
+(one folder), `test_list_folders_marks_the_folders_this_mac_already_syncs` (two), `tests/test_text.py`.
+
+**The shell legend's in-word example is a word the report shows** (Q5; amends §16.105 O45). It was always
+`<org-1>Drive`; it is the first whole word the in-word detector's own pattern finds in the body (at most 32 bytes),
+and `<org-1>Drive` only with no body. Test: `test_the_org_legend_explains_only_what_the_report_shows` (mid-word, a
+second organization).
+
+**The shell takes agent names out longest first** (Q49; amends §16.104 O10). It took them in the order it read them,
+so `Copilot` first left `GitHub` of `GitHub Copilot`, and a list-only folder named GitHub gave the list-only clause in
+the shell report alone. Test: `test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend`.
+
+**A stopped copy names the run its sync line means** (Q26; amends §16.105 O21). On `stopped_run_labels`' relabel path
+the Summary's `the install run of <start>` (install.log's clause, install.out's, or both on one line) gains `, run
+<label>` when that run's stamp is shared, as round 13 O22's `_run_named` does: the last run of that start time that
+logged a first sync (install.log's clause) or that is no list. Test:
+`test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_line` (one second, a second apart, an
+unrelated pair, already numbered, both clauses).
+
+**A stopped copy words its Installer table and its held listing** (Q27). Round 13 O3 and O36 changed the renderer
+only. `stopped_report_note` maps a launcher, agent, wait or report row's bracket that is exactly a known token
+(`STOPPED_STEP_WORDS`, held equal to `_STEP_NOTE_WORDS` less helpers; `, rc N` kept) and pads the table again as
+`_step_table` does, by characters; and in the Doctor section replaces `(held at its last walk: ... still holds it)`
+with doctor's `LISTING_YOURS_REPORT_NOTE`. Not the finder's run of the checkout's renderer: its doctor would mix two
+builds. Tests: `test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listing`,
+`test_the_shell_stopped_copy_words_are_the_reports`.
+
+**The pandoc first-start wait forks no poll** (Q40). It polled with an external `sleep 0.2`, five forks a second for
+up to 300 s. The shell waits on pandoc; a ticker child prints the lines (exit 3 when it printed one) and a watchdog
+child stops pandoc at `PANDOC_START_SECONDS`; on_exit ends both (`WAIT_TICKER`, `WAIT_WATCHDOG`). Lines, cap and the
+`PROGRESS_SINCE` handoff are as before. Test: `test_the_wait_for_pandoc_forks_a_few_sleeps_not_five_a_second` (a 6 s
+start forked 30 sleeps, now about 10), with the earlier pandoc tests unchanged.
+
+**Tests and comments** (Q51, Q82). Q51: the O36 check counted "held" in a hand-typed `_HELD_WARN`; it is now built
+with `doctor.format_results` from `_LISTING_YOURS_NOTE`, and the older-build lines are typed out. Q82:
+`friction_proxy_hosts`' comment said the shell matches a host byte for byte; since round 13 O2, O67 both readers
+match a proxy pair in any case.
 
 ### 16.112 Round 14: setup prompt v23 (2026-10-17, wave B13 round 14 lane P)
 
