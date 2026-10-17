@@ -3464,6 +3464,10 @@ STOPPED_COPY_WARN="the installer stopped this copy in step 1, before step 2 rein
 STOPPED_COPY_BEYOND=" beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)" # setup_report._STOPPED_COPY_BEYOND (a test keeps them equal)
 # An older renderer's Summary prompt line gives one reason for the stop and its Run metadata names its own prompt
 # version: the stop line names two reasons (B13 round 9 K18) and this installer's version (B13 round 10 L18, L24).
+# An older renderer's Summary "- friction (attempt N): K event line(s): ..." line that counts only these kinds,
+# with no legacy lines, is dropped, as a renderer from 78500114 on never writes it: it said no more than the
+# agent-friction line, often "1 error, 1 finished" beside "failed at step 1" (B13 round 12 N20, round 13 O20).
+STOPPED_COPY_QUIET_KINDS="error deviation prompt finished" # setup_report.PROBLEM_KINDS and "finished" (a test keeps them equal)
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -3475,7 +3479,18 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
 				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 				-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
-				-v changed=", or the --log-start value was changed" '
+				-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " '
+				function quiet(line,    c, n, a, i, x) { # a friction count line of quiet kinds only ("; N legacy" keeps it)
+					if (index(line, "- friction (attempt ") != 1 || !index(line, " event line(s): ") || index(line, "; ")) return 0
+					c = substr(line, index(line, " event line(s): ") + 16)
+					if (c == "none") return 1
+					n = split(c, a, ", ")
+					for (i = 1; i <= n; i++) {
+						x = a[i]
+						if (!sub(/^[0-9]+ /, "", x) || !index(quietkinds, " " x " ")) return 0
+					}
+					return 1
+				}
 				function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
 				function old(line) { return index(line, "[warn] install.commit \342\200\224 ") == 1 && index(line, ", but the checkout at ") > 0 && index(line, " (fix: ") > 0 }
 				function doctor_line(line,    k, p, i, j, a, m, items, rest, e, done) { # the Summary\047s, as c6aa4485 writes it
@@ -3526,6 +3541,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				}
 				index($0, "## ") == 1 { sec = $0 }
 				sec == "## Summary" { $0 = prompt_line($0) }
+				sec == "## Summary" && quiet($0) { next }
 				# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13
 				# round 11 M27, M52; the rule of G9 and J23/J40). Every renderer writes "setup prompt vN (python X, exe)".
 				index($0, "- agentsync: ") == 1 && match($0, /, setup prompt v[0-9]+ \(/) && substr($0, RSTART + 16, RLENGTH - 18) != compat && !index($0, "the installed agentsync, which renders this report") {

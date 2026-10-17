@@ -6622,6 +6622,46 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it
     _sends_nothing(side)
 
 
+def test_a_stopped_copy_rendered_by_an_older_agentsync_drops_its_quiet_friction_count(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 13 O20: round 12 N20 left out the Summary's "- friction (attempt N): ..." line that counts
+    only the problem kinds and the closing line, but a stopped copy is rendered by the older installed
+    agentsync, which still wrote "1 error, 1 finished" beside "failed at step 1". The shim drops such a line,
+    by the renderer's own rule; one that counts another kind, or legacy lines, stays, and so does the friction
+    log's count."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    dropped = [
+        "- friction (attempt 2): 2 event line(s): 1 error, 1 finished",
+        "- friction (attempt 3): 3 event line(s): 1 deviation, 1 error, 1 finished",
+    ]
+    kept = [
+        "- friction (attempt 4): 2 event line(s): 1 question, 1 finished",
+        "- friction (attempt 5): 2 event line(s): 1 error, 1 finished; 1 legacy v4 line(s)",
+    ]
+    log_line = "- attempt 3 (2026-10-16T23:25:12Z): failed at step 1; 2 event line(s): 1 error, 1 finished"
+    old = tmp_path / "old-report.md"
+    old.write_text(
+        _old_renderer_report(
+            ["- outcome: failed at step 1", *dropped, *kept], ["# run=20261012T090000Z-41 install.sh", "done"]
+        ).replace("## Redaction", f"## Agent friction log\n\n{log_line}\n\n## Redaction")
+    )
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    lines = side.read_text().splitlines()
+    assert [ln for ln in lines if ln.startswith("- friction (attempt ")] == kept
+    assert log_line in lines and "- outcome: failed at step 1" in lines
+    _sends_nothing(side)
+
+
+def test_the_shell_stopped_copy_quiet_kinds_are_the_reports() -> None:
+    """B13 round 13 O20: the kinds whose count line the shim drops are the renderer's."""
+    [k] = re.findall(r'(?m)^STOPPED_COPY_QUIET_KINDS="(.*)" #', INSTALL_SH.read_text())
+    assert k.split() == [*setup_report.PROBLEM_KINDS, "finished"]
+
+
 def test_the_shell_stopped_copy_warn_is_the_reports() -> None:
     [w] = re.findall(r'(?m)^STOPPED_COPY_WARN="(.*)" #', INSTALL_SH.read_text())
     assert w == setup_report._STOPPED_COPY_WARN
