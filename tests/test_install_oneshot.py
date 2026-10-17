@@ -587,7 +587,8 @@ def _source_fails(cfg: Config, src: SourceConfig) -> list[str]:
 
 def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
     """Every kind of source [FAIL] whose fix is the person's, from doctor itself: a synced folder renamed in a
-    signed-in OneDrive (probe RN), a SharePoint library not synced here, a stale or missing provider folder,
+    signed-in OneDrive (probe RN), a SharePoint library not synced here, one there but empty beside its
+    signed-in organization (B13 round 14 Q45, Q54, Q63), a stale or missing provider folder,
     one missing beside another account's, a plain folder gone, a file where a folder belongs, a sentinel gone
     and a [[source]] with no path."""
     cloud = Path.home() / "Library" / "CloudStorage"
@@ -598,6 +599,15 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
     cases = {"renamed": _source_fails(cfg, renamed)}
     library = cloud / "OneDrive-SharedLibraries-Contoso" / "Team Site - Documents"
     cases["library"] = _source_fails(cfg, dataclasses.replace(base, path=library))
+    # Gone again before the signed-out case: the folder's name splits to the app OneDrive, so left there it
+    # would read as another account's folder.
+    shared = library.parent
+    shared.mkdir()
+    (shared / ".hidden").write_text("x\n", encoding="utf-8")
+    cases["library-empty"] = _source_fails(cfg, dataclasses.replace(base, path=library))
+    assert all("is empty while OneDrive-Contoso" in ln for ln in cases["library-empty"]), cases["library-empty"]
+    (shared / ".hidden").unlink()
+    shared.rmdir()
     (org / "Team Site - Archive").rmdir()
     cases["stale"] = _source_fails(cfg, renamed)
     org.rmdir()
