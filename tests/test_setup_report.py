@@ -9822,8 +9822,9 @@ def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
     nested = patch.parent / "older" / patch.name
     nested.parent.mkdir()
     patch.rename(nested)
-    neutral = "- local-work branch(es) in the checkout: {}, no patch file in the setup folder's local-work "
-    neutral += "(a keep with nothing to keep writes none)"
+    neutral = "- local-work branch(es) in the checkout: {} with commits of their own, no patch file in the "
+    neutral += "setup folder's local-work "
+    neutral += "(moved, deleted or never written; those commits are not in bring-back.md)"
     assert setup_report._local_work_line() == neutral.format(2)
     # a branch at main's own commit (packed) or origin/main's (loose) holds no commit of its own (L58)
     (git / "refs" / "heads" / "local-work-20261014-005444").write_text("c" * 40 + "\n", encoding="utf-8")
@@ -11133,7 +11134,7 @@ def _shell_local_work_line(home: Path, setup: Path) -> str | None:
     [where] = re.findall(r'(?m)^LOCAL_WORK_WHERE=".*"$', script)
     functions = [
         re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}$", script)
-        for name in ("checkout_ref_sha", "checkout_git_dirs", "fallback_local_work_line")
+        for name in ("checkout_ref_sha", "checkout_git_dirs", "local_work_counts", "fallback_local_work_line")
     ]
     body = "\n".join(
         [
@@ -11143,7 +11144,7 @@ def _shell_local_work_line(home: Path, setup: Path) -> str | None:
             *(f.group(0) for f in functions if f),
         ]
     )
-    assert len([f for f in functions if f]) == 3
+    assert len([f for f in functions if f]) == 4
     cp = subprocess.run(
         ["/bin/bash", "-c", f"{body}\nfallback_local_work_line"],
         capture_output=True,
@@ -11194,8 +11195,9 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
     repo(home / "sep.git")
     (home / "src" / "agent-context-sync").mkdir(parents=True, exist_ok=True)
     dot.write_text(f"gitdir: {home / 'sep.git'}\r\n", encoding="utf-8")  # a CRLF line, and no local-work
-    neutral = "- local-work branch(es) in the checkout: 1, no patch file in the setup folder's local-work "
-    neutral += "(a keep with nothing to keep writes none)"
+    neutral = "- local-work branch(es) in the checkout: 1 with commits of their own, no patch file in the "
+    neutral += "setup folder's local-work "
+    neutral += "(moved, deleted or never written; those commits are not in bring-back.md)"
     assert both() == neutral
     patches.mkdir()
     patch = patches / f"0001-keep.{branch}.patch"

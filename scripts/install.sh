@@ -2576,6 +2576,20 @@ LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the p
 # of its own, unless a patch is named for it (*.<branch>.patch; round 11 M54, M71). The patches are counted
 # whatever the checkout is. With branches but no patch the line does not say kept.
 fallback_local_work_line() {
+	local n newest b counts
+	counts="$(local_work_counts)"
+	IFS='|' read -r n newest b <<<"$counts"
+	if [ "$n" -gt 0 ]; then
+		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
+	elif [ "$b" -gt 0 ]; then
+		# the counted branches hold commits of their own: those commits are on the branch only (B13 round 13 O23)
+		say "- local-work branch(es) in the checkout: $b with commits of their own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)"
+	fi
+	return 0
+}
+# The counts fallback_local_work_line prints, and write_bring_back's section 3 reads (one count, B13 round 13
+# O23): "<patches>|<newest patch time, or empty>|<branches>" (no tab: read would merge an empty field).
+local_work_counts() {
 	local git b=0 p n=0 at newest="" f s main origin patches published=" "
 	patches="$(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null || true)"
 	while IFS= read -r p; do
@@ -2602,12 +2616,7 @@ fallback_local_work_line() {
 			LC_ALL=C sed -n 's|^[^ ]* refs/heads/\(local-work-.*\)$|\1|p' "$git/packed-refs" 2>/dev/null
 		} | LC_ALL=C sort -u)
 	fi
-	if [ "$n" -gt 0 ]; then
-		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
-	elif [ "$b" -gt 0 ]; then
-		say "- local-work branch(es) in the checkout: $b, no patch file in the setup folder's local-work (a keep with nothing to keep writes none)"
-	fi
-	return 0
+	printf '%s|%s|%s\n' "$n" "$newest" "$b"
 }
 fallback_body() {
 	local rc="$1" why="$2" friction="$3" cs="$HOME/Library/CloudStorage" p v k n l o numbered
@@ -3380,7 +3389,7 @@ source_excludes_line() { # CONFIG
 }
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
-	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=()
+	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
@@ -3432,7 +3441,17 @@ write_bring_back() {
 		printf '%s' "$skipped"
 		# no file name: a patch's name carries its commit's subject
 		[ "$unread" -eq 0 ] || printf 'not sent: %s patch file(s) in %s/local-work this account cannot read; make them readable (chmod u+r) and run this command again\n' "$unread" "$shown"
-		[ "$sent" -gt 0 ] || [ -n "$skipped" ] || [ "$unread" -gt 0 ] || printf 'none\n'
+		if [ "$sent" -eq 0 ] && [ -z "$skipped" ] && [ "$unread" -eq 0 ]; then
+			# local-work branches with commits of their own and no patch: those commits are not here (B13 round 13
+			# O23: a bare "none" read as no kept work)
+			branches="$(local_work_counts)"
+			branches="${branches##*|}"
+			if [ "${branches:-0}" -gt 0 ]; then
+				printf 'none: no patch file is in %s/local-work, but %s local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry\n' "$shown" "$branches"
+			else
+				printf 'none\n'
+			fi
+		fi
 	} >"$local_work" 2>/dev/null || {
 		rm -f "$tmp" "$local_work"
 		return 1

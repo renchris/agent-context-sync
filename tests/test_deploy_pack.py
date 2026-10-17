@@ -5504,9 +5504,15 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         "`- local work kept by setup prompt step 1: N patch file(s) in the setup folder's local-work, newest "
         f"written <time> ({setup_report.LOCAL_WORK_WHERE}); M local-work branch(es) in the checkout`" in page
     )
+    assert (  # B13 round 13 O23
+        "`- local-work branch(es) in the checkout: M with commits of their own, no patch file in the setup "
+        "folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)`"
+        in page
+    )
+    assert "which is no kept work" not in page
     assert (
-        "`- local-work branch(es) in the checkout: M, no patch file in the setup folder's local-work (a keep "
-        "with nothing to keep writes none)`" in page
+        "git -C ~/src/agent-context-sync format-patch origin/main..<branch> -o "
+        "~/agent-context/setup/local-work" in " ".join(page.split())
     )
     assert "Documents" in setup_report._GENERIC_FOLDERS
     assert (

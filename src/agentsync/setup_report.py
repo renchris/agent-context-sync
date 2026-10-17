@@ -9001,9 +9001,12 @@ def _local_work_line() -> str | None:
             "branch(es) in the checkout"
         )
     if branches:
+        # the counted branches hold commits of their own, so "a keep with nothing to keep writes none" was
+        # false of them since round 11's filter (B13 round 13 O23): their commits are on the branch only
         return (
-            f"- local-work branch(es) in the checkout: {len(branches)}, no patch file in the setup folder's "
-            "local-work (a keep with nothing to keep writes none)"
+            f"- local-work branch(es) in the checkout: {len(branches)} with commits of their own, no patch "
+            "file in the setup folder's local-work (moved, deleted or never written; those commits are not "
+            "in bring-back.md)"
         )
     return None
 

@@ -172,9 +172,13 @@ words) is yours to remove. The CLI always redacts.
   branches that hold a commit of their own (one at main's or origin/main's commit, or at any commit origin/main's
   reflog names, is not counted unless a patch is named for it), read from the checkout's common dir, so a checkout
   whose `.git` is a file (a clone whose git dir is kept apart, a linked worktree) is counted too; with branches
-  and no patch it reads `- local-work branch(es) in the checkout: M, no patch file in the setup folder's
-  local-work (a keep with nothing to keep writes none)`, which is no kept work. A public report shows that the
-  work exists, never the patches.
+  and no patch it reads `- local-work branch(es) in the checkout: M with commits of their own, no patch file in the
+  setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)`, and
+  section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M local-work branch(es) in
+  ~/src/agent-context-sync hold commits this file does not carry` (B13 round 13 O23). Those commits exist only on
+  the branch: ask the person to run `git -C ~/src/agent-context-sync format-patch origin/main..<branch> -o
+  ~/agent-context/setup/local-work` for each local-work branch, then run the report again. A public report shows
+  that the work exists, never the patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
   not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
   hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with

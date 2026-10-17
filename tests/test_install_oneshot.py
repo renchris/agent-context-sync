@@ -9059,17 +9059,29 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     nested = patch.parent / "older" / patch.name
     nested.parent.mkdir()
     patch.rename(nested)
-    neutral = "- local-work branch(es) in the checkout: {}, no patch file in the setup folder's local-work "
-    neutral += "(a keep with nothing to keep writes none)\n"
+    neutral = "- local-work branch(es) in the checkout: {} with commits of their own, no patch file in the "
+    neutral += "setup folder's local-work "
+    neutral += "(moved, deleted or never written; those commits are not in bring-back.md)\n"
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
     assert neutral.format(2) in text and "local work kept" not in text, text
+
+    def section3() -> str:
+        back = (report_path(env).parent / "bring-back.md").read_text()
+        return back.split("\n## 3. Local work kept by setup prompt step 1 (", 1)[1].split(")\n\n", 1)[1]
+
+    # B13 round 13 O23: section 3 says the branches hold commits it does not carry, not a bare "none"
+    assert section3() == (
+        "none: no patch file is in ~/agent-context/setup/local-work, but 2 local-work branch(es) in "
+        "~/src/agent-context-sync hold commits this file does not carry\n"
+    ), section3()
     (git / "refs" / "heads" / "local-work-20261014-005444").write_text("c" * 40 + "\n")
     (git / "refs" / "remotes" / "origin").mkdir(parents=True)
     (git / "refs" / "remotes" / "origin" / "main").write_text("b" * 40 + "\n")
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
     assert "local work kept" not in text and "local-work branch" not in text, text
+    assert section3() == "none\n", "no branch with a commit of its own: nothing is missing"
     (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n")  # a loose main overrides its packed line
     assert install_sh(env, "--report-only").returncode == 0
     assert neutral.format(1) in report_path(env).read_text()
