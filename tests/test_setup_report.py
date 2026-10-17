@@ -4596,6 +4596,45 @@ def test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_t
     # no install run: a stop at step 1 stays expected
     runs = setup_report.read_install_runs(set_up_log(fake_mac, listed="", list_step=unread))
     assert not setup_report.unread_unknown(runs)
+    # B13 round 13 O8: from v21, when the installed agentsync is already the checkout's build (step 2 does
+    # not reinstall it), step 1 asks nothing at all; one that step 2 reinstalls keeps "asks at most"
+    stuck = (
+        "- expected turns: no folder question (step 1's list could not read the config, and the installed "
+        "agentsync is already this checkout's build, so step 2 does not reinstall it: step 1 asks nothing, "
+        "since no folder can be added until the config is fixed; not logged) · "
+    )
+    for built, prompt, want in (
+        ("skipped note=current", "v21", stuck),
+        ("done note=installed", "v21", quiet),
+        ("skipped note=current", "v20", quiet),
+    ):
+        write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", f"Prompt: {prompt}"))
+        log = set_up_log(fake_mac, failed, listed="", list_step=unread)
+        log.write_text(
+            log.read_text(encoding="utf-8")
+            .replace("end rc=0", "end rc=1")
+            .replace(
+                "step=agentsync seconds=41 rc=0 result=done", f"step=agentsync seconds=41 rc=0 result={built}"
+            ),
+            encoding="utf-8",
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        expected = _line(section(text, "Summary"), "- expected turns: ")
+        assert expected.startswith(want), (built, prompt, expected)
+    # a list that timed out (no failure of the build) keeps the old words, current build or not
+    log = set_up_log(
+        fake_mac, failed, listed="", list_step=unread.replace("marks=failed:ConfigError", "marks=timeout")
+    )
+    log.write_text(
+        log.read_text(encoding="utf-8").replace(
+            "step=agentsync seconds=41 rc=0 result=done",
+            "step=agentsync seconds=41 rc=0 result=skipped note=current",
+        ),
+        encoding="utf-8",
+    )
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert _line(section(text, "Summary"), "- expected turns: ").startswith(quiet)
 
 
 def test_a_folder_list_run_again_before_the_install_is_what_step_1_printed(

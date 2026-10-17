@@ -1900,20 +1900,25 @@ def unread_why(runs: Sequence[InstallRun]) -> str | None:
 def _decided_unread(runs: Sequence[InstallRun]) -> bool:
     """Whether the list that decides :func:`synced_before` finished with ``synced=unreadable``: a config was
     there and could not be read, and no re-run before the install read it (:func:`_list_reread`)."""
+    return _unread_list(runs) is not None
+
+
+def _unread_list(runs: Sequence[InstallRun]) -> dict[str, str] | None:
+    """The ``list-folders`` step of the list :func:`_decided_unread` reads, when it decides; else None."""
     runs = list(runs)
     for n, run in enumerate(runs):
         if run.list_only:
             listed = run.step("list-folders") or {}
             if _count(listed, "synced") is not None:
-                return False
+                return None
             if listed.get("result") == "done":
                 if listed.get("synced") != "unreadable":
-                    return False
+                    return None
                 if _list_reread(runs[n + 1 :]) is None:
-                    return True
+                    return listed
         elif _count(run.step("config"), "kept") is not None:
-            return False
-    return False
+            return None
+    return None
 
 
 def _first_kept(runs: Sequence[InstallRun]) -> int | None:
@@ -1946,6 +1951,32 @@ UNREAD_GOES_ON = 18
 """The first setup prompt whose step 1 treats a folder list that could not read an existing config as one
 that marked the folders already synced: it asks at most whether to add a folder, and an agent that cannot
 ask adds none and goes on to step 2 (B13 round 9 K9, K20, K32: v17 had it log a deviation and wait)."""
+
+UNREAD_CURRENT_ASKS_NOTHING = 21
+"""The first setup prompt whose step 1 asks nothing about folders when its list could not read the config
+and the installed agentsync is already the checkout's build (B13 round 13 O8: the report said step 1 "asks
+at most whether to add one"): no folder can be added until the config is fixed, and step 2 does not
+reinstall the build that failed to read it."""
+
+
+def _unread_stuck(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+    """Whether step 1 asked nothing about folders on an unread config (:data:`UNREAD_CURRENT_ASKS_NOTHING`):
+    the attempt's prompt is that version or later, the deciding list (:func:`_unread_list`) logged
+    ``marks=failed``, and the attempt's first install run logged its agentsync step ``skipped note=current``.
+    Not keyed on the list's note or its NEXT: the note is the same whether or not the build is current, and
+    NEXT is not logged."""
+    listed = _unread_list(runs)
+    first = next((x for x in runs if not x.list_only), None)
+    built = (first.step("agentsync") or {}) if first is not None else {}
+    return (
+        att.version is not None
+        and att.version >= UNREAD_CURRENT_ASKS_NOTHING
+        and listed is not None
+        and listed.get("marks", "").partition(":")[0] == "failed"
+        and built.get("result") == "skipped"
+        and built.get("note") == "current"
+    )
+
 
 SIGN_IN_WAITS = 20
 """The first setup prompt whose step 1 waits, as for a click, for the OneDrive sign-in that a list exiting 3
@@ -7499,6 +7530,7 @@ def _expected_turns_line(
     unread: int | None = None,
     kept_unread: int | None = None,
     unasked: bool = False,
+    stuck: bool = False,
     list_stop: str | None = None,
     signed_in: bool = False,
     sign_in: FrictionEvent | None = None,
@@ -7593,6 +7625,13 @@ def _expected_turns_line(
             parts = [
                 f"no folder question ({_plural(kept_unread, 'folder')} already synced; step {step}'s list "
                 f"could not read them, so step {step} asks at most whether to add one; not logged)"
+            ]
+        elif unasked and stuck:  # B13 round 13 O8 (_unread_stuck)
+            parts = [
+                f"no folder question (step {step}'s list could not read the config, and the installed "
+                f"agentsync is already this checkout's build, so step {layout.install_step} does not "
+                f"reinstall it: step {step} asks nothing, since no folder can be added until the config is "
+                "fixed; not logged)"
             ]
         elif unasked:
             parts = [
@@ -8367,6 +8406,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 unread=asked,
                 kept_unread=kept_unread,
                 unasked=unasked,
+                stuck=_unread_stuck(att, runs),
                 list_stop=list_stop,
                 signed_in=signed_in,
                 sign_in=sign_in,
