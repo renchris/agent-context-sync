@@ -10808,7 +10808,12 @@ def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
         ]
 
     monkeypatch.setattr(cli, "_status_checks", sources_only)
-    shutil.rmtree(Path.home() / "Library" / "CloudStorage" / f"OneDrive-{ORG}")
+    # a stale provider folder, holding only a hidden entry: install.sh's signed_out. Gone, it would be
+    # another account's beside OneDrive-SharedLibraries-<org> (round 14 Q46, Q55)
+    provider = Path.home() / "Library" / "CloudStorage" / f"OneDrive-{ORG}"
+    shutil.rmtree(provider)
+    provider.mkdir()
+    (provider / ".hidden").write_text("", encoding="utf-8")
     write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
 
     def summary(apps: str, *installs: tuple[str, str]) -> str:
@@ -10836,6 +10841,77 @@ def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
     got = summary(" apps=onedrive", ("--confirm-install-agent", "done note=exists kept=2 added=0"))
     assert "from the sign-in stop" not in got and "the folder list stopped" not in got, got
     assert "listable FAIL" in _line(got, "- doctor: ").split(" · unexpected ", 1)[1], _line(got, "- doctor: ")
+
+
+def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q46, Q55: the sign-in stop's doctor bucket took a source when its provider folder was not
+    on disk, which is not install.sh's sign-in rule: a stale provider folder holding only hidden entries is
+    signed out there (its FAILs read as unexpected here), while a SharePoint library gone beside its
+    OneDrive-<org>, or a provider folder gone beside another folder of its app, is no sign-in (their FAILs
+    landed in the stop's bucket). Doctor's rule (``provider_state``) is now the report's."""
+    real = cli._status_checks
+
+    def sources_only(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name.startswith("source.")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", sources_only)
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
+    cloud = Path.home() / "Library" / "CloudStorage"
+    provider, library = cloud / f"OneDrive-{ORG}", cloud / f"OneDrive-SharedLibraries-{ORG}"
+
+    def doctor_line() -> str:
+        set_up_log(
+            fake_mac, listed=" synced=2", list_step="failed note=not-signed-in apps=onedrive missing=1"
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        return _line(section(text, "Summary"), "- doctor: ")
+
+    def bucket(line: str) -> tuple[str, str]:
+        stop = line.split(" · from the sign-in stop ", 1)[1] if " · from the sign-in stop " in line else ""
+        return stop.split(" · unexpected ", 1)[0], line.split(" · unexpected ", 1)[1]
+
+    # a stale provider folder: there, with nothing but a hidden entry (install.sh's signed_out returns 0)
+    shutil.rmtree(provider)
+    provider.mkdir()
+    (provider / ".849C9593-D756-4E56-8D6E-42412F2A707B").write_text("", encoding="utf-8")
+    assert doctor.provider_state(provider) == "signed-out"
+    stop, unexpected = bucket(doctor_line())
+    assert stop.startswith("2: ") and "listable FAIL" in stop and "FAIL" not in unexpected, (stop, unexpected)
+    # an unreadable provider folder is signed in (N61): its FAILs stay unexpected
+    provider.chmod(0)
+    try:
+        assert doctor.provider_state(provider) == "signed-in"
+        stop, unexpected = bucket(doctor_line())
+    finally:
+        provider.chmod(0o755)
+    assert stop == "" and "FAIL" in unexpected, (stop, unexpected)
+    # the provider folder gone beside another folder of its app: another account's, not this stop's
+    shutil.rmtree(provider)
+    (cloud / "OneDrive-Fabrikam").mkdir()
+    assert doctor.provider_state(provider) == "other-account"
+    stop, unexpected = bucket(doctor_line())
+    assert stop == "" and "listable FAIL" in unexpected, (stop, unexpected)
+    # a SharePoint library gone beside its OneDrive-<org>: a library not synced, never a sign-in
+    shutil.rmtree(cloud / "OneDrive-Fabrikam")
+    fake_mac["one"].mkdir(parents=True)
+    shutil.rmtree(library)
+    assert doctor.provider_state(library) == "library"
+    stop, unexpected = bucket(doctor_line())
+    assert stop == "" and "listable FAIL" in unexpected, (stop, unexpected)
+    library.mkdir()
+    assert doctor.provider_state(library) == "library"  # there but empty: still a library
+    # both gone, no other OneDrive folder beside them: each is signed out, as install.sh reads it
+    shutil.rmtree(library)
+    shutil.rmtree(provider)
+    assert doctor.provider_state(provider) == doctor.provider_state(library) == "signed-out"
+    stop, unexpected = bucket(doctor_line())
+    assert stop.startswith("4: ") and "FAIL" not in unexpected, (stop, unexpected)
 
 
 def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(

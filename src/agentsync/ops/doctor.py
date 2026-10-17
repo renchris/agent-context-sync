@@ -26,6 +26,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
@@ -909,32 +910,63 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     if provider is None:
         return f"{fix_path}, or sign in to the sync client"
     app = provider.name.split("-", 1)[0] or "the sync client"
+    state = provider_state(provider)
+    there = os.path.lexists(provider)
+    if state == "library":
+        org = org_of(provider.name)
+        if there:
+            return (
+                f"{provider} is empty while OneDrive-{org} is there: sync the SharePoint library to this Mac "
+                f"with Sync on its SharePoint page, or let OneDrive finish setting it up, or {fix_path}"
+            )
+        return (
+            f"{provider} is missing while OneDrive-{org} is there: sync the SharePoint library to this Mac "
+            f"with Sync on its SharePoint page, or {fix_path}"
+        )
+    if state == "signed-out" and there:  # a stale provider folder, as install.sh's list reads it (N61)
+        return (
+            f"sign in to {app} on this Mac or let it finish setting up, since {provider} is empty, "
+            f"then run {BIN} status again"
+        )
+    if state == "signed-in":
+        return f"{fix_path}, or sync that folder in {app}"
+    if state == "other-account":
+        return (
+            f"{provider} is missing while another {app} folder is there: sign in to {app} with the account "
+            f"it belongs to, or {fix_path}"
+        )
+    return f"sign in to {app} on this Mac, since {provider} is missing, then run {BIN} status again"
+
+
+ProviderState = Literal["signed-out", "other-account", "library", "signed-in"]
+
+
+def provider_state(provider: Path) -> ProviderState:
+    """What a ~/Library/CloudStorage provider folder (``provider``) says of its app's sign-in, by the rule
+    install.sh's list keys its sign-in exit on (``signed_out``): ``signed-out`` for one gone with no other
+    folder of its app beside it, or there but holding nothing but hidden entries (stale, or still setting up:
+    B13 round 12 N61); ``other-account`` for one gone while another folder of its app is there;
+    ``library`` for a ``OneDrive-SharedLibraries-<org>`` folder gone or empty beside its organization's
+    ``OneDrive-<org>`` (a library not synced, never a sign-in: B13 round 12 N53, round 13 O52, checked
+    before the empty-folder rule); ``signed-in`` otherwise. A folder that is unreadable, or whose listing
+    does not answer within the listing's time bound (a hidden Allow prompt holds it, B13 round 13 O47), counts
+    as signed in. One rule for doctor's fix and the report's sign-in stop bucket (B13 round 14 Q46, Q55)."""
+    app = provider.name.split("-", 1)[0]
     org = org_of(provider.name) if provider.name.startswith("OneDrive-SharedLibraries-") else None
     signed_in_org = org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}")
     if os.path.lexists(provider):
-        shown: list[str] = ["?"]  # unreadable or held: not shown empty, so the path fix as before
+        shown: list[str] = ["?"]  # unreadable or held: not shown empty
         with contextlib.suppress(OSError, CallTimedOutError):
             shown = call_with_timeout(
                 lambda: [p.name for p in provider.iterdir() if not p.name.startswith(".")],
                 _LISTING_TIMEOUT_S,
                 name="doctor-provider",
             )
-        if not shown and signed_in_org:
-            return (
-                f"{provider} is empty while OneDrive-{org} is there: sync the SharePoint library to this Mac "
-                f"with Sync on its SharePoint page, or let OneDrive finish setting it up, or {fix_path}"
-            )
-        if not shown:  # a stale provider folder, as install.sh's list reads it (B13 round 12 N61)
-            return (
-                f"sign in to {app} on this Mac or let it finish setting up, since {provider} is empty, "
-                f"then run {BIN} status again"
-            )
-        return f"{fix_path}, or sync that folder in {app}"
+        if shown:
+            return "signed-in"
+        return "library" if signed_in_org else "signed-out"
     if signed_in_org:
-        return (
-            f"{provider} is missing while OneDrive-{org} is there: sync the SharePoint library to this Mac "
-            f"with Sync on its SharePoint page, or {fix_path}"
-        )
+        return "library"
     others: list[str] = []
     with contextlib.suppress(OSError):
         others = [
@@ -942,12 +974,7 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
             for p in provider.parent.iterdir()
             if p.name != provider.name and p.name.split("-", 1)[0] == app
         ]
-    if others:
-        return (
-            f"{provider} is missing while another {app} folder is there: sign in to {app} with the account "
-            f"it belongs to, or {fix_path}"
-        )
-    return f"sign in to {app} on this Mac, since {provider} is missing, then run {BIN} status again"
+    return "other-account" if others else "signed-out"
 
 
 def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[CheckResult]:

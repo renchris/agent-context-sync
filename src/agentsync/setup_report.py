@@ -7500,15 +7500,23 @@ def _sign_in_stop_item(att: Attempt, runs: Sequence[InstallRun], stop: FrictionE
 def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]) -> set[str]:
     """The doctor FAIL checks of :func:`_sign_in_stop_item`'s stop when it is a sign-in:
     ``source.<id>.listable`` or ``.volume`` of a configured source under a CloudStorage provider folder that
-    is not on disk, which the signed-out app took with it. By check name and path, never doctor's fix text."""
+    is signed out, which the app took with it. By check name and path, never doctor's fix text. Signed out
+    by install.sh's and doctor's one rule (:func:`agentsync.ops.doctor.provider_state`, B13 round 14 Q46,
+    Q55): a provider folder gone with no other folder of its app beside it, or there with nothing but hidden
+    entries; never a SharePoint library beside its ``OneDrive-<org>``, one beside another folder of its app,
+    or an unreadable one. The source's own path must not be on disk either, as install.sh's ``[ ! -e ]``."""
     if att is None or r.config is None or _sign_in_stop_item(att, runs, stopping_error(att, runs)) is None:
         return set()
     if _list_stopped(runs) != "not-signed-in":
         return set()
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
     gone: set[str] = set()
     for src in r.config.sources:
         parts = _cloud_parts(src.path) if src.path is not None else None
-        if parts is not None and not (cloud_storage_root() / parts[0]).exists():
+        if parts is None or src.path is None or os.path.lexists(expand(src.path)):
+            continue
+        if doctor.provider_state(cloud_storage_root() / parts[0]) == "signed-out":
             gone |= {f"source.{src.id}.listable", f"source.{src.id}.volume"}
     return gone
 
