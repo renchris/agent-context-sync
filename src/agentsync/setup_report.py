@@ -7484,17 +7484,20 @@ def _list_stop_clause(stopped: str, listed: dict[str, str], synced: int | None) 
 
 def _sign_in_stop_item(att: Attempt, runs: Sequence[InstallRun], stop: FrictionEvent | None) -> str | None:
     """The installer-side item of an attempt that ended at step 1's list on an exit 3 with no install run and
-    no friction stop (an unattended run goes on to the report and logs no line for it): the stop in the
-    Summary's words (:func:`_list_stop_clause`). None otherwise (B13 round 13 O13: the Items list read
-    ``- none`` beside "failed at step 1")."""
+    no friction stop: the stop in the Summary's words (:func:`_list_stop_clause`), and why no line logged it.
+    On a Mac that already syncs folders and lost some to a sign-in (the prompt's first exception), an
+    attended run waits for the sign-in and an unattended one goes on to the report; on any other exit 3 step
+    1 goes to the report attended or not (B13 round 14 Q47: from prompt v21 a sign-in is no click there).
+    None otherwise (B13 round 13 O13: the Items list read ``- none`` beside "failed at step 1")."""
     stopped = _list_stopped(runs)
     if stop is not None or install_runs_only(runs) or stopped not in ("not-signed-in", "no-folders"):
         return None
-    clause = _list_stop_clause(stopped, _stopping_list(runs), synced_before(runs))
-    return (
-        f"- install.sh · step {att.layout.folder_question_step} · the folder list stopped: {clause} (not "
-        "logged: an unattended run goes to the report)"
-    )
+    synced = synced_before(runs)
+    clause = _list_stop_clause(stopped, _stopping_list(runs), synced)
+    kept = stopped == "not-signed-in" and bool(synced)
+    step = att.layout.folder_question_step
+    why = "an unattended run goes to the report" if kept else f"on this stop step {step} goes to the report"
+    return f"- install.sh · step {step} · the folder list stopped: {clause} (not logged: {why})"
 
 
 def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]) -> set[str]:

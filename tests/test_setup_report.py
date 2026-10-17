@@ -10843,6 +10843,31 @@ def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
     assert "listable FAIL" in _line(got, "- doctor: ").split(" · unexpected ", 1)[1], _line(got, "- doctor: ")
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_new_macs_step_1_stop_goes_to_the_report_attended_or_not(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 14 Q47: on a Mac that syncs no folder, a step 1 list that stopped on a sign-in or found no
+    folder goes to the report whether the run is attended or not (from prompt v21 a sign-in is no click
+    there), yet its item blamed an unattended run. Only the prompt's first exception, a synced Mac that lost
+    folders to a sign-in, keeps that reason (the O13 test's case)."""
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v22"))
+    for listed, list_step, words in (
+        (" synced=0", "failed note=not-signed-in apps=onedrive", "OneDrive is not signed in"),
+        ("", "failed note=not-signed-in apps=onedrive", "OneDrive is not signed in"),
+        (" synced=0", "failed note=no-folders", "no folders are synced yet"),
+        ("", "failed note=no-folders", "no folders are synced yet"),
+    ):
+        set_up_log(fake_mac, listed=listed, list_step=list_step)
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        got = section(text, "Summary")
+        assert (
+            f"- install.sh · step 1 · the folder list stopped: {words}, so no folder was listed (not logged: "
+            "on this stop step 1 goes to the report)"
+        ) in got, (listed, list_step, got)
+        assert "an unattended run" not in got, got
+
+
 def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
