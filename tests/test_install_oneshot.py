@@ -5948,6 +5948,68 @@ def test_the_wait_for_pandoc_forks_a_few_sleeps_not_five_a_second(tmp_path: Path
     assert "300" in sleeps and len(sleeps) <= 15, sleeps
 
 
+_STATUS_PANDOC_SHIM = """import importlib.metadata
+import sys
+from pathlib import Path
+
+from agentsync.convert import pandoc
+
+mode = sys.argv.pop(1)
+[record] = [
+    e.hash.value
+    for e in importlib.metadata.distribution("pypandoc_binary").files or ()
+    if e.as_posix() == "pypandoc/files/pandoc" and e.hash is not None
+]
+sys.platform = "darwin"  # an Apple silicon Mac whose wheel maps to 3.9, whatever the host
+pandoc._WHEEL_PANDOC_VERSIONS = {record: "3.9"}
+if mode == "older":  # a tool installed before resolved_pandoc
+    del pandoc.resolved_pandoc
+elif mode == "no-wheel-binary":
+    pandoc._wheel_pandoc = lambda: Path("/nonexistent/pypandoc/files/pandoc")
+assert sys.argv[1:3] == ["-I", "-c"], sys.argv
+code, sys.argv = sys.argv[3], ["-c", *sys.argv[4:]]
+exec(compile(code, "<string>", "exec"), {"__name__": "__main__"})
+"""
+
+
+def test_the_pandoc_the_installer_starts_is_the_one_the_converters_run(
+    sample_config: Config, tmp_path: Path
+) -> None:
+    """B13 round 14 Q60: with the operator's native arm64 copy installed, the converters run it, but
+    status_pandoc named the wheel's Intel pandoc, so every install still paid Rosetta's first start of a
+    binary nothing then ran. It names the copy now. A tool installed before the resolver has none, and its
+    converters run the wheel's pandoc, which is then the one named; a missing wheel binary names none, for
+    status to report. Run by bash 3.2 as the script has it, through the tool interpreter's -I -c."""
+    copy = Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc"
+    copy.parent.mkdir(parents=True)
+    _write_exe(copy, "#!/bin/sh\necho 'pandoc 3.9'\n")
+    shim = tmp_path / "shim.py"
+    shim.write_text(_STATUS_PANDOC_SHIM, encoding="utf-8")
+    import pypandoc  # noqa: PLC0415
+
+    wheel = Path(pypandoc.__file__).parent / "files" / "pandoc"
+    said = {}
+    for mode in ("current", "older", "no-wheel-binary"):
+        tool = _write_exe(
+            tmp_path / f"python-{mode}",
+            f'#!/bin/bash\nexec {shlex.quote(sys.executable)} -I {shlex.quote(str(shim))} {mode} "$@"\n',
+        )
+        lines = [
+            "set -euo pipefail",
+            f"TOOL_PY={shlex.quote(str(tool))}",
+            f"CONFIG={shlex.quote(str(sample_config.config_path))}",
+            _shell_function("with_timeout"),
+            _shell_function("status_pandoc"),
+            'printf "<%s>" "$(status_pandoc)"',
+        ]
+        cp = subprocess.run(
+            [BASH32, "-c", "\n".join(lines)], capture_output=True, text=True, check=False, timeout=120
+        )
+        assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+        said[mode] = cp.stdout
+    assert said == {"current": f"<{copy}>", "older": f"<{wheel}>", "no-wheel-binary": "<>"}
+
+
 def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_path: Path) -> None:
     """Review of the v9 rehearsal fixes (2026-10-07): step 5 could print nothing for about twice the
     progress interval. A pandoc start shorter than the interval prints nothing, and the status wait after

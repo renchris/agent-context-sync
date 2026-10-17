@@ -33,7 +33,7 @@ from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
 from agentsync.cycle import _holds_home, _sync_leaves
-from agentsync.errors import AgentSyncError, ConfigError
+from agentsync.errors import AgentSyncError, ConfigError, ConversionError
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
@@ -99,7 +99,9 @@ LISTING_YOURS_REPORT_NOTE = (
 )
 
 # The bundled pandoc is an Intel (x86_64) program, in the Apple silicon wheel of pypandoc_binary too, so
-# macOS runs it through Rosetta, and Rosetta translates a file it has not seen once, at its first start.
+# macOS runs it through Rosetta, and Rosetta translates a file it has not seen once, at its first start. A
+# native arm64 copy of the same version, when the operator installed one, is what the converters and this
+# check run instead, and it needs no Rosetta (convert.pandoc.resolved_pandoc, B13 round 14 Q60).
 # `uv tool install --force` writes a new copy at every update. Measured 2026-10-07 on a 119 MB pandoc 3.9:
 # 10 to 67 s for the first `--version` of a fresh copy (the longer times on a loaded Mac), under 1 s after.
 # scripts/install.sh therefore starts it once before it runs status (its "pandoc: ..." lines), outside this
@@ -200,13 +202,24 @@ def _git_path() -> Path:
     return Path(found)
 
 
-def _pandoc_path(config: Config) -> Path:
-    """The pandoc the converters will run: [convert] pandoc_path, else pypandoc_binary's bundled binary."""
+def _pandoc_route(config: Config) -> tuple[Path, str]:
+    """The pandoc the converters will run and which one it is (``configured``, ``native`` or ``wheel``):
+    [convert] pandoc_path as written, which this check's own not-absolute and not-executable lines judge,
+    else ``convert.pandoc.resolved_pandoc``'s answer, the operator's native arm64 copy when there is one
+    (B13 round 14 Q60).  A wheel binary that is missing is still named, for the check's missing line."""
     if config.convert.pandoc_path is not None:
-        return config.convert.pandoc_path
-    import pypandoc  # noqa: PLC0415 - lazy: optional at doctor import time
+        return config.convert.pandoc_path, "configured"
+    from agentsync.convert import pandoc  # noqa: PLC0415 - lazy: optional at doctor import time
 
-    return Path(pypandoc.__file__).parent / "files" / "pandoc"
+    try:
+        return pandoc.resolved_pandoc(None)
+    except ConversionError:  # the wheel's binary is not there: "missing or not executable"
+        return pandoc._wheel_pandoc(), "wheel"
+
+
+def _pandoc_path(config: Config) -> Path:
+    """The pandoc the converters will run (:func:`_pandoc_route`)."""
+    return _pandoc_route(config)[0]
 
 
 def _ocr_status(config: Config) -> tuple[str, str]:
@@ -609,9 +622,17 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     own = "set [convert] pandoc_path to an absolute pandoc"
     fix = f"uv sync (reinstalls pypandoc_binary) or {own}"
     try:
-        pandoc = _pandoc_path(config)
+        pandoc, kind = _pandoc_route(config)
     except ImportError as exc:
         return [_bad("pandoc", f"pypandoc_binary is not importable: {exc}", fix=fix)]
+    # The OK line says which copy ran; a FAIL line says so for the native copy, the one its fix is about.
+    which = {"native": " (native arm64 copy)", "wheel": " (bundled with pypandoc_binary)"}.get(kind, "")
+    failed = which if kind == "native" else ""
+    if kind == "native":  # the operator's copy: uv sync does not touch it, and Rosetta is not what it needs
+        fix = (
+            f"replace or remove {_shell_path(pandoc.parent.parent)} (the converters run it instead of the "
+            f"bundled pandoc), or {own}"
+        )
     if not pandoc.is_absolute():
         return [
             _bad("pandoc", f"pandoc path {pandoc} is not absolute (launchd has no Homebrew PATH)", fix=fix)
@@ -621,10 +642,11 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     try:
         cp = _run([str(pandoc), "--version"], timeout=_PANDOC_TIMEOUT_S)
     except subprocess.TimeoutExpired as exc:
-        return [_timed_out("pandoc", exc, what=f"{pandoc} --version", why=_PANDOC_SLOW_START, fallback=fix)]
+        why = _PANDOC_SLOW_START if kind != "native" else None  # the 10 to 67 s were Rosetta's translation
+        return [_timed_out("pandoc", exc, what=f"{pandoc}{failed} --version", why=why, fallback=fix)]
     except OSError as exc:
-        detail = f"{pandoc} could not be started: {exc.strerror or exc}"
-        if exc.errno == _EBADARCH:
+        detail = f"{pandoc}{failed} could not be started: {exc.strerror or exc}"
+        if exc.errno == _EBADARCH and kind != "native":
             # Installing Rosetta changes the system, so the fix gives it to the person and not to a setup
             # agent, in the words of _AGENT_YOURS_NOTE. The command is whole: without --agree-to-license it
             # stops at a license question (`softwareupdate --help`: that flag is "without user interaction").
@@ -636,10 +658,10 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
         return [_bad("pandoc", detail, fix=fix)]
     lines = cp.stdout.strip().splitlines()
     if cp.returncode == 0 and lines and lines[0].startswith("pandoc"):
-        return [_ok("pandoc", f"{lines[0]} at {pandoc}")]
+        return [_ok("pandoc", f"{lines[0]} at {pandoc}{which}")]
     said = f"exit {cp.returncode}): {cp.stderr.strip()[:200]}" if cp.returncode >= 0 else ""
     said = said or f"{_exit_words(cp.returncode, cp.stderr)})"
-    return [_bad("pandoc", f"{pandoc} --version failed ({said}", fix=fix)]
+    return [_bad("pandoc", f"{pandoc}{failed} --version failed ({said}", fix=fix)]
 
 
 def _check_ocr(config: Config) -> list[CheckResult]:

@@ -210,7 +210,9 @@ class ConvertConfig:
     xlsx_stream_threshold_bytes: int = 20 * 1000**2
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
-    pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
+    # None = the pypandoc_binary bundled pandoc, or on macOS its native arm64 copy when the operator installed
+    # one (convert.pandoc.resolved_pandoc, CONTRACTS §16.114), by absolute path
+    pandoc_path: Path | None = None
     ocr: bool = True  # False = never build or run the on-device OCR helper (convert/ocr.py)
     recordings: bool = True  # False = no media helper; recordings stay unconverted (convert/media.py)
 

@@ -607,6 +607,37 @@ def test_a_sync_alarm_that_names_agentsyncs_full_path_is_kept_whole() -> None:
 
 
 @pytest.mark.usefixtures("roomy_budget")
+def test_the_pandoc_line_is_the_pandoc_the_converters_run(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q60: the report ran the wheel's pandoc while the converters ran the operator's native
+    arm64 copy. It asks the converters' resolver, says when the copy is the one it ran, and gives the
+    resolver's reason, not a traceback, when the wheel's binary is missing."""
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
+    from agentsync.errors import ConversionError  # noqa: PLC0415
+
+    copy = tmp_path / "pandoc-3.9-arm64" / "bin" / "pandoc"
+    copy.parent.mkdir(parents=True)
+    copy.write_text("#!/bin/sh\necho 'pandoc 3.9'\n", encoding="utf-8")
+    copy.chmod(0o755)
+    monkeypatch.setattr(pandoc_mod, "resolved_pandoc", lambda configured: (copy, "native"))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "- pandoc: pandoc 3.9 (native arm64 copy)\n" in section(text, "Environment")
+
+    def missing(configured: Path | None) -> tuple[Path, str]:
+        raise ConversionError(
+            "bundled pandoc not found at /nonexistent/pandoc (is pypandoc_binary installed?)"
+        )
+
+    monkeypatch.setattr(pandoc_mod, "resolved_pandoc", missing)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    env = section(text, "Environment")
+    assert (
+        "- pandoc: bundled pandoc not found at /nonexistent/pandoc (is pypandoc_binary installed?)\n" in env
+    )
+
+
+@pytest.mark.usefixtures("roomy_budget")
 def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")

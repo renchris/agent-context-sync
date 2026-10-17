@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import errno
 import fcntl
+import importlib.metadata
 import os
 import plistlib
 import re
@@ -27,6 +28,7 @@ import pytest
 from agentsync import cli, gitops, lints, setup_report
 from agentsync.config import RETIRE_ADVICE, Config, local_source_table, parse_config
 from agentsync.convert import media, ocr, speech
+from agentsync.convert import pandoc as pandoc_mod
 from agentsync.loop import BIN
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind, RowState, SourceItem, SourceKind, SourceState, Verdict
@@ -288,6 +290,90 @@ def test_pandoc_configured_but_missing(sample_config: Config, tmp_path: Path) ->
 def test_pandoc_bundled_path_is_absolute(sample_config: Config) -> None:
     p = doctor._pandoc_path(sample_config)
     assert p.is_absolute() and p.name == "pandoc"
+
+
+def _native_copy(monkeypatch: pytest.MonkeyPatch, body: str = "echo 'pandoc 3.9'") -> Path:
+    """A native arm64 copy of the wheel's pandoc under the test's HOME, as on a Mac where the operator
+    installed one: darwin, this venv's wheel mapped to 3.9 (tests/test_pandoc_native.py)."""
+    [record] = [
+        entry.hash.value
+        for entry in importlib.metadata.distribution("pypandoc_binary").files or ()
+        if entry.as_posix() == "pypandoc/files/pandoc" and entry.hash is not None
+    ]
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(pandoc_mod, "_WHEEL_PANDOC_VERSIONS", {record: "3.9"})
+    pandoc_mod._wheel_pandoc_version.cache_clear()
+    copy = Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+    copy.chmod(0o755)
+    return copy
+
+
+NATIVE_FIX = (
+    "replace or remove ~/'.local/share/agentsync/pandoc/3.9-arm64' (the converters run it instead of the "
+    "bundled pandoc), or set [convert] pandoc_path to an absolute pandoc"
+)
+
+
+def test_the_pandoc_check_runs_the_native_copy_the_converters_run(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q56, Q60, Q76: since the converters prefer the operator's native arm64 copy (load root
+    cause X26), doctor still ran the wheel's Intel pandoc, so a broken copy read OK while every conversion
+    failed, and a Mac without Rosetta read a FAIL while conversions worked. The check resolves pandoc as the
+    converters do, and its line says which copy it ran."""
+    assert doctor._check_pandoc(sample_config)[0].detail.endswith(" (bundled with pypandoc_binary)")
+    copy = _native_copy(monkeypatch)
+    try:
+        assert doctor._pandoc_path(sample_config).resolve() == pandoc_mod._bundled_pandoc().resolve() == copy
+        [r] = doctor._check_pandoc(sample_config)
+        assert (r.ok, r.detail) == (True, f"pandoc 3.9 at {copy} (native arm64 copy)")
+    finally:
+        pandoc_mod._wheel_pandoc_version.cache_clear()
+
+
+def test_a_native_pandoc_that_fails_names_that_copy_and_not_rosetta(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q56, Q60: the fix for the operator's copy is that copy, which uv sync does not touch;
+    Rosetta, and the slow first start Rosetta's translation makes, are the wheel's binary's alone."""
+    copy = _native_copy(monkeypatch, "echo broken >&2; exit 3")
+    try:
+        [r] = doctor._check_pandoc(sample_config)
+        assert (r.ok, r.detail) == (False, f"{copy} (native arm64 copy) --version failed (exit 3): broken")
+        assert r.fix == NATIVE_FIX
+
+        real_run = doctor._run
+        error = OSError(doctor._EBADARCH, "Bad CPU type in executable")
+
+        def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+            if argv[0] == str(copy):
+                raise error
+            return real_run(argv, timeout)
+
+        monkeypatch.setattr(doctor, "_run", run)
+        [r] = doctor._check_pandoc(sample_config)
+        assert r.detail == f"{copy} (native arm64 copy) could not be started: Bad CPU type in executable"
+        assert r.fix == NATIVE_FIX and "Rosetta" not in f"{r.detail} {r.fix}"
+
+        monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(copy)))
+        [r] = doctor._check_pandoc(sample_config)
+        assert r.detail == f"{copy} (native arm64 copy) --version did not answer within 60s: {OUT_OF_TIME}"
+        assert r.fix == f"{RUN_AGAIN}{COMES_BACK}{NATIVE_FIX}"
+    finally:
+        pandoc_mod._wheel_pandoc_version.cache_clear()
+
+
+def test_a_missing_bundled_pandoc_is_the_checks_fail_and_no_crash(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 14 Q56: the resolver raises ConversionError when the wheel's binary is missing, which the
+    check did not catch; it names the binary in its own missing line, with its own fix."""
+    gone = tmp_path / "pypandoc" / "files" / "pandoc"
+    monkeypatch.setattr(pandoc_mod, "_wheel_pandoc", lambda: gone)
+    [r] = doctor._check_pandoc(sample_config)
+    assert (r.ok, r.detail, r.fix) == (False, f"{gone} is missing or not executable", PANDOC_FIX)
 
 
 # --------------------------------------------------------------------- a check that does not finish

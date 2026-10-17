@@ -152,8 +152,9 @@
 #      With several folders the two lines every add-source call ends on are printed once: "docs repo ..."
 #      from the first call, printed beside "sources: ..." from the last, with the inbox line ("added inbox
 #      source ...") the first call prints
-#   5. status: first the pandoc that status checks ([convert] pandoc_path, else the one bundled with the
-#      tool) is started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
+#   5. status: first the pandoc that status checks ([convert] pandoc_path, else the operator's native
+#      arm64 copy when there is one, else the one bundled with the tool: the one the converters run) is
+#      started once, as "pandoc --version", outside that check's 60 s. The bundled one is an Intel
 #      program: on Apple silicon macOS prepares each new copy at its first start (10 to 67 s measured, under
 #      1 s after), and step 2 writes a new copy at every update, so the check ran out of time there and the
 #      run exited 1 (rehearsal 2026-10-07). A slow start prints "pandoc: still running, <N>s (...)" lines,
@@ -5136,9 +5137,13 @@ persons_fails() {
 	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another ))' >/dev/null
 }
 PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path or a sign-in), not a step for the agent, so show them those lines and go on to the report; once fixed"
-# The pandoc status is about to check: [convert] pandoc_path, else the one bundled with the tool (the rule
-# of ops/doctor.py's pandoc check), read by the tool step 2 installed. Empty when it cannot say (no
-# interpreter, a config that does not load): status then reports that. -I: see the OCR helper above.
+# The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
+# arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
+# ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than
+# that rule has no resolved_pandoc, and its status checks the bundled one, which is then the one named.
+# The resolver reads the wheel's RECORD and runs nothing. Empty when it cannot say (no interpreter, a
+# config that does not load, a bundled pandoc that is missing): status then reports that. -I: see the OCR
+# helper above.
 status_pandoc() {
 	[ -x "$TOOL_PY" ] && [ -f "$CONFIG" ] || return 0
 	with_timeout 20 "$TOOL_PY" -I -c '
@@ -5148,9 +5153,18 @@ from agentsync.config import load_config
 
 pandoc = load_config(Path(sys.argv[1])).convert.pandoc_path
 if pandoc is None:
-    import pypandoc
+    try:
+        from agentsync.convert.pandoc import resolved_pandoc
+        from agentsync.errors import ConversionError
+    except ImportError:
+        import pypandoc
 
-    pandoc = Path(pypandoc.__file__).parent / "files" / "pandoc"
+        pandoc = Path(pypandoc.__file__).parent / "files" / "pandoc"
+    else:
+        try:
+            pandoc = resolved_pandoc(None)[0]
+        except ConversionError:
+            sys.exit(0)
 print(pandoc)
 ' "$CONFIG" 2>/dev/null || true
 }

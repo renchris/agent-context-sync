@@ -1,5 +1,5 @@
-"""Converter: docx/odt/rtf/html via the pypandoc_binary-bundled pandoc, invoked by ABSOLUTE path (owner:
-convert).
+"""Converter: docx/odt/rtf/html via the pypandoc_binary-bundled pandoc, or on macOS its native arm64 copy
+when the operator installed one, invoked by ABSOLUTE path (owner: convert).
 
 With an OCR engine (``PandocConverter(cfg, ocr=engine)``; ``convert/ocr.py``) the text in the pictures of a
 Word or OpenDocument file follows the block that shows each picture.  Such a converter claims ``.docx`` and
@@ -307,29 +307,49 @@ def _native_pandoc(version: str) -> Path | None:
     return native if stat.S_ISREG(mode) and os.access(native, os.X_OK) else None
 
 
-def _bundled_pandoc() -> Path:
-    """Absolute path of the pandoc to run when ``[convert] pandoc_path`` is unset (never a PATH lookup).
+def _wheel_pandoc() -> Path:
+    """Absolute path of the pypandoc_binary wheel's pandoc, whether or not it is there."""
+    import pypandoc  # noqa: PLC0415 - heavy import, only when a pandoc converter actually runs
 
-    That is the pypandoc_binary-bundled pandoc, or on macOS a native arm64 copy of exactly the wheel's
-    pandoc version when the operator installed one under ``~/.local/share/agentsync/pandoc``.  The wheel's
+    return Path(str(pypandoc.__file__)).resolve().parent / "files" / "pandoc"
+
+
+def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
+    """The pandoc the converters run and which one it is: ``configured``, ``native`` or ``wheel``.
+
+    ``[convert] pandoc_path`` (``pandoc_path`` here), ``~`` expanded, when it is set.  Otherwise the
+    pypandoc_binary wheel's pandoc, or on macOS a native arm64 copy of exactly the wheel's pandoc version when
+    the operator installed one under ``~/.local/share/agentsync/pandoc``.  Never a PATH lookup.  The wheel's
     binary is x86_64 and runs under Rosetta: about 0.16 s and 68 MB per run against 0.03 s and 30 MB, plus a
     translation of every fresh copy at its first start (10 to 67 s).  Same version, same flags, so the same
     bytes out; only the CPU architecture changes.  The version is the one the wheel's RECORD hash maps to,
     so an unknown wheel, a missing copy or any error means the wheel's binary, as before
-    (load root cause 2026-10-17 X26)."""
-    import pypandoc  # noqa: PLC0415 - heavy import, only when a pandoc converter actually runs
-
-    bundled = Path(str(pypandoc.__file__)).resolve().parent / "files" / "pandoc"
+    (load root cause 2026-10-17 X26).  Nothing is run: the converters, doctor's pandoc check, the setup
+    report and scripts/install.sh's first start of pandoc all resolve through here (B13 round 14 Q60).
+    Raises ConversionError for a configured path that is not an absolute file, and when the wheel's binary
+    is missing."""
+    if pandoc_path is not None:
+        p = pandoc_path.expanduser()
+        if not p.is_absolute() or not p.is_file():
+            raise ConversionError(f"[convert] pandoc_path is not an absolute file: {p}")
+        return p, "configured"
+    bundled = _wheel_pandoc()
     if bundled.is_file():
         if sys.platform == "darwin":
             version = _wheel_pandoc_version(bundled)
             native = _native_pandoc(version) if version is not None else None
             if native is not None:
-                return native
-        return bundled
+                return native, "native"
+        return bundled, "wheel"
     raise ConversionError(
         f"bundled pandoc not found at {bundled} (is pypandoc_binary installed?); set [convert] pandoc_path"
     )
+
+
+def _bundled_pandoc() -> Path:
+    """Absolute path of the pandoc to run when ``[convert] pandoc_path`` is unset: the wheel's, or its
+    native arm64 copy (:func:`resolved_pandoc`)."""
+    return resolved_pandoc(None)[0]
 
 
 def _decode_html(data: bytes) -> str:
@@ -365,13 +385,7 @@ class _PandocRunner:
     def path(self) -> Path:
         """Resolve the binary once (absolute)."""
         if self._path is None:
-            if self._configured is not None:
-                p = self._configured.expanduser()
-                if not p.is_absolute() or not p.is_file():
-                    raise ConversionError(f"[convert] pandoc_path is not an absolute file: {p}")
-                self._path = p
-            else:
-                self._path = _bundled_pandoc()
+            self._path = resolved_pandoc(self._configured)[0]
         return self._path
 
     def version(self) -> str:
@@ -686,7 +700,8 @@ def _picture_text(engine: OcrEngine, src: Path, fmt: str) -> tuple[dict[str, obj
 
 
 class PandocConverter:
-    """Docx/odt/rtf/html via the pypandoc_binary-bundled pandoc, invoked by ABSOLUTE path.
+    """Docx/odt/rtf/html via the pypandoc_binary-bundled pandoc (or its native arm64 copy, see
+    :func:`resolved_pandoc`), invoked by ABSOLUTE path.
 
     ``pandoc -f <fmt> -t gfm --wrap=none``; media are not extracted inline (figures are a later tier).
     Merged cells make pandoc emit HTML tables: accepted (greppable).  An encrypted/IRM docx (not a ZIP, or

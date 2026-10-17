@@ -3836,14 +3836,21 @@ def _environment(r: _Run) -> list[str]:
         return f"{text}; last re-screen: {_last_rescreen(r)}"
 
     def pandoc() -> str:
+        # the one the converters run, as doctor's check resolves it (B13 round 14 Q60)
+        which = ""
         if r.config is not None and r.config.convert.pandoc_path is not None:
             exe = r.config.convert.pandoc_path
         else:
-            import pypandoc  # noqa: PLC0415 - lazy, as in doctor
+            from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415 - lazy, as in doctor
+            from agentsync.errors import ConversionError  # noqa: PLC0415 - beside it
 
-            exe = Path(pypandoc.__file__).parent / "files" / "pandoc"
+            try:
+                exe, kind = pandoc_mod.resolved_pandoc(None)
+            except ConversionError as exc:  # the wheel's binary is not there
+                return str(exc)
+            which = " (native arm64 copy)" if kind == "native" else ""
         rc, text = r.run([str(exe), "--version"], 5.0)
-        return text.splitlines()[0] if rc == 0 and text else f"{exe} {_exited(rc, text[:200])}"
+        return text.splitlines()[0] + which if rc == 0 and text else f"{exe}{which} {_exited(rc, text[:200])}"
 
     def app(name: str) -> Callable[[], str]:
         def version() -> str:
