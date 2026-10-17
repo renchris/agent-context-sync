@@ -477,6 +477,7 @@ def test_tcc_still_pending_at_the_timeout_exits_3(env: dict[str, str], folder: P
         **env,
         "STUB_LC_EXITS": "79",
         "AGENTSYNC_WAIT_SECONDS": "1",
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.5",  # it waits the whole time out: a slower poll
     }
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 3, cp.stdout + cp.stderr
@@ -495,6 +496,7 @@ def test_a_run_still_going_at_the_timeout_exits_3(env: dict[str, str], folder: P
         **env,
         "STUB_LC_RUNNING": "1",
         "AGENTSYNC_WAIT_SECONDS": "1",
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.5",  # it waits the whole time out: a slower poll
     }
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 3, cp.stdout + cp.stderr
@@ -7687,6 +7689,7 @@ def test_a_running_run_still_waiting_for_allow_is_not_past_the_check(
 ) -> None:
     e = {
         **_canary_env(env, folder, "pending"),
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.5",  # it waits the whole time out: a slower poll
     }
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 3, cp.stdout + cp.stderr
@@ -7700,6 +7703,7 @@ def test_canary_lines_of_another_run_do_not_count(env: dict[str, str], folder: P
     e = {
         **_canary_env(env, folder),
         "STUB_LC_LOG_PID": "999",
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.5",  # it waits the whole time out: a slower poll
     }
     lc = Path(env["STUB_LC_DIR"])
     lc.mkdir()

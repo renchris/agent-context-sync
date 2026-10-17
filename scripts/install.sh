@@ -1036,8 +1036,12 @@ with_timeout() {
 	shift
 	"$@" &
 	pid=$!
-	(
-		sleep "$t"
+	( # waits on its sleep and ends it when killed itself: no sleep left to launchd (load root cause 2026-10-17 X11)
+		s=""
+		trap 'kill "$s" 2>/dev/null; exit 0' TERM
+		sleep "$t" &
+		s=$!
+		wait "$s"
 		kill "$pid"
 	) >/dev/null 2>&1 &
 	wd=$!
@@ -1051,21 +1055,40 @@ with_timeout() {
 # is followed by this one (start_pandoc_once, before status) leaves the time of its last line, or of its
 # start, in $PROGRESS_SINCE: the first interval here is counted from it, once, so the two are never silent
 # for an interval each.
+# One ticker child prints them: it checks every 0.2 s until $SECONDS turns over, then sleeps until 0.2 s before
+# the second a line is due and checks every 0.2 s from there, so each line comes in the second a check every
+# 0.2 s would print it, with a few sleeps a line instead of five a second (load root cause 2026-10-17 X11).
+# WAIT_TICKER is its pid; on_exit ends it too.
 PROGRESS_SINCE=""
+WAIT_TICKER=""
 with_progress() {
 	local label="$1" pid rc=0 t0=$SECONDS last="${PROGRESS_SINCE:-$SECONDS}"
 	PROGRESS_SINCE=""
 	shift
 	"$@" </dev/null &
 	pid=$!
-	while kill -0 "$pid" 2>/dev/null; do
-		if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
-			last=$SECONDS
-			say "$label: still running, $((SECONDS - t0))s"
-		fi
-		sleep 0.2
-	done
+	(
+		s="" turned=0
+		trap 'kill "$s" 2>/dev/null; exit 0' TERM
+		while kill -0 "$pid" 2>/dev/null; do
+			if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
+				last=$SECONDS
+				say "$label: still running, $((SECONDS - t0))s"
+			fi
+			n=$SECONDS
+			w=0.2
+			[ "$turned" -eq 0 ] || [ $((last + PROGRESS_EVERY - n)) -lt 2 ] || w="$((last + PROGRESS_EVERY - n - 1)).8"
+			sleep "$w" >/dev/null 2>&1 &
+			s=$!
+			wait "$s"
+			[ "$SECONDS" -eq "$n" ] || turned=1
+		done
+	) &
+	WAIT_TICKER=$!
 	wait "$pid" || rc=$?
+	kill "$WAIT_TICKER" 2>/dev/null || true
+	wait "$WAIT_TICKER" 2>/dev/null || true
+	WAIT_TICKER=""
 	return "$rc"
 }
 # Print "LINE, still running, <N>s" every $PROGRESS_EVERY s until killed, for the command the caller runs in
@@ -1074,11 +1097,17 @@ with_progress() {
 # ("helpers: building the speech helper"): the speech helper's first build takes minutes after the OCR and
 # media lines said ready, and ends in "speech: off" while its models are not placed. TICKER is its pid;
 # on_exit kills it too.
-# The sleep holds no output open, so a killed ticker never keeps a reader of this run's output waiting.
+# The sleep holds no output open, so a killed ticker never keeps a reader of this run's output waiting, and
+# the ticker waits on it and ends it when killed: no sleep left to launchd (load root cause 2026-10-17 X11).
 TICKER=""
 ticker() { # LINE
-	local t0=$SECONDS
-	while sleep "$PROGRESS_EVERY" >/dev/null 2>&1 && kill -0 "$$" 2>/dev/null; do
+	local t0=$SECONDS s=""
+	trap 'kill "$s" 2>/dev/null; exit 0' TERM
+	while :; do
+		sleep "$PROGRESS_EVERY" >/dev/null 2>&1 &
+		s=$!
+		wait "$s" || break
+		kill -0 "$$" 2>/dev/null || break
 		say "$1, still running, $((SECONDS - t0))s"
 	done
 }
@@ -3705,6 +3734,7 @@ on_exit() {
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
 	[ -z "$TICKER" ] || kill "$TICKER" 2>/dev/null
+	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
 	step_end failed "$rc"
 	if [ "$STARTED" -eq 1 ]; then
 		END_AT="$(utc_now)"
