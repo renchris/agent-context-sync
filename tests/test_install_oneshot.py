@@ -579,6 +579,18 @@ def test_a_non_tcc_fail_exits_1_without_a_first_sync(
     assert ("status", "done", "1", "fail-lines") in steps(install_log(env))
 
 
+def test_a_status_that_fails_with_no_fail_line_logs_status_error(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 14 Q50: install.sh logged ``note=fail-lines`` for any non-zero status exit, so a status that
+    crashed (a traceback, no [FAIL] line) read "its status step reported [FAIL] lines". It logs
+    ``status-error`` then, and the run still stops before its first sync."""
+    cp = install_sh({**env, "STUB_DOCTOR_RC": "1"}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert not any(c.startswith("agentsync sync") for c in calls(env))
+    assert ("status", "done", "1", "status-error") in steps(install_log(env))
+
+
 def _source_fails(cfg: Config, src: SourceConfig) -> list[str]:
     """The [FAIL] lines doctor's checks of one source print, as status prints them."""
     out = doctor.format_results(doctor._check_local_source(cfg, src, Path(sys.executable)))

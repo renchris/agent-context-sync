@@ -617,7 +617,11 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     inst = section(text, "Installer")
     assert "1 install.sh run(s)" in inst and "exit 0 after 57s" in inst and "57s in total" in inst
     assert re.search(r"^\| agentsync +\| +41 \| done +\|$", inst, re.MULTILINE), "the per-step table"
-    assert re.search(r"^\| doctor +\| +3 \| done, rc 1 \(fail-lines\) +\|$", inst, re.MULTILINE)
+    assert re.search(
+        r"^\| doctor +\| +3 \| done, rc 1 \(agentsync status reported \[FAIL\] lines\) +\|$",
+        inst,
+        re.MULTILINE,
+    )
     raw = inst.split("<details>", 1)[1]
     assert "step=doctor seconds=3 rc=1" in raw.split("</details>", 1)[0], "raw log collapsed"
     assert "step=doctor seconds=3 rc=1" not in inst.split("<details>", 1)[0]
@@ -6106,6 +6110,26 @@ def test_the_outcome_of_a_status_fail_stop_names_the_status_step(tmp_path: Path)
     )
     assert outcome(config) == "install.sh exited 1: its config step failed with rc 78"
     assert outcome(install_run("2026-09-29T10:00:00Z", 0)).startswith("install.sh exit 0")
+    # round 14 Q50: status exited 1 with no [FAIL] line (a traceback), which install.sh logs as status-error
+    crashed = failed.replace("note=fail-lines", "note=status-error")
+    assert outcome(crashed) == "install.sh exited 1: its status step exited 1 with no [FAIL] line"
+
+
+def test_the_installer_table_puts_the_status_steps_note_in_words() -> None:
+    """B13 round 14 Q4, Q50: the status row read ``done, rc 1 (fail-lines)`` beside worded rows. Each of the
+    status step's notes (``doctor`` in older logs) has words in the table; install.log keeps its tokens."""
+    for step in ("status", "doctor"):
+        for note, words in (
+            ("fail-lines", "agentsync status reported [FAIL] lines"),
+            ("tcc-pending", "its only [FAIL] lines were a macOS Allow still to be clicked"),
+            ("status-error", "agentsync status exited with no [FAIL] line"),
+        ):
+            table = "\n".join(
+                setup_report._step_table(
+                    [(step, {"result": "done", "rc": "1", "note": note, "seconds": "1"})]
+                )
+            )
+            assert f"| done, rc 1 ({words}" in table and note not in table, table
 
 
 @pytest.mark.usefixtures("clean_doctor")

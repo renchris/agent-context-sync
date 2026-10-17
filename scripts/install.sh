@@ -3665,7 +3665,13 @@ wait no-sources no folders to sync
 wait status-failed agentsync status reported failures
 wait agent-failed the agent step failed
 report agentsync agentsync's report
-report fallback the installer's fallback report" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
+report fallback the installer's fallback report
+status fail-lines agentsync status reported [FAIL] lines
+status tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for
+status status-error agentsync status exited with no [FAIL] line
+doctor fail-lines agentsync status reported [FAIL] lines
+doctor tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for
+doctor status-error agentsync status exited with no [FAIL] line" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
 STOPPED_HELD_OLD="(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
 STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
 # An older renderer gives two runs started in one second one id, where a renderer from 3b47e3e7 on (and the shell's
@@ -5237,7 +5243,15 @@ else
 	if [ "$DOCTOR_TCC_ONLY" -eq 1 ]; then
 		step_end "done" "$DOCTOR_RC" tcc-pending
 	else
-		step_end "done" "$DOCTOR_RC" "$([ "$DOCTOR_RC" -eq 0 ] || printf '%s' fail-lines)"
+		# fail-lines only when status printed one; a status that exited non-zero with none (a traceback, a
+		# config or lock error) is status-error, which still blocks the sync (B13 round 14 Q50)
+		status_note=""
+		if [ "$DOCTOR_RC" -ne 0 ] && grep -q '^\[FAIL' "$DOCTOR_LOG"; then
+			status_note="fail-lines"
+		elif [ "$DOCTOR_RC" -ne 0 ]; then
+			status_note="status-error"
+		fi
+		step_end "done" "$DOCTOR_RC" "$status_note"
 	fi
 fi
 DOCTOR_BLOCKS=0

@@ -2422,13 +2422,19 @@ def compute_outcome(
 def _status_fail_words(run: InstallRun) -> str:
     """Why a run that ended non-zero with no failed step stopped, when its status step (``doctor`` before
     it was renamed) logged ``note=fail-lines`` with a non-zero rc: ``: its status step reported [FAIL] lines
-    (rc 1)``; install.log carries no count of them. Empty otherwise, and for a run that ended 0 (B13 round 13
-    O33: the outcome of a doctor-FAIL stop named no step). Not :meth:`InstallRun.failed_step`'s: a status
+    (rc 1)``; install.log carries no count of them. ``note=status-error`` (B13 round 14 Q50: status exited
+    non-zero and printed no [FAIL] line) reads ``: its status step exited 1 with no [FAIL] line``; a log
+    from before that note keeps the fail-lines words. Empty otherwise, and for a run that ended 0 (B13 round
+    13 O33: the outcome of a doctor-FAIL stop named no step). Not :meth:`InstallRun.failed_step`'s: a status
     FAIL skips the sync and stops no step, so neither the no-end-line words nor the first sync's read it."""
     status = run.step("status") or run.step("doctor") or {}
-    rc = status.get("rc", "")
-    if run.rc in (None, 0) or status.get("note") != "fail-lines" or rc in ("", "0"):
+    rc, note = status.get("rc", ""), status.get("note", "")
+    if run.rc in (None, 0) or note not in ("fail-lines", "status-error") or rc in ("", "0"):
         return ""
+    if (
+        note == "status-error"
+    ):  # it printed no [FAIL] line: a traceback, a config or lock error (round 14 Q50)
+        return f": its status step exited {rc} with no [FAIL] line"
     return f": its status step reported [FAIL] lines (rc {rc})"
 
 
@@ -4047,6 +4053,15 @@ _HELPERS_NOTE_WORDS = {
 ``skipped (config-unreadable)``; no-interpreter has no ``say`` line to explain it anywhere else). A note none
 of these is shown as it is; install.log keeps its tokens."""
 
+_STATUS_NOTE_WORDS = {
+    "fail-lines": "agentsync status reported [FAIL] lines",
+    "tcc-pending": (
+        "its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for"
+    ),
+    "status-error": "agentsync status exited with no [FAIL] line",
+}
+"""install.log's status-step notes -> the Installer table's words (B13 round 14 Q4, Q50)."""
+
 _NOT_REQUESTED = "background sync was not asked for"
 _STEP_NOTE_WORDS = {
     "launcher": {
@@ -4068,10 +4083,13 @@ _STEP_NOTE_WORDS = {
     },
     "report": {"agentsync": "agentsync's report", "fallback": "the installer's fallback report"},
     "helpers": _HELPERS_NOTE_WORDS,
+    "status": _STATUS_NOTE_WORDS,
+    "doctor": _STATUS_NOTE_WORDS,
 }
-"""install.log's notes of the launcher, agent, wait, report and helpers steps -> the Installer table's words,
-as :data:`_HELPERS_NOTE_WORDS` (B13 round 13 O3: the rows read ``skipped (not-requested)`` and ``done
-(agentsync)``). A note none of these is shown as it is; install.log keeps its tokens."""
+"""install.log's notes of the launcher, agent, wait, report, helpers and status (``doctor`` in older logs)
+steps -> the Installer table's words, as :data:`_HELPERS_NOTE_WORDS` (B13 round 13 O3: the rows read
+``skipped (not-requested)`` and ``done (agentsync)``; round 14 Q4: the status row read ``done, rc 1
+(fail-lines)``). A note none of these is shown as it is; install.log keeps its tokens."""
 
 
 def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None = None) -> list[str]:
