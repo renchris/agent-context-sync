@@ -4566,7 +4566,7 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
             "; 1 of them is not on disk because its provider folder is missing while another folder of "
             f"that app is there: {gone}. Step 2's status fails on it and names the fix (sign in to that app "
             f"with the account it belongs to, or fix its [[source]] path in {cfg}), so step 2 runs no first "
-            "sync (and installs no LaunchAgents) until then; a sync still mirrors the folders that are there"
+            "sync until then; a sync still mirrors the folders that are there"
         )
     else:
         real = tmp_path / "real-provider" if layout == "a symlinked provider folder" else lib
@@ -4579,7 +4579,7 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
         clause = (
             "; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted "
             f"there): {gone}. Step 2's status fails on it and names the fix, so step 2 runs no first sync "
-            "(and installs no LaunchAgents) until the folder is back under that name or its [[source]] path "
+            "until the folder is back under that name or its [[source]] path "
             f"in {cfg} is fixed; a sync still mirrors the folders that are there, and that folder's pages "
             "are kept"
         )
@@ -4709,7 +4709,7 @@ def test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does(
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     paths = "; ".join(str(g) for g in gone)
     tail = (
-        f"path in {cfg}), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync "
+        f"path in {cfg}), so step 2 runs no first sync until then; a sync "
         "still mirrors the folders that are there"
     )
     clause = (
