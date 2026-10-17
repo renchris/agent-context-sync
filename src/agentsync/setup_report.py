@@ -526,13 +526,43 @@ _HELD_IDENTIFIERS = _CONTEXT_HEADS | {
     "FluidAudio",
     "LaunchAgent",
     "LaunchAgents",
+    # the Background runs line's plist keys (_PLIST_KEYS)
+    "ProgramArguments",
+    "EnvironmentVariables",
+    "StandardOutPath",
+    "StandardErrorPath",
+    "StartInterval",
+    "StartCalendarInterval",
+    "RunAtLoad",
+    "ProcessType",
+    "LowPriorityIO",
+    "ThrottleInterval",
+    "LimitLoadToSessionType",
+    "MaterializeDatalessFiles",
+    # doctor's words, which both reports print from its lines
+    "AgentSyncLauncher",
+    "CodeDirectory",
+    "CodeRequirement",
+    "SystemPolicyAllFiles",
+    "TeamIdentifier",
+    "TeamID",
+    "sharedRepository",
+    # and the rest the report prints
+    "OpenDocument",
+    "insteadOf",
+    "macOS",
+    "iTerm",  # the Environment line's terminal (_TERMINAL_APPS)
 }
 """agentsync's own identifiers that an organisation matched inside a longer word (mode ``org``) never
 cuts: an organisation "One" or "Cloud" leaves OneDrive and CloudStorage whole (B13 round 11 M50). It also
-holds the report's own CamelCase words: the speech line's ``FluidAudio <sha>`` (convert/speech.py) and
-LaunchAgent, LaunchAgents, both forms since a trailing lookahead after one does not cover the other (B13
-round 12 N57: an organisation "Launch" read ``<org-1>Agents``, which decodes the placeholder for anyone
-who knows agentsync). scripts/install.sh holds the same list (a test keeps them equal)."""
+holds every CamelCase word the report prints of its own: the speech line's ``FluidAudio <sha>``
+(convert/speech.py), LaunchAgent and LaunchAgents, both forms since a trailing lookahead after one does not
+cover the other (B13 round 12 N57: an organisation "Launch" read ``<org-1>Agents``, which decodes the
+placeholder for anyone who knows agentsync), the plist keys the Background runs line prints and doctor's
+words (B13 round 13 O54, O68: an organisation "Environment" read ``<org-1>Variables``). Round 12's reason for
+leaving the plist keys out was half false: "program" is a report word in both readers, but "environment" in
+install.sh's only. A test keeps every CamelCase word of the report's literals here or on its reviewed list
+of words that never print. scripts/install.sh holds the same list (a test keeps them equal)."""
 
 _HELD_PATH_NORMS = frozenset({"agentcontext", "agentcontextsync", "agentcontextsync.git"})
 """agentsync's own path names as :func:`_norm` gives them: a value that is one of them is the held path
@@ -583,13 +613,16 @@ def report_words() -> frozenset[str]:
         # Docstrings and comments are not the report's text, and their examples name what is redacted
         # ("janedoe" for "Jane Doe"): a string statement on its own is left out
         loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
-        # nor are the app names the report prints only from a sign-in exit's apps= (_SIGN_IN_APPS): an
-        # organisation named so is still redacted everywhere (B13 round 13 O1)
+        # nor are the app names the report prints only from a sign-in exit's apps= (_SIGN_IN_APPS) or from
+        # TERM_PROGRAM (_TERMINAL_APPS): an organisation named so is still redacted everywhere (B13 round 13
+        # O1, O54)
         loose |= {
             id(leaf)
             for node in ast.walk(tree)
             if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "_SIGN_IN_APPS" for t in node.targets)
+            and any(
+                isinstance(t, ast.Name) and t.id in ("_SIGN_IN_APPS", "_TERMINAL_APPS") for t in node.targets
+            )
             for leaf in ast.walk(node.value)
         }
         for node in ast.walk(tree):
@@ -1937,6 +1970,18 @@ _SIGN_IN_APPS = {
 """install.sh's ``apps=`` tokens on a sign-in exit (``note=not-signed-in``, any case) -> the apps' names. A
 fixed map: a token none of these is dropped, so no text of the log's own reaches the report (B13 round 13
 O1, O29, O39, O42, O58, O66: the report said OneDrive whichever app's folder was missing)."""
+
+
+_TERMINAL_APPS = {
+    "Apple_Terminal": "Terminal",
+    "iTerm.app": "iTerm",
+    "vscode": "Visual Studio Code",
+    "WarpTerminal": "Warp",
+    "ghostty": "Ghostty",
+}
+"""``TERM_PROGRAM`` -> the terminal app's name, as install.sh's ``terminal_app`` gives it: an organisation
+"Warp" redacts ``terminal Warp`` whole, where it cut ``<org-1>Terminal`` out of WarpTerminal (B13 round 13
+O54). Not report words (:func:`report_words`)."""
 
 
 def _signed_out(listed: dict[str, str]) -> tuple[str, str]:
@@ -3714,6 +3759,7 @@ def _environment(r: _Run) -> list[str]:
         bits = [os.environ.get("SHELL", "unknown")]
         term = os.environ.get("TERM_PROGRAM")
         if term:
+            term = _TERMINAL_APPS.get(term, term)
             bits.append(f"terminal {term} {os.environ.get('TERM_PROGRAM_VERSION', '')}".rstrip())
         bundle = os.environ.get("__CFBundleIdentifier")  # noqa: SIM112 - macOS sets it in this case
         if bundle:

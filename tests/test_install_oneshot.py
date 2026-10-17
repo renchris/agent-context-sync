@@ -8746,6 +8746,17 @@ def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held
         ("Fluid", "FluidAudio 04e363c, FluidGroup", "FluidAudio 04e363c, <org-1>Group"),
         ("Audio", "FluidAudio, AcmeAudio", "FluidAudio, Acme<org-1>"),
         ("Launch", "LaunchAgent, LaunchAgents, LaunchGroup", "LaunchAgent, LaunchAgents, <org-1>Group"),
+        # and the plist keys the Background runs line prints (B13 round 13 O54, O68)
+        (
+            "Standard",
+            "StandardOutPath, StandardErrorPath, StandardGroup",
+            "StandardOutPath, StandardErrorPath, <org-1>Group",
+        ),
+        (
+            "Interval",
+            "StartInterval 900 s, ThrottleInterval, StartCalendarInterval, AcmeInterval",
+            "StartInterval 900 s, ThrottleInterval, StartCalendarInterval, Acme<org-1>",
+        ),
     ],
 )
 def test_an_organisation_is_redacted_inside_a_longer_word(
@@ -8924,6 +8935,20 @@ def test_both_readers_hold_the_same_identifiers_whole() -> None:
     m = re.search(r'nw = split\("([^"]*)", hw, " "\)', INSTALL_SH.read_text())
     assert m is not None
     assert set(m.group(1).split()) == set(setup_report._HELD_IDENTIFIERS)
+
+
+def test_an_organisation_environment_leaves_the_plist_key_whole(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 13 O68: round 12 left EnvironmentVariables out of the held list because "environment" was a
+    report word, but it is one in install.sh only: the Python report cut ``<org-1>Variables`` out of the
+    Background runs line's plist key. Both keep the key whole; the Python report still cuts the organisation
+    out of another word, which the shell, whose report word it is, leaves in clear."""
+    shell, python = _fuzzy_report(
+        env, monkeypatch, ["Plans"], "EnvironmentVariables, EnvironmentGroup", "Environment"
+    )
+    assert python == "EnvironmentVariables, <org-1>Group", python
+    assert shell.startswith("EnvironmentVariables, "), shell
 
 
 def test_another_spelling_of_an_organisation_shares_its_number_and_is_redacted(env: dict[str, str]) -> None:

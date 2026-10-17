@@ -10784,6 +10784,70 @@ def test_the_installer_table_puts_every_steps_note_in_words() -> None:
     assert "(not-requested)" not in table and "(agentsync)" not in table, table
 
 
+_NEVER_PRINTED_CAMELCASE = frozenset(
+    {
+        # sw_vers, scutil, ioreg and Info.plist keys the report reads and never prints
+        "BuildVersion",
+        "ProductVersion",
+        "CFBundleShortVersionString",
+        "CFBundleVersion",
+        "ComputerName",
+        "LocalHostName",
+        "IOPlatformExpertDevice",
+        "IOPlatformSerialNumber",
+        "FrictionEvent",  # a type name in a cast
+        "CFBundleIdentifier",  # the environment variable whose value the Environment line prints
+        "WarpTerminal",  # a TERM_PROGRAM the Environment line prints as Warp (_TERMINAL_APPS)
+        # the speech engine's build names, which no report line prints
+        "CtcHead",
+        "FluidInference",
+        "JointDecisionv3",
+        "PldaRho",
+        "NemoTextProcessing",
+        "SwiftPM",
+        "fluidAudioCommit",
+    }
+)
+"""The CamelCase words of the report's string literals that never print (reviewed, B13 round 13 O54)."""
+
+
+def test_every_camelcase_word_the_report_prints_is_held_whole() -> None:
+    """B13 round 13 O54, O68: round 12 N57 held three CamelCase words, and an organisation was still cut out
+    of others the report prints (``<org-1>Variables`` of EnvironmentVariables). Every CamelCase word of 4 or
+    more letters in a string literal that is no docstring, in setup_report.py, ops/doctor.py and
+    convert/speech.py, is in ``_HELD_IDENTIFIERS`` or on the reviewed list of words that never print: a new
+    one fails here instead of quietly cutting."""
+    src = Path(setup_report.__file__).parent
+    found: set[str] = set()
+    for path in (src / "setup_report.py", src / "ops" / "doctor.py", src / "convert" / "speech.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose:
+                found.update(re.findall(r"(?<![A-Za-z%])[A-Za-z]*[a-z][A-Z][A-Za-z0-9]*", node.value))
+    words = {w for w in found if len(w) >= 4}
+    assert {"EnvironmentVariables", "StartInterval", "TeamIdentifier"} <= words, "the scan is broken"
+    assert sorted(words - setup_report._HELD_IDENTIFIERS - _NEVER_PRINTED_CAMELCASE) == []
+    assert not (_NEVER_PRINTED_CAMELCASE & setup_report._HELD_IDENTIFIERS)
+
+
+@pytest.mark.parametrize(
+    ("program", "name"),
+    [("WarpTerminal", "Warp"), ("Apple_Terminal", "Terminal"), ("iTerm.app", "iTerm"), ("tmux", "tmux")],
+)
+def test_the_environment_names_the_terminal_app_as_the_shell_report_does(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, program: str, name: str
+) -> None:
+    """B13 round 13 O54: the Python report printed ``terminal WarpTerminal``, out of which an organisation
+    "Warp" was cut (``<org-1>Terminal``). It names the app as install.sh's terminal_app does, and the app's
+    name is no report word."""
+    monkeypatch.setenv("TERM_PROGRAM", program)
+    monkeypatch.setenv("TERM_PROGRAM_VERSION", "1.2")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert f"terminal {name} 1.2" in section(text, "Environment"), section(text, "Environment")
+    assert not {"warp", "ghostty", "iterm"} & setup_report.report_words()
+
+
 def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path]) -> None:
     """B13 round 11 M12: a stub read for the first time is counted in a run's ``reread`` and ``converted``
     (cycle.py), and its record says so in ``reread_first``. The Summary called it "first read" and the OCR
