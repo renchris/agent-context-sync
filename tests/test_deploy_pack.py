@@ -5885,12 +5885,39 @@ def test_the_guide_moves_a_late_step_1_run_at_any_gap() -> None:
     assert (
         "When a step 1 error opens such an attempt, the unbroken run of step 1 lines just before it, dated "
         "at or after the earlier attempt's end line, is that session's and moves with it, whatever the gap "
-        "(since round 12, N23: the finished session runs nothing after its report); a late line no such "
-        "error follows stays where it is."
+        "(since round 12, N23: the finished session runs nothing after its report); since round 13 (O24)"
     ) in page
     assert (
         "The unbroken run of step 1 lines just before it, at or after the closing line, moves with it" in page
     )
+
+
+def test_the_guide_moves_a_late_step_1_run_to_the_next_attempt_line() -> None:
+    """B13 round 14 Q64, Q77 (one defect): since round 13 O24 an `Attempt:` line takes the finished attempt's
+    trailing step 1 lines too, in parse_friction and in install.sh's ``friction_latest_has_step``, but the
+    guide still said a late line no step 1 error follows stays where it is, and that any other late line
+    stays in its attempt. The guide calls a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line a header, so it
+    names the `Attempt:` line."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    branch = source[source.index("        attempt = _ATTEMPT_RE.match(line)") :]
+    assert "moved = late_run()" in branch[: branch.index("            continue\n")]
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    has_step = installer[installer.index("friction_latest_has_step() {") :]
+    assert "has = carried" in has_step[: has_step.index("\n}\n")]
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "a late line no such error follows stays where it is" not in page
+    assert (
+        "since round 13 (O24) the same run moves to the next `Attempt:` line too, and that attempt still "
+        "begins at its `Attempt:` time (two `Attempt:` lines with no end line between them leave it where it "
+        "was logged; install.sh's friction log check reads the same boundary); a late line that neither such "
+        "an error nor an `Attempt:` line follows stays where it is."
+    ) in page
+    assert (
+        "Any other late line (one of another step, or a step 1 line that such a line separates from the next "
+        "session's error or `Attempt:` line) stays in its attempt"
+    ) in page
 
 
 def test_the_guide_says_a_config_step_2_cannot_reinstall_for_adds_no_folder() -> None:

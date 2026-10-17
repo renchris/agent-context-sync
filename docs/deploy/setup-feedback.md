@@ -348,10 +348,13 @@ is "no Attempt: line, since its session stopped before `install.sh --log-start`"
 with no header and no words yet reads them from its first step 1 error that states them, wherever it sits: a
 stopping session may log a deviation or a prompt line first. When a step 1 error opens such an attempt, the unbroken
 run of step 1 lines just before it, dated at or after the earlier attempt's end line, is that session's and moves
-with it, whatever the gap (since round 12, N23: the finished session runs nothing after its report); a late line no
-such error follows stays where it is. A step 1 error without those words and a line of
-another step or kind are never read that way. Any
-other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
+with it, whatever the gap (since round 12, N23: the finished session runs nothing after its report); since round 13
+(O24) the same run moves to the next `Attempt:` line too, and that attempt still begins at its `Attempt:` time (two
+`Attempt:` lines with no end line between them leave it where it was logged; install.sh's friction log check reads
+the same boundary); a late line that neither such an error nor an `Attempt:` line follows stays where it is. A step
+1 error without those words and a line of another step or kind are never read that way. Any other late line (one of
+another step, or a step 1 line that such a line separates from the next session's error or `Attempt:` line) stays
+in its attempt (run `install.sh --report-only` again to put it in the report). A report
 written more than 10 minutes after the last attempt's end line, with no run in install.log since (`--report-only`
 is not logged there), says so in a note: a session whose step 1 stopped before `--log-start` and logged nothing is
 not in it, and the person who ran it says which stop it was.
