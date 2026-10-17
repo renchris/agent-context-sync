@@ -2879,6 +2879,7 @@ class _Run:
         self.evidence_steps = 0  # the evidence parts' looks at the clock while SQLite worked (_Mirror.steps)
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
+        self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -3595,12 +3596,18 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
     """:func:`_git_ro` with git's stderr too (in the C locale, so its messages are git's English ones).  Every
     caller reads a checkout: git looks no higher than ``directory`` (its resolved parent is the ceiling), so a
     .git it cannot read is not read past into a repository around it (B13 round 11 M51).  git is what
-    ``/usr/bin/git`` runs (:func:`gitops.usr_bin_git`, looked up once per process, before the budget is
-    read)."""
-    git = gitops.usr_bin_git()
+    ``/usr/bin/git`` runs (:func:`gitops.usr_bin_git`, looked up after the budget is read and inside the
+    budget, once per report: a failed lookup falls back to ``/usr/bin/git``, which is kept too, so a slow
+    or hanging xcrun is asked once, within the budget, never once per call; B13 round 14 Q53)."""
     limit = min(timeout, r.remaining() - _RESERVE_S)
     if limit <= 0.2:
         return 124, b"", b""
+    if r.git is None:
+        r.git = gitops.usr_bin_git(timeout=min(gitops._XCRUN_TIMEOUT_S, limit))
+        limit = min(timeout, r.remaining() - _RESERVE_S)  # the git run itself still fits the budget
+        if limit <= 0.2:
+            return 124, b"", b""
+    git = r.git
     env = {**os.environ, "LC_ALL": "C", "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
     with contextlib.suppress(OSError, RuntimeError):
         parent = str(directory.resolve().parent)

@@ -149,10 +149,11 @@ _git: Path | None = None
 """:func:`git_executable`'s answer, kept once it is final (never the fallback after a failed xcrun lookup)."""
 
 
-def _xcrun_git() -> Path | None:
+def _xcrun_git(timeout: float = _XCRUN_TIMEOUT_S) -> Path | None:
     """The git ``/usr/bin/git``'s xcrun shim runs (``xcrun --find git``: an absolute path named ``git``
-    that is executable), or None if xcrun fails, times out or names anything else.  Every exec of the shim
-    repeats that lookup; running its answer directly runs the same binary with the same arguments."""
+    that is executable), or None if xcrun fails, times out (after ``timeout`` seconds) or names anything
+    else.  Every exec of the shim repeats that lookup; running its answer directly runs the same binary with
+    the same arguments."""
     global _shim_git  # noqa: PLW0603 - the once-per-process memo
     if _shim_git is not None:
         return _shim_git
@@ -162,7 +163,7 @@ def _xcrun_git() -> Path | None:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=_XCRUN_TIMEOUT_S,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -174,11 +175,12 @@ def _xcrun_git() -> Path | None:
     return found
 
 
-def usr_bin_git() -> Path:
+def usr_bin_git(timeout: float = _XCRUN_TIMEOUT_S) -> Path:
     """What ``/usr/bin/git`` runs: on macOS, where it is an xcrun shim with a developer dir behind it, the git
-    xcrun names (resolved once per process); else, or when xcrun gives no usable answer, ``/usr/bin/git``."""
+    xcrun names (resolved once per process); else, or when xcrun gives no usable answer within ``timeout``
+    seconds, ``/usr/bin/git``."""
     if sys.platform == "darwin" and _usr_bin_git_usable():
-        return _xcrun_git() or Path("/usr/bin/git")
+        return _xcrun_git(timeout) or Path("/usr/bin/git")
     return Path("/usr/bin/git")
 
 

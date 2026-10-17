@@ -33,6 +33,7 @@ from agentsync import (
     cli,
     convert,
     cycle,
+    gitops,
     governance,
     it_request,
     lints,
@@ -9430,6 +9431,32 @@ def test_a_personal_dropbox_folder_leaves_no_residue_in_the_report(
     assert "Gamma" not in text and re.search(r"CloudStorage/Dropbox/<folder-\d+>", text), text
     check = next(ln for ln in section(text, "Redaction").splitlines() if "Residue check:" in ln)
     assert check.startswith("Residue check: no capitalized or joined word"), check
+
+
+def test_the_reports_git_lookup_is_asked_once_within_its_time_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q53: ``_git_ro_err`` looked git up (``xcrun --find git``, up to 10 s) before it read the
+    report's budget, and a failed lookup was not kept, so each call asked again: four calls on a 2 s budget
+    took 12 s with an xcrun that fails after 3 s. The budget is read first, the lookup is bounded by it and
+    kept for the report, its ``/usr/bin/git`` fallback too."""
+    asked = tmp_path / "asked"
+    xcrun = tmp_path / "xcrun"
+    xcrun.write_text(f"#!/bin/sh\necho x >> '{asked}'\nsleep 3\nexit 1\n", encoding="utf-8")
+    xcrun.chmod(0o755)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(gitops, "_usr_bin_git_usable", lambda: True)
+    monkeypatch.setattr(gitops, "_XCRUN", str(xcrun))
+    monkeypatch.setattr(gitops, "_shim_git", None)
+    r = setup_report._Run(None, setup_report.ReportHooks(), 2.0)
+    t0 = time.monotonic()
+    codes = [setup_report._git_ro_err(r, tmp_path, "rev-parse", "HEAD")[0] for _ in range(4)]
+    elapsed = time.monotonic() - t0
+    assert elapsed < 2.0 + setup_report._RESERVE_S, (elapsed, codes)
+    assert asked.read_text(encoding="utf-8").count("x") == 1, "xcrun was asked again"
+    assert (
+        r.git == Path("/usr/bin/git") and gitops._shim_git is None
+    )  # the daemon's memo keeps successes only
 
 
 def test_recount_counts_numbered_placeholders_in_the_text_and_leaves_the_rest() -> None:
