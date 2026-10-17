@@ -965,6 +965,35 @@ them the sign-in wording cluster), RB 19 (install.sh), P 6 (prompt v22), B 11 (s
 (deferred counts, speech, converters, policy), D 8 (docs/deploy, CONTRACTS). Lead: O74 (one operator cleanup,
 `b13-r12`, replacing the `b13-r11` one).
 
+### B13 round 13 landed (2026-10-17)
+
+All six lanes landed; CI green on `dd06f1ed` (prompt v22). Notes `lanes/r13-<lane>.md`. Every item is built; the
+parts left out are optional extras the verifiers offered, each with a reason in the lane's note (O9's Summary
+clause, O15's NEXT-side variant, O24's `--log-start` end-line guard, O53's fallback, O57's optional 6). O73's
+load-timing flakes got a test-only fix; no permanent test reproduces a load-dependent flake.
+
+| Lane | Landed (lane commits; ranges can hold another session's) |
+|---|---|
+| E | `fd8455e5^..7b51f3cf`, 5 commits |
+| RB | `ec7a22c0^..44360797`, 17 commits |
+| P | `b28a873d` (v22) |
+| B | `b28a873d..eabb67fc`, 4 commits |
+| D | `02a68add`, `6916db07` |
+| RA | `5b1f10f1..dd06f1ed`, 13 commits |
+
+Outside the wave, another session landed `e72a536d..5b1f10f1` (perf work and `scripts/gate.sh`, the land gate with
+`--affected` and `--lane` modes); the round 13 brief now lives in the repo as `docs/lanes/COMMON.md`.
+
+Learnings: three lanes running the full `pytest -n auto` at once (about 30 workers, load about 350) filled swap, and
+lane D's pytest controller was SIGKILLed twice (exit 137). From the second half of round 13, lanes rebase and gate
+under one lock (`lockf /tmp/b13-r13-land.lock …`); the push stays a separate command, outside the lock, so the
+operator's `git push` ask rule still sees it. The lock narrows the race but does not close it: RA's push was rejected
+twice, the second time by lane D, which landed seconds after RA's locked gate. With several lanes at push prompts,
+the lead names the one whose branch fast-forwards. The operator was away overnight, so lane RA waited about 6 hours at
+a prompt.
+
+Round 14: the round 13 workflow on `dd06f1ed` with prompt v22 (ids Q<n>, outputs `round14/`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
