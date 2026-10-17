@@ -19121,6 +19121,8 @@ the line. A stopped attempt with a late line of another step stays uncomputed. T
 `test_the_shell_report_computes_a_stopped_copys_failure` (v3, v99, no version, a late step 3 line).
 Amended 2026-10-16, §16.99 N44: the note is now read from the stop line as `_prompt_copy_note` reads it, for
 `7 or older` and a newer copy too, so the shell's clause is the agentsync report's word for word.
+Amended 2026-10-17, §16.105 O18: the bracket has no "from the attempt's Prompt line" label now; it is the agentsync
+report's note alone.
 
 **The uncomputed outcome names step lines only where there are some** (M15; amends §16.87 L2). With a friction log
 of a header and an end line only, the line still said `the Outcome is yours to choose from the friction log's step
@@ -19752,6 +19754,14 @@ provider; a symlinked provider folder; another account's folder of the app; a re
 `test_list_folders_names_every_app_whose_folder_is_signed_out`, `test_signed_out_reads_a_provider_folder_as_doctor_does`
 (gone, beside another account's, empty, hidden entries only, a folder, a dangling symlink inside or as the folder,
 unreadable), `test_ops_doctor.py::test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cause`.
+Amended 2026-10-17, §16.105 O5: the exit 3 logs `note=not-signed-in apps=<app words> missing=M synced=N`, and the
+no-provider stop `not-signed-in apps=onedrive`.
+Amended 2026-10-17, §16.105 O6: "and nothing syncs until ..." now reads "so step 2 runs no first sync (and installs
+no LaunchAgents) until ...; a sync still mirrors the other folders" (and, for a gone folder, "and that folder's
+pages are kept"): a sync skips only the gone source.
+Amended 2026-10-17, §16.105 O41, O48, O57: those were two of doctor's three fixes; a SharePoint library folder gone
+(or there and showing nothing) beside its organization's `OneDrive-<org>` has a clause of its own, which names the
+library's Sync and no sign-in.
 
 **Step 1 asks for no folder that step 2 cannot add** (N29; amends §16.93 M37). With the installed build this
 checkout's and failing on the config, step 2 does not reinstall it and every `--source-local` fails at add-source,
@@ -19771,6 +19781,8 @@ before the renderer's last ` (`, so `(what the agent saw)` read as why lines wer
 and issue link lines)`, with no singular "an earlier run's", since K can span runs. The marker line is unchanged.
 Tests: `test_a_stopped_copys_embed_counts_the_lines_it_leaves_out` (two earlier runs, K=4),
 `test_the_real_report_of_a_stopped_copy_invites_no_bring_back`.
+Amended 2026-10-17, §16.105 O70: the marker line changed too, to `(earlier runs' bring-back and issue link lines
+are left out of this report)`, since its lines can span runs.
 
 **The shell legend's items explain only what the body shows** (N16, N45; amends §16.93 M3). The `<org-N>` item
 always named `Dropbox-<org-N>` and an email address and never the organization cut out of a longer word (M50's
@@ -19798,6 +19810,8 @@ where it differs, each once; the shell reader takes `[A-Za-z0-9._-]` lines, and 
 key's number. The Python reader is unchanged (lower-case lines, matched in any case). A third spelling not seen when a
 line was logged still leaks in the shell. Test: `test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset`
 (mixed case: the file, both reports, one number).
+Amended 2026-10-17, §16.105 O2, O67: the shell now matches every proxy pair in any ASCII case, so a third spelling
+no longer leaks; the file keeps both lines.
 
 **The shell's stopped-copy prompt clause is the agentsync report's** (N44; amends §16.93 M14). `7 or older` had no
 note and a newer copy H23's build note. `friction_step1_stated`'s header field is now `header:<version>:<old|new>:
@@ -19805,6 +19819,8 @@ note and a newer copy H23's build note. `friction_step1_stated`'s header field i
 names), and the clause is `_prompt_copy_note`'s. Only the header branch: a version a step 1 error line states keeps
 H23's causeless note (K26). Test: `test_the_shell_report_computes_a_stopped_copys_failure` (equal to
 `_prompt_line_note` for the same log).
+Amended 2026-10-17, §16.105 O18: the label went as well: the whole bracket is `_prompt_line_note`'s, `(older than
+...)` with no "from the attempt's Prompt line".
 
 **A bring-back.md that could not be written is not the file the NEXT names** (N71). `--report-only`'s `NEXT:` said
 to review `bring-back.md` after `write_bring_back` failed: a missing file, or an earlier attempt's. Then it reads
@@ -19813,6 +19829,8 @@ so do not send it)]: copy <setup-report.md> back privately[, or paste it into th
 if <setup>/fix-request.md or <setup>/local-work holds anything, copy it back privately too (it is not redacted); or
 fix the cause and run this command again (nothing is sent for you)`, with or without an issue link. The earlier
 file is left as it is. Test: `test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_review`.
+Amended 2026-10-17, §16.105 O14: the earlier-file note sits inside the one bracket and names no path again: `(see
+the warning above[; the one there now is an earlier attempt's file, not this one's, so do not send it])`.
 
 **`--version` says why the source commit is unknown** (N75; amends §16.93 M51). `unread_reason DIR` reads the
 reason from the folder alone (git refuses it as another account's; git cannot read it; with no developer tools,
@@ -20165,7 +20183,118 @@ Reserved for round 13 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.105 Round 13: installer, the sign-in stop and the shell report (2026-10-17, wave B13 round 13 lane RB)
 
-Reserved for round 13 lane RB of B13.
+The installer's findings of the v21 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 13"). Each item has a test that fails without it, but O46 (a comment). Where an item changes what an
+older section states, that section has a dated line (`Amended 2026-10-17, §16.105 O<n>`) and its text is otherwise as
+it was. No item needs prompt words.
+
+**The sign-in stop logs its apps and how many folders are missing** (O5, the install.sh half; amends §16.99 N41).
+`note=not-signed-in synced=N` named no app, and N is every synced folder, so both readers said "OneDrive is not
+signed in" and called all N missing. The exit 3 logs `not-signed-in apps=<words> missing=M synced=N`: the words are
+a fixed map of the provider label (`onedrive`, `googledrive`, `dropbox`, `box`, `egnyte`, else `other`; comma-joined
+in the list's order, once each), never a folder's own text. They are built by lower-casing the label, since every
+lower-case word on a line of install.sh that is not a comment is a report word, which redaction keeps in clear (a
+literal `box` kept an organization named Box in clear). The no-provider stop logs `apps=onedrive`. The readers are
+lane RA's (§16.104). Tests: `test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing`,
+`test_list_folders_names_the_app_whose_folder_is_signed_out`, `test_list_folders_names_every_app_whose_folder_is_signed_out`
+(and `other`), `test_deploy_pack.py::test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+**Step 1's gone-folder clauses say only step 2's first sync waits** (O6; amends §16.99 N41). "and nothing syncs
+until the folder is back ..." was false: a sync skips the gone source's walk, deletes none of its pages and mirrors
+every other source. The clauses read `..., so step 2 runs no first sync (and installs no LaunchAgents) until the
+folder is back under that name or its [[source]] path in <config> is fixed; a sync still mirrors the other folders,
+and that folder's pages are kept`, and for another account's folder `... until then; a sync still mirrors the other
+folders`. Tests: `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2`,
+`test_e2e.py::test_a_sync_with_one_source_root_gone_still_mirrors_the_others`.
+
+**A SharePoint library not synced beside its organization's OneDrive folder is no sign-in** (O41, O48, O57, one
+defect, with O52's list half for lane B's §16.107; amends §16.99 N41). `signed_out` read `OneDrive-SharedLibraries-<org>`
+gone beside `OneDrive-<org>` as another account (2), so the list told a signed-in person to sign in with the account
+it belongs to, the fix doctor withdrew in round 12 N53, and v21 can read that as a sign-in to wait for. It returns 3
+for that layout and for the library folder there and showing nothing (O52), the organization read as `org_of` reads
+it (trimmed, never empty or Personal, which fall through as in doctor). The list's exit-0 `NEXT:` adds `; 1 of them
+is not on disk because its SharePoint library is not synced on this Mac (its organization's OneDrive folder is
+there): <path>. Step 2's status fails on it and names the fix (sync the SharePoint library to this Mac with Sync on
+its SharePoint page, or fix its [[source]] path in <config>), so step 2 runs no first sync (and installs no
+LaunchAgents) until then; a sync still mirrors the other folders` (and a plural form), and `gone=` counts it. Both
+deploy guides name the case. Tests: `test_signed_out_reads_a_sharepoint_library_as_doctor_does` (beside Contoso,
+trimmed, empty, beside Fabrikam, alone, Personal, an empty organization),
+`test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does` (one and two libraries; doctor's fix for the
+same sources names the Sync and no sign-in).
+
+**A run's id and its start line name one second** (O4). `RUN_ID` was stamped when install.sh loaded and the start
+line after the commit read, so a slow git put them seconds apart in the Installer section. One clock read gives
+`RUN_STAMP`, `RUN_ID` and `RUN_AT`; the start line and install.out's `# run=` header use `RUN_AT`. Test:
+`test_a_runs_id_and_its_start_line_name_one_second` (git slowed by a `core.fsmonitor` hook: the start is the id's
+second, and start plus `seconds` is the end line's time).
+
+**A folder at the bring-back path takes no file** (O7, O26, one defect). mv onto a folder, or a link to one, moved
+the unredacted file into it as `.bring-back.*` and exited 0, so the run named a folder as the file to send.
+`write_bring_back` refuses such a path before it builds anything and again at the mv, so §16.99 N71's `NEXT:` follows,
+with no earlier-file note. A link to a file is replaced as before. Test:
+`test_a_folder_at_the_bring_back_path_takes_no_file` (a folder, a link to one).
+
+**N71's NEXT keeps the earlier-file note in its one bracket** (O14; amends §16.99 N71). The note was a second
+bracket right after the first, and printed the path again. Test:
+`test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_review`.
+
+**A patch this account cannot read is counted, not sent** (O25). A mode-000 patch opened section 3's fence before
+its `cat` failed unseen, so bring-back.md held an empty diff under a header saying section 3 holds the patches.
+It is skipped, counted on a last `not sent: N patch file(s) in ~/agent-context/setup/local-work this account cannot
+read; make them readable (chmod u+r) and run this command again` line (no file name: a patch's name carries its
+commit's subject) and in a warning; with nothing sent the header says `Section 3 sends no patch: N patch file(s)
+could not be read; see its last line.` A read that fails partway fails the write, so N71's `NEXT:` applies. Not
+the finder's whole-write failure: it drops the one-file bundle for one bad patch. Test:
+`test_a_patch_this_account_cannot_read_is_counted_not_sent` (alone, beside a readable one).
+
+**A stopped copy's left-out marker is number-neutral** (O70; amends §16.99 N22). One marker stands for the lines of
+every earlier run in the tail, yet read "an earlier run's". Test:
+`test_a_stopped_copys_embed_counts_the_lines_it_leaves_out` (two earlier runs).
+
+**The shell's stopped-copy prompt bracket is the agentsync report's** (O18; amends §16.99 N44 and §16.93 M14). The
+shell printed `(from the attempt's Prompt line; older than ...)` where the agentsync report prints `(older than
+...)`. The header branch's bracket is now the note alone; a version a step 1 error line states keeps `(from the
+step 1 error line...)`, as `_stated_note` gives it. Python is unchanged: the label there would sit on every attempt
+with a header. Test: `test_the_shell_report_computes_a_stopped_copys_failure` (the whole bracket against
+`_prompt_line_note`).
+
+**The shell report matches a proxy value in any case** (O2, O67, one defect; amends §16.99 N42). `redact_stream`
+matched proxy pairs byte for byte, so a host quoted in upper or mixed case printed in clear, with the proxy set or
+unset, where the Python reader matches every proxy value in any case. A pair whose placeholder is `<proxy-N>` (and
+is not a fuzzy one) is now found in the lower-cased line and cut from the line as written at the same offsets
+(LC_ALL=C keeps every byte in place), in the longer-value check too; the w, t and e edge tests are unchanged, and
+no other pair changes. Tests: `test_a_proxy_host_is_redacted_in_every_case_in_both_readers` (unset and set: four
+spellings and a longer host ending in it, one number in both readers),
+`test_a_git_proxy_is_redacted_in_every_case_in_the_shell_report`.
+
+**The shell legend's org example is an app's folder only** (O45). Any `<word>-<org-N>` counted, so a quoted
+`sales-Contoso` gave `(OneDrive-<org-N>, sales-<org-N>)`. Only setup_report's app heads count (the fixed names and
+this Mac's own CloudStorage heads, letters only), after no letter or digit. Test:
+`test_the_org_legend_explains_only_what_the_report_shows` (a quoted word beside the app's folder and alone, a Mac's
+own app).
+
+**A stopped copy drops the older renderer's quiet friction count** (O20). Round 12 N20's rule is the renderer's,
+and a stopped copy is rendered by the older installed agentsync, which still wrote `- friction (attempt N): 2 event
+line(s): 1 error, 1 finished` beside `failed at step 1`. `stopped_report_note` drops a Summary count line of the
+problem kinds and `finished` alone (`none` too, no legacy lines), by setup_report's rule; `STOPPED_COPY_QUIET_KINDS`
+is held equal to `PROBLEM_KINDS` plus `finished`. Tests:
+`test_a_stopped_copy_rendered_by_an_older_agentsync_drops_its_quiet_friction_count`,
+`test_the_shell_stopped_copy_quiet_kinds_are_the_reports`.
+
+**A stopped copy numbers runs started in one second** (O21). Round 12 N21's `<stamp>.2` labels are the new
+renderer's and the shell's; the older renderer gave two runs of one second one id. `stopped_run_labels` relabels its
+Installer headings, Every-run rows and open-run lines (the k-th of a stamp shown is the k-th of that stamp's last
+runs in install.log), the raw lines (each shown run takes its install.log line count, the last the rest), the
+install.out tail's `# run=` headers (the last ones of install.out), both lead-ins' `, numbered .2 on for runs
+started in one second` clause, and the Summary's retry line and the doctor's first-sync note (the run whose end rc
+matches, or that logged its status step). Only where the report holds no numbered label and install.log has a
+shared second. Test: `test_a_stopped_copy_rendered_by_an_older_agentsync_numbers_runs_started_in_one_second` (and a
+numbered report left as it is).
+
+**A comment and a tighter test** (O46, O72). `friction_step1_stated`'s comment gives its third field as
+`header:<V>:<old|new>:<fork|remote>` (a comment: no test can fail on it). The shell report's macOS line is held to
+`- macOS: <version> (<build>)`, as agentsync prints it: CI's only pytest job runs on macos-15, where `sw_vers` is.
+Test: `test_failure_without_agentsync_writes_the_shell_report`.
 
 ### 16.106 Round 13: setup prompt v22 (2026-10-17, wave B13 round 13 lane P)
 
