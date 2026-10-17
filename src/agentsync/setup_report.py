@@ -2038,11 +2038,15 @@ def _signed_out(listed: dict[str, str]) -> tuple[str, str]:
             return "a sync app is not signed in", "the sign-in"
         return "OneDrive is not signed in", "the OneDrive sign-in"
     who = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
-    verb = "is" if len(names) == 1 else "are"
-    known = [name for name in names if name != _SIGN_IN_APPS["other"]]
-    named = " and ".join(known) if len(known) == len(names) else ""
-    sign_in = f"the {named} sign-in{'s' if len(names) > 1 else ''}" if named else "the sign-in"
-    return f"{who} {verb} not signed in", sign_in
+    plural = len(names) > 1
+    # "A, B and C" as who is joined, and plural for every list of two or more, "another sync app" among
+    # them too (B13 round 14 Q48: "the OneDrive and Dropbox and Box sign-ins", "OneDrive and another sync
+    # app ... the sign-in")
+    if _SIGN_IN_APPS["other"] in names:
+        sign_in = "the sign-ins" if plural else "the sign-in"
+    else:
+        sign_in = f"the {who} sign-in{'s' if plural else ''}"
+    return f"{who} {'are' if plural else 'is'} not signed in", sign_in
 
 
 def _sign_in_run(att: Attempt, runs: Sequence[InstallRun]) -> InstallRun | None:

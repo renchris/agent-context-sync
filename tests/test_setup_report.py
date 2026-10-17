@@ -10843,6 +10843,28 @@ def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
     assert "listable FAIL" in _line(got, "- doctor: ").split(" · unexpected ", 1)[1], _line(got, "- doctor: ")
 
 
+@pytest.mark.parametrize(
+    ("apps", "stop", "sign_in"),
+    [
+        (
+            "onedrive,dropbox,box",
+            "OneDrive, Dropbox and Box are not signed in",
+            "the OneDrive, Dropbox and Box sign-ins",
+        ),
+        ("onedrive,other", "OneDrive and another sync app are not signed in", "the sign-ins"),
+        ("dropbox,other,box", "Dropbox, another sync app and Box are not signed in", "the sign-ins"),
+        ("other", "another sync app is not signed in", "the sign-in"),
+        ("onedrive,dropbox", "OneDrive and Dropbox are not signed in", "the OneDrive and Dropbox sign-ins"),
+        ("dropbox", "Dropbox is not signed in", "the Dropbox sign-in"),
+    ],
+)
+def test_the_sign_in_words_join_three_apps_and_count_another_one(apps: str, stop: str, sign_in: str) -> None:
+    """B13 round 14 Q48: three apps read ``the OneDrive and Dropbox and Box sign-ins``, and a list with
+    ``other`` among two names read ``the sign-in``. The sign-in is joined as the stop's names are, and plural
+    whenever more than one is named."""
+    assert setup_report._signed_out({"note": "not-signed-in", "apps": apps}) == (stop, sign_in)
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_new_macs_step_1_stop_goes_to_the_report_attended_or_not(
     fake_mac: dict[str, Path], tmp_path: Path
