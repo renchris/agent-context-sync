@@ -19757,7 +19757,7 @@ unreadable), `test_ops_doctor.py::test_a_missing_source_fix_names_the_sign_in_on
 Amended 2026-10-17, §16.105 O5: the exit 3 logs `note=not-signed-in apps=<app words> missing=M synced=N`, and the
 no-provider stop `not-signed-in apps=onedrive`.
 Amended 2026-10-17, §16.105 O6: "and nothing syncs until ..." now reads "so step 2 runs no first sync (and installs
-no LaunchAgents) until ...; a sync still mirrors the other folders" (and, for a gone folder, "and that folder's
+no LaunchAgents) until ...; a sync still mirrors the folders that are there" (and, for a gone folder, "and that folder's
 pages are kept"): a sync skips only the gone source.
 Amended 2026-10-17, §16.105 O41, O48, O57: those were two of doctor's three fixes; a SharePoint library folder gone
 (or there and showing nothing) beside its organization's `OneDrive-<org>` has a clause of its own, which names the
@@ -20202,9 +20202,9 @@ lane RA's (§16.104). Tests: `test_list_folders_asks_for_the_sign_in_when_synced
 **Step 1's gone-folder clauses say only step 2's first sync waits** (O6; amends §16.99 N41). "and nothing syncs
 until the folder is back ..." was false: a sync skips the gone source's walk, deletes none of its pages and mirrors
 every other source. The clauses read `..., so step 2 runs no first sync (and installs no LaunchAgents) until the
-folder is back under that name or its [[source]] path in <config> is fixed; a sync still mirrors the other folders,
-and that folder's pages are kept`, and for another account's folder `... until then; a sync still mirrors the other
-folders`. Tests: `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2`,
+folder is back under that name or its [[source]] path in <config> is fixed; a sync still mirrors the folders that are there,
+and that folder's pages are kept`, and for another account's folder `... until then; a sync still mirrors the folders
+that are there`. Tests: `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2`,
 `test_e2e.py::test_a_sync_with_one_source_root_gone_still_mirrors_the_others`.
 
 **A SharePoint library not synced beside its organization's OneDrive folder is no sign-in** (O41, O48, O57, one
@@ -20216,7 +20216,7 @@ it (trimmed, never empty or Personal, which fall through as in doctor). The list
 is not on disk because its SharePoint library is not synced on this Mac (its organization's OneDrive folder is
 there): <path>. Step 2's status fails on it and names the fix (sync the SharePoint library to this Mac with Sync on
 its SharePoint page, or fix its [[source]] path in <config>), so step 2 runs no first sync (and installs no
-LaunchAgents) until then; a sync still mirrors the other folders` (and a plural form), and `gone=` counts it. Both
+LaunchAgents) until then; a sync still mirrors the folders that are there` (and a plural form), and `gone=` counts it. Both
 deploy guides name the case. Tests: `test_signed_out_reads_a_sharepoint_library_as_doctor_does` (beside Contoso,
 trimmed, empty, beside Fabrikam, alone, Personal, an empty organization),
 `test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does` (one and two libraries; doctor's fix for the

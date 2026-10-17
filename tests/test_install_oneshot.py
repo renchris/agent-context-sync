@@ -4363,7 +4363,7 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
             "; 1 of them is not on disk because its provider folder is missing while another folder of "
             f"that app is there: {gone}. Step 2's status fails on it and names the fix (sign in to that app "
             f"with the account it belongs to, or fix its [[source]] path in {cfg}), so step 2 runs no first "
-            "sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
+            "sync (and installs no LaunchAgents) until then; a sync still mirrors the folders that are there"
         )
     else:
         real = tmp_path / "real-provider" if layout == "a symlinked provider folder" else lib
@@ -4377,7 +4377,8 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
             "; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted "
             f"there): {gone}. Step 2's status fails on it and names the fix, so step 2 runs no first sync "
             "(and installs no LaunchAgents) until the folder is back under that name or its [[source]] path "
-            f"in {cfg} is fixed; a sync still mirrors the other folders, and that folder's pages are kept"
+            f"in {cfg} is fixed; a sync still mirrors the folders that are there, and that folder's pages "
+            "are kept"
         )
     _write_config(
         env, local_source_table("project-alpha", kept), local_source_table("project-beta", gone), _inbox(env)
@@ -4506,7 +4507,7 @@ def test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does(
     paths = "; ".join(str(g) for g in gone)
     tail = (
         f"path in {cfg}), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync "
-        "still mirrors the other folders"
+        "still mirrors the folders that are there"
     )
     clause = (
         "; 1 of them is not on disk because its SharePoint library is not synced on this Mac (its "
