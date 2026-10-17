@@ -11110,6 +11110,59 @@ def test_a_new_macs_step_1_stop_goes_to_the_report_attended_or_not(
         assert "an unattended run" not in got, got
 
 
+def test_the_folders_line_says_step_1_found_a_synced_folder_not_on_disk(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q17, Q78: the Installer row read "2 already synced, 1 of them not on disk" while the
+    Summary said only "kept the 2 already synced (none added)". The folders line says so by the list's own
+    count when the list right before the install run logged ``gone=`` and this report's doctor still FAILs a
+    source whose folder does not exist. Both states: no such FAIL, a list before an earlier install run, a
+    sign-in exit, or a ``gone=`` that is no count adds nothing."""
+    real = cli._status_checks
+
+    def sources_only(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name.startswith("source.")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", sources_only)
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v22"))
+    clause = "step 1's list found 1 synced folder not on disk: see Doctor"
+
+    def folders(
+        *installs: tuple[str, str], listed: str = " synced=2 gone=1", step: str = "done note=listed-6"
+    ) -> str:
+        set_up_log(fake_mac, *installs, listed=listed, list_step=step)
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        line = _line(section(text, "Summary"), "- folders: ")
+        for raw in RAW:
+            assert raw not in line, raw
+        return line
+
+    kept = ("", "skipped note=exists kept=2 added=0")
+    added = ("--source-local x", "done note=add-source kept=2 added=1")
+    # no doctor FAIL: the folder is on disk again, so the line says nothing of it
+    assert (
+        folders(kept)
+        == "- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)"
+    )
+    fake_mac["one"].rename(fake_mac["one"].with_name("Client Beta"))
+    assert folders(kept) == (
+        f"- folders: kept the 2 already synced (none added; {clause}) · 0 named with --source-local "
+        "(install.log)"
+    )
+    assert folders(added) == (
+        f"- folders: 1 added to the 2 already synced ({clause}) · 1 named with --source-local (install.log)"
+    )
+    # the gone= list ran before an earlier install run, not the last one
+    assert clause not in folders(kept, kept)
+    assert clause not in folders(kept, listed=" synced=2 gone=Contoso")
+    assert clause not in folders(kept, listed=" synced=2")
+    assert clause not in folders(kept, step="done note=not-signed-in")
+
+
 def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

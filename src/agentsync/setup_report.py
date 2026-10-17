@@ -8341,13 +8341,49 @@ _NAMED_FOLDER_RE = re.compile(r"(?<!\\ )(?<!\S)--source-local(?!\S)")
 """One ``--source-local`` option in a start line's ``args=`` (the folder after it is never read here)."""
 
 
-def _folders_line(runs: Sequence[InstallRun]) -> str | None:
+_NOT_ON_DISK_RE = re.compile(r" does not exist(?: \(fix: .*\))?$")
+"""doctor's listable detail for a source whose folder is not on disk (``<root> does not exist``), its fix
+bracket after it or not."""
+
+
+def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
+    """``step 1's list found 1 synced folder not on disk: see Doctor``, when the list run right before the
+    last install run (no install run between) finished with ``gone=G`` (G at least 1, not a sign-in exit)
+    and this report's doctor FAILs a source's listable check because its folder does not exist, outside the
+    sign-in stop's bucket (B13 round 14 Q17, Q78: the Summary said only "kept the 2 already synced" while
+    the Installer row said one was not on disk). The list's own count, never the install run's ``kept``;
+    "not on disk", never "renamed" or "gone". Empty otherwise: a folder fixed before the report has no
+    FAIL."""
+    installs = install_runs_only(runs)
+    if not installs:
+        return ""
+    at = list(runs).index(installs[-1])
+    listed = runs[at - 1] if at > 0 and runs[at - 1].list_only else None
+    step = (listed.step("list-folders") or {}) if listed is not None else {}
+    gone = _count(step, "gone")
+    if step.get("result") != "done" or step.get("note") == "not-signed-in" or not gone:
+        return ""
+    fr = r.friction
+    signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
+    missing = any(
+        tag == "FAIL"
+        and name.startswith("source.")
+        and name.endswith(".listable")
+        and name not in signed_out
+        and _NOT_ON_DISK_RE.search(detail)
+        for tag, name, detail in r.facts.doctor_problems
+    )
+    return f"step 1's list found {_plural(gone, 'synced folder')} not on disk: see Doctor" if missing else ""
+
+
+def _folders_line(r: _Run, runs: Sequence[InstallRun]) -> str | None:
     """``- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)``:
     what the last install run did with the folder choice, in counts and no names. The counts are its config
     step's ``kept`` and ``added`` fields (the folders synced before the step and the ones it added, counted
     by the installed agentsync), and the named ones are the ``--source-local`` options of its arguments: a
-    folder named again adds nothing. None when no install run logged the counts (an installer from before
-    them, or a config agentsync could not read)."""
+    folder named again adds nothing. A folder step 1's list found not on disk is named by count
+    (:func:`_gone_clause`). None when no install run logged the counts (an installer from before them, or a
+    config agentsync could not read)."""
     installs = install_runs_only(runs)
     if not installs:
         return None
@@ -8355,14 +8391,15 @@ def _folders_line(runs: Sequence[InstallRun]) -> str | None:
     kept, added = _count(last.step("config"), "kept"), _count(last.step("config"), "added")
     if kept is None or added is None:
         return None
+    gone = _gone_clause(r, runs)
     if kept and not added:
-        did = f"kept the {kept} already synced (none added)"
+        did = f"kept the {kept} already synced (none added{'; ' + gone if gone else ''})"
     elif kept:
-        did = f"{added} added to the {kept} already synced"
+        did = f"{added} added to the {kept} already synced" + (f" ({gone})" if gone else "")
     elif added:
-        did = f"{added} added (none was synced before)"
+        did = f"{added} added (none was synced before{'; ' + gone if gone else ''})"
     else:
-        did = "none synced and none added"
+        did = "none synced and none added" + (f" ({gone})" if gone else "")
     named = len(_NAMED_FOLDER_RE.findall(last.args))
     return f"- folders: {did} · {named} named with --source-local (install.log)"
 
@@ -8714,7 +8751,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     out.append(
         _install_line(r, runs, scoped=att is not None and att.begin is not None, end=_attempt_end(att))
     )
-    folders = _folders_line(runs)
+    folders = _folders_line(r, runs)
     if folders is not None:
         out.append(folders)
     if r.facts.instructions is not None:
