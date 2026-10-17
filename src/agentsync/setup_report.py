@@ -123,7 +123,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar, cast
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
-from agentsync import __version__, net
+from agentsync import __version__, gitops, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
 from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
 from agentsync.materialise import file_provider_marker
@@ -3431,7 +3431,10 @@ def _git_ro(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple
 def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> tuple[int, bytes, bytes]:
     """:func:`_git_ro` with git's stderr too (in the C locale, so its messages are git's English ones).  Every
     caller reads a checkout: git looks no higher than ``directory`` (its resolved parent is the ceiling), so a
-    .git it cannot read is not read past into a repository around it (B13 round 11 M51)."""
+    .git it cannot read is not read past into a repository around it (B13 round 11 M51).  git is what
+    ``/usr/bin/git`` runs (:func:`gitops.usr_bin_git`, looked up once per process, before the budget is
+    read)."""
+    git = gitops.usr_bin_git()
     limit = min(timeout, r.remaining() - _RESERVE_S)
     if limit <= 0.2:
         return 124, b"", b""
@@ -3442,7 +3445,7 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
             env["GIT_CEILING_DIRECTORIES"] = parent
     try:
         cp = subprocess.run(
-            ["/usr/bin/git", "-C", str(directory), *args],
+            [str(git), "-C", str(directory), *args],
             capture_output=True,
             timeout=limit,
             check=False,

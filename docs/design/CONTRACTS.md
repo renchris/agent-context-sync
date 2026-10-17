@@ -2986,8 +2986,13 @@ COMMIT_PATHSPECS: tuple[str, ...] = (
 
 PUBLISHED_TAG = "published"
 
+def usr_bin_git() -> Path:
+    """What ``/usr/bin/git`` runs: on macOS, where it is an xcrun shim with a developer dir behind it, the git
+    xcrun names (resolved once per process); else, or when xcrun gives no usable answer, ``/usr/bin/git``."""
+
 def git_executable() -> Path:
-    """Return the absolute path of git (``/usr/bin/git`` preferred); raises GitError if absent."""
+    """Return the absolute path of git (prefers Apple's git, resolved through xcrun once per process); raises
+    GitError if absent."""
 
 def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Run ``git -C repo *args`` with the fixed env; raises GitError on non-zero exit when ``check``."""

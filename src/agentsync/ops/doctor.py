@@ -181,7 +181,9 @@ def _run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProc
 
 
 def _git_path() -> Path:
-    """The git the sync will use (gitops' resolver once merged; else /usr/bin/git, else launchd PATH)."""
+    """The git the sync will use (gitops' resolver: on macOS the git /usr/bin/git's xcrun shim runs, so the
+    doctor line names the Xcode or Command Line Tools path; for a stub resolver /usr/bin/git, else launchd
+    PATH)."""
     try:
         from agentsync import gitops  # noqa: PLC0415 - lazy: doctor must import even if gitops is broken
 

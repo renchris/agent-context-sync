@@ -263,6 +263,20 @@ def test_git_path_falls_back_when_gitops_is_a_stub(monkeypatch: pytest.MonkeyPat
     assert REAL_GIT_PATH() == Path("/opt/custom/git"), "gitops' resolver wins once implemented"
 
 
+def test_git_line_names_the_git_xcrun_resolved(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The doctor runs the git gitops resolved through xcrun, and its line says where that git is."""
+    exe = tmp_path / "CommandLineTools" / "usr" / "bin" / "git"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\necho 'git version 2.50.1 (Apple Git-155)'\n", encoding="utf-8")
+    exe.chmod(0o755)
+    monkeypatch.setattr(gitops, "_git", exe)
+    monkeypatch.setattr(doctor, "_git_path", REAL_GIT_PATH)
+    r = by_name(run_checks(sample_config))["git"]
+    assert r.ok and r.detail == f"git version 2.50.1 (Apple Git-155) at {exe}"
+
+
 def test_pandoc_configured_but_missing(sample_config: Config, tmp_path: Path) -> None:
     cfg = dataclasses.replace(
         sample_config, convert=dataclasses.replace(sample_config.convert, pandoc_path=tmp_path / "nope")

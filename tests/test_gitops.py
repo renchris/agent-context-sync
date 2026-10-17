@@ -47,6 +47,101 @@ def test_git_executable_is_absolute_and_runs() -> None:
     assert out.startswith("git version")
 
 
+class FakeXcrun:
+    """``subprocess.run`` for ``xcrun --find git`` only: answers ``stdout`` with ``returncode`` (or raises
+    ``error``) and counts the calls."""
+
+    def __init__(self, stdout: str = "", returncode: int = 0, error: Exception | None = None) -> None:
+        self.stdout, self.returncode, self.error, self.calls = stdout, returncode, error, 0
+
+    def __call__(self, argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert argv == ["/usr/bin/xcrun", "--find", "git"]
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["timeout"] == gitops._XCRUN_TIMEOUT_S
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return subprocess.CompletedProcess(argv, self.returncode, self.stdout, "")
+
+
+@pytest.fixture
+def shim(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fresh resolver on a Mac whose /usr/bin/git is the xcrun shim with a developer dir behind it."""
+    monkeypatch.setattr(gitops, "_git", None)
+    monkeypatch.setattr(gitops, "_shim_git", None)
+    monkeypatch.setattr(gitops, "_usr_bin_git_usable", lambda: True)
+    monkeypatch.setattr(gitops.sys, "platform", "darwin")
+
+
+def developer_git(tmp_path: Path, name: str = "git", mode: int = 0o755) -> Path:
+    exe = tmp_path / "CommandLineTools" / "usr" / "bin" / name
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_text("#!/bin/sh\n", encoding="utf-8")
+    exe.chmod(mode)
+    return exe
+
+
+@pytest.mark.usefixtures("shim")
+def test_git_executable_asks_xcrun_once_and_runs_its_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exe = developer_git(tmp_path)
+    xcrun = FakeXcrun(f"{exe}\n")
+    monkeypatch.setattr(gitops.subprocess, "run", xcrun)
+    assert [gitops.git_executable() for _ in range(5)] == [exe] * 5
+    assert gitops.usr_bin_git() == exe
+    assert xcrun.calls == 1
+
+
+@pytest.mark.usefixtures("shim")
+@pytest.mark.parametrize(
+    "answer",
+    ["relative", "not-git", "not-executable", "non-zero", "timeout", "oserror"],
+)
+def test_git_executable_falls_back_to_the_shim_and_asks_again(
+    answer: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exe = developer_git(tmp_path)
+    xcrun = {
+        "relative": FakeXcrun("usr/bin/git\n"),
+        "not-git": FakeXcrun(f"{developer_git(tmp_path, 'git-real')}\n"),
+        "not-executable": FakeXcrun(f"{developer_git(tmp_path / 'other', mode=0o644)}\n"),
+        "non-zero": FakeXcrun(f"{exe}\n", returncode=1),
+        "timeout": FakeXcrun(error=subprocess.TimeoutExpired(["xcrun"], gitops._XCRUN_TIMEOUT_S)),
+        "oserror": FakeXcrun(error=OSError("no xcrun")),
+    }[answer]
+    monkeypatch.setattr(gitops.subprocess, "run", xcrun)
+    assert gitops.git_executable() == Path("/usr/bin/git")
+    assert gitops.usr_bin_git() == Path("/usr/bin/git")
+    assert gitops.git_executable() == Path("/usr/bin/git")
+    assert xcrun.calls == 3, "a failed lookup is not kept"
+    good = FakeXcrun(f"{exe}\n")
+    monkeypatch.setattr(gitops.subprocess, "run", good)
+    assert gitops.git_executable() == exe
+    assert gitops.git_executable() == exe
+    assert good.calls == 1
+
+
+@pytest.mark.usefixtures("shim")
+def test_git_executable_off_macos_runs_usr_bin_git_without_xcrun(monkeypatch: pytest.MonkeyPatch) -> None:
+    xcrun = FakeXcrun("/nowhere/git\n")
+    monkeypatch.setattr(gitops.subprocess, "run", xcrun)
+    monkeypatch.setattr(gitops.sys, "platform", "linux")
+    assert gitops.git_executable() == Path("/usr/bin/git")
+    assert gitops.usr_bin_git() == Path("/usr/bin/git")
+    assert xcrun.calls == 0
+
+
+@pytest.mark.usefixtures("shim")
+def test_usr_bin_git_without_a_developer_dir_never_asks_xcrun(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No developer dir: xcrun would open the install dialog, so the shim's own path is the answer."""
+    xcrun = FakeXcrun("/nowhere/git\n")
+    monkeypatch.setattr(gitops.subprocess, "run", xcrun)
+    monkeypatch.setattr(gitops, "_usr_bin_git_usable", lambda: False)
+    assert gitops.usr_bin_git() == Path("/usr/bin/git")
+    assert xcrun.calls == 0
+
+
 def test_run_git_raises_git_error_with_argv_and_stderr(repo: Path) -> None:
     with pytest.raises(GitError) as info:
         gitops.run_git(repo, "rev-parse", "--verify", "no-such-ref")

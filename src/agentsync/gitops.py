@@ -17,7 +17,6 @@ page is ignored.
 from __future__ import annotations
 
 import fnmatch
-import functools
 import logging
 import os
 import shutil
@@ -141,11 +140,60 @@ def _usr_bin_git_usable() -> bool:
     return any(_is_executable(p) for p in _XCODE_GIT_CANDIDATES)
 
 
-@functools.cache
+_XCRUN = "/usr/bin/xcrun"
+_XCRUN_TIMEOUT_S = 10.0  # a cold xcrun cache takes 2-4 s to answer
+_shim_git: Path | None = None
+"""The git ``xcrun --find git`` named, once it named one; a failed lookup is not kept, so the next call asks
+again."""
+_git: Path | None = None
+""":func:`git_executable`'s answer, kept once it is final (never the fallback after a failed xcrun lookup)."""
+
+
+def _xcrun_git() -> Path | None:
+    """The git ``/usr/bin/git``'s xcrun shim runs (``xcrun --find git``: an absolute path named ``git``
+    that is executable), or None if xcrun fails, times out or names anything else.  Every exec of the shim
+    repeats that lookup; running its answer directly runs the same binary with the same arguments."""
+    global _shim_git  # noqa: PLW0603 - the once-per-process memo
+    if _shim_git is not None:
+        return _shim_git
+    try:
+        cp = subprocess.run(
+            [_XCRUN, "--find", "git"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=_XCRUN_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    found = Path(cp.stdout.strip())
+    if cp.returncode != 0 or not found.is_absolute() or found.name != "git" or not _is_executable(found):
+        return None
+    _shim_git = found
+    return found
+
+
+def usr_bin_git() -> Path:
+    """What ``/usr/bin/git`` runs: on macOS, where it is an xcrun shim with a developer dir behind it, the git
+    xcrun names (resolved once per process); else, or when xcrun gives no usable answer, ``/usr/bin/git``."""
+    if sys.platform == "darwin" and _usr_bin_git_usable():
+        return _xcrun_git() or Path("/usr/bin/git")
+    return Path("/usr/bin/git")
+
+
 def git_executable() -> Path:
-    """Return the absolute path of git (``/usr/bin/git`` preferred); raises GitError if absent."""
+    """Return the absolute path of git (prefers Apple's git, resolved through xcrun once per process); raises
+    GitError if absent."""
+    global _git  # noqa: PLW0603 - the once-per-process memo
+    if _git is not None:
+        return _git
     if _usr_bin_git_usable():
-        return Path("/usr/bin/git")
+        apple = _xcrun_git() if sys.platform == "darwin" else Path("/usr/bin/git")
+        if apple is None:
+            return Path("/usr/bin/git")  # not kept: the next call asks xcrun again
+        _git = apple
+        return apple
     candidates: list[Path] = []
     found = shutil.which("git")
     if found:
@@ -153,6 +201,7 @@ def git_executable() -> Path:
     candidates += [Path("/opt/homebrew/bin/git"), Path("/usr/local/bin/git"), *_XCODE_GIT_CANDIDATES]
     for c in candidates:
         if c.is_absolute() and _is_executable(c):
+            _git = c
             return c
     raise GitError(["--version"], 127, "git not found (install the Xcode Command Line Tools)")
 
