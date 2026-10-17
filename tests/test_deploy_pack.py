@@ -5850,8 +5850,10 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     """B13 round 12 N66: since round 11 M44 the Summary's `installer output:` bracket reads `(this attempt's
     runs only; the Installer section also counts the N earlier run(s) in the lines read)`; the guide quoted
     the old `this attempt's runs only: ...`. N67: the `expected turns: none (step 1's list stopped ...)` row
-    and §16.86's M7 line left out M7's own condition, a Mac that syncs no folder: the report reads a stopped
-    list only `if not synced`, so M4's sign-in exit (`synced=N`) keeps the already-synced line."""
+    and §16.86's M7 line left out M7's own condition, a Mac that syncs no folder: the report then read a
+    stopped list only `if not synced`. B13 round 13 O63: round 12 N31 has since removed that guard, so M4's
+    sign-in exit (`synced=N`) has the next row's line, not the already-synced one, and an exit 4 that logged
+    `synced=N` keeps the usual rules."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = Path(setup_report.__file__).read_text(encoding="utf-8")

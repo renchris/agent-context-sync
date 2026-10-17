@@ -19788,6 +19788,9 @@ Amended 2026-10-17, §16.105 O41, O48, O57: those were two of doctor's three fix
 (or there and showing nothing) beside its organization's `OneDrive-<org>` has a clause of its own, which names the
 library's Sync and no sign-in.
 
+Amended 2026-10-17, §16.109 O63: a later commit of the lane (42de9ecc) changed README.md's intro, docs/deploy/README.md and
+setup-feedback.md to match: the list's sign-in names the app, and exit 3 is only for a folder whose app is signed out.
+
 **Step 1 asks for no folder that step 2 cannot add** (N29; amends §16.93 M37). With the installed build this
 checkout's and failing on the config, step 2 does not reinstall it and every `--source-local` fails at add-source,
 yet the `NEXT:` opened `choose the folders ...`. Then (and only then) it opens `no folder can be added until the
@@ -20155,12 +20158,20 @@ to OneDrive first; once you say you have, it lists the folders again.` The intro
 v20's digest is unchanged. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (the sentence, and
 step 1's sign-in rule beside it).
 
+Amended 2026-10-17, §16.109 O63 (by §16.99 N41, N61): the intro now reads `when the list asks you to sign in to
+OneDrive (or the app it names) first`, since round 12 lane RB named the app the list names (42de9ecc).
+
 **The deploy guides say a set-up Mac's list can exit 3** (N62). docs/deploy/README.md said `--list-folders` exits 3
 "when there are none" and that a set-up Mac "gets that line and exit 0 even when nothing else can be listed". Since
 §16.93 M4 a synced folder under `~/Library/CloudStorage` that is missing gives exit 3, `note=not-signed-in synced=N`
 and a NEXT that asks for the sign-in; a click (exit 4) still comes first, and a synced folder outside CloudStorage
 is never counted missing. Both guides say so, and that v20 waits for the sign-in. Test:
 `test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+Amended 2026-10-17, §16.109 O63 (by §16.99 N41, N61): exit 3 is now only for a missing folder whose app is signed
+out (its provider folder gone with no other folder of that app beside it, or there and empty); a folder gone from a
+signed-in app keeps exit 0, and both guides say so (42de9ecc). Since §16.105 O41, O48 and O57 a SharePoint library
+folder gone beside its organization's OneDrive folder is no sign-in either.
 
 **The guide and both legends name M29's proxy sources** (N47). setup-feedback.md's `<proxy-N>` row adds a host a
 friction line's resolver message names (`Could not resolve proxy:`, `Could not resolve host:`, `Failed to connect
@@ -20176,6 +20187,10 @@ row quotes M44's bracket, `(this attempt's runs only; the Installer section also
 lines read)`. The `expected turns: none (step 1's list stopped ...)` row, and §16.86's M7 line, apply only on a Mac
 that syncs no folder: `_list_stopped` runs `if not synced`, so M4's sign-in exit (`synced=N`) and an exit 4 that
 logged `synced=N` keep the already-synced line. Test: `test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`.
+
+Amended 2026-10-17, §16.109 O63 (by §16.98 N31): `_list_stopped` is now read on a Mac that already syncs folders
+too, with no `if not synced`, so M4's sign-in exit has an expected-turns line of its own, not the already-synced
+line; an exit 4 that logged `synced=N` still keeps it (the dated line at §16.86 L7).
 
 **§16.93 M4 quotes v20's sign-in rule** (N64; dated line at §16.93 M4). Its parenthetical paraphrased the rule as
 "unless its NEXT asks me to sign in", which reads the condition backwards; it now quotes README's words, as §16.94
@@ -20575,4 +20590,50 @@ changed; the shared budget stays `test_the_build_gets_twenty_minutes_of_its_own`
 
 ### 16.109 Round 13: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 13 lane D)
 
-Reserved for round 13 lane D of B13.
+Docs, dated lines and a test docstring that lagged round 12's code and prompt v21 (`docs/plans/bring-back-ocr.md`,
+"B13 round 13"; specs `round13/items/O<n>.md`, the verifier's corrected fix built). Each item is pinned by a test
+that fails on the text it replaced. Every edit is outside the prompt block, so v21's digest is unchanged, and no
+item needs prompt words, so none went to lane P. A dated line this round writes reads `Amended 2026-10-17, §16.109
+O<n>`, with `(by §16.NN N<n>)` when it records another round's change.
+
+**The intro and both guides say what v21 does at the sign-in stop with nobody to ask** (O12, O62, O71: one defect,
+built once). v21's first exception (§16.100 N32, N6) tells an agent that cannot ask not to wait for the sign-in and to
+go to step 3's report, but the README intro, docs/deploy/README.md and setup-feedback.md's set-up Mac bullet said only
+that step 1 waits. Each now adds a sentence after the pinned one (the intro: `When it cannot ask you (an unattended
+run, or a question left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's
+report (since v21).`). None promises that the report names the app: it says OneDrive whatever the list named. Tests:
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`,
+`test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+**A config step 2 cannot reinstall for adds no folder** (O61). Since §16.99 N29 a list whose installed agentsync is
+this checkout's build and failed on the config ends on `no folder can be added until the config is fixed: run
+<install.sh> with no --source-local, which shows the error`, and v21 asks nothing about folders there. The guide's
+unreadable-config bullet quotes that `NEXT:` and v21's rule, and qualifies v18's "asks only whether to add one"; the
+intro says the agent asks nothing about folders then. Tests: `test_the_guide_says_a_config_step_2_cannot_reinstall_for_adds_no_folder`,
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+
+**The guide moves a late step 1 run at any gap** (O60). §16.98 N23 dropped the 10-minute test from `late_run`, and the
+guide's first sentence on it changed, but the second still said each line must come "more than 10 minutes after the
+earlier attempt's end line". Both now say the unbroken run of step 1 lines dated at or after the end line moves,
+whatever the gap (the code's `>=`). Test: `test_the_guide_moves_a_late_step_1_run_at_any_gap`.
+
+**Section 5 counts the sign-in step 1 waits for** (O64). The guide listed the OneDrive sign-in only as a precondition
+at which "the prompt stops at step 1"; since v20 step 1 waits for it on a set-up Mac and the report counts it among the
+expected turns (§16.98 N5). It is an unavoidable step now, with its evidence (K44, K45) and the unattended case on the
+report side, and the precondition is a Mac that syncs no folder yet. Test:
+`test_section_5_counts_the_sign_in_step_1_waits_for`.
+
+**README's Install section gives the list's three exits** (O65). It said `--list-folders` "exits 3 when OneDrive is
+not signed in or syncs no folder yet", round 10's rule: a set-up Mac also exits 3 when a folder under
+`~/Library/CloudStorage` is missing because its app is signed out (§16.93 M4, §16.99 N41), and otherwise exits 0, even
+with OneDrive signed out and nothing listed. docs/deploy/README.md's sentence is not copied: its "exits 3 when there are
+none" leans on that guide's later set-up Mac paragraph. Test:
+`test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+**§16.103 and §16.99 record what round 12's later commits changed** (O63; dated lines at §16.103 N9, N62, N67 and
+§16.99 N41). §16.103 was written before lane RB's 42de9ecc and lane RA's N31: its N9 paragraph quoted the intro
+without "(or the app it names)", its N62 paragraph said any missing synced folder gives exit 3, and its N66/N67
+paragraph said `_list_stopped` runs `if not synced`. Each has a dated line, and §16.99's N41/N61 paragraph says the
+README and both guides changed with it. The docstring of `test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`
+says what N67 was and that N31 has since removed the guard. Tests: the dated-line scan
+(`test_every_dated_line_from_round_11_on_is_held_by_a_test`).
