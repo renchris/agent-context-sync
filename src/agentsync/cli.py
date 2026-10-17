@@ -413,8 +413,9 @@ def _config(args: argparse.Namespace) -> Config:
 
 _OVER_BUDGET = "exceeds the per-cycle budget ("
 # why the sync line's W files were withheld unread: the cause the stub kinds W holds share (B13 round 9 K33;
-# round 10 L50: a binary .msg on this Mac is read, so it is in R, named by the split's K clause)
-_WITHHELD_WHY = "a file whose label cannot be read: an image or a .msg not on this Mac"
+# round 10 L50: a binary .msg on this Mac is read, so it is in R, named by the split's K clause; round 13 O34:
+# the comma, since "an image or a .msg not on this Mac" read as an image not on this Mac too)
+_WITHHELD_WHY = "a file whose label cannot be read: an image, or a .msg not on this Mac"
 
 
 def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None:
@@ -439,7 +440,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     in S (F35), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
     when Q files were refused with no byte read: those are in each source line's ``refused=`` but not in N, so
     with R and W the line's refusals add up to the sources' (B13 round 7 H32). Before it, ``; W withheld
-    unread by the label rule (a file whose label cannot be read: an image or a .msg not on this Mac)`` counts
+    unread by the label rule (a file whose label cannot be read: an image, or a .msg not on this Mac)`` counts
     the files refused with no byte read whose stub says a label rule withheld them, by the page's own test, so
     K + W are the stubs that say so. They are not in Q (W and Q are disjoint), and R + W + Q add up to the
     sources' ``refused=`` (B13 round 8 J29: the one clause named no label rule, so a withheld image read as a
@@ -532,7 +533,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     )
     # No bare "converted", "deferred" or "read again" in it either, and nothing when Q is 0 (B13 round 7 H32).
     # A file whose stub says a label rule withheld it is counted apart, by the page's own test, so the line
-    # names the cause its page names (B13 round 8 J29), the one an image and a .msg not on this Mac share
+    # names the cause its page names (B13 round 8 J29), the one an image, and a .msg not on this Mac, share
     # (round 9 K33; round 10 L50); setup_report reads only the prefix up to "label rule".
     withheld = sum(s.withheld_unread for s in report.sources)
     unread = sum(s.refused_unread for s in report.sources)
@@ -659,10 +660,20 @@ def _ensure_setup(config: Config) -> int:
         # colon, so the line has no two brackets side by side (round 12 N13)
         inbox = [s.id for s in config.sources]
         besides = "the inbox" if len(inbox) == 1 else f"{len(inbox)} inbox sources: {', '.join(inbox)}"
-        _out(f"sources: no folder yet besides {besides}; run {loop.BIN} add-source <folder>")
+        _out(f"sources: no folder yet besides {besides}{_add_folder_hint()}")
     else:
-        _out(f"sources: none yet; run {loop.BIN} add-source <folder>")
+        _out(f"sources: none yet{_add_folder_hint()}")
     return EXIT_FAILED if findings else EXIT_OK
+
+
+def _add_folder_hint() -> str:
+    """How the no-folder sources line ends: the command that adds a folder, for a bare run; nothing under
+    scripts/install.sh (:data:`NO_NEXT_HINT_ENV` is 1 there), whose NEXT line names its own re-run with
+    ``--source-local``, so step 2 never gives two commands for one step (B13 round 13 O17: the prompt says not
+    to use add-source)."""
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        return ""
+    return f"; run {loop.BIN} add-source <folder>"
 
 
 def _cmd_init(args: argparse.Namespace) -> int:

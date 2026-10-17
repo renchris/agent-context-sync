@@ -3348,7 +3348,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only (of the converted: 0 unreadable, 0 failed, 1 "
             "refused, 1 of them withheld by the label rule); 1 withheld unread by the label rule (a file "
-            "whose label cannot be read: an image or a .msg not on this Mac)",
+            "whose label cannot be read: an image, or a .msg not on this Mac)",
             "converted 4, deferred 0 online-only; of the converted: 0 unreadable, 0 failed, 1 refused, 1 of "
             "them withheld by the label rule; 1 withheld unread by the label rule (install.log; the "
             "unreadable/failed/refused split and the withheld-unread count: install.out)",
@@ -3364,7 +3364,7 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
         (  # B13 round 8 J29's clause before it, the files a label rule withheld unread: carried too
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only; 2 withheld unread by the label rule (a file "
-            "whose label cannot be read: an image or a .msg not on this Mac); 5 refused "
+            "whose label cannot be read: an image, or a .msg not on this Mac); 5 refused "
             "without a read (no converter for the type, or a rule that needs no bytes)",
             "converted 4, deferred 0 online-only; 2 withheld unread by the label rule; 5 refused without a "
             "read (install.log; the withheld-unread count and the refused-without-a-read count: install.out)",

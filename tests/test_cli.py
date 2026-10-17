@@ -479,7 +479,7 @@ def test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread(
     out = capsys.readouterr().out.splitlines()
     assert out[-1] == (
         "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (a file whose label cannot "
-        "be read: an image or a .msg not on this Mac); 1 refused without a read (no converter "
+        "be read: an image, or a .msg not on this Mac); 1 refused without a read (no converter "
         "for the type, or a rule that needs no bytes)"
     )
     said = sum(int(n) for n in re.findall(r"(\d+) (?:refused|withheld)\b", out[-1]))
@@ -488,7 +488,7 @@ def test_the_sync_line_names_the_label_rule_for_a_file_it_withheld_unread(
     cli._print_report(dataclasses.replace(report, sources=(dataclasses.replace(alpha, refused_unread=0),)))
     assert capsys.readouterr().out.splitlines()[-1] == (
         "converted 0, deferred 0 online-only; 2 withheld unread by the label rule (a file whose label cannot "
-        "be read: an image or a .msg not on this Mac)"
+        "be read: an image, or a .msg not on this Mac)"
     )
 
 
@@ -2862,6 +2862,26 @@ def test_init_counts_and_names_every_inbox_source(tmp_path: Path, capsys: pytest
         "sources: no folder yet besides 3 inbox sources: inbox, contoso-bridge, contoso-bridge-mail; "
         "run ~/.local/bin/agentsync add-source <folder>"
     )
+
+
+def test_init_under_the_installer_names_no_second_command_to_add_a_folder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 13 O17: under install.sh (AGENTSYNC_NO_NEXT_HINT=1, which it sets for every call) step 2's
+    sources line still said "run ~/.local/bin/agentsync add-source <folder>", beside a NEXT line naming the
+    installer's own re-run with --source-local, and the setup prompt says not to use add-source. The line
+    ends at what is synced there; a bare init keeps the pointer (the tests above)."""
+    monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["init", "--config", str(cfg)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "sources: no folder yet besides the inbox"
+    cfg.write_text(cfg.read_text(encoding="utf-8").split("[[source]]")[0], encoding="utf-8")
+    config = load_config(cfg)
+    assert not config.sources
+    monkeypatch.setattr(cli, "_ensure_inbox", lambda c: c)  # an inbox that could not be added
+    assert cli._ensure_setup(config) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == "sources: none yet" and "add-source" not in out, out
 
 
 def test_add_source_warns_when_the_inbox_cannot_be_added(
