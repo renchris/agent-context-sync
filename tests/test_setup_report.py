@@ -10790,6 +10790,55 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
     assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
 
 
+def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 13 O13: an unattended run whose step 1 list exited 3 on a sign-in went on to the report, so
+    the Items list read ``- none`` beside "failed at step 1", and the doctor FAILs the signed-out app's gone
+    folder causes read as unexpected. The stop is an installer-side item in the Summary's words, and those
+    FAILs (a source's listable or volume check, the source under a CloudStorage folder not on disk) have a
+    bucket of their own; the outcome is unchanged. Both states: an install run after the list keeps them
+    unexpected and adds no item."""
+    real = cli._status_checks
+
+    def sources_only(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name.startswith("source.")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", sources_only)
+    shutil.rmtree(Path.home() / "Library" / "CloudStorage" / f"OneDrive-{ORG}")
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
+
+    def summary(apps: str, *installs: tuple[str, str]) -> str:
+        set_up_log(
+            fake_mac, *installs, listed=" synced=2", list_step=f"failed note=not-signed-in{apps} missing=1"
+        )
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        return section(text, "Summary")
+
+    for apps, app in ((" apps=onedrive", "OneDrive"), (" apps=dropbox", "Dropbox")):
+        got = summary(apps)
+        assert got.strip().splitlines()[0] == (
+            "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran, "
+            f"in step 1; it stopped: {app} is not signed in)"
+        ), got
+        items = got.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
+        assert items == (
+            f"- install.sh · step 1 · the folder list stopped: {app} is not signed in, so 1 of the 2 folders "
+            "this Mac already syncs is missing (not logged: an unattended run goes to the report)"
+        ), items
+        line = _line(got, "- doctor: ")
+        stop_part, unexpected = line.split(" · from the sign-in stop ", 1)[1].split(" · unexpected ", 1)
+        assert "listable FAIL" in stop_part and "FAIL" not in unexpected, line
+    # an install run followed the list: the FAILs are unexpected again, and the stop is no item
+    got = summary(" apps=onedrive", ("--confirm-install-agent", "done note=exists kept=2 added=0"))
+    assert "from the sign-in stop" not in got and "the folder list stopped" not in got, got
+    assert "listable FAIL" in _line(got, "- doctor: ").split(" · unexpected ", 1)[1], _line(got, "- doctor: ")
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
     fake_mac: dict[str, Path], tmp_path: Path

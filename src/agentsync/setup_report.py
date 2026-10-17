@@ -7463,6 +7463,56 @@ def _list_stop_words(runs: Sequence[InstallRun], stopped: str | None) -> str:
     return _LIST_STOPS.get(stopped or "", "")
 
 
+def _list_stop_clause(stopped: str, listed: dict[str, str], synced: int | None) -> str:
+    """Why step 1's list stopped and what it left (an exit 3, :func:`_list_stopped`), from its line
+    (``listed``): on a Mac that already syncs ``synced`` folders, ``Dropbox is not signed in, so 1 of the 2
+    folders this Mac already syncs is missing``, by the line's own counts, never another run's (B13 round 13
+    O1, O42); ``some of the 2`` with no ``missing=``; else ``..., so no folder was listed``."""
+    words = _signed_out(listed)[0] if stopped == "not-signed-in" else _LIST_STOPS.get(stopped, "")
+    if stopped != "not-signed-in" or not synced:
+        return f"{words}, so no folder was listed"
+    of = _count(listed, "synced") or synced
+    missing = _count(listed, "missing")
+    if missing is None and of > 1:
+        gone = f"some of the {of} folders this Mac already syncs are"
+    elif missing is not None and 0 < missing < of:
+        gone = f"{missing} of the {of} folders this Mac already syncs {'is' if missing == 1 else 'are'}"
+    else:
+        gone = f"the {_plural(of, 'folder')} this Mac already syncs {'is' if of == 1 else 'are'}"
+    return f"{words}, so {gone} missing"
+
+
+def _sign_in_stop_item(att: Attempt, runs: Sequence[InstallRun], stop: FrictionEvent | None) -> str | None:
+    """The installer-side item of an attempt that ended at step 1's list on an exit 3 with no install run and
+    no friction stop (an unattended run goes on to the report and logs no line for it): the stop in the
+    Summary's words (:func:`_list_stop_clause`). None otherwise (B13 round 13 O13: the Items list read
+    ``- none`` beside "failed at step 1")."""
+    stopped = _list_stopped(runs)
+    if stop is not None or install_runs_only(runs) or stopped not in ("not-signed-in", "no-folders"):
+        return None
+    clause = _list_stop_clause(stopped, _stopping_list(runs), synced_before(runs))
+    return (
+        f"- install.sh · step {att.layout.folder_question_step} · the folder list stopped: {clause} (not "
+        "logged: an unattended run goes to the report)"
+    )
+
+
+def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]) -> set[str]:
+    """The doctor FAIL checks of :func:`_sign_in_stop_item`'s stop when it is a sign-in:
+    ``source.<id>.listable`` or ``.volume`` of a configured source under a CloudStorage provider folder that
+    is not on disk, which the signed-out app took with it. By check name and path, never doctor's fix text."""
+    if att is None or r.config is None or _sign_in_stop_item(att, runs, stopping_error(att, runs)) is None:
+        return set()
+    if _list_stopped(runs) != "not-signed-in":
+        return set()
+    gone: set[str] = set()
+    for src in r.config.sources:
+        parts = _cloud_parts(src.path) if src.path is not None else None
+        if parts is not None and not (cloud_storage_root() / parts[0]).exists():
+            gone |= {f"source.{src.id}.listable", f"source.{src.id}.volume"}
+    return gone
+
+
 def _stopping_list(runs: Sequence[InstallRun]) -> dict[str, str]:
     """The ``list-folders`` step of these runs' last list run: the one :func:`_list_stopped` reads the stop
     of. Empty with none."""
@@ -7570,26 +7620,16 @@ def _expected_turns_line(
     )
     listed = stop_list or {}
     if list_stop == "not-signed-in" and synced and not layout.logs_expected_turns:
-        # the list's own counts, never another run's (synced_before)
         of = _count(listed, "synced") or synced
-        missing = _count(listed, "missing")
-        if missing is None:
-            gone = f"some of the {of} folders this Mac already syncs are" if of > 1 else ""
-        elif 0 < missing < of:
-            gone = f"{missing} of the {of} folders this Mac already syncs {'is' if missing == 1 else 'are'}"
-        else:
-            gone = ""
-        gone = gone or (f"the {_plural(of, 'folder')} this Mac already syncs {'is' if of == 1 else 'are'}")
         return (
             f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: "
-            f"{_signed_out(listed)[0]}, so {gone} missing; {'it is' if of == 1 else 'they are'} kept: no "
+            f"{_list_stop_clause(list_stop, listed, synced)}; {'it is' if of == 1 else 'they are'} kept: no "
             "folder question and no Allow click)"
         )
     if list_stop and _LIST_STOPS.get(list_stop) and not synced and not layout.logs_expected_turns:
-        words = _signed_out(listed)[0] if list_stop == "not-signed-in" else _LIST_STOPS[list_stop]
         return (
             f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: "
-            f"{words}, so no folder was listed: no folder question and no Allow click)"
+            f"{_list_stop_clause(list_stop, listed, None)}: no folder question and no Allow click)"
         )
     if unstarted:
         return (
@@ -7705,7 +7745,13 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     expected: dict[str, list[str]] = {}
     yours: list[str] = []
     unexpected: list[str] = []
+    fr = r.friction
+    signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
+    from_stop: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
+        if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
+            from_stop.append(name)
+            continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
             if tag == "warn"
@@ -7725,6 +7771,8 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if yours:
         parts.append(f"yours {len(yours)}: {', '.join(yours)} (see WAITING ON YOU)")
+    if from_stop:
+        parts.append(f"from the sign-in stop {len(from_stop)}: {', '.join(f'{n} FAIL' for n in from_stop)}")
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)
     if gone is not None:  # the two doctors differ: say when each ran, never why (B13 round 5 F39)
@@ -8577,7 +8625,10 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     # an installer-side item, as retried runs are: v6+ never logs the folder question (B13 round 7 H17, H28)
     # whatever the outcome: the expected turns line points here (a reviewer's finding)
     unread = unread_asked(att, runs) if att is not None else None
-    if att is not None and (items or retried or unread):
+    signed_out = _sign_in_stop_item(att, runs, stop) if att is not None else None
+    if att is not None and (items or retried or unread or signed_out):
+        if signed_out:
+            out.append(signed_out)
         if unread:
             warned = any("could not read which folders" in ln for ln in r.facts.out_counted)
             out.append(
