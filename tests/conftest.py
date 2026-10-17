@@ -14,6 +14,7 @@ import pwd
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
@@ -86,6 +87,102 @@ def real_domain_check(_provider_folders_are_domains: None) -> Iterator[None]:
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(arm_local, "_is_domain", _REAL_IS_DOMAIN)
         yield
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """A warm dated xcrun db for the whole run, and dead basetemp locks cleared before this run's own.
+
+    On macOS /usr/bin/git is an xcrun shim, and under a suite its lookup cache missed about once a second:
+    each miss cost ~77M instructions and an xcodebuild child, and the shared db was rewritten 71 times in 90 s
+    (load root cause 2026-10-17 X3c). One db per day, in the user's own temp folder, warmed once here under
+    the real HOME, serves every worker: they inherit the variable from the controller. An xcrun_db already
+    set wins."""
+    controller = not hasattr(config, "workerinput")
+    if sys.platform == "darwin" and "xcrun_db" not in os.environ:
+        db = _dated_xcrun_db()
+        if db is not None:
+            os.environ["xcrun_db"] = str(db)  # noqa: SIM112 - xcrun reads this lower-case name
+            if controller:
+                with contextlib.suppress(OSError, subprocess.SubprocessError):
+                    subprocess.run(
+                        ["/usr/bin/xcrun", "--find", "git"],
+                        stdin=subprocess.DEVNULL,
+                        capture_output=True,
+                        timeout=30,
+                        check=False,
+                    )
+    if controller and config.option.basetemp is None:
+        _clear_dead_basetemp_locks()
+
+
+def _dated_xcrun_db() -> Path | None:
+    """``<DARWIN_USER_TEMP_DIR>/cc-test-xcrun_db.<yyyymmdd>``: warm across the day's runs, ~1-2 MB a day."""
+    try:
+        cp = subprocess.run(
+            ["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    tmp = cp.stdout.strip()
+    if cp.returncode != 0 or not tmp.startswith("/") or not Path(tmp).is_dir():
+        return None
+    return Path(tmp) / f"cc-test-xcrun_db.{time.strftime('%Y%m%d')}"
+
+
+def _clear_dead_basetemp_locks() -> None:
+    """Unlink ``pytest-of-<user>/pytest-N/.lock`` when the run that wrote it is gone, so pytest's own keep-3
+    cleanup at this run's exit deletes those folders now rather than once the lock is 3 days old.
+
+    pytest removes its lock at exit; a run that was SIGKILLed leaves it, and 36 such folders held ~8.7 GB
+    (load root cause 2026-10-17 X20). A lock is dead only when its pid is not running, or is running but
+    started after the lock was written (the pid was reused). Other runs on this Mac share the folder, so a
+    lock this cannot read, or a census it cannot read, keeps every lock, and nothing here deletes a folder.
+    One ``ps`` call for all the pids; no signal is sent to any of them."""
+    from _pytest.tmpdir import get_user  # noqa: PLC0415 - pytest's own name for the folder
+
+    root = Path(os.environ.get("PYTEST_DEBUG_TEMPROOT") or tempfile.gettempdir()).resolve()
+    locks: dict[int, list[tuple[Path, float]]] = {}
+    with contextlib.suppress(OSError):
+        for lock in (root / f"pytest-of-{get_user() or 'unknown'}").glob("pytest-*/.lock"):
+            with contextlib.suppress(OSError, ValueError):
+                pid = int(lock.read_bytes().strip())
+                if pid > 0:
+                    locks.setdefault(pid, []).append((lock, lock.stat().st_mtime))
+    if not locks:
+        return
+    try:
+        cp = subprocess.run(
+            ["/bin/ps", "-o", "pid=,lstart=", "-p", ",".join(map(str, locks))],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    if cp.returncode not in (0, 1) or cp.stderr.strip():
+        return  # ps exits 1 when a pid is gone; any other status, or a complaint, is not a census
+    started: dict[int, float] = {}
+    for line in cp.stdout.splitlines():
+        pid_text, _, lstart = line.strip().partition(" ")
+        try:
+            started[int(pid_text)] = time.mktime(
+                time.strptime(" ".join(lstart.split()), "%a %b %d %H:%M:%S %Y")
+            )
+        except ValueError:
+            return
+    for pid, held in locks.items():
+        for lock, written in held:
+            if pid not in started or started[pid] > written + 1:
+                with contextlib.suppress(OSError):
+                    lock.unlink()
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
