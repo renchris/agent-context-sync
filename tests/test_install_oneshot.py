@@ -4256,7 +4256,10 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     assert (cp.returncode, cp.stderr) == (3, ""), cp.stdout + cp.stderr
     [only] = cp.stdout.splitlines()
     assert only.startswith("NEXT: ") and only.endswith(f"then re-run: {INSTALL_SH} --list-folders")
-    assert re.search(r" result=failed note=(not-signed-in|no-folders) synced=0$", install_log(env)[-2])
+    # B13 round 13 O5: with no provider folder the stop is OneDrive's, logged as the other sign-in stop is
+    assert re.search(
+        r" result=failed note=(not-signed-in apps=onedrive|no-folders) synced=0$", install_log(env)[-2]
+    ), install_log(env)[-2]
     cfg.write_text(cfg.read_text(encoding="utf-8") + "\n[[source]]\nid = \n", encoding="utf-8")
     cp = install_sh(env, "--list-folders")
     # a new Mac's exit and NEXT, which adds that a config is there (B13 round 8 J17)
@@ -4265,7 +4268,10 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     ]
     assert cp.stderr.startswith(f"warning: could not read which folders {cfg} already syncs ")
     # B13 round 7 H17, H28; and why, as the class of the reader's error (H8, H16)
-    unread = r" result=failed note=(not-signed-in|no-folders) synced=unreadable marks=failed:ConfigError$"
+    unread = (
+        r" result=failed note=(not-signed-in apps=onedrive|no-folders) synced=unreadable "
+        r"marks=failed:ConfigError$"
+    )
     assert re.search(unread, install_log(env)[-2]), install_log(env)[-2]
 
 
@@ -4322,7 +4328,10 @@ def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
         "--list-folders; the folders marked [synced] are kept"
     )
     assert steps(install_log(env)) == [("list-folders", "failed", "3", "not-signed-in")]
-    assert install_log(env)[-2].endswith(f" result=failed note=not-signed-in synced={synced}")
+    # B13 round 13 O5: the app by a fixed word, and how many of the synced folders are missing
+    assert install_log(env)[-2].endswith(
+        f" result=failed note=not-signed-in apps=onedrive missing=2 synced={synced}"
+    ), install_log(env)[-2]
     for name in ("Project Alpha", "Project Beta"):  # signed in: every synced folder is there, so exit 0
         (lib / name).mkdir(parents=True, exist_ok=True)
     cp = install_sh(env, "--list-folders")
@@ -4545,23 +4554,30 @@ def test_list_folders_names_the_app_whose_folder_is_signed_out(
         "--list-folders; the folders marked [synced] are kept"
     )
     assert "OneDrive" not in last_line(cp)
-    assert install_log(env)[-2].endswith(" result=failed note=not-signed-in synced=2")
+    token = {"Dropbox": "dropbox", "Google Drive": "googledrive", "Box": "box"}[app]
+    assert install_log(env)[-2].endswith(f" result=failed note=not-signed-in apps={token} missing=1 synced=2")
 
 
 def test_list_folders_names_every_app_whose_folder_is_signed_out(env: dict[str, str]) -> None:
     cs = _cloud(env)
     cs.mkdir(parents=True)
     tables = [
-        local_source_table(i, cs / p / "Team") for i, p in (("a", "OneDrive-Contoso"), ("b", "Dropbox"))
+        local_source_table(i, cs / p / "Team")
+        for i, p in (("a", "OneDrive-Contoso"), ("b", "Dropbox"), ("c", "ProtonDrive-Contoso"))
     ]
     _write_config(env, *tables, _inbox(env))
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 3, cp.stdout + cp.stderr
     assert last_line(cp).startswith(
-        "NEXT: Dropbox, OneDrive are not signed in on this Mac, so this Mac is missing 2 of the folders this "
-        "Mac already syncs: sign in to Dropbox, OneDrive (or let it finish setting up)"
-    )
+        "NEXT: Dropbox, OneDrive, ProtonDrive are not signed in on this Mac, so this Mac is missing 3 of the "
+        "folders this Mac already syncs: sign in to Dropbox, OneDrive, ProtonDrive (or let it finish "
+        "setting up)"
+    ), last_line(cp)
+    # B13 round 13 O5: fixed words in the list's order, an app outside them as "other", never its folder name
+    assert install_log(env)[-2].endswith(
+        " result=failed note=not-signed-in apps=dropbox,onedrive,other missing=3 synced=3"
+    ), install_log(env)[-2]
 
 
 def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied(

@@ -5602,7 +5602,7 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
     for it. docs/deploy/README.md still said such a Mac "gets that line and exit 0 even when nothing else can
     be listed", and that the list exits 3 only "when there are none"."""
     installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    assert 'step_end failed "$rc" "not-signed-in synced=$synced"' in installer
+    assert 'step_end failed "$rc" "not-signed-in apps=$tokens missing=$missing synced=$synced"' in installer
     deploy = _page("docs/deploy/README.md")
     assert "Such a Mac gets that line and exit 0 even when nothing else can be listed" not in deploy
     assert (
@@ -5618,7 +5618,7 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
         "When a synced folder under `~/Library/CloudStorage` is missing and its app is signed out (its "
         "provider folder, such as `OneDrive-Contoso`, is gone with no other folder of that app beside it, or "
         "is there and empty), it gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
-        "synced=N`."
+        "apps=<app> missing=M synced=N`."
     ) in deploy
     # B13 round 12 N41, N61: a folder gone while its app is signed in keeps exit 0
     assert (
@@ -5631,7 +5631,8 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
         "- A set-up Mac whose synced folder under `~/Library/CloudStorage` is missing because its app is "
         "signed out, or still setting up (its provider folder gone with no other folder of that app beside "
         "it, or there and empty), gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
-        "synced=N` (B13 round 11 M4, narrowed by round 12 N41, N61)."
+        "apps=<app> missing=M synced=N` (B13 round 11 M4, narrowed by round 12 N41, N61; the app and the "
+        "missing count since round 13 O5)."
     ) in feedback
     assert "(renamed, moved or deleted there) keeps exit 0, logged `gone=N`" in feedback
     assert "Since v20, step 1 waits for that sign-in as for a click, then lists the folders again" in feedback

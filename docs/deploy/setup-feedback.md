@@ -500,12 +500,13 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   stops and waits.
 - A set-up Mac whose synced folder under `~/Library/CloudStorage` is missing because its app is signed out, or
   still setting up (its provider folder gone with no other folder of that app beside it, or there and empty), gets
-  the line, the `[synced]` lines and exit 3, logged `note=not-signed-in synced=N` (B13 round 11 M4, narrowed by
-  round 12 N41, N61). Its `NEXT:` asks for that app's sign-in and a re-run, and says the folders marked `[synced]`
+  the line, the `[synced]` lines and exit 3, logged `note=not-signed-in apps=<app> missing=M synced=N` (B13 round 11
+  M4, narrowed by round 12 N41, N61; the app and the missing count since round 13 O5). Its `NEXT:` asks for that app's sign-in and a re-run, and says the folders marked `[synced]`
   are kept. A click the list ends on (exit 4) comes first. Since v20, step 1 waits for that sign-in as for a click,
   then lists the folders again, before the folder question above. A folder missing while its app is signed in
   (renamed, moved or deleted there) keeps exit 0, logged `gone=N`; the `NEXT:` names it and step 2's doctor names
-  its fix.
+  its fix. So does a folder in a SharePoint library not synced on this Mac (`OneDrive-SharedLibraries-Contoso` gone,
+  or there and empty, beside `OneDrive-Contoso`); its `NEXT:` says to sync the library on its SharePoint page.
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:
   if it was set up before, <install.sh> with no --source-local keeps whatever that config syncs, and each

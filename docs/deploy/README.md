@@ -65,7 +65,7 @@ is missing, such a Mac gets that line and exit 0 even when nothing else can be l
 out and only a folder outside `~/Library/CloudStorage` synced). When a synced folder under `~/Library/CloudStorage`
 is missing and its app is signed out (its provider folder, such as `OneDrive-Contoso`, is gone with no other folder
 of that app beside it, or is there and empty), it gets the line, the `[synced]` lines and exit 3, logged
-`note=not-signed-in synced=N`. Its `NEXT:` asks for that app's sign-in and a re-run, and says the `[synced]`
+`note=not-signed-in apps=<app> missing=M synced=N`. Its `NEXT:` asks for that app's sign-in and a re-run, and says the `[synced]`
 folders are kept. Since v20, step 1 of the one-prompt setup waits for that sign-in instead of going on to a step 2
 that would fail. A folder missing while its app is signed in (renamed, moved or deleted there, or under another
 account's provider folder) keeps exit 0: the `NEXT:` names it, and step 2's status names its fix. So does a folder

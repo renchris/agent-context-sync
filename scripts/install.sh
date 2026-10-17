@@ -3850,7 +3850,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
-	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" stuck=0 more=""
+	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -3959,6 +3959,14 @@ list_folders() {
 				missing=$((missing + 1))
 				label="$(provider_label "$e")"
 				case ", $apps," in *", $label,"*) ;; *) apps="${apps:+$apps, }$label" ;; esac
+				# the log names the app by a fixed word, never the folder's own text (B13 round 13 O5): its label
+				# in lower case with no space (googledrive). Not written out here: a lower-case word on a line of
+				# this script that is not a comment is a report word, which report_word would keep in clear
+				case "$label" in
+				OneDrive | "Google Drive" | Dropbox | Box | Egnyte) tok="$(printf '%s' "${label// /}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ;;
+				*) tok=other ;;
+				esac
+				case ",$tokens," in *",$tok,"*) ;; *) tokens="${tokens:+$tokens,}$tok" ;; esac
 				;;
 			2)
 				others=$((others + 1))
@@ -4023,7 +4031,9 @@ list_folders() {
 		rc=3
 		case "$apps" in *", "*) more="are not signed in on this Mac, so this Mac is" ;; *) more="is not signed in on this Mac, so it is" ;; esac
 		NEXT_MSG="$apps $more missing $missing of the folders this Mac already syncs: sign in to $apps (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept"
-		step_end failed "$rc" "not-signed-in synced=$synced"
+		# which apps, and how many folders are missing, beside how many this Mac syncs: the readers named
+		# OneDrive and counted every synced folder as missing (B13 round 13 O5)
+		step_end failed "$rc" "not-signed-in apps=$tokens missing=$missing synced=$synced"
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
 		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
 		if [ "$providers" -eq 0 ]; then
@@ -4062,7 +4072,7 @@ list_folders() {
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"
-		step_end failed "$rc" "not-signed-in${synced:+ synced=$synced}$unread"
+		step_end failed "$rc" "not-signed-in apps=onedrive${synced:+ synced=$synced}$unread"
 	elif [ "$total" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="no folders are synced yet in $cs: sign in to OneDrive (or let it finish setting up), then re-run: $RERUN$kept"
