@@ -9959,9 +9959,26 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
     # install.log keeps its tokens, and a note the report does not know is shown as it is
     failed = "seconds=0 rc=3 result=failed"
     assert cell(f"{failed} note=no-folders") == "failed, rc 3 (no folders are synced yet in CloudStorage)"
-    assert cell(f"{failed} note=not-signed-in synced=2") == (
-        "failed, rc 3 (OneDrive is not signed in on this Mac: 2 already synced)"
+    # B13 round 13 O1, O29, O39, O58, O66: the app and the missing count are the line's own; an older line
+    # with a count names no app, and one with neither (the exit with no provider folder) is OneDrive's
+    assert cell(f"{failed} note=not-signed-in synced=2 missing=1 apps=dropbox") == (
+        "failed, rc 3 (Dropbox is not signed in on this Mac: 2 already synced, 1 missing)"
     )
+    assert cell(f"{failed} note=not-signed-in apps=OneDrive,GoogleDrive missing=2 synced=3") == (
+        "failed, rc 3 (OneDrive and Google Drive are not signed in on this Mac: 3 already synced, 2 missing)"
+    )
+    assert cell(f"{failed} note=not-signed-in synced=2") == (
+        "failed, rc 3 (a sync app is not signed in on this Mac: 2 already synced)"
+    )
+    assert (
+        cell(f"{failed} note=not-signed-in apps=onedrive")
+        == "failed, rc 3 (OneDrive is not signed in on this Mac)"
+    )
+    # a token the map does not hold is dropped, never shown: the log's own text
+    assert cell(f"{failed} note=not-signed-in apps=Contoso,other missing=1 synced=1") == (
+        "failed, rc 3 (another sync app is not signed in on this Mac: 1 already synced, 1 missing)"
+    )
+    assert "Contoso" not in cell(f"{failed} note=not-signed-in apps=Contoso missing=1 synced=1")
     assert cell("seconds=0 rc=4 result=failed note=denied") == (
         "failed, rc 4 (this terminal app was denied access to the folders)"
     )
@@ -10416,13 +10433,44 @@ def test_a_step_1_list_that_stopped_on_a_sign_in_asked_no_folder_question(
         encoding="utf-8",
     )
     assert setup_report._list_stopped(setup_report.read_install_runs(log)) == "denied"
-    # B13 round 12 N31: on a Mac that already syncs folders an exit 3 is the sign-in, with words of its own
-    human, expected = lines("failed note=not-signed-in synced=2")
-    assert expected == (
-        "- expected turns: none (step 1's list stopped: OneDrive is not signed in, so folders this Mac "
-        "already syncs (2) are missing; they are kept: no folder question and no Allow click)"
-    ), expected
-    assert "beyond the announced" not in human, human
+    # B13 round 12 N31: on a Mac that already syncs folders an exit 3 is the sign-in, with words of its own;
+    # B13 round 13 O1, O42, O31: the app and the count of missing folders its line logs, and no bracket inside
+    # the line's own
+    stop = "- expected turns: none (step 1's list stopped: "
+    for fields, words in (
+        (
+            "missing=1 apps=dropbox synced=2",
+            "Dropbox is not signed in, so 1 of the 2 folders this Mac already "
+            "syncs is missing; they are kept",
+        ),
+        (
+            "missing=2 apps=onedrive synced=2",
+            "OneDrive is not signed in, so the 2 folders this Mac already syncs are missing; they are kept",
+        ),
+        (
+            "missing=1 apps=box synced=1",
+            "Box is not signed in, so the 1 folder this Mac already syncs is missing; it is kept",
+        ),
+        (
+            "missing=1 apps=dropbox,googledrive synced=3",
+            "Dropbox and Google Drive are not signed in, so 1 of "
+            "the 3 folders this Mac already syncs is missing; they are kept",
+        ),
+        # an older install.sh logged no app and no missing count: neither is guessed
+        (
+            "synced=2",
+            "a sync app is not signed in, so some of the 2 folders this Mac already syncs are "
+            "missing; they are kept",
+        ),
+    ):
+        human, expected = lines(f"failed note=not-signed-in {fields}")
+        assert expected == f"{stop}{words}: no folder question and no Allow click)", expected
+        assert not re.search(r"\([^()]*\(", expected), expected
+        assert "beyond the announced" not in human, human
+    # the exit with no provider folder at all is OneDrive's, with or without apps=
+    for fields in ("", " apps=onedrive"):
+        _human, expected = lines(f"failed note=not-signed-in{fields}")
+        assert expected.startswith(f"{stop}OneDrive is not signed in, so no folder was listed"), expected
     # an exit 4 on such a Mac keeps its Allow click
     human, expected = lines("failed note=denied synced=2")
     assert expected.startswith("- expected turns: no folder question (2 folders already synced: "), expected
@@ -10446,13 +10494,22 @@ def test_a_synced_macs_sign_in_stop_is_named_and_asks_no_allow_click(
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         return section(text, "Summary")
 
-    for note, why in (("not-signed-in synced=2", "OneDrive is not signed in"), ("no-folders", "no folders")):
+    # B13 round 13 O1, O29, O66: the app is the one the line names (a Dropbox folder missing beside a present
+    # OneDrive one), an older line with a count names none, and the exit with no provider folder is OneDrive's
+    for note, why in (
+        ("not-signed-in synced=2 missing=1 apps=dropbox", "Dropbox is not signed in"),
+        ("not-signed-in synced=2 missing=1 apps=onedrive", "OneDrive is not signed in"),
+        ("not-signed-in synced=2", "a sync app is not signed in"),
+        ("not-signed-in apps=onedrive", "OneDrive is not signed in"),
+        ("no-folders", "no folders are synced yet"),
+    ):
         got = summary(f"failed note={note}")
         assert got.strip().splitlines()[0] == (
             "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran, "
-            f"in step 1; it stopped: {setup_report._LIST_STOPS[note.split()[0]]})"
+            f"in step 1; it stopped: {why})"
         ), got
-        assert why in setup_report._LIST_STOPS[note.split()[0]]
+        if "dropbox" in note:
+            assert "OneDrive" not in got.strip().splitlines()[0] + _line(got, "- expected turns: "), got
         for start in ("- human turns: ", "- expected turns: "):
             assert "Allow click" not in _line(got, start).replace("no Allow click", ""), _line(got, start)
     got = summary("failed note=denied synced=2")
@@ -10477,7 +10534,14 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
         .replace("result=done\n", "result=done note=listed-25 synced=2\n")
     )
 
-    def summary(version: int, extra: str = "", *, logged: bool = True, synced: str = " synced=2") -> str:
+    def summary(
+        version: int,
+        extra: str = "",
+        *,
+        logged: bool = True,
+        synced: str = " synced=2",
+        apps: str = " apps=onedrive missing=1",
+    ) -> str:
         friction = V11_HAPPY.replace("Prompt: v11", f"Prompt: v{version}").replace(
             "2026-09-29T10:01:10Z | end", (click if logged else "") + extra + "2026-09-29T10:01:10Z | end"
         )
@@ -10486,7 +10550,7 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
             fake_mac,
             ("--confirm-install-agent", "done note=exists kept=2 added=0"),
             listed=synced,
-            list_step="failed note=not-signed-in",
+            list_step=f"failed note=not-signed-in{apps}",
         )
         text = log.read_text(encoding="utf-8")
         cut = text.index("2026-09-29T10:00:00Z")
@@ -10536,10 +10600,12 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
             "2026-09-29T10:01:10Z | end", click + "2026-09-29T10:01:10Z | end"
         ),
     )
-    log = set_up_log(fake_mac, listed=" synced=2", list_step="failed note=not-signed-in")
+    log = set_up_log(fake_mac, listed=" synced=2", list_step="failed note=not-signed-in apps=onedrive")
     log.write_text(
         log.read_text(encoding="utf-8")
-        + relist.replace("result=done note=listed-25 synced=2", "result=failed note=not-signed-in synced=2"),
+        + relist.replace(
+            "result=done note=listed-25 synced=2", "result=failed note=not-signed-in apps=onedrive synced=2"
+        ),
         encoding="utf-8",
     )
     _rc, report_text, _ = report(tmp_path, fake_mac["config"])
@@ -10553,6 +10619,96 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
     # a new Mac (round 11 M7's relist) with a logged sign-in click: no extra click either
     got = summary(20, synced="")
     assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
+    # B13 round 13 O1, O29, O66: the sign-in is the app's the list named; an older line names none
+    got = summary(21, apps=" apps=dropbox missing=1")
+    assert "the Dropbox sign-in step 1 asked for (F4)" in _line(got, "- expected turns: "), got
+    assert "the Dropbox sign-in step 1 asked for, F4" in _line(got, "- human turns: "), got
+    assert "OneDrive" not in _line(got, "- expected turns: ") + _line(got, "- human turns: "), got
+    got = summary(21, apps="")
+    assert "the sign-in step 1 asked for (F4)" in _line(got, "- expected turns: "), got
+    assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
+    # B13 round 13 O40, O59: from v21 step 1 asks for a sign-in only on a Mac that syncs a folder (N7); on one
+    # that syncs none (no count, 0 or unreadable) a logged sign-in is a click beyond the Allow clicks
+    got = summary(21)
+    assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
+    assert "the OneDrive sign-in step 1 asked for (F4)" in _line(got, "- expected turns: "), got
+    for synced in ("", " synced=0", " synced=unreadable marks=timeout"):
+        got = summary(21, synced=synced)
+        assert (
+            got.strip()
+            .splitlines()[0]
+            .startswith("- **outcome: worked with help** (computed: install.sh exit 0; 1 click(s) beyond the")
+        ), (synced, got)
+        assert "asked for" not in _line(got, "- expected turns: "), (synced, got)
+        assert "I signed in to OneDrive" in got.split("Items that were not one command", 1)[1], got
+        got = summary(21, synced=synced, logged=False)
+        assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), (synced, got)
+        assert "(not logged)" not in _line(got, "- expected turns: ").split("Allow click")[0], got
+    # B13 round 13 O43: a step 1 click logged before the failed list ran is not its sign-in
+    early = "2026-09-29T09:58:02Z | step 1 | click | clicked a dialog | -\n"
+    got = summary(20, early, logged=False)
+    assert got.strip().splitlines()[0].startswith("- **outcome: worked with help**"), got
+    assert "the OneDrive sign-in step 1 asked for (not logged)" in _line(got, "- expected turns: "), got
+    got = summary(20, early)  # and the sign-in click after the list is the one named, wherever it is logged
+    assert "the OneDrive sign-in step 1 asked for (F4)" in _line(got, "- expected turns: "), got
+    assert got.strip().splitlines()[0].startswith("- **outcome: worked with help**"), got
+    assert "F5 · step 1 · click · clicked a dialog" in got.split("Items that were not one command", 1)[1], got
+    # a click logged in the second the list started is still the sign-in
+    got = summary(20, "2026-09-29T09:58:05Z | step 1 | click | I signed in | -\n", logged=False)
+    assert got.strip().splitlines()[0].startswith("- **outcome: fully one command**"), got
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 13 O19: the Summary counted the sign-in step 1 asked for as fully one command while the
+    Installer table called its list ``failed``. That list's row reads ``stopped`` and says what came next;
+    install.log keeps ``result=failed``. Both states: with no later run (an unattended stop), or a prompt
+    before v20, the row is ``failed`` as before."""
+    relist = (
+        LIST_RUN.replace(" launchd=simulated", "")
+        .replace("T09:58:0", "T09:59:0")
+        .replace("20260929T095805Z-11", "20260929T095905Z-12")
+        .replace("result=done\n", "result=done note=listed-25 synced=2\n")
+    )
+
+    def row(version: int, *, installed: bool = False, relisted: bool = False) -> str:
+        write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", f"Prompt: v{version}"))
+        installs = [("--confirm-install-agent", "done note=exists kept=2 added=0")] if installed else []
+        log = set_up_log(
+            fake_mac,
+            *installs,
+            listed=" synced=2",
+            list_step="failed note=not-signed-in apps=dropbox missing=1",
+        )
+        text = log.read_text(encoding="utf-8").replace(
+            "seconds=4 rc=0 result=failed", "seconds=4 rc=3 result=failed"
+        )
+        if relisted:
+            text += relist
+        log.write_text(text, encoding="utf-8")
+        _rc, report_text, _ = report(tmp_path, fake_mac["config"])
+        [cell] = [
+            ln.split("|")[3].strip()
+            for ln in section(report_text, "Installer").splitlines()
+            if ln.startswith("| list-folders ") and "not signed in" in ln
+        ]
+        return cell
+
+    words = "Dropbox is not signed in on this Mac: 2 already synced, 1 missing"
+    assert row(20, relisted=True) == (
+        f"stopped, rc 3 ({words}; the Dropbox sign-in step 1 asked for, then listed again)"
+    )
+    assert (
+        row(21, installed=True)
+        == f"stopped, rc 3 ({words}; the Dropbox sign-in step 1 asked for, then installed)"
+    )
+    assert row(20) == f"failed, rc 3 ({words})"
+    assert row(19, relisted=True) == f"failed, rc 3 ({words})"
+    # install.log keeps its token
+    log = (fake_mac["setup"] / "install.log").read_text(encoding="utf-8")
+    assert "result=failed note=not-signed-in" in log and "result=stopped" not in log
 
 
 def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path]) -> None:

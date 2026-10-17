@@ -583,6 +583,15 @@ def report_words() -> frozenset[str]:
         # Docstrings and comments are not the report's text, and their examples name what is redacted
         # ("janedoe" for "Jane Doe"): a string statement on its own is left out
         loose = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)}
+        # nor are the app names the report prints only from a sign-in exit's apps= (_SIGN_IN_APPS): an
+        # organisation named so is still redacted everywhere (B13 round 13 O1)
+        loose |= {
+            id(leaf)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "_SIGN_IN_APPS" for t in node.targets)
+            for leaf in ast.walk(node.value)
+        }
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in loose:
                 words.update(_REPORT_WORD_RE.findall(_URL_RE.sub(" ", node.value)))
@@ -1909,27 +1918,97 @@ SIGN_IN_WAITS = 20
 """The first setup prompt whose step 1 waits, as for a click, for the OneDrive sign-in that a list exiting 3
 ``not-signed-in`` asks for, then lists again (B13 round 11 M4; round 12 N5)."""
 
+SIGN_IN_SET_UP_ONLY = 21
+"""The first setup prompt whose step 1 waits for a sign-in only in its first exception, a list that printed
+"already synced on this Mac:" (B13 round 12 N7): a list that logged ``synced=N`` with N at least 1. On a Mac
+that syncs no folder it asks for none, so a sign-in there is a click like any other (B13 round 13 O40,
+O59)."""
 
-def _signed_in_on_request(att: Attempt, runs: Sequence[InstallRun]) -> bool:
-    """Whether step 1 asked for the OneDrive sign-in and the attempt went on: the attempt's prompt is
+_SIGN_IN_APPS = {
+    "onedrive": "OneDrive",
+    "sharedlibraries": "OneDrive",
+    "dropbox": "Dropbox",
+    "googledrive": "Google Drive",
+    "google%20drive": "Google Drive",
+    "box": "Box",
+    "egnyte": "Egnyte",
+    "other": "another sync app",
+}
+"""install.sh's ``apps=`` tokens on a sign-in exit (``note=not-signed-in``, any case) -> the apps' names. A
+fixed map: a token none of these is dropped, so no text of the log's own reaches the report (B13 round 13
+O1, O29, O39, O42, O58, O66: the report said OneDrive whichever app's folder was missing)."""
+
+
+def _signed_out(listed: dict[str, str]) -> tuple[str, str]:
+    """Which app a sign-in exit's list (its ``list-folders`` step) found signed out, worded twice: the stop
+    (``Dropbox is not signed in``) and the sign-in (``the Dropbox sign-in``), from its ``apps=``
+    (:data:`_SIGN_IN_APPS`). With none, a list that logged ``synced=N`` with N at least 1 came from the set-up
+    Mac's exit, which can be any app: ``a sync app``; one that did not is install.sh's exit with no provider
+    folder at all, whose own words name OneDrive."""
+    names: list[str] = []
+    for token in listed.get("apps", "").split(","):
+        name = _SIGN_IN_APPS.get(token.lower())
+        if name is not None and name not in names:
+            names.append(name)
+    if not names:
+        if _count(listed, "synced"):
+            return "a sync app is not signed in", "the sign-in"
+        return "OneDrive is not signed in", "the OneDrive sign-in"
+    who = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+    verb = "is" if len(names) == 1 else "are"
+    known = [name for name in names if name != _SIGN_IN_APPS["other"]]
+    named = " and ".join(known) if len(known) == len(names) else ""
+    sign_in = f"the {named} sign-in{'s' if len(names) > 1 else ''}" if named else "the sign-in"
+    return f"{who} {verb} not signed in", sign_in
+
+
+def _sign_in_run(att: Attempt, runs: Sequence[InstallRun]) -> InstallRun | None:
+    """The list run whose sign-in step 1 asked for, when the attempt went on: the attempt's prompt is
     :data:`SIGN_IN_WAITS` or later (by its stated version, not its layout: every version from v8 reads as
-    one layout), a list run failed ``note=not-signed-in``, and a later list or install run followed it."""
+    one layout), the first list run that failed ``note=not-signed-in`` and that a later list or install run
+    followed. From :data:`SIGN_IN_SET_UP_ONLY` that list must have logged ``synced=N``, N at least 1 (a
+    ``synced=0`` or ``synced=unreadable`` list, or one with no count, asked for none). None otherwise."""
     if att.version is None or att.version < SIGN_IN_WAITS:
-        return False
+        return None
     for n, run in enumerate(runs):
         listed = (run.step("list-folders") or {}) if run.list_only else {}
         if listed.get("result") == "failed" and listed.get("note") == "not-signed-in" and runs[n + 1 :]:
-            return True
-    return False
+            if att.version >= SIGN_IN_SET_UP_ONLY and not _count(listed, "synced"):
+                continue
+            return run
+    return None
+
+
+def _signed_in_on_request(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+    """Whether step 1 asked for a sign-in and the attempt went on (:func:`_sign_in_run`)."""
+    return _sign_in_run(att, runs) is not None
+
+
+def _sign_in_name(att: Attempt, runs: Sequence[InstallRun]) -> str:
+    """The sign-in step 1 asked for, named by its list's ``apps=`` (:func:`_signed_out`):
+    ``the Dropbox sign-in``."""
+    run = _sign_in_run(att, runs)
+    return _signed_out((run.step("list-folders") or {}) if run is not None else {})[1]
 
 
 def _sign_in_click(att: Attempt, runs: Sequence[InstallRun]) -> FrictionEvent | None:
-    """The click line of the OneDrive sign-in step 1 asked for (:func:`_signed_in_on_request`): the first
-    click logged at step 1, at most one; None when step 1 asked for none or none was logged (B13 round 12
-    N5: an agent logged the person's sign-in as a click, which turned a clean run into "worked with help")."""
-    if not _signed_in_on_request(att, runs):
+    """The click line of the sign-in step 1 asked for (:func:`_sign_in_run`): the first click logged at step
+    1 at or after that list run started, at most one; None when step 1 asked for none or none was logged (B13
+    round 12 N5: an agent logged the person's sign-in as a click, which turned a clean run into "worked with
+    help"). A click logged before the list ran is not its sign-in (B13 round 13 O43); one with no time, or a
+    run with none, stays eligible, and no later bound holds: an agent logs a click after the fact."""
+    run = _sign_in_run(att, runs)
+    if run is None:
         return None
-    return next((e for e in att.of_kind("click") if e.step == FOLDER_QUESTION_STEP), None)
+    since = run.started
+    return next(
+        (
+            e
+            for e in att.of_kind("click")
+            if e.step == FOLDER_QUESTION_STEP and (since is None or e.at is None or e.at >= since)
+        ),
+        None,
+    )
 
 
 def _extra_clicks(att: Attempt, runs: Sequence[InstallRun]) -> list[FrictionEvent]:
@@ -2245,7 +2324,8 @@ def compute_outcome(
     if runs and not layout.logs_steps:  # v6: only --list-folders ran (step 1), and nothing was logged
         # and why its list stopped, when it stopped with nothing listed (B13 round 12 N31)
         stopped = _list_stopped(runs)
-        said = f"; it stopped: {_LIST_STOPS[stopped]}" if stopped and _LIST_STOPS[stopped] else ""
+        words = _list_stop_words(runs, stopped)
+        said = f"; it stopped: {words}" if words else ""
         return Outcome(
             "failed", 1, (f"no install run: only install.sh --list-folders ran, in step 1{said}",), version
         )
@@ -3842,7 +3922,8 @@ _LIST_FOLDERS_NOTE_WORDS = {
     "not-signed-in": "OneDrive is not signed in on this Mac",
     "no-folders": "no folders are synced yet in CloudStorage",
 }
-"""install.log's list-folders notes with no number -> the report's words (B13 round 12 N4)."""
+"""install.log's list-folders notes with no number -> the report's words (B13 round 12 N4). The sign-in
+exit's are its own line's (:func:`_signed_out`, B13 round 13 O1); this one is for a caller with no line."""
 
 
 def _list_folders_note(note: str) -> str:
@@ -3865,10 +3946,16 @@ _HELPERS_NOTE_WORDS = {
 of these is shown as it is; install.log keeps its tokens."""
 
 
-def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
+def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None = None) -> list[str]:
+    """A run's steps as the Installer table's rows. With ``sign_in`` the run is the list whose sign-in step 1
+    asked for, and the attempt went on (:func:`_sign_in_run`): its failed list-folders row reads ``stopped``,
+    and ``sign_in`` says what came next, as the Summary counts it (B13 round 13 O19: the table called
+    ``failed`` a run the Summary called fully one command). install.log keeps ``result=failed``."""
     rows = [("step", "seconds", "result")]
     for name, v in steps:
         result = v.get("result", "?")
+        if sign_in is not None and name == "list-folders" and result == "failed":
+            result = "stopped"
         rc = v.get("rc", "0")
         if rc not in ("0", ""):
             result += f", rc {rc}"
@@ -3882,7 +3969,11 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
             # words and a count only, never the log's own marks= text. The clause names sources.toml, which
             # the words' "it" refers back to, as the Summary's note does (B13 round 10 L22, L45).
             synced, unread = _count(v, "synced"), _unread_words(v)
-            if synced is not None:
+            # and how many of them the list found missing on a sign-in exit (B13 round 13 O1): a number only
+            missing = _count(v, "missing")
+            if synced is not None and missing is not None and v.get("note") == "not-signed-in":
+                counts = f"{synced} already synced, {missing} missing"
+            elif synced is not None:
                 counts = f"{synced} already synced"
             elif unread is not None:
                 counts = f"could not read which folders sources.toml syncs, because {unread}"
@@ -3891,11 +3982,15 @@ def _step_table(steps: list[tuple[str, dict[str, str]]]) -> list[str]:
             said = _agentsync_note(said)
         elif name == "first-sync":
             said = _first_sync_note(said)
+        elif name == "list-folders" and said == "not-signed-in":
+            said = f"{_signed_out(v)[0]} on this Mac"
         elif name == "list-folders":
             said = _list_folders_note(said)
         elif name == "helpers":
             said = _HELPERS_NOTE_WORDS.get(said, said)
         note = ": ".join(part for part in (said, counts) if part)
+        if sign_in is not None and name == "list-folders":
+            note = f"{note}; {sign_in}" if note else sign_in
         if note:
             result += f" ({note})"
         rows.append((name, v.get("seconds", "?"), result))
@@ -4198,13 +4293,25 @@ def _installer_runs(r: _Run) -> list[str]:
         f"{len(runs)} install.sh run(s) in {log}, {sum(totals)}s in total (runs with an end line{held}); "
         f"the last {len(shown)} (run ids without their process id{_numbered(shown)}):"
     ]
+    # the list whose sign-in step 1 asked for, as the Summary counts it (B13 round 13 O19)
+    fr = r.friction
+    att = fr.latest if fr is not None else None
+    latest = _latest_runs(r)
+    signed = _sign_in_run(att, latest) if att is not None else None
     for run in shown:
         steps = [(k, v) for k, v in run.steps]
         status = _exit_text(run, runs) if run.rc is not None else f"no end line ({_open_state(run)})"
         if run.simulated:
             status += " · launchd: simulated"
         out += ["", f"run {run.display_id}: {status}", ""]
-        out += _step_table(steps) if steps else ["_(no step lines)_"]
+        sign_in = None
+        if att is not None and run is signed:
+            after = latest[latest.index(run) + 1]
+            sign_in = (
+                f"{_sign_in_name(att, latest)} step {att.layout.folder_question_step} asked for, then "
+                f"{'listed again' if after.list_only else 'installed'}"
+            )
+        out += _step_table(steps, sign_in=sign_in) if steps else ["_(no step lines)_"]
         if run.report_after_end:
             out += [
                 "",
@@ -7179,7 +7286,7 @@ def _stopped_before_the_list(att: Attempt, runs: Sequence[InstallRun]) -> bool:
 
 
 _LIST_STOPS = {
-    "not-signed-in": "OneDrive is not signed in",
+    "not-signed-in": "OneDrive is not signed in",  # worded from its list's apps= (_list_stop_words)
     "no-folders": "no folders are synced yet",
     "denied": "",
     "tcc-pending": "",
@@ -7207,6 +7314,22 @@ def _list_stopped(runs: Sequence[InstallRun]) -> str | None:
     return clicked[-1] if clicked else notes[-1]
 
 
+def _list_stop_words(runs: Sequence[InstallRun], stopped: str | None) -> str:
+    """The report's words for why step 1's list stopped (:func:`_list_stopped`'s ``stopped``): a sign-in
+    exit's are its last list's (:func:`_signed_out`: ``Dropbox is not signed in``, B13 round 13 O1), the
+    others :data:`_LIST_STOPS`'. Empty for none, or an exit 4."""
+    if stopped == "not-signed-in":
+        return _signed_out(_stopping_list(runs))[0]
+    return _LIST_STOPS.get(stopped or "", "")
+
+
+def _stopping_list(runs: Sequence[InstallRun]) -> dict[str, str]:
+    """The ``list-folders`` step of these runs' last list run: the one :func:`_list_stopped` reads the stop
+    of. Empty with none."""
+    lists = [r for r in runs if r.list_only]
+    return (lists[-1].step("list-folders") or {}) if lists else {}
+
+
 def _turns_line(
     att: Attempt,
     run_type: str,
@@ -7215,6 +7338,7 @@ def _turns_line(
     stopped: bool = False,
     unasked: bool = False,
     sign_in: FrictionEvent | None = None,
+    sign_in_name: str = "the OneDrive sign-in",
 ) -> str:
     """``human turns: 1 (1 question; clicks: none possible; approvals: not observable)``: questions (with the
     folder question, which prompt v6 does not log), clicks and approvals, counted by kind. Approvals are "not
@@ -7227,9 +7351,10 @@ def _turns_line(
     An attempt that names no agent cannot vouch for zero approvals either: "not observable" (B13 round 3
     R24). Nor is it counted when ``unasked`` (:func:`unread_unknown` under prompt v18 or later): the list
     could not read the config and nothing says it synced no folder (B13 round 10 L7). ``sign_in``
-    (:func:`_sign_in_click`) is the click line of the OneDrive sign-in step 1 asked for: a turn, in its own
-    words, and never one called impossible; a click line of prompt v6 or later is never an Allow click, so
-    with none possible it says the Allow clicks are none possible, not the clicks (B13 round 12 N5)."""
+    (:func:`_sign_in_click`) is the click line of the sign-in step 1 asked for, ``sign_in_name``
+    (:func:`_sign_in_name`, B13 round 13 O1): a turn, in its own words, and never one called impossible; a
+    click line of prompt v6 or later is never an Allow click, so with none possible it says the Allow clicks
+    are none possible, not the clicks (B13 round 12 N5)."""
     counts = att.kinds()
     logged_q, c, a = counts["question"], counts["click"], counts["approval"]
     # v6: the folder question is not logged
@@ -7239,7 +7364,7 @@ def _turns_line(
     hidden = a == 0 and (not agent or any(t in agent for t in APPROVAL_HIDDEN_TOOLS))
     approvals = "approvals: not observable" if hidden else _plural(a, "approval")
     no_clicks = _no_clicks_why(run_type)
-    signed = f": the OneDrive sign-in step {sign_in.step} asked for, F{sign_in.line}" if sign_in else ""
+    signed = f": {sign_in_name} step {sign_in.step} asked for, F{sign_in.line}" if sign_in else ""
     if signed and c > 1:
         signed = f", one of them{signed}"
     if no_clicks is None:
@@ -7248,7 +7373,7 @@ def _turns_line(
             clicks += f" beyond the announced {_allow_clicks(att.layout)} (not logged)"
         if sign_in is not None:  # after the Allow clause, which it would run into, and with no bracket
             which = "one of them" if c > 1 else "which"
-            clicks += f", {which} is F{sign_in.line}, the OneDrive sign-in step {sign_in.step} asked for"
+            clicks += f", {which} is F{sign_in.line}, {sign_in_name} step {sign_in.step} asked for"
     elif c == 0:
         clicks = "clicks: none possible"
     elif (
@@ -7274,6 +7399,8 @@ def _expected_turns_line(
     list_stop: str | None = None,
     signed_in: bool = False,
     sign_in: FrictionEvent | None = None,
+    sign_in_name: str = "the OneDrive sign-in",
+    stop_list: dict[str, str] | None = None,
 ) -> str:
     """The turns fully one command allows, on their own line: the folder question and the Allow clicks. On a
     Mac that already synced ``synced`` folders (:func:`synced_before`) the folder question is not one of
@@ -7288,26 +7415,40 @@ def _expected_turns_line(
     L7). With ``list_stop`` (:func:`_list_stopped`) step 1's list stopped before the folder question: on an
     exit 3 nothing was listed, so there is no turn at all; on an exit 4 the Allow click is the turn (B13 round
     11 M7). On a Mac that already syncs folders an exit 3 is the sign-in: still no turn, with words of its own
-    (B13 round 12 N31). With ``signed_in`` (:func:`_signed_in_on_request`) the OneDrive sign-in step 1 asked
-    for is one of the turns: ``sign_in`` is its click line, if one was logged (B13 round 12 N5)."""
+    (B13 round 12 N31), in its list's words (``stop_list``, :func:`_stopping_list`): the app it found signed
+    out and how many of the folders are missing (B13 round 13 O1, O42; no bracket inside the line's own, O31).
+    With ``signed_in`` (:func:`_signed_in_on_request`) the sign-in step 1 asked for, ``sign_in_name``, is one
+    of the turns: ``sign_in`` is its click line, if one was logged (B13 round 12 N5)."""
     layout = att.layout
     # a list that stopped again after the sign-in step 1 asked for: that sign-in is the one turn
     none = (
-        f"the OneDrive sign-in step {layout.folder_question_step} asked for "
+        f"{sign_in_name} step {layout.folder_question_step} asked for "
         f"({f'F{sign_in.line}' if sign_in is not None else 'not logged'}) and no other"
         if signed_in
         else "none"
     )
+    listed = stop_list or {}
     if list_stop == "not-signed-in" and synced and not layout.logs_expected_turns:
-        return (
-            f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: OneDrive is not "
-            f"signed in, so folders this Mac already syncs ({synced}) are missing; they are kept: no folder "
-            "question and no Allow click)"
-        )
-    if list_stop and _LIST_STOPS.get(list_stop) and not synced and not layout.logs_expected_turns:
+        # the list's own counts, never another run's (synced_before)
+        of = _count(listed, "synced") or synced
+        missing = _count(listed, "missing")
+        if missing is None:
+            gone = f"some of the {of} folders this Mac already syncs are" if of > 1 else ""
+        elif 0 < missing < of:
+            gone = f"{missing} of the {of} folders this Mac already syncs {'is' if missing == 1 else 'are'}"
+        else:
+            gone = ""
+        gone = gone or (f"the {_plural(of, 'folder')} this Mac already syncs {'is' if of == 1 else 'are'}")
         return (
             f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: "
-            f"{_LIST_STOPS[list_stop]}, so no folder was listed: no folder question and no Allow click)"
+            f"{_signed_out(listed)[0]}, so {gone} missing; {'it is' if of == 1 else 'they are'} kept: no "
+            "folder question and no Allow click)"
+        )
+    if list_stop and _LIST_STOPS.get(list_stop) and not synced and not layout.logs_expected_turns:
+        words = _signed_out(listed)[0] if list_stop == "not-signed-in" else _LIST_STOPS[list_stop]
+        return (
+            f"- expected turns: {none} (step {layout.folder_question_step}'s list stopped: "
+            f"{words}, so no folder was listed: no folder question and no Allow click)"
         )
     if unstarted:
         return (
@@ -7357,7 +7498,7 @@ def _expected_turns_line(
             ]
         if signed_in:
             said = f"F{sign_in.line}" if sign_in is not None else "not logged"
-            parts.append(f"the OneDrive sign-in step {step} asked for ({said})")
+            parts.append(f"{sign_in_name} step {step} asked for ({said})")
         if no_clicks is not None:
             parts.append(f"Allow clicks: none possible ({no_clicks})")
         else:
@@ -8086,6 +8227,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         nothing_listed = bool(list_stop and _LIST_STOPS[list_stop])
         signed_in = _signed_in_on_request(att, runs)
         sign_in = _sign_in_click(att, runs)
+        sign_in_name = _sign_in_name(att, runs)
         stopped = copy_stopped or unstarted or no_run or nothing_listed
         # from prompt v18 a list that could not read the config asks at most whether to add one (round 9 K20)
         unread, asked = unread_synced(runs), unread_asked(att, runs)
@@ -8108,6 +8250,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 stopped=stopped,
                 unasked=unasked or bool(list_stop),
                 sign_in=sign_in,
+                sign_in_name=sign_in_name,
             )
         )
         out.append(
@@ -8124,6 +8267,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 list_stop=list_stop,
                 signed_in=signed_in,
                 sign_in=sign_in,
+                sign_in_name=sign_in_name,
+                stop_list=_stopping_list(runs),
             )
         )
         why_unread = unread_why(runs)
