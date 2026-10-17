@@ -2897,8 +2897,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# rule where a name step 1's list alone gave, and folder_parts skipped, is in the body as a whole word.
 	if [ -n "${3:-}" ]; then
 		# the agent's own name is no folder: every whole-word copy of an Agent: header's value is left out of
-		# the list-only test (B13 round 13 O10), as setup_report._without_agents; read through a here-string,
-		# since a grep -q at a pipe's end can fail the pipe under pipefail
+		# the list-only test (B13 round 13 O10), as setup_report._without_agents, longest first, so a name
+		# inside another ("Copilot" in "GitHub Copilot") leaves no part of it (B13 round 14 Q49); read through
+		# a here-string, since a grep -q at a pipe's end can fail the pipe under pipefail
 		local unagent
 		unagent="$(LC_ALL=C awk '
 			function strip(s, v,    out, k, b, e) {
@@ -2918,6 +2919,10 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 					if (v != "" && !(v in seen)) { seen[v] = 1; a[++n] = v }
 				}
 				next
+			}
+			!sorted {
+				for (i = 2; i <= n; i++) { x = a[i]; for (j = i - 1; j > 0 && length(a[j]) < length(x); j--) a[j + 1] = a[j]; a[j + 1] = x }
+				sorted = 1
 			}
 			{ line = $0; for (i = 1; i <= n; i++) line = strip(line, a[i]); print line }
 		' "$3" "$3" 2>/dev/null || true)"

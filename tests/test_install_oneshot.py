@@ -9394,6 +9394,31 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
     assert ("Copilot" in item) == ("Copilot" in quoted), item
 
 
+def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(env: dict[str, str]) -> None:
+    """B13 round 14 Q49 (round 13 O10's twin): the shell took Agent: values out in the order it read them, so
+    "Copilot" first left "GitHub" of a later "GitHub Copilot", and a list-only folder named GitHub then gave
+    the list-only agent clause, which the Python report, longest first, did not. Both leave no part of it."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    cs = _cloud(env)
+    for d in ("Project Alpha", "GitHub"):
+        (cs / "OneDrive-Contoso" / d).mkdir(parents=True)
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    install_out(env).write_text(_listed(cs, "OneDrive-Contoso/Project Alpha", "OneDrive-Contoso/GitHub"))
+    friction = (
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: Copilot\n2026-10-10T00:00:01Z | step 1 | "
+        "deviation | picked Project Alpha | -\nAttempt: 2026-10-11T00:00:00Z\nPrompt: v15\n"
+        "Agent: GitHub Copilot\n"
+    )
+    friction_path(env).write_text(friction)
+    assert "GitHub" not in setup_report._without_agents(friction)
+    assert install_sh(env, "--report-only").returncode == 0
+    item = _folder_item(report_path(env).read_text())
+    assert "coding-agent" not in item, item
+    assert item.startswith("- <folder-N>: the names of the folders under CloudStorage"), item
+
+
 @pytest.mark.parametrize(
     "case",
     [
