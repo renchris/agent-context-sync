@@ -4437,6 +4437,90 @@ def test_signed_out_reads_a_provider_folder_as_doctor_does(tmp_path: Path, layou
 
 
 @pytest.mark.parametrize(
+    ("library", "beside", "there", "want"),
+    [
+        ("OneDrive-SharedLibraries-Contoso", "OneDrive-Contoso", False, 3),
+        ("OneDrive-SharedLibraries-Contoso ", "OneDrive-Contoso", False, 3),  # org_of trims the organization
+        ("OneDrive-SharedLibraries-Contoso", "OneDrive-Contoso", True, 3),  # there and empty (O52)
+        ("OneDrive-SharedLibraries-Contoso", "OneDrive-Fabrikam", False, 2),
+        ("OneDrive-SharedLibraries-Contoso", "OneDrive-Fabrikam", True, 0),
+        ("OneDrive-SharedLibraries-Contoso", None, False, 0),
+        ("OneDrive-SharedLibraries-Contoso", None, True, 0),
+        ("OneDrive-SharedLibraries-Personal", "OneDrive-Personal", False, 2),  # org_of: no organization
+        ("OneDrive-SharedLibraries-", "OneDrive-", False, 2),
+    ],
+)
+def test_signed_out_reads_a_sharepoint_library_as_doctor_does(
+    tmp_path: Path, library: str, beside: str | None, there: bool, want: int
+) -> None:
+    """B13 round 13 O41, O48, O57 (one defect; O52's list half): a SharePoint library folder gone beside its
+    own organization's OneDrive folder returned 2, so the list told a signed-in person to sign in with another
+    account, the fix doctor withdrew in round 12 N53. It is 3 now, and so is the library folder there and
+    showing nothing beside it (O52: doctor names the library's Sync there too). The organization is org_of's:
+    trimmed, never empty or Personal, which fall through to the other rules as they do in doctor."""
+    cs = tmp_path / "CloudStorage"
+    cs.mkdir()
+    if beside is not None:
+        (cs / beside).mkdir()
+    if there:
+        (cs / library).mkdir()
+    cp = subprocess.run(
+        [BASH32, "-c", f'{_shell_function("signed_out")}\nsigned_out "$1" "$2"', "-", str(cs), library],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    assert (cp.returncode, cp.stderr) == (want, ""), (library, beside, there)
+
+
+@pytest.mark.parametrize("libraries", [1, 2])
+def test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, libraries: int
+) -> None:
+    """B13 round 13 O41, O48, O57: with OneDrive-Contoso there and the source under
+    OneDrive-SharedLibraries-Contoso gone, the list's exit-0 NEXT said "sign in to that app with the account
+    it belongs to", which v21 can read as a sign-in to wait for. It now says, as doctor does, to sync the
+    library with Sync on its SharePoint page, with no sign-in words, and gone= still counts it."""
+    cs = _cloud(env)
+    kept = cs / "OneDrive-Contoso" / "Project Alpha"
+    kept.mkdir(parents=True)
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    gone = [cs / "OneDrive-SharedLibraries-Contoso" / "Team Site - Documents"]
+    if libraries == 2:
+        gone.append(cs / "OneDrive-SharedLibraries-Fabrikam" / "Finance - Documents" / "Budget")
+        (cs / "OneDrive-Fabrikam").mkdir()
+    tables = [local_source_table(f"lib-{n}", g) for n, g in enumerate(gone)]
+    _write_config(env, local_source_table("project-alpha", kept), *tables, _inbox(env))
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    paths = "; ".join(str(g) for g in gone)
+    tail = (
+        f"path in {cfg}), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync "
+        "still mirrors the other folders"
+    )
+    clause = (
+        "; 1 of them is not on disk because its SharePoint library is not synced on this Mac (its "
+        f"organization's OneDrive folder is there): {paths}. Step 2's status fails on it and names the fix "
+        "(sync the SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] "
+        if libraries == 1
+        else "; 2 of them are not on disk because their SharePoint libraries are not synced on this Mac "
+        f"(each organization's OneDrive folder is there): {paths}. Step 2's status fails on each and names "
+        "the fix (sync each SharePoint library to this Mac with Sync on its SharePoint page, or fix its "
+        "[[source]] "
+    ) + tail
+    assert last_line(cp).endswith(clause), last_line(cp)
+    assert "sign in" not in last_line(cp).lower()
+    assert install_log(env)[-2].endswith(f" synced={1 + libraries} gone={libraries}")
+    monkeypatch.setenv("HOME", env["HOME"])
+    config = load_config(cfg)
+    for source in config.sources[1 : 1 + libraries]:
+        fix = doctor._missing_source_fix(source, source.path)
+        assert "Sync on its SharePoint page" in fix and "sign in" not in fix, fix
+
+
+@pytest.mark.parametrize(
     ("provider", "app"),
     [("Dropbox", "Dropbox"), ("GoogleDrive-someone@contoso.com", "Google Drive"), ("Box-Box", "Box")],
 )

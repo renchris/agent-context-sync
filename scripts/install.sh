@@ -44,7 +44,9 @@
 #                           long as no synced folder's app is signed out: then the list still prints the
 #                           [synced] lines but exits 3, and its NEXT: asks for that app's sign-in, listed or
 #                           not. A synced folder gone while its app is signed in (renamed, moved or deleted
-#                           there) keeps exit 0, and the NEXT: names it: step 2's status names its fix
+#                           there), or in a SharePoint library not synced on this Mac beside its
+#                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
+#                           status names its fix
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
 #                           AGENT starts with the pasted prompt's version, and a copy of the prompt that is
 #                           not this installer's is told to stop
@@ -3674,18 +3676,34 @@ provider_label() {
 # rule: 0 signed out (the provider folder gone with no other folder of that app, the name before its first "-",
 # beside it; or there and holding no folder or file the list would show, a stale one: hidden entries do not
 # count); 2 the provider folder gone while another folder of that app is there (another account: doctor names
-# the sign-in with that account, or the path); 1 signed in. A symlink, dangling or not, is there, as lexists
-# reads it, and a provider folder this account cannot read counts as signed in, as doctor reads it (B13 round 12
-# N61). Arguments: CS PROVIDER.
+# the sign-in with that account, or the path); 1 signed in; 3 a SharePoint library folder
+# (OneDrive-SharedLibraries-<org>) gone, or there and showing nothing, beside its organization's OneDrive-<org>:
+# a library not synced on this Mac, never a sign-in (doctor's B13 round 12 N53 branch and round 13 O52; B13
+# round 13 O41, O48, O57). The organization is read as org_of reads it: the text after the prefix, trimmed, and
+# never empty or Personal. A symlink, dangling or not, is there, as lexists reads it, and a provider folder
+# this account cannot read counts as signed in, as doctor reads it (B13 round 12 N61). Arguments: CS PROVIDER.
 signed_out() {
-	local f app="${2%%-*}"
+	local f app="${2%%-*}" org=""
+	case "$2" in
+	OneDrive-SharedLibraries-*)
+		org="${2#OneDrive-SharedLibraries-}"
+		org="${org#"${org%%[![:space:]]*}"}"
+		org="${org%"${org##*[![:space:]]}"}"
+		case "$org" in
+		"" | Personal) org="" ;;
+		*) [ -e "$1/OneDrive-$org" ] || [ -L "$1/OneDrive-$org" ] || org="" ;;
+		esac
+		;;
+	esac
 	if [ -e "$1/$2" ] || [ -L "$1/$2" ]; then
 		[ -r "$1/$2" ] && [ -x "$1/$2" ] || return 1
 		for f in "$1/$2"/*; do
 			[ ! -e "$f" ] && [ ! -L "$f" ] || return 1
 		done
+		[ -z "$org" ] || return 3
 		return 0
 	fi
+	[ -z "$org" ] || return 3
 	for f in "$1/$app" "$1/$app"-*; do
 		[ ! -e "$f" ] && [ ! -L "$f" ] || return 2
 	done
@@ -3832,7 +3850,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
-	local line missing=0 gone=0 gonepaths="" others=0 other="" apps="" stuck=0 more=""
+	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" stuck=0 more=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -3946,6 +3964,10 @@ list_folders() {
 				others=$((others + 1))
 				other="${other:+$other; }$line"
 				;;
+			3)
+				libs=$((libs + 1))
+				libpaths="${libpaths:+$libpaths; }$line"
+				;;
 			*)
 				gone=$((gone + 1))
 				gonepaths="${gonepaths:+$gonepaths; }$line"
@@ -4027,7 +4049,14 @@ list_folders() {
 		elif [ "$others" -gt 1 ]; then
 			NEXT_MSG="$NEXT_MSG; $others of them are not on disk because their provider folders are missing while another folder of each app is there: $other. Step 2's status fails on each and names the fix (sign in to that app with the account each belongs to, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
 		fi
-		gone=$((gone + others))
+		# a SharePoint library not synced beside its organization's OneDrive folder: doctor names the library's
+		# Sync, never a sign-in (B13 round 13 O41, O48, O57; O52 for an empty library folder)
+		if [ "$libs" -eq 1 ]; then
+			NEXT_MSG="$NEXT_MSG; 1 of them is not on disk because its SharePoint library is not synced on this Mac (its organization's OneDrive folder is there): $libpaths. Step 2's status fails on it and names the fix (sync the SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
+		elif [ "$libs" -gt 1 ]; then
+			NEXT_MSG="$NEXT_MSG; $libs of them are not on disk because their SharePoint libraries are not synced on this Mac (each organization's OneDrive folder is there): $libpaths. Step 2's status fails on each and names the fix (sync each SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync (and installs no LaunchAgents) until then; a sync still mirrors the other folders"
+		fi
+		gone=$((gone + others + libs))
 		[ "$gone" -eq 0 ] || more=" gone=$gone"
 		step_end "done" 0 "listed-$total synced=$synced$more"
 	elif [ "$providers" -eq 0 ]; then
