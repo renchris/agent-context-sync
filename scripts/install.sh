@@ -493,6 +493,7 @@ newer_copy_fix() {
 	case "$shown" in "$HOME"/*) shown='~/'"${shown#"$HOME"/}" ;; esac
 	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
 	if [ -n "$src" ] && [ -n "$d" ] && [ -d "$d" ]; then
+		git_ro_resolve
 		u="$(git_ro -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 		[ -z "$u" ] || r="${u%%/*}"
 		url="$(git_ro -C "$src" remote get-url "$r" 2>/dev/null || true)"
@@ -533,10 +534,25 @@ git_ro() {
 	[ "${1-}" != -C ] || p="$(cd -P "$2" 2>/dev/null && cd -P .. && pwd -P)" || p=""
 	case "$p" in *:*) p="" ;; esac
 	if [ -n "$p" ]; then
-		GIT_CEILING_DIRECTORIES="$p" GIT_OPTIONAL_LOCKS=0 /usr/bin/git "$@"
+		GIT_CEILING_DIRECTORIES="$p" GIT_OPTIONAL_LOCKS=0 "${GIT_RO_BIN:-/usr/bin/git}" "$@"
 	else
-		GIT_OPTIONAL_LOCKS=0 /usr/bin/git "$@"
+		GIT_OPTIONAL_LOCKS=0 "${GIT_RO_BIN:-/usr/bin/git}" "$@"
 	fi
+}
+# The git /usr/bin/git runs, found once: /usr/bin/git is an xcrun shim that looks it up again at every exec
+# (load root cause 2026-10-17 X3). Called in the parent shell before the reads, never inside $( ), where the
+# value would be lost; only a found git is kept, so a failed lookup leaves /usr/bin/git. Its own developer
+# tools test, not have_devtools, which is not yet defined when the friction-log commands run.
+GIT_RO_BIN=""
+git_ro_resolve() {
+	local d g
+	[ -z "$GIT_RO_BIN" ] || return 0
+	case "${OSTYPE-}" in darwin*) ;; *) return 0 ;; esac
+	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
+	[ -n "$d" ] && [ -d "$d" ] || return 0
+	g="$(/usr/bin/xcrun --find git 2>/dev/null || true)"
+	case "$g" in /*/git) [ ! -x "$g" ] || GIT_RO_BIN="$g" ;; esac
+	return 0
 }
 friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 	local op="$1" now line step kind what fix note="" v a p rest said rc=0 TELL FIX
@@ -949,6 +965,7 @@ git_refuses_owner() { # DIR
 read_commit() {
 	local c
 	COMMIT_TRIED=1
+	git_ro_resolve # here, so commit_shown's unread_reason, run in $( ) after it, has it too
 	c="$(checkout_commit "$1")"
 	case "$c" in
 	"") ;;
@@ -977,6 +994,7 @@ unread_reason() { # DIR
 show_version() { # the compat line last: step 1 of the setup prompt reads the last line of its output
 	local c
 	if [ -e "$repo/.git" ]; then
+		git_ro_resolve
 		c="$(checkout_commit "$repo")"
 		[ -n "$c" ] || c="$(git_head_file "$repo")"
 		[ -n "$c" ] || c="unknown ($(unread_reason "$repo"))"
@@ -4137,6 +4155,7 @@ list_folders() {
 		lacks="${unread##* marks=failed}"
 		lacks="${lacks#:}"
 		kept="; this Mac has a config ($CONFIG) whose folders could not be read: the installed agentsync failed while reading it${lacks:+ (it raised $lacks)}, and ~/.local/bin/agentsync status prints why."
+		git_ro_resolve
 		if built="$(checkout_is_installed)"; then
 			stuck=1
 			kept="$kept The installed agentsync is already this checkout's build (commit $built), so step 2 (run from this checkout) does not reinstall it: step 2 stops at its config step, and nothing is kept or added until the person fixes the config"

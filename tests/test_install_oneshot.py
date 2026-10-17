@@ -261,6 +261,12 @@ esac
 """
 
 
+def xcrun_db() -> dict[str, str]:
+    """conftest's xcrun cache, if set, for an env built without os.environ (load root cause 2026-10-17 X3)."""
+    v = os.environ.get("xcrun_db")  # noqa: SIM112 # xcrun reads this lowercase name
+    return {"xcrun_db": v} if v else {}
+
+
 def _write_exe(path: Path, text: str) -> Path:
     path.write_text(text)
     path.chmod(0o755)
@@ -287,6 +293,7 @@ def env(tmp_path: Path) -> dict[str, str]:
         "AGENTSYNC_WAIT_POLL_SECONDS": "0.05",
         "STUB_ISSUE_LINK": ISSUE_LINK,
         "LC_ALL": "C",
+        **xcrun_db(),
     }
 
 
@@ -466,7 +473,11 @@ def test_tcc_pending_prints_one_action_line_then_succeeds(
 
 
 def test_tcc_still_pending_at_the_timeout_exits_3(env: dict[str, str], folder: Path, wheel: Path) -> None:
-    e = {**env, "STUB_LC_EXITS": "79", "AGENTSYNC_WAIT_SECONDS": "1"}
+    e = {
+        **env,
+        "STUB_LC_EXITS": "79",
+        "AGENTSYNC_WAIT_SECONDS": "1",
+    }
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 3, cp.stdout + cp.stderr
     assert cp.stdout.count("ACTION:") == 1
@@ -480,7 +491,11 @@ def test_tcc_still_pending_at_the_timeout_exits_3(env: dict[str, str], folder: P
 
 
 def test_a_run_still_going_at_the_timeout_exits_3(env: dict[str, str], folder: Path, wheel: Path) -> None:
-    e = {**env, "STUB_LC_RUNNING": "1", "AGENTSYNC_WAIT_SECONDS": "1"}
+    e = {
+        **env,
+        "STUB_LC_RUNNING": "1",
+        "AGENTSYNC_WAIT_SECONDS": "1",
+    }
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 3, cp.stdout + cp.stderr
     assert "ACTION:" not in cp.stdout
@@ -2710,7 +2725,7 @@ def _awk_attempts(log: str) -> int:
         capture_output=True,
         text=True,
         check=True,
-        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin", **xcrun_db()},
     )
     lines = log.splitlines()
     return (
@@ -2839,7 +2854,7 @@ def _shell_exclude_scrub(lines: list[str]) -> list[str]:
         input="".join(f"{ln}\n" for ln in lines).encode(),
         capture_output=True,
         check=True,
-        env={"PATH": "/usr/bin:/bin", "LC_ALL": "en_US.UTF-8"},
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "en_US.UTF-8", **xcrun_db()},
     )
     return cp.stdout.decode().splitlines()
 
@@ -3063,7 +3078,7 @@ def test_the_shell_run_type_is_the_reports(home: str, kind: str) -> None:
         capture_output=True,
         text=True,
         check=True,
-        env={"PATH": "/usr/bin:/bin", "HOME": home, "LC_ALL": "C"},
+        env={"PATH": "/usr/bin:/bin", "HOME": home, "LC_ALL": "C", **xcrun_db()},
     )
     assert cp.stdout == kind
     assert setup_report.compute_run_type([], home) == kind.split(" ", maxsplit=1)[0]
@@ -3080,7 +3095,7 @@ def test_the_shell_run_type_reads_the_folder_home_resolves_to(tmp_path: Path) ->
         capture_output=True,
         text=True,
         check=True,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "alias" / "home"), "LC_ALL": "C"},
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "alias" / "home"), "LC_ALL": "C", **xcrun_db()},
     )
     assert cp.stdout == "sandbox"
 
@@ -4556,7 +4571,7 @@ def test_signed_out_reads_a_provider_folder_as_doctor_does(tmp_path: Path, layou
             capture_output=True,
             text=True,
             check=False,
-            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", **xcrun_db()},
         )
     finally:
         if p.is_dir() and not p.is_symlink():
@@ -4597,7 +4612,7 @@ def test_signed_out_reads_a_sharepoint_library_as_doctor_does(
         capture_output=True,
         text=True,
         check=False,
-        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", **xcrun_db()},
     )
     assert (cp.returncode, cp.stderr) == (want, ""), (library, beside, there)
 
@@ -7670,7 +7685,9 @@ def test_a_running_first_run_past_its_canaries_succeeds(
 def test_a_running_run_still_waiting_for_allow_is_not_past_the_check(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:
-    e = _canary_env(env, folder, "pending")
+    e = {
+        **_canary_env(env, folder, "pending"),
+    }
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 3, cp.stdout + cp.stderr
     assert "background sync: running" not in cp.stdout
@@ -7680,7 +7697,10 @@ def test_a_running_run_still_waiting_for_allow_is_not_past_the_check(
 
 def test_canary_lines_of_another_run_do_not_count(env: dict[str, str], folder: Path, wheel: Path) -> None:
     """Lines from another pid, or logged before this install's agent step, are not this run's check."""
-    e = {**_canary_env(env, folder), "STUB_LC_LOG_PID": "999"}
+    e = {
+        **_canary_env(env, folder),
+        "STUB_LC_LOG_PID": "999",
+    }
     lc = Path(env["STUB_LC_DIR"])
     lc.mkdir()
     sentinel = folder / ".agentsync-sentinel"
@@ -8227,7 +8247,7 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
         capture_output=True,
         text=True,
         check=False,
-        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path)},
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
     )
     assert cp.returncode == 0, cp.stderr
     assert cp.stdout == f"MDM server: https://<mdmhost>:443{path}\n"
@@ -9056,7 +9076,7 @@ def test_the_shell_agent_words_test_is_the_python_reports(name: str) -> None:
         capture_output=True,
         text=True,
         check=False,
-        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", **xcrun_db()},
     )
     assert (cp.returncode == 0) == setup_report._agent_words(name), (name, cp.stderr)
 

@@ -273,10 +273,16 @@ def test_scripts_pass_shellcheck(script: Path) -> None:
 
 def tmp_home_env(home: Path) -> dict[str, str]:
     """A minimal environment whose HOME is ``home``: nothing reads or writes the real ~/agent-context."""
-    env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "LC_ALL", "TMPDIR")}
+    env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "LC_ALL", "TMPDIR", "xcrun_db")}
     env["HOME"] = str(home)
     env["AGENTSYNC_OCR"] = "0"  # a real agentsync started under it looks for no OCR helper
     return env
+
+
+def xcrun_db() -> dict[str, str]:
+    """conftest's xcrun cache, if set, for an env built without os.environ (load root cause 2026-10-17 X3)."""
+    v = os.environ.get("xcrun_db")  # noqa: SIM112 # xcrun reads this lowercase name
+    return {"xcrun_db": v} if v else {}
 
 
 def test_install_help_exits_zero(tmp_path: Path) -> None:
@@ -1183,7 +1189,7 @@ def test_step1_keeps_local_changes_on_a_branch_and_updates(tmp_path: Path) -> No
     )
     assert pull.returncode != 0, "the pull this recovery is for fails on the local edit"
 
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1", **xcrun_db()}
     proc = subprocess.run(
         ["/bin/zsh", "-c", KEEP_LOCAL_WORK], cwd=home, env=env, capture_output=True, text=True, check=False
     )
@@ -1239,7 +1245,12 @@ def _behind_upstream(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, str]]:
     (upstream / "install.sh").write_text("v7\n", encoding="utf-8")
     subprocess.run([*_GIT, "-C", str(upstream), "add", "-A"], check=True)
     subprocess.run([*_GIT, "-C", str(upstream), "commit", "-q", "-m", "v7"], check=True)
-    return upstream, home, checkout, {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    return (
+        upstream,
+        home,
+        checkout,
+        {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1", **xcrun_db()},
+    )
 
 
 def _zsh(command: str, home: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -1966,7 +1977,7 @@ def test_the_worktree_stops_commands_keep_a_moved_worktree(tmp_path: Path) -> No
     subprocess.run([*_GIT, "init", "-q", str(primary)], check=True)
     subprocess.run([*_GIT, "-C", str(primary), "commit", "-q", "--allow-empty", "-m", "a"], check=True)
     checkout = home / "src" / "agent-context-sync"
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1"}
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1", **xcrun_db()}
     for how in ("move", "by hand", "repair"):
         subprocess.run(
             [*_GIT, "-C", str(primary), "worktree", "add", "-q", "-b", f"lw-{how[:2]}", str(checkout)],

@@ -14,7 +14,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from test_install_oneshot import BASH32, INSTALL_SH, ISSUE_LINK, STUB_AGENTSYNC, STUB_LAUNCHCTL, STUB_UV
+from test_install_oneshot import (
+    BASH32,
+    INSTALL_SH,
+    ISSUE_LINK,
+    STUB_AGENTSYNC,
+    STUB_LAUNCHCTL,
+    STUB_UV,
+    xcrun_db,
+)
 
 REAL_THEN_80 = """#!/bin/bash
 case "$1" in
@@ -55,6 +63,7 @@ def _env(tmp_path: Path) -> dict[str, str]:
         "GIT_CONFIG_NOSYSTEM": "1",
         "LC_ALL": "C",
         "TERM_PROGRAM": "iTerm.app",
+        **xcrun_db(),
     }
 
 
