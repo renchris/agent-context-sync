@@ -19136,6 +19136,9 @@ asks me to sign in", which reads the condition backwards.
 Amended 2026-10-16, §16.99 N41, N61: "keys on missing folders" was too wide. A missing folder counts only when its
 app is signed out, decided by its provider folder as doctor decides it; the `NEXT:` names that app, not always
 OneDrive. A folder renamed or deleted in a signed-in provider keeps exit 0 (note `gone=N`), and the `NEXT:` names it.
+Amended 2026-10-17, §16.112 Q15, Q73: since v23 the prompt half reads "If the list's NEXT: line asks me to sign in and
+then re-run", the shape of these signed-out lines, so the other-account tail's "(sign in to that app with the account
+it belongs to, ...)", which has no re-run, is not taken for a sign-in to wait for.
 
 **The reinstall's wait line names who started the sync, when the sidecar says** (M43 and M60, one defect; amends
 §16.68 H33). Since round 10 L73 the lock's holder sidecar (`<lock>.json`) records `started_by` (`launchd` or `other`)
@@ -19351,6 +19354,9 @@ installer the person heard the stop's action, then a bare "not this prompt's ver
 problem; the stop now adds "and that this asks nothing more of me: once the Command Line Tools are installed (or git
 can reach GitHub), the next paste of this prompt tries to update that code first". "Tries", not "updates" (M16's
 verifier): local changes and a checkout off main have their own recoveries. Test: `test_readme_step1_is_one_command`.
+Amended 2026-10-17, §16.112 Q32: since v23 the stop says only its own cause ("once the cause of this stop is fixed,
+the next paste of this prompt tries to update that code first (say only this stop's cause: ...)"): at the Xcode stop
+git never ran, so "or git can reach GitHub" fixed nothing there.
 
 **Amended 2026-10-16, §16.100 N27:** since v21 it reads "(its pull did not run, or failed)": at the other-git-failure
 stop the pull ran to its end and failed, which "did not finish" read as cut off.
@@ -20553,6 +20559,12 @@ renamed folder), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
 Amended 2026-10-17, §16.111 Q45, Q54,
 Q63: `persons_fails` also reads `<provider> is empty while OneDrive-<org> ...` (round 13 O52's fix for a SharePoint
 library there but empty) as the person's; the test's cases include it.
+Amended 2026-10-17, §16.112 Q15, Q73: since v23 the first exception keys on "on disk" and covers the list's other
+two tails ("is not on disk because" a provider folder of another account, or a SharePoint library not synced here),
+and gives each tail's own fix: putting the folder back for a renamed one, the fix the line names in parentheses for
+the others.
+Amended 2026-10-17, §16.112 Q7: since v23 step 2 says what to do with a person's NEXT ("not a step for the agent"):
+log it as a step 2 error, show the lines and go to the report, and do not run the re-run it names.
 
 **The finish names the files the NEXT: line says to copy back** (O15; amends §16.100 N71). v21's "name the files the
 NEXT: line names instead" took in bring-back.md, which that NEXT (`--report-only` after `write_bring_back` failed
@@ -20571,6 +20583,8 @@ the report. If it exists and its output does not end so (or the command fails), 
 no report (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once
 the Command Line Tools are installed (or git can reach GitHub), the next paste of this prompt downloads it." Step 3's
 four no-report cases already held that case and are unchanged. Test: `test_readme_step1_is_one_command`.
+Amended 2026-10-17, §16.112 Q32: since v23 both of these branches say "once the cause of this stop is fixed" and name
+only that stop's cause, the Command Line Tools at the Xcode stop and git reaching GitHub at the other-git-failure stop.
 
 **The finish's two unknown cases come first, and key on what each report prints** (O28, O44; amends §16.94 M28 and
 §16.100 N25). The shell report's `- loads: not checked (<reason>)` begins with "loads: no", the words v21's
@@ -21034,7 +21048,81 @@ match a proxy pair in any case.
 
 ### 16.112 Round 14: setup prompt v23 (2026-10-17, wave B13 round 14 lane P)
 
-Reserved for round 14 lane P of B13.
+The B13 round 14 items of lane P (specs `round14/items/Q<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): round 14 Q2, Q7, Q8, Q15, Q31, Q32, Q73. All need prompt text, so the prompt is
+**setup prompt v23**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v23` and `setup-prompt-compat 23`,
+the issue form's placeholder and the block's digest move together, and a saved v22 copy is stopped at step 1 like
+every older copy. v23 moves no step, so it has no `PROMPT_LAYOUTS` entry. None adds an agentsync command, an
+installer flag, a config key or a friction kind. Lanes that sent words: lane B (step 3's status sentence, for its
+round 14 Q1, Q9, Q33).
+
+**Status prints a sync's NEXT unless a check FAILs** (Q2; lane B's words). v22 step 3 said `agentsync status` "prints
+the same NEXT: line without syncing", but with a check that FAILs, status's NEXT is rule 1's, which names that check
+(after rule 1's own skill and sign-in checks, which a sync's NEXT gives as well), and it exits 1, where a sync's call (`loop.next_lines(config)`) goes on to the baseline. v23: "... prints the same NEXT:
+line without syncing, unless one of its checks FAILs: then it exits 1, its NEXT: names that [FAIL] line, and a
+[FAIL] fix that is mine (step 2) stays mine." Lane B's words, plus "it exits 1", so a non-zero status is not logged
+as a failed command. Status's FAIL NEXT is not made a sync's (the finder's second option, which the verifier showed
+makes things worse: it hides the check from the one read-only command meant to show it, and the setup report's Loop
+line uses the same rule 1). Tests: `test_readme_step3_runs_the_loop_then_the_report` (`STATUS_NEXT`),
+`test_status_next_differs_from_a_syncs_only_on_a_failing_check`.
+
+**A person's step 2 stop is logged, shown and not re-run** (Q7; amends §16.106 O11). install.sh's two NEXTs for a
+stop the person owns, the [FAIL] lines that are all the person's (`PERSONS_FAILS`) and a config that does not load,
+say "not a step for the agent" and end with the re-run once fixed, so v22's "do what NEXT: says only if it is an
+install.sh ... command; otherwise log it" read both ways (rehearsal P3). v23 adds, before that sentence: "If it exits
+non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines or the configuration error are mine to
+fix), log it as a step 2 error, show me those lines and go to step 3's report; do not run the re-run it names." With
+no line logged the report has no installer-side item for a step 2 stop (it makes one only for step 1's exit 3), so
+Items read "none" beside "failed at step 2". Not the finder's "log it" for every non-zero exit, which the verifier
+showed makes things worse: a held listing's Allow click and the exit-2 folder stop are no errors. The test reads
+install.sh's person-owned NEXT lines by their shape, so round 14 lane RB's third (the first sync's refused config)
+is held too. Tests: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`PERSONS_NEXT`),
+`test_a_persons_step_2_stop_the_agent_logged_is_the_one_item`.
+
+**The inbox is explained whether or not step 2 exited non-zero** (Q8). v22's "Then tell me about my inbox" came after
+the non-zero clause's "go to step 3's report", which never comes back, so a failed step 2 never explained it. It now
+comes first and depends on the inbox existing: "When it ends, whether or not it exited non-zero, unless it printed a
+configuration error, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox: ..." (an
+install that failed before writing sources.toml has none to describe, and a file that does not load is one the finish
+says not to parse, though it can still hold the words kind = "inbox"). Test: `test_readme_prompt_carries_the_field_lines` (`INBOX_WHEN`).
+
+**The first exception covers every "on disk" tail and relays each one's fix** (Q15, Q73: one defect from two
+finders, built once; amends §16.106 O30 and §16.93 M4). v22 keyed on "no longer on disk", the renamed-folder tail only; the list's
+other two tails say "is not on disk because" (a provider folder missing while another account's folder of that app is
+there; a SharePoint library not synced on this Mac), so the sentence never fired for them, and its "put it back under
+its name" is the wrong fix for both. v23: "If that NEXT: line says any of them is no longer on disk or is not on
+disk, tell me which, that step 2 fails on each until it is fixed, and the fix: for a folder that line says was
+renamed, moved or deleted, put it back under its name or fix its [[source]] path; otherwise the fix that line names
+in parentheses (a sign-in with the account it belongs to, which is no sign-in to wait for, or Sync on its SharePoint
+page, or the [[source]] path). Do not add another folder in its place unless I name it." The sign-in wait before it
+(§16.93 M4's, as v21 reworded it) now reads "If the list's NEXT: line asks me to sign in and then re-run", the
+signed-out lines' own shape ("sign in to ..., then re-run: ..."): the other-account tail asks for a sign-in too, with
+no re-run, and would otherwise fire both rules (the lane's review). The renamed tail names no concrete fix ("Step 2's status
+fails on it and names the fix"), so it keeps its own. Not the finders' "not on disk" alone, which no longer matches
+the renamed tail, nor "no longer on disk" in every tail, which would say a never-synced library was removed and
+breaks install.sh's pinned words; install.sh's tails are unchanged. The test ties the trigger to all six tails (two
+counts each), to the fixes in their parentheses, and to the signed-out lines' "then re-run", which no tail has. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`
+(`GONE_FOLDER`).
+
+**A logged command keeps its bars, and step 1 logs only the command that failed** (Q31). Read literally, v22's "log
+the failed command" logged step 1's whole one-liner; `_parse_event` split the line on every `|` and joined the
+what-text back with " | ", so its `||` came back as `| |`, and the Items line, cut at 220 characters, ended inside
+the command with no word of git's error. The parser now splits off only the leading columns (the step, then the
+kind), keeps the what-text as written and takes the fix as the text after the last `|`, as §16.14 says and
+install.sh's awk reads; an error line too long for the cut whose command ends at "failed (exit N):" (or "exited N:",
+"returned exit code N:", "(exit N):") keeps the start of the command and all it can of the error (`_item_what`). v23's step 1: "log the command that
+failed (git's pull or clone, or xcode-select -p; not step 1's whole command) and its error as a step 1 error".
+Tests: `test_a_logged_command_keeps_its_bars_and_its_error`, `test_readme_step1_is_one_command`.
+
+**The Xcode and git stops name only their own cause** (Q32; amends §16.94 M16 and §16.106 O27). Both no-report
+branches of the version check said "once the Command Line Tools are installed (or git can reach GitHub)", so at the
+Xcode stop, where git never ran, a literal agent told a person with no git problem about GitHub. Each now says "once
+the cause of this stop is fixed, the next paste of this prompt tries to update that code first" (or "downloads it")
+"(say only this stop's cause: at the Xcode stop, the Command Line Tools installed; at the other-git-failure stop, git
+able to reach GitHub)". Not the finder's "whichever stop this was", which still lets a literal agent read out both.
+Test: `test_readme_step1_is_one_command` (`STOP_CAUSE`, twice; no "(or git can reach GitHub)").
+
+Register: `docs/deploy/setup-feedback.md` K47.
 
 ### 16.113 Round 14: status NEXT, waits, alarm counts and doctor (2026-10-17, wave B13 round 14 lane B)
 

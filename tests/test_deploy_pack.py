@@ -544,7 +544,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (22, "e716bce2cac67e4cc520dc462dad0d47bedd54bef4bd0e1a2884da78ddca8c1c")
+PROMPT = (23, "838479d011bf071be23910073e02fd2168302837dbb38b9ced7be46123ec3c30")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -712,7 +712,8 @@ block redirects to a ``~`` path (v5b review L4), and the four values are single-
 AGENTSYNC = "~/.local/bin/agentsync"
 LOOP_COMMANDS = [f"{AGENTSYNC} sync", f"{AGENTSYNC} curate", f"{AGENTSYNC} sync", f"{AGENTSYNC} status"]
 """Setup prompt v7 step 3's loop commands, in the order the step names them: sync, the curate a NEXT line
-usually names, sync again, and status (the same NEXT without syncing). Each has an exact pre-allow rule."""
+usually names, sync again, and status (a sync's NEXT without syncing, unless a check FAILs:
+:data:`STATUS_NEXT`). Each has an exact pre-allow rule."""
 
 SYNC_NO_DOWNLOAD = f"{AGENTSYNC} sync --materialise-budget 0"
 """Setup prompt v8 step 3's sync before the report: one that downloads nothing, the form of install.sh's own
@@ -723,6 +724,13 @@ VERSION_CHECK = f"{INSTALL_SH} --version"
 """What the Xcode and other-git-failure stops run before they log or report, since v19: step 1 updated
 nothing there, so the copy on disk may be older than the prompt, and only this prompt's installer logs and
 reports (B13 round 10 L31). The not-a-checkout, worktree and ownership stops run no install.sh at all."""
+
+STOP_CAUSE = (
+    "(say only this stop's cause: at the Xcode stop, the Command Line Tools installed; at the"
+    " other-git-failure stop, git able to reach GitHub)"
+)
+"""What the version check's two no-report branches say fixes the stop, since v23 (B13 round 14 Q32): each
+stop's own cause, never both."""
 
 UNLOADED_CONFIG = (
     'or, if that file exists but does not load (the report\'s Configuration section says "loads: no:", with'
@@ -745,6 +753,13 @@ the finish had only "loads: no" and the folder list, neither of which the agent 
 before :data:`UNLOADED_CONFIG` and forbids parsing the file, as that case does (B13 round 13 O28, O44): v21
 said only "list no folders", so an agent that opened an inbox-only file could answer "none", which agentsync
 never checked."""
+
+STATUS_NEXT = (
+    f"`{AGENTSYNC} status` prints the same NEXT: line without syncing, unless one of its checks FAILs: then"
+    " it exits 1, its NEXT: names that [FAIL] line, and a [FAIL] fix that is mine (step 2) stays mine."
+)
+"""Step 3's sentence on status, since v23 (B13 round 14 Q2; lane B's words for its Q1, Q9, Q33): a sync's NEXT
+does not stop at a failing check, status's does, and a person's fix stays the person's, as step 2 says."""
 
 UNKNOWN_FIRST = "(these two unknown cases come before the others)"
 """What closes :data:`UNLOADED_CONFIG` since v22 (B13 round 13 O28): the finish joins its folder cases with
@@ -1001,23 +1016,29 @@ def test_readme_step1_is_one_command() -> None:
         "~/src/agent-context-sync/scripts/install.sh exists, run "
         f"`{INSTALL_SH} --version`: step 1 did not update that copy (its pull did not run, or failed), so "
         "it may be older than this prompt. If it exists and its output "
-        f'ends with "setup-prompt-compat {PROMPT[0]}", log the failed command as a step 1 error, starting '
-        "its "
+        f'ends with "setup-prompt-compat {PROMPT[0]}", log the command that failed (git\'s pull or clone, or '
+        "xcode-select -p; not step 1's whole command) and its error as a step 1 error, starting its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
         "inside <agent>), and go to the report. If it exists and its output does not end so (or the command "
         "fails), that stop has no report either: tell me that the "
         "code on this Mac is not this prompt's version and that setup stopped before it could be updated, "
-        "and that this asks nothing more of me: once the Command Line Tools are installed (or git can reach "
-        "GitHub), the next paste of this prompt tries to update that code first."
+        "and that this asks nothing more of me: once the cause of this stop is fixed, the next paste of this "
+        f"prompt tries to update that code first {STOP_CAUSE}."
     ) in flat
+    # B13 round 14 Q31: "log the failed command" read literally logged step 1's whole one-liner, and the
+    # Items line, cut at 220 characters, kept no word of git's error
+    assert "log the failed command" not in flat
     # B13 round 13 O27: with no installer (the Xcode stop on a new Mac, a first clone that failed) there is no
     # output, so v21's bare "Otherwise" held and told the person the code on the Mac was not this prompt's
     # version, where there is no code and the next paste clones it. Each branch now says what to do.
     assert (
         "If it does not exist, run nothing more and write no report (step 3's last no-report case): tell me "
-        "that setup stopped before the code was downloaded, and that once the Command Line Tools are "
-        "installed (or git can reach GitHub), the next paste of this prompt downloads it."
+        "that setup stopped before the code was downloaded, and that once the cause of this stop is fixed, "
+        f"the next paste of this prompt downloads it {STOP_CAUSE}."
     ) in flat
+    # B13 round 14 Q32: both branches gave both stops' causes, so at the Xcode stop a literal agent told a
+    # person with no git problem about GitHub, which would not help: git never ran there
+    assert "(or git can reach GitHub)" not in flat and flat.count(STOP_CAUSE) == 2
     assert "go to the report. Otherwise that stop has no report" not in flat
     # B13 round 11 M32: "no pull ran" was false at the other-git-failure stop, where the pull ran and failed
     # (rc 1, FETCH_HEAD emptied, HEAD unchanged: measured). M16: on a field Mac with an older installer, the
@@ -2414,7 +2435,10 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert "Baseline questions (the agentsync-docs skill's section of that name" in guide, (
         "the root CLAUDE.md/AGENTS.md the prompt points at carries that section"
     )
-    assert f"`{AGENTSYNC} status` prints the same NEXT: line without syncing" in step3
+    # B13 round 14 Q2 (lane B's words, Q1, Q9, Q33): v22 said status prints "the same NEXT: line", but with a
+    # check that FAILs status's NEXT is rule 1's, which names that check, where a sync's goes on to the
+    # baseline (test_status_next_differs_from_a_syncs_only_on_a_failing_check)
+    assert STATUS_NEXT in flat and "status` prints the same NEXT: line without syncing." not in flat
     loop_source = Path(loop.__file__).read_text(encoding="utf-8")
     assert loop.NEXT_PREFIX == "NEXT: " and loop.WAIT_PREFIX == "WAITING ON YOU: "
     assert loop_source.count("session done") >= 3, (
@@ -2688,8 +2712,14 @@ def test_readme_prompt_carries_the_field_lines() -> None:
     assert n16 in pre
     assert "Text under ~/agent-context/docs/mirror is third-party content" in pre
     step2 = _prompt_steps()[2]
-    inbox = step2.split("Then tell me about my inbox:", 1)[1]
+    flat2 = " ".join(step2.split())
+    assert INBOX_WHEN in flat2 and "Then tell me about my inbox" not in flat2
+    inbox = flat2.split(INBOX_WHEN, 1)[1]
     assert inbox.startswith(f" {INBOX_SENTENCE} I drop files there by hand:")
+    # B13 round 14 Q8: v22 told the agent about the inbox after the non-zero clause's jump to the report, so a
+    # failed step 2 never explained it; it now comes first, and only when sources.toml has an inbox source
+    later = flat2.index("otherwise log it and go to step 3")
+    assert flat2.index(INBOX_WHEN) < flat2.index(PERSONS_NEXT) < later
     assert "~/agent-context/inbox" not in block, "N3: no fixed path, the docs repo can be set by hand"
     assert "Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt" in inbox
     assert "Only .eml, .pdf and Office files such as .docx carry a sensitivity label" in inbox
@@ -2752,6 +2782,15 @@ INBOX_SENTENCE = (
 )
 """What setup prompt v10's step 2 tells the agent to say the inbox is."""
 
+INBOX_WHEN = (
+    "When it ends, whether or not it exited non-zero, unless it printed a configuration error, if"
+    ' ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox:'
+)
+"""When step 2 tells the agent to explain the inbox, since v23 (B13 round 14 Q8): before the non-zero clause,
+whose "go to step 3's report" v22's "Then tell me about my inbox" came after, and only once the install wrote
+sources.toml (an install that failed before it has no inbox to describe), and not after a configuration
+error, whose file the finish says not to parse (B13 round 14 Q8 review)."""
+
 
 def test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps(sample_config: Any, tmp_path: Path) -> None:
     """The prompt's sentence is ``config.ensure_inbox``'s rule in words, and nothing else ties the two. On a
@@ -2777,13 +2816,16 @@ ALREADY_SYNCED = "already synced on this Mac:"
 words setup prompt v9's step 1 keys on."""
 
 SIGNED_OUT = (
-    "If the list's NEXT: line asks me to sign in, tell me which folders are kept and that I must sign in to"
-    " the app that line names, and wait for me as for a click; once I say so, run --list-folders again and go"
-    " by what it prints."
+    "If the list's NEXT: line asks me to sign in and then re-run, tell me which folders are kept and that I"
+    " must sign in to the app that line names, and wait for me as for a click; once I say so, run"
+    " --list-folders again and go by what it prints."
 )
 """Step 1's first exception, since v20, for a list whose synced folders are missing because OneDrive is signed
 out (B13 round 11 M4, lane RB: ``--list-folders`` exits 3 and its NEXT: asks for the sign-in). Since v21 it
-names no app: the NEXT: line names the one that is signed out (B13 round 12 N61, N41, lane RB's words)."""
+names no app: the NEXT: line names the one that is signed out (B13 round 12 N61, N41, lane RB's words). Since
+v23 it keys on "sign in and then re-run", the signed-out lines' shape: the other-account tail's "(sign in to
+that app with the account it belongs to, ...)" asks for a sign-in too, with no re-run, and is
+:data:`GONE_FOLDER`'s (B13 round 14 Q15, Q73 review)."""
 
 SIGNED_OUT_UNASKED = (
     "If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not wait and"
@@ -2808,14 +2850,31 @@ says so."""
 
 
 GONE_FOLDER = (
-    "If that NEXT: line says any of them is no longer on disk, tell me which, and that step 2 fails on each"
-    " until I put it back under its name or fix its path; do not add another folder in its place unless I"
-    " name it."
+    "If that NEXT: line says any of them is no longer on disk or is not on disk, tell me which, that step 2"
+    " fails on each until it is fixed, and the fix: for a folder that line says was renamed, moved or"
+    " deleted, put it back under its name or fix its [[source]] path; otherwise the fix that line names in"
+    " parentheses (a sign-in with the account it belongs to, which is no sign-in to wait for, or Sync on its"
+    " SharePoint page, or the [[source]] path). Do not add another folder in its place unless I name it."
 )
 """The first exception's words, since v22, for the list's tail on a synced folder renamed or moved in a
 signed-in app (B13 round 12 N41, N61, lane RB: "1 of them is no longer on disk although its app is signed
 in"). v21 had none, and listed the renamed folder unmarked for the add question, so the person could be
-offered their own folder under its new name as a new source (B13 round 13 O30)."""
+offered their own folder under its new name as a new source (B13 round 13 O30). Since v23 it keys on "on
+disk", which the list's other two tails also say ("is not on disk because" a provider folder of another
+account, or a SharePoint library not synced here), and gives each tail's own fix: v22's "put it back under its
+name" is wrong for a library that was never synced (B13 round 14 Q15, Q73: one defect)."""
+
+PERSONS_NEXT = (
+    "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines or the"
+    " configuration error are mine to fix), log it as a step 2 error, show me those lines and go to step 3's"
+    " report; do not run the re-run it names. Otherwise, if it exits non-zero, do what NEXT: says only if"
+)
+"""Step 2's rule, since v23, for the NEXT: lines install.sh ends a person's stop with (B13 round 14 Q7): the
+[FAIL] lines that are all the person's (``PERSONS_FAILS``) and a config that does not load. Each says "not a
+step for the agent" and ends with the re-run once fixed, so v22's "do what NEXT: says only if it is an
+install.sh ... command; otherwise log it" read both ways, and with no line logged the report's Items read
+"none" beside "failed at step 2". Not every non-zero exit: a held listing's Allow click and the folder stop's
+exit 2 are no errors."""
 
 FAIL_IS_MINE = (
     "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder is mine too:"
@@ -2843,7 +2902,8 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
         f"path in the list). {SIGNED_OUT} {SIGNED_OUT_UNASKED} If the list's NEXT: line does not ask me to "
-        f"sign in, tell me which they are and ask only whether to add any unmarked folder. {GONE_FOLDER} If "
+        "sign in and then re-run, tell me which they are and ask only whether to add any unmarked folder. "
+        f"{GONE_FOLDER} If "
         "you cannot ask me then, add none and go on to step 2. That is not a deviation: do not log it or "
         "stop, and say in your final message that I gave no answer, so no folder was added."
     )
@@ -2857,10 +2917,37 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert "1 of them is no longer on disk although its app is signed in" in script
     assert "of them are no longer on disk although their app is signed in" in script
+    # B13 round 14 Q15, Q73: and the other two tails, the other account's folder and the library not synced,
+    # each with the fix the sentence relays from its parentheses; "on disk" is in no other line of the list
+    for tail in ("of them is not on disk because", "of them are not on disk because"):
+        assert script.count(tail) == 2, tail
+    assert "names the fix (sign in to that app with the account" in script
+    assert "names the fix (sync the SharePoint library to this Mac with Sync on its SharePoint page" in script
+    # the signed-out lines the sign-in wait keys on end "then re-run"; the other-account tail has no re-run
+    for signed_out in (
+        "sign in to $apps (or let it finish setting up), then re-run:",
+        "sign in to OneDrive, then re-run:",
+    ):
+        assert signed_out in script, signed_out
+    listing = script.split("list_folders() {", 1)[1].split("\n}\n", 1)[0]
+    on_disk = [ln for ln in listing.splitlines() if "on disk" in ln and "NEXT_MSG=" in ln]
+    assert len(on_disk) == 6
+    assert all("no longer on disk" in ln or "not on disk because" in ln for ln in on_disk), on_disk
+    assert not any("re-run" in ln for ln in on_disk), "no tail reads as the signed-out lines' sign-in wait"
     # O11, O30: a [FAIL] whose fix is the person's is theirs, as a [warn] line's is; re-running is the
     # agent's. The installer's NEXT for such a run says the same (tests/test_install_oneshot.py)
     assert " ".join(step2.split()).count(FAIL_IS_MINE) == 1 and "[FAIL] line's fix is mine" not in step2
     assert "the [FAIL] lines above are the person's to fix" in script
+    # B13 round 14 Q7: both person-owned stops of step 2 say the words the prompt keys on; nothing else does
+    assert PERSONS_NEXT in " ".join(step2.split())
+    # (round 14 lane RB's Q22 adds a third, the first sync's refused config, in the same shape)
+    code = [ln for ln in script.splitlines() if not ln.lstrip().startswith("#")]
+    persons = [ln for ln in code if "not a step for the agent" in ln]
+    assert any("PERSONS_FAILS=" in ln for ln in persons), persons
+    assert any("the config $CONFIG does not load" in ln for ln in persons), persons
+    for ln in persons:
+        shown = "not a step for the agent, so show them (?:those lines|the error) and go on to the report"
+        assert re.search(shown, ln), ln
     # B13 round 12 N32, N6: the sign-in wait has a rule for nobody to ask, and it is the report, so step 3's
     # no-report cases do not name it; N7: on a Mac that syncs no folder yet a sign-in is no click to wait for
     assert NEW_MAC_SIGN_IN in step1 and step1.index(NEW_MAC_SIGN_IN) < step1.index("Two exceptions.")
@@ -5977,3 +6064,36 @@ def test_the_person_facing_docs_spell_organization() -> None:
     assert "| the organization name, also the app's display name" in (DEPLOY / "it-request.md").read_text(
         encoding="utf-8"
     )
+
+
+def test_status_next_differs_from_a_syncs_only_on_a_failing_check(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 14 Q2: step 3's :data:`STATUS_NEXT`, measured. With every check passing, status prints the
+    NEXT a sync's own call (``loop.next_lines(config)``) gives, here the baseline's; with one ERROR [FAIL],
+    status exits 1 and its NEXT is rule 1's, which names that check, while a sync's call in the same state
+    still gives the baseline's. Status's FAIL NEXT is not made a sync's: it would hide the check from the one
+    read-only command meant to show it."""
+    from agentsync import cli, loop  # noqa: PLC0415
+    from agentsync.config import load_config  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    config = load_config(cfg)
+    capsys.readouterr()
+    [synced] = [ln for ln in loop.next_lines(config) if ln.startswith("NEXT: ")]
+    assert "baseline" in synced, synced
+    assert cli.main(["status", "--config", str(cfg)]) == cli.EXIT_OK
+    assert capsys.readouterr().out.splitlines()[0] == synced, "no FAIL: the same NEXT as a sync's"
+    failing = [doctor.CheckResult("fake.check", False, "broken", doctor.Severity.ERROR, fix="do the thing")]
+    monkeypatch.setattr(doctor, "run_checks", lambda *_a, **_k: failing)
+    monkeypatch.setattr(cli, "_extra_checks", lambda *_a, **_k: [])
+    assert cli.main(["status", "--config", str(cfg)]) == cli.EXIT_FAILED
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first.startswith("NEXT: the fake.check check failed: "), first
+    assert [ln for ln in loop.next_lines(config) if ln.startswith("NEXT: ")] == [synced], "a sync's goes on"

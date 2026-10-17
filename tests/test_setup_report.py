@@ -3704,13 +3704,13 @@ V12_HAPPY = V11_HAPPY.replace("Prompt: v11", "Prompt: v12")
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 to v22 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v23 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
-    versions = (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, None, 99)
+    versions = (0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, None, 99)
     read_as = [setup_report.prompt_layout(v).version for v in versions]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
     assert (
-        setup_report.PROMPT_VERSION == 22 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 23 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
     for version in (
         8,
@@ -3728,6 +3728,7 @@ def test_prompt_layout_is_picked_by_explicit_version() -> None:
         20,
         21,
         22,
+        23,
     ):  # none moved a step: each gets v7's every rule
         assert setup_report.prompt_layout(version) is setup_report.PROMPT_LAYOUTS[7]
     v6, v7 = setup_report.PROMPT_LAYOUTS[6], setup_report.PROMPT_LAYOUTS[7]
@@ -3929,11 +3930,11 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
     other way round. The installer's version and its reason come from that line, never from the number of
-    the build that writes the report: here the installer was v8 or v23, whatever this build is. Only the
+    the build that writes the report: here the installer was v8 or v24, whatever this build is. Only the
     installer's fixed words are shown."""
     what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    assert setup_report.PROMPT_VERSION < 23
+    assert setup_report.PROMPT_VERSION < 24
     for header, installer, shown, why in (
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
@@ -3955,8 +3956,8 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ),
         (
             "v9",
-            23,
-            f"v9 (older than the installer's v23: the pasted copy was not the current README{CHANGED})",
+            24,
+            f"v9 (older than the installer's v24: the pasted copy was not the current README{CHANGED})",
             "the pasted copy is not the current one",
         ),
     ):
@@ -6167,6 +6168,31 @@ def test_v7_a_step_2_error_logged_after_the_install_ended_0_is_agent_friction(
     assert summary.strip().startswith("- **outcome: failed at step 2** (computed: install.sh exited 1"), (
         "a failed install is still a failed step 2"
     )
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_persons_step_2_stop_the_agent_logged_is_the_one_item(fake_mac: dict[str, Path]) -> None:
+    """B13 round 14 Q7: step 2 exits 1 with a NEXT: that says the [FAIL] lines are the person's, "not a step
+    for the agent", and ends with the re-run once fixed. v22 read two ways on whether to log it; since v23 the
+    prompt says to log it as a step 2 error (``PERSONS_NEXT`` in tests/test_deploy_pack.py). That line is the
+    attempt's one item, beside "failed at step 2". Without it the report has no installer-side item for a step
+    2 stop (it makes one only for step 1's exit 3), so Items would read none beside the failure."""
+    v6_install_log(fake_mac, rc=1)
+    logged = (
+        "2026-09-29T10:01:00Z | step 2 | error | install.sh exited 1: its NEXT says the [FAIL] lines are the "
+        "person's to fix (a synced folder no longer on disk), not a step for the agent | -\n"
+    )
+    write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", logged, V7_HAPPY))
+    _text, summary = summary_of(fake_mac)
+    assert summary.strip().startswith("- **outcome: failed at step 2** (computed: install.sh exited 1")
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n### Run", 1)[0]
+    found = [ln for ln in items.splitlines() if ln.startswith("- ")]
+    assert len(found) == 1 and found[0].startswith("- F4 · step 2 · error · install.sh exited 1:"), items
+    write_friction(fake_mac, V7_HAPPY)  # the same stop with no line logged: no item at all
+    _text, summary = summary_of(fake_mac)
+    assert summary.strip().startswith("- **outcome: failed at step 2** (computed: install.sh exited 1")
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n### Run", 1)[0]
+    assert not [ln for ln in items.splitlines() if ln.startswith("- F")], items
 
 
 # ---- an install run that failed before the one that ended 0 (second bring-back, 2026-10-07) -------------
