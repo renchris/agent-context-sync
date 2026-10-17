@@ -4345,14 +4345,19 @@ def _open_state(run: InstallRun) -> str:
     return "interrupted, or still running"
 
 
-def _reached(run: InstallRun) -> str:
+def _reached(run: InstallRun, *, stopped: bool = False) -> str:
     """The last step line a run logged, with its result. A step's line is written when the step ends, so the
-    step under way when a run stopped is never this one."""
+    step under way when a run stopped is never this one. ``stopped``: the run is the list whose sign-in step
+    1 asked for (:func:`_sign_in_run`), whose failed list-folders reads ``stopped`` as in the Installer table
+    (B13 round 14 Q13); install.log keeps ``result=failed``."""
     if not run.steps:
         return "no step line"
     name, fields = run.steps[-1]
     rc = fields.get("rc", "")
-    return f"{_step_word(name)} ({_step_word(fields.get('result'))}" + (
+    result = fields.get("result")
+    if stopped and name == "list-folders" and result == "failed":
+        result = "stopped"
+    return f"{_step_word(name)} ({_step_word(result)}" + (
         f", rc {rc})" if rc.isdigit() and rc != "0" else ")"
     )
 
@@ -4381,9 +4386,11 @@ def _exit_text(run: InstallRun, runs: Sequence[InstallRun]) -> str:
     return f"exit {run.rc} after {secs}" + (", before its report step" if _provisional(run, runs) else "")
 
 
-def _run_list(runs: Sequence[InstallRun]) -> list[str]:
+def _run_list(runs: Sequence[InstallRun], *, signed: InstallRun | None = None) -> list[str]:
     """Every run on one line (the tables above show the last :data:`INSTALL_RUNS_SHOWN` only), and the runs
-    with no end line by their start time, whether their process is gone, and the last step they logged."""
+    with no end line by their start time, whether their process is gone, and the last step they logged.
+    ``signed``: the list whose sign-in step 1 asked for, by run, not by whether its Installer table is shown
+    (:func:`_reached`)."""
     listed = runs[-_RUNS_LISTED:]
     rows = [
         (
@@ -4391,7 +4398,7 @@ def _run_list(runs: Sequence[InstallRun]) -> list[str]:
             _iso(run.started),
             "list-folders" if run.list_only else "install",
             len(run.steps),
-            _reached(run),
+            _reached(run, stopped=run is signed),
             _exit_text(run, runs) if run.rc is not None else "no end line",
         )
         for run in listed
@@ -4471,7 +4478,7 @@ def _installer_runs(r: _Run) -> list[str]:
             ]
         if run is runs[-1]:
             r.facts.last_install = status
-    out += _run_list(runs)
+    out += _run_list(runs, signed=signed)
     raw = [_labelled(ln, r.install_runs) for run in shown for ln in run.lines]
     out += [
         "",

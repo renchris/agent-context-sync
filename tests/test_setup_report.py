@@ -11116,7 +11116,8 @@ def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
     """B13 round 13 O19: the Summary counted the sign-in step 1 asked for as fully one command while the
     Installer table called its list ``failed``. That list's row reads ``stopped`` and says what came next;
     install.log keeps ``result=failed``. Both states: with no later run (an unattended stop), or a prompt
-    before v20, the row is ``failed`` as before."""
+    before v20, the row is ``failed`` as before. Round 14 Q13: the "Every run" table's last step of that run
+    read ``list-folders (failed, rc 3)`` beside it; it reads ``stopped`` by the same rule."""
     relist = (
         LIST_RUN.replace(" launchd=simulated", "")
         .replace("T09:58:0", "T09:59:0")
@@ -11124,7 +11125,7 @@ def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
         .replace("result=done\n", "result=done note=listed-25 synced=2\n")
     )
 
-    def row(version: int, *, installed: bool = False, relisted: bool = False) -> str:
+    def row(version: int, *, installed: bool = False, relisted: bool = False) -> tuple[str, str]:
         write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", f"Prompt: v{version}"))
         installs = [("--confirm-install-agent", "done note=exists kept=2 added=0")] if installed else []
         log = set_up_log(
@@ -11140,23 +11141,30 @@ def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
             text += relist
         log.write_text(text, encoding="utf-8")
         _rc, report_text, _ = report(tmp_path, fake_mac["config"])
+        installer = section(report_text, "Installer")
         [cell] = [
             ln.split("|")[3].strip()
-            for ln in section(report_text, "Installer").splitlines()
+            for ln in installer.splitlines()
             if ln.startswith("| list-folders ") and "not signed in" in ln
         ]
-        return cell
+        # round 14 Q13: the "Every run" table's last step of that run uses the same word
+        [every] = [
+            ln.split("|")[5].strip() for ln in installer.splitlines() if ln.startswith("| 20260929T095805Z")
+        ]
+        return cell, every
 
     words = "Dropbox is not signed in on this Mac: 2 already synced, 1 missing"
+    stopped, failed = "list-folders (stopped, rc 3)", "list-folders (failed, rc 3)"
     assert row(20, relisted=True) == (
-        f"stopped, rc 3 ({words}; the Dropbox sign-in step 1 asked for, then listed again)"
+        f"stopped, rc 3 ({words}; the Dropbox sign-in step 1 asked for, then listed again)",
+        stopped,
     )
-    assert (
-        row(21, installed=True)
-        == f"stopped, rc 3 ({words}; the Dropbox sign-in step 1 asked for, then installed)"
+    assert row(21, installed=True) == (
+        f"stopped, rc 3 ({words}; the Dropbox sign-in step 1 asked for, then installed)",
+        stopped,
     )
-    assert row(20) == f"failed, rc 3 ({words})"
-    assert row(19, relisted=True) == f"failed, rc 3 ({words})"
+    assert row(20) == (f"failed, rc 3 ({words})", failed)
+    assert row(19, relisted=True) == (f"failed, rc 3 ({words})", failed)
     # install.log keeps its token
     log = (fake_mac["setup"] / "install.log").read_text(encoding="utf-8")
     assert "result=failed note=not-signed-in" in log and "result=stopped" not in log
