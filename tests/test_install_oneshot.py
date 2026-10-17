@@ -884,12 +884,10 @@ def test_failure_without_agentsync_writes_the_shell_report(env: dict[str, str], 
     ), "the plists this home holds, not an install that never ran (B13 round 4 Q6), as agentsync labels it"
     assert "simulated" not in _summary(text), "no test-mode word on a real run (B13 round 8 J5)"
     assert "step=agentsync" in text and "result=failed" in text, "the install.log lines are embedded"
-    assert (
-        "- macOS: " in text
-        and "- arch: " in text
-        and "MDM enrollment" in text
-        and "- proxy environment: " in text
+    assert re.search(r"^- macOS: \d+(\.\d+)+ \(\w+\)$", text, re.M), (
+        "version and build, as agentsync's report prints them (B13 round 12 N26, round 13 O72)"
     )
+    assert "- arch: " in text and "MDM enrollment" in text and "- proxy environment: " in text
     assert "- ~/Library/CloudStorage providers: 1 (OneDrive: 1)" in text
     friction_part = text.split("\n## Agent friction log\n", 1)[1]
     assert (
