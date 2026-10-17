@@ -597,8 +597,11 @@ def page_says_withheld(reason: str | None, summary: str | None, body: str) -> bo
     """Whether a stub page says a label rule withheld its file: its ``reason:`` or its summary (less
     :data:`REFUSED_PREFIX`) starts with :data:`_WITHHELD_WORDS`, or its body below the banner and the heading
     (which holds the file's name) has :data:`_WITHHELD_BODY`, which every withheld page carried before its
-    ``reason:`` said so (B13 round 6 G29). The one test the cycle's re-render and the setup report both
-    read a page by (B13 round 8 J47, round 9 K48)."""
+    ``reason:`` said so (B13 round 6 G29). The one test every reader of a withheld page uses: the setup report
+    (B13 round 9 K48); the cycle's re-render and its no-engine stub read, through ``_Cycle._page_withheld``
+    (round 8 J47, round 9 K50); and ``_sync/QUARANTINE.tsv``, through ``Publisher._stub_says`` (round 10 L54).
+    The last two read the page's frontmatter lines with ``publish._withheld_on_page`` first, and call this
+    directly only on the YAML fallback (round 10 L47, round 12 N60; round 13 O56)."""
     said = [reason or "", (summary or "").removeprefix(REFUSED_PREFIX)]
     return _WITHHELD_BODY in body.split("\n\n", 2)[-1] or any(s.startswith(_WITHHELD_WORDS) for s in said)
 

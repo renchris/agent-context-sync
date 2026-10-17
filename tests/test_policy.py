@@ -626,3 +626,33 @@ def test_neutralise_rel_path_every_segment() -> None:
     assert policy.neutralise_rel_path(".cursor/rules/style.mdc") == "dot-cursor/rules/style.mdc"
     assert policy.neutralise_rel_path("Team/AGENTS.md") == "Team/AGENTS-doc.md"
     assert policy.is_agent_instruction_name("CLAUDE.md") and not policy.is_agent_instruction_name("notes.md")
+
+
+def test_page_says_withheld_names_every_reader() -> None:
+    """B13 round 13 O56: the docstring named only the cycle's re-render and the setup report, though
+    ``_sync/QUARANTINE.tsv`` (``Publisher._stub_says``) and the cycle's no-engine stub read decide by it too.
+    Every function in src/ that calls it, directly or through ``publish._withheld_on_page``, is named."""
+    import ast  # noqa: PLC0415
+
+    doc = policy.page_says_withheld.__doc__ or ""
+    shown = {"_Mirror.read_image_pages": "the setup report"}  # named by what it is, not by its method
+    callers: set[str] = set()
+    for path in sorted(Path(policy.__file__).parent.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for owner in [tree, *(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))]:
+            prefix = f"{owner.name}." if isinstance(owner, ast.ClassDef) else f"{path.stem}."
+            for fn in owner.body:
+                defs = (ast.FunctionDef, ast.AsyncFunctionDef)
+                if not isinstance(fn, defs) or fn.name == "page_says_withheld":
+                    continue
+                calls = {
+                    c.func.attr if isinstance(c.func, ast.Attribute) else getattr(c.func, "id", "")
+                    for c in ast.walk(fn)
+                    if isinstance(c, ast.Call)
+                }
+                if calls & {"page_says_withheld", "_withheld_on_page"}:
+                    callers.add(prefix + fn.name)
+    assert {"Publisher._stub_says", "_Cycle._page_withheld", *shown} <= callers, callers
+    missing = sorted(c for c in callers if c not in doc and shown.get(c, c) not in doc)
+    assert not missing, missing
+    assert "QUARANTINE.tsv" in doc and "no-engine stub read" in doc, doc
