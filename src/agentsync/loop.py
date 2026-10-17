@@ -877,6 +877,13 @@ def next_step(
                                     in_all[src.id] = sum(1 for n in below.values() if n)
                             elif other:
                                 inbox_partial.append(src.id)
+                        elif manifest.get_meta(_ROOT_UNLISTED_META + src.id) and _unlisted_kinds(
+                            manifest, src, ["."]
+                        ) == frozenset({UNKNOWN_MISSING}):
+                            # a root that does not exist, an inbox's too: no later sync lists it (B13 round
+                            # 14 Q34; an inbox's "a later sync lists it" note promised one)
+                            root_unlisted.append(src.id)
+                            root_kinds[src.id] = frozenset({UNKNOWN_MISSING})
                         elif src.kind is SourceKind.INBOX:
                             inbox_partial.append(src.id)
                         elif stored and (other := _unlisted_dirs(manifest, src)):
