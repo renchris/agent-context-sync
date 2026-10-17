@@ -2790,7 +2790,7 @@ say_item() { # TEXT
 }
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
-	local org_item apps="" email="" inword="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
+	local org_item apps="" heads e email="" inword="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
@@ -2824,9 +2824,16 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		# The <org-N> item's example is the app the body shows before one, and it says where one stands inside a
 		# longer word (FUZZY=o cuts it out at a CamelCase, digit or capital boundary: <org-1>Drive), each only
 		# where the body shows it (B13 round 12 N16, M3's rule). Not "-<org-1>", "<org-1>.sharepoint.com" or
-		# "<org-1>-my".
-		apps="$(LC_ALL=C grep -oE '[A-Za-z]+(-SharedLibraries)?-<org-[0-9]+>' "$3" 2>/dev/null |
-			LC_ALL=C sed 's/-<org-[0-9]*>$/-<org-N>/' | LC_ALL=C sort -u | LC_ALL=C awk 'NR <= 2' |
+		# "<org-1>-my". Only an app's name counts, as setup_report's app heads (_CONTEXT_HEADS and this Mac's
+		# CloudStorage entries), after no letter or digit: a quoted "sales-Contoso" is no app (B13 round 13 O45).
+		heads="OneDrive|GoogleDrive|SharedLibraries|Dropbox|Box|Egnyte"
+		for e in "$HOME/Library/CloudStorage"/*-*; do
+			e="${e##*/}"
+			e="${e%%-*}"
+			case "$e" in "" | *[!A-Za-z]*) ;; *) heads="$heads|$e" ;; esac
+		done
+		apps="$(LC_ALL=C grep -oE "(^|[^A-Za-z0-9])($heads)(-SharedLibraries)?-<org-[0-9]+>" "$3" 2>/dev/null |
+			LC_ALL=C sed -E 's/^[^A-Za-z]//; s/-<org-[0-9]+>$/-<org-N>/' | LC_ALL=C sort -u | LC_ALL=C awk 'NR <= 2' |
 			LC_ALL=C paste -sd ',' - | LC_ALL=C sed 's/,/, /g')"
 		! LC_ALL=C grep -qE '[A-Za-z0-9]<org-[0-9]+>|<org-[0-9]+>[A-Za-z0-9]' "$3" 2>/dev/null || inword=1
 	else # no body to read: every clause, as before

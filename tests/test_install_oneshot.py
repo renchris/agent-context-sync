@@ -8795,17 +8795,35 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
     assert ("Copilot" in item) == ("Copilot" in quoted), item
 
 
-@pytest.mark.parametrize("case", ["plain", "inside a longer word", "an email address"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "plain",
+        "inside a longer word",
+        "an email address",
+        "a quoted word before it",
+        "a quoted word alone",
+        "this Mac's own app",
+    ],
+)
 def test_the_org_legend_explains_only_what_the_report_shows(env: dict[str, str], case: str) -> None:
     """B13 round 12 N16 (M3's rule for the <org-N> item): it always named a Dropbox folder and an email
     address, and never the organization cut out of a longer word (FUZZY=o: ContosoDrive reads <org-1>Drive).
-    Its example is the app the body shows, and each clause is printed only where the body shows its case."""
-    provider = "GoogleDrive-someone@contoso.com" if case == "an email address" else "OneDrive-Contoso"
+    Its example is the app the body shows, and each clause is printed only where the body shows its case.
+    B13 round 13 O45: any "<word>-<org-N>" counted as an app's folder, so a quoted "sales-Contoso" gave
+    "(OneDrive-<org-N>, sales-<org-N>)"; only an app's name counts, a fixed one or this Mac's own."""
+    provider = {
+        "an email address": "GoogleDrive-someone@contoso.com",
+        "this Mac's own app": "ProtonDrive-Contoso",
+    }.get(case, "OneDrive-Contoso")
     (_cloud(env) / provider / "Project Alpha").mkdir(parents=True)
     quoted = {
         "plain": "Project Alpha under OneDrive-Contoso",
         "inside a longer word": "ContosoDrive under OneDrive-Contoso",
         "an email address": f"Project Alpha under {provider}",
+        "a quoted word before it": "the sales-Contoso team folder under OneDrive-Contoso",
+        "a quoted word alone": "the sales-Contoso team folder",
+        "this Mac's own app": f"Project Alpha under {provider}",
     }[case]
     friction_path(env).parent.mkdir(parents=True)
     friction_path(env).write_text(
@@ -8822,8 +8840,12 @@ def test_the_org_legend_explains_only_what_the_report_shows(env: dict[str, str],
         "inside a longer word": base
         + "(OneDrive-<org-N>), also where it stands inside a longer word (such as <org-1>Drive)",
         "an email address": base + "(GoogleDrive-<org-N>), and an account's email address",
+        "a quoted word before it": base + "(OneDrive-<org-N>)",
+        "a quoted word alone": base + "(OneDrive-<org-N>)",
+        "this Mac's own app": base + "(ProtonDrive-<org-N>)",
     }[case]
     assert item == want, item
+    assert "sales-" not in item
 
 
 def test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name(env: dict[str, str]) -> None:
