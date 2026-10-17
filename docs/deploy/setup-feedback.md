@@ -203,10 +203,10 @@ The form's field ids are stable, because the pre-filled link names them
 (`https://github.com/renchris/agent-context-sync/issues/new?template=setup-report.yml&title=...&outcome=...&run_type=...&prompt_version=...&agent=...&loop_stage=...`,
 each value URL-encoded; `title` is the issue title: "Setup report: ", then the outcome, run type and prompt
 version joined by ` · `. A failed step is named in the title by the number and name the attempt's own prompt gives
-it (a v7 or later attempt's step 2 is `install`, its step 3 `sync loop and report`; a v5 attempt uses its own six
-steps), while the `outcome` field takes the form's option below, the same words where the form has them and
-otherwise the option for the same work, such as `Failed at step 2 (install and start)`, so the link always fills a
-valid option. A stopped attempt's title reads `Stopped at step 1 (preflight)` and its field `Failed at step 1
+it (a v7 or later attempt's step 2 is `install and start`, its step 3 `sync loop and report`; a v5 attempt uses its
+own six steps, so its step 3 reads `Failed at step 3 (install and start)`), while the `outcome` field takes the
+form's option below, the same words where the form has them and otherwise the option for the same work, such as
+`Failed at step 2 (install and start)`, so the link always fills a valid option. A stopped attempt's title reads `Stopped at step 1 (preflight)` and its field `Failed at step 1
 (preflight)`):
 
 | Field id | Type | Value |
@@ -370,8 +370,8 @@ resolves an error, and N is 3 for the installer. The form has v6's four step opt
 name (`Failed at step 3 (sync loop and report)`). A v5 attempt's step maps to the v6 option for the same work: 1
 and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three steps, numbered as v6's first three
 (step 3 runs the sync loop, then the report; there is no IT request step). Its step 1 and step 3 each take the
-form's option with the same number and name, and its step 2 (`install`) takes `Failed at step 2 (install and
-start)`.
+form's option with the same number and name, and its step 2 (`install and start`, the prompt's own name since v7)
+takes `Failed at step 2 (install and start)`.
 A `Prompt: v8`, `Prompt: v9`, `Prompt: v10`, `Prompt: v11`, `Prompt: v12`, `Prompt: v13`, `Prompt: v14`, `Prompt: v15`, `Prompt: v16`, `Prompt: v17`, `Prompt: v18`, `Prompt: v19`, `Prompt: v20`, `Prompt: v21` or `Prompt: v22` attempt is judged by the same rules: none moved a step. So is every
 later version until one moves a step, since the version changes with every edit of the prompt's text (below) and
 the rules only with its steps.

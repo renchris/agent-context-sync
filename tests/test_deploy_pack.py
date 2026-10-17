@@ -4485,10 +4485,15 @@ def test_setup_feedback_states_the_report_rules_of_round_6() -> None:
     for kind in setup_report._WAIT_OK_KINDS:
         assert f"`{kind}`" in stopped_rule, kind
     assert '"Setup report: " and the outcome, run type and prompt version)' not in page
+    # a v7 or later step 2 is named as the prompt names it, "install and start", in both (B13 round 14 Q25)
     failed = Outcome("failed", 2, (), 15)
-    assert failed.title_label != failed.form_label
-    assert f"step 2 is `{str(failed.title_label).split('(')[1].rstrip(')')}`" in page
-    assert f"such as `{failed.form_label}`" in page
+    assert failed.title_label == failed.form_label == "Failed at step 2 (install and start)"
+    flat = " ".join(page.split())
+    assert f"step 2 is `{str(failed.title_label).split('(')[1].rstrip(')')}`" in flat
+    assert f"such as `{failed.form_label}`" in flat
+    v5 = Outcome("failed", 3, (), 5)  # a title that differs from its field: v5's own six steps
+    assert v5.title_label != v5.form_label == failed.form_label
+    assert f"its step 3 reads `{v5.title_label}`" in flat
     stopped = Outcome("stopped", 1, (), 15, "waiting for the folder answer")
     assert (
         f"A stopped attempt's title reads `{stopped.title_label}` and its field `{stopped.form_label}`"

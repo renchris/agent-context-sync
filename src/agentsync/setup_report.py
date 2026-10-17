@@ -236,7 +236,7 @@ class PromptLayout:
 PROMPT_LAYOUTS = {
     7: PromptLayout(
         version=7,
-        steps={1: "preflight", 2: "install", 3: "sync loop and report"},
+        steps={1: "preflight", 2: "install and start", 3: "sync loop and report"},
         folder_question_step=FOLDER_QUESTION_STEP,
         allow_click_steps=V7_ALLOW_CLICK_STEPS,
         install_step=INSTALL_STEP,
