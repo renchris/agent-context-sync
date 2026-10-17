@@ -3468,6 +3468,106 @@ STOPPED_COPY_BEYOND=" beyond the report's NEXT line (the fresh copy of the promp
 # with no legacy lines, is dropped, as a renderer from 78500114 on never writes it: it said no more than the
 # agent-friction line, often "1 error, 1 finished" beside "failed at step 1" (B13 round 12 N20, round 13 O20).
 STOPPED_COPY_QUIET_KINDS="error deviation prompt finished" # setup_report.PROBLEM_KINDS and "finished" (a test keeps them equal)
+# An older renderer gives two runs started in one second one id, where a renderer from 3b47e3e7 on (and the shell's
+# strip_run_pids) numbers the later ones <stamp>.2, .3 over install.log in its order (B13 round 12 N21). A stopped
+# copy is rendered by the older installed agentsync, so this gives its report those labels (B13 round 13 O21):
+# the Installer headings, the Every-run rows and the open-run lines (the k-th of a stamp shown is the k-th of that
+# stamp's last runs in install.log, as many as are shown), the raw install.log lines (each shown run takes its
+# install.log line count, the last the rest: the current run may log after the render), the install.out tail's
+# "# run=" headers (the last ones of install.out), both lead-ins' "numbered .2 on" clause, and the Summary's retry
+# line and the doctor's first-sync note (the run whose end rc matches, or that logged its status step; else the
+# last of the stamp). Only where the report holds no numbered label and install.log has a shared second: a newer
+# renderer's report is left as it is. Reads the report on stdin.
+stopped_run_labels() {
+	LC_ALL=C awk -v file="$SETUP_LOG" -v outf="$INSTALL_OUT" '
+		function labelled(st, k) { return (st SUBSEP k) in ord ? label[ord[st, k]] : st }
+		function swap(line, at, n, to) { return substr(line, 1, at - 1) to substr(line, at + n) }
+		BEGIN {
+			sp = "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z"
+			id = "run=" sp "-[0-9]+"
+			while ((getline ln < file) > 0)
+				if (match(ln, id)) {
+					r = substr(ln, RSTART + 4, RLENGTH - 4); st = substr(r, 1, 16)
+					if (!(r in label)) { k = ++runs[st]; label[r] = k == 1 ? st : st "." k; ord[st, k] = r }
+					lines[r]++
+					if (match(ln, / end rc=[0-9]+/)) endrc[r] = substr(ln, RSTART + 8, RLENGTH - 8)
+					if (index(ln, " step=status ")) doc[r] = 1
+				}
+			close(file)
+			while ((getline ln < outf) > 0) if (index(ln, "# run=") == 1 && match(ln, "^# " id)) oh[++no] = substr(ln, 7, RLENGTH - 6)
+			close(outf)
+		}
+		{ L[++n] = $0 }
+		END {
+			shared = 0
+			for (st in runs) if (runs[st] > 1) shared = 1
+			for (i = 1; i <= n; i++) if (match(L[i], sp "\\.[0-9]")) shared = 0
+			if (!shared) { for (i = 1; i <= n; i++) print L[i]; exit }
+			# the first read: how many of each stamp the report shows, in each place
+			sec = ""; blk = ""
+			for (i = 1; i <= n; i++) {
+				t = L[i]
+				if (index(t, "## ") == 1) { sec = t; blk = "" }
+				if (sec != "## Installer") continue
+				if (index(t, "<details><summary>raw install.log lines") == 1) blk = "raw"
+				else if (index(t, "<details><summary>the last ") == 1) blk = "out"
+				else if (t == "</details>") blk = ""
+				if (blk == "out" && match(t, "^# run=" sp "( |$)")) nh++
+				else if (blk == "raw" && match(t, "run=" sp "([^0-9A-Za-z_.-]|$)")) raw[substr(t, RSTART + 4, 16)]++
+				else if (match(t, "^run " sp ": ")) hd[substr(t, 5, 16)]++
+				else if (match(t, "^- run " sp "[:, ]")) op[substr(t, 7, 16)]++
+				else if (match(t, "^\\| " sp " \\|")) rw[substr(t, 3, 16)]++
+			}
+			for (st in hd) if (runs[st] > 1) dhd = 1
+			for (st in rw) if (runs[st] > 1) drw = 1
+			# the open runs of each stamp, in order: those with no end line
+			for (st in runs) for (k = 1; k <= runs[st]; k++) if (!(ord[st, k] in endrc)) opn[st, ++nop[st]] = k
+			sec = ""; blk = ""
+			for (i = 1; i <= n; i++) {
+				t = L[i]
+				if (index(t, "## ") == 1) { sec = t; blk = "" }
+				if (sec == "## Installer") {
+					if (index(t, "<details><summary>raw install.log lines") == 1) blk = "raw"
+					else if (index(t, "<details><summary>the last ") == 1) blk = "out"
+					else if (t == "</details>") blk = ""
+					if (blk == "out" && match(t, "^# run=" sp "( |$)")) {
+						j = no - nh + (++ch); r = j >= 1 ? oh[j] : ""
+						if (r in label) t = swap(t, 7, 16, label[r])
+					} else if (blk == "raw" && match(t, "run=" sp "([^0-9A-Za-z_.-]|$)")) {
+						st = substr(t, RSTART + 4, 16); at = RSTART + 4
+						if (!(st in cur)) { cur[st] = runs[st] - hd[st] + 1; left[st] = lines[ord[st, cur[st]]] }
+						while (left[st] < 1 && cur[st] < runs[st]) { cur[st]++; left[st] = lines[ord[st, cur[st]]] }
+						left[st]--
+						if (hd[st] >= 1 && cur[st] >= 1) t = swap(t, at, 16, labelled(st, cur[st]))
+					} else if (match(t, "^run " sp ": ")) {
+						st = substr(t, 5, 16); k = runs[st] - hd[st] + (++sh[st])
+						if (k >= 1) t = swap(t, 5, 16, labelled(st, k))
+					} else if (match(t, "^- run " sp "[:, ]")) {
+						st = substr(t, 7, 16); k = nop[st] - op[st] + (++so[st])
+						if (k >= 1) t = swap(t, 7, 16, labelled(st, opn[st, k]))
+					} else if (match(t, "^\\| " sp " \\|")) {
+						st = substr(t, 3, 16); k = runs[st] - rw[st] + (++sr[st])
+						if (k >= 1) t = swap(t, 3, 16, labelled(st, k))
+					} else if (match(t, /run ids without their process id\):$/) && !index(t, "numbered .2 on")) {
+						if (index(t, "Every run, oldest first") == 1 ? drw : dhd)
+							t = substr(t, 1, length(t) - 2) ", numbered .2 on for runs started in one second):"
+					}
+				}
+				# the run a Summary or doctor sentence names: its end rc, or its status step
+				if (match(t, " run " sp " exited [0-9]+")) {
+					at = RSTART + 5; st = substr(t, at, 16); rc = substr(t, at + 24, RLENGTH - 29); k = 0
+					for (j = 1; j <= runs[st]; j++) if (endrc[ord[st, j]] == rc) k = j
+					t = swap(t, at, 16, labelled(st, k ? k : runs[st]))
+				}
+				if (match(t, "doctor before its first sync \\(run " sp "\\)")) {
+					at = RSTART + RLENGTH - 17; st = substr(t, at, 16); k = 0
+					for (j = 1; j <= runs[st]; j++) if (ord[st, j] in doc) k = j
+					t = swap(t, at, 16, labelled(st, k ? k : runs[st]))
+				}
+				print t
+			}
+		}'
+}
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -3564,7 +3664,8 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				(j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
 				$0 == "" { blank++; next }
 				{ for (; blank > 0; blank--) print ""; print }
-				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH"
+				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH" |
+			stopped_run_labels
 	} >"$tmp"; then
 		mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)
 			rm -f "$tmp"

@@ -6662,6 +6662,152 @@ def test_the_shell_stopped_copy_quiet_kinds_are_the_reports() -> None:
     assert k.split() == [*setup_report.PROBLEM_KINDS, "finished"]
 
 
+def _one_second_runs(env: dict[str, str]) -> str:
+    """install.log and install.out of step 1's list (-2525, 3 lines) and the install (-2759, 12 lines, its end
+    rc 1, its status step logged) started in one second; the stamp they share."""
+    st = "20261016T232512Z"
+    at = "2026-10-16T23:25:12Z"
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    listed = [
+        f"{at} run={st}-2525 {t}"
+        for t in (
+            "start install.sh args=--list-folders",
+            "step=list-folders seconds=0 rc=0 result=done",
+            "end rc=0 seconds=0",
+        )
+    ]
+    steps_ = [
+        "uv",
+        "agentsync",
+        "launcher",
+        "helpers",
+        "config",
+        "status",
+        "first-sync",
+        "agent",
+        "wait",
+        "report",
+    ]
+    install = [f"{at} run={st}-2759 start install.sh args=--source-local x"]
+    install += [f"{at} run={st}-2759 step={n} seconds=0 rc=0 result=done" for n in steps_]
+    install += [f"{at} run={st}-2759 end rc=1 seconds=195"]
+    (setup / "install.log").write_text("\n".join(listed + install) + "\n")
+    (setup / "install.out").write_text(
+        f"# run={st}-2525 {at} install.sh --list-folders\nlisted\n# run={st}-2759 {at} install.sh x\ndone\n"
+    )
+    return st
+
+
+def _old_report_of_one_second_runs(st: str) -> str:
+    """A stopped copy's report as an agentsync older than 3b47e3e7 rendered it: one bare id for both runs."""
+    at = "2026-10-16T23:25:12Z"
+    raw = [
+        f"{at} run={st} start install.sh args=--list-folders",
+        f"{at} run={st} step=list-folders",
+        f"{at} run={st} end rc=0 seconds=0",
+        *(f"{at} run={st} step={n}" for n in range(11)),
+        f"{at} run={st} end rc=1 seconds=195",
+    ]
+    return "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            f"- install.sh · step 2 · run {st} exited 1; the same command was run again and ended 0",
+            f"- doctor: 9 check(s) · install.sh's doctor before its first sync (run {st}): 1 FAIL not in "
+            "this one: x",
+            "",
+            "## Installer",
+            "",
+            "2 install.sh run(s) in ~/agent-context/setup/install.log, 195s in total (runs with an end "
+            "line); the last 2 (run ids without their process id):",
+            "",
+            f"run {st}: exit 0 after 0s",
+            "",
+            f"run {st}: exit 1 after 195s",
+            "",
+            "Every run, oldest first (the last 2 of 2; run ids without their process id):",
+            "",
+            "| run | started (UTC) | kind | step lines | last step logged | end |",
+            "|---|---|---|---|---|---|",
+            f"| {st} | {at} | list-folders | 1 | list-folders (done) | exit 0 after 0s |",
+            f"| {st} | {at} | install | 10 | report (done) | exit 1 after 195s |",
+            "",
+            "<details><summary>raw install.log lines of these runs</summary>",
+            "",
+            "~~~text",
+            *raw,
+            "~~~",
+            "",
+            "</details>",
+            "",
+            "<details><summary>the last 4 line(s) of ~/agent-context/setup/install.out (what the agent saw)"
+            "</summary>",
+            "",
+            "~~~text",
+            f"# run={st} {at} install.sh --list-folders",
+            "listed",
+            f"# run={st} {at} install.sh x",
+            "done",
+            "~~~",
+            "",
+            "</details>",
+            "",
+            "## Redaction",
+            "",
+            "Read the report before sending it: anything else confidential is yours to remove.",
+            "",
+            setup_report.ISSUE_URL,
+            "",
+        ]
+    )
+
+
+def test_a_stopped_copy_rendered_by_an_older_agentsync_numbers_runs_started_in_one_second(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 13 O21: round 12 N21 numbered runs that share a second (<stamp>.2) in both readers, but a
+    stopped copy is rendered by the older installed agentsync, whose report gave both runs one id: two
+    "run <stamp>:" headings, two Every-run rows and 15 raw lines alike, and a retry or doctor sentence that
+    pointed at the first run. The shim labels each by install.log, and leaves a report already numbered as it
+    is."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    st = _one_second_runs(env)
+    old = tmp_path / "old-report.md"
+    old.write_text(_old_report_of_one_second_runs(st))
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    lines = side.read_text().splitlines()
+    assert [ln for ln in lines if ln.startswith("run ")] == [
+        f"run {st}: exit 0 after 0s",
+        f"run {st}.2: exit 1 after 195s",
+    ]
+    assert [ln.split(" | ")[0] for ln in lines if ln.startswith(f"| {st}")] == [f"| {st}", f"| {st}.2"]
+    raw = [m[1] for ln in lines if (m := re.search(r" run=(\S+) ", ln + " ")) and not ln.startswith("# ")]
+    assert raw == [st] * 3 + [f"{st}.2"] * 12, raw
+    assert [ln.split()[1] for ln in lines if ln.startswith("# run=")] == [f"run={st}", f"run={st}.2"]
+    clause = ", numbered .2 on for runs started in one second):"
+    assert sum(ln.endswith("run ids without their process id" + clause) for ln in lines) == 2
+    assert f"- install.sh · step 2 · run {st}.2 exited 1; the same command was run again and ended 0" in lines
+    assert any(f"doctor before its first sync (run {st}.2): " in ln for ln in lines)
+    # a report already numbered (a renderer from 3b47e3e7 on) is left as it is
+    numbered = _old_report_of_one_second_runs(st).replace(f"run {st}: exit 1", f"run {st}.2: exit 1")
+    old.write_text(numbered)
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    lines = side.read_text().splitlines()
+    assert [ln for ln in lines if ln.startswith("run ")] == [
+        f"run {st}: exit 0 after 0s",
+        f"run {st}.2: exit 1 after 195s",
+    ]
+    assert not any("numbered .2 on" in ln for ln in lines)
+    assert f"- install.sh · step 2 · run {st} exited 1; the same command was run again and ended 0" in lines
+
+
 def test_the_shell_stopped_copy_warn_is_the_reports() -> None:
     [w] = re.findall(r'(?m)^STOPPED_COPY_WARN="(.*)" #', INSTALL_SH.read_text())
     assert w == setup_report._STOPPED_COPY_WARN
