@@ -1063,6 +1063,7 @@ with_timeout() {
 # WAIT_TICKER is its pid; on_exit ends it too.
 PROGRESS_SINCE=""
 WAIT_TICKER=""
+WAIT_WATCHDOG="" # start_pandoc_once's limit, which on_exit ends too
 with_progress() {
 	local label="$1" pid rc=0 t0=$SECONDS last="${PROGRESS_SINCE:-$SECONDS}"
 	PROGRESS_SINCE=""
@@ -3863,6 +3864,7 @@ on_exit() {
 	[ "$PARSED" -eq 1 ] || exit "$rc"
 	[ -z "$TICKER" ] || kill "$TICKER" 2>/dev/null
 	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
+	[ -z "$WAIT_WATCHDOG" ] || kill "$WAIT_WATCHDOG" 2>/dev/null
 	step_end failed "$rc"
 	if [ "$STARTED" -eq 1 ]; then
 		END_AT="$(utc_now)"
@@ -5074,28 +5076,55 @@ print(pandoc)
 # start when it printed none, the time status_pandoc took included.
 PANDOC_START_SECONDS=300
 start_pandoc_once() {
-	local pandoc pid t0=$SECONDS shown=0
+	local pandoc pid wd t0=$SECONDS since rc=0 shown=0
 	PROGRESS_SINCE=$SECONDS
 	pandoc="$(status_pandoc)"
 	[ -n "$pandoc" ] && [ -x "$pandoc" ] || return 0
+	since=$PROGRESS_SINCE
 	"$pandoc" --version </dev/null >/dev/null 2>&1 &
 	pid=$!
-	while kill -0 "$pid" 2>/dev/null; do
-		if [ $((SECONDS - t0)) -ge "$PANDOC_START_SECONDS" ]; then
-			kill "$pid" 2>/dev/null || true
-			wait "$pid" 2>/dev/null || true
-			PROGRESS_SINCE=$SECONDS
-			say "pandoc: no answer after ${PANDOC_START_SECONDS}s; status checks it next"
-			return 0
-		fi
-		if [ $((SECONDS - PROGRESS_SINCE)) -ge "$PROGRESS_EVERY" ]; then
-			PROGRESS_SINCE=$SECONDS
-			shown=1
-			say "pandoc: still running, $((SECONDS - t0))s (the first start after an install can take a minute; later ones are quick)"
-		fi
-		sleep 0.2
-	done
-	wait "$pid" 2>/dev/null || true
+	# No poll: this shell waits on pandoc and goes on the moment it ends, while two children wait on their own
+	# sleeps (an external sleep a poll was five forks a second for up to 300 s; B13 round 14 Q40, as with_progress
+	# and with_timeout since load root cause 2026-10-17 X11). The lines are with_progress's ticker; it exits 3
+	# when it printed one. The limit is with_timeout's watchdog. on_exit ends both (WAIT_TICKER, WAIT_WATCHDOG).
+	(
+		s="" turned=0 last=$since said=0
+		trap 'kill "$s" 2>/dev/null; exit $((said ? 3 : 0))' TERM
+		while :; do
+			if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
+				last=$SECONDS said=1
+				say "pandoc: still running, $((SECONDS - t0))s (the first start after an install can take a minute; later ones are quick)"
+			fi
+			n=$SECONDS
+			w=0.2
+			[ "$turned" -eq 0 ] || [ $((last + PROGRESS_EVERY - n)) -lt 2 ] || w="$((last + PROGRESS_EVERY - n - 1)).8"
+			sleep "$w" >/dev/null 2>&1 &
+			s=$!
+			wait "$s"
+			[ "$SECONDS" -eq "$n" ] || turned=1
+		done
+	) &
+	WAIT_TICKER=$!
+	(
+		s=""
+		trap 'kill "$s" 2>/dev/null; exit 0' TERM
+		sleep "$PANDOC_START_SECONDS" &
+		s=$!
+		wait "$s"
+		kill "$pid"
+	) >/dev/null 2>&1 &
+	wd=$!
+	WAIT_WATCHDOG=$wd
+	wait "$pid" 2>/dev/null || rc=$?
+	kill "$WAIT_TICKER" "$wd" 2>/dev/null || true
+	wait "$wd" 2>/dev/null || true
+	wait "$WAIT_TICKER" 2>/dev/null || [ $? -ne 3 ] || shown=1
+	WAIT_TICKER="" WAIT_WATCHDOG=""
+	if [ "$rc" -ne 0 ] && [ $((SECONDS - t0)) -ge "$PANDOC_START_SECONDS" ]; then
+		PROGRESS_SINCE=$SECONDS
+		say "pandoc: no answer after ${PANDOC_START_SECONDS}s; status checks it next"
+		return 0
+	fi
 	[ "$shown" -eq 1 ] || return 0
 	PROGRESS_SINCE=$SECONDS
 	say "pandoc: started after $((SECONDS - t0))s"

@@ -5895,6 +5895,38 @@ def test_a_pandoc_that_does_not_answer_is_stopped_at_the_installers_own_limit(tm
         assert (cp.returncode, cp.stdout, cp.stderr) == (0, "the run goes on\n", "")
 
 
+def test_the_wait_for_pandoc_forks_a_few_sleeps_not_five_a_second(tmp_path: Path) -> None:
+    """B13 round 14 Q40: start_pandoc_once polled pandoc with an external sleep 0.2 (bash 3.2 has no builtin
+    sleep), five forks a second for up to 300 s under load (the pattern with_progress dropped for load root
+    cause 2026-10-17 X11). It waits on pandoc, and its ticker and limit each wait on their own sleeps: a
+    6 s start at a 5 s interval forks about 10 sleeps, not 30, and still prints its lines."""
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    count = tmp_path / "sleeps"
+    _write_exe(shim / "sleep", f'#!/bin/bash\necho "$1" >> {shlex.quote(str(count))}\nexec /bin/sleep "$@"\n')
+    slow = _write_exe(tmp_path / "pandoc", "#!/bin/bash\n/bin/sleep 6\n")
+    lines = [
+        "set -euo pipefail",
+        "say() { printf '%s\\n' \"$*\"; }",
+        f"status_pandoc() {{ printf '%s' {shlex.quote(str(slow))}; }}",
+        "PROGRESS_EVERY=5",
+        "PANDOC_START_SECONDS=300",
+        _shell_function("start_pandoc_once"),
+        "start_pandoc_once",
+        "echo the run goes on",
+    ]
+    env = {**os.environ, "PATH": f"{shim}:/usr/bin:/bin"}
+    cp = subprocess.run(
+        [BASH32, "-c", "\n".join(lines)], capture_output=True, text=True, check=False, timeout=120, env=env
+    )
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    assert re.fullmatch(PANDOC_PROGRESS, out[0]) and re.fullmatch(r"pandoc: started after [67]s", out[-2])
+    assert out[-1] == "the run goes on", cp.stdout
+    sleeps = count.read_text().split()
+    assert "300" in sleeps and len(sleeps) <= 15, sleeps
+
+
 def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_path: Path) -> None:
     """Review of the v9 rehearsal fixes (2026-10-07): step 5 could print nothing for about twice the
     progress interval. A pandoc start shorter than the interval prints nothing, and the status wait after
