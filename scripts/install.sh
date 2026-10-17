@@ -3648,6 +3648,26 @@ STOPPED_COPY_BEYOND=" beyond the report's NEXT line (the fresh copy of the promp
 # with no legacy lines, is dropped, as a renderer from 78500114 on never writes it: it said no more than the
 # agent-friction line, often "1 error, 1 finished" beside "failed at step 1" (B13 round 12 N20, round 13 O20).
 STOPPED_COPY_QUIET_KINDS="error deviation prompt finished" # setup_report.PROBLEM_KINDS and "finished" (a test keeps them equal)
+# An older renderer's Installer table shows the raw install.log notes of these steps, and its doctor names a held
+# listing "deletions held (held at its last walk ...)": a renderer from 476b7dfd (round 13 O3) and 8045aeca (O36)
+# on writes these words. The table's result cell is mapped only where its bracket is exactly a known token (", rc
+# N" before it kept), and the table is padded again as _step_table pads it (B13 round 14 Q27). One line each:
+# "<step> <token> <words>".
+STOPPED_STEP_WORDS="launcher not-requested background sync was not asked for
+launcher up-to-date already up to date
+launcher kept the installed launcher is kept: no developer tools to rebuild it
+launcher no-launcher no launcher: no developer tools and no --launcher PATH
+agent not-requested background sync was not asked for
+agent no-sources no folders to sync
+agent status-failed agentsync status reported failures
+wait not-requested background sync was not asked for
+wait no-sources no folders to sync
+wait status-failed agentsync status reported failures
+wait agent-failed the agent step failed
+report agentsync agentsync's report
+report fallback the installer's fallback report" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
+STOPPED_HELD_OLD="(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
+STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
 # An older renderer gives two runs started in one second one id, where a renderer from 3b47e3e7 on (and the shell's
 # strip_run_pids) numbers the later ones <stamp>.2, .3 over install.log in its order (B13 round 12 N21). A stopped
 # copy is rendered by the older installed agentsync, so this gives its report those labels (B13 round 13 O21):
@@ -3658,9 +3678,25 @@ STOPPED_COPY_QUIET_KINDS="error deviation prompt finished" # setup_report.PROBLE
 # line and the doctor's first-sync note (the run whose end rc matches, or that logged its status step; else the
 # last of the stamp). Only where the report holds no numbered label and install.log has a shared second: a newer
 # renderer's report is left as it is. Reads the report on stdin.
+# The Summary's "the install run of <start>" (the first sync's install.log clause, or install.out's) gains
+# ", run <label>" when that run's stamp is shared, as the renderer's _run_named does since 878ebc7e: the run is
+# the last of that start time that logged a first sync, or that is no list (B13 round 14 Q26).
 stopped_run_labels() {
 	LC_ALL=C awk -v file="$SETUP_LOG" -v outf="$INSTALL_OUT" '
 		function labelled(st, k) { return (st SUBSEP k) in ord ? label[ord[st, k]] : st }
+		function named(t,    out, k, pre, rest, T, after, want, r, j, x) {
+			out = ""
+			while ((k = index(t, "the install run of ")) > 0) {
+				pre = substr(t, 1, k - 1); rest = substr(t, k + 19); T = substr(rest, 1, 20); after = substr(rest, 21)
+				out = out pre "the install run of " T; t = after
+				if (T !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/ || index(after, ", run ") == 1) continue
+				want = substr(pre, length(pre) - 13); r = ""
+				for (j = 1; j <= nr; j++) { x = seq[j]; if (began[x] == T && (want == "(install.log: " ? fs[x] : !lst[x])) r = x }
+				if (r == "") for (j = 1; j <= nr; j++) { x = seq[j]; if (began[x] == T && !lst[x]) r = x }
+				if (r != "" && runs[substr(r, 1, 16)] > 1) out = out ", run " label[r]
+			}
+			return out t
+		}
 		function swap(line, at, n, to) { return substr(line, 1, at - 1) to substr(line, at + n) }
 		BEGIN {
 			sp = "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z"
@@ -3668,8 +3704,10 @@ stopped_run_labels() {
 			while ((getline ln < file) > 0)
 				if (match(ln, id)) {
 					r = substr(ln, RSTART + 4, RLENGTH - 4); st = substr(r, 1, 16)
-					if (!(r in label)) { k = ++runs[st]; label[r] = k == 1 ? st : st "." k; ord[st, k] = r }
+					if (!(r in label)) { k = ++runs[st]; label[r] = k == 1 ? st : st "." k; ord[st, k] = r; seq[++nr] = r }
 					lines[r]++
+					if (index(ln, " start install.sh ")) { split(ln, f, " "); began[r] = f[1]; if (index(ln, "--list-folders")) lst[r] = 1 }
+					if (index(ln, " step=first-sync ")) fs[r] = 1
 					if (match(ln, / end rc=[0-9]+/)) endrc[r] = substr(ln, RSTART + 8, RLENGTH - 8)
 					if (index(ln, " step=status ")) doc[r] = 1
 				}
@@ -3744,6 +3782,7 @@ stopped_run_labels() {
 					for (j = 1; j <= runs[st]; j++) if (ord[st, j] in doc) k = j
 					t = swap(t, at, 16, labelled(st, k ? k : runs[st]))
 				}
+				if (sec == "## Summary" || index(t, "- sync: ") == 1 || index(t, "- first sync: ") == 1) t = named(t)
 				print t
 			}
 		}'
@@ -3755,11 +3794,50 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
 	if {
 		printf '%s\n\n' "$note" &&
-			LC_ALL=C awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
+			LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
 				-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
 				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 				-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
-				-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " '
+				-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
+				-v heldold="$STOPPED_HELD_OLD" -v heldnow="$STOPPED_HELD_NOW" '
+				function load(    m, i, ws, p, q, rest) { # words[step, token]: one "<step> <token> <words>" a line (not -v: a newline)
+					m = split(ENVIRON["STEPWORDS"], ws, "\n")
+					for (i = 1; i <= m; i++) {
+						p = index(ws[i], " "); rest = substr(ws[i], p + 1); q = index(rest, " ")
+						words[substr(ws[i], 1, p - 1), substr(rest, 1, q - 1)] = substr(rest, q + 1)
+					}
+				}
+				BEGIN { load() }
+				function trim(x) { sub(/^ +/, "", x); sub(/ +$/, "", x); return x }
+				function ulen(x) { gsub(/[\200-\277]/, "", x); return length(x) } # characters, as Python counts them
+				function fill(x, w,    i) { for (i = ulen(x); i < w; i++) x = x " "; return x }
+				function lfill(x, w,    i, p) { p = ""; for (i = ulen(x); i < w; i++) p = p " "; return p x }
+				function dashes(w,    x) { x = ""; while (w-- > 0) x = x "-"; return x }
+				function table(    i, k, c, ch, w1, w2, w3, tok) { # the Installer table buffered in tb[1..tn]
+					for (; blank > 0; blank--) print ""
+					ch = tn >= 3 && tb[2] ~ /^\|-+\|-+:\|-+\|$/
+					for (i = 1; ch && i <= tn; i++) {
+						if (i == 2) continue
+						if (split(substr(tb[i], 3, length(tb[i]) - 4), c, " \\| ") != 3) { ch = 0; break }
+						S[i] = trim(c[1]); N[i] = trim(c[2]); R[i] = trim(c[3])
+						if (i > 2 && match(R[i], / \([^()]*\)$/)) {
+							tok = substr(R[i], RSTART + 2, RLENGTH - 3)
+							if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
+						}
+					}
+					if (ch == 2) {
+						w1 = w2 = w3 = 0
+						for (i = 1; i <= tn; i++) if (i != 2) {
+							if (ulen(S[i]) > w1) w1 = ulen(S[i])
+							if (ulen(N[i]) > w2) w2 = ulen(N[i])
+							if (ulen(R[i]) > w3) w3 = ulen(R[i])
+						}
+						for (i = 1; i <= tn; i++)
+							if (i == 2) print "|" dashes(w1 + 2) "|" dashes(w2 + 1) ":|" dashes(w3 + 2) "|"
+							else print "| " fill(S[i], w1) " | " lfill(N[i], w2) " | " fill(R[i], w3) " |"
+					} else for (i = 1; i <= tn; i++) print tb[i]
+					tn = 0
+				}
 				function quiet(line,    c, n, a, i, x) { # a friction count line of quiet kinds only ("; N legacy" keeps it)
 					if (index(line, "- friction (attempt ") != 1 || !index(line, " event line(s): ") || index(line, "; ")) return 0
 					c = substr(line, index(line, " event line(s): ") + 16)
@@ -3839,12 +3917,15 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					$0 = substr($0, 1, length($0) - 1) b "."
 				}
 				c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0) }
+				sec == "## Doctor" && (j = index($0, heldold)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldold)) }
 				index($0, "Send it: ") == 1 || index($0, u) == 1 { next }
 				index($0, u) > 0 || index($0, "bring back: ") == 1 { if (shown++) next; $0 = gone }
 				(j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
+				sec == "## Installer" && index($0, "|") == 1 { tb[++tn] = $0; next }
+				tn { table() }
 				$0 == "" { blank++; next }
 				{ for (; blank > 0; blank--) print ""; print }
-				END { print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH" |
+				END { if (tn) table(); print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH" |
 			stopped_run_labels
 	} >"$tmp"; then
 		mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)

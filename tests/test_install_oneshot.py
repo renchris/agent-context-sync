@@ -7153,6 +7153,164 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_numbers_runs_started_in_o
     assert f"- install.sh · step 2 · run {st} exited 1; the same command was run again and ended 0" in lines
 
 
+def _stopped_run_labels(tmp_path: Path, log: list[str], report: str) -> str:
+    """install.sh's ``stopped_run_labels`` run alone under /bin/bash on ``report``, with ``log`` as
+    install.log (and no install.out)."""
+    (tmp_path / "install.log").write_text("\n".join(log) + "\n")
+    cp = subprocess.run(
+        [BASH32, "-c", f"set -euo pipefail\n{_shell_function('stopped_run_labels')}\nstopped_run_labels"],
+        input=report,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "SETUP_LOG": str(tmp_path / "install.log"),
+            "INSTALL_OUT": str(tmp_path / "none"),
+        },
+    )
+    return cp.stdout
+
+
+@pytest.mark.parametrize(
+    "shape", ["one second", "a second apart", "an unrelated pair", "already numbered", "both clauses"]
+)
+def test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_line(
+    tmp_path: Path, shape: str
+) -> None:
+    """B13 round 14 Q26: round 13 O22 added ", run <label>" to the Summary's "the install run of <start>"
+    when that run's stamp is shared, in the renderer only, so a stopped copy rendered by the older installed
+    agentsync named its first sync's run by a start time two runs share (or, a second apart, a time no row's
+    id shows). The shim labels it on the path that numbers the rest: the last run of that start time that
+    logged a first sync (install.log's clause) or that is no list (install.out's)."""
+    st, at, later = "20261017T170253Z", "2026-10-17T17:02:53Z", "2026-10-17T17:02:54Z"
+    start = later if shape == "a second apart" else at
+    named = "20261017T160000Z" if shape == "an unrelated pair" else st
+    if shape == "an unrelated pair":
+        start = "2026-10-17T16:00:00Z"
+    log = [
+        f"{at} run={st}-581 start install.sh args=--list-folders",
+        f"{at} run={st}-581 end rc=0 seconds=0",
+        f"{start} run={named}-582 start install.sh args=--source-local x",
+        f"{start} run={named}-582 step=first-sync seconds=2 rc=0 result=done",
+        f"{start} run={named}-582 end rc=0 seconds=9",
+    ]
+    if shape == "an unrelated pair":
+        log += [
+            f"{at} run={st}-583 start install.sh args=--list-folders",
+            f"{at} run={st}-583 end rc=0 seconds=0",
+        ]
+    sync = f"- sync: done in 2s (install.log: the install run of {start}, before this attempt; this attempt "
+    sync += "ran none)"
+    if shape == "both clauses":
+        sync += f" (install.out: the install run of {start}, before this attempt)"
+    rows = [f"| {st} | {at} | list-folders |", f"| {st} | {start} | install |"]
+    if shape == "already numbered":
+        rows[1] = rows[1].replace(f"| {st} |", f"| {st}.2 |")
+    report = "\n".join(
+        ["# agentsync setup report", "", "## Summary", "", sync, "", "## Installer", "", *rows, ""]
+    )
+    out = _stopped_run_labels(tmp_path, log, report)
+    [line] = [ln for ln in out.splitlines() if ln.startswith("- sync: ")]
+    if shape in ("an unrelated pair", "already numbered"):
+        assert line == sync, line
+        if shape == "already numbered":
+            assert out == report, "a report already numbered is left as it is"
+    else:
+        assert line == sync.replace(f"run of {start},", f"run of {start}, run {st}.2,"), line
+        assert line.count(f", run {st}.2,") == (2 if shape == "both clauses" else 1), line
+
+
+_OLD_STEPS = [
+    ("uv", {"result": "skipped", "note": "present", "seconds": "0"}),
+    ("launcher", {"result": "skipped", "note": "not-requested", "seconds": "0"}),
+    ("config", {"result": "done", "note": "exists", "seconds": "1"}),
+    ("agent", {"result": "skipped", "rc": "3", "note": "status-failed", "seconds": "0"}),
+    ("wait", {"result": "skipped", "note": "not-requested", "seconds": "0"}),
+    ("caf\u00e9", {"result": "done", "note": "d\u00e9j\u00e0", "seconds": "12"}),
+    ("report", {"result": "done", "note": "agentsync", "seconds": "4"}),
+]
+"""Installer steps whose notes round 13 O3 put into words (one with an rc before its note), and a made-up
+step with non-ASCII cells, which the table pads by characters."""
+
+
+def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listing(
+    env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q27: two more round 13 renderer-only fixes did not reach a stopped copy, which the older
+    installed agentsync renders: the Installer table's raw install.log tokens ("skipped (not-requested)",
+    "done (agentsync)", round 13 O3) and doctor's "deletions held (held at its last walk ... still holds it)"
+    (O36). The shim maps each known token and pads the table again as _step_table does, and replaces the old
+    bracket; a line already in the new words is left alone."""
+    new = setup_report._step_table(_OLD_STEPS)
+    monkeypatch.setattr(setup_report, "_STEP_NOTE_WORDS", {"helpers": setup_report._HELPERS_NOTE_WORDS})
+    old = setup_report._step_table(_OLD_STEPS)
+    monkeypatch.undo()
+    assert old != new and "| skipped (not-requested) " in "\n".join(old)
+    held = "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes; deletions held "
+    old_held = (
+        held
+        + "(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
+    )
+    new_held = held + f"({doctor.LISTING_YOURS_REPORT_NOTE})"
+    report = "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            "- install.sh · step 2 · run 20261017T170253Z exited 0",
+            "",
+            "## Installer",
+            "",
+            "run 20261017T170253Z: exit 0 after 17s",
+            "",
+            *old,
+            "",
+            "## Doctor",
+            "",
+            "~~~text",
+            old_held,
+            new_held.replace("fy26-projects", "q3-launch"),
+            "~~~",
+            "",
+            "## Redaction",
+            "",
+            "Read the report before sending it: anything else confidential is yours to remove.",
+            "",
+        ]
+    )
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    stub = tmp_path / "old-report.md"
+    stub.write_text(report, encoding="utf-8")
+    assert install_sh({**env, "STUB_REPORT_FILE": str(stub)}, "--report-only").returncode == 0
+    lines = (report_path(env).parent / "setup" / "stopped-copy-report.md").read_text().splitlines()
+    assert [ln for ln in lines if ln.startswith("|")] == new, "\n".join(
+        ln for ln in lines if ln.startswith("|")
+    )
+    assert new_held in lines and old_held not in lines
+    assert new_held.replace("fy26-projects", "q3-launch") in lines
+
+
+def test_the_shell_stopped_copy_words_are_the_reports() -> None:
+    """B13 round 14 Q27: the shim's step words are setup_report._STEP_NOTE_WORDS (less the helpers step,
+    which the stopped copy's renderer already words), and its held-listing bracket is doctor's report note."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [block] = re.findall(r'(?ms)^STOPPED_STEP_WORDS="(.*?)" #', script)
+    words = {tuple(ln.split(" ", 2)) for ln in block.splitlines()}
+    want = {
+        (step, token, said)
+        for step, notes in setup_report._STEP_NOTE_WORDS.items()
+        if step != "helpers"
+        for token, said in notes.items()
+    }
+    assert words == want
+    [now] = re.findall(r'(?m)^STOPPED_HELD_NOW="(.*)" #', script)
+    assert now == f"({doctor.LISTING_YOURS_REPORT_NOTE})"
+
+
 def test_the_shell_stopped_copy_warn_is_the_reports() -> None:
     [w] = re.findall(r'(?m)^STOPPED_COPY_WARN="(.*)" #', INSTALL_SH.read_text())
     assert w == setup_report._STOPPED_COPY_WARN
