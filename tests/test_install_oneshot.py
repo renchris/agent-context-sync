@@ -679,6 +679,26 @@ def test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report(
     )
 
 
+def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> None:
+    """B13 round 14 Q1, Q9, Q33: status's NEXT names a [FAIL] fix as the person's by
+    ``doctor.PERSONS_FIX_RE``, and install.sh's persons_fails by its own copy (it runs the older installed
+    build). The two are one list,
+    and they agree on every person's fix doctor writes and on the fixes the agent makes."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    m = re.search(r"grep -Ev ' \\\(fix: (\(.*\))' >/dev/null", text)
+    assert m, "persons_fails's pattern"
+    assert m.group(1) == doctor.PERSONS_FIX_RE.pattern
+    for case, fails in _persons_fail_lines(sample_config).items():
+        for line in fails:
+            fix = line.split(" (fix: ", 1)[1]
+            assert doctor.is_persons_fix(fix), (case, line)
+    timeout = subprocess.TimeoutExpired(["/x/pandoc", "--version"], 60)
+    for result in (doctor._timed_out("pandoc", timeout),):
+        assert result.fix and not doctor.is_persons_fix(result.fix)
+    assert not doctor.is_persons_fix(LISTING_HELD_FAIL.split(" (fix: ", 1)[1])
+    assert not doctor.is_persons_fix(None) and not doctor.is_persons_fix("")
+
+
 def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
     env: dict[str, str], folder: Path, wheel: Path, sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -17,6 +17,7 @@ import functools
 import logging
 import os
 import plistlib
+import re
 import shutil
 import sqlite3
 import stat
@@ -906,6 +907,22 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     else:
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
     return out
+
+
+# The first words of a [FAIL] fix that is the person's: a [[source]] path or sentinel, a folder or file to
+# put back, a sign-in, or a folder to sync in its app (the source checks and _missing_source_fix write them).
+# A re-run fails the same way and an edit would choose a folder for them. install.sh's persons_fails reads
+# the same words from the [FAIL] lines with its own copy, since the installer runs the older installed build;
+# a test pins the two equal (B13 round 14 Q1, Q9, Q33).
+PERSONS_FIX_RE = re.compile(
+    r"(fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to "
+    r"|/.* is (missing|empty) while (OneDrive-|another ))"
+)
+
+
+def is_persons_fix(fix: str | None) -> bool:
+    """Whether a [FAIL]'s fix is the person's to make, not a step for the agent (``PERSONS_FIX_RE``)."""
+    return bool(fix) and PERSONS_FIX_RE.match(fix or "") is not None
 
 
 def _missing_source_fix(src: SourceConfig, root: Path) -> str:

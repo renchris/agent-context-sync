@@ -5286,8 +5286,20 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
 
 
 @pytest.mark.usefixtures("roomy_calls")
+@pytest.mark.parametrize(
+    ("fix", "step"),
+    [
+        ("rm {home}/state.db", "do what the fix on its [FAIL] line below says"),
+        # B13 round 14 Q1, Q33: a person's fix reads as theirs, as install.sh's NEXT at the finish says
+        (
+            'fix path in [[source]] id = "contoso", or sync that folder in OneDrive',
+            "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a "
+            "[[source]] path or a sign-in), not a step for the agent: show it to them",
+        ),
+    ],
+)
 def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft(
-    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fix: str, step: str
 ) -> None:
     """The CLI wiring: the doctor hook's ERROR FAILs reach ``loop_next`` as rule 1 (Doctor runs first). With
     no friction log the report reads the newest prompt (v7), which has no IT request step."""
@@ -5295,7 +5307,7 @@ def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_d
 
     def failing(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
         broken = doctor.CheckResult(
-            "manifest.integrity", False, "broken", doctor.Severity.ERROR, f"rm {fake_mac['home']}/state.db"
+            "manifest.integrity", False, "broken", doctor.Severity.ERROR, fix.format(home=fake_mac["home"])
         )
         return [*(c for c in real(config, offline=offline) if c.ok), broken]
 
@@ -5305,9 +5317,7 @@ def test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_d
     assert rc == 0
     summary = section(text, "Summary")
     [loop] = [ln for ln in summary.splitlines() if ln.startswith("- Loop: ")]
-    assert (
-        "; NEXT: the manifest.integrity check failed: do what the fix on its [FAIL] line below says" in loop
-    )
+    assert f"; NEXT: the manifest.integrity check failed: {step}" in loop
     assert "~/" not in loop and "/Users/" not in loop and "state.db" not in loop, "a fix is never copied"
     assert "IT draft" not in summary, "no friction log reads as v7, which has no IT request step"
 

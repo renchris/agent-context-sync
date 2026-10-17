@@ -1133,10 +1133,26 @@ class _Status:
 
 def _fail_step(result: doctor.CheckResult) -> str:
     """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
-    keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it."""
+    keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it. A
+    fix that is the person's (``doctor.is_persons_fix``: a [[source]] path, a folder to put back or sync, a
+    sign-in) is named as theirs, as install.sh's NEXT names it, not as a step for the agent (B13 round 14 Q1,
+    Q9, Q33)."""
+    if doctor.is_persons_fix(result.fix):
+        return (
+            f"the {result.name} check failed: its fix on the [FAIL] line below is the person's (a folder "
+            "or file to put back or sync, a [[source]] path or a sign-in), not a step for the agent: show it "
+            "to them"
+        )
     if result.fix:
         return f"the {result.name} check failed: do what the fix on its [FAIL] line below says"
     return f"the {result.name} check failed: its [FAIL] line below says why"
+
+
+def _fail_steps(results: Sequence[doctor.CheckResult]) -> list[str]:
+    """Rule 1's fixes, one per ERROR FAIL, the agent's own first: the NEXT names only the first, so it never
+    sends the agent to show the person a fix while a re-run or a click of its own waits (B13 round 14 Q1)."""
+    fails = [r for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
+    return [_fail_step(r) for r in sorted(fails, key=lambda r: doctor.is_persons_fix(r.fix))]
 
 
 def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
@@ -1193,7 +1209,7 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         loop_checks=None if step is None else step.checks,
         loop_waits=None if step is None else step.wait_counts,
     )
-    fixes = [_fail_step(r) for r in checks if not r.ok and r.severity is doctor.Severity.ERROR]
+    fixes = _fail_steps(checks)
     next_lines: list[str] = []
     if not hint_off:
         if step is not None and not fixes and step.rule < 9:
@@ -1672,7 +1688,7 @@ def _report_hooks() -> setup_report.ReportHooks:
 
     def checks(config: Config) -> list[str]:
         results = _status_checks(config, offline=True)
-        fixes[:] = [_fail_step(r) for r in results if not r.ok and r.severity is doctor.Severity.ERROR]
+        fixes[:] = _fail_steps(results)
         # The report has no "end of this run": its own note (B13 round 5 F12, F45).
         results = [
             dataclasses.replace(r, note=doctor.LISTING_YOURS_REPORT_NOTE)

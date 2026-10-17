@@ -2332,9 +2332,72 @@ def test_status_next_never_copies_a_fail_fix(
     )
     rc, out = _status(cfg, capsys)
     nexts = [ln for ln in out if ln.startswith(("NEXT:", "WAITING ON YOU:"))]
-    assert rc == cli.EXIT_FAILED and nexts[0].startswith("NEXT: the source.x.sentinel check failed: ")
+    # the sign-in the agent runs comes before the person's sentinel (B13 round 14 Q1)
+    assert rc == cli.EXIT_FAILED and nexts[0].startswith("NEXT: the graph.auth check failed: ")
     assert not any("/" in ln or re.search(r"(^|[\s`])agentsync ", ln) for ln in nexts), nexts
     assert any(ln.endswith(f"(fix: {sentinel})") for ln in out), "the [FAIL] line still carries the fix"
+
+
+PERSONS_STEP = (
+    "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
+    "path or a sign-in), not a step for the agent: show it to them"
+)
+
+
+def test_status_names_a_persons_fail_fix_as_theirs_and_sync_keeps_its_next(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 14 Q1, Q9, Q33: a synced folder renamed away made status's NEXT "do what the fix on its
+    [FAIL] line below says" for a fix of "fix path in [[source]] ...", a sources.toml edit that v22 step 2 and
+    install.sh's NEXT leave to the person. Its NEXT now names the fix as the person's; sync's NEXT is not
+    status's (it mirrors the folders that are there and names the gone one in a WAITING ON YOU line)."""
+    cfg = _synced(initialised)
+    src = initialised.sources[0]
+    assert src.path is not None
+    root = Path(src.path).expanduser()
+    root.rename(root.with_name(root.name + " renamed"))
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED
+    fix = f'(fix: fix path in [[source]] id = "{src.id}"'
+    assert any(fix in ln for ln in out if ln.startswith("[FAIL]"))
+    assert out[0] == f"NEXT: the source.{src.id}.listable check failed: {PERSONS_STEP}", out[0]
+    assert not any("do what the fix" in ln for ln in out)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    synced = capsys.readouterr().out.splitlines()
+    assert not any("check failed" in ln for ln in synced if ln.startswith("NEXT: "))
+    assert any(ln.startswith("WAITING ON YOU: ") and src.id in ln for ln in synced)
+
+
+def test_status_puts_the_agents_own_fail_fix_before_a_persons(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 14 Q1: NEXT names only the first FAIL, so a check the agent fixes by a re-run (here one that
+    ran out of time) comes before a person's fix in either order, and keeps "do what the fix ... says"."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    again = doctor.CheckResult(
+        "pandoc", False, "timed out", doctor.Severity.ERROR, fix="run the same install.sh command again"
+    )
+    person = doctor.CheckResult(
+        "source.x.listable", False, "gone", doctor.Severity.ERROR, fix='fix path in [[source]] id = "x"'
+    )
+    monkeypatch.setattr(cli, "_extra_checks", lambda config, *, offline=False: [])
+    for fake in ([again], [person, again], [again, person]):
+
+        def run(
+            config: Config, *, fake: list[doctor.CheckResult] = fake, **_: object
+        ) -> list[doctor.CheckResult]:
+            return list(fake)
+
+        monkeypatch.setattr(doctor, "run_checks", run)
+        rc, out = _status(cfg, capsys)
+        assert rc == cli.EXIT_FAILED
+        assert out[0] == "NEXT: the pandoc check failed: do what the fix on its [FAIL] line below says", fake
+    monkeypatch.setattr(
+        doctor, "run_checks", lambda config, *, tcc_canary=True, loop_checks=None, loop_waits=None: [person]
+    )
+    assert _status(cfg, capsys)[1][0] == f"NEXT: the source.x.listable check failed: {PERSONS_STEP}"
 
 
 @pytest.mark.parametrize("breakage", ["governance", "schema"])
