@@ -5948,6 +5948,33 @@ def test_the_guide_says_a_config_step_2_cannot_reinstall_for_adds_no_folder() ->
     ) in page
 
 
+def test_the_guides_summary_table_has_the_unread_config_line_that_asks_nothing() -> None:
+    """B13 round 14 Q69: since round 13 O8 a v21 or later attempt whose list logged `marks=failed` and whose
+    first install run skipped agentsync as current reads `step 1 asks nothing` (``_unread_stuck``), but the
+    Summary table had no row for that line and gave "asks at most whether to add one" to every v18 or later
+    attempt."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    stuck = source[source.index("        elif unasked and stuck:") : source.index("        elif unasked:\n")]
+    assert "agentsync is already this checkout's build, so step {layout.install_step} does not " in stuck
+    assert setup_report.UNREAD_CURRENT_ASKS_NOTHING == 21
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "| Prompt v18 or later, when the install could not say either" not in page
+    assert (
+        "| Prompt v18 to v20, or v21 or later unless step 1's list logged `marks=failed` and the first "
+        "install run's agentsync step logged `skipped note=current`"
+    ) in page
+    assert (
+        "| `expected turns: no folder question (step 1's list could not read the config, and ..., so step 2 "
+        "does not reinstall it: step 1 asks nothing, since no folder can be added until the config is fixed; "
+        "not logged) · ...` | Prompt v21 or later"
+    ) in page
+    assert "as in the row above, the install could not say either (its config step logged no `kept=`)" in page
+    # the clause the row leaves out names agentsync, which the CLI-name scan would read as a command
+    assert "the left-out clause says the installed agentsync is already this checkout's build" in page
+
+
 def test_section_5_counts_the_sign_in_step_1_waits_for() -> None:
     """B13 round 13 O64: section 5 listed the OneDrive sign-in only as a precondition at which "the prompt
     stops at step 1", though since v20 step 1 waits for it on a set-up Mac and the report counts it among the
