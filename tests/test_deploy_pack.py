@@ -6028,6 +6028,10 @@ def test_section_5_counts_the_sign_in_step_1_waits_for() -> None:
         "- **Signing in to OneDrive** before setup, on a Mac that syncs no folder yet. The OneDrive app owns "
         "that sign-in."
     ) in preconditions
+    # B13 round 14 Q72: "reads as worked" names no outcome; its nearest, "worked with help", is what K45 fixed
+    # The report's outcome is test_setup_report.py::test_the_sign_in_step_1_asked_for_is_no_extra_click's.
+    assert "so a clean run still reads as worked" not in unavoidable
+    assert 'so a clean run still reads "fully one command".' in unavoidable
 
 
 def test_the_guide_names_every_source_of_a_proxy_number() -> None:

@@ -898,7 +898,7 @@ Current unavoidable human steps (these do not break "fully one command"):
   apps=<app> missing=M synced=N` and keeps the `[synced]` folders. Since prompt v20 the agent waits for the sign-in as for a click, then
   lists the folders again (K44; B13 round 11 M4). Since v21 the prompt logs it as neither a click nor a question;
   the report counts it among the expected turns for any v20 or later attempt (`the OneDrive sign-in step 1 asked
-  for`; K45, B13 round 12 N5), so a clean run still reads as worked. An agent that
+  for`; K45, B13 round 12 N5), so a clean run still reads "fully one command". An agent that
   cannot ask does not wait: it goes to the report.
 - **IT consent** for Outlook, Teams and unsynced SharePoint: an Entra admin must register the app and consent
   ([it-request.md](it-request.md)). `agentsync it-request` only drafts the request; the person sends it.
