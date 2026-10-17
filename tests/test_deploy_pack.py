@@ -5312,6 +5312,7 @@ _ROUND_14_PARAGRAPH_AMENDS = (
     ("16.32", "- **Which pandoc.** The one the check runs:", "§16.114 Q62"),
     ("16.22", "- nothing stored (no access, a missing folder or sentinel)", "§16.115 Q80 (by §16.107 O49)"),
     ("16.109", "Docs, dated lines and a test docstring that lagged round 12's code", "§16.115 Q67"),
+    ("16.21", "Rule 1's NEXT for a FAIL never copies the fix", "§16.113 Q1, Q9, Q33"),
 )
 """Round 14's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
@@ -5342,7 +5343,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
-    assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 5
+    assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
