@@ -3059,19 +3059,19 @@ def test_the_shell_report_computes_no_other_outcome(
         (
             "prompt v3, Contoso Agent 1",
             False,
-            "prompt: v3 (from the attempt's Prompt line; older than the installer's v{c}: the pasted copy "
-            "was not the current README, or the --log-start value was changed)",
+            "prompt: v3 (older than the installer's v{c}: the pasted copy was not the current README, or the "
+            "--log-start value was changed)",
         ),
         (  # its cause depends on the branch this checkout follows: the Python twin below pins it
             "prompt v99, Contoso Agent 1",
             False,
-            "prompt: v99 (from the attempt's Prompt line; newer than the installer's v{c}",
+            "prompt: v99 (newer than the installer's v{c}",
         ),
         (
             "Contoso Agent 1",
             False,
-            "prompt: v7 or older (from the attempt's Prompt line; older than the installer's v{c}: the "
-            "pasted copy was not the current README, or the --log-start value was changed)",
+            "prompt: v7 or older (older than the installer's v{c}: the pasted copy was not the current "
+            "README, or the --log-start value was changed)",
         ),
         ("prompt v3, Contoso Agent 1", True, None),
     ],
@@ -3098,15 +3098,14 @@ def test_the_shell_report_computes_a_stopped_copys_failure(
     ), outcome
     assert outcome.endswith(" · agent: Contoso Agent 1"), outcome
     # B13 round 12 N44: the clause is the agentsync report's prompt note word for word, for an older copy, a
-    # newer one (with the cause its stop line's fix names) and one that gave no version
+    # newer one (with the cause its stop line's fix names) and one that gave no version. B13 round 13 O18: the
+    # whole bracket, with no "from the attempt's Prompt line" label the agentsync report does not print
     attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
     note = setup_report._prompt_line_note(attempt)
     older, _, clause = note.partition(" (")
     version = f"{setup_report._prompt_version(attempt)}{older}"
-    assert f" · prompt: {version} (from the attempt's Prompt line; {clause} · run: " in outcome, (
-        note,
-        outcome,
-    )
+    assert f" · prompt: {version} ({clause} · run: " in outcome, (note, outcome)
+    assert "from the attempt's Prompt line" not in outcome
 
 
 @pytest.mark.parametrize("ran", [False, True])

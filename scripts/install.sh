@@ -2380,7 +2380,7 @@ run_type_why() {
 # friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
 # version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
-	local stated="" n note="" agent where="the step 1 error line" choose why
+	local stated="" n note="" agent hdr=0 choose why bracket
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
 	if [ -n "$stated" ]; then
 		n="${stated%%$'\t'*}"
@@ -2389,8 +2389,9 @@ fallback_outcome_line() {
 		header:*)
 			# a copy --log-start stopped: the version from the attempt's header, and the agentsync report's note
 			# on its prompt line (B13 round 11 M14), word for word: read from the stop line, its reason and its
-			# fix column's cause, for "v7 or older" and a newer copy too (B13 round 12 N44)
-			where="the attempt's Prompt line"
+			# fix column's cause, for "v7 or older" and a newer copy too (B13 round 12 N44). The whole bracket is
+			# that note, with no "from" label, as _prompt_line_note gives it (B13 round 13 O18)
+			hdr=1
 			set -- "${agent##*$'\t'header:}"
 			why="${1##*:}"
 			set -- "${1%:*}"
@@ -2409,11 +2410,12 @@ fallback_outcome_line() {
 		esac
 		agent="${agent%%$'\t'*}"
 		# H23's note, for a version a step 1 error line states (no installer stop, so no cause: K26)
-		case "$where/$n" in
-		"the attempt's Prompt line/"* | */ | */*[!0-9]*) ;;
+		case "$hdr/$n" in
+		1/* | */ | */*[!0-9]*) ;;
 		*) [ "$n" -le "$SETUP_PROMPT_COMPAT" ] || note="; newer than this installer, which is for prompt v$SETUP_PROMPT_COMPAT" ;;
 		esac
-		say "$OUTCOME_LINE_HEAD$n (from $where$note) · run: $(run_type_label) (computed: $(run_type_why))${agent:+ · agent: $agent}"
+		if [ "$hdr" -eq 1 ]; then bracket="${note:+ (${note#; })}"; else bracket=" (from the step 1 error line$note)"; fi
+		say "$OUTCOME_LINE_HEAD$n$bracket · run: $(run_type_label) (computed: $(run_type_why))${agent:+ · agent: $agent}"
 	else
 		# where the Outcome is read from: the attempt's step lines, the install runs of the attempt when it has
 		# no step line, or neither (B13 round 11 M15: it named step lines an attempt did not have)
