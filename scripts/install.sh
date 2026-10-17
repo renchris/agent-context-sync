@@ -34,7 +34,7 @@
 #                           denied access (macOS "Operation not permitted"), or macOS is still asking; its
 #                           NEXT: line says which and names the click. On a Mac whose
 #                           config already syncs folders (see "Folders already synced" below) the list starts
-#                           with "already synced on this Mac: N folder(s) ..." and each of them has
+#                           with "already synced on this Mac: 1 folder ..." (or N folders) and each has
 #                           "[synced] " before its path (one the list does not reach is printed first, as
 #                           the config names it); a listed folder inside one of them has "[inside a
 #                           synced folder] " there, and one that holds one "[contains a synced folder] "; its
@@ -4156,6 +4156,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
+	local sn them
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -4236,12 +4237,15 @@ list_folders() {
 	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not
 	# reach (deeper than it goes, outside ~/Library/CloudStorage, past its cap) come first, then the list. A list
 	# that shows no folder (signed out, an empty provider folder, the only provider denied) is not promised: the
-	# line is the plain one (B13 round 11 M9).
+	# line is the plain one (B13 round 11 M9). One folder is "1 folder", kept by a re-run as "it" (B13 round 14
+	# Q39, Q44); the prefix up to the colon, which the prompt quotes and the report reads, is as before.
+	sn="$synced folders" them=them
+	[ "$synced" != 1 ] || { sn="1 folder" them=it; }
 	if [ "${synced:-0}" -gt 0 ]; then
 		if [ "$unlisted" -eq 0 ] || [ ! -s "$tmp/shown" ]; then
-			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below)"
+			say "already synced on this Mac: $sn (marked $SYNCED_MARK below)"
 		else
-			say "already synced on this Mac: $synced folder(s) (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"
+			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"
 		fi
 		tail -n +3 "$tmp/marked"
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
@@ -4343,11 +4347,11 @@ list_folders() {
 	elif [ "${synced:-0}" -gt 0 ]; then # nothing to choose: a run with no folder keeps them (step 4)
 		# Before the two exits 3: with nothing listed this Mac is still set up, and the same run keeps it.
 		if [ "$providers" -eq 0 ]; then
-			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF (no folder to add is listed: OneDrive is not signed in on this Mac)"
+			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF (no folder to add is listed: OneDrive is not signed in on this Mac)"
 		elif [ "$total" -eq 0 ]; then
-			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF (no folder to add is listed: no folders are synced yet in $cs)"
+			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF (no folder to add is listed: no folders are synced yet in $cs)"
 		else
-			NEXT_MSG="this Mac already syncs $synced folder(s), and a re-run keeps them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
+			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
 		fi
 		# A folder gone while its app is signed in: no sign-in (a re-run of this list would stop the same way),
 		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause

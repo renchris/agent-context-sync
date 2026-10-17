@@ -2870,7 +2870,9 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     assert "sign" not in no_report, "an unanswered sign-in wait goes to the report"
     assert step1.index(stop) < step1.index(kept) and step1.count("log a deviation") == 2, "the wait and L10's"
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    assert script.count(f'say "{ALREADY_SYNCED} $synced folder(s) (') == 2, "both forms of the line start so"
+    # B13 round 14 Q39, Q44: "1 folder" or "N folders", from one string set before both forms
+    assert script.count(f'say "{ALREADY_SYNCED} $sn (') == 2, "both forms of the line start so"
+    assert 'sn="$synced folders" them=them' in script and '{ sn="1 folder" them=it; }' in script
     assert 'SYNCED_MARK="[synced]"' in script
     assert 'INSIDE_MARK="[inside a synced folder]"' in script
     assert 'CONTAINS_MARK="[contains a synced folder]"' in script
@@ -3029,9 +3031,9 @@ def test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs(tmp_path: Pat
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     out = proc.stdout.splitlines()
-    listed = out[out.index(f"{ALREADY_SYNCED} 1 folder(s) (marked [synced] below)") + 1 :]
+    listed = out[out.index(f"{ALREADY_SYNCED} 1 folder (marked [synced] below)") + 1 :]
     assert listed[:2] == [str(archive), f"[synced] {projects}"], proc.stdout
-    assert listed[2].startswith("NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run ")
+    assert listed[2].startswith("NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run ")
     assert len(listed) == 3 and "warning:" not in proc.stderr
 
 

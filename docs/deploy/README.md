@@ -55,7 +55,7 @@ runs `agentsync status` and a first sync, and ends with one `NEXT:` line: the lo
 work session then starts with `~/.local/bin/agentsync sync` and does what its `NEXT:` line says.
 
 On a Mac that is already set up nothing has to be chosen again. `--list-folders` starts with
-`already synced on this Mac: N folder(s)` and writes `[synced]` before each folder `sources.toml` already syncs,
+`already synced on this Mac: N folders` (`1 folder` for one) and writes `[synced]` before each folder `sources.toml` already syncs,
 and `install.sh` with no `--source-local` keeps every source, updates agentsync and runs status and a sync.
 A sync reads everything under a synced folder, so a listed folder inside one has `[inside a synced folder]`
 before it, and one that holds one has `[contains a synced folder]`. Add only an unmarked folder: a marked one

@@ -4404,11 +4404,11 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     keep = (
-        f"NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run {INSTALL_SH}, with one "
+        f"NEXT: this Mac already syncs 2 folders, and a re-run keeps them: run {INSTALL_SH}, with one "
         '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)'
     )
     assert cp.stdout.splitlines() == [
-        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 2 folders (marked [synced] below)",
         f"[synced] {cs}/OneDrive-Contoso/Documents",
         f"[inside a synced folder] {cs}/OneDrive-Contoso/Documents/Plans",
         f"[contains a synced folder] {cs}/OneDrive-Contoso/FY26 Projects",
@@ -4436,12 +4436,12 @@ def test_list_folders_marks_the_folders_this_mac_already_syncs(env: dict[str, st
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines() == [
-        "already synced on this Mac: 4 folder(s) (marked [synced] below: first the 2 outside the list, then "
+        "already synced on this Mac: 4 folders (marked [synced] below: first the 2 outside the list, then "
         "the list)",
         f"[synced] {notes}",
         f"[synced] {cs}/OneDrive-Contoso/FY26 Projects/Alpha/Deep",
         *listed,
-        keep.replace("syncs 2 folder(s)", "syncs 4 folder(s)"),
+        keep.replace("syncs 2 folders", "syncs 4 folders"),
     ]
     assert sum(ln.startswith("[synced] ") for ln in cp.stdout.splitlines()) == 4, "each one, once"
     assert install_log(env)[-2].endswith(" result=done note=listed-6 synced=4")
@@ -4460,12 +4460,12 @@ def test_list_folders_names_a_synced_folder_when_the_list_reaches_none(env: dict
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "already synced on this Mac: 1 folder (marked [synced] below: first the 1 outside the list, then "
         "the list)",
         f"[synced] {notes}",
         f"{cs}/OneDrive-Contoso/FY26 Projects",
     ]
-    assert last_line(cp).startswith("NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: ")
+    assert last_line(cp).startswith("NEXT: this Mac already syncs 1 folder, and a re-run keeps it: ")
 
 
 def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_form(
@@ -4489,7 +4489,7 @@ def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_f
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 2 folders (marked [synced] below)",
         f"[synced] {cs}/OneDrive-Contoso/Documents",
         f"[inside a synced folder] {cs}/OneDrive-Contoso/Documents/Plans",
         f"[synced] {cs}/OneDrive-Contoso/{on_disk}",
@@ -4513,7 +4513,7 @@ def test_list_folders_marks_a_synced_folder_stored_through_a_link_in_cloud_stora
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 1 folder (marked [synced] below)",
         f"[synced] {cs}/OneDrive-Contoso/Project Alpha",
         f"[inside a synced folder] {cs}/OneDrive-Contoso/Project Alpha/Inner",
         f"{cs}/OneDrive-Contoso/Project Beta",
@@ -4542,9 +4542,9 @@ def test_list_folders_keeps_a_set_up_mac_that_has_nothing_to_list(
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines() == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below)",  # B13 round 11 M9: no list follows
+        "already synced on this Mac: 1 folder (marked [synced] below)",  # B13 round 11 M9: no list follows
         f"[synced] {notes}",
-        f"NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run {INSTALL_SH} (no folder to "
+        f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH} (no folder to "
         f"add is listed: {why})",
     ]
     assert steps(install_log(env)) == [("list-folders", "done", "0", "listed-0")]
@@ -4620,7 +4620,7 @@ def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
         [f"[synced] {lib}/Project Alpha", f"[synced] {lib}/Project Beta"]
         + ([f"[synced] {notes}"] if layout == "notes beside them" else [])
     )
-    assert cp.stdout.startswith(f"already synced on this Mac: {synced} folder(s) (marked [synced] below)\n")
+    assert cp.stdout.startswith(f"already synced on this Mac: {synced} folders (marked [synced] below)\n")
     assert last_line(cp) == (
         "NEXT: OneDrive is not signed in on this Mac, so it is missing 2 of the folders this Mac already "
         f"syncs: sign in to OneDrive (or let it finish setting up), then re-run: {INSTALL_SH} "
@@ -4687,7 +4687,7 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert f"[synced] {gone}" in cp.stdout.splitlines()
-    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: ")
+    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folders, and a re-run keeps them: ")
     assert last_line(cp).endswith(clause), last_line(cp)
     assert "nothing syncs" not in last_line(cp)
     assert steps(install_log(env))[-1][:3] == ("list-folders", "done", "0")
@@ -4893,7 +4893,7 @@ def test_list_folders_names_the_synced_folders_when_the_only_provider_was_denied
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 4, cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below)",  # B13 round 11 M9: no list follows
+        "already synced on this Mac: 1 folder (marked [synced] below)",  # B13 round 11 M9: no list follows
         f"[synced] {projects}",
     ]
     assert last_line(cp).startswith("NEXT: this terminal app was denied access to files managed by OneDrive")
@@ -4910,7 +4910,7 @@ def test_list_folders_prints_a_synced_folder_past_its_cap_first(env: dict[str, s
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
     assert lines[0] == (
-        "already synced on this Mac: 2 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "already synced on this Mac: 2 folders (marked [synced] below: first the 1 outside the list, then "
         "the list)"
     )
     assert lines[1] == f"[synced] {lib}/P203", "past the cap of 200: not in the list, so printed first"
@@ -5142,13 +5142,13 @@ def test_list_folders_marks_the_synced_folders_with_an_agentsync_from_before_rou
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 2 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 2 folders (marked [synced] below)",
         f"[synced] {cs}/OneDrive-Contoso/Project Alpha",
         f"[inside a synced folder] {cs}/OneDrive-Contoso/Project Alpha/Inner",
         f"[synced] {cs}/OneDrive-Contoso/Project Beta",
         f"{cs}/OneDrive-Contoso/Project Gamma",
     ]
-    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: ")
+    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folders, and a re-run keeps them: ")
     assert install_log(env)[-2].endswith(" result=done note=listed-4 synced=2")
     _tool_python(env)  # step 2 updated it: the list is the same with agentsync's own function
     again = install_sh(env, "--list-folders")
@@ -5178,7 +5178,7 @@ def test_list_folders_marks_a_folder_stored_through_a_link_under_a_linked_home_w
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 1 folder (marked [synced] below)",
         f"[synced] {cs}/OneDrive-Contoso/Project Alpha",
         f"[inside a synced folder] {cs}/OneDrive-Contoso/Project Alpha/Inner",
         f"{cs}/OneDrive-Contoso/Project Beta",
@@ -5316,7 +5316,7 @@ def test_list_folders_marks_what_it_listed_while_another_provider_waits_for_a_cl
     cp = install_sh({**env, "AGENTSYNC_LIST_TIMEOUT": "1"}, "--list-folders", timeout=20)
     assert cp.returncode == 4, cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 1 folder (marked [synced] below)",
         f"{cs}/OneDrive-Contoso/Documents",
         f"[synced] {cs}/OneDrive-Contoso/FY26 Projects",
     ]
@@ -5338,7 +5338,7 @@ def test_list_folders_names_a_synced_folder_of_the_provider_that_was_denied(env:
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 4, cp.stdout + cp.stderr
     assert cp.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below: first the 1 outside the list, then "
+        "already synced on this Mac: 1 folder (marked [synced] below: first the 1 outside the list, then "
         "the list)",
         f"[synced] {cs}/OneDrive-Contoso/FY26 Projects",
         f"{cs}/Dropbox/Shared",
@@ -5418,7 +5418,7 @@ def test_a_rerun_with_no_folder_keeps_what_the_mac_already_syncs(
     assert install_sh(env, "--log-start", started("Test Agent (model-1)")).returncode == 0
     listing = install_sh(env, "--list-folders")
     assert listing.stdout.splitlines()[:-1] == [
-        "already synced on this Mac: 1 folder(s) (marked [synced] below)",
+        "already synced on this Mac: 1 folder (marked [synced] below)",
         f"[contains a synced folder] {alpha.parent}",
         f"[synced] {alpha}",
         str(beta),
@@ -5486,7 +5486,7 @@ def test_a_set_up_mac_with_nothing_to_list_is_kept_by_the_run_its_list_names(
     assert listing.returncode == 0, listing.stdout + listing.stderr
     assert listing.stdout.splitlines()[1] == f"[synced] {notes}"
     assert last_line(listing).startswith(
-        f"NEXT: this Mac already syncs 1 folder(s), and a re-run keeps them: run {INSTALL_SH} (no folder "
+        f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH} (no folder "
     )
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr

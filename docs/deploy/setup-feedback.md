@@ -492,7 +492,7 @@ got no answer from an unattended tool, and stopped as the prompt said: a round l
 needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
 
 - `install.sh --list-folders` reads the config. When it already syncs folders, the list starts with
-  `already synced on this Mac: N folder(s) (marked [synced] below)` and each of them has `[synced]` before its
+  `already synced on this Mac: N folders (marked [synced] below)` (`1 folder` for one, since B13 round 14 Q44) and each of them has `[synced]` before its
   path. A synced folder the list does not reach (deeper than it goes, outside `~/Library/CloudStorage`) is
   printed first with the same mark, and the first line then ends `(marked [synced] below: first the 1 outside
   the list, then the list)` when the list shows a folder. So every synced folder is named once.

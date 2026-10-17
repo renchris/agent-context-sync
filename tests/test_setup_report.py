@@ -2757,9 +2757,9 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
         d.mkdir(parents=True)
     for folder in (whole, deep, notes):
         assert cli.main(["add-source", str(folder), "--config", str(fake_mac["config"])]) == 0
-    first = "already synced on this Mac: 5 folder(s) (marked [synced] below: first the 2 outside the list, "
+    first = "already synced on this Mac: 5 folders (marked [synced] below: first the 2 outside the list, "
     keep = (
-        "NEXT: this Mac already syncs 5 folder(s), and a re-run keeps them: run "
+        "NEXT: this Mac already syncs 5 folders, and a re-run keeps them: run "
         f'{fake_mac["home"]}/src/agent-context-sync/scripts/install.sh, with one --source-local "<folder>" '
         "for each unmarked folder to add from the list above (none is needed)"
     )
@@ -2797,7 +2797,7 @@ def test_a_marked_folder_list_in_the_installer_output_names_no_folder(
         rf"{mine}/{name}/{name}",  # the folder this Mac does not sync, a placeholder too
     ):
         assert len(re.findall(rf"(?m)^{line}$", shown)) == 1, line
-    assert "NEXT: this Mac already syncs 5 folder(s), and a re-run keeps them: run ~/src/" in shown
+    assert "NEXT: this Mac already syncs 5 folders, and a re-run keeps them: run ~/src/" in shown
     for raw in (*RAW, "Harbor", "Works", "Pier", "Nine", "Quay", "Drafts", "Tide", "Berth", "Ledger"):
         assert raw not in text, raw
 
