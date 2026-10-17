@@ -8513,6 +8513,58 @@ def test_a_proxy_in_force_at_a_logged_line_is_redacted_after_it_is_unset(
     assert shown is not None and red.redact(said) == f"the proxy {shown[1]} timed out", "one number in both"
 
 
+@pytest.mark.parametrize("unset", [True, False])
+def test_a_proxy_host_is_redacted_in_every_case_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, unset: bool
+) -> None:
+    """B13 round 13 O2, O67 (one defect): the shell matched a proxy pair byte for byte and kept only the host
+    as written and in lower case, so a line quoting it in upper or mixed case printed it in clear, with the
+    proxy unset (from proxy-hosts) or still set, where the Python reader matches a proxy value in any case.
+    Every proxy pair now matches in any ASCII case, with one number; a longer host ending in it still has its
+    proxy part cut out, as before."""
+    host = "Egress.Northwind-LAN.invalid"
+    proxied = {**env, "HTTPS_PROXY": f"http://ops:s3cret@{host}:8080"}
+    assert install_sh(proxied, "--log-start", f"prompt v{COMPAT}, Contoso Agent").returncode == 0
+    said = (
+        f"the proxy {host}, EGRESS.NORTHWIND-LAN.INVALID, egress.Northwind-lan.invalid and "
+        "eGRESS.nORTHWIND-lan.INVALID timed out behind my-EGRESS.NORTHWIND-LAN.INVALID"
+    )
+    assert install_sh(proxied, "--log", "2", "error", said, "-").returncode == 0
+    assert install_sh(env if unset else proxied, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "northwind" not in text.lower(), "a spelling the shell report printed in clear"
+    [line] = [ln for ln in text.splitlines() if " | step 2 | error | the proxy " in ln]
+    shown = line.split(" | error | ", 1)[1].split(" | ", 1)[0]
+    assert re.fullmatch(r"the proxy (<proxy-\d+>), \1, \1 and \1 timed out behind my-\1", shown), shown
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    if not unset:
+        monkeypatch.setenv("HTTPS_PROXY", proxied["HTTPS_PROXY"])
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(None, setup_report.ReportHooks(), 12.0))
+    assert red.redact(said) == shown, "the same number in both readers"
+
+
+def test_a_git_proxy_is_redacted_in_every_case_in_the_shell_report(env: dict[str, str]) -> None:
+    """B13 round 13 O2: git's proxy, still configured, printed in clear in the shell report when a line
+    named it in upper case: 'proxy <proxy-1>, <proxy-1> and EDGE-GW7...'. The agentsync report gave
+    <proxy-1> three times; so does the shell now."""
+    host = "Edge-Gw7.Contoso-Corp.invalid"
+    (Path(env["HOME"]) / ".gitconfig").write_text(
+        f'[http "https://github.com"]\n\tproxy = http://{host}:3128\n'
+    )
+    friction_path(env).parent.mkdir(parents=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n"
+        f"2026-10-10T00:00:01Z | step 1 | error | probe2: proxy {host}, {host.lower()} and {host.upper()} "
+        "refused the connection | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "probe2: proxy <proxy-1>, <proxy-1> and <proxy-1> refused the connection" in text, text
+    assert "gw7" not in text.lower()
+
+
 def test_the_deploy_docs_list_the_proxy_hosts_file() -> None:
     """B13 round 12 N69: proxy-hosts, the one file setup keeps that holds proxy host names in clear, was in no
     list of what setup writes: not the setup-folder row a person cleans up from, nor the report's sources."""

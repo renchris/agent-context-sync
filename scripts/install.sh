@@ -413,9 +413,9 @@ PUBLIC_HOSTS="$PUBLIC_HOSTS astral.sh pypi.org files.pythonhosted.org"
 # proxy-hosts (one host a line, no userinfo or port, 0600), so a report written after the person unset a stale
 # proxy (the git stop asks them to) still redacts the host an earlier line quotes: both readers register them
 # last (B13 round 11 M29). Lower case, then as written where that differs (B13 round 12 N42), as
-# friction_proxy_hosts gives them: the shell matches a host byte for byte, so a mixed-case one needs its own
-# spelling, which takes the lower-case key's number; the Python reader keeps the lower-case lines and matches
-# them in any case. github.com, which every rewrite of this repository names, is left out.
+# friction_proxy_hosts gives them; both readers now match a proxy value in any ASCII case (B13 round 13 O2,
+# O67), so the second line only takes the lower-case key's number, as before. github.com, which every rewrite
+# of this repository names, is left out.
 record_proxy_hosts() {
 	# repo: the checkout holding this script, whose config git_config_files reads too; --log-start and --log
 	# run before the script sets it
@@ -2002,7 +2002,7 @@ redact_stream() {
 			v = val[k]
 			if (length(v) <= L) continue
 			t = s; off = 0
-			while ((i = index(t, v)) > 0) {
+			while ((i = (k in lv) ? index(tolower(t), lv[k]) : index(t, v)) > 0) {
 				if (off + i <= c && off + i + length(v) >= c + L) return 1
 				off += i; t = substr(t, i + 1)
 			}
@@ -2050,6 +2050,10 @@ redact_stream() {
 		np = split(ENVIRON["REDACT_PAIRS"], rows, "\n")
 		for (k = 1; k <= np; k++) {
 			split(rows[k], f, "\t"); val[k] = f[1]; ph[k] = f[2]
+			# a proxy value is matched in any ASCII case, as setup_report registers it (ignore_case or url mode):
+			# under LC_ALL=C tolower keeps every byte where it is, so the offsets found in the lower-cased text cut
+			# the line as written (B13 round 13 O2, O67). Its kind is in its placeholder: no other pair writes one
+			if (index(f[2], "<proxy-") && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1])
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
 			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
 		}
@@ -2106,12 +2110,12 @@ redact_stream() {
 				for (j = 1; j <= m; j++) { seg[j] = tx[j]; held[j] = th[j] }
 				continue
 			}
-			if (!index($0, v)) continue # every plain piece is a piece of the input line
+			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
 			n = length(v); word = (f[3] == "w"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
 				s = seg[j]; acc = ""
-				while ((i = index(s, v)) > 0) {
+				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
 					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (alnum && post ~ /[A-Za-z0-9]/)) {
