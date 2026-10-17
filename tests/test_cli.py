@@ -2959,7 +2959,7 @@ def test_add_source_on_a_fresh_home_creates_everything_once(
     assert "already configured: source 'source'" in out
     # bring-back S15: the scaffold count carries its verb, so the second call reads as a no-op
     first, second = [ln for ln in out.splitlines() if ln.startswith("docs repo ")]
-    assert re.search(r"\(created, no remote; [1-9]\d* scaffold file\(s\) written\)$", first), first
+    assert re.search(r"\(created, no remote; [1-9]\d* scaffold files written\)$", first), first
     assert second.endswith("(exists, no remote; scaffold up to date)"), second
     cfg = ctx / "sources.toml"
     assert cfg.stat().st_mode & 0o777 == 0o600

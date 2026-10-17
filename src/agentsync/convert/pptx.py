@@ -35,8 +35,8 @@ from agentsync.convert.image import (
     _OCR_OPTIONS,
     _PICTURE_HEAD,
     _PICTURES_CUT,
-    _PICTURES_READ,
     _field_build,
+    _pictures_read,
     _raster_left,
     _read_pictures,
     _read_without_ocr,
@@ -45,6 +45,7 @@ from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import OcrEngine, OcrError
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -500,12 +501,12 @@ class PptxConverter:
         # A picture's text follows its own ``[image…]`` line, so the first line is never one OCR read.
         title = next((t for t in titles if t), "") or _first_line(body) or "Untitled presentation"
         named = [t for t in titles if t] if slides else []
-        summary = f"Presentation: {len(slides)} slide(s)"
+        summary = f"Presentation: {plural(len(slides), 'slide')}"
         if not slides:
-            summary += f"; {len(layouts)} layout(s)"
+            summary += f"; {plural(len(layouts), 'layout')}"
         # Counts only: a summary is front matter, above the banner, and never holds text OCR read.
         if found > len(texts):
-            summary += "; " + _PICTURES_READ.format(found - len(texts))
+            summary += "; " + _pictures_read(found - len(texts))
         if cut:
             summary += "; " + _PICTURES_CUT
         if named:

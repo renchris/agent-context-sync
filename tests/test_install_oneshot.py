@@ -5547,7 +5547,7 @@ def test_several_folders_print_the_docs_repo_and_sources_lines_once(
     assert fresh.returncode == 0, fresh.stdout + fresh.stderr
     out = fresh.stdout.splitlines()
     [repo], [sources] = _summary_lines(fresh)
-    assert re.search(r" \(created, no remote; [1-9]\d* scaffold file\(s\) written\)$", repo), repo
+    assert re.search(r" \(created, no remote; [1-9]\d* scaffold files written\)$", repo), repo
     ids = [s.id for s in load_config(cfg).sources]
     assert len(ids) == 4, "three folders and the inbox"
     assert sources == f"sources: {', '.join(ids)}", "the last call's line: every folder is in it"

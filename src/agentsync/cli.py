@@ -98,6 +98,7 @@ from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout, default_config_path, expand, is_under, provider_link_resolved
 from agentsync.publish import Publisher, archive_path
 from agentsync.slug import collision_key
+from agentsync.text import plural
 
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
@@ -645,8 +646,9 @@ def _ensure_setup(config: Config) -> int:
     with Manifest(config.state_paths.db) as manifest:
         written = Publisher(config, manifest).ensure_scaffold()
     # The count carries its verb: install.sh calls add-source once per folder, and a bare "0 scaffold
-    # file(s)" on the second call read as the first call's files undone.
-    scaffold = f"{len(written)} scaffold file(s) written" if written else "scaffold up to date"
+    # file(s)" on the second call read as the first call's files undone. One is "1 scaffold file" (B13
+    # round 14 Q39).
+    scaffold = f"{plural(len(written), 'scaffold file')} written" if written else "scaffold up to date"
     _out(f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, no remote; {scaffold})")
     findings = _refuse_remotes(config, gov)
     for f in findings:

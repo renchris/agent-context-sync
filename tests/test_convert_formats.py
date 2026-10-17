@@ -385,7 +385,7 @@ def test_pptx_fixture_anchors_titles_bullets_notes(fixture_files: dict[str, Path
     assert "### Notes:\n\nMention the renewal date." in u.body
     assert "<!-- Slide number: 2 -->\n\n## 2. Next steps" in u.body and "Owner: finance." in u.body
     assert u.title == "1. Kickoff"
-    assert u.summary == "Presentation: 2 slide(s); titles: 1. Kickoff; 2. Next steps"
+    assert u.summary == "Presentation: 2 slides; titles: 1. Kickoff; 2. Next steps"
 
 
 def test_pptx_rich_deck(tmp_path: Path) -> None:
@@ -475,7 +475,7 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
     for name in ("Contoso Quarterly.potx", "Contoso Quarterly.POTX"):
         u = _one(PptxConverter(CFG).convert(template, name=name))
         assert u.title == "Contoso Quarterly Template" and "## Contoso Quarterly Template" in u.body
-        assert u.summary.startswith("Presentation: 1 slide(s)")
+        assert u.summary.startswith("Presentation: 1 slide")
     assert template.read_bytes() == before, "the rewrite is in memory; the staged file is not touched"
     with pytest.raises(ConversionError, match="is not a PowerPoint file"):
         PptxConverter(CFG).convert(template, name="Contoso Quarterly.pptx")
@@ -531,7 +531,7 @@ def test_a_template_with_no_slides_says_what_its_layouts_and_master_hold(tmp_pat
     assert lines.index("Contoso Ltd. Confidential") > lines.index("Fixed text in the master and layouts:")
     assert "Click to edit" not in u.body
     assert u.title == "Contoso Ltd. Confidential" and "empty presentation" not in u.title
-    assert u.summary == "Presentation: 0 slide(s); 11 layout(s)"
+    assert u.summary == "Presentation: 0 slides; 11 layouts"
 
 
 def build_table_template(path: Path, *, boxes: bool) -> Path:
@@ -628,7 +628,7 @@ def test_pdf_fixture_page_anchors(fixture_files: dict[str, Path]) -> None:
         "<!-- page: 1 -->\n\nQuarterly Plan - page 1\nThe purchase order was approved.\n\n"
         "<!-- page: 2 -->\n\nBudget - page 2\nNorth spend 100, forecast 120.\n"
     )
-    assert u.title == "Quarterly Plan - page 1" and u.summary == "PDF: 2 page(s)"
+    assert u.title == "Quarterly Plan - page 1" and u.summary == "PDF: 2 pages"
 
 
 def test_pdf_scanned_page_marker_and_markdown_neutralised(tmp_path: Path) -> None:
@@ -728,7 +728,7 @@ def test_pdf_falls_back_to_pdfminer_only_when_pdfium_cannot_load(
     fallback = _one(PdfConverter(CFG).convert(fixture_files["sample.pdf"], name="sample.pdf"))
     assert fallback.body == primary.body  # same page anchors and text on a simple born-digital PDF
     assert fallback.summary == (
-        "PDF: 2 page(s); text by the pdfminer.six fallback (PDFium could not load it); comments not read"
+        "PDF: 2 pages; text by the pdfminer.six fallback (PDFium could not load it); comments not read"
     )
     assert "fallback" not in primary.summary
 
@@ -825,7 +825,7 @@ def test_pdf_comments_follow_their_page_text(tmp_path: Path) -> None:
     u = _one(PdfConverter(CFG).convert(build_commented_pdf(tmp_path / "c.pdf"), name="c.pdf"))
     assert u.body == _COMMENTED_PDF_BODY
     # Comments are counted, not lines of their text: the text box holds a line shaped like a reply.
-    assert u.summary == "PDF: 3 page(s); 9 comment(s) on 2 page(s)"
+    assert u.summary == "PDF: 3 pages; 9 comments on 2 pages"
     assert u.title == "Contoso widget overview"
 
 
@@ -846,9 +846,7 @@ def test_pdf_page_with_only_comments_is_not_refused(tmp_path: Path) -> None:
         "- Highlight by Doe, Jane Q: Middle TARGET line, ok. a_b\n"
         "- Squiggly underline by Roe, John: tighten this\n"
     )
-    assert u.summary == (
-        "PDF: 3 page(s), 3 without a text layer (scanned; OCR not run); 7 comment(s) on 2 page(s)"
-    )
+    assert u.summary == ("PDF: 3 pages, 3 without a text layer (scanned; OCR not run); 7 comments on 2 pages")
     assert u.title == "Untitled PDF"
     # Annotations that are all skipped are not comments: such a file is still refused.
     unseen = "/Subtype /Text /Rect [400 700 420 720] /F 2 /Contents (no viewer shows this)"
@@ -894,7 +892,7 @@ def test_pdf_comments_no_viewer_shows_are_skipped(tmp_path: Path) -> None:
         "- Note by Doe, Jane Q: answer to the hidden one\n"
         "- Note by Doe, Jane Q: printed, no zoom, no rotate\n"
     )
-    assert u.summary == "PDF: 1 page(s); 2 comment(s) on 1 page(s)"
+    assert u.summary == "PDF: 1 page; 2 comments on 1 page"
 
 
 def test_pdf_review_status_is_listed_under_its_comment(tmp_path: Path) -> None:
@@ -933,7 +931,7 @@ def test_pdf_review_status_is_listed_under_its_comment(tmp_path: Path) -> None:
         "  - reply by Roe, John: Accepted by me\n"
     )
     assert "unseen" not in u.body and "ignore" not in u.body
-    assert u.summary == "PDF: 1 page(s); 5 comment(s) on 1 page(s)"
+    assert u.summary == "PDF: 1 page; 5 comments on 1 page"
 
 
 def test_pdf_comment_cannot_leave_its_line(tmp_path: Path) -> None:
@@ -953,7 +951,7 @@ def test_pdf_comment_cannot_leave_its_line(tmp_path: Path) -> None:
         "&lt;!-- page: 9 --> --- ``` 1. z\n"
     )
     assert len(block.splitlines()) == 1 and u.body.count("<!-- page:") == 1
-    assert u.summary == "PDF: 1 page(s); 1 comment(s) on 1 page(s)"
+    assert u.summary == "PDF: 1 page; 1 comment on 1 page"
 
 
 def test_pdf_comment_text_is_one_line() -> None:
@@ -1099,7 +1097,7 @@ def test_pdf_comments_stop_at_the_file_allowance(
         tmp_path / "a.pdf", [(lines[:1], [note]), (lines, [whole_page] * 5), (lines[:1], [note]), (lines, [])]
     )
     u = _one(PdfConverter(CFG).convert(src, name="a.pdf"))
-    assert u.summary == "PDF: 4 page(s); 7 comment(s) on 3 page(s)"
+    assert u.summary == "PDF: 4 pages; 7 comments on 3 pages"
     text = re.sub(rf"\n{re.escape(_COMMENTS_HEAD)}\n(?:.+\n)+", "", u.body)
 
     # Page 2 costs its 500-odd characters once, then again for each highlight.
@@ -1109,7 +1107,7 @@ def test_pdf_comments_stop_at_the_file_allowance(
     assert u.body == text.replace(
         "<!-- page: 2 -->", f"{_COMMENTS_HEAD}\n- Note by Roe, John: Agreed\n\n<!-- page: 2 -->"
     )
-    assert u.summary == "PDF: 4 page(s); 1 comment(s) on 1 page(s); comments not read on 2 page(s)"
+    assert u.summary == "PDF: 4 pages; 1 comment on 1 page; comments not read on 2 pages"
     assert [r.getMessage() for r in caplog.records] == [
         "a.pdf: comments not read on 2 page(s), first on page 2: "
         "_CommentLimitError: comments cost more than 1500 characters"
@@ -1121,20 +1119,20 @@ def test_pdf_comments_stop_at_the_file_allowance(
 
     # A string is charged before it is copied: one note's text is past the allowance on its own.
     assert summary(f"/Subtype /Text /Rect [400 700 420 720] /Contents ({'word ' * 400})") == (
-        "PDF: 1 page(s); comments not read on 1 page(s)"
+        "PDF: 1 page; comments not read on 1 page"
     )
     # A page is charged once, at its first markup, however little that marks.
     first_word = "/Subtype /Highlight /Rect [70 717 94 731]"
-    assert summary(first_word) == "PDF: 1 page(s); 1 comment(s) on 1 page(s)"
+    assert summary(first_word) == "PDF: 1 page; 1 comment on 1 page"
     monkeypatch.setattr(pdf_mod, "_COMMENT_CHARS_MAX", 300)
-    assert summary(first_word) == "PDF: 1 page(s); comments not read on 1 page(s)"
+    assert summary(first_word) == "PDF: 1 page; comments not read on 1 page"
 
 
 @pytest.mark.parametrize(
     ("kind", "failing", "blocks_lost", "summary"),
     [
-        ("pdfium", 1, 1, "PDF: 3 page(s); 2 comment(s) on 1 page(s); comments not read on 1 page(s)"),
-        ("other", 3, 2, "PDF: 3 page(s); comments not read on 3 page(s)"),
+        ("pdfium", 1, 1, "PDF: 3 pages; 2 comments on 1 page; comments not read on 1 page"),
+        ("other", 3, 2, "PDF: 3 pages; comments not read on 3 pages"),
     ],
 )
 def test_pdf_comment_failure_keeps_the_document(
@@ -1196,7 +1194,7 @@ def test_pdf_fallback_reads_no_comments_and_says_so(tmp_path: Path, monkeypatch:
     assert "Contoso widget overview" in u.body and "Omega line below" in u.body
     assert "comments on this page" not in u.body and "Agreed" not in u.body
     assert u.summary == (
-        "PDF: 3 page(s); text by the pdfminer.six fallback (PDFium could not load it); comments not read"
+        "PDF: 3 pages; text by the pdfminer.six fallback (PDFium could not load it); comments not read"
     )
 
 
@@ -1284,7 +1282,7 @@ def test_a_scan_of_as_many_pages_as_the_limit_is_read_to_its_end_at_the_worst_pa
     u = _ocr_one(src, engine)
     assert now[0] - 1000.0 == 13.0 * count > image._DOCUMENT_BUDGET_S
     assert u.summary == (
-        f"PDF: {count + 2} page(s), {count} read by on-device OCR, "
+        f"PDF: {count + 2} pages, {count} read by on-device OCR, "
         "2 without a text layer (over the OCR page limit)"
     )
     assert f"page {count:02d}" in u.body and f"page {count + 1:02d}" not in u.body
@@ -1297,8 +1295,8 @@ def test_pdf_ocr_reads_a_page_without_a_text_layer_and_leaves_the_rest_as_it_was
     first = "<!-- page: 1 -->\n\nContoso board minutes, page one of two\n\n<!-- page: 2 -->\n\n"
     assert off.body == first + "[scanned page: no text layer]\n"
     assert on.body == first + f"{_OCR_READ}\n\nResolved: ship the tourer in May\nCarried, 5 to 2\n"
-    assert off.summary == "PDF: 2 page(s), 1 without a text layer (scanned; OCR not run)"
-    assert on.summary == "PDF: 2 page(s), 1 read by on-device OCR"
+    assert off.summary == "PDF: 2 pages, 1 without a text layer (scanned; OCR not run)"
+    assert on.summary == "PDF: 2 pages, 1 read by on-device OCR"
     assert on.title == off.title == "Contoso board minutes, page one of two"
     # One run of the helper, on the one page image, in a folder made beside the staged file and removed.
     (call,) = calls(engine.helper)
@@ -1323,7 +1321,7 @@ def test_a_pdf_of_page_images_is_a_page_when_ocr_reads_it_and_a_stub_when_it_fin
         f"<!-- page: 2 -->\n\n{_NO_TEXT_FOUND}\n"
     )
     assert u.title == "Contoso lease agreement"
-    assert u.summary == "PDF: 2 page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text)"
+    assert u.summary == "PDF: 2 pages, 1 read by on-device OCR, 1 without a text layer (OCR found no text)"
     # Nothing on any page: a settled result, not a failure, and its reason does not say OCR was not run.
     blank = shade_engine(tmp_path / "blank", {91: {"skipped": True}})
     with pytest.raises(UnreadableSourceError) as nothing:
@@ -1352,7 +1350,7 @@ def test_pdf_ocr_stops_at_the_page_limit_and_says_which_pages_it_did_not_read(
         f"<!-- page: 4 -->\n\n{_OVER_LIMIT}\n"
     )
     assert u.summary == (
-        "PDF: 4 page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text), "
+        "PDF: 4 pages, 1 read by on-device OCR, 1 without a text layer (OCR found no text), "
         "1 without a text layer (over the OCR page limit)"
     )
     assert [[Path(p).name for p in run] for run in reads(engine.helper)] == [
@@ -1391,7 +1389,7 @@ def test_a_page_image_is_rendered_without_the_annotations_its_comments_list(tmp_
         f"<!-- page: 1 -->\n\n{_OCR_READ}\n\nSigned in Rotterdam\n\n"
         "[comments on this page (PDF annotations):]\n- Box by Roe, John: Check the seal\n"
     )
-    assert u.summary == "PDF: 1 page(s), 1 read by on-device OCR; 1 comment(s) on 1 page(s)"
+    assert u.summary == "PDF: 1 page, 1 read by on-device OCR; 1 comment on 1 page"
 
 
 def test_pdf_ocr_renders_a_few_pages_at_a_time_and_removes_them(
@@ -1413,7 +1411,7 @@ def test_pdf_ocr_renders_a_few_pages_at_a_time_and_removes_them(
         ["page-00005.png"],
     ]
     assert [ln for ln in u.body.split("\n") if ln.startswith("scan")] == [f"scan {n}" for n in range(1, 6)]
-    assert u.summary == "PDF: 5 page(s), 5 read by on-device OCR"
+    assert u.summary == "PDF: 5 pages, 5 read by on-device OCR"
 
 
 def test_a_page_keeps_its_own_short_text_beside_what_ocr_read(tmp_path: Path) -> None:
@@ -1444,7 +1442,7 @@ def test_pdf_comments_still_follow_a_page_ocr_read(tmp_path: Path) -> None:
     assert off.body.count(marker) == 3
     assert on.body == off.body.replace(marker, f"{_OCR_READ}\n\nContoso widget overview")
     assert f"Contoso widget overview\n\n{_COMMENTS_HEAD}\n- Highlight by Roe, John: Use the Q3" in on.body
-    assert on.summary == "PDF: 3 page(s), 3 read by on-device OCR; 7 comment(s) on 2 page(s)"
+    assert on.summary == "PDF: 3 pages, 3 read by on-device OCR; 7 comments on 2 pages"
     assert on.title == "Contoso widget overview" and off.title == "Untitled PDF"
 
 
@@ -1461,7 +1459,7 @@ def test_pdf_ocr_reads_a_picture_only_where_the_text_layer_does_not_cover_it(tmp
     engine = shade_engine(tmp_path / "bin", said)
     off, on = _ocr_one(src, None), _ocr_one(src, engine)
     assert on.body == off.body + f"\n{_OCR_PICTURE}\nUnits by region\nNorth | 12\n\n{_OCR_PICTURE}\nDock 4\n"
-    assert on.summary == "PDF: 1 page(s); text of 2 picture(s) read by on-device OCR"
+    assert on.summary == "PDF: 1 page; text of 2 pictures read by on-device OCR"
     assert on.title == off.title == _TEXT[0]
     assert [len(run) for run in reads(engine.helper)] == [2]
     assert sorted(p.name for p in src.parent.iterdir()) == [src.name]
@@ -1488,9 +1486,7 @@ def test_a_scan_under_one_stamped_line_is_read_and_a_searchable_scan_is_not(tmp_
         "<!-- page: 2 -->\n\n" + "\n".join(searchable) + "\n\n"
         f"<!-- page: 3 -->\n\nPage 3\n\n{_OCR_READ}\n\nSigned in Rotterdam\n"
     )
-    assert u.summary == (
-        "PDF: 3 page(s), 1 read by on-device OCR; text of 1 picture(s) read by on-device OCR"
-    )
+    assert u.summary == ("PDF: 3 pages, 1 read by on-device OCR; text of 1 picture read by on-device OCR")
     # The rule is the picture's size on the page: a letter page needs 324 characters, a thumbnail 20.
     assert pdf_mod._COVER_PT2_PER_CHAR == 1500 and 612 * 792 / 1500 > 323
 
@@ -1520,7 +1516,7 @@ def test_pdf_ocr_reads_each_distinct_picture_once_and_none_that_fails_the_size_r
         f"<!-- page: 1 -->\n\n{text}\n\n{_OCR_PICTURE}\nContoso\n\n"
         f"<!-- page: 2 -->\n\n{text}\n\n{_OCR_PICTURE}\nOrders by month\n"
     )
-    assert u.summary == "PDF: 2 page(s); text of 2 picture(s) read by on-device OCR"
+    assert u.summary == "PDF: 2 pages; text of 2 pictures read by on-device OCR"
     assert decoded == [(96, 64)] * 2, (
         "the icon and the poster are turned away before a pixel is decoded, and so is the logo's second copy"
     )
@@ -1551,7 +1547,7 @@ def test_the_picture_limits_are_not_spent_on_icons_or_on_a_picture_drawn_again(
     engine = shade_engine(tmp_path / "bin", said)
     u = _ocr_one(_staged(tmp_path, pages), engine)
     assert decoded == [40, 41], "the chart is decoded once, an icon never"
-    assert u.summary == "PDF: 6 page(s); text of 2 picture(s) read by on-device OCR"
+    assert u.summary == "PDF: 6 pages; text of 2 pictures read by on-device OCR"
     assert u.body.count("Orders by month") == 1 and u.body.rstrip().endswith(f"{_OCR_PICTURE}\nStock on hand")
     assert u.body.index("Orders by month") < u.body.index("<!-- page: 2 -->"), "under the page it is first on"
 
@@ -1794,7 +1790,7 @@ def test_a_second_reading_counts_once_against_the_pictures_read(
     u = _ocr_one(src, engine)
     assert _images_read(engine) == 2
     assert u.body.endswith(f"{_OCR_PICTURE}\n" + "\n".join(_ROWS) + "\n")
-    assert u.summary == "PDF: 1 page(s); text of 1 picture(s) read by on-device OCR"
+    assert u.summary == "PDF: 1 page; text of 1 picture read by on-device OCR"
 
 
 def test_a_second_reading_is_charged_to_the_pixel_budget_and_the_time(
@@ -1932,13 +1928,13 @@ def test_pdf_ocr_picture_limits_are_counts_and_the_summary_says_when_one_cut_the
     cut = "; pictures past the OCR picture limit not read"
     assert read() == (
         [f"picture {n}" for n in range(5)],
-        "PDF: 2 page(s); text of 5 picture(s) read by on-device OCR",
+        "PDF: 2 pages; text of 5 pictures read by on-device OCR",
     )
     with monkeypatch.context() as mp:  # image objects looked at
         mp.setattr(pdf_mod, "_MAX_PICTURES_SEEN", 3)
         lines, summary = read()
         assert lines == ["picture 0", "picture 1", "picture 2"] and summary.endswith(
-            "3 picture(s) read by on-device OCR" + cut
+            "3 pictures read by on-device OCR" + cut
         )
     with monkeypatch.context() as mp:  # pixels decoded: room for two pictures of 96 x 64
         mp.setattr(pdf_mod, "_MAX_PICTURE_PIXELS", 2 * 96 * 64)
@@ -1954,7 +1950,7 @@ def test_pdf_ocr_picture_limits_are_counts_and_the_summary_says_when_one_cut_the
         mp.setattr(pdf_mod, "_MAX_PICTURE_PIXELS", 5 * 96 * 64)
         assert read() == (
             [f"picture {n}" for n in range(5)],
-            "PDF: 2 page(s); text of 5 picture(s) read by on-device OCR",
+            "PDF: 2 pages; text of 5 pictures read by on-device OCR",
         )
 
 
@@ -2006,9 +2002,9 @@ def test_text_ocr_read_in_a_pdf_cannot_pose_as_page_structure(tmp_path: Path) ->
     assert not [ln for ln in lines if ln.startswith("<") and not ln.startswith("<!-- page: ")]
     assert not [ln for ln in lines if ln and set(ln) <= set("=-")], "no setext underline, no rule"
     assert u.title == "Quarterly report"
-    assert u.summary == (
-        "PDF: 3 page(s), 1 read by on-device OCR; text of 1 picture(s) read by on-device OCR"
-    ), "a summary is counts, never what OCR read"
+    assert u.summary == ("PDF: 3 pages, 1 read by on-device OCR; text of 1 picture read by on-device OCR"), (
+        "a summary is counts, never what OCR read"
+    )
 
 
 def test_pdf_ocr_is_deterministic(tmp_path: Path) -> None:
@@ -2130,7 +2126,7 @@ def test_a_page_pdfium_cannot_render_stays_the_scanned_page_it_is_without_ocr(
         "<!-- page: 2 -->\n\n[scanned page: no text layer]\n"
     )
     assert u.summary == (
-        "PDF: 2 page(s), 1 read by on-device OCR, 1 without a text layer (scanned; OCR not run)"
+        "PDF: 2 pages, 1 read by on-device OCR, 1 without a text layer (scanned; OCR not run)"
     )
 
 
@@ -2160,7 +2156,7 @@ def test_a_pdf_the_helper_failed_on_is_the_page_of_a_mac_without_ocr_under_its_k
     assert got.converter_version == PdfConverter(CFG).version() and "ocr" not in got.converter_version
     (unit,) = got.units
     assert "<!-- page: 1 -->\n\n[scanned page: no text layer]\n" in unit.body
-    assert unit.summary == "PDF: 2 page(s), 1 without a text layer (scanned; OCR not run)"
+    assert unit.summary == "PDF: 2 pages, 1 without a text layer (scanned; OCR not run)"
     page = unit.body + unit.title + unit.summary
     for word in ("exited", "helper", "failed", "Fabrikam", str(tmp_path)):
         assert word not in page, word
@@ -2403,7 +2399,7 @@ def test_a_deck_without_an_engine_is_the_page_from_before_ocr(tmp_path: Path) ->
     src = build_pptx_rich(tmp_path / "rich.pptx")
     off = _deck_one(src, None)
     assert off.body == _RICH_DECK_BODY
-    assert (off.title, off.summary) == ("Numbers", "Presentation: 3 slide(s); titles: Numbers; Hidden one")
+    assert (off.title, off.summary) == ("Numbers", "Presentation: 3 slides; titles: Numbers; Hidden one")
     engine = fake_engine(tmp_path / "bin")
     assert _deck_one(src, engine) == off, "the logo is read, holds no text, and adds nothing"
     assert [len(run) for run in reads(engine.helper)] == [1]
@@ -2438,9 +2434,9 @@ def test_a_deck_pictures_text_follows_its_image_line_once_per_distinct_picture(t
     off, on = _deck_one(src, None), _deck_one(src, engine)
     assert off.body == body(read=False) and on.body == body(read=True)
     assert on.title == off.title == "Contoso tourer launch"
-    assert off.summary == "Presentation: 3 slide(s); titles: Contoso tourer launch"
+    assert off.summary == "Presentation: 3 slides; titles: Contoso tourer launch"
     assert on.summary == (
-        "Presentation: 3 slide(s); text of 2 picture(s) read by on-device OCR; titles: Contoso tourer launch"
+        "Presentation: 3 slides; text of 2 pictures read by on-device OCR; titles: Contoso tourer launch"
     )
     # One run of the helper, on the three distinct pictures in the order the slides show them, in a folder
     # made beside the staged file and removed.
@@ -2487,17 +2483,15 @@ def test_deck_picture_limits_are_counts_and_the_summary_says_when_one_cut_the_re
             u = _deck_one(src, engine)
         return [ln for ln in u.body.split("\n") if ln.startswith("picture text")], u.summary
 
-    everything = ([f"picture text {n}" for n in range(3)], "Presentation: 1 slide(s)")
-    read_all = "; text of 3 picture(s) read by on-device OCR"
+    everything = ([f"picture text {n}" for n in range(3)], "Presentation: 1 slide")
+    read_all = "; text of 3 pictures read by on-device OCR"
     assert read() == (everything[0], everything[1] + read_all)
     assert read(limit=3) == (everything[0], everything[1] + read_all), "a limit reached and not passed"
     lines, summary = read(limit=2)
     assert lines == ["picture text 0", "picture text 1"]
-    assert summary == "Presentation: 1 slide(s); text of 2 picture(s) read by on-device OCR" + _PICTURES_CUT
+    assert summary == "Presentation: 1 slide; text of 2 pictures read by on-device OCR" + _PICTURES_CUT
     lines, summary = read(max_bytes=len(pictures[0]) + len(pictures[1]) - 1)
-    assert lines == ["picture text 0"] and summary.endswith(
-        "1 picture(s) read by on-device OCR" + _PICTURES_CUT
-    )
+    assert lines == ["picture text 0"] and summary.endswith("1 picture read by on-device OCR" + _PICTURES_CUT)
     assert read(max_bytes=sum(map(len, pictures))) == (everything[0], everything[1] + read_all)
 
 
@@ -2527,7 +2521,7 @@ def test_text_ocr_read_in_a_deck_cannot_pose_as_slide_structure(tmp_path: Path) 
     assert not [ln for ln in lines if ln and set(ln) <= set("=-")], "no setext underline, no rule"
     assert on.title == off.title == "Roadmap"
     assert on.summary == (
-        "Presentation: 2 slide(s); text of 1 picture(s) read by on-device OCR; titles: Roadmap; Next steps"
+        "Presentation: 2 slides; text of 1 picture read by on-device OCR; titles: Roadmap; Next steps"
     ), "a summary is counts and the deck's own titles, never what OCR read"
 
 
@@ -2759,7 +2753,7 @@ def test_a_word_documents_picture_text_follows_the_block_that_shows_it_once_per_
     assert on.title == off.title == "Contoso tourer launch"
     assert off.summary == "Word document; headings: Contoso tourer launch"
     assert on.summary == (
-        "Word document; text of 2 picture(s) read by on-device OCR; headings: Contoso tourer launch"
+        "Word document; text of 2 pictures read by on-device OCR; headings: Contoso tourer launch"
     )
     # One run of the helper on the three pictures the body uses, in the order it uses them, in a folder
     # made beside the staged file and removed.
@@ -2790,7 +2784,7 @@ def test_an_opendocument_picture_stored_under_several_names_is_printed_once(tmp_
         f"{table}\n\n{_PICTURE_HEAD}\n\n{_CHART_TEXT}\n\n{again}\n\n"
         f"{then}\n\n{_PICTURE_HEAD}\n\nApproved \\| 12 May\n"
     )
-    assert on.summary == "OpenDocument text; text of 2 picture(s) read by on-device OCR"
+    assert on.summary == "OpenDocument text; text of 2 pictures read by on-device OCR"
     assert [len(run) for run in reads(engine.helper)] == [2], "the second copy is not read again"
 
 
@@ -2811,7 +2805,7 @@ def test_a_footnotes_picture_text_goes_with_the_note_unless_the_body_shows_the_p
     blocks, kinds = _gfm_blocks(on.body)
     assert blocks == ["Para", "Para", "Para", "Para"]
     assert kinds <= {"Para", "Str", "Space", "LineBreak", "SoftBreak", "Note"}
-    assert on.summary == "OpenDocument text; text of 2 picture(s) read by on-device OCR"
+    assert on.summary == "OpenDocument text; text of 2 pictures read by on-device OCR"
     assert on.title == _doc_one(src, None).title
     # The body shows the note's picture as well: its text is there, once.
     both = f"Sales rose[^1].\n\nAgain ![b](b.png) here.\n\n{note}"
@@ -2868,7 +2862,7 @@ def test_word_pictures_are_read_in_order_of_first_use_and_only_the_ones_the_body
     monkeypatch.setattr(pandoc_mod, "_read_pictures", functools.partial(image._read_pictures, limit=1))
     limited = _doc_one(src, engine)
     assert "picture text 0" in limited.body and "picture text 1" not in limited.body
-    assert limited.summary == "Word document; text of 1 picture(s) read by on-device OCR" + _PICTURES_CUT
+    assert limited.summary == "Word document; text of 1 picture read by on-device OCR" + _PICTURES_CUT
     media = [name for name in opened if name.startswith("word/media/")]
     assert media == [f"word/{used[0]}", f"word/{used[1]}"], "the third picture is never opened"
 
@@ -2889,14 +2883,14 @@ def test_word_picture_limits_are_counts_and_the_summary_says_when_one_cut_the_re
         return [ln for ln in u.body.split("\n") if ln.startswith("picture text")], u.summary
 
     everything = [f"picture text {n}" for n in range(3)]
-    read_all = "Word document; text of 3 picture(s) read by on-device OCR"
+    read_all = "Word document; text of 3 pictures read by on-device OCR"
     assert read() == (everything, read_all)
     assert read(limit=3) == (everything, read_all), "a limit that is reached and not passed cuts nothing"
     assert read(max_bytes=sum(sizes)) == (everything, read_all)
     lines, summary = read(limit=2)
-    assert lines == everything[:2] and summary.endswith("2 picture(s) read by on-device OCR" + _PICTURES_CUT)
+    assert lines == everything[:2] and summary.endswith("2 pictures read by on-device OCR" + _PICTURES_CUT)
     lines, summary = read(max_bytes=sizes[0] + sizes[1] - 1)
-    assert lines == everything[:1] and summary.endswith("1 picture(s) read by on-device OCR" + _PICTURES_CUT)
+    assert lines == everything[:1] and summary.endswith("1 picture read by on-device OCR" + _PICTURES_CUT)
 
 
 _DOC_HOSTILE = [
@@ -2958,7 +2952,7 @@ def test_text_ocr_read_in_a_word_document_cannot_pose_as_page_structure(tmp_path
         assert _headings(on.body, max_level=6) == _headings(off.body, max_level=6) == headings
         assert _open_fence(on.body) is None and on.title == off.title == "Roadmap"
         assert on.summary.endswith(
-            "; text of 1 picture(s) read by on-device OCR; headings: Roadmap; Next steps"
+            "; text of 1 picture read by on-device OCR; headings: Roadmap; Next steps"
         ), "a summary is counts and the document's own headings, never what OCR read"
 
 
@@ -3064,7 +3058,7 @@ def test_a_picture_that_cannot_be_opened_costs_only_itself_and_the_rest_are_read
     engine = fake_engine(tmp_path / "bin")
     on = _doc_one(src, engine)
     assert on.body == _doc_one(src, None).body.rstrip("\n") + f"\n\n{_PICTURE_HEAD}\n\npicture text 1\n"
-    assert on.summary == "Word document; text of 1 picture(s) read by on-device OCR"
+    assert on.summary == "Word document; text of 1 picture read by on-device OCR"
     assert [len(run) for run in reads(engine.helper)] == [1]
 
 
@@ -3104,7 +3098,7 @@ def test_a_picture_of_a_note_is_found_by_the_relationships_of_the_notes_part(
     assert on.body == off.body.replace(
         "text.[^1]\n", f"text.[^1]\n\n{_PICTURE_HEAD}\n\nOrders by month\n", 1
     ).rstrip("\n") + (f"\n\n    {_PICTURE_HEAD}\n\n    Seal of the notary\n")
-    assert on.summary == "Word document; text of 2 picture(s) read by on-device OCR"
+    assert on.summary == "Word document; text of 2 pictures read by on-device OCR"
 
 
 def test_a_damaged_or_missing_picture_costs_only_itself_and_the_document_converts(tmp_path: Path) -> None:
@@ -3122,7 +3116,7 @@ def test_a_damaged_or_missing_picture_costs_only_itself_and_the_document_convert
     assert off.body.count("[image: ") == 2, "pandoc shows the damaged picture and drops the missing one"
     assert on.body == off.body.rstrip("\n") + f"\n\n{_PICTURE_HEAD}\n\npicture text 2\n"
     assert [len(run) for run in reads(engine.helper)] == [1], "no copy of the damaged picture is read"
-    assert on.summary == "Word document; text of 1 picture(s) read by on-device OCR"
+    assert on.summary == "Word document; text of 1 picture read by on-device OCR"
 
 
 _UNLISTED = {
@@ -4334,7 +4328,7 @@ def test_a_drawio_diagram_is_its_shape_text_and_connections_per_page(
     src = build_drawio(tmp_path / "Contoso Architecture.drawio", compressed=compressed)
     u = _one(DiagramConverter(CFG).convert(src, name="Contoso Architecture.drawio"))
     assert u.body == DRAWIO_BODY
-    assert (u.title, u.summary) == ("", "draw.io diagram: 2 page(s); pages: Overview; Notes")
+    assert (u.title, u.summary) == ("", "draw.io diagram: 2 pages; pages: Overview; Notes")
 
 
 @pytest.mark.parametrize(
@@ -4370,7 +4364,7 @@ def test_a_visio_drawing_is_its_shape_text_and_connections_per_page(tmp_path: Pa
         "## Site plan\n\n- Contoso router\n- Rack A\n- Server 42\n\nConnections:\n\n"
         "- Contoso router -> Server 42: uplink\n\n## Frame (background page)\n\n- Contoso internal\n"
     )
-    assert (u.title, u.summary) == ("", "Visio drawing: 2 page(s); pages: Site plan; Frame")
+    assert (u.title, u.summary) == ("", "Visio drawing: 2 pages; pages: Site plan; Frame")
 
 
 def test_a_macro_enabled_visio_drawing_is_read_like_a_vsdx_and_its_macros_never_opened(
@@ -4399,7 +4393,7 @@ def test_a_macro_enabled_visio_drawing_is_read_like_a_vsdx_and_its_macros_never_
     )
     assert r.status is ConversionStatus.OK
     assert "\n- Contoso router -> Server 42: uplink\n" in _one(r.units).body
-    assert _one(r.units).summary == "Visio drawing: 2 page(s); pages: Site plan; Frame"
+    assert _one(r.units).summary == "Visio drawing: 2 pages; pages: Site plan; Frame"
     assert "visio/pages/page1.xml" in opened and not [n for n in opened if "vbaProject" in n]
 
 

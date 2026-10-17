@@ -1573,9 +1573,7 @@ def test_the_real_helper_reads_a_pdf_page_without_a_text_layer_and_a_picture_bes
         "orders by month",
         "march 412 april 388",
     ]
-    assert (
-        unit.summary == "PDF: 2 page(s), 1 read by on-device OCR; text of 1 picture(s) read by on-device OCR"
-    )
+    assert unit.summary == "PDF: 2 pages, 1 read by on-device OCR; text of 1 picture read by on-device OCR"
     assert unit.title.casefold() == "contoso supply agreement"
     assert sorted(p.name for p in tmp_path.iterdir()) == [src.name]
 

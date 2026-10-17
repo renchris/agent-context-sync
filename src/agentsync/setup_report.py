@@ -130,6 +130,7 @@ from agentsync.materialise import file_provider_marker
 from agentsync.ops.lock import Stage
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary, provider_link_resolved
 from agentsync.skill import AGENTSYNC_BIN, INSTALL_SH
+from agentsync.text import plural as _plural
 
 REPORT_TITLE = "# agentsync setup report"
 SECTION_TITLES = (
@@ -4025,10 +4026,11 @@ exit's are its own line's (:func:`_signed_out`, B13 round 13 O1); this one is fo
 def _list_folders_note(note: str) -> str:
     """install.log's list-folders note in the report's words, as :func:`_first_sync_note` gives the first-sync
     step's (B13 round 12 N4: the row read ``done (listed-6)`` beside worded first-sync and agentsync rows).
-    ``listed-N`` is ``listed N folder(s)``; the others are :data:`_LIST_FOLDERS_NOTE_WORDS`. No parenthesis;
-    a note none of these is shown as it is. install.log keeps its tokens."""
+    ``listed-N`` is ``listed N folders`` (``listed 1 folder``, B13 round 14 Q39); the others are
+    :data:`_LIST_FOLDERS_NOTE_WORDS`. No parenthesis; a note none of these is shown as it is. install.log
+    keeps its tokens."""
     if (listed := re.fullmatch(r"listed-(\d+)", note)) is not None:
-        return f"listed {listed.group(1)} folder(s)"
+        return f"listed {_plural(int(listed.group(1)), 'folder')}"
     return _LIST_FOLDERS_NOTE_WORDS.get(note, note)
 
 
@@ -4557,8 +4559,8 @@ def _policy_line(c: Config) -> str:
     if not pol.labels_active:
         return f"- [policy] label rule: off{sidecar}"
     return (
-        f"- [policy] label rule: on ({len(pol.exclude_label_ids)} excluded id(s), "
-        f"{len(pol.exclude_label_names)} name(s), "
+        f"- [policy] label rule: on ({_plural(len(pol.exclude_label_ids), 'excluded id')}, "
+        f"{_plural(len(pol.exclude_label_names), 'name')}, "
         f"refuse_unlabelled={'true' if pol.refuse_unlabelled else 'false'}){sidecar}"
     )
 
@@ -7407,10 +7409,6 @@ def _no_clicks_why(run_type: str) -> str | None:
     return {"simulated launchd": "launchd simulated", "sandbox": "sandbox"}.get(run_type)
 
 
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}{'' if n == 1 else 's'}"
-
-
 def _allow_clicks(layout: PromptLayout) -> str:
     """The words for the announced Allow clicks: one since v7, two in v6."""
     return "Allow click" if len(layout.allow_click_steps) == 1 else "Allow clicks"
@@ -7971,7 +7969,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     if r.facts.baseline is not None:
         done, total = r.facts.baseline
         parts.append(
-            f"{done} of {total} source(s) with a complete baseline (status, read when this report "
+            f"{done} of {_plural(total, 'source')} with a complete baseline (status, read when this report "
             "was written)"
         )
     if pool:

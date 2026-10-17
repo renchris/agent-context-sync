@@ -49,8 +49,8 @@ from agentsync.convert.image import (
     _ENGINE_LABEL,
     _OCR_OPTIONS,
     _PICTURES_CUT,
-    _PICTURES_READ,
     _field_build,
+    _pictures_read,
     _raster_left,
     _read_pictures,
     _read_without_ocr,
@@ -782,7 +782,7 @@ class PandocConverter:
         # text OCR read.  (No heading is: pandoc escapes a ``#`` it did not write.)
         described = kind
         if placed:
-            described += "; " + _PICTURES_READ.format(placed)
+            described += "; " + _pictures_read(placed)
         if cut:
             described += "; " + _PICTURES_CUT
         # A title is the document's own.  Without a heading it is the first line, and that is looked for

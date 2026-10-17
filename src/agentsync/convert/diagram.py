@@ -42,6 +42,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 # 1.1.0: a Visio shape without text of its own shows its master's; 1.2.0: draw.io %name% placeholders
 _EMITTER_VERSION = "1.2.0"
@@ -493,7 +494,7 @@ class DiagramConverter:
         body, sidecars = _cap_body(
             "\n".join(out) if has_text else "", self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR
         )
-        summary = f"{kind}: {len(pages)} page(s)"
+        summary = f"{kind}: {plural(len(pages), 'page')}"
         if pages:
             summary += "; pages: " + _join_limited([p.name for p in pages], limit=170)
         return (

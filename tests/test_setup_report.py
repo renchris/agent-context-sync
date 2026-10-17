@@ -452,9 +452,9 @@ def test_a_logger_named_like_a_document_keeps_its_time_and_level(module: str, he
     """A logger is named after its module: ``agentsync.convert.pdf`` is not a document, and a line that
     lost its first segment to ``<path>`` lost its time and its level with it. That holds for a line with
     the UTC time agentsync writes since B13 round 8 J26 as for an older log's local time."""
-    line = f"{head}convert.{module}: Contoso Plan.pdf: comments not read on 1 page(s), first on page 2"
+    line = f"{head}convert.{module}: Contoso Plan.pdf: comments not read on 1 page, first on page 2"
     assert setup_report._scrub_item_paths(line) == (
-        f"{head}convert.{module}: <path>: comments not read on 1 page(s), first on page 2"
+        f"{head}convert.{module}: <path>: comments not read on 1 page, first on page 2"
     )
     # Only a segment that is a whole log-line head is left alone: a file named like a logger is a file.
     for posing in (
@@ -1170,7 +1170,7 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(
     assert f"- IT draft: {setup_report.IT_DRAFT} not written (prompt step 4:" in summary, "v5's step 4"
     # the count names status's field and when it was read; "listed completely" read as all of them (N17)
     assert (
-        "- first sync: done in 34s (install.log) · 1 of 2 source(s) with a complete baseline (status, read "
+        "- first sync: done in 34s (install.log) · 1 of 2 sources with a complete baseline (status, read "
         "when this report was written)" in summary.splitlines()
     )
     assert "listed completely" not in summary
@@ -8967,12 +8967,12 @@ def test_configuration_says_a_label_rule_is_on_in_counts_only(fake_mac: dict[str
     )
     text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     conf = section(text, "Configuration")
-    assert "- [policy] label rule: on (0 excluded id(s), 1 name(s), refuse_unlabelled=false)\n" in conf, conf
+    assert "- [policy] label rule: on (0 excluded ids, 1 name, refuse_unlabelled=false)\n" in conf, conf
     assert "Highly Confidential" not in text and "sha256:" not in conf
     (cfg.parent / "policy.toml").write_text("[policy]\nrefuse_unlabelled = true\n", encoding="utf-8")
     conf = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Configuration")
     assert (
-        "- [policy] label rule: on (0 excluded id(s), 1 name(s), refuse_unlabelled=true); policy.toml beside "
+        "- [policy] label rule: on (0 excluded ids, 1 name, refuse_unlabelled=true); policy.toml beside "
         "sources.toml: yes\n" in conf
     ), conf
     (cfg.parent / "policy.toml").write_text("[policy]\nexclude_label_ids = [1]\n", encoding="utf-8")
@@ -10059,10 +10059,10 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
 
     head = "seconds=2 rc=0 result=done note=listed-6"
     # one colon, after the note: the words join the identifier as a clause (B13 round 9 K23, K36)
-    unread = "done (listed 6 folder(s): could not read which folders sources.toml syncs, because "
-    assert cell(f"{head} synced=2") == "done (listed 6 folder(s): 2 already synced)"
-    assert cell(f"{head} synced=0") == "done (listed 6 folder(s): 0 already synced)"
-    assert cell(head) == "done (listed 6 folder(s))"
+    unread = "done (listed 6 folders: could not read which folders sources.toml syncs, because "
+    assert cell(f"{head} synced=2") == "done (listed 6 folders: 2 already synced)"
+    assert cell(f"{head} synced=0") == "done (listed 6 folders: 0 already synced)"
+    assert cell(head) == "done (listed 6 folders)"
     assert cell(f"{head} synced=unreadable marks=no-tool") == f"{unread}no agentsync was installed)"
     assert cell(f"{head} synced=unreadable marks=timeout") == f"{unread}the reader took over 10 s)"
     assert cell(f"{head} synced=unreadable marks=older:is_under") == (
@@ -10078,8 +10078,8 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
     assert cell(f"{head} synced=unreadable marks=failed:Bad-Name!x") == (
         f"{unread}the installed agentsync failed while reading it)"
     )
-    assert cell(f"{head} synced=Contoso") == "done (listed 6 folder(s))"
-    assert cell(f"{head} synced=1234567") == "done (listed 6 folder(s))"
+    assert cell(f"{head} synced=Contoso") == "done (listed 6 folders)"
+    assert cell(f"{head} synced=1234567") == "done (listed 6 folders)"
     # B13 round 12 N4: every note install.sh writes for the list is in words, as first-sync's are (M40);
     # install.log keeps its tokens, and a note the report does not know is shown as it is
     failed = "seconds=0 rc=3 result=failed"
@@ -10106,11 +10106,10 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
     assert "Contoso" not in cell(f"{failed} note=not-signed-in apps=Contoso missing=1 synced=1")
     # B13 round 13 O9: a folder the list found gone is counted, never named; a gone= no count is dropped
     assert (
-        cell(f"{head} synced=2 gone=1")
-        == "done (listed 6 folder(s): 2 already synced, 1 of them not on disk)"
+        cell(f"{head} synced=2 gone=1") == "done (listed 6 folders: 2 already synced, 1 of them not on disk)"
     )
-    assert cell(f"{head} synced=2 gone=Contoso") == "done (listed 6 folder(s): 2 already synced)"
-    assert cell(f"{head} synced=2 gone=0") == "done (listed 6 folder(s): 2 already synced)"
+    assert cell(f"{head} synced=2 gone=Contoso") == "done (listed 6 folders: 2 already synced)"
+    assert cell(f"{head} synced=2 gone=0") == "done (listed 6 folders: 2 already synced)"
     assert cell("seconds=0 rc=4 result=failed note=denied") == (
         "failed, rc 4 (this terminal app was denied access to the folders)"
     )

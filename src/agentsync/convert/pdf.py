@@ -63,11 +63,11 @@ from agentsync.convert.image import (
     _OCR_OPTIONS,
     _PICTURES_CUT,
     _PICTURES_PER_RUN,
-    _PICTURES_READ,
     _budget_s,
     _direction,
     _field_build,
     _ocr_lines,
+    _pictures_read,
     _read_each,
     _read_pictures,
     _read_without_ocr,
@@ -76,6 +76,7 @@ from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import _MIN_PX, MAX_MEGAPIXELS, MAX_PAGES, OcrEngine, OcrError
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -1171,22 +1172,23 @@ class PdfConverter:
             "",
         )
         title = first.lstrip("\\")[:120] if first else "Untitled PDF"
-        summary = f"PDF: {len(pages)} page(s)"
+        summary = f"PDF: {plural(len(pages), 'page')}"
         for marker, clause in _SCANNED_OUTCOMES.items():
             if outcomes[marker]:
                 summary += f", {outcomes[marker]} {clause}"
         if read.pictures:
             # Counts only: a summary is front matter, above the banner, and never holds text OCR read.
-            summary += "; " + _PICTURES_READ.format(sum(map(len, read.pictures.values())))
+            summary += "; " + _pictures_read(sum(map(len, read.pictures.values())))
         if read.pictures_cut:
             summary += "; " + _PICTURES_CUT
         if comments:
             # One line is one comment, so this counts the comments emitted, not lines of their text.
-            summary += f"; {sum(map(len, comments.values()))} comment(s) on {len(comments)} page(s)"
+            said = plural(sum(map(len, comments.values())), "comment")
+            summary += f"; {said} on {plural(len(comments), 'page')}"
         if unread:
             # Without this a page whose comments failed reads as a page nobody commented on, and the
             # count above as the whole of them.
-            summary += f"; comments not read on {unread} page(s)"
+            summary += f"; comments not read on {plural(unread, 'page')}"
         if engine == "pdfminer":
             summary += "; text by the pdfminer.six fallback (PDFium could not load it); comments not read"
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)

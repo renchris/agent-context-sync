@@ -2398,11 +2398,11 @@ def test_a_scanned_pdf_page_is_read_in_the_staging_folder_and_past_the_ocr_budge
         fm, body = page(sample_config.docs_repo, slug.mirror_rel_path(SID, f"scans/scan {n}.pdf"))
         assert fm["status"] == "current" and body.startswith("> [UNTRUSTED CONTENT]")
         if "+ocr-paper-vision-" in fm["converter"]:
-            assert fm["summary"] == "PDF: 2 page(s), 1 read by on-device OCR"
+            assert fm["summary"] == "PDF: 2 pages, 1 read by on-device OCR"
             assert body.rstrip().endswith(f"(Apple Vision)]\n\nDelivery note {n}")
             read.append(n)
         else:
-            assert fm["summary"] == "PDF: 2 page(s), 1 without a text layer (scanned; OCR not run)"
+            assert fm["summary"] == "PDF: 2 pages, 1 without a text layer (scanned; OCR not run)"
             assert body.rstrip().endswith("[scanned page: no text layer]") and "Delivery" not in body
             unread.append(n)
     assert (len(read), len(unread)) == (2, 1), "two reads pass the budget; the third file does not wait"
@@ -2455,7 +2455,7 @@ def test_a_deck_and_a_word_document_are_read_like_a_pdf_and_an_rtf_file_is_as_it
 
     fm, body = published("minutes.docx")
     assert fm["converter"].startswith("pandoc-gfm@1.0.0+pandoc-") and "+ocr-paper-vision-" in fm["converter"]
-    assert fm["summary"] == "Word document; text of 1 picture(s) read by on-device OCR; headings: Minutes"
+    assert fm["summary"] == "Word document; text of 1 picture read by on-device OCR; headings: Minutes"
     assert body.endswith("read by on-device OCR (Apple Vision):]\n\nOrders by month")
     fm, body = published("review.pptx")
     assert fm["converter"].startswith("pptx-python-pptx@1.0.1+") and "+ocr-paper-vision-" in fm["converter"]
@@ -3880,7 +3880,7 @@ def test_a_pdf_converted_before_comments_were_kept_gains_them_and_is_read_again_
     assert [c.path for c in second.changes] == [slug.mirror_rel_path(SID, REVIEW)]
     fm, body = _mirror_page(sample_config, REVIEW)
     assert fm["converter"].startswith("pdf-pypdfium2@2.1.0+") and fm["summary"].endswith(
-        "1 comment(s) on 1 page(s)"
+        "1 comment on 1 page"
     )
     assert body.rstrip().endswith(f"{COMMENTS}\n- Note by Roe, John: Check Contoso widget review")
     assert _mirror_bytes(sample_config, PLAIN_PDF) == plain and b"pdf-pypdfium2@2.0.0+" in plain[PLAIN_PDF]

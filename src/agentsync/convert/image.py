@@ -41,6 +41,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.ocr import LANGUAGES, MAX_PAGES, OcrEngine, OcrError, OcrImage, _kept, text_lines
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -79,8 +80,14 @@ _FAILED = "on-device OCR failed"
 _NO_PAGE_TEXT = "[no text on this page]"
 # In a deck and in a Word document: the line between a picture's ``[image…]`` line and the text read in it.
 _PICTURE_HEAD = f"[text in the image above, read by on-device OCR ({_ENGINE_LABEL}):]"
+
+
 # A document's summary clauses about its pictures.  Counts only: a summary never holds text OCR read.
-_PICTURES_READ = "text of {} picture(s) read by on-device OCR"
+def _pictures_read(n: int) -> str:
+    """The clause for ``n`` pictures OCR read, the noun by the count (B13 round 14 Q39)."""
+    return f"text of {plural(n, 'picture')} read by on-device OCR"
+
+
 _PICTURES_CUT = "pictures past the OCR picture limit not read"
 # C0 controls are no part of what a picture shows; ``text_lines`` has already made whitespace one space.
 # Half a surrogate pair goes with them: a page that holds one cannot be written as UTF-8, so one in a
