@@ -387,6 +387,56 @@ def _dataclass_stubs(text: str) -> dict[tuple[str, str], list[str]]:
     return stubs
 
 
+def test_the_registry_stub_has_the_code_signatures() -> None:
+    """B13 round 13 O55: §15's `Registry` stub still read `__init__(self, converters)`, `default(cls, cfg)`
+    and eight converters, and had no `policy`, `without_ocr`, `without_speech`, `screen`,
+    `label_withheld_suffixes` or `sidecar_digest_lines`. Its python block now has every public member of the
+    module and of the class, each with the code's parameter names, kinds and defaults; the old signatures
+    are SUPERSEDED comments, each change under its own date and section."""
+    import ast  # noqa: PLC0415
+    from collections.abc import Callable  # noqa: PLC0415
+
+    from agentsync.convert import registry  # noqa: PLC0415
+
+    text = CONTRACTS.read_text(encoding="utf-8")
+    section = text.split("### `agentsync.convert.registry`", 1)[1]
+    block = section.split("```python\n", 1)[1].split("\n```", 1)[0]
+    assert "# SUPERSEDED (2026-09-29, §16.6): __init__(self, converters: Sequence[Converter])" in block, block
+    assert "# SUPERSEDED (2026-09-29, §16.6; 2026-10-06, §16.26;" in block, block
+
+    def params(fn: ast.FunctionDef) -> list[tuple[str, str, str | None]]:
+        a = fn.args
+        pos = [*a.posonlyargs, *a.args]
+        defaults = [None] * (len(pos) - len(a.defaults)) + [ast.unparse(d) for d in a.defaults]
+        out = [(x.arg, "POSITIONAL_OR_KEYWORD", d) for x, d in zip(pos, defaults, strict=True)]
+        kw = [None if d is None else ast.unparse(d) for d in a.kw_defaults]
+        return out + [(x.arg, "KEYWORD_ONLY", d) for x, d in zip(a.kwonlyargs, kw, strict=True)]
+
+    def code(obj: Callable[..., object]) -> list[tuple[str, str, str | None]]:
+        empty = inspect.Parameter.empty
+        found = inspect.signature(obj).parameters.values()
+        return [(p.name, p.kind.name, None if p.default is empty else repr(p.default)) for p in found]
+
+    tree = ast.parse(block)
+    top = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    for name in public_names("agentsync.convert.registry"):
+        if not name.isupper():  # a constant is §16's
+            assert name in top, f"§15 registry stub lacks {name}"
+    stub = top["Registry"]
+    assert isinstance(stub, ast.ClassDef)
+    members = {n.name: n for n in stub.body if isinstance(n, ast.FunctionDef)}
+    public = [n for n in vars(registry.Registry) if not n.startswith("_") or n == "__init__"]
+    assert sorted(public) == sorted(members), (sorted(public), sorted(members))
+    for name, fn in members.items():
+        obj = inspect.getattr_static(registry.Registry, name)
+        if isinstance(obj, property):
+            continue
+        func = obj.__func__ if isinstance(obj, classmethod) else obj
+        assert params(fn) == code(func), name
+    fn = top["label_withheld_suffixes"]
+    assert isinstance(fn, ast.FunctionDef) and params(fn) == code(registry.label_withheld_suffixes)
+
+
 def test_dataclass_stubs_list_the_code_fields() -> None:
     """Q87 (B13 round 4): the contract checked that each public name appears, not a dataclass stub's fields,
     so `PurgeReport` lacked `not_run` from §16.38 to §16.45 and `Suppressions` and `GovernanceConfig` were

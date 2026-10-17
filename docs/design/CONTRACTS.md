@@ -2306,12 +2306,48 @@ Converter registry: routes a file name to exactly one converter by extension (ow
 class Registry:
     """An immutable extension -> converter map."""
 
-    def __init__(self, converters: Sequence[Converter]) -> None:
-        """Build the map; raises ValueError if two converters claim one extension."""
+    # SUPERSEDED (2026-09-29, §16.6): __init__(self, converters: Sequence[Converter])
+    def __init__(
+        self, converters: Sequence[Converter], *, policy: PolicyConfig | None = None, banner: bool = False
+    ) -> None:
+        """Build the map; raises ValueError if two converters claim one extension. With ``policy`` or
+        ``banner`` every converter is wrapped in the pre-conversion guard (§16.6)."""
 
+    # SUPERSEDED (2026-09-29, §16.6; 2026-10-06, §16.26; 2026-10-07, §16.34; 2026-10-08, §16.35):
+    #     default(cls, cfg: ConvertConfig) -> Registry, "Registry of every built-in converter (pandoc, xlsx,
+    #     pptx, pdf, markdown, text, eml, teams)."
     @classmethod
-    def default(cls, cfg: ConvertConfig) -> Registry:
-        """Registry of every built-in converter (pandoc, xlsx, pptx, pdf, markdown, text, eml, teams)."""
+    def default(
+        cls,
+        cfg: ConvertConfig,
+        *,
+        policy: PolicyConfig | None = None,
+        ocr: OcrEngine | None = None,
+        media: MediaEngine | None = None,
+        pieces: PieceStore | None = None,
+        speech: SpeechEngine | None = None,
+    ) -> Registry:
+        """Registry of every built-in converter, each behind the policy guard and the banner. Which
+        converters it registers is no list here: `Registry.default`'s own docstring in registry.py is the
+        authority. Always: §7's routing with vtt-turns (§16.35) and diagram-stdlib (§16.42, §16.48); `.msg`
+        gets msg-olefile, or msg-mime under a label rule (§16.42, §16.54). With ``ocr``: a second pandoc-gfm
+        without the engine, and image-ocr unless a label rule is active (§16.26). With ``ocr``, ``media``
+        and ``[convert] recordings``: recording-av (§16.34, §16.35)."""
+
+    @property
+    def policy(self) -> PolicyConfig:
+        """The content policy this registry's guard enforces (§16.6)."""
+
+    @property
+    def without_ocr(self) -> Registry | None:
+        """The same registry built without the OCR engine, when this one has one; else None (§16.26)."""
+
+    @property
+    def without_speech(self) -> Registry | None:
+        """The same registry built without the speech engine, when this one has one; else None (§16.35)."""
+
+    def screen(self, src: Path, *, name: str) -> Screening | None:
+        """Pre-conversion screen of a staged file, before the cache lookup (``policy.screen_file``, §16.6)."""
 
     def for_name(self, name: str) -> Converter | None:
         """Return the converter for a file name by its lower-case suffix (``.teams.json`` matched whole)."""
@@ -2321,6 +2357,16 @@ class Registry:
 
     def extensions(self) -> tuple[str, ...]:
         """All claimed extensions, sorted."""
+
+
+def label_withheld_suffixes() -> frozenset[str]:
+    """The suffixes a label rule leaves without a converter, because their label cannot be read (every
+    image, a binary or not-downloaded `.msg`); their stub reads as withheld by the label rule (§16.47). The
+    docstring in registry.py is the authority."""
+
+
+def sidecar_digest_lines(body: str) -> list[tuple[str, str]]:
+    """(sidecar name, sha256) pairs of a page body's sidecar footer, which `_pages_intact` verifies (§16.12)."""
 ```
 
 ### `agentsync.convert.cache` — `src/agentsync/convert/cache.py` — owner: **convert**
@@ -19988,6 +20034,8 @@ credential), `test_cycle.py::test_a_new_recording_read_in_the_cycle_that_deferre
 `test_cycle.py::test_a_new_file_the_os_will_not_hydrate_is_counted_deferred`,
 `test_cli.py::test_a_new_file_is_counted_once_under_its_final_verdict` (an edited file reads `changed=1`, not new),
 `test_cli.py::test_a_new_file_publish_quarantines_reads_quarantined_and_not_changed`.
+Amended 2026-10-17, §16.108 O50: `acc.deferred` and `deferred_online_only` count files, not events: a file deferred
+and then read in the same cycle no longer reads `1 deferred` beside counts with no deferred entry.
 
 **The speech build's flags keep `~/Library`, not the whole home (N18; `agentsync.convert.speech`; amends §16.48
 R90).** R90 said the build wrote the real `~/Library` SwiftPM folders before it passed `--cache-path`,
@@ -20123,7 +20171,48 @@ Reserved for round 13 lane B of B13.
 
 ### 16.108 Round 13: deferred counts, speech, converters and policy (2026-10-17, wave B13 round 13 lane E)
 
-Reserved for round 13 lane E of B13.
+Lane E's round 13 items (`docs/plans/bring-back-ocr.md`, "B13 round 13"; specs `round13/items/O<n>.md`, the
+verifier's corrected fix built): O50, O55, O56, O69 and O73. A dated line this round writes reads `Amended
+2026-10-17, §16.108 O<n>`. No item needs prompt words, so none went to lane P.
+
+**A file left for a later run is counted only while it still is (O50; `agentsync.cycle`; amends §16.102 N50).**
+§16.102 N50 moved a file's count with its last settle but left `acc.deferred` and `deferred_online_only` counting
+events, which no later settle undid. A new recording deferred and then read in the same poll cycle read `1 deferred
+· cursor held · changed=3 (3 new)`: the bit `model.py` defines as items left for a later run, beside counts with no
+deferred entry. `_SourceAcc` keeps `deferred_ids` and `deferred_online_ids`, filled at the three places that defer
+(`_recording_defer`, a fetch the OS refused, `_defer`), and `deferred` and `deferred_online_only` are properties
+that count the ids still settled `deferred`. A file deferred twice in one cycle counts once, and the count cannot
+go negative. Only the sync line, the CHANGELOG line and the `deferred_online_only` sum read them; the cursor never
+did. Tests: `test_cycle.py::test_a_new_recording_read_in_the_cycle_that_deferred_it_is_counted_once` (0 and 0),
+`test_cycle.py::test_a_new_file_the_os_will_not_hydrate_is_counted_deferred` (1 and 1).
+
+**§15's `Registry` stub has the code's signatures (O55; `agentsync.convert.registry`).** The stub in §15's module
+reference still read `__init__(self, converters)`, `default(cls, cfg)` and eight converters, and had no `policy`,
+`without_ocr`, `without_speech`, `screen`, `label_withheld_suffixes` or `sidecar_digest_lines`; it pointed at no §16
+section. As the pandoc, pptx and pdf stubs above it are, it keeps the old signatures as `# SUPERSEDED (<date>,
+§16.N)` comments, each change under its own date and section, and gives the current ones. It lists no converters: its `default`
+docstring says which section added which (§7's routing, §16.26 the second `pandoc-gfm` and `image-ocr`, §16.34 and
+§16.35 `recording-av` and `vtt-turns`, §16.42 and §16.48 `diagram-stdlib`, §16.42 and §16.54 `msg-olefile` or
+`msg-mime`), and `Registry.default`'s own docstring stays the authority. Test:
+`test_contracts.py::test_the_registry_stub_has_the_code_signatures` (every public member of the module and the
+class, each with the code's parameter names, kinds and defaults).
+
+**`page_says_withheld` names every reader (O56; `agentsync.policy`).** Its docstring named the cycle's re-render
+and the setup report. `_sync/QUARANTINE.tsv` (`Publisher._stub_says`, round 10 L54) and the cycle's no-engine stub
+read (`_Cycle._page_withheld`, round 9 K50) decide by it too: each reads the page's frontmatter lines with
+`publish._withheld_on_page` first and calls it directly only on the YAML fallback. Test:
+`test_policy.py::test_page_says_withheld_names_every_reader`, which walks `src/` for every function that calls it
+or `_withheld_on_page` and fails on one the docstring does not name.
+
+**A build's time limit in the tests counts from the compiler's start (O73; tests only).** Under load (about 300)
+`test_a_speech_build_out_of_time_leaves_no_compiler_running` failed: the 2 s covers the steps before `swift build`
+too, and when they used it up the build raised before any compiler started, so `compiler_pid` waited 30 s for none.
+A SIGINT inside the build step could also kill the stub's compiler before it wrote its pid, since `_run_build` waits
+on the real clock. The speech test holds `speech._clock` at 0, so each step gets the whole 2 s, and
+`test_ocr.compiling` first only notes a SIGINT, until its compiler has written its pid. Patching `ocr._clock` would
+do nothing: `ocr._compile` passes its limit straight to `_run_build`. Measured: with the compiler's start 1 s late
+and a SIGINT 0.3 s in, the old stub left no pid, the new one a pid and a compiler stopped. Nothing in the product
+changed; the shared budget stays `test_the_build_gets_twenty_minutes_of_its_own`'s.
 
 ### 16.109 Round 13: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 13 lane D)
 
