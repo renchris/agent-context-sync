@@ -5606,13 +5606,13 @@ makes the NEXT `fix the [FAIL] lines above ..., then run ~/.local/bin/agentsync 
 only the launcher's TCC_PENDING); a `WAITING ON YOU: macOS held the listing ...` line exits 1 whatever the
 `[FAIL]` lines say, and becomes the NEXT unless a blocking `[FAIL]` does. With `--confirm-install-agent` the NEXT
 starts `background sync: running; ` or `background sync: ok; ` (`simulated (...)` under the test seam). Every
-"nothing is left: background sync is on" line is deleted. Amended 2026-10-17, §16.106 O11, O30: when every blocking
-`[FAIL]` line's fix is the person's (a `[[source]]` path or sentinel, a folder to put back or sync, a sign-in), either
-NEXT reads `the [FAIL] lines above are the person's to fix (...), not a step for the agent, so show them those lines
-and go on to the report; once fixed, ...`; any other blocking `[FAIL]` keeps `fix the [FAIL] lines above ...`. A run that created the config and has no folder to
+"nothing is left: background sync is on" line is deleted. A run that created the config and has no folder to
 sync exits 2 with `NEXT: no folder to sync yet: list them with install.sh --list-folders, ...`; a run over an
 existing config without one (inbox-only too) exits 0 on status's NEXT. uv runs with `UV_TOOL_BIN_DIR` pinned to
-`~/.local/bin`.
+`~/.local/bin`. Amended 2026-10-17, §16.106 O11, O30: when every blocking
+`[FAIL]` line's fix is the person's (a `[[source]]` path or sentinel, a folder to put back or sync, a sign-in), either
+NEXT reads `the [FAIL] lines above are the person's to fix (...), not a step for the agent, so show them those lines
+and go on to the report; once fixed, ...`; any other blocking `[FAIL]` keeps `fix the [FAIL] lines above ...`.
 
 ### 16.15 `it-request`: the IT request as an email draft (2026-09-30, integrator)
 
@@ -6280,6 +6280,8 @@ or empty for this case (a source sat incomplete for 900 passes):
     Amended 2026-10-16, §16.101 N12, N38: the bracket names the cause by the kinds the walk stored (`refused with
     EACCES`, ...), with `or a missing sentinel` only while one is set; a source with no stored kind keeps `no
     access, or a missing folder or sentinel`, and sources share the line only with one cause and one fix.
+    Amended 2026-10-17, §16.115 Q80 (by §16.107 O49): `or a missing sentinel` only when the last walk stored
+    today's sentinel as missing (`sentinel_missing:<id>`), not whenever one is set.
 - doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder and lists none. A Graph source and
   an inbox keep `agentsync sync -v (a full pass that lists all of <id> clears this)` (an inbox is incomplete
   while a file in it is still being written, and the loop says so in a note). A local source reads `agentsync
@@ -12979,6 +12981,8 @@ purge queued`. Sources with nothing missed share today's line, byte for byte. Te
 (today's text: `test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v`).
 Amended 2026-10-16, §16.101 N12, N38: the bracket names the cause by the stored kinds (`refused with EACCES`, ...)
 and the sentinel only while one is set; `no access, or a missing folder or sentinel` only when no kind is stored.
+Amended 2026-10-17, §16.115 Q80 (by §16.107 O49): `or a missing sentinel` only when the last walk stored
+today's sentinel as missing (`sentinel_missing:<id>`), not whenever one is set.
 
 **R101.** An inbox pass stamps `last_seen_run`, and only that, on the present file rows of the files its walk
 withheld as changed within `quiescence_s` or future-dated (`ScanResult.withheld`, stable ids;
@@ -14436,6 +14440,8 @@ item amends an older section, a dated line sits at that section too.
   out` where lines of the embed were dropped, and F20's label where an agentsync older than F20 rendered it.
   Amended 2026-10-16, §16.99 N22: the count now ends the renderer's bracket, `; K of them left out: the
   bring-back and issue link lines)`.
+  Amended 2026-10-17, §16.115 Q75 (by §16.105 O70): the marker line reads `(earlier runs' bring-back and issue
+  link lines are left out of this report)`, since its lines can span runs.
   Amended 2026-10-13, §16.70 H24: the shell fallback's link is filled in one case (a step 1 failure that
   states its prompt and agent); it still starts with `ISSUE_URL`, so the drop is unchanged.
 - **It goes when a later report is written** (Q20). Every report written for an attempt that was not stopped,
@@ -14769,6 +14775,8 @@ bare ones and older ones stayed, so `status` printed `~/.local/bin/agentsync pur
   Amended 2026-10-15, §16.93 M13: the sources line reads `sources: no folder yet besides ... (run <bin> add-source
   <folder>)` when an inbox is configured, naming every inbox source.
   Amended 2026-10-16, §16.101 N13: it reads `sources: no folder yet besides ...; run <bin> add-source <folder>`.
+  Amended 2026-10-17, §16.115 Q59 (by §16.107 O17): under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the line ends
+  before `; run <bin> add-source <folder>` and names no `<bin>`; a bare run keeps the pointer.
 Left as they are: docstrings, comments, the `--help` epilog and help strings (read, not pasted), and the comment line
 at the top of the sources.toml template. **Amended 2026-10-13, §16.63 G79:** the `--help` epilog, the help strings
 and the template's comment line now name `~/.local/bin/agentsync` too (a command in backticks is pasted); only the
@@ -15219,6 +15227,8 @@ built here.
   sending it".
   Amended 2026-10-13, §16.65 G14: the marker reads `(an earlier run's bring-back and issue link lines are left
   out of this report)` and the NEXT line is kept; install.out never holds a `--report-only` run's NEXT.
+  Amended 2026-10-17, §16.115 Q75 (by §16.105 O70): the marker now reads `(earlier runs' bring-back and issue
+  link lines are left out of this report)`, since its lines can span runs.
 - **A newer copy** (F17). `--log-start` with a version above `SETUP_PROMPT_COMPAT` reads its own checkout's
   upstream branch and that remote's URL, origin's when there is no upstream (git, read-only, only with the
   developer tools; `newer_copy_fix`). Following main of the canonical repository: the copy came from another
@@ -15808,6 +15818,8 @@ Round 6 findings (`round6/items/G<n>.md` of the bring-back cache) built in `scri
   are left out of this report)`. Dropping step 2's real NEXT instead would contradict the Installer section's
   count of NEXT lines in install.out. `test_the_real_report_of_a_stopped_copy_invites_no_bring_back` seeds
   install.out with a full run's real end and checks the line after the marker is that run's `NEXT: stop:`.
+  Amended 2026-10-17, §16.115 Q75 (by §16.105 O70): the marker now reads `(earlier runs' bring-back and issue
+  link lines are left out of this report)`, since its lines can span runs.
 - **The install.out embed says what it quotes** (G16, G17). `stopped_report_note` reads the report twice. The
   first read counts the lines it leaves out between the embed's `<details><summary>the last N line(s) of ...`
   line and `</details>` (every line it drops or turns into the marker), and the second writes the count into
@@ -19083,6 +19095,9 @@ The line is cli.py's (install.sh relays it unread). Tests: `test_init_counts_and
 `test_status_with_no_folder_source_is_a_next_line_and_exit_0`.
 Amended 2026-10-16, §16.101 N13: the names follow a colon and the pointer a `; `, `sources: no folder yet besides
 3 inbox sources: inbox, contoso-bridge, contoso-bridge-mail; run ...`, so no two brackets sit side by side.
+Amended 2026-10-17, §16.115 Q59 (by §16.107 O17): under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the line ends
+before the pointer (`sources: no folder yet besides the inbox`), since the installer's NEXT line names its own
+re-run with `--source-local`; a bare run keeps it.
 
 **A config that does not load is the person's to fix** (M23 and M39, one defect). The config step ended through
 `fail()`, whose NEXT `fix the error above, then re-run: install.sh` the prompt's step 2 rule ("do what NEXT: says only
@@ -19452,6 +19467,8 @@ test_a_source_root_a_sync_cannot_list_never_offers_an_exclude`.
 Amended 2026-10-16, §16.101 N12, N38: the wait's bracket names the cause by the same kinds (`refused with EACCES`,
 ...), with `or a missing sentinel` only while one is set; N36, N37: the alarm's fixes take their number from the
 folders of each kind, not from the number of kinds.
+Amended 2026-10-17, §16.115 Q80 (by §16.107 O49): `or a missing sentinel` only when the last walk stored
+today's sentinel as missing (`sentinel_missing:<id>`), not whenever one is set.
 
 **M46, M56: the alarm names the empty folders' wait by its subject (`agentsync.arm_local`; amends §16.89 L15).**
 Since round 10 L68 a source with empty folders and one it cannot read gets two waits, and the alarm's `the
@@ -20781,6 +20798,8 @@ Docs, dated lines and a test docstring that lagged round 12's code and prompt v2
 that fails on the text it replaced. Every edit is outside the prompt block, so v21's digest is unchanged, and no
 item needs prompt words, so none went to lane P. A dated line this round writes reads `Amended 2026-10-17, §16.109
 O<n>`, with `(by §16.NN N<n>)` when it records another round's change.
+Amended 2026-10-17, §16.115 Q67: the digest left unchanged was v22's, as `PROMPT` in tests/test_deploy_pack.py pins
+it, not v21's: prompt v22 (b28a873d) had landed before §16.109's commits.
 
 **The intro and both guides say what v21 does at the sign-in stop with nobody to ask** (O12, O62, O71: one defect,
 built once). v21's first exception (§16.100 N32, N6) tells an agent that cannot ask not to wait for the sign-in and to
@@ -20790,6 +20809,9 @@ run, or a question left unanswered), it does not wait for that sign-in and logs 
 report (since v21).`). None promises that the report names the app: it says OneDrive whatever the list named. Tests:
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`,
 `test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+Amended 2026-10-17, §16.115 Q66 (by §16.104 O1): the report does name the app since O1, which landed beside
+§16.109's commits: from the list's `apps=` (`_SIGN_IN_APPS`), `a sync app` for a line with a synced count and no
+`apps=`, and OneDrive for `apps=onedrive` or `apps=sharedlibraries`, or a line with neither. The guides stay app-neutral on purpose.
 
 **A config step 2 cannot reinstall for adds no folder** (O61). Since §16.99 N29 a list whose installed agentsync is
 this checkout's build and failed on the config ends on `no folder can be added until the config is fixed: run
@@ -21205,4 +21227,76 @@ Tests: `test_ocr.py::test_a_build_whose_compiler_starts_after_the_time_limit_is_
 
 ### 16.115 Round 14: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 14 lane D)
 
-Reserved for round 14 lane D of B13.
+Docs and dated lines that lagged round 13's code (`docs/plans/bring-back-ocr.md`, "B13 round 14"; specs
+`round14/items/Q<n>.md`, the verifier's corrected fix built). The Q ids are round 14's, not round 4's. Each item is
+pinned by a test that fails on the text it replaced. Every edit is outside the prompt block, so the prompt's digest
+is unchanged, and no item needs prompt words, so none went to lane P. A dated line this round writes reads
+`Amended 2026-10-17, §16.115 Q<n>`, with `(by §16.NN O<n>)` when it records another round's change; older text
+stays as it was written.
+
+**The guide moves a late step 1 run to the next `Attempt:` line too** (Q64, Q77: one defect, built once). Since
+§16.104 O24 parse_friction and install.sh's `friction_latest_has_step` give the finished attempt's trailing step 1
+lines to the next `Attempt:` line, as round 12 N23 gives them to a step 1 error, but setup-feedback.md said a late
+line no such error follows stays where it is. It now says the `Attempt:` line takes the run and the attempt still
+begins at its `Attempt:` time, and "any other late line" is one of another step, or a step 1 line such a line
+separates from the next session. The guide says `Attempt:` line, not header: its headers are the `Prompt:`,
+`Agent:`, `Outcome:` and `Run:` lines. Tests: `test_the_guide_moves_a_late_step_1_run_to_the_next_attempt_line`,
+`test_the_guide_moves_a_late_step_1_run_at_any_gap`.
+
+**The guide's local-work recovery writes one patch per branch** (Q65). It ran `format-patch origin/main..<branch>`
+with no suffix for each local-work branch. Every keep commit has the subject `local changes kept before update`, so
+each wrote `0001-local-changes-kept-before-update.patch` over the one before, and the report read the survivor as
+all the kept work. Lane RB's Q30 (§16.111) rewrote the passage first: the report's own line gives the remedy with
+`--suffix=".<branch>.patch"`, and the guide quotes it. Measured on git 2.54 with two keep branches: two files, the
+subject shortened to fit and the `.<branch>.patch` ending the report matches kept. Lane D adds only a pin that the
+no-suffix form cannot come back. Test: `test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+**The guide's Summary table has round 13's asks-nothing line** (Q69). §16.104 O8's `step 1 asks nothing, since no
+folder can be added until the config is fixed` (`_unread_stuck`: v21 or later, `marks=failed`, agentsync skipped as
+current) had no row, and the `asks at most whether to add one` row claimed every v18 or later attempt. That row now
+names the cases that keep it, and a row for O8's line follows it. Test:
+`test_the_guides_summary_table_has_the_unread_config_line_that_asks_nothing`.
+
+**The guide's sync row names the newest earlier run's sync** (Q70). Since §16.104 O32 a one-attempt report whose
+install.out counts an earlier run printed adds `· the newest earlier run's sync: <result> (install.log: ...)` when a
+newer earlier run logged a first-sync step, and leaves those counts out; the row said such counts always read
+`(install.out: the install run of <time>, before this attempt; ...)`. The no-header case is unchanged, since O32
+applies only when the run that printed the counts is known. Test:
+`test_the_guides_sync_row_names_the_newest_earlier_runs_sync`.
+
+**Three more guide sentences follow the code** (Q71, Q72, Q74). The set-up Mac's sign-in exit logs `not-signed-in
+apps=<app> missing=M synced=N` since §16.105 O5, not `not-signed-in synced=N` (named still, as an older install.sh's),
+and CONTRACTS' dated history keeps the short form where it was true. Section 5's clean run with the sign-in reads
+"fully one command", not "as worked", which named no outcome. README's Install section gives a config the list
+could not read a new Mac's exits: `synced` is empty, so the signed-out check never runs, and the list exits 3 when
+it finds nothing, with a NEXT that names the unread config; the set-up Mac sentence now reads "whose config shows it
+already syncs folders". Tests: `test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`,
+`test_section_5_counts_the_sign_in_step_1_waits_for`,
+`test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+**The no-folder sources line's pointer is a bare run's** (Q59; dated lines at §16.56 F66 and §16.93 M13). Since
+§16.107 O17 the line ends before `; run <bin> add-source <folder>` under install.sh, but only §16.101 N13 had the
+dated line: §16.56's list of lines that name `<bin>` and §16.93 M13 still gave the pointer as the line's end. Test:
+the dated-line scan (`test_every_dated_line_from_round_11_on_is_held_by_a_test`).
+
+**§16.109's own claims are corrected** (Q66, Q67; dated lines at §16.109 O12 and §16.109). O12's paragraph said the
+report says OneDrive whatever the list named, true on the base lane D wrote against but not once §16.104 O1 landed
+beside it; its opening said v21's digest was unchanged, though v22 had landed first. Each gets a dated line; the
+text stays. Tests: the dated-line scan, and the pin for §16.109's opening paragraph in
+`test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`.
+
+**K02's O11/O30 line sits at the end of its paragraph** (Q68). §16.106 put it mid-paragraph in §16.14's
+"SUPERSEDED in part (2026-10-05, KISS K02)", so K02's own sentences after it (the exit 2 run with no folder, the
+exit 0 run, `UV_TOOL_BIN_DIR`) read as part of the 2026-10-17 amendment, the splice §16.103 N68 undid for v20. It is
+moved, unchanged, after the paragraph's last sentence. §16.98's N5 and N57 lines already sit after their
+paragraphs' prose and stay. Test: `test_k02s_dated_line_follows_its_own_text`.
+
+**The stopped-copy marker's dated lines reach §16.53, §16.59 and §16.65** (Q75; dated lines at §16.59 F16, §16.65
+G14 and §16.53 Q10). §16.105 O70 made the marker `(earlier runs' bring-back and issue link lines are left out of this
+report)` and wrote its dated line only at §16.99 N22, so the three places that quote the old marker still gave it as
+current. Test: the dated-line scan.
+
+**A could-not-list cause names a sentinel only when the walk missed it, at every older line** (Q80; dated lines at
+§16.95 M42, §16.45 R102 and §16.22). §16.107 O49 has its dated line at §16.101 N12 alone; the round 12 lines at
+§16.22's nothing-stored bullet, §16.45 R102 and §16.95 M47/M42 still said `or a missing sentinel` while one is set.
+Tests: the dated-line scan, and the §16.22 pin in `test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`.

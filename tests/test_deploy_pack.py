@@ -5310,6 +5310,8 @@ _ROUND_14_PARAGRAPH_AMENDS = (
     ("7", "`.vtt` → `vtt-turns` (was `text-plain`, which it replaces).", "§16.114 Q62"),
     ("15", "pandoc_path: Path | None = None # None = the pypandoc_binary bundled pandoc", "§16.114 Q62"),
     ("16.32", "- **Which pandoc.** The one the check runs:", "§16.114 Q62"),
+    ("16.22", "- nothing stored (no access, a missing folder or sentinel)", "§16.115 Q80 (by §16.107 O49)"),
+    ("16.109", "Docs, dated lines and a test docstring that lagged round 12's code", "§16.115 Q67"),
 )
 """Round 14's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
@@ -5335,11 +5337,12 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     and 5 beside a line that satisfies the same claim. Each is pinned in its block, as round 10's are; the
     rule that reads one claim's line alone also finds §16.86's M54 line. Round 12's §16.103 N58 has two, and
     §16.101 (lane B) four, §16.99 (lane RB) two, §16.102 (lane E) one: N73's at §16.12's STATE.md
-    paragraph."""
+    paragraph. Round 14's §16.114 (lane E) three, Q62's, and §16.115 (lane D) two: Q80's at §16.22's
+    nothing-stored bullet and Q67's at §16.109's opening paragraph."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
-    assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 3
+    assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 5
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5371,6 +5374,24 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         assert any(s == section and m.startswith(f"§{home} ") for s, _, m in pins), (
             f"§{home} names §{section}"
         )
+
+
+def test_k02s_dated_line_follows_its_own_text() -> None:
+    """B13 round 14 Q68: §16.106 O11, O30's dated line sat in the middle of §16.14's K02 paragraph, so K02's
+    own sentences after it (2026-10-05: the exit 2 run with no folder, the exit 0 run, `UV_TOOL_BIN_DIR`) read
+    as part of the 2026-10-17 amendment, the splice §16.103 N68 undid for v20. It ends the paragraph now,
+    still inside it, so the dated-line scan reads it in K02's block."""
+    k02 = " ".join(
+        _contracts_section(
+            "**SUPERSEDED in part (2026-10-05, KISS K02): install.sh ends on the loop's NEXT.**", "\n\n"
+        ).split()
+    )
+    dated = k02.index(
+        "Amended 2026-10-17, §16.106 O11, O30: when every blocking `[FAIL]` line's fix is the person's"
+    )
+    assert k02.index("A run that created the config and has no folder to sync exits 2") < dated
+    assert k02.index("uv runs with `UV_TOOL_BIN_DIR` pinned to `~/.local/bin`.") < dated
+    assert k02.endswith("any other blocking `[FAIL]` keeps `fix the [FAIL] lines above ...`.")
 
 
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
