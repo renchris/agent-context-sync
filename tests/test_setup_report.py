@@ -10838,6 +10838,53 @@ def test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops(
     assert "listable FAIL" in _line(got, "- doctor: ").split(" · unexpected ", 1)[1], _line(got, "- doctor: ")
 
 
+def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q3, Q18, Q36: step 1's list logged ``gone=1`` and its NEXT said step 2's status fails on
+    that folder, yet the Doctor line called the folder's listable and volume FAILs unexpected. They have a
+    bucket of their own, by check name and path; the outcome is unchanged. Both states: no ``gone=``, or more
+    folders missing than step 1 counted, keeps them unexpected."""
+    real = cli._status_checks
+
+    def sources_only(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name.startswith("source.")
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", sources_only)
+    write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
+    install = ("--confirm-install-agent", "done note=exists kept=2 added=0")
+
+    def summary(listed: str) -> str:
+        set_up_log(fake_mac, install, listed=listed, list_step="done note=listed-6")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        return section(text, "Summary")
+
+    fake_mac["one"].rename(fake_mac["one"].with_name("Client Beta"))  # renamed: its provider folder stays
+    baseline = summary(" synced=2")
+    line = _line(baseline, "- doctor: ")
+    assert "not on disk" not in line and "listable FAIL" in line.split(" · unexpected ", 1)[1], line
+    got = summary(" synced=2 gone=1")
+    line = _line(got, "- doctor: ")
+    bucket, unexpected = line.split(" · from the folder step 1 found not on disk 1: ", 1)[1].split(
+        " · unexpected ", 1
+    )
+    assert bucket.count(" FAIL") == 2 and "listable FAIL" in bucket and "volume FAIL" in bucket, line
+    assert "FAIL" not in unexpected, line
+    assert _line(got, "- **outcome") == _line(baseline, "- **outcome"), got  # the outcome is unchanged
+    # a SharePoint library not synced beside its OneDrive-<org> is in install.sh's gone= count too
+    shutil.rmtree(fake_mac["two"].parents[1])
+    line = _line(summary(" synced=2 gone=2"), "- doctor: ")
+    assert " · from the folders step 1 found not on disk 2: " in line, line
+    assert "FAIL" not in line.split(" · unexpected ", 1)[1], line
+    # two folders missing where step 1 counted one: which one went later cannot be told, so both unexpected
+    line = _line(summary(" synced=2 gone=1"), "- doctor: ")
+    assert "not on disk" not in line and line.split(" · unexpected ", 1)[1].count(" FAIL") == 4, line
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
     fake_mac: dict[str, Path], tmp_path: Path

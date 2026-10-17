@@ -7246,7 +7246,9 @@ def _prompt_copy_note(attempt: Attempt | None) -> str:
 
 
 def _doctor_fails(r: _Run) -> list[str]:
-    """The doctor FAIL check names (every FAIL is unexpected: only warns are ever expected)."""
+    """The doctor FAIL check names that the outcome counts: every FAIL, the sign-in stop's and the folders
+    step 1 found not on disk included (only warns are ever expected; the Doctor line alone sets those FAILs
+    apart, B13 round 13 O13, round 14 Q3, Q52)."""
     return [name for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"]
 
 
@@ -7511,6 +7513,32 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
     return gone
 
 
+def _gone_folder_fails(r: _Run, runs: Sequence[InstallRun]) -> set[str]:
+    """The doctor FAIL checks of the synced folders step 1's list found not on disk (its ``gone=N``, B13
+    round 14 Q3, Q18, Q36: step 1's NEXT said step 2's status fails on them, and the Doctor line called them
+    unexpected): ``source.<id>.listable`` and ``.volume`` of a configured source under ~/Library/CloudStorage
+    whose own path is not on disk now. By check name and path, never doctor's fix text. The provider folder
+    may be gone too: install.sh's ``gone=`` also counts one missing beside another folder of its app and a
+    SharePoint library not synced. Empty when the attempt's last list logged no ``gone=``, or stopped on a
+    sign-in (:func:`_sign_in_stop_fails` has those), or when more such sources are missing than it counted:
+    some went missing after step 1, and which cannot be told apart, so all stay unexpected."""
+    listed = _stopping_list(runs)
+    counted = _count(listed, "gone")
+    if not counted or listed.get("note") == "not-signed-in" or r.config is None:
+        return set()
+    missing = [
+        src.id
+        for src in r.config.sources
+        if src.is_live
+        and src.path is not None
+        and _cloud_parts(src.path) is not None
+        and not expand(src.path).exists()
+    ]
+    if len(missing) > counted:
+        return set()
+    return {f"source.{sid}.{check}" for sid in missing for check in ("listable", "volume")}
+
+
 def _stopping_list(runs: Sequence[InstallRun]) -> dict[str, str]:
     """The ``list-folders`` step of these runs' last list run: the one :func:`_list_stopped` reads the stop
     of. Empty with none."""
@@ -7745,10 +7773,15 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     unexpected: list[str] = []
     fr = r.friction
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
+    not_on_disk = _gone_folder_fails(r, runs) - signed_out
     from_stop: list[str] = []
+    from_gone: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
+            continue
+        if tag == "FAIL" and name in not_on_disk:  # B13 round 14 Q3, Q18, Q36: step 1 announced them
+            from_gone.append(name)
             continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
@@ -7771,6 +7804,13 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(f"yours {len(yours)}: {', '.join(yours)} (see WAITING ON YOU)")
     if from_stop:
         parts.append(f"from the sign-in stop {len(from_stop)}: {', '.join(f'{n} FAIL' for n in from_stop)}")
+    if from_gone:
+        folders = len({name.rsplit(".", 1)[0] for name in from_gone})
+        step = fr.latest.layout.folder_question_step if fr is not None and fr.latest is not None else 1
+        parts.append(
+            f"from the {'folder' if folders == 1 else 'folders'} step {step} found not on disk {folders}: "
+            + ", ".join(f"{n} FAIL" for n in from_gone)
+        )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)
     if gone is not None:  # the two doctors differ: say when each ran, never why (B13 round 5 F39)
