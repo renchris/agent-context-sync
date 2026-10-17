@@ -508,7 +508,9 @@ def _row(rel: str, state: str = "live") -> object:
     return dataclasses.make_dataclass("Row", ["rel_path", "is_dir", "state"])(rel, False, state)
 
 
-_MODE = "a folder's own permissions do not let this account read it: check its owner and mode with `ls -ld`"
+_MODE = "the folder's own permissions do not let this account read it: check its owner and mode with `ls -ld`"
+# ... after "for the folder it could not read," (B13 round 13 O35, O37: "a folder's own permissions" there)
+_MODE_NAMED = "its own permissions do not let this account read it: check its owner and mode with `ls -ld`"
 _MODES = "their own permissions do not let this account read them: check their owner and mode with `ls -ld`"
 """``_MODE`` for two or more folders (B13 round 12 N36, N37)."""
 
@@ -675,13 +677,33 @@ def test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude() -
         # B13 round 12 N36, N37: singular throughout for one folder of each
         f"2 unknown dir(s) — 1 could not be read: 'Locked' ({_DENIED}); 1 empty cloud folder, zero "
         "children in a cloud tree: 'One'; enumeration incomplete, no deletions this pass (for the folder "
-        f"it could not read, {_MODE}; for the empty one, the WAITING ON YOU line about the empty cloud "
-        "folder(s) in local-test at the end of a sync's output says what to do, and "
+        f"it could not read, {_MODE_NAMED}; for the empty one, the WAITING ON YOU line about the empty cloud "
+        "folder in local-test at the end of a sync's output says what to do, and "
         "`~/.local/bin/agentsync status` prints it too)"
     )
     # B13 round 11 M46, M56: the loop prints a could-not-be-listed wait about local-test too, so the line is
     # named by its subject, not only by its source
     assert "the WAITING ON YOU line about local-test" not in alarm
+
+
+def test_one_unreadable_folder_beside_an_empty_one_is_named_once() -> None:
+    """B13 round 13 O35, O37: one EACCES folder beside an empty cloud folder read "for the folder it could
+    not read, a folder's own permissions do not let this account read it", naming the folder twice; it is
+    "its own permissions" there, with the exclude only when no mirrored file is known below it, and the
+    alarm of that folder alone says "the folder's" (test_an_unreadable_folder_with_no_empty_cloud_folder_
+    names_its_reason)."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Test" / "Projects"
+    (root / "One").mkdir(parents=True)
+    _write(root / "Locked" / "b.docx")
+    _write(root / "a.docx")
+    mirrored = {i.stable_id: i for i in _walk(root)[0]}
+    for known, tail in ((mirrored, ""), ({}, ", or exclude it")):
+        arm = al.LocalArm(_cfg(root))
+        arm.known_h0 = known
+        with _chmod(root / "Locked", 0):
+            (alarm,) = arm.scan(None, full=True).alarms
+        assert f"(for the folder it could not read, {_MODE_NAMED}{tail}; for the empty one, " in alarm, alarm
+        assert "a folder's" not in alarm and "the folder's" not in alarm, alarm
 
 
 def _waits_alarm(root: Path, known: Sequence[SourceItem]) -> str:
@@ -703,7 +725,7 @@ def test_the_empty_folder_alarm_counts_the_waits_by_the_loops_rule() -> None:
         (root / f"Empty {n}").mkdir(parents=True)
     known = _walk(root)[0]
     one = (
-        "the WAITING ON YOU line about the empty cloud folder(s) in local-test at the end of a sync's output "
+        "the WAITING ON YOU line about the empty cloud folders in local-test at the end of a sync's output "
         "says what to do, and "
     )
     alarm = _waits_alarm(root, known)
@@ -781,7 +803,7 @@ def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:
     assert " agentsync status" not in alarm
     assert alarm == (
         "1 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One'; enumeration "
-        "incomplete, no deletions this pass (the WAITING ON YOU line about the empty cloud folder(s) in "
+        "incomplete, no deletions this pass (the WAITING ON YOU line about the empty cloud folder in "
         "local-test at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` "
         "prints it too)"
     )
@@ -843,7 +865,7 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
     per_dir = [r for r in caplog.records if " is unknown (" in r.getMessage()]
     assert len(per_dir) == 2 and {r.levelno for r in per_dir} == {logging.INFO}
     warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
-    assert warned == [f"local-test: 2 folder(s) could not be listed: 'Shut' ({denied}), 'Zeta' ({denied})"]
+    assert warned == [f"local-test: 2 folders could not be listed: 'Shut' ({denied}), 'Zeta' ({denied})"]
     (alarm,) = res.alarms
     # B13 round 11 M5, M45: the alarm names them too, in their own clause, not behind the five empty ones
     assert alarm == (
@@ -884,7 +906,7 @@ def test_a_held_listing_still_warns_about_the_folders_it_could_not_list(
         release.set()
     warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     edeadlk = f"EDEADLK: {os.strerror(errno.EDEADLK)}"
-    assert warned == [f"s: 1 folder(s) could not be listed: {failed[0]!r} ({edeadlk})"]
+    assert warned == [f"s: 1 folder could not be listed: {failed[0]!r} ({edeadlk})"]
 
 
 def test_the_walk_records_its_zero_child_cloud_folders(tmp_path: Path) -> None:

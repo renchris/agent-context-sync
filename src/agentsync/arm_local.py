@@ -154,7 +154,7 @@ def _errno_kind(code: int | None) -> str:
     return UNKNOWN_MODE if code == errno_mod.EACCES else UNKNOWN_OTHER
 
 
-def _read_advice(counts: Mapping[str, int], *, root: bool, excludable: bool) -> str:
+def _read_advice(counts: Mapping[str, int], *, root: bool, excludable: bool, named: bool = False) -> str:
     """The fix for folders a walk could not read, by their kinds and how many folders have each (``counts``;
     B13 round 11 M42): a privacy refusal
     (EPERM) takes the Files and Folders grant; a folder's own permissions (EACCES) take no grant, which cannot
@@ -166,7 +166,10 @@ def _read_advice(counts: Mapping[str, int], *, root: bool, excludable: bool) -> 
     excluded). No promise of a retry: the loop's wait says another sync does not clear it. Each fix is
     singular or plural by the folders of its kind, and names its kind ("for the one refused with EACCES",
     "for those ...") only beside another kind (B13 round 12 N36, N37: the number followed how many kinds,
-    so two EACCES folders read "a folder's own permissions ... it")."""
+    so two EACCES folders read "a folder's own permissions ... it"). ``named``: the caller has already named
+    the folders ("for the folder it could not read, ..."), so a single one is "its", and alone "the
+    folder's", never "a folder's" (B13 round 13 O35, O37: "for the folder it could not read, a folder's own
+    permissions")."""
     mixed = len(counts) > 1
 
     def which(kind: str, errno_name: str) -> str:
@@ -187,7 +190,7 @@ def _read_advice(counts: Mapping[str, int], *, root: bool, excludable: bool) -> 
             )
         elif n == 1:
             parts.append(
-                (f"{which(UNKNOWN_MODE, 'EACCES')}, its" if mixed else "a folder's")
+                (f"{which(UNKNOWN_MODE, 'EACCES')}, its" if mixed else "its" if named else "the folder's")
                 + " own permissions do not let this account read it: check its owner and mode with `ls -ld`"
                 + (", or exclude it" if excludable else "")
             )
@@ -596,9 +599,10 @@ def _warn_unlisted(state: _WalkState, source_id: str) -> None:
         return
     unlisted = sorted(state.unlisted)
     log.warning(
-        "%s: %d folder(s) could not be listed: %s%s",
+        "%s: %d %s could not be listed: %s%s",
         source_id,
         len(unlisted),
+        "folder" if len(unlisted) == 1 else "folders",  # B13 round 13 O35: "1 folder(s)"
         ", ".join(f"{d!r} ({state.unknown[d]})" for d in unlisted[:5]),
         f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else "",
     )
@@ -1187,7 +1191,8 @@ class LocalArm:
         # off PATH (round 5 F44, as §16.51 Q49).
         status = f"`{AGENTSYNC_BIN} status`"
         where = (
-            f"the WAITING ON YOU line about the empty cloud folder(s) in {self.source_id} {SYNC_OUTPUT_END} "
+            f"the WAITING ON YOU line about the empty cloud {'folder' if len(empties) == 1 else 'folders'} "
+            f"in {self.source_id} {SYNC_OUTPUT_END} "
             f"says what to do, and {status} prints it too"
             if len(empties) == 1 or self._empty_waits(empties, items) == 1
             else f"each WAITING ON YOU line about empty cloud folders in {self.source_id} {SYNC_OUTPUT_END} "
@@ -1197,7 +1202,7 @@ class LocalArm:
             cause = "empty cloud folder(s), zero children in a cloud tree"
             return f"{head}{cause}: {listed(empties)}{tail} ({where})"
         read = (
-            _read_advice(kinds, root=False, excludable=excludable)
+            _read_advice(kinds, root=False, excludable=excludable, named=True)
             if known
             else "grant the agent Files and Folders access"
         )

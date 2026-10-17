@@ -9552,7 +9552,7 @@ def test_an_empty_cloud_folders_heartbeat_is_yours_through_the_cli(
     [line] = [ln for ln in summary.splitlines() if ln.startswith("- doctor: ")]
     assert "· yours 1: heartbeat.<folder-1> (see WAITING ON YOU) ·" in line
     assert "heartbeat.<folder-1> warn" not in line
-    assert "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of <folder-1> incomplete" in summary
+    assert "WAITING ON YOU: 1 empty cloud folder keeps the listing of <folder-1> incomplete" in summary
 
 
 # ---- B13 round 6 lane RA -----------------------------------------------------------------------------------
