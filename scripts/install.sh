@@ -5584,9 +5584,11 @@ esac
 loop_status_run() { /usr/bin/env -u AGENTSYNC_NO_NEXT_HINT "$AGENTSYNC" status --config "$CONFIG" >"$LOOP_OUT" 2>/dev/null; }
 # A local listing the step-5 status warned was held, that this closing status reads as ok, was cleared by this run's
 # sync: say so, by source id as the heartbeat lines do, rather than leave the reader to infer it from a WAITING
-# line that is missing (B13 round 6 G33). Run only when the sync ran: a [FAIL] that skipped it prints none.
+# line that is missing (B13 round 6 G33). Run only when this run's sync ran and exited 0: a [FAIL] that skipped
+# it prints none, and a busy lock's holder may list the folder, which this run's sync did not (B13 round 14 Q35).
 # The warn says "; deletions held" since B13 round 12 N17 and "(deletions held)" before: the anchor matches both.
 cleared_listings() {
+	[ "$SYNC_GO" -eq 1 ] && [ "$SYNC_RC" -eq 0 ] || return 0
 	[ -n "$DOCTOR_LOG" ] && [ -s "$DOCTOR_LOG" ] && [ -s "$LOOP_OUT" ] || return 0
 	LC_ALL=C awk '
 		FNR == NR { if ($0 ~ /^\[warn\] heartbeat\./ && index($0, "deletions held")) held[substr($2, 11)] = 1; next }

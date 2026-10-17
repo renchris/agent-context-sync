@@ -1148,6 +1148,14 @@ def _fail_step(result: doctor.CheckResult) -> str:
     return f"the {result.name} check failed: its [FAIL] line below says why"
 
 
+def _blocks_install(result: doctor.CheckResult) -> bool:
+    """Whether a check's result stops install.sh's first sync: an ERROR FAIL other than the launcher's own
+    TCC_PENDING (install.sh's blocking_fails)."""
+    if result.ok or result.severity is not doctor.Severity.ERROR:
+        return False
+    return not (result.name.startswith("tcc.") and result.detail.startswith("TCC_PENDING: "))
+
+
 def _fail_steps(results: Sequence[doctor.CheckResult]) -> list[str]:
     """Rule 1's fixes, one per ERROR FAIL, the agent's own first: the NEXT names only the first, so it never
     sends the agent to show the person a fix while a re-run or a click of its own waits (B13 round 14 Q1)."""
@@ -1210,6 +1218,13 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         loop_waits=None if step is None else step.wait_counts,
     )
     fixes = _fail_steps(checks)
+    if hint_off and any(_blocks_install(r) for r in checks):  # install.sh runs no sync (B13 round 14 Q10)
+        checks = [
+            dataclasses.replace(r, note=doctor._LISTING_SKIPPED_NOTE)
+            if r.note == doctor._LISTING_YOURS_NOTE
+            else r
+            for r in checks
+        ]
     next_lines: list[str] = []
     if not hint_off:
         if step is not None and not fixes and step.rule < 9:
@@ -1692,7 +1707,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         # The report has no "end of this run": its own note (B13 round 5 F12, F45).
         results = [
             dataclasses.replace(r, note=doctor.LISTING_YOURS_REPORT_NOTE)
-            if r.note == doctor._LISTING_YOURS_NOTE
+            if r.note in (doctor._LISTING_YOURS_NOTE, doctor._LISTING_SKIPPED_NOTE)
             else r
             for r in results
         ]

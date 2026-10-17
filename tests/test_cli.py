@@ -2338,6 +2338,47 @@ def test_status_next_never_copies_a_fail_fix(
     assert any(ln.endswith(f"(fix: {sentinel})") for ln in out), "the [FAIL] line still carries the fix"
 
 
+@pytest.mark.parametrize("blocking", [True, False])
+def test_status_under_install_says_a_fail_stops_the_sync_a_held_listing_waits_for(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], blocking: bool
+) -> None:
+    """B13 round 14 Q10: under install.sh (AGENTSYNC_NO_NEXT_HINT=1) a held listing's [warn] said "the end of
+    this run says whether this run's sync cleared it" while a [FAIL] beside it skipped that sync, and the end
+    said nothing. With a [FAIL] that stops the sync the note says so; the launcher's TCC_PENDING, which does
+    not, keeps the note; the setup report reads its own note for both."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
+    warn = doctor.CheckResult(
+        "heartbeat.x",
+        False,
+        "incomplete; deletions held",
+        doctor.Severity.WARN,
+        note=doctor._LISTING_YOURS_NOTE,
+    )
+    fail = (
+        doctor.CheckResult(
+            "source.x.listable", False, "gone", doctor.Severity.ERROR, fix='point [[source]] "x"'
+        )
+        if blocking
+        else doctor.CheckResult(
+            "tcc.x", False, "TCC_PENDING: waiting", doctor.Severity.ERROR, fix="click Allow"
+        )
+    )
+    monkeypatch.setattr(doctor, "run_checks", lambda config, **_: [warn, fail])
+    monkeypatch.setattr(cli, "_extra_checks", lambda config, *, offline=False: [])
+    rc, out = _status(cfg, capsys)
+    [line] = [ln for ln in out if ln.startswith("[warn] heartbeat.x")]
+    note = doctor._LISTING_SKIPPED_NOTE if blocking else doctor._LISTING_YOURS_NOTE
+    assert rc == cli.EXIT_FAILED and line.endswith(f"({note})"), line
+    assert ("whether it cleared it" in line) is not blocking
+    monkeypatch.setattr(
+        cli, "_status_checks", lambda config, *, offline=False: [dataclasses.replace(warn, note=note), fail]
+    )
+    [line] = [ln for ln in cli._report_hooks().doctor(initialised) if ln.startswith("[warn] heartbeat.x")]
+    assert line.endswith(f"({doctor.LISTING_YOURS_REPORT_NOTE})"), line
+
+
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
     "path or a sign-in), not a step for the agent: show it to them"

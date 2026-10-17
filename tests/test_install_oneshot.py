@@ -943,19 +943,22 @@ _CLEARED = "heartbeat.fy26-projects: this run's sync listed it in full; deletion
     [_HELD_WARN, _HELD_WARN_BEFORE_O36, _HELD_WARN_BEFORE_N17],
     ids=["one bracket", "before O36", "before N17"],
 )
-@pytest.mark.parametrize("case", ["cleared", "still held", "fail skips the sync"])
+@pytest.mark.parametrize("case", ["cleared", "still held", "fail skips the sync", "lock busy"])
 def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
     env: dict[str, str], folder: Path, wheel: Path, case: str, warn: str
 ) -> None:
     """B13 round 6 G33: the status step warns that a listing was held at its last walk; when this run's sync
     clears it, the end of the run says so in a line of its own, rather than leaving the reader to infer it
     from a WAITING ON YOU line that is missing. Still held: the wait, and no such line. A [FAIL] that skips
-    the sync: neither."""
+    the sync: neither. A busy lock that skips it: neither, though the lock's holder listed it in full, which
+    this run's sync did not (B13 round 14 Q35)."""
     ok = "[ok  ] heartbeat.fy26-projects — last success 2026-10-13T10:00:00Z (0s ago, full_enumeration)"
     wait = "WAITING ON YOU: 1 empty cloud folder(s) keep the listing of fy26-projects incomplete (stub)"
     e = {**env, "STUB_DOCTOR_OUT": warn}
-    if case == "cleared":
+    if case in ("cleared", "lock busy"):
         e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{ok}"
+        if case == "lock busy":
+            e["STUB_SYNC_RC"] = "75"
     elif case == "still held":
         e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{wait}\n" + re.sub(
             r" \((as of|held at) its last walk.*", "", warn

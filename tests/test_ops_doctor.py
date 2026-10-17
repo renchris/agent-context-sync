@@ -1877,7 +1877,9 @@ def test_the_pre_sync_listing_note_promises_no_waiting_line(
     assert "see WAITING ON YOU" not in r.note and "yours" not in r.note and "`" not in r.note
     assert "agentsync" not in r.note and "run " not in r.note.replace("this run", "")
     # no line type promised either (G33): a FAIL, a privacy-held listing or a cleared one print different ones
-    assert "WAITING ON YOU" not in r.note and "whether this run's sync cleared it" in r.note
+    assert "WAITING ON YOU" not in r.note and "whether it cleared it" in r.note
+    # B13 round 14 Q35: the sync it names may not run (a [FAIL] or a busy lock skips it), so no promise
+    assert "if this run's sync runs" in r.note
     assert "(" not in r.note, "the report's fix parser strips one level"
 
 

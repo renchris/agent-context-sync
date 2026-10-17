@@ -90,8 +90,18 @@ _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # ON YOU line, the NEXT line (a listing held for a privacy prompt), install.sh's line that the sync cleared
 # it, or nothing when a FAIL skips the sync, so it names no line type; no reader infers "cleared" from a
 # missing line (B13 round 6 G33). No parentheses: the report's fix parser strips one level. "as of", not "held
-# at", since the detail before it says "deletions held" (B13 round 13 O36: one word in two senses).
-_LISTING_YOURS_NOTE = "as of its last walk: the end of this run says whether this run's sync cleared it"
+# at", since the detail before it says "deletions held" (B13 round 13 O36: one word in two senses). It
+# names that sync as one that may not run (B13 round 14 Q35: "the end of this run says whether this run's
+# sync cleared it" stood in runs whose sync a FAIL or a busy lock skipped, and whose end said nothing).
+_LISTING_YOURS_NOTE = (
+    "as of its last walk: if this run's sync runs, the end of this run says whether it cleared it"
+)
+# The note when status itself has a [FAIL] that stops install.sh's sync (any but the launcher's TCC_PENDING,
+# install.sh's DOCTOR_BLOCKS rule): status swaps it in, since only it knows every check's result (B13 round 14
+# Q10). No command and no line type promised, no parentheses (the report's fix parser strips one level).
+_LISTING_SKIPPED_NOTE = (
+    "as of its last walk: a [FAIL] line stops this run's sync, so it stays held until a sync after that fix"
+)
 # The same note in the setup report, whose run prints no WAITING ON YOU line at its end (``--report-only``
 # prints none at all): the waits are on its Summary's Loop line. It promises no line, since the report's
 # doctor calls a local listing yours by the source's kind, not by the loop's waits (B13 round 5 F12, F45).
