@@ -2130,15 +2130,21 @@ def test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_rev
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert f"warning: could not write {back}" in cp.stderr
     setup = back.parent / "setup"
-    held = f" ({back} is an earlier attempt's file, not this one's, so do not send it)" if earlier else ""
+    # B13 round 13 O14: the earlier-file note is inside the one bracket, and the path is printed once
+    held = (
+        "; the one there now is an earlier attempt's file, not this one's, so do not send it"
+        if earlier
+        else ""
+    )
     link = "" if private else ", or paste it into the issue the link above opens"
     assert last_line(cp) == (
-        f"NEXT: {back} could not be written (see the warning above){held}: copy {report_path(env)} back "
+        f"NEXT: {back} could not be written (see the warning above{held}): copy {report_path(env)} back "
         f"privately{link}, and if {setup}/fix-request.md or {setup}/local-work holds anything, copy it back "
         "privately too (it is not redacted); or fix the cause and run this command again (nothing is sent "
         f"for you) [setup report: {report_path(env)}]"
     ), last_line(cp)
-    assert "review " not in last_line(cp)
+    assert "review " not in last_line(cp) and ") (" not in last_line(cp)
+    assert last_line(cp).count(str(back)) == 1
     assert back.exists() == earlier and (
         not earlier or back.read_text() == "an earlier attempt's bring-back\n"
     )

@@ -3590,8 +3590,9 @@ on_exit() {
 				# attempt wrote is said to be that, not this one (B13 round 12 N71). It is left as it is.
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 0 ]; then
 					held=""
-					[ ! -f "$back" ] || held=" ($back is an earlier attempt's file, not this one's, so do not send it)"
-					NEXT_MSG="$back could not be written (see the warning above)$held: copy $REPORT_PATH back privately${link:+, or paste it into the issue the link above opens}, and if $SETUP_DIR/fix-request.md or $SETUP_DIR/local-work holds anything, copy it back privately too (it is not redacted); or fix the cause and run this command again (nothing is sent for you)"
+					# inside the one bracket, and the path once (B13 round 13 O14: two brackets side by side)
+					[ ! -f "$back" ] || held="; the one there now is an earlier attempt's file, not this one's, so do not send it"
+					NEXT_MSG="$back could not be written (see the warning above$held): copy $REPORT_PATH back privately${link:+, or paste it into the issue the link above opens}, and if $SETUP_DIR/fix-request.md or $SETUP_DIR/local-work holds anything, copy it back privately too (it is not redacted); or fix the cause and run this command again (nothing is sent for you)"
 				fi
 			fi
 			;;
