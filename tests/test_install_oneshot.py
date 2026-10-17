@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v21) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v22) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import dataclasses
 import fcntl
 import hashlib
 import json
@@ -44,7 +45,14 @@ from unittest.mock import patch
 import pytest
 
 from agentsync import lints, net, paths, setup_report
-from agentsync.config import default_config_text, inbox_source_table, load_config, local_source_table
+from agentsync.config import (
+    Config,
+    SourceConfig,
+    default_config_text,
+    inbox_source_table,
+    load_config,
+    local_source_table,
+)
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
@@ -364,11 +372,11 @@ def rerun(wheel: Path, folder: Path) -> str:
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
     """README step 1: "If the --version inside step 1's one command does not end with
-    "setup-prompt-compat 21", ... stop"."""
+    "setup-prompt-compat 22", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 21" == f"setup-prompt-compat {COMPAT}"
+    assert lines[-1] == "setup-prompt-compat 22" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
@@ -552,6 +560,104 @@ def test_a_non_tcc_fail_exits_1_without_a_first_sync(
     assert "ACTION:" not in cp.stdout
     assert last_line(cp).startswith("NEXT: fix the [FAIL] lines above (each names its fix), then re-run: ")
     assert ("status", "done", "1", "fail-lines") in steps(install_log(env))
+
+
+def _source_fails(cfg: Config, src: SourceConfig) -> list[str]:
+    """The [FAIL] lines doctor's checks of one source print, as status prints them."""
+    out = doctor.format_results(doctor._check_local_source(cfg, src, Path(sys.executable)))
+    return [ln for ln in out.splitlines() if ln.startswith("[FAIL] ")]
+
+
+def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
+    """Every kind of source [FAIL] whose fix is the person's, from doctor itself: a synced folder renamed in a
+    signed-in OneDrive (probe RN), a SharePoint library not synced here, a stale or missing provider folder,
+    one missing beside another account's, a plain folder gone, a file where a folder belongs, a sentinel gone
+    and a [[source]] with no path."""
+    cloud = Path.home() / "Library" / "CloudStorage"
+    org = cloud / "OneDrive-Contoso"
+    base = dataclasses.replace(cfg.sources[0], id="team-site", sentinel=None)
+    renamed = dataclasses.replace(base, path=org / "Team Site - General")
+    (org / "Team Site - Archive").mkdir(parents=True)
+    cases = {"renamed": _source_fails(cfg, renamed)}
+    library = cloud / "OneDrive-SharedLibraries-Contoso" / "Team Site - Documents"
+    cases["library"] = _source_fails(cfg, dataclasses.replace(base, path=library))
+    (org / "Team Site - Archive").rmdir()
+    cases["stale"] = _source_fails(cfg, renamed)
+    org.rmdir()
+    cases["signed-out"] = _source_fails(cfg, renamed)
+    (cloud / "OneDrive-Fabrikam").mkdir()
+    cases["other-account"] = _source_fails(cfg, renamed)
+    cases["plain"] = _source_fails(cfg, dataclasses.replace(base, path=cfg.config_path.parent / "gone"))
+    afile = cfg.config_path.parent / "afile"
+    afile.write_text("x\n", encoding="utf-8")
+    cases["not-a-folder"] = _source_fails(cfg, dataclasses.replace(base, path=afile))
+    cases["sentinel"] = _source_fails(cfg, dataclasses.replace(cfg.sources[0], sentinel="nope.txt"))
+    cases["no-path"] = _source_fails(cfg, dataclasses.replace(base, path=None))
+    assert all(cases.values()), cases
+    return cases
+
+
+PERSONS_NEXT = (
+    "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
+    "or sync, a [[source]] path or a sign-in), not a step for the agent, so show them those lines and go on "
+    "to the report; once fixed, "
+)
+
+
+def test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report(
+    env: dict[str, str], folder: Path, wheel: Path, sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 13 O11, O30: a synced folder renamed in a signed-in OneDrive (probe RN) failed step 2 with
+    "fix: fix path in [[source]] ..., or sync that folder in OneDrive" and "NEXT: fix the [FAIL] lines above
+    ..., then re-run: install.sh", which read three ways: a re-run that fails the same way, an edit of the
+    person's sources.toml that chooses a folder for them, or the report. When every [FAIL] that stops the run
+    is the person's (a path, a sentinel, a folder to put back or sync, a sign-in), the NEXT names the owner,
+    as the config error's does, in step 2 and in the closing status."""
+    monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
+    cases = _persons_fail_lines(sample_config)
+    for case, fails in cases.items():
+        e = {**env, "STUB_DOCTOR_OUT": "\n".join(fails), "STUB_DOCTOR_RC": "1"}
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+        assert cp.returncode == 1, (case, cp.stdout + cp.stderr)
+        assert last_line(cp).startswith(f"{PERSONS_NEXT}the next run is: {INSTALL_SH} "), (
+            case,
+            last_line(cp),
+        )
+        assert "fix the [FAIL] lines" not in last_line(cp) and one_next(cp)
+        assert ("first-sync", "skipped", "0", "status-failed") in steps(install_log(env))
+        Path(env["STUB_LOG"]).unlink(missing_ok=True)
+    out = "NEXT: the source check failed: do what the fix on its [FAIL] line below says\n" + "\n".join(
+        cases["renamed"]
+    )
+    cp = install_sh(
+        {**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel), "--source-local", str(folder)
+    )
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(
+        f"{PERSONS_NEXT}run {env['HOME']}/.local/bin/agentsync sync and follow its NEXT line"
+    )
+
+
+def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
+    env: dict[str, str], folder: Path, wheel: Path, sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other side of O11 and O30: a check that ran out of time is fixed by running the same install.sh
+    command again (its fix says so, for a setup agent), and a listing held for an Allow click by that click,
+    so a set with one of them, alone or beside a person's [FAIL], keeps "fix the [FAIL] lines above ...,
+    then re-run" and never sends the agent to the report."""
+    monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
+    timeout = subprocess.TimeoutExpired(["/x/pandoc", "--version"], 60)
+    again = doctor.format_results([doctor._timed_out("pandoc", timeout)])
+    assert again.startswith("[FAIL] pandoc") and "run the same scripts/install.sh command again" in again
+    renamed = _persons_fail_lines(sample_config)["renamed"]
+    for fails in ([again], [*renamed, again], [LISTING_HELD_FAIL], [*renamed, LISTING_HELD_FAIL]):
+        e = {**env, "STUB_DOCTOR_OUT": "\n".join(fails), "STUB_DOCTOR_RC": "1"}
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+        assert cp.returncode == 1, cp.stdout + cp.stderr
+        assert last_line(cp).startswith(
+            f"NEXT: fix the [FAIL] lines above (each names its fix), then re-run: {INSTALL_SH}"
+        ), fails
+        assert "the report" not in last_line(cp)
 
 
 def test_first_sync_failure_fails_the_run_before_the_agent(

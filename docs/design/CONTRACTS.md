@@ -5597,7 +5597,10 @@ makes the NEXT `fix the [FAIL] lines above ..., then run ~/.local/bin/agentsync 
 only the launcher's TCC_PENDING); a `WAITING ON YOU: macOS held the listing ...` line exits 1 whatever the
 `[FAIL]` lines say, and becomes the NEXT unless a blocking `[FAIL]` does. With `--confirm-install-agent` the NEXT
 starts `background sync: running; ` or `background sync: ok; ` (`simulated (...)` under the test seam). Every
-"nothing is left: background sync is on" line is deleted. A run that created the config and has no folder to
+"nothing is left: background sync is on" line is deleted. Amended 2026-10-17, §16.106 O11, O30: when every blocking
+`[FAIL]` line's fix is the person's (a `[[source]]` path or sentinel, a folder to put back or sync, a sign-in), either
+NEXT reads `the [FAIL] lines above are the person's to fix (...), not a step for the agent, so show them those lines
+and go on to the report; once fixed, ...`; any other blocking `[FAIL]` keeps `fix the [FAIL] lines above ...`. A run that created the config and has no folder to
 sync exits 2 with `NEXT: no folder to sync yet: list them with install.sh --list-folders, ...`; a run over an
 existing config without one (inbox-only too) exits 0 on status's NEXT. uv runs with `UV_TOOL_BIN_DIR` pinned to
 `~/.local/bin`.
@@ -18606,6 +18609,10 @@ also says the person has nothing more to do: the next paste tries the update fir
 `test_readme_step1_is_one_command`.
 Amended 2026-10-16, §16.103 N68: the version check and the four no-report cases are v19's (this paragraph's own
 text, as 93cedc51 wrote it); v20's line had been spliced in before them, so it read as if v20 made them.
+Amended 2026-10-17, §16.106 O27: since v22 "the code on this Mac is not this prompt's version" is said only when the
+installer exists and its output does not end with this prompt's number; with no installer (the Xcode stop on a new
+Mac, a first clone that failed) the agent runs nothing more and says setup stopped before the code was downloaded,
+and that the next paste downloads it.
 
 **The second exception follows the last list** (L62, L11). After a timed-out list, a re-run that read an inbox-only
 config prints no unread clause, but v18's "if no list marked a folder" still told the person the config could not be
@@ -19320,6 +19327,10 @@ loads (the lane's review, from install.sh's config step and cli.py's add-source)
 `setup_report`'s line. Test: `test_readme_step3_runs_the_loop_then_the_report`.
 Amended 2026-10-16, §16.99 N25: the shell report's Configuration section says `- loads: not checked (<reason>)`,
 which the v21 finish reads as "unknown: ... was not checked".
+Amended 2026-10-17, §16.106 O44, O28: since v22 this case keys on "loads: no:", with the colon, setup_report's own
+form: the shell report's `- loads: not checked` starts with "loads: no". The not-checked case now comes first and
+ends "list no folders and do not parse it yourself" too, and this one ends "(these two unknown cases come before the
+others)".
 
 **bring-back.md's patches** (M35). The finish said the file holds "the patches of any work step 1 kept", false on a
 re-run after an earlier report, whose section 3 holds only "not repeated:" lines. It now adds "a patch an earlier
@@ -19924,6 +19935,9 @@ section says "loads: not checked" (the shell report, when agentsync could not ru
 say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT: line names instead" (N71). Tests:
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`SIGNED_OUT`, `UNREAD_CONFIG`),
 `test_readme_step3_runs_the_loop_then_the_report`, `test_prompt_routes_changes_to_the_source_not_the_checkout`.
+Amended 2026-10-17, §16.106 O28, O44, O15: since v22 the not-checked case reads "then whatever the file holds, list no
+folders and do not parse it yourself" and comes before the "does not load" case, and N71's words are "the files the
+NEXT: line says to copy back", since that NEXT also names bring-back.md, as the file not to send.
 
 Register: `docs/deploy/setup-feedback.md` K45.
 
@@ -20298,7 +20312,73 @@ Test: `test_failure_without_agentsync_writes_the_shell_report`.
 
 ### 16.106 Round 13: setup prompt v22 (2026-10-17, wave B13 round 13 lane P)
 
-Reserved for round 13 lane P of B13.
+The B13 round 13 items of lane P (specs `round13/items/O<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): O11, O15, O27, O28, O30, O44. All need prompt text, so the prompt is **setup prompt
+v22**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v22` and `setup-prompt-compat 22`, the issue form's
+placeholder and the block's digest move together, and a saved v21 copy is stopped at step 1 like every older copy.
+v22 moves no step, so it has no `PROMPT_LAYOUTS` entry. None adds an agentsync command, an installer flag, a config
+key or a friction kind.
+
+**A [FAIL] whose fix is the person's sends the agent to the report** (O11, O30: one defect from two finders, built
+once; amends §16.14 K02). A synced folder renamed in a signed-in OneDrive (probes RN and 52) failed step 2 with
+`fix: fix path in [[source]] id = "<id>", or sync that folder in OneDrive` and `NEXT: fix the [FAIL] lines above
+(each names its fix), then re-run: install.sh`. v21 named only `[warn]` and WAITING ON YOU: lines as the person's,
+and let the agent follow a NEXT that is an install.sh command, so it could re-run to the same exit 1, or edit
+sources.toml to the renamed folder, choosing a folder for the person. install.sh's `persons_fails` reads the first
+words of each blocking `[FAIL]` line's fix (doctor's source checks and `_missing_source_fix`: `fix path in
+[[source]]`, `point [[source]]`, `set path in the [[source]]`, `restore `, `sign in to `, `<provider> is missing
+while ...`); when every one is the person's, step 2's NEXT reads `the [FAIL] lines above are the person's to fix
+(each names its fix: a folder or file to put back or sync, a [[source]] path or a sign-in), not a step for the
+agent, so show them those lines and go on to the report; once fixed, the next run is: <install.sh and its options>`,
+shaped like the config error's (§16.93 M23, M39), and the closing status's `..., once fixed, run
+~/.local/bin/agentsync sync and follow its NEXT line`. Exit 1 as before. Not for every `[FAIL]`, which both
+finders' prompt sentence ("A [FAIL] line's fix is mine") would have done and the verifiers showed makes things
+worse: a check that ran out of time has the fix "run the same scripts/install.sh command again" (`_again_fix`, the
+pandoc first start), and a listing held for an Allow click has a click, both the agent's to relay; a set with one of
+them keeps `fix the [FAIL] lines above ...`. The prompt: step 2 adds "A [FAIL] line whose fix edits sources.toml or
+asks me to sign in, rename or sync a folder is mine too: show it to me and do not make that edit. Re-running the
+command its fix names is yours." (`FAIL_IS_MINE`), and step 1's first exception, for the list's "1 of them is no
+longer on disk although its app is signed in" tail, which had no sentence: "If that NEXT: line says any of them is
+no longer on disk, tell me which, and that step 2 fails on each until I put it back under its name or fix its path;
+do not add another folder in its place unless I name it." (`GONE_FOLDER`; "any of them", since the tail also reads
+"N of them are"). Tests: `test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report` (every kind of
+person's [FAIL] doctor prints, from doctor itself, in step 2 and the closing status; fails on v21's installer),
+`test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next` (a timeout, a held listing, each alone and beside a
+renamed folder), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
+
+**The finish names the files the NEXT: line says to copy back** (O15; amends §16.100 N71). v21's "name the files the
+NEXT: line names instead" took in bring-back.md, which that NEXT (`--report-only` after `write_bring_back` failed
+over an earlier attempt's file) names as the file not to send, against the same sentence's "do not name
+~/agent-context/bring-back.md". The prompt now says "the files the NEXT: line says to copy back". The NEXT keeps its
+full path, which tells the person which file to leave. Test: `test_prompt_routes_changes_to_the_source_not_the_checkout`.
+
+**With no installer at the Xcode or git stop, the agent says the code was never downloaded** (O27; amends §16.88
+L31). "If ~/src/agent-context-sync/scripts/install.sh exists, run ... --version" governed one sentence only; "If its
+output ends with ... Otherwise that stop has no report either: tell me that the code on this Mac is not this
+prompt's version" stood alone, so with no installer (the Xcode stop on a new Mac, before the clone; a first clone
+that failed, which git removes) a literal reader reached "Otherwise" and told the person there was code to update.
+Step 1 now has three branches: "If it exists and its output ends with "setup-prompt-compat 22", log ... and go to
+the report. If it exists and its output does not end so (or the command fails), that stop has no report either:
+...the next paste of this prompt tries to update that code first. If it does not exist, run nothing more and write
+no report (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once
+the Command Line Tools are installed (or git can reach GitHub), the next paste of this prompt downloads it." Step 3's
+four no-report cases already held that case and are unchanged. Test: `test_readme_step1_is_one_command`.
+
+**The finish's two unknown cases come first, and key on what each report prints** (O28, O44; amends §16.94 M28 and
+§16.100 N25). The shell report's `- loads: not checked (<reason>)` begins with "loads: no", the words v21's
+"does not load" case keyed on and checked first, and the install.sh comment said the finish read it so (written
+before v21 gave it a case of its own). The not-checked case said only "list no folders", so with an inbox-only file
+an agent that opened it could answer "none: this Mac syncs no folder", which agentsync never checked; the finish
+joins its cases with "or" and gave no order. Now the not-checked case comes before the does-not-load one and reads
+"then whatever the file holds, list no folders and do not parse it yourself" (parse, not the finder's "read", which
+clashes with the first case's "read after step 2"); the does-not-load case keys on "loads: no:", with the colon,
+setup_report's `- loads: no: <error>`, which neither `loads: not checked` nor `loads: pending:` holds; and it ends
+"(these two unknown cases come before the others)". The printed line is unchanged (a v21 finish matches it
+literally); install.sh's comment now says how v21 and v22 read it. Keying on the colon lifts §16.98 N11's rule against
+wording such as "loads: not yet". Test: `test_readme_step3_runs_the_loop_then_the_report` (`UNCHECKED_CONFIG`,
+`UNLOADED_CONFIG`, `UNKNOWN_FIRST`; no `says "loads: no",`).
+
+Register: `docs/deploy/setup-feedback.md` K46.
 
 ### 16.107 Round 13: status, waits, read advice and doctor (2026-10-17, wave B13 round 13 lane B)
 

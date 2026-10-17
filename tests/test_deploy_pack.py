@@ -538,7 +538,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (21, "68bdd4eac8804a9e2720f054559a7d090808a087f23b8218f42b5d4ce194fe9d")
+PROMPT = (22, "e716bce2cac67e4cc520dc462dad0d47bedd54bef4bd0e1a2884da78ddca8c1c")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -719,20 +719,30 @@ nothing there, so the copy on disk may be older than the prompt, and only this p
 reports (B13 round 10 L31). The not-a-checkout, worktree and ownership stops run no install.sh at all."""
 
 UNLOADED_CONFIG = (
-    'or, if that file exists but does not load (the report\'s Configuration section says "loads: no", or step'
-    ' 2 printed a "configuration error" for it), list no folders and do not parse it yourself: say "unknown:'
-    ' ~/agent-context/sources.toml does not load", followed by the reason the report gives'
+    'or, if that file exists but does not load (the report\'s Configuration section says "loads: no:", with'
+    ' the colon, or step 2 printed a "configuration error" for it), list no folders and do not parse it'
+    ' yourself: say "unknown: ~/agent-context/sources.toml does not load", followed by the reason the report'
+    " gives"
 )
-"""The finish's case for a sources.toml that exists but does not load, since v20 (B13 round 11 M28)."""
+"""The finish's case for a sources.toml that exists but does not load, since v20 (B13 round 11 M28). Since
+v22 it keys on setup_report's own ``- loads: no: <error>``, colon included (B13 round 13 O44): v21's
+"loads: no" is also the start of the shell report's ``- loads: not checked``, and came first."""
 
 UNCHECKED_CONFIG = (
     'or, if the report\'s Configuration section says "loads: not checked" (the shell report, when agentsync'
-    ' could not run), list no folders and say "unknown: ~/agent-context/sources.toml was not checked",'
-    " followed by the reason the report gives"
+    " could not run), then whatever the file holds, list no folders and do not parse it yourself: say"
+    ' "unknown: ~/agent-context/sources.toml was not checked", followed by the reason the report gives'
 )
 """The finish's case for a sources.toml the shell report could not check, since v21 (B13 round 12 N25, lane
 RB's words): with agentsync unable to run, the shell report prints ``- loads: not checked (<reason>)``, and
-the finish had only "loads: no" and the folder list, neither of which the agent could read."""
+the finish had only "loads: no" and the folder list, neither of which the agent could read. Since v22 it comes
+before :data:`UNLOADED_CONFIG` and forbids parsing the file, as that case does (B13 round 13 O28, O44): v21
+said only "list no folders", so an agent that opened an inbox-only file could answer "none", which agentsync
+never checked."""
+
+UNKNOWN_FIRST = "(these two unknown cases come before the others)"
+"""What closes :data:`UNLOADED_CONFIG` since v22 (B13 round 13 O28): the finish joins its folder cases with
+"or", and nothing said which wins when the file also has, or lacks, a kind = "local" source."""
 
 REPORT_COMMAND = f"{INSTALL_SH} --report-only"
 """Setup prompt v7 step 3's last command, the report, which first appends the friction log's end line (KISS
@@ -984,15 +994,25 @@ def test_readme_step1_is_one_command() -> None:
         "Before going to the report from the Xcode stop or the other-git-failure stop above, if "
         "~/src/agent-context-sync/scripts/install.sh exists, run "
         f"`{INSTALL_SH} --version`: step 1 did not update that copy (its pull did not run, or failed), so "
-        "it may be older than this prompt. If its output "
+        "it may be older than this prompt. If it exists and its output "
         f'ends with "setup-prompt-compat {PROMPT[0]}", log the failed command as a step 1 error, starting '
         "its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
-        "inside <agent>), and go to the report. Otherwise that stop has no report either: tell me that the "
+        "inside <agent>), and go to the report. If it exists and its output does not end so (or the command "
+        "fails), that stop has no report either: tell me that the "
         "code on this Mac is not this prompt's version and that setup stopped before it could be updated, "
         "and that this asks nothing more of me: once the Command Line Tools are installed (or git can reach "
         "GitHub), the next paste of this prompt tries to update that code first."
     ) in flat
+    # B13 round 13 O27: with no installer (the Xcode stop on a new Mac, a first clone that failed) there is no
+    # output, so v21's bare "Otherwise" held and told the person the code on the Mac was not this prompt's
+    # version, where there is no code and the next paste clones it. Each branch now says what to do.
+    assert (
+        "If it does not exist, run nothing more and write no report (step 3's last no-report case): tell me "
+        "that setup stopped before the code was downloaded, and that once the Command Line Tools are "
+        "installed (or git can reach GitHub), the next paste of this prompt downloads it."
+    ) in flat
+    assert "go to the report. Otherwise that stop has no report" not in flat
     # B13 round 11 M32: "no pull ran" was false at the other-git-failure stop, where the pull ran and failed
     # (rc 1, FETCH_HEAD emptied, HEAD unchanged: measured). M16: on a field Mac with an older installer, the
     # person heard the stop's own action and then a bare "not this prompt's version", which read as a second
@@ -1096,12 +1116,16 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     assert " ".join(finish.split()).endswith(
         "step 1 kept; a patch an earlier report carried is not repeated, only listed by its hash); if the "
         "report's run printed that bring-back.md could not be written, say so, do not name "
-        "~/agent-context/bring-back.md, and name the files the NEXT: line names instead; if no "
+        "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; if no "
         'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
         "and do not point me to an older bring-back.md."
     )
     # B13 round 12 N71 (lane RB's words): when the report could not write bring-back.md, the finish still
-    # named that file; it now names what the report's NEXT: line names instead
+    # named that file; it now names what the report's NEXT: line says to copy back instead. B13 round 13
+    # O15: v21's "the files the NEXT: line names" took in bring-back.md itself, which that NEXT names as the
+    # earlier attempt's file not to send, against the same sentence's "do not name
+    # ~/agent-context/bring-back.md"
+    assert "the files the NEXT: line names" not in " ".join(finish.split())
     # B13 round 11 M35: "the patches of any work step 1 kept" was false on a re-run after an earlier report:
     # section 3 then holds only "not repeated:" lines, as the file's own header says. Not worded as what was
     # copied back: the installer decides by file time and cannot know that.
@@ -2408,7 +2432,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         ' ~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this'
         ' Mac syncs no folder" (if setup stopped before step 2, say'
         " at which step);"
-        f" {UNLOADED_CONFIG}; {UNCHECKED_CONFIG};"
+        f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST};"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         ' answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the'
         " folders to choose is not a step for me), and under it each WAITING ON YOU: line the same command"
@@ -2426,6 +2450,11 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert 'out.append(f"- loads: no: {r.config_error}")' in Path(setup_report.__file__).read_text(
         encoding="utf-8"
     ), "the report's words the finish keys on"
+    # B13 round 13 O44: "loads: not checked" starts with "loads: no", so the failing case keys on the colon
+    # form, which neither the shell report's line nor setup_report's "loads: pending:" holds
+    assert 'says "loads: no",' not in " ".join(finish.split())
+    assert 'say "- loads: not checked ($why)"' in SCRIPTS[0].read_text(encoding="utf-8")
+    assert not "- loads: not checked".startswith("- loads: no:") and "loads: no:" not in "- loads: pending: x"
     from agentsync import cli  # noqa: PLC0415
 
     assert 'f"added source {sid!r} to {config.config_path}{note}:"' in Path(cli.__file__).read_text(
@@ -2767,6 +2796,25 @@ with help". The report (``_LIST_STOPS``) and the guide already send that stop to
 says so."""
 
 
+GONE_FOLDER = (
+    "If that NEXT: line says any of them is no longer on disk, tell me which, and that step 2 fails on each"
+    " until I put it back under its name or fix its path; do not add another folder in its place unless I"
+    " name it."
+)
+"""The first exception's words, since v22, for the list's tail on a synced folder renamed or moved in a
+signed-in app (B13 round 12 N41, N61, lane RB: "1 of them is no longer on disk although its app is signed
+in"). v21 had none, and listed the renamed folder unmarked for the add question, so the person could be
+offered their own folder under its new name as a new source (B13 round 13 O30)."""
+
+FAIL_IS_MINE = (
+    "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder is mine too:"
+    " show it to me and do not make that edit. Re-running the command its fix names is yours."
+)
+"""Step 2's words, since v22, on whose a [FAIL] line's fix is (B13 round 13 O11, O30): v21 named only [warn]
+and WAITING ON YOU: lines as the person's, so a renamed folder's "fix path in [[source]]" read as the agent's
+edit. Not every [FAIL]: a check that ran out of time is fixed by re-running install.sh, which its fix says."""
+
+
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     """Field report 2026-10-07 (setup prompt v9). v8 was run on a Mac that already synced two folders. The
     tool ran unattended, the folder question came back unanswered, and step 1 said to stop and wait: a
@@ -2784,9 +2832,9 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
         f"path in the list). {SIGNED_OUT} {SIGNED_OUT_UNASKED} If the list's NEXT: line does not ask me to "
-        "sign in, tell me which they are and ask only whether to add any unmarked folder. If you cannot ask "
-        "me then, add none and go on to step 2. That is not a deviation: do not log it or stop, and say in "
-        "your final message that I gave no answer, so no folder was added."
+        f"sign in, tell me which they are and ask only whether to add any unmarked folder. {GONE_FOLDER} If "
+        "you cannot ask me then, add none and go on to step 2. That is not a deviation: do not log it or "
+        "stop, and say in your final message that I gave no answer, so no folder was added."
     )
     assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
     # B13 round 11 M4 (lane RB's words): with OneDrive signed out, a Mac that already syncs folders got
@@ -2794,6 +2842,14 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     # step 2 that fails. The list now exits 3 with a NEXT: that asks the person to sign in; the exception
     # waits for that as for a click, before its "add none and go on", and reads the list again.
     assert step1.index(SIGNED_OUT) < step1.index("If you cannot ask me then, add none")
+    # B13 round 13 O30: the list's words the first exception's gone-folder sentence answers, both counts
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "1 of them is no longer on disk although its app is signed in" in script
+    assert "of them are no longer on disk although their app is signed in" in script
+    # O11, O30: a [FAIL] whose fix is the person's is theirs, as a [warn] line's is; re-running is the
+    # agent's. The installer's NEXT for such a run says the same (tests/test_install_oneshot.py)
+    assert " ".join(step2.split()).count(FAIL_IS_MINE) == 1 and "[FAIL] line's fix is mine" not in step2
+    assert "the [FAIL] lines above are the person's to fix" in script
     # B13 round 12 N32, N6: the sign-in wait has a rule for nobody to ask, and it is the report, so step 3's
     # no-report cases do not name it; N7: on a Mac that syncs no folder yet a sign-in is no click to wait for
     assert NEW_MAC_SIGN_IN in step1 and step1.index(NEW_MAC_SIGN_IN) < step1.index("Two exceptions.")

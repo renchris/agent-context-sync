@@ -314,7 +314,7 @@ or, on a Mac that already syncs folders, when the list asks you to sign in to On
 first; once you say you have, it lists the folders again.
 
 ```text
-Set up agentsync on this Mac (setup prompt v21). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
+Set up agentsync on this Mac (setup prompt v22). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
 in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
 (docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
 Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
@@ -352,7 +352,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v21, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v22, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -411,19 +411,22 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   its output ends with "setup-prompt-compat 21", log the failed command as a step 1 error, starting its what-text
-   with prompt v21, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and
-   go to the report. Otherwise that stop has no report either: tell me that the code on this Mac is not this
-   prompt's version and that setup stopped before it could be updated, and that this asks nothing more of me: once
-   the Command Line Tools are installed (or git can reach GitHub), the next paste of this prompt tries to update that
-   code first. If the --version inside step 1's one command does not end with "setup-prompt-compat 21", or the command
-   says the pasted prompt is not the installer's, stop and run no other step: this prompt is v21, and a copy that
-   does not match the installer must not be used. But if the error says this installer is for v21, this prompt's own
-   number, the copy matches and only step 1's command was changed: run it again once, exactly as written here, and
-   stop as above if it stops the same way again. When step 1 stops here, if the command's error says what to tell me,
-   tell me that, in its words; otherwise (--version printed another number and no such error), tell me to copy the
-   prompt again from README.md on the main branch of the Source above. Either way, unless the error's words already
-   mention this Mac's checkout, also tell me that if a fresh copy stops here too, this Mac's checkout
+   it exists and its output ends with "setup-prompt-compat 22", log the failed command as a step 1 error, starting
+   its what-text with prompt v22, <agent> and a colon (the same words as in step 1's command; write no colon inside
+   <agent>), and go to the report. If it exists and its output does not end so (or the command fails), that stop has
+   no report either: tell me that the code on this Mac is not this prompt's version and that setup stopped before it
+   could be updated, and that this asks nothing more of me: once the Command Line Tools are installed (or git can
+   reach GitHub), the next paste of this prompt tries to update that code first. If it does not exist, run nothing
+   more and write no report (step 3's last no-report case): tell me that setup stopped before the code was
+   downloaded, and that once the Command Line Tools are installed (or git can reach GitHub), the next paste of this
+   prompt downloads it. If the --version inside step 1's one command does not end with "setup-prompt-compat 22", or
+   the command says the pasted prompt is not the installer's, stop and run no other step: this prompt is v22, and a
+   copy that does not match the installer must not be used. But if the error says this installer is for v22, this
+   prompt's own number, the copy matches and only step 1's command was changed: run it again once, exactly as written
+   here, and stop as above if it stops the same way again. When step 1 stops here, if the command's error says what to
+   tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
+   copy the prompt again from README.md on the main branch of the Source above. Either way, unless the error's words
+   already mention this Mac's checkout, also tell me that if a fresh copy stops here too, this Mac's checkout
    (~/src/agent-context-sync) does not follow main of the Source: point it there, or move it aside so step 1 clones
    it, then paste the prompt again. If --list-folders printed no folder paths (only a NEXT: line), do what that line
    says if it is a click for me (a sign-in is not one: only the first exception below waits for a sign-in), otherwise
@@ -436,8 +439,10 @@ the name in fix-request.md.
    folders are kept and that I must sign in to the app that line names, and wait for me as for a click; once I say
    so, run --list-folders again and go by what it prints. If you cannot ask me (your tool runs unattended, or the
    question comes back unanswered), do not wait and log nothing for it: go to step 3's report. If the list's NEXT:
-   line does not ask me to sign in, tell me which they are and ask only whether to add any unmarked folder. If you
-   cannot ask me then, add none and go on to step 2. That is not a deviation: do not log it or stop, and say in your
+   line does not ask me to sign in, tell me which they are and ask only whether to add any unmarked folder. If that
+   NEXT: line says any of them is no longer on disk, tell me which, and that step 2 fails on each until I put it back
+   under its name or fix its path; do not add another folder in its place unless I name it. If you cannot ask me
+   then, add none and go on to step 2. That is not a deviation: do not log it or stop, and say in your
    final message that I gave no answer, so no folder was added.
    Second, if the list's NEXT: line says this Mac has a config whose folders could not be read, the list marks
    none. If that line also says to re-run --list-folders to mark them, run
@@ -475,8 +480,10 @@ the name in fix-request.md.
    running then. Both waits and that skip are expected, not deviations: do not log them. If this Mac already runs
    agentsync, its sources, history and background jobs are kept. Any [warn] or WAITING ON YOU: line this command
    prints is mine (on such a Mac it may predate this session): show it to me and do not do what it says, neither its
-   commands nor its sources.toml edits. If your tool cannot wait that long in the foreground, run it in the
-   background and read its output until the NEXT: line appears; that is expected, not a deviation. If it exits
+   commands nor its sources.toml edits. A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or
+   sync a folder is mine too: show it to me and do not make that edit. Re-running the command its fix names is yours.
+   If your tool cannot wait that long in the foreground, run it in the background and read its output until the NEXT:
+   line appears; that is expected, not a deviation. If it exits
    non-zero, do what NEXT: says only if it is an install.sh or agentsync command or a click for me (but after "no
    folder is synced yet", do as step 1's last sentences say, not its add-source); otherwise log it and go to step 3's
    report. Then tell me about my inbox: it is the folder named inbox beside the docs
@@ -532,19 +539,21 @@ the name in fix-request.md.
    or another kind = "inbox" folder), saying which of them this session added: those for which a run of step 2 this
    session printed an "added source" line; or, if ~/agent-context/sources.toml does not exist yet or has no such kind
    = "local" source, "none: this Mac syncs no folder" (if setup stopped before step 2, say at which step); or, if
-   that file exists but does not load (the report's Configuration section says "loads: no", or step 2 printed a
+   the report's Configuration section says "loads: not checked" (the shell report, when agentsync could not run),
+   then whatever the file holds, list no folders and do not parse it yourself: say "unknown:
+   ~/agent-context/sources.toml was not checked", followed by the reason the report gives; or, if that file exists
+   but does not load (the report's Configuration section says "loads: no:", with the colon, or step 2 printed a
    "configuration error" for it), list no folders and do not parse it yourself: say "unknown:
-   ~/agent-context/sources.toml does not load", followed by the reason the report gives; or, if the report's
-   Configuration section says "loads: not checked" (the shell report, when agentsync could not run), list no folders
-   and say "unknown: ~/agent-context/sources.toml was not checked", followed by the reason the report gives; the last
-   NEXT: line printed before the report, or "none" (also "none: waiting for your folder answer" while you wait for my
-   folder answer in step 1: there, the NEXT: line that leaves the folders to choose is not a step for me), and under
-   it each WAITING ON YOU: line the same command printed; and ~/agent-context/bring-back.md, the one file I review
-   and copy back (the redacted report, then your fix request and the patches of any work step 1 kept; a patch an
+   ~/agent-context/sources.toml does not load", followed by the reason the report gives (these two unknown cases come
+   before the others); the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder
+   answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the folders to choose is
+   not a step for me), and under it each WAITING ON YOU: line the same command printed; and
+   ~/agent-context/bring-back.md, the one file I review and copy back (the redacted report, then your fix request and
+   the patches of any work step 1 kept; a patch an
    earlier report carried is not repeated, only listed by its hash); if the report's run printed that bring-back.md
-   could not be written, say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT: line names
-   instead; if no report ran this session, or you are waiting for my folder answer, say "none" for that file instead,
-   and do not point me to an older bring-back.md.
+   could not be written, say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT: line says to
+   copy back instead; if no report ran this session, or you are waiting for my folder answer, say "none" for that
+   file instead, and do not point me to an older bring-back.md.
 ```
 
 <details>

@@ -163,7 +163,9 @@
 #      own TCC_PENDING (a "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8)
 #      asks the Allow for. A listing macOS holds for an Allow click in this terminal is a
 #      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
-#      of time the fix is this same command again, then what to do if the same line comes back
+#      of time the fix is this same command again, then what to do if the same line comes back. When every
+#      [FAIL] that stops them is the person's (a [[source]] path or sentinel, a folder to put back or sync, a
+#      sign-in), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -211,7 +213,7 @@
 # `agentsync status` once more with its NEXT line on, prints none of its output and lifts its first "NEXT:"
 # line ("run ~/.local/bin/agentsync sync and follow its NEXT line" when it prints none); with
 # --confirm-install-agent the line starts "background sync: running; " (or "ok; "). A [FAIL] line in that
-# status is printed and the NEXT says to fix it; a listing macOS held for an Allow click in this terminal is
+# status is printed and the NEXT says to fix it, or, as step 5's, whose fix it is; a listing macOS held for an Allow click in this terminal is
 # the NEXT and the run exits 1. A run without a folder over an existing config ends on that status's NEXT
 # too (its "no folder is synced yet" step). Nothing
 # else it prints is an instruction: agentsync is always called by its full path (~/.local/bin/agentsync), so
@@ -286,7 +288,7 @@
 # AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
 # on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
 # providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
-SETUP_PROMPT_COMPAT=21 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
+SETUP_PROMPT_COMPAT=22 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log
@@ -2702,7 +2704,9 @@ fallback_body() {
 		say "- config: $CONFIG (exists)"
 		# Whether it loads is agentsync's to say (setup_report's "- loads: no: <error>"): a syntax-only check here
 		# would read yes for a schema error. So the line says it was not checked and why, which the finish reads
-		# as it reads "loads: no", and the count says it reads headers only (B13 round 12 N25).
+		# as a case of its own, "unknown: ... was not checked" (since v21), not as its "loads: no" one: v22 keys
+		# that one on "loads: no:", with the colon this line does not have, and reads this one first. The count
+		# says it reads headers only (B13 round 12 N25, round 13 O44).
 		say "- loads: not checked ($why)"
 		say "- [[source]] table headers (not parsed): $(grep -c '^[[:space:]]*\[\[source\]\]' "$CONFIG" 2>/dev/null || true)"
 		say "$(source_excludes_line "$CONFIG")"
@@ -4843,6 +4847,18 @@ action_once() {
 blocking_fails() {
 	grep '^\[FAIL' "$1" 2>/dev/null | grep -Ev '^\[FAIL\] tcc\.[^ ]+ +— TCC_PENDING: ' || true
 }
+# Whether status output $1 has [FAIL] lines that stop the run and every one is the person's to fix: a [[source]]
+# path or sentinel, a folder renamed back or synced in its app, or a sign-in (ops/doctor.py's source checks and
+# _missing_source_fix, read by the first words of their fix). A re-run fails the same way and an edit would
+# choose a folder for them, so the NEXT names the owner, as the config error's does (B13 round 13 O11, O30). Any
+# other [FAIL] keeps "fix the [FAIL] lines": a check that ran out of time is fixed by the re-run its fix names,
+# and a listing held for an Allow click by that click.
+persons_fails() {
+	local b
+	b="$(blocking_fails "$1")"
+	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is missing while (OneDrive-|another ))' >/dev/null
+}
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path or a sign-in), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one bundled with the tool (the rule
 # of ops/doctor.py's pandoc check), read by the tool step 2 installed. Empty when it cannot say (no
 # interpreter, a config that does not load): status then reports that. -I: see the OCR helper above.
@@ -5256,7 +5272,9 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	[ -z "$fails" ] || printf '%s\n' "$fails"
 	[ -z "$blocking" ] || EXIT_RC=1
 	[ -z "$held" ] || EXIT_RC=1 # a listing macOS holds for an Allow click in this terminal (field N8b)
-	if [ -n "$blocking" ] || { [ -n "$fails" ] && [ -z "$held" ]; }; then # its NEXT points at a [FAIL] line "below"
+	if [ -n "$blocking" ] && persons_fails "$LOOP_OUT"; then
+		next="$PERSONS_FAILS, run $AGENTSYNC sync and follow its NEXT line"
+	elif [ -n "$blocking" ] || { [ -n "$fails" ] && [ -z "$held" ]; }; then # its NEXT points at a [FAIL] line "below"
 		next="fix the [FAIL] lines above (each names its fix), then run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$held" ]; then # the held listing is the NEXT, so its WAITING line is not printed twice
 		next="$held"
@@ -5275,6 +5293,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
 elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 	EXIT_RC=2 # a first run with no folder: an existing config (inbox-only too) ends on status's NEXT below
 	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
+	EXIT_RC=1
+	next="$PERSONS_FAILS, the next run is: $SELF$ORIG_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
 	EXIT_RC=1
 	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
