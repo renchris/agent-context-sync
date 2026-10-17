@@ -831,7 +831,8 @@ def test_install_sh_writes_one_setup_log_line_per_step(stubs: dict[str, str], tm
     lines = _setup_log_lines(log)
     assert len(lines) == 24 and len({run for run, _ in lines}) == 2, "appended, one run id per run"
     assert ("config", "done", "0", "add-source") in _steps(lines[12:])
-    assert ("status", "done", "1", "fail-lines") in _steps(lines[12:])
+    # the stub's status exits 1 with no [FAIL] line: status-error (B13 round 14 Q50)
+    assert ("status", "done", "1", "status-error") in _steps(lines[12:])
 
 
 def test_install_sh_setup_log_records_the_failed_step(stubs: dict[str, str], tmp_path: Path) -> None:

@@ -711,7 +711,7 @@ FRICTION_AWK='
 			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
 				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
 		}
-		function agent_key(a) { # setup_report._agent_key: ASCII lower case, quotes dropped (curly ones too), blanks collapsed
+		function agent_key(a) { # ASCII lower case, quotes dropped (curly ones too), blanks collapsed: AG and SA mark words seen
 			gsub("\342\200[\230\231\234\235]", " ", a)
 			a = tolower(a); gsub("[\"\047*]", " ", a); gsub("[ \t]+", " ", a); sub("^ ", "", a); sub(" $", "", a)
 			return a

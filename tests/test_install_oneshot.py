@@ -2890,10 +2890,13 @@ def test_the_installer_and_the_report_split_the_same_attempts_after_any_header()
         # finished attempt are two attempts, not one
         "Attempt: 2026-10-17T16:40:00Z\nPrompt: v22\nAgent: Claude Code\n"
         f"2026-10-17T16:58:00Z | end | finished\n2026-10-17T17:03:50Z {err}2026-10-17T17:08:26Z {err}",
+        # a loosely written stated line, which the awk does not read as a step 1 error, stays in both
+        f"2026-10-06T10:00:00Z {err}- `2026-10-06T10:00:30Z` | Step 1 | Error | prompt v12, Claude Code: "
+        "x | -\n",
     ]
     for log in logs:
         assert _awk_attempts(log) == len(setup_report.parse_friction(log).attempts), log
-    assert len(setup_report.parse_friction(logs[-1]).attempts) == 3
+    assert len(setup_report.parse_friction(logs[-2]).attempts) == 3
 
 
 def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[str, str]) -> None:

@@ -6374,6 +6374,12 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     first, second = got.splitlines()
     assert first.endswith("first-sync step; install.sh was run again with other arguments and ended 0"), got
     assert second.endswith("first-sync step; the same command was run again and ended 0"), got
+    # the same options in another order, or spaced apart, are the same command
+    got = items(
+        run("2026-09-29T10:00:00Z", 1, "--source-local x --confirm-install-agent", sync=True),
+        run("2026-09-29T10:20:00Z", 0, "--confirm-install-agent  --source-local x"),
+    )
+    assert got.endswith("first-sync step; the same command was run again and ended 0"), got
 
     # Q21: the status step's [FAIL] lines in install.out, by the run's own header
     failed = run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True)
@@ -11184,6 +11190,16 @@ def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
     write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
     cloud = Path.home() / "Library" / "CloudStorage"
     provider, library = cloud / f"OneDrive-{ORG}", cloud / f"OneDrive-SharedLibraries-{ORG}"
+    # the report reads each provider folder once, its listing bounded by the report's budget, not doctor's
+    # 120 s (a held folder would hold the Summary past its budget)
+    read: list[tuple[Path, float]] = []
+    real_state = doctor.provider_state
+
+    def state(folder: Path, *, timeout: float | None = None) -> doctor.ProviderState:
+        read.append((folder, 120.0 if timeout is None else timeout))
+        return real_state(folder, timeout=timeout)
+
+    monkeypatch.setattr(doctor, "provider_state", state)
 
     def doctor_line() -> str:
         set_up_log(
@@ -11201,8 +11217,12 @@ def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
     provider.mkdir()
     (provider / ".849C9593-D756-4E56-8D6E-42412F2A707B").write_text("", encoding="utf-8")
     assert doctor.provider_state(provider) == "signed-out"
+    read.clear()
     stop, unexpected = bucket(doctor_line())
     assert stop.startswith("2: ") and "listable FAIL" in stop and "FAIL" not in unexpected, (stop, unexpected)
+    # doctor's own status check passes its 120 s; the report's read is bounded and done once for 2 calls
+    reports = [t for folder, t in read if folder == provider and t <= setup_report._LISTING_S]
+    assert len(reports) == 1, read
     # an unreadable provider folder is signed in (N61): its FAILs stay unexpected
     provider.chmod(0)
     try:

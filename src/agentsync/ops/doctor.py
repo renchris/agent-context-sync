@@ -941,7 +941,7 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
 ProviderState = Literal["signed-out", "other-account", "library", "signed-in"]
 
 
-def provider_state(provider: Path) -> ProviderState:
+def provider_state(provider: Path, *, timeout: float | None = None) -> ProviderState:
     """What a ~/Library/CloudStorage provider folder (``provider``) says of its app's sign-in, by the rule
     install.sh's list keys its sign-in exit on (``signed_out``): ``signed-out`` for one gone with no other
     folder of its app beside it, or there but holding nothing but hidden entries (stale, or still setting up:
@@ -950,7 +950,9 @@ def provider_state(provider: Path) -> ProviderState:
     ``OneDrive-<org>`` (a library not synced, never a sign-in: B13 round 12 N53, round 13 O52, checked
     before the empty-folder rule); ``signed-in`` otherwise. A folder that is unreadable, or whose listing
     does not answer within the listing's time bound (a hidden Allow prompt holds it, B13 round 13 O47), counts
-    as signed in. One rule for doctor's fix and the report's sign-in stop bucket (B13 round 14 Q46, Q55)."""
+    as signed in; the setup report passes a ``timeout`` within its own budget (None: the listing's bound, read
+    at the call). One rule for doctor's fix and
+    the report's sign-in stop bucket (B13 round 14 Q46, Q55)."""
     app = provider.name.split("-", 1)[0]
     org = org_of(provider.name) if provider.name.startswith("OneDrive-SharedLibraries-") else None
     signed_in_org = org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}")
@@ -959,7 +961,7 @@ def provider_state(provider: Path) -> ProviderState:
         with contextlib.suppress(OSError, CallTimedOutError):
             shown = call_with_timeout(
                 lambda: [p.name for p in provider.iterdir() if not p.name.startswith(".")],
-                _LISTING_TIMEOUT_S,
+                _LISTING_TIMEOUT_S if timeout is None else timeout,
                 name="doctor-provider",
             )
         if shown:

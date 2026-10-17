@@ -1556,8 +1556,10 @@ def parse_friction(text: str) -> Friction:
         # a header, or after a header-less attempt that already has stated words, it is always another
         # session's, whatever the gap (B13 round 5 F23; an Attempt: line alone is not one, G51; round 14
         # Q28: two sessions that each stopped at step 1 within the gap were one attempt)
+        # (after stated words, only a line install.sh's awk reads as a step 1 error, so both split alike)
         header, prior = cast("dict[str, str]", cur["header"]), cast("dict[str, str]", cur["stated"])
-        return _STEP1_STATED_RE.match(event.what) is not None and bool(header or prior)
+        strict = shell_step1.get(event.line) == "error"
+        return _STEP1_STATED_RE.match(event.what) is not None and bool(header or (prior and strict))
 
     def close() -> None:
         if cur is not None:
@@ -2880,6 +2882,7 @@ class _Run:
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
         self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
+        self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -3603,7 +3606,7 @@ def _git_ro_err(r: _Run, directory: Path, *args: str, timeout: float = 3.0) -> t
     if limit <= 0.2:
         return 124, b"", b""
     if r.git is None:
-        r.git = gitops.usr_bin_git(timeout=min(gitops._XCRUN_TIMEOUT_S, limit))
+        r.git = gitops.usr_bin_git(timeout=min(gitops._XCRUN_TIMEOUT_S, r.remaining() - _RESERVE_S))
         limit = min(timeout, r.remaining() - _RESERVE_S)  # the git run itself still fits the budget
         if limit <= 0.2:
             return 124, b"", b""
@@ -7519,7 +7522,9 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
     by install.sh's and doctor's one rule (:func:`agentsync.ops.doctor.provider_state`, B13 round 14 Q46,
     Q55): a provider folder gone with no other folder of its app beside it, or there with nothing but hidden
     entries; never a SharePoint library beside its ``OneDrive-<org>``, one beside another folder of its app,
-    or an unreadable one. The source's own path must not be on disk either, as install.sh's ``[ ! -e ]``."""
+    or an unreadable one. The source's own path must not be on disk either, as install.sh's ``[ ! -e ]``.
+    Each provider folder is read once per report, its listing bounded by the report's budget: one that does
+    not answer in time counts as signed in, as doctor counts it."""
     if att is None or r.config is None or _sign_in_stop_item(att, runs, stopping_error(att, runs)) is None:
         return set()
     if _list_stopped(runs) != "not-signed-in":
@@ -7529,11 +7534,26 @@ def _sign_in_stop_fails(r: _Run, att: Attempt | None, runs: Sequence[InstallRun]
     gone: set[str] = set()
     for src in r.config.sources:
         parts = _cloud_parts(src.path) if src.path is not None else None
-        if parts is None or src.path is None or os.path.lexists(expand(src.path)):
+        if parts is None or src.path is None or _on_disk(expand(src.path)):
             continue
-        if doctor.provider_state(cloud_storage_root() / parts[0]) == "signed-out":
+        provider = cloud_storage_root() / parts[0]
+        if provider not in r.provider_states:
+            limit = min(_LISTING_S, r.remaining() - _RESERVE_S)
+            r.provider_states[provider] = (
+                doctor.provider_state(provider, timeout=limit) if limit > 0.2 else "signed-in"
+            )
+        if r.provider_states[provider] == "signed-out":
             gone |= {f"source.{src.id}.listable", f"source.{src.id}.volume"}
     return gone
+
+
+def _on_disk(path: Path) -> bool:
+    """Whether ``path`` is on disk as install.sh's ``[ -e ]`` reads it: a link to nothing is not, and a path
+    under a folder this process cannot read is not either (False, never an error)."""
+    try:
+        return path.exists()
+    except OSError:
+        return False
 
 
 def _gone_folder_fails(r: _Run, runs: Sequence[InstallRun]) -> set[str]:
@@ -7555,7 +7575,7 @@ def _gone_folder_fails(r: _Run, runs: Sequence[InstallRun]) -> set[str]:
         if src.is_live
         and src.path is not None
         and _cloud_parts(src.path) is not None
-        and not expand(src.path).exists()
+        and not _on_disk(expand(src.path))
     ]
     if len(missing) > counted:
         return set()
@@ -8365,15 +8385,19 @@ def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
         return ""
     fr = r.friction
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
+    bucket = (
+        _gone_folder_fails(r, runs) - signed_out
+    )  # the Doctor line's own bucket, so "see Doctor" finds it
     missing = any(
-        tag == "FAIL"
-        and name.startswith("source.")
-        and name.endswith(".listable")
-        and name not in signed_out
-        and _NOT_ON_DISK_RE.search(detail)
+        tag == "FAIL" and name.endswith(".listable") and name in bucket and _NOT_ON_DISK_RE.search(detail)
         for tag, name, detail in r.facts.doctor_problems
     )
-    return f"step 1's list found {_plural(gone, 'synced folder')} not on disk: see Doctor" if missing else ""
+    asked = fr.latest.layout.folder_question_step if fr is not None and fr.latest is not None else 1
+    return (
+        f"step {asked}'s list found {_plural(gone, 'synced folder')} not on disk: see Doctor"
+        if missing
+        else ""
+    )
 
 
 def _folders_line(r: _Run, runs: Sequence[InstallRun]) -> str | None:
@@ -8432,7 +8456,8 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
 
 def _without_folders(args: str) -> tuple[list[str], list[str]] | None:
     """A start line's ``args=`` split into its arguments but the ``--source-local`` options, and those
-    options' folders; None when the shell quoting does not split. Compared, never printed."""
+    options' folders, sorted (the same options in another order are the same command); None when the shell
+    quoting does not split. Compared, never printed."""
     try:
         words = shlex.split(args)
     except ValueError:
@@ -8453,9 +8478,9 @@ def _again_words(run: InstallRun, ok: InstallRun) -> str:
     (they name folders). The same arguments are the same command; arguments that differ only in their
     ``--source-local`` folders are other folders (step 1 of v22 leads to that re-run); anything else other
     arguments (B13 round 14 Q12: Items said "the same command" of a run with other arguments)."""
-    if run.args.strip() == ok.args.strip():
-        return "the same command was run again and ended 0"
     failed, worked = _without_folders(run.args), _without_folders(ok.args)
+    if run.args.strip() == ok.args.strip() or (failed is not None and failed == worked):
+        return "the same command was run again and ended 0"
     if failed is not None and worked is not None and failed[0] == worked[0]:
         return "install.sh was run again with other folders and ended 0"
     return "install.sh was run again with other arguments and ended 0"
