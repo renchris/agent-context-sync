@@ -7794,20 +7794,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         config = pool[-1].step("config") or {}
         if config.get("note") in ("add-source", "exists"):  # sources.toml was there before that run
             label = "sync"
-        v = pool[-1].step("first-sync") or {}
-        text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
-        if v.get("rc", "0") not in ("0", ""):
-            text += f", rc {v['rc']}"
-        note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
-        if note is not None:
-            if note["c"] is not None:
-                counts = (int(note["c"]), int(note["d"]), int(note["r"] or 0))
-            if note["w"] or note["w2"]:
-                text += ", after waiting for another sync to end"
-        elif v.get("note"):
-            # after a comma, not in a bracket of its own: the source tag is the line's one trailing bracket
-            # (round 6 G34; B13 round 12 N14, N33 found "(lock busy: ...) (install.log)")
-            text += f", {_first_sync_note(v['note'])}"
+        text, counts = _sync_step_words(pool[-1].step("first-sync") or {})
         if borrowed:
             text += (
                 f" (install.log: the install run of {_iso(pool[-1].started)}, before this attempt; this "
@@ -7865,6 +7852,16 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
                 if printed_by is not None and printed_by.started is not None
                 else "install.out: an earlier run's, before this attempt"
             )
+            # a newer earlier run whose sync printed no counts (skipped, say) is the Mac's latest sync: its
+            # result, and not the older counts as if they were (B13 round 13 O32)
+            newest = _newer_sync(r.install_runs, runs, printed_by)
+            if newest is not None:
+                said, _counts = _sync_step_words(newest.step("first-sync") or {})
+                parts.append(
+                    f"the newest earlier run's sync: {said} (install.log: the install run of "
+                    f"{_iso(newest.started)}, before this attempt)"
+                )
+                own_line = False
         else:
             out_source = "install.out: which run printed it is not recorded"
     if counts is None and r.facts.first_sync is not None and own_line:
@@ -7926,6 +7923,48 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     if pool:
         parts += _reread_since(r, pool[-1])
     return f"- {label}: " + " · ".join(parts)
+
+
+def _sync_step_words(v: dict[str, str]) -> tuple[str, tuple[int, int, int] | None]:
+    """A first-sync step's words, ``done in 34s``, ``skipped in 0s, lock busy: ...``, and the counts its
+    ``converted-N-deferred-M[-reread-R]`` note carries (None when it carries none)."""
+    counts: tuple[int, int, int] | None = None
+    text = f"{v.get('result', '?')} in {v.get('seconds', '?')}s"
+    if v.get("rc", "0") not in ("0", ""):
+        text += f", rc {v['rc']}"
+    note = _CONVERTED_NOTE_RE.fullmatch(v.get("note", ""))
+    if note is not None:
+        if note["c"] is not None:
+            counts = (int(note["c"]), int(note["d"]), int(note["r"] or 0))
+        if note["w"] or note["w2"]:
+            text += ", after waiting for another sync to end"
+    elif v.get("note"):
+        # after a comma, not in a bracket of its own: the source tag is the line's one trailing bracket
+        # (round 6 G34; B13 round 12 N14, N33 found "(lock busy: ...) (install.log)")
+        text += f", {_first_sync_note(v['note'])}"
+    return text, counts
+
+
+def _newer_sync(
+    every: Sequence[InstallRun], runs: Sequence[InstallRun], printed_by: InstallRun | None
+) -> InstallRun | None:
+    """The newest run before ``runs`` (an attempt's) that logged a first-sync step and began after
+    ``printed_by``, the earlier run whose sync line install.out holds (by start time, else log order); None
+    with none, or no such earlier run."""
+    if printed_by is None or printed_by not in every or not runs or runs[0] not in every:
+        return None
+    first, printed = every.index(runs[0]), every.index(printed_by)
+    newer = [
+        x
+        for n, x in enumerate(every[:first])
+        if x.step("first-sync") is not None
+        and (
+            x.started > printed_by.started
+            if x.started is not None and printed_by.started is not None
+            else n > printed
+        )
+    ]
+    return newer[-1] if newer else None
 
 
 def _reread_since(r: _Run, run: InstallRun) -> list[str]:

@@ -4154,6 +4154,27 @@ def test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_
     )
     # an install.out with no header (an older install.sh) cannot say whose the line is
     assert first_sync(sync) == f"{head}: which run printed it is not recorded; {later}"
+    # B13 round 13 O32: a newer earlier run whose sync was skipped is the Mac's latest sync, not the older
+    # counts install.out still holds
+    skipped = (
+        "2026-09-29T10:30:00Z run=20260929T103000Z-4300 start install.sh compat=10 commit=0123456789ab "
+        "kind=checkout source=- args=--source-local x\n"
+        "2026-09-29T10:30:00Z run=20260929T103000Z-4300 step=config seconds=1 rc=0 result=done note=exists\n"
+        "2026-09-29T10:40:01Z run=20260929T103000Z-4300 step=first-sync seconds=600 rc=75 result=skipped "
+        "note=lock-busy\n"
+        "2026-09-29T10:40:01Z run=20260929T103000Z-4300 end rc=0 seconds=601\n"
+    )
+    log.write_text(earlier + skipped + stopped, encoding="utf-8")
+    mid = "# run=20260929T103000Z-4300 2026-09-29T10:30:00Z install.sh\nsync: skipped, lock busy\n"
+    line = first_sync(early + sync + mid + late + "error: config\n")
+    lock = setup_report._first_sync_note("lock-busy")
+    assert line == (
+        "- first sync: no install run of this attempt reached its first sync (install.log: the last stopped "
+        f"at its config step) · the newest earlier run's sync: skipped in 600s, rc 75, {lock} (install.log: "
+        "the install run of 2026-09-29T10:30:00Z, before this attempt)"
+    ), line
+    assert "converted 7" not in line
+    log.write_text(earlier + stopped, encoding="utf-8")
     # an attempt that ran only step 1's list never reaches a first-sync step
     listed = LIST_RUN.replace("2026-09-29T09:58:0", "2026-09-29T11:01:0").replace("T095805Z-", "T110105Z-")
     log.write_text(earlier + listed, encoding="utf-8")
