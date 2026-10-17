@@ -2144,6 +2144,38 @@ def test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_rev
     )
 
 
+@pytest.mark.parametrize("shape", ["a folder", "a link to a folder"])
+def test_a_folder_at_the_bring_back_path_takes_no_file(
+    env: dict[str, str], tmp_path: Path, shape: str
+) -> None:
+    """B13 round 13 O7, O26 (one defect): mv onto a folder moves the file into it and exits 0, so the run
+    printed "bring back: .../bring-back.md" and the usual NEXT, and the unredacted file sat in the folder as a
+    hidden .bring-back.* file. A folder there, or a link to one, is now a bring-back.md that could not be
+    written: N71's NEXT, with no earlier-file clause, and no temp file in it or beside it."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    back = report_path(env).parent / "bring-back.md"
+    setup = back.parent / "setup"
+    setup.mkdir(parents=True)
+    (setup / "fix-request.md").write_text("- OCR scanned PDFs\n", encoding="utf-8")
+    _keep_patch(env, "2026-10-07T16:00:00Z")
+    inside = back if shape == "a folder" else tmp_path / "elsewhere"
+    inside.mkdir()
+    if shape != "a folder":
+        back.symlink_to(inside)
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert f"warning: could not write {back}" in cp.stderr
+    assert "bring back: " not in cp.stdout
+    assert last_line(cp).startswith(f"NEXT: {back} could not be written (see the warning above): copy "), (
+        last_line(cp)
+    )
+    assert "review " not in last_line(cp) and "earlier attempt" not in last_line(cp)
+    assert list(inside.iterdir()) == [], "nothing is moved into the folder"
+    assert [p.name for p in back.parent.iterdir() if p.name.startswith(".bring-back")] == []
+
+
 def test_a_stopped_copy_note_that_cannot_finish_leaves_no_temp_file(env: dict[str, str]) -> None:
     """B13 round 11 M84: stopped_report_note's mv had no cleanup, so a failed one left a .stopped-report.*
     copy beside the report it was to replace."""

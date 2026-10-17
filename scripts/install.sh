@@ -3276,6 +3276,9 @@ write_bring_back() {
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
+	# mv onto a folder (or a link to one) moves the file into it and exits 0, so the run would name a folder as
+	# the file to send and leave the unredacted file hidden in it (B13 round 13 O7, O26): build nothing for it
+	[ ! -d "$out" ] || return 1
 	prev="$(utc_stamp "$(friction_earlier_end)")"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
 	local_work="$(mktemp "${REPORT_PATH%/*}/.bring-back-local-work.XXXXXX" 2>/dev/null)" || {
@@ -3347,8 +3350,9 @@ write_bring_back() {
 		return 1
 	}
 	rm -f "$local_work"
-	# a file left behind would hold section 3's patches, which are not redacted
-	if ! { chmod 600 "$tmp" && mv -f "$tmp" "$out"; }; then
+	# a file left behind would hold section 3's patches, which are not redacted; a folder made at the path since
+	# the check above would take the file inside it, so it is checked again here
+	if [ -d "$out" ] || ! { chmod 600 "$tmp" && mv -f "$tmp" "$out"; }; then
 		rm -f "$tmp"
 		return 1
 	fi
