@@ -880,16 +880,28 @@ def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
     assert one_next(cp) and "WAITING ON YOU:" not in cp.stdout, "the held line is the NEXT, not printed twice"
 
 
-_HELD_WARN = (
-    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes; deletions held (as of "
-    "its last walk: the end of this run says whether this run's sync cleared it)"
-)
-"""Step 5's warn on a held listing; an installed agentsync from before B13 round 12 N17 bracketed the
+_HELD_WARN = doctor.format_results(
+    [
+        doctor.CheckResult(
+            "heartbeat.fy26-projects",
+            False,
+            "enumeration incomplete for 3 consecutive passes; deletions held",
+            doctor.Severity.WARN,
+            note=doctor._LISTING_YOURS_NOTE,
+        )
+    ]
+).rstrip("\n")
+"""Step 5's warn on a held listing, as doctor prints it today (B13 round 14 Q51: a hand-typed copy let the O36
+check below pass whatever doctor printed). An installed agentsync from before B13 round 12 N17 bracketed the
 "(deletions held)", and one from before round 13 O36 began its note "held at", which install.sh's anchor
-matches too."""
-_HELD_WARN_BEFORE_O36 = _HELD_WARN.replace("(as of its last walk", "(held at its last walk")
-_HELD_WARN_BEFORE_N17 = _HELD_WARN_BEFORE_O36.replace(
-    "passes; deletions held (held", "passes (deletions held) (held"
+matches too: those two are typed out, since they stand for older builds and must not follow today's doctor."""
+_HELD_WARN_BEFORE_O36 = (
+    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes; deletions held (held "
+    "at its last walk: the end of this run says whether this run's sync cleared it)"
+)
+_HELD_WARN_BEFORE_N17 = (
+    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes (deletions held) (held "
+    "at its last walk: the end of this run says whether this run's sync cleared it)"
 )
 _CLEARED = "heartbeat.fy26-projects: this run's sync listed it in full; deletions are no longer held"
 
