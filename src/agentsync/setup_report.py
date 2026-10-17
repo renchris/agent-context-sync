@@ -3945,6 +3945,32 @@ _HELPERS_NOTE_WORDS = {
 ``skipped (config-unreadable)``; no-interpreter has no ``say`` line to explain it anywhere else). A note none
 of these is shown as it is; install.log keeps its tokens."""
 
+_NOT_REQUESTED = "background sync was not asked for"
+_STEP_NOTE_WORDS = {
+    "launcher": {
+        "not-requested": _NOT_REQUESTED,
+        "up-to-date": "already up to date",
+        "kept": "the installed launcher is kept: no developer tools to rebuild it",
+        "no-launcher": "no launcher: no developer tools and no --launcher PATH",
+    },
+    "agent": {
+        "not-requested": _NOT_REQUESTED,
+        "no-sources": "no folders to sync",
+        "status-failed": "agentsync status reported failures",
+    },
+    "wait": {
+        "not-requested": _NOT_REQUESTED,
+        "no-sources": "no folders to sync",
+        "status-failed": "agentsync status reported failures",
+        "agent-failed": "the agent step failed",
+    },
+    "report": {"agentsync": "agentsync's report", "fallback": "the installer's fallback report"},
+    "helpers": _HELPERS_NOTE_WORDS,
+}
+"""install.log's notes of the launcher, agent, wait, report and helpers steps -> the Installer table's words,
+as :data:`_HELPERS_NOTE_WORDS` (B13 round 13 O3: the rows read ``skipped (not-requested)`` and ``done
+(agentsync)``). A note none of these is shown as it is; install.log keeps its tokens."""
+
 
 def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None = None) -> list[str]:
     """A run's steps as the Installer table's rows. With ``sign_in`` the run is the list whose sign-in step 1
@@ -3969,10 +3995,14 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             # words and a count only, never the log's own marks= text. The clause names sources.toml, which
             # the words' "it" refers back to, as the Summary's note does (B13 round 10 L22, L45).
             synced, unread = _count(v, "synced"), _unread_words(v)
-            # and how many of them the list found missing on a sign-in exit (B13 round 13 O1): a number only
-            missing = _count(v, "missing")
+            # and how many of them the list found missing on a sign-in exit, or not on disk (B13 round 13 O1,
+            # O9): a number only, as synced's; install.sh's gone= also counts a provider folder missing while
+            # another of that app's is there, so "not on disk", never "renamed"
+            missing, gone = _count(v, "missing"), _count(v, "gone")
             if synced is not None and missing is not None and v.get("note") == "not-signed-in":
                 counts = f"{synced} already synced, {missing} missing"
+            elif synced is not None and gone:
+                counts = f"{synced} already synced, {gone} of them not on disk"
             elif synced is not None:
                 counts = f"{synced} already synced"
             elif unread is not None:
@@ -3986,8 +4016,8 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             said = f"{_signed_out(v)[0]} on this Mac"
         elif name == "list-folders":
             said = _list_folders_note(said)
-        elif name == "helpers":
-            said = _HELPERS_NOTE_WORDS.get(said, said)
+        elif name in _STEP_NOTE_WORDS:
+            said = _STEP_NOTE_WORDS[name].get(said, said)
         note = ": ".join(part for part in (said, counts) if part)
         if sign_in is not None and name == "list-folders":
             note = f"{note}; {sign_in}" if note else sign_in

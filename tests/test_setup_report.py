@@ -9979,6 +9979,13 @@ def test_the_installer_table_shows_what_the_folder_list_read_of_the_config() -> 
         "failed, rc 3 (another sync app is not signed in on this Mac: 1 already synced, 1 missing)"
     )
     assert "Contoso" not in cell(f"{failed} note=not-signed-in apps=Contoso missing=1 synced=1")
+    # B13 round 13 O9: a folder the list found gone is counted, never named; a gone= no count is dropped
+    assert (
+        cell(f"{head} synced=2 gone=1")
+        == "done (listed 6 folder(s): 2 already synced, 1 of them not on disk)"
+    )
+    assert cell(f"{head} synced=2 gone=Contoso") == "done (listed 6 folder(s): 2 already synced)"
+    assert cell(f"{head} synced=2 gone=0") == "done (listed 6 folder(s): 2 already synced)"
     assert cell("seconds=0 rc=4 result=failed note=denied") == (
         "failed, rc 4 (this terminal app was denied access to the folders)"
     )
@@ -10709,6 +10716,39 @@ def test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped(
     # install.log keeps its token
     log = (fake_mac["setup"] / "install.log").read_text(encoding="utf-8")
     assert "result=failed note=not-signed-in" in log and "result=stopped" not in log
+
+
+def test_the_installer_table_puts_every_steps_note_in_words() -> None:
+    """B13 round 13 O3: the launcher, agent and wait rows read ``skipped (not-requested)`` and the report row
+    ``done (agentsync)``, beside worded first-sync, list and helpers rows. install.log keeps its tokens, and a
+    note the report does not know is shown as it is."""
+
+    def cell(step: str, note: str, result: str = "skipped") -> str:
+        v = {"seconds": "0", "rc": "0", "result": result, "note": note}
+        return setup_report._step_table([(step, v)])[-1].split("|")[3].strip()
+
+    for step in ("launcher", "agent", "wait"):
+        assert cell(step, "not-requested") == "skipped (background sync was not asked for)", step
+    assert cell("launcher", "up-to-date") == "skipped (already up to date)"
+    for step in ("agent", "wait"):
+        assert cell(step, "no-sources") == "skipped (no folders to sync)", step
+        assert cell(step, "status-failed") == "skipped (agentsync status reported failures)", step
+    assert cell("wait", "agent-failed") == "skipped (the agent step failed)"
+    assert cell("report", "agentsync", "done") == "done (agentsync's report)"
+    assert cell("report", "fallback", "done") == "done (the installer's fallback report)"
+    assert cell("wait", "some-new-note") == "skipped (some-new-note)"
+    # a whole run's table, as install.sh logs one with no background sync
+    steps = [
+        (name, {"seconds": "0", "rc": "0", "result": result, "note": note})
+        for name, result, note in (
+            ("launcher", "skipped", "not-requested"),
+            ("agent", "skipped", "not-requested"),
+            ("wait", "skipped", "not-requested"),
+            ("report", "done", "agentsync"),
+        )
+    ]
+    table = "\n".join(setup_report._step_table(steps))
+    assert "(not-requested)" not in table and "(agentsync)" not in table, table
 
 
 def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path]) -> None:
