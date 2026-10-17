@@ -994,6 +994,30 @@ a prompt.
 
 Round 14: the round 13 workflow on `dd06f1ed` with prompt v22 (ids Q<n>, outputs `round14/`).
 
+### B13 round 14: v22 rehearsal, cross-lane review, harvest (2026-10-17)
+
+Run `wf_4e8ebde4-285` on `dd06f1ed` (96 agents, 0 errors). All six scenarios pass their EXPECTED with no turn on any
+rehearsed path; the field Mac's path is clean again (v10 build with copied helpers, pulled to v22, no stop, "fully
+one command"). 85 findings, 84 confirmed (0 turn, 17 wrong, 67 small), 1 refuted; 9 need prompt text, so the next
+prompt is v23. The review also covered the perf commits another session landed in the range (`e72a536d..5b1f10f1`).
+Most wrongs sit on two cross-lane seams of round 13: lane B's new empty-SharePoint-library doctor fix is not a
+person's fix to lane P's `persons_fails`, so step 2 tells the agent to fix it and re-run (Q45, Q54, Q63); and
+`status`'s NEXT on a person's [FAIL] tells the reader to do the fix and differs from a sync's, though v22 step 3 says
+they print the same line (Q1, Q9, Q33). Others: the converters run the native pandoc while doctor, status and
+install.sh check and warm the wheel's copy (Q56, Q60, Q76), the native route never runs under the test gate (Q61),
+and the guide still keeps a late step 1 line in the finished attempt (Q64, Q77).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84 over rounds 2 and 4 to 14; turns 3, 0, 0, 1,
+5, 2, 4, 1, 1, 3, 1, 0; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17. Second round in a row with no turn on a
+rehearsed path, and the first with no turn anywhere.
+
+Lanes (`--account auto`, CONTRACTS §16.110 to §16.115, brief `lanes/COMMON13.md`, mirrored in `docs/lanes/COMMON.md`,
+which adds the land lock): RA 20 (setup_report.py), RB 18 (install.sh, persons_fails), P 7 (prompt v23), B 17
+(status NEXT, waits, alarm counts, doctor), E 6 (native pandoc in doctor and tests, the load-timing test), D 14
+(docs/deploy, README Install, CONTRACTS). Lead: Q84 (round 15's kit copies helpers for every build before
+`7b51f3cf` and fails on any real-home SwiftPM lock) and Q85 (one operator cleanup, `b13-r13`, replacing the `b13-r12`
+one).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

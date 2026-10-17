@@ -20744,3 +20744,27 @@ paragraph said `_list_stopped` runs `if not synced`. Each has a dated line, and 
 README and both guides changed with it. The docstring of `test_the_guide_quotes_round_11s_installer_bracket_and_list_rule`
 says what N67 was and that N31 has since removed the guard. Tests: the dated-line scan
 (`test_every_dated_line_from_round_11_on_is_held_by_a_test`).
+
+### 16.110 Round 14: setup report (2026-10-17, wave B13 round 14 lane RA)
+
+Reserved for round 14 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 14").
+
+### 16.111 Round 14: installer, persons_fails and the shell report (2026-10-17, wave B13 round 14 lane RB)
+
+Reserved for round 14 lane RB of B13.
+
+### 16.112 Round 14: setup prompt v23 (2026-10-17, wave B13 round 14 lane P)
+
+Reserved for round 14 lane P of B13.
+
+### 16.113 Round 14: status NEXT, waits, alarm counts and doctor (2026-10-17, wave B13 round 14 lane B)
+
+Reserved for round 14 lane B of B13.
+
+### 16.114 Round 14: native pandoc, doctor's pandoc check and load-timing tests (2026-10-17, wave B13 round 14 lane E)
+
+Reserved for round 14 lane E of B13.
+
+### 16.115 Round 14: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 14 lane D)
+
+Reserved for round 14 lane D of B13.
