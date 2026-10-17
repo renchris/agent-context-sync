@@ -2207,8 +2207,10 @@ friction_attempt_begin() {
 # A copy --log-start stopped has a header and a stop line that states nothing, so it was never computed, though
 # the agentsync report computes "failed at step 1" for it: when the attempt's first step 1 error is that stop
 # line and every timed line is step 1's, the version and the agent come from the attempt's first Prompt: and
-# Agent: header lines, and a third field says so ("header"; B13 round 11 M14). Prints "<N><TAB><agent><TAB>
-# [header]".
+# Agent: header lines, and a third field says so and carries what the stop line states (B13 round 11 M14,
+# round 12 N44): "header:<V>:<old|new>:<fork|remote>", where V is the installer's prompt version, then which of
+# its two reasons stopped the copy, then the cause its fix names; any part may be empty (B13 round 13 O46).
+# Prints "<N><TAB><agent><TAB><third field>", with an empty third field for a stated step 1 error.
 friction_step1_stated() {
 	local f
 	f="$(friction_file)"
