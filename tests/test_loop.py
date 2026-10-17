@@ -22,7 +22,15 @@ import pytest
 
 from agentsync import arm_local, cli, governance, loop, materialise, publish, setup_report, skill
 from agentsync import cycle as cycle_module
-from agentsync.config import Config, ensure_inbox, inbox_source_table, load_config, local_source_table
+from agentsync.arm_local import exclude_globs
+from agentsync.config import (
+    Config,
+    ensure_inbox,
+    inbox_source_table,
+    load_config,
+    local_source_table,
+    set_source_exclude,
+)
 from agentsync.cycle import HYDRATION_REFUSED, LISTING_HELD, NETWORK_POLICY_FAILED, RECORDING_WAITS, run_cycle
 from agentsync.errors import DatalessRefusedError
 from agentsync.manifest import Manifest
@@ -300,9 +308,9 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
             "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
             "work are held, not applied, and another sync does not complete it; if the folder is "
             "meant to be empty, "
-            f"run `{BIN} exclude-empty work` (it adds it to that source's exclude in "
+            f"run `{BIN} exclude-empty work` (it adds the folder to that source's exclude in "
             "~/agent-context/ctx/sources.toml; an excluded folder is not mirrored if it later gains files); "
-            + _named(config, "work", f"the folder, {FIVE}"),
+            + _named(config, "work", "the folder"),
         ]
     with Manifest(config.state_paths.db) as manifest:
         assert not manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
@@ -311,8 +319,8 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
     # STATE.md and status give the same wait, but for where its folders are named: STATE.md names its own
     # ## work section, not itself (B13 round 8 J33)
     stated = _lines(config)[1].replace(
-        _named(config, "work", f"the folder, {FIVE}"),
-        f"the alarm line under ## work below names the folder, {FIVE} (a plain `{BIN} sync` prints it too)",
+        _named(config, "work", "the folder"),
+        f"the alarm line under ## work below names the folder (a plain `{BIN} sync` prints it too)",
     )
     assert stated != _lines(config)[1] and stated in state.splitlines(), "STATE.md and status give one wait"
     # The wait comes from that walk: status lists no folder of the source, here not even a missing one.
@@ -386,10 +394,11 @@ def test_one_empty_folder_is_never_sent_to_a_full_sync(
     assert "'Empty A'" in alarm and "sync -v" not in alarm and "more" not in alarm
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert "sync -v" not in wait and "first five" not in wait and "how to list any more" not in wait
+    # B13 round 14 Q23, Q41: one folder stored, which the alarm names: no five clause
     assert wait.endswith(
-        "keeps the alarm line for work, which names the folder, up to five, and past five how to list the "
-        f"rest (a plain `{BIN} sync` prints it too)"
-    ), wait
+        f"keeps the alarm line for work, which names the folder (a plain `{BIN} sync` prints it too)"
+    )
+    assert "up to five" not in wait, wait
 
 
 def test_the_sixth_folder_is_pointed_at_when_the_waits_split_the_folders(
@@ -571,15 +580,13 @@ def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_pa
     config = _setup(tmp_path, local_source_table("work", root))
     run_cycle(config, mode=None)
     first = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder "))
-    assert first.endswith("later gains files); " + _named(config, "work", f"the folder, {FIVE}")), (
-        "none missed yet"
-    )
+    assert first.endswith("later gains files); " + _named(config, "work", "the folder")), "none missed yet"
     for n in range(4):
         (root / "Planning" / f"plan {n}.txt").unlink()
     run_cycle(config, mode=None)
     wait = next(ln for ln in _lines(config) if ln.startswith("WAITING ON YOU: 1 empty cloud folder "))
     assert wait == first + (
-        "; the last walk of work did not list 4 file(s) the mirror still has: once the listing is complete, "
+        "; the last walk of work did not list 4 files the mirror still has: once the listing is complete, "
         "later syncs take out the pages of those still absent, with the usual deletion check"
     )
     assert "plan" not in wait.lower() and "Planning" not in wait
@@ -652,17 +659,17 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
         "work are held, not applied, and another sync does not complete it; if the folder is "
         "meant to be empty, "
-        f"run `{BIN} exclude-empty work` (it adds it to that source's exclude in {config.config_path}; an "
-        "excluded folder is not mirrored if it later gains files); "
-        + _named(config, "work", f"the folders, {FIVE}"),
-        "WAITING ON YOU: 1 empty cloud folder in work held 2 file(s) the mirror still has (the listing "
+        f"run `{BIN} exclude-empty work` (it adds the folder to that source's exclude in "
+        f"{config.config_path}; an "
+        "excluded folder is not mirrored if it later gains files); " + _named(config, "work", "the folders"),
+        "WAITING ON YOU: 1 empty cloud folder in work held 2 files the mirror still has (the listing "
         "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
         "removed on purpose, remove the empty folder from the cloud drive too, and later syncs take the "
         "pages out with the usual deletion check; excluding such a folder instead retires its pages at "
         "once, with no deletion check and no purge queued; "
-        + _named(config, "work", f"the folders, {FIVE}")
+        + _named(config, "work", "the folders")
         + "; in all, the "
-        "last walk of work did not list 2 file(s) the mirror still has: once the listing is complete, later "
+        "last walk of work did not list 2 files the mirror still has: once the listing is complete, later "
         "syncs take out the pages of those still absent, with the usual deletion check",
     ]
     assert not any("Reports" in ln or "2026" in ln for ln in _lines(config))
@@ -703,17 +710,18 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
             "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
             "drop are held, not applied, and another sync does not complete it; if the folder is "
             "meant to be empty, "
-            f"run `{BIN} exclude-empty drop` (it adds it to that source's exclude in {config.config_path}; "
+            f"run `{BIN} exclude-empty drop` (it adds the folder to that source's exclude in "
+            f"{config.config_path}; "
             "an excluded folder is not mirrored if it later gains files); "
-            + _named(config, "drop", f"the folders, {FIVE}"),
-            "WAITING ON YOU: 1 empty cloud folder in drop held 1 file(s) the mirror still has (the "
-            "listing stays incomplete, so their deletion is held; another sync does not clear it): if the "
-            "files were removed on purpose, remove the empty folder from the cloud drive too, and later "
-            "syncs take the pages out with the usual deletion check; excluding such a folder instead retires "
+            + _named(config, "drop", "the folders"),
+            "WAITING ON YOU: 1 empty cloud folder in drop held 1 file the mirror still has (the "
+            "listing stays incomplete, so its deletion is held; another sync does not clear it): if the "
+            "file was removed on purpose, remove the empty folder from the cloud drive too, and later "
+            "syncs take its page out with the usual deletion check; excluding such a folder instead retires "
             "its pages at once, with no deletion check and no purge queued; "
-            + _named(config, "drop", f"the folders, {FIVE}")
-            + "; in all, the last walk of drop did not list 1 file(s) the "
-            "mirror still has: once the listing is complete, later syncs take out the pages of those still "
+            + _named(config, "drop", "the folders")
+            + "; in all, the last walk of drop did not list 1 file the "
+            "mirror still has: once the listing is complete, later syncs take out its page if it is still "
             "absent, with the usual deletion check",
         ]
         assert not any(ln.startswith("note: ") for ln in lines)
@@ -786,9 +794,9 @@ def test_an_inbox_file_the_walk_withheld_is_not_in_the_count(tmp_path: Path) -> 
         "a cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
         "drop are held, not applied, and another sync does not complete it; if the folder is "
         "meant to be empty, "
-        f"run `{BIN} exclude-empty drop` (it adds it to that source's exclude in {config.config_path}; an "
-        "excluded folder is not mirrored if it later gains files); "
-        + _named(config, "drop", f"the folder, {FIVE}")
+        f"run `{BIN} exclude-empty drop` (it adds the folder to that source's exclude in "
+        f"{config.config_path}; an "
+        "excluded folder is not mirrored if it later gains files); " + _named(config, "drop", "the folder")
     )
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [paste]
     ahead = time.time() + 3600  # dated ahead of the clock: withheld by every walk, and never waited for
@@ -821,8 +829,8 @@ def test_withheld_inbox_files_leave_a_real_deletion_in_the_count(tmp_path: Path)
         assert manifest.live_count("drop") == 2, "the listing is incomplete: the deletion is held"
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait.endswith(
-        "; the last walk of drop did not list 1 file(s) the mirror still has: once the listing is complete, "
-        "later syncs take out the pages of those still absent, with the usual deletion check"
+        "; the last walk of drop did not list 1 file the mirror still has: once the listing is complete, "
+        "later syncs take out its page if it is still absent, with the usual deletion check"
     )
 
 
@@ -876,7 +884,7 @@ def test_a_walk_incomplete_only_for_its_sentinel_gets_a_sentinel_wait(tmp_path: 
     )
     assert "could not be listed" not in wait and "exclude" not in wait and "KEEP.txt" not in wait
     (alarm,) = [ln for ln in _kept_alarms(config) if "sentinel" in ln]
-    assert "unknown dir(s)" not in alarm, alarm
+    assert "unknown dir" not in alarm, alarm
     # §16.39 N16: the wait explains that source's heartbeat warn
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
 
@@ -1001,9 +1009,11 @@ def test_a_folder_holding_no_mirrored_file_gets_the_plain_exclude_beside_a_held_
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait == (
         "WAITING ON YOU: 1 folder in work could not be listed (refused with EACCES; another sync "
-        "does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + f"; {_MODE_FIX_ONE}, or add it "
+        "does not clear it): "
+        + _named(config, "work", "the folder that could not be listed")
+        + f"; {_MODE_FIX_ONE}, or add it "
         f"to that source's exclude in {loop._shown(config.config_path)}; the last walk of work did not "
-        "list 1 file(s) the mirror still has, and their deletion stays held until a sync lists work in full"
+        "list 1 file the mirror still has, and its deletion stays held until a sync lists work in full"
     )
     (alarm,) = [ln for ln in _kept_alarms(config) if "could not be read" in ln]
     assert "or exclude it" in alarm, alarm
@@ -1014,7 +1024,7 @@ def test_a_folder_holding_mirrored_files_keeps_the_safe_words_beside_a_held_dele
     count, for the file under it and the deletion held elsewhere."""
     config = _locked_beside_a_held_deletion(tmp_path, mirrored=True)
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
-    assert f"{_MODE_FIX_ONE} (the safe fix); the last walk of work did not list 2 file(s)" in wait, wait
+    assert f"{_MODE_FIX_ONE} (the safe fix); the last walk of work did not list 2 files" in wait, wait
     assert "deletion stays held" not in wait, wait
 
 
@@ -1068,10 +1078,9 @@ def test_a_folder_a_sync_cannot_list_for_another_reason_points_at_sync_v(tmp_pat
         "WAITING ON YOU: 1 folder in work could not be listed (refused with EACCES, or a missing "
         "sentinel; another sync does not clear it): "
     ), wait
-    # B13 round 10 L67: the alarm names what could not be listed, so the wait says that, never "names it"
-    assert (
-        "names it" not in wait and "names the folder" not in wait and "names what could not be listed" in wait
-    )
+    # B13 round 10 L67: the alarm names what could not be listed, so the wait says that, never "names it";
+    # round 14 Q41: it names the one folder the walk stored, so the wait says so, with no five clause
+    assert "names it" not in wait and "names the folder that could not be listed (a plain" in wait, wait
 
 
 def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> None:
@@ -1100,7 +1109,8 @@ def test_two_sources_that_cannot_be_listed_get_a_plural_wait(tmp_path: Path) -> 
         # B13 round 12 N12, N38: no sentinel set and EACCES stored: no "a missing folder or sentinel"
         "WAITING ON YOU: one or more folders in each of alpha and beta could not be listed (refused with "
         f"EACCES; another sync does not clear it): {state} keeps the alarm lines for "
-        f"alpha and beta, which name {loop._WHAT_FAILED} (a plain `{BIN} sync` prints them too); "
+        f"alpha and beta, which name the folders that could not be listed (a plain `{BIN} sync` prints them "
+        "too); "
         f"{_MODE_FIX}, or add each to its source's exclude in {loop._shown(config.config_path)}"
     )
     alarms = [
@@ -1126,8 +1136,8 @@ def test_a_folder_a_sync_cannot_list_after_it_mirrored_files_warns_what_an_exclu
         (folder / "Locked").chmod(0o755)
     assert waits == [
         "WAITING ON YOU: 1 folder in work could not be listed (refused with EACCES; another sync "
-        "does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + "; "
-        f"{_MODE_FIX_ONE} (the safe fix); the last walk of work did not list 30 file(s) the mirror still "
+        "does not clear it): " + _named(config, "work", "the folder that could not be listed") + "; "
+        f"{_MODE_FIX_ONE} (the safe fix); the last walk of work did not list 30 files the mirror still "
         "has, and adding such a folder to that source's exclude retires the pages under it at once, with no "
         "deletion check and no purge queued"
     ]
@@ -1162,7 +1172,9 @@ def test_the_could_not_list_wait_counts_the_folders_the_walk_stored(tmp_path: Pa
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait == (
         "WAITING ON YOU: 2 folders in work could not be listed (refused with EACCES; another sync does not "
-        "clear it): " + _named(config, "work", loop._WHAT_FAILED) + f"; {_MODE_FIX}, or add each one to that "
+        "clear it): "
+        + _named(config, "work", "the folders that could not be listed")
+        + f"; {_MODE_FIX}, or add each one to that "
         f"source's exclude in {loop._shown(config.config_path)}"
     )
     path = config.config_path
@@ -1171,7 +1183,9 @@ def test_the_could_not_list_wait_counts_the_folders_the_walk_stored(tmp_path: Pa
     (wait,) = [w for w in loop.next_step(config, count_queue=False).waits if "could not be listed" in w]
     assert wait == (
         "1 folder in work could not be listed and is still not excluded (refused with EACCES; another sync "
-        "does not clear it): " + _named(config, "work", loop._WHAT_FAILED) + f"; {_MODE_FIX_ONE}, or add it "
+        "does not clear it): "
+        + _named(config, "work", "the folders that could not be listed")
+        + f"; {_MODE_FIX_ONE}, or add it "
         f"to that source's exclude in {loop._shown(config.config_path)}"
     )
     assert "folder(s)" not in wait and "each one" not in wait, wait
@@ -1341,6 +1355,92 @@ def test_a_source_root_a_sync_cannot_list_never_offers_an_exclude(tmp_path: Path
         child.rename(folder / child.name)
     run_cycle(config, mode=None)
     assert not any(ln.startswith("WAITING ON YOU") for ln in _lines(config))
+
+
+_S_BESIDE_A_COUNT = re.compile(r"\b\d+ [^;:,()]*?\(s\)")
+"""A noun with "(s)" after a number that counts it (B13 round 14 Q24, Q38, Q42, Q57, Q81)."""
+
+
+def test_the_alarm_names_words_follow_the_walks_stored_count() -> None:
+    """B13 round 14 Q23, Q41: one empty folder's wait said the alarm "names the folder, up to five, and past
+    five how to list the rest", and five's too, though the alarm lists one to five in full. The clause
+    follows how many folders the walk stored, which the alarm counts: kept past five, also once five of six
+    are excluded since (the alarm still names five and points at the sixth), never chosen by the wait's own
+    count. No "(s)" beside a count in the alarm or the wait (Q24, Q38, Q42)."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(Path.home() / "agent-context", local_source_table("work", root))
+
+    def clear_wait() -> str:
+        [wait] = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU") and "exclude-empty" in ln]
+        return wait
+
+    for n, names in (
+        (1, "the folder (a plain"),
+        (5, "the folders (a plain"),
+        (6, f"the folders, {loop._UP_TO_FIVE}"),
+    ):
+        for i in range(n):
+            (root / f"Empty {i}").mkdir(exist_ok=True)
+        run_cycle(config, mode=None)
+        assert f"which names {names}" in clear_wait(), (n, clear_wait())
+        # B13 round 14 Q43: "(it adds it to ...)" named the command and the folder with one word
+        assert ("(it adds the folder to " if n == 1 else "(it adds them to ") in clear_wait()
+        assert "it adds it" not in clear_wait()
+        [alarm] = _kept_alarms(config)
+        assert alarm.startswith(f"alarm: ``{n} unknown {'dir' if n == 1 else 'dirs'} — {n} empty cloud "), (
+            alarm
+        )
+        assert not _S_BESIDE_A_COUNT.search(alarm) and not _S_BESIDE_A_COUNT.search(clear_wait()), alarm
+    src = config.sources[0]
+    set_source_exclude(
+        config.config_path, "work", exclude_globs(src, [f"Empty {i}" for i in range(5)]), expected=src.exclude
+    )
+    config = load_config(config.config_path)
+    assert clear_wait().startswith(
+        "WAITING ON YOU: 1 empty cloud folder keeps the listing of work incomplete"
+    )
+    assert f"which names the folders, {loop._UP_TO_FIVE}" in clear_wait()
+
+
+def test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 14 Q58: with one clear and one gone empty folder, the gone line said the alarm "names the
+    folders"; after exclude-empty took the clear one and before the next sync, "names the folder", while
+    STATE.md's alarm still listed both. The words follow the walk's stored count; the next sync stores one.
+    Q81: its file count reads "held 1 file", "its deletion", "if the file was removed", "its page"."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    _write(root / "Gone" / "plan.txt", "The plan.\n")
+    config = _setup(Path.home() / "agent-context", local_source_table("work", root))
+    run_cycle(config, mode=None)
+    (root / "Gone" / "plan.txt").unlink()
+    (root / "Empty").mkdir()
+    run_cycle(config, mode=None)
+
+    def gone_line() -> str:
+        [line] = [ln for ln in _lines(config) if "held 1 file the mirror still has" in ln]
+        return line
+
+    assert "so its deletion is held" in gone_line() and "if the file was removed on purpose" in gone_line()
+    assert (
+        "later syncs take its page out" in gone_line() and "which names the folders (a plain" in gone_line()
+    )
+    capsys.readouterr()
+    assert cli.main(["exclude-empty", "work", "--config", str(config.config_path)]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    assert "(1 empty cloud folder added)" in out, out
+    assert "; 1 empty cloud folder in work was left as it is: it held file(s) the mirror still has" in out, (
+        out
+    )
+    assert not _S_BESIDE_A_COUNT.search(out), out
+    config = load_config(config.config_path)
+    assert "which names the folders (a plain" in gone_line()
+    assert any("'Empty', 'Gone'" in alarm for alarm in _kept_alarms(config)), _kept_alarms(config)
+    run_cycle(config, mode=None)
+    assert "which names the folder (a plain" in gone_line()
+    assert not any(_S_BESIDE_A_COUNT.search(ln) for ln in [*_lines(config), *_kept_alarms(config)])
 
 
 @pytest.mark.parametrize(
@@ -2213,7 +2313,7 @@ def test_a_source_with_empty_folders_and_one_it_cannot_list_gets_both_waits(tmp_
         assert sum("did not list" in w for w in waits) <= 1, waits
         assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
         # B13 round 11 M46, M56: two waits are about work, so the alarm names the one it means by its subject
-        (alarm,) = [ln for ln in _kept_alarms(config) if "unknown dir(s)" in ln]
+        (alarm,) = [ln for ln in _kept_alarms(config) if "unknown dir" in ln]
         assert "the WAITING ON YOU line about the empty cloud folders in work" in alarm, alarm
         assert "the WAITING ON YOU line about work" not in alarm, alarm
         # exclude-empty takes the empty folders; the could-not-be-listed wait stays
@@ -2255,7 +2355,7 @@ def test_a_folder_that_held_files_beside_an_empty_one_keeps_the_safe_words(tmp_p
     assert len(waits) == 2, waits
     assert waits[0].startswith("WAITING ON YOU: 1 empty cloud folder keeps the listing of work"), waits
     assert "did not list" not in waits[0], waits
-    assert "(the safe fix); the last walk of work did not list 1 file(s) the mirror still has" in waits[1]
+    assert "(the safe fix); the last walk of work did not list 1 file the mirror still has" in waits[1]
     assert "add each one to that source's exclude" not in waits[1], waits
 
 
@@ -2277,10 +2377,10 @@ def test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs
     finally:
         (root / "Zz Locked").chmod(0o755)
     assert len(waits) == 2, waits
-    assert waits[0].startswith("WAITING ON YOU: 1 empty cloud folder in work held 1 file(s)"), waits
-    assert "; in all, the last walk of work did not list 1 file(s)" in waits[0], waits
+    assert waits[0].startswith("WAITING ON YOU: 1 empty cloud folder in work held 1 file"), waits
+    assert "; in all, the last walk of work did not list 1 file" in waits[0], waits
     assert "add it to that source's exclude" in waits[1] and "did not list" not in waits[1], waits
-    assert sum(w.count("did not list 1 file(s)") for w in waits) == 1, waits
+    assert sum(w.count("did not list 1 file") for w in waits) == 1, waits
     # the locked folder now holds a mirrored file: the safe words, the count in all
     run_cycle(config, mode=None)
     _write(root / "Was Full" / "old.txt", "An old memo.\n")
@@ -2295,8 +2395,9 @@ def test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs
     assert len(waits) == 2, waits
     assert "did not list" not in waits[0], waits
     assert (
-        "(the safe fix); in all, the last walk of work did not list 2 file(s) the mirror still has, the ones "
-        "under the empty folders above among them, and adding such a folder"
+        # B13 round 14 Q57: one gone folder holds files: "the empty folder above"
+        "(the safe fix); in all, the last walk of work did not list 2 files the mirror still has, the ones "
+        "under the empty folder above among them, and adding such a folder"
     ) in waits[1], waits
 
 
@@ -2314,7 +2415,7 @@ def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:
     text = (config.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     block = text.split("## Next\n\n", 1)[1].split("\n\n## This run", 1)[0].splitlines()
     (wait,) = [ln for ln in block if ln.startswith(loop.WAIT_PREFIX)]
-    assert f"the alarm line under ## work below names the folder, {FIVE} (a plain " in wait, wait
+    assert "the alarm line under ## work below names the folder (a plain " in wait, wait
     assert "STATE.md" not in wait, wait
     assert block[-1] == publish._STATE_WAIT_LEGEND and "## <id> section below" in block[-1]
     # B13 round 9 K38: the legend names the alarm's own words and says which line they mean
@@ -2322,7 +2423,7 @@ def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:
     (alarm,) = [ln for ln in text.split("\n## work\n", 1)[1].splitlines() if ln.startswith("alarm: ")]
     assert "at the end of a sync's output" in alarm, "the stored alarm is left as the sync printed it"
     (terminal,) = [ln for ln in _lines(config) if ln.startswith(loop.WAIT_PREFIX)]
-    assert _named(config, "work", f"the folder, {FIVE}") in terminal
+    assert _named(config, "work", "the folder") in terminal
     two = loop._named(config, ["alpha", "beta"], "them", in_state=True)
     assert two == (
         f"the alarm lines under ## alpha and ## beta below name them (a plain `{BIN} sync` prints them too)"

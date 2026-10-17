@@ -886,8 +886,10 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             clear, _collides = loop._excludable(found)
         gone = len(below) - len(clear)
         left = "it" if gone == 1 else "them"  # B13 round 12 N40: by the count, as the line's own folders
+        one = gone == 1  # noun, verb and pronoun by the count (B13 round 14 Q42, Q57: "1 ... folder(s) were")
         held = (
-            f"; {gone} empty cloud folder(s) in {src.id} were left as they are: each held file(s) the mirror "
+            f"; {gone} empty cloud {'folder' if one else 'folders'} in {src.id} "
+            f"{'was left as it is: it' if one else 'were left as they are: each'} held file(s) the mirror "
             "still has, or its exclude would also match a folder that does (excluding such a folder retires "
             f"its pages at once, with no deletion check); {loop._named(config, [src.id], left)}"
             if gone
@@ -908,7 +910,8 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
     listed = ", ".join(json.dumps(g, ensure_ascii=False) for g in exclude)
     _out(
         f'exclude-empty {src.id}: wrote exclude = [{listed}] in [[source]] id = "{src.id}" in {where} '
-        f"({len(clear)} empty cloud folder(s) added); an excluded folder is not mirrored if it later gains "
+        f"({len(clear)} empty cloud {'folder' if len(clear) == 1 else 'folders'} added); an excluded "
+        "folder is not mirrored if it later gains "
         # the folders by their count (B13 round 12 N40: "without them" after one folder, beside "files")
         f"files; the next sync lists {src.id} without {'that folder' if len(clear) == 1 else 'those folders'}"
         f"{held}"

@@ -56,7 +56,7 @@ def test_every_empty_folder_is_excluded_once_and_the_listing_completes(
     run_cycle(load_config(cfg), mode=None)
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK, out
-    assert "(7 empty cloud folder(s) added)" in out and "not mirrored if it later gains files" in out
+    assert "(7 empty cloud folders added)" in out and "not mirrored if it later gains files" in out
     assert out.rstrip().endswith("the next sync lists work without those folders"), out  # B13 round 12 N40
     src = load_config(cfg).source("work")
     assert src.exclude == ("*.bak", *(f"/Empty {n}/" for n in range(6)), "/Plans ?old]/")
@@ -82,8 +82,8 @@ def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     run_cycle(load_config(cfg), mode=None)
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK, out
-    assert "(1 empty cloud folder(s) added)" in out
-    assert "1 empty cloud folder(s) in work were left as they are" in out
+    assert "(1 empty cloud folder added)" in out
+    assert "1 empty cloud folder in work was left as it is" in out
     # B13 round 12 N40: "without them" after one folder, beside "files", and the left one is "it"
     assert "the next sync lists work without that folder; " in out and "without them" not in out, out
     assert "which names it" in out and "which names them" not in out, out
@@ -196,14 +196,10 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     assert not any("exclude-empty" in ln for ln in lines), lines
     (wait,) = [ln for ln in lines if ln.startswith("WAITING ON YOU: 1 empty cloud folder in work has a [")]
     assert "rename or remove the empty folder in the cloud drive" in wait
-    assert (
-        "STATE.md keeps the alarm line for work, which names it, up to five, and past five how to list the "
-        "rest "
-        in wait
-        and "Plans" not in wait
-    )
+    # B13 round 14 Q23, Q41: one folder stored, which the alarm names in full: no five clause
+    assert "STATE.md keeps the alarm line for work, which names it (a plain " in wait and "Plans" not in wait
     assert "(a plain `~/.local/bin/agentsync sync` prints it too)" in wait and "sync -v" not in wait
-    assert "file(s) the mirror still has" not in wait, "not the gone line: the folder held no file"
+    assert "the mirror still has" not in wait, "not the gone line: the folder held no file"
 
 
 class _Rows:

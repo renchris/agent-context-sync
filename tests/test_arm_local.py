@@ -482,9 +482,9 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
     assert len(per_dir) == 2 and {r.levelno for r in per_dir} == {logging.INFO}
     assert res.unknown_dirs == ("One", "Two") and not res.enumeration_complete
     (alarm,) = res.alarms
-    assert "2 unknown dir(s)" in alarm and "'One', 'Two'" in alarm
+    assert "2 unknown dirs" in alarm and "'One', 'Two'" in alarm
     assert alarm == (
-        "2 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One', 'Two'; enumeration "
+        "2 unknown dirs — 2 empty cloud folders, zero children in a cloud tree: 'One', 'Two'; enumeration "
         "incomplete, no deletions this pass (each WAITING ON YOU line about empty cloud folders in "
         "local-test at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` "
         "prints each one too)"
@@ -495,7 +495,7 @@ def test_zero_child_cloud_dirs_log_at_info_and_the_scan_alarm_names_them(
 
 
 _TODAY = (
-    "{n} unknown dir(s) — permission denied (TCC), provider error, or zero children in a cloud tree: "
+    "{n} unknown {dirs} — permission denied (TCC), provider error, or zero children in a cloud tree: "
     "{names}; enumeration incomplete, no deletions this pass ({advice})"
 )
 
@@ -527,7 +527,7 @@ def test_an_unreadable_folder_with_no_empty_cloud_folder_names_its_reason() -> N
         res = al.LocalArm(_cfg(root)).scan(None, full=True)
     (alarm,) = res.alarms
     assert alarm == (
-        f"1 unknown dir(s) — could not be read: 'Locked' ({_DENIED}); enumeration incomplete, no deletions "
+        f"1 unknown dir — could not be read: 'Locked' ({_DENIED}); enumeration incomplete, no deletions "
         f"this pass ({_MODE})"
     )
     assert "Files and Folders" not in alarm and "empty" not in alarm
@@ -547,6 +547,7 @@ def test_a_walk_stats_with_no_recorded_reason_keeps_the_old_alarm(tmp_path: Path
     arm = al.LocalArm(_cfg(tmp_path))
     stats = al.WalkStats(1, 1, 0, 0, 0, unknown_dirs=("Locked",), sentinel_present=None)
     assert arm._unknown_alarm(stats, []) == _TODAY.format(
+        dirs="dir",
         n=1,
         names="'Locked'",
         advice="exclude a deliberately empty cloud folder, or grant the agent Files and Folders access",
@@ -582,7 +583,7 @@ def test_a_privacy_refusal_keeps_the_grant_and_a_mixed_one_names_both_fixes(
     _refusing(monkeypatch, {"Private": errno.EPERM})
     (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
     assert alarm == (
-        f"1 unknown dir(s) — could not be read: 'Private' (EPERM: {os.strerror(errno.EPERM)}); enumeration "
+        f"1 unknown dir — could not be read: 'Private' (EPERM: {os.strerror(errno.EPERM)}); enumeration "
         "incomplete, no deletions this pass (grant the agent Files and Folders access)"
     )
     _refusing(monkeypatch, {"Private": errno.EPERM, "Shut": errno.EACCES, "Slow": errno.EDEADLK})
@@ -645,7 +646,7 @@ def test_an_unreadable_folder_behind_five_empty_ones_is_named_in_its_own_clause(
         (alarm,) = al.LocalArm(_cfg(root)).scan(None, full=True).alarms
     pointer = "(+1 more; `~/.local/bin/agentsync sync -v` logs each one)"
     assert alarm.startswith(
-        f"7 unknown dir(s) — 1 could not be read: 'Zeta Locked' ({_DENIED}); 6 empty cloud folders, zero "
+        f"7 unknown dirs — 1 could not be read: 'Zeta Locked' ({_DENIED}); 6 empty cloud folders, zero "
         f"children in a cloud tree: 'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E' {pointer}; "
     ), alarm
     for n in "ABCDEF":
@@ -675,7 +676,7 @@ def test_an_unreadable_folder_beside_an_empty_cloud_folder_offers_no_exclude() -
     (alarm,) = res.alarms
     assert alarm == (
         # B13 round 12 N36, N37: singular throughout for one folder of each
-        f"2 unknown dir(s) — 1 could not be read: 'Locked' ({_DENIED}); 1 empty cloud folder, zero "
+        f"2 unknown dirs — 1 could not be read: 'Locked' ({_DENIED}); 1 empty cloud folder, zero "
         "children in a cloud tree: 'One'; enumeration incomplete, no deletions this pass (for the folder "
         f"it could not read, {_MODE_NAMED}; for the empty one, the WAITING ON YOU line about the empty cloud "
         "folder in local-test at the end of a sync's output says what to do, and "
@@ -802,7 +803,7 @@ def test_an_inbox_empty_cloud_folder_alarm_points_at_the_waits() -> None:
     (alarm,) = res.alarms
     assert " agentsync status" not in alarm
     assert alarm == (
-        "1 unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: 'One'; enumeration "
+        "1 unknown dir — 1 empty cloud folder, zero children in a cloud tree: 'One'; enumeration "
         "incomplete, no deletions this pass (the WAITING ON YOU line about the empty cloud folder in "
         "local-test at the end of a sync's output says what to do, and `~/.local/bin/agentsync status` "
         "prints it too)"
@@ -837,7 +838,7 @@ def test_an_empty_root_alarm_never_advises_an_exclude(tmp_path: Path, tree: Path
     assert [a for a in res.alarms if "exclude" in a] == []
     # B13 round 11 M42, M47: a mode-000 root fails with EACCES, which no grant overrides; its reason is named
     assert (
-        f"1 unknown dir(s) — could not be read: '.' ({_DENIED}); enumeration incomplete, no deletions this "
+        f"1 unknown dir — could not be read: '.' ({_DENIED}); enumeration incomplete, no deletions this "
         "pass (the source folder's own permissions do not let this account read it: check its owner and mode "
         "with `ls -ld`)"
     ) in res.alarms
@@ -870,7 +871,7 @@ def test_unlistable_folders_log_at_info_and_one_warning_names_them_with_their_re
     # B13 round 11 M5, M45: the alarm names them too, in their own clause, not behind the five empty ones
     assert alarm == (
         # B13 round 12 N36, N37: two folders refused with EACCES take the plural advice
-        f"7 unknown dir(s) — 2 could not be read: 'Shut' ({denied}), 'Zeta' ({denied}); 5 empty cloud "
+        f"7 unknown dirs — 2 could not be read: 'Shut' ({denied}), 'Zeta' ({denied}); 5 empty cloud "
         "folders, zero children in a cloud tree: 'Empty A', 'Empty B', 'Empty C', 'Empty D', 'Empty E'; "
         f"enumeration incomplete, no deletions this pass (for the folders it could not read, {_MODES}; for "
         "the empty ones, each WAITING ON YOU line about empty cloud folders in local-test at the end of a "

@@ -1142,9 +1142,9 @@ class LocalArm:
     def _unknown_alarm(self, stats: WalkStats, items: Sequence[SourceItem]) -> str:
         """The alarm for ``stats.unknown_dirs`` (a walk whose root is not empty), one clause per kind: the
         folders it could not read, each with the reason the walk recorded, and the empty cloud folders, each
-        group capped at five with its own pointer at ``sync -v``. A wait points here for its own kind
-        ("names what could not be listed, up to five"; "names the folder(s), up to five"), so one sorted list
-        capped at five hid an unreadable folder behind five empty ones (B13 round 11 M5, M45)."""
+        group capped at five with its own pointer at ``sync -v``. A wait points here for its own kind ("names
+        the folders that could not be listed"; "names the folders", "up to five" past five), so one sorted
+        list capped at five hid an unreadable folder behind five empty ones (B13 round 11 M5, M45)."""
         why = {u.name: u for u in stats.unknown_why}
         empties = stats.empty_cloud_dirs
         failed = [
@@ -1165,7 +1165,10 @@ class LocalArm:
             more = len(names) - min(len(names), 5)
             return shown + (f" (+{more} more; `{AGENTSYNC_BIN} sync -v` logs each one)" if more else "")
 
-        head = f"{len(stats.unknown_dirs)} unknown dir(s) — "
+        # the number by each count (B13 round 14 Q24, Q38, Q42, Q57: "1 unknown dir(s)"); "dir" kept, the
+        # alarm's term in the docs and in what a reader greps
+        n = len(stats.unknown_dirs)
+        head = f"{n} unknown {'dir' if n == 1 else 'dirs'} — "
         tail = "; enumeration incomplete, no deletions this pass"
         if failed and not known:  # no reason recorded: the cause is not known, the old text
             cause = "permission denied (TCC), provider error, or zero children in a cloud tree"
@@ -1202,8 +1205,9 @@ class LocalArm:
             else f"each WAITING ON YOU line about empty cloud folders in {self.source_id} {SYNC_OUTPUT_END} "
             f"says what to do, and {status} prints each one too"
         )
-        if not failed:
-            cause = "empty cloud folder(s), zero children in a cloud tree"
+        folders = "folder" if len(empties) == 1 else "folders"
+        if not failed:  # counted as the mixed form below counts it (B13 round 14 Q24, Q38)
+            cause = f"{len(empties)} empty cloud {folders}, zero children in a cloud tree"
             return f"{head}{cause}: {listed(empties)}{tail} ({where})"
         read = (
             _read_advice(kinds, root=False, excludable=excludable, named=True)
@@ -1212,7 +1216,6 @@ class LocalArm:
         )
         # the number by each count, as the advice's (B13 round 12 N36, N37: "folder(s)" beside "it")
         empty = "one" if len(empties) == 1 else "ones"
-        folders = "folder" if len(empties) == 1 else "folders"
         unread = "folder" if len(failed) == 1 else "folders"
         return (
             f"{head}{len(failed)} could not be read: {listed(failed, reasons=known)}; {len(empties)} empty "

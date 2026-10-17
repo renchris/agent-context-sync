@@ -87,6 +87,7 @@ from agentsync.manifest import Manifest
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
 from agentsync.paths import expand
+from agentsync.text import plural
 
 _log = logging.getLogger(__name__)
 
@@ -178,7 +179,9 @@ def _shown(path: Path) -> str:
 # what a wait says of the alarm line it points at, which shows the first five folders of all the source's
 # unknown ones and, only past five, says how to list the rest (B13 round 9 K40: "names the folder(s)" was
 # false past five; round 10 L36: "up to five, and how to list any more" promised a pointer the alarm of one
-# to five folders does not hold). Count-free, since no wait's own count equals the alarm's.
+# to five folders does not hold). Kept only past five folders stored by the walk the alarm is from, the
+# alarm's own count: at one to five it names every one, so the clause described nothing it shows (B13 round
+# 14 Q23, Q41); no wait's own count equals the alarm's, so never chosen by that.
 _UP_TO_FIVE = "up to five, and past five how to list the rest"
 # what a could-not-be-listed wait says the alarm names: no count and no cause (B13 round 10 L67); a walk
 # incomplete only for its missing sentinel has its own wait since B13 round 11 M59, keyed on the sentinel
@@ -187,6 +190,17 @@ _UP_TO_FIVE = "up to five, and past five how to list the rest"
 # the folders' (round 13 O53). Only "or a missing sentinel" in its cause follows the stored miss (round 13
 # O49)
 _WHAT_FAILED = f"what could not be listed, {_UP_TO_FIVE}"
+
+
+def _files(n: int) -> str:
+    """``n`` files, the noun by the number (B13 round 14 Q42, Q81: "1 file(s)" beside known counts)."""
+    return plural(n, "file")
+
+
+def _alarm_names(what: str, stored: int) -> str:
+    """What an alarm of ``stored`` folders of one kind names: ``what`` alone at one to five, which it lists
+    in full; past five, five and the pointer at the rest (:data:`_UP_TO_FIVE`; B13 round 14 Q23, Q41)."""
+    return what if stored <= 5 else f"{what}, {_UP_TO_FIVE}"
 
 
 def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = False) -> str:
@@ -451,7 +465,9 @@ def _reread_notes(
 class _EmptyDirs:
     """What :func:`_empty_dirs` reads in one walk of the source's rows."""
 
-    stored: bool  # the last walk stored some zero-child cloud folder
+    # how many zero-child cloud folders the last walk stored: the alarm lists them all, excluded since or not
+    # (B13 round 14 Q58: the words followed ``below``, so an exclude-empty before the next sync changed them)
+    stored: int
     below: dict[str, int]  # those not excluded today, each with the mirrored files below it
     holding: frozenset[str]  # every folder (relative POSIX path) with a mirrored file at or below it
 
@@ -473,7 +489,7 @@ def _empty_dirs(manifest: Manifest, src: SourceConfig) -> _EmptyDirs:
     folders = _unexcluded(src, names)
     rows = manifest.iter_items(src.id, states=_PRESENT) if folders else ()  # rows read only for a folder
     below, holding = files_below(folders, (row.rel_path for row in rows if not row.is_dir))
-    return _EmptyDirs(bool(names), below, holding)
+    return _EmptyDirs(len(names), below, holding)
 
 
 def _excludable(empty_dirs: _EmptyDirs) -> tuple[list[str], list[str]]:
@@ -793,16 +809,16 @@ def next_step(
     # N54)
     held_elsewhere: dict[str, int] = {}
     root_kinds: dict[str, frozenset[str] | None] = {}  # the kind of each root it could not list
-    in_all: set[str] = (
-        set()
-    )  # ... whose missed count also holds files under gone empty folders (B13 round 11 M57)
+    # ... whose missed count also holds files under gone empty folders (B13 round 11 M57), with how many of
+    # those folders hold files, which the words follow (B13 round 14 Q57)
+    in_all: dict[str, int] = {}
     sentinel_missing: list[
         str
     ] = []  # a local walk incomplete only for its missing sentinel (B13 round 11 M59)
     root_unlisted: list[str] = []  # ... at the root folder itself, which no exclude can clear
     # ... because of these empty cloud folders: (source, files below each, the clear ones, the colliding ones,
     # mirrored files the last walk missed)
-    empty: list[tuple[SourceConfig, dict[str, int], list[str], list[str], int]] = []
+    empty: list[tuple[SourceConfig, dict[str, int], list[str], list[str], int, int]] = []
     inbox_partial: list[str] = []  # an inbox listing ran but could not finish (often a file being written)
     blocked: list[str] = []  # a Graph source the network policy fails: IT's to fix
     held: list[str] = []  # a local walk timed out on a read macOS holds for an Allow prompt (field N8)
@@ -854,11 +870,11 @@ def next_step(
                             other = _unlisted_dirs(manifest, src)
                             also = bool(other) and src.kind is SourceKind.LOCAL
                             held_below = also and _mirrored_below(manifest, src, other)
-                            empty.append((src, below, clear, collides, 0 if held_below else missed))
+                            empty.append((src, below, clear, collides, 0 if held_below else missed, stored))
                             if also:
                                 cannot_list(manifest, src, other, missed if held_below else 0)
                                 if held_below and any(below.values()):
-                                    in_all.add(src.id)
+                                    in_all[src.id] = sum(1 for n in below.values() if n)
                             elif other:
                                 inbox_partial.append(src.id)
                         elif src.kind is SourceKind.INBOX:
@@ -937,7 +953,7 @@ def next_step(
         )
         checks.extend(f"heartbeat.{s}" for s in sorted(held))
         names_source(*held)
-    for src, below, clear, collides, missed in empty:
+    for src, below, clear, collides, missed, n_stored in empty:
         checks.append(f"heartbeat.{src.id}")  # below is never empty: one wait or more follow
         # An empty cloud folder is unknown, never empty, on every pass. The line naming exclude-empty counts
         # only the folders that command excludes (:func:`_excludable`, one rule for both): one that held
@@ -951,14 +967,17 @@ def next_step(
         # paste line. A cleared folder holds none of them, so the paste retires none: each takes the
         # two-pass deletion check and the breaker (and a queued purge, under the purge setting).
         size = (
-            f"the last walk of {src.id} did not list {missed} file(s) the mirror still has: once the listing "
-            "is complete, later syncs take out the pages of those still absent, with the usual deletion check"
+            f"the last walk of {src.id} did not list {_files(missed)} the mirror still has: once the listing "
+            "is complete, later syncs take out "
+            + ("its page if it is still absent" if missed == 1 else "the pages of those still absent")
+            + ", with the usual deletion check"
             if missed
             else ""
         )
         # singular or plural by the count each line states (B13 round 13 O35: "1 ... folder(s) keep", "them");
-        # what the alarm names, by every empty folder it lists, which one line's count may be a part of
-        alone = len(below) == 1
+        # what the alarm names, by every empty folder it lists, which one line's count may be a part of: the
+        # walk's stored count, not ``below``, which drops the folders excluded since (B13 round 14 Q58)
+        alone = n_stored == 1
         if clear:
             one = len(clear) == 1
             waits.append(
@@ -971,12 +990,14 @@ def next_step(
                 f"complete it; if {'the folder is' if one else 'the folders are'} meant to be empty, "
                 # One command, not a hand edit of sources.toml (B13 round 4 Q71): it excludes every such
                 # folder, so no second round for a sixth one, and checks the file before it writes it.
-                f"run `{BIN} exclude-empty {shlex.quote(src.id)}` (it adds {'it' if one else 'them'} to that "
+                # "it adds it" named the command and the folder with one word (B13 round 14 Q43)
+                f"run `{BIN} exclude-empty {shlex.quote(src.id)}` (it adds {'the folder' if one else 'them'} "
+                "to that "
                 f"source's exclude in "
                 f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
                 # Which folders, by where they are named (B13 round 5 F43; round 6 G13, G42): the wait
                 # carries a count and never a path, and status prints no folder of the source.
-                + named([src.id], f"{'the folder' if alone else 'the folders'}, {_UP_TO_FIVE}")
+                + named([src.id], _alarm_names("the folder" if alone else "the folders", n_stored))
                 + (f"; {size}" if size and not gone and not collides else "")
             )
             names_source(src.id)
@@ -992,21 +1013,23 @@ def next_step(
                 + " would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 f"empty {'folder' if one else 'folders'} in the cloud drive; "
-                + named([src.id], f"{'it' if alone else 'them'}, {_UP_TO_FIVE}")
+                + named([src.id], _alarm_names("it" if alone else "them", n_stored))
                 + (f"; {size}" if size and not gone else "")
             )
             names_source(src.id)
         if gone:
             one = len(gone) == 1
+            one_file = sum(gone) == 1  # the agreeing words follow the file count too (B13 round 14 Q81)
             waits.append(
-                f"{len(gone)} empty cloud {'folder' if one else 'folders'} in {src.id} held {sum(gone)} "
-                "file(s) the mirror still "
-                "has (the listing stays incomplete, so their deletion is held; another sync does not clear "
-                "it): if the files were removed on purpose, remove the empty "
-                f"{'folder' if one else 'folders'} from the cloud drive "
-                "too, and later syncs take the pages out with the usual deletion check; excluding such a "
-                "folder instead retires its pages at once, with no deletion check and no purge queued; "
-                + named([src.id], f"{'the folder' if alone else 'the folders'}, {_UP_TO_FIVE}")
+                f"{len(gone)} empty cloud {'folder' if one else 'folders'} in {src.id} held "
+                f"{_files(sum(gone))} the mirror still has (the listing stays incomplete, so "
+                f"{'its' if one_file else 'their'} deletion is held; another sync does not clear it): if "
+                f"{'the file was' if one_file else 'the files were'} removed on purpose, remove the empty "
+                f"{'folder' if one else 'folders'} from the cloud drive too, and later syncs take "
+                f"{'its page' if one_file else 'the pages'} out with the usual deletion check; "
+                "excluding such a folder instead retires its pages at once, with no deletion check and no "
+                "purge queued; "
+                + named([src.id], _alarm_names("the folder" if alone else "the folders", n_stored))
                 + (f"; in all, {size}" if size else "")
             )
             names_source(src.id)
@@ -1030,6 +1053,16 @@ def next_step(
         )
         return f"{n} {'folder' if n == 1 else 'folders'} in {sid} could not be listed{since}", n == 1
 
+    def failed_names(sids: Sequence[str]) -> str:
+        """What the alarm lines of ``sids`` name for the folders their walks could not list: those folders,
+        when each walk stored one to five, all of which its alarm lists (B13 round 14 Q41: "up to five, and
+        past five how to list the rest" beside one folder); else :data:`_WHAT_FAILED`, also for state that
+        stored no count and for a walk whose alarm may name only a missing sentinel."""
+        if not all(s in counts and s not in sentinel_too and counts[s][1] <= 5 for s in sids):
+            return _WHAT_FAILED
+        one = len(sids) == 1 and counts[sids[0]][1] == 1
+        return "the folder that could not be listed" if one else "the folders that could not be listed"
+
     def sentinel_fix(sid: str) -> str:
         """The sentinel's fix beside the folders', for a source whose walk stored no cause (B13 round 13
         O53)."""
@@ -1045,8 +1078,9 @@ def next_step(
         by_fix.setdefault((*key, own), []).append(sid)
     for (cause, fix, _own), bare in by_fix.items():
         held_there = (
-            f"; the last walk of {bare[0]} did not list {held_elsewhere[bare[0]]} file(s) the mirror still "
-            f"has, and their deletion stays held until a sync lists {bare[0]} in full"
+            f"; the last walk of {bare[0]} did not list {_files(held_elsewhere[bare[0]])} the mirror still "
+            f"has, and {'its' if held_elsewhere[bare[0]] == 1 else 'their'} deletion stays held until a sync "
+            f"lists {bare[0]} in full"
             if bare[0] in held_elsewhere
             else ""
         )
@@ -1055,8 +1089,8 @@ def next_step(
         waits.append(
             # the alarm named by what it names (B13 round 10 L67): it names five of six
             f"{subject} ({cause}; another sync does not clear "
-            f"it): {named(bare, _WHAT_FAILED)}; {fix_one}, or add {'it' if one else 'each one'} to that "
-            f"source's exclude in {_shown(config.config_path)}"
+            f"it): {named(bare, failed_names(bare))}; {fix_one}, or add {'it' if one else 'each one'} to "
+            f"that source's exclude in {_shown(config.config_path)}"
             + (f"; {sentinel_fix(bare[0])}" if bare[0] in sentinel_too else "")
             + held_there
             if len(bare) == 1
@@ -1064,7 +1098,7 @@ def next_step(
             # "that source's exclude" read as one folder of one source.
             else f"one or more folders in each of {', '.join(bare[:-1])} and {bare[-1]} could not be listed "
             f"({cause}; another sync does not clear it): "
-            f"{named(bare, _WHAT_FAILED)}; {fix}, or add each to its source's "
+            f"{named(bare, failed_names(bare))}; {fix}, or add each to its source's "
             # the config by its path, as the empty-folder wait names it (B13 round 9 K43)
             f"exclude in {_shown(config.config_path)}"
         )
@@ -1074,17 +1108,24 @@ def next_step(
         fix = _access_fix(all_kinds.get(sid), one=True) if one else access_fixes.get(sid, _access_fix(None))
         waits.append(
             f"{subject} ({causes.get(sid, _ANY_CAUSE)}; "
-            f"another sync does not clear it): {named([sid], _WHAT_FAILED)}; "
+            f"another sync does not clear it): {named([sid], failed_names([sid]))}; "
             + (
                 f"{fix}, or, {sentinel_fix(sid)} (the safe fixes); "
                 if sid in sentinel_too
                 else f"{fix} (the safe fix); "
             )
             + (
-                f"in all, the last walk of {sid} did not list {missed} file(s) the mirror still has, the "
-                "ones under the empty folders above among them, and "
+                f"in all, the last walk of {sid} did not list {_files(missed)} the mirror still has, "
+                + (
+                    "the one under the empty folder above"
+                    if missed == 1
+                    else "the ones under the empty "
+                    + ("folder" if in_all[sid] == 1 else "folders")
+                    + " above among them"
+                )
+                + ", and "
                 if sid in in_all
-                else f"the last walk of {sid} did not list {missed} file(s) the mirror still has, and "
+                else f"the last walk of {sid} did not list {_files(missed)} the mirror still has, and "
             )
             + "adding such a folder to that source's exclude retires the pages under it at once, with no "
             "deletion check and no purge queued"
