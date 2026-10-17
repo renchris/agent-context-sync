@@ -6305,6 +6305,8 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             excluded = (
                 f"{gone} of the checked folder(s) excluded in sources.toml now"
                 if gone
+                else "it is not excluded in sources.toml now"
+                if len(checked) == 1
                 else "none of them excluded in sources.toml now"
             )
         except TimeoutError:
@@ -6319,12 +6321,24 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         holds = (
             f"the mirror still holds {held} file(s) below {folders} of the checked folder(s)"
             if held
-            else "the mirror holds no file below them"
+            else f"the mirror holds no file below {'it' if len(checked) == 1 else 'them'}"
         )
+        # each pronoun by the count it refers to (B13 round 13 O38: "of them ... their" for one folder)
+        made = kinds["materialised"]
+        if made == 1:
+            empty = (
+                "still empty on this Mac, by its link count of 2"
+                if no_entry
+                else "no longer empty on this Mac, by its link count"
+            )
+        else:
+            empty = (
+                f"{no_entry} of them still empty on this Mac, by {'its' if no_entry == 1 else 'their'} link "
+                "count of 2"
+            )
         out.append(
             f"- {labels.of(src.id)}: {len(names)} unknown: {kinds['dataless']} dataless, "
-            f"{kinds['materialised']} materialised-and-empty ({no_entry} of them still empty on this "
-            f"Mac, by their link count of 2); {rest}{len(checked)} of {len(names)} checked; "
+            f"{made} materialised-and-empty ({empty}); {rest}{len(checked)} of {len(names)} checked; "
             f"{excluded}; {holds}; {missed}"
         )
     if not out:

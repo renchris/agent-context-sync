@@ -8011,12 +8011,20 @@ def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Pa
     seed.close()
     part = status_parts(fake_mac)[1]["Empty cloud folders"]
     line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
+    # B13 round 13 O38: each pronoun by the count it refers to, never "them" for one folder
     assert line.split(": ", 1)[1] == (
-        "1 unknown: 0 dataless, 1 materialised-and-empty (1 of them still empty on this Mac, by their link "
-        "count of 2); 1 of 1 checked; none of them excluded in sources.toml now; the mirror holds "
-        "no file below them; no walk of it is recorded"
+        "1 unknown: 0 dataless, 1 materialised-and-empty (still empty on this Mac, by its link count of "
+        "2); 1 of 1 checked; it is not excluded in sources.toml now; the mirror holds no file below it; no "
+        "walk of it is recorded"
     ), line
     assert "0 gone" not in line and "0 of the checked" not in line and "0 file(s)" not in line
+    assert not re.search(r"\b(of them|below them|their)\b", line), line
+    # the same folder with an entry since: no longer empty, by its link count
+    (fake_mac["one"] / "Wingtip merger" / "arrived.txt").write_text("x", encoding="utf-8")
+    line = next(
+        ln for ln in status_parts(fake_mac)[1]["Empty cloud folders"].splitlines() if ln.startswith("- <")
+    )
+    assert "1 materialised-and-empty (no longer empty on this Mac, by its link count); " in line, line
 
 
 def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
@@ -8059,7 +8067,7 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     )
     line = next(ln for ln in part.splitlines() if ln.startswith("- <"))
     assert line.split(": ", 1)[1] == (
-        "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them still empty on this Mac, by their link "
+        "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them still empty on this Mac, by its link "
         "count of 2); 1 gone, 1 not a folder, 1 not checked; 6 of 6 checked; none of them "
         "excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of the checked folder(s); no "
         "walk of it is recorded"
