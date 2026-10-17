@@ -66,6 +66,11 @@ SIGKILLed (exit 137). Run every full test run, and the fetch, rebase and land ga
 runs need no lock. The push itself stays OUTSIDE the lock, as its own command right after the lock exits green: a
 `git push` inside `lockf … bash -c` would get past the operator's push approval rule.
 
+Land script (2026-10-17, replaces the two paragraphs above and this one): land with
+`scripts/ship-land.sh --lock /tmp/b13-r14-land.lock`. It runs the locked fetch, rebase and land gate, the trunk check
+below, and the push in one command with no permission prompt, then reads the push's CI back. A lane that has not
+pulled it yet keeps the steps below.
+
 Pushes: `git push` stops at an "ask" permission prompt and waits for the operator. Run the push as its own short
 command (`git push origin HEAD:main`), not inside a compound command, and right after the locked fetch, rebase and
 land gate, so one Yes lands it. In rounds 8 to 13 queued pushes were rejected once another lane landed: take the

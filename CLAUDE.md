@@ -42,6 +42,14 @@ test that writes outside `tmp_path` breaks it. To debug one test, drop `-n auto`
 Run tools through `uv run --locked`, not from PATH. shellcheck is pinned in `uv.lock` (the `lint` group)
 because the versions disagree: 0.9.0 reports SC2015 where 0.11.0 does not.
 
+### Landing
+
+Land with `scripts/ship-land.sh`, typed exactly so (no env prefix, no `bash` in front). It takes one lock shared by
+every worktree, fetches, rebases onto `origin/main`, runs `scripts/gate.sh`, waits out and checks trunk's CI, pushes
+`HEAD:main` (never forced; a refused push is rebased and gated again), then reads the push's CI back as below. The
+user-level allow rule `Bash(scripts/ship-land.sh:*)` runs it with no prompt; a bare `git push` still stops at the
+operator's `Bash(git push:*)` ask. Exit codes are in its header.
+
 ### CI is part of the gate
 
 A green local gate does not prove CI. The macOS runners have System Integrity Protection off and the Linux
