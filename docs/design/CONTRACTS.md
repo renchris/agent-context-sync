@@ -14259,6 +14259,8 @@ it:` or `; also waiting (the command prints the first K of these before it):`.
 unknown: D dataless, M materialised-and-empty (...)` and `C of N checked` always show; a kind with no folder
 (gone, not readable, not a folder, not checked) is left out; `none of them excluded in sources.toml now` and `the
 mirror holds no file below them` replace the zero counts. Test: `test_empty_cloud_folders_part_says_its_zeros_in_words`.
+Amended 2026-10-17, §16.104 O38: for one checked folder they read `it is not excluded in sources.toml now` and `the
+mirror holds no file below it`.
 
 **Q21, Q22, Q38, Q67: a step 1 error's stated words.** `parse_friction` reads the `prompt vN, <agent>:` words of a
 step 1 error that is the friction log's first line, as it does for a header-less attempt after a finished one;
@@ -14948,7 +14950,8 @@ Tests: the OCR part tests that pin it.
 
 **F48: the empty-folder link-count clause.** `M materialised-and-empty (K of them still empty on this Mac, by their
 link count of 2)`: what the walk found empty and is still empty now, by one lstat. Test: the Empty cloud folders
-tests.
+tests. Amended 2026-10-17, §16.104 O38: `by its link count` when K is 1, and for one such folder `(still empty on
+this Mac, by its link count of 2)` or `(no longer empty on this Mac, by its link count)`.
 
 **F57 (with F83): the secret-scan fix names the full path.** Amends Q81 (§16.52), read with Q49 (§16.51) and Q12:
 `(fix: ~/.local/bin/agentsync sync from this shell)`, built from `skill.AGENTSYNC_BIN`. F83's other half,
@@ -18263,6 +18266,12 @@ Amended 2026-10-16, §16.94 M83 (moved here by §16.103 N70): L58's prompt half 
 above saying it was not built no longer holds. A keep with nothing to keep deletes its branch. That branch sat at
 the old main, a commit the sha skip does not catch and M71's reflog skip catches only when origin/main's reflog
 names it. Both skips stay for branches earlier runs left.
+Amended 2026-10-17, §16.104 O23: since M71's and M54's filter a counted branch holds commits of its own, so with
+branches and no patch both readers read `- local-work branch(es) in the checkout: M with commits of their own, no
+patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in
+bring-back.md)`: the old parenthesis predated that filter. Section 3 then reads `none: no patch file is in
+~/agent-context/setup/local-work, but M local-work branch(es) in ~/src/agent-context-sync hold commits this file
+does not carry`.
 
 **The OCR part folds the document kinds with no page** (L5; dated lines at §16.28's OCR part and §16.48's
 `.potx` paragraph). A Mac with no deck template or OpenDocument page printed `0 with an OCR identity, 0 without an
@@ -19713,7 +19722,10 @@ asked for (F<n>)`, or `(not logged)`), no extra click and no Item. A v6+ click l
 possible the human-turns line says `Allow clicks: none possible`, never that the click was impossible; on a real
 Mac the click line reads `..., which is F<n>, the OneDrive sign-in step 1 asked for`, after the Allow clause. A list
 that stops again after the sign-in reads `- expected turns: the OneDrive sign-in step 1 asked for (F<n>) and no other
-(...)`. Tests:
+(...)`. Amended 2026-10-17, §16.104 O1, O40, O43, O19: the app and the count are the list's own (`apps=`, `missing=`),
+so the OneDrive words above are one app's; from v21 the sign-in needs a list that logged `synced=N`, N at least 1
+(§16.100 N7); its click is the first logged at or after that list started; and that list's Installer row reads
+`stopped`. Tests:
 `test_a_synced_macs_sign_in_stop_is_named_and_asks_no_allow_click`,
 `test_the_sign_in_step_1_asked_for_is_no_extra_click`, and M7's test, whose synced case now expects the new line.
 
@@ -19726,6 +19738,9 @@ report word, or has one or two letters, is matched only where a URL puts it, in 
 without `.com` is none;
 `contosogw` stays a whole word. The finder's fix (dotted hosts only) was not built: it prints an unset proxy's
 dotless host in clear. N57: both readers hold FluidAudio, LaunchAgent and LaunchAgents whole beside an organisation.
+Amended 2026-10-17, §16.104 O54, O68: and the plist keys and doctor words both reports print; the lane's reason for
+leaving the plist keys out ("program" and "environment" are report words) was half false: "environment" is one in
+install.sh only, so the Python report cut `<org-1>Variables` out of EnvironmentVariables.
 Tests: `test_the_folder_legend_says_why_a_listed_generic_or_agent_name_stays_in_clear`,
 `test_the_residue_check_names_a_word_glued_to_the_organisation`,
 `test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url`,
@@ -20237,7 +20252,94 @@ in it: their lines were never mutation-tested. Test: `test_every_dated_line_from
 
 ### 16.104 Round 13: setup report (2026-10-17, wave B13 round 13 lane RA)
 
-Reserved for round 13 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 13").
+The setup report's findings of the v21 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 13"). Lane RA's round 13 items: O1, O3, O8, O9, O10, O13, O19, O22, O23, O24, O29, O31, O32, O33, O38,
+O39, O40, O42, O43, O54, O58, O59, O66, O68. All are built; none was recorded as making things worse. O1, O29, O39,
+O42, O58 and O66 are one defect (with lane RB's O5, §16.105), built once; so are O40 and O59, and O54 and O68.
+
+**The sign-in stop names its app and its count** (O1, O29, O39, O42, O58, O66, O31, O19, O40, O59, O43; dated
+line at §16.98 N5). install.sh's sign-in exit on a set-up Mac logged only `not-signed-in synced=N`, so the report
+said OneDrive whichever app's folder was missing, and counted every synced folder as missing. Since §16.105 O5 it
+logs `not-signed-in apps=<tokens> missing=M synced=N` (`apps=onedrive` on the exit with no provider folder). The
+report reads `apps=` through a fixed map (`_SIGN_IN_APPS`: onedrive, sharedlibraries, dropbox, googledrive, box,
+egnyte, other, any case; an unknown token is dropped, and the map's literals are no report words, so an
+organisation with an app's name is still redacted), in `_signed_out`: the outcome's `it stopped: Dropbox is not
+signed in`; the expected turns `(step 1's list stopped: Dropbox is not signed in, so 1 of the 2 folders this Mac
+already syncs is missing; they are kept: ...)`, `the 2 folders ... are missing` when all are, `the 1 folder ... is
+missing; it is kept`, with no bracket inside the line's own (O31); the Installer row `Dropbox is not signed in on
+this Mac: 2 already synced, 1 missing`; and `the Dropbox sign-in step 1 asked for`. A line with a count and no
+`apps=` (an older install.sh) reads `a sync app is not signed in`, `some of the 2 folders` and `the sign-in`; one
+with neither is the no-provider exit, whose own words name OneDrive. O19: the list whose sign-in step 1 asked for
+(`_sign_in_run`, the run `_signed_in_on_request` matches) reads `stopped` in the Installer table, then `; the
+<app> sign-in step 1 asked for, then listed again` or `then installed`; install.log keeps `result=failed`. O40,
+O59: from prompt v21 (`SIGN_IN_SET_UP_ONLY`, §16.100 N7) that sign-in needs a list that logged `synced=N`, N at
+least 1; on a Mac that syncs no folder a logged sign-in is a click beyond the Allow clicks; v20 is unchanged. O43:
+its click is the first step 1 click logged at or after that list run started (a click or a run with no time stays
+eligible; no later bound). Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
+`test_a_step_1_list_that_stopped_on_a_sign_in_asked_no_folder_question`,
+`test_a_synced_macs_sign_in_stop_is_named_and_asks_no_allow_click`,
+`test_the_sign_in_step_1_asked_for_is_no_extra_click`,
+`test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped`.
+
+**The unattended sign-in stop is an item** (O13). With no install run and no friction stop, an exit 3 of step 1's
+list is an installer-side item, `- install.sh · step 1 · the folder list stopped: <the expected-turns words> (not
+logged: an unattended run goes to the report)` (a `no-folders` exit too), and a doctor FAIL of a source's
+`listable` or `volume` check whose path is under a CloudStorage provider folder not on disk is in its own bucket,
+`from the sign-in stop N: ...`, not `unexpected`. `_doctor_fails` and the outcome are unchanged. The app is
+install.log's `apps=`, not the disk (the finder's fix predates O5). The shell report has no Items list and no
+doctor buckets, so it has nothing to match. Test: `test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops`.
+
+**The Installer table's words** (O3, O9). The launcher, agent, wait and report rows read `skipped (not-requested)`
+and `done (agentsync)`; `_STEP_NOTE_WORDS` words install.sh's notes of those steps (`background sync was not asked
+for`, `already up to date`, `no folders to sync`, `agentsync status reported failures`, `the agent step failed`,
+`agentsync's report`, `the installer's fallback report`, and the launcher's `kept` and `no-launcher`). O9: the list
+row reads `2 already synced, 1 of them not on disk` for `gone=1` (gone= also counts a provider folder missing beside
+another of that app's, so never "renamed"); a gone= that is no count is dropped, and the Summary is unchanged.
+Tests: `test_the_installer_table_puts_every_steps_note_in_words`,
+`test_the_installer_table_shows_what_the_folder_list_read_of_the_config`.
+
+**Summary lines** (O8, O22, O32, O33). O8: from prompt v21 (`UNREAD_CURRENT_ASKS_NOTHING`), a list that could not
+read the config (`marks=failed`) and an installed agentsync already the checkout's build (the first install run's
+agentsync step `skipped note=current`) read `no folder question (step 1's list could not read the config, and the
+installed agentsync is already this checkout's build, so step 2 does not reinstall it: step 1 asks nothing, since no
+folder can be added until the config is fixed; not logged)`; a reinstall, a timeout and v18 to v20 keep "asks at
+most". O22: `the install run of <time>` (`_run_named`) and the shell's `the last one, started <time>` add `, run
+<label>` when another run started in that second, the bare-stamp first run included: a comma, not the spec's
+bracket, since the name sits inside the line's own bracket. O32: with no first sync of its own, the line names a
+newer earlier run's logged sync (`the newest earlier run's sync: skipped in 600s, rc 75, ... (install.log: the
+install run of <time>, before this attempt)`) and drops install.out's older counts. O33: a run that exited non-zero
+with no failed step and a status (or `doctor`) step `note=fail-lines` reads `install.sh exited 1: its status step
+reported [FAIL] lines (rc 1)`. Tests: `test_from_prompt_v18_an_unread_config_the_install_could_not_count_costs_no_turn`,
+`test_a_run_named_by_its_start_time_carries_its_label_in_both_readers`,
+`test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_counts_as_its_own`,
+`test_the_outcome_of_a_status_fail_stop_names_the_status_step`.
+
+**Attempts and local work** (O23, O24; dated line at §16.86 L58). O23: a counted local-work branch holds commits of
+its own (round 11's filter), so both readers read `- local-work branch(es) in the checkout: M with commits of their
+own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in
+bring-back.md)`, and bring-back.md section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M
+local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry`; the shell's count is one
+helper (`local_work_counts`). O24: the unbroken run of step 1 lines after a finished attempt's end line moves to the
+next `Attempt:` header, as round 12 N23 moves it with a step 1 error, in both readers (`friction_latest_has_step`);
+the attempt still begins at its `Attempt:` time. The optional guard for a `--log-start` stop is not built. Tests:
+`test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file`,
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
+`test_a_new_sessions_step_1_line_before_its_error_leaves_the_finished_attempt`,
+`test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report`.
+
+**Redaction and pronouns** (O10, O38, O54, O68; dated lines at §16.98 N57, §16.52 Q17 and §16.58 F48). O10: the
+folder legend's list-only clause is not printed for the agent's own name: both readers take every whole-word copy
+of an `Agent:` header's value out of the body they test. O54, O68: both readers' held lists carry the Background
+runs line's plist keys, the doctor words both reports print and the report's other CamelCase words; a test scans
+the non-docstring literals of setup_report.py, ops/doctor.py and convert/speech.py and fails on one neither held
+nor on its reviewed list of words that never print. The Python report's Environment line names the terminal app as
+install.sh's `terminal_app` does (`terminal Warp`). O38: the Empty cloud folders line picks each pronoun by the count
+it refers to (`still empty on this Mac, by its link count of 2`, `it is not excluded`, `below it`). Tests:
+`test_the_folder_legend_says_why_a_listed_generic_or_agent_name_stays_in_clear`,
+`test_the_folder_legend_explains_only_the_names_the_report_shows`, `test_an_organisation_is_redacted_inside_a_longer_word`,
+`test_an_organisation_environment_leaves_the_plist_key_whole`, `test_every_camelcase_word_the_report_prints_is_held_whole`,
+`test_the_environment_names_the_terminal_app_as_the_shell_report_does`,
+`test_empty_cloud_folders_part_says_its_zeros_in_words`.
 
 ### 16.105 Round 13: installer, the sign-in stop and the shell report (2026-10-17, wave B13 round 13 lane RB)
 
