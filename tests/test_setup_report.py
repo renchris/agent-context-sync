@@ -6292,6 +6292,83 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
     assert link["outcome"] == ["Fully one command"] and link["prompt_version"] == ["v11"]
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 14 Q12: Items said "the same command was run again" of a run whose re-run had other
+    arguments (v22's step 1 leads to a re-run with other folders): the line never saw the run that ended
+    0. It compares the two runs' ``args=`` now, never printing them. Q21: a status step's [FAIL] lines (a
+    pandoc whose first start did not answer) were in no part of the report; the line names the checks,
+    redacted, and ``timed out`` only on doctor's own words."""
+    log = fake_mac["setup"] / "install.log"
+    out = fake_mac["setup"] / "install.out"
+    write_friction(fake_mac, retry_friction())
+    folder = f"/Users/{LOGIN}/{ORG}/Project\\ Alpha"
+
+    def run(start: str, rc: int, args: str, *, status: bool = False, sync: bool = False) -> str:
+        text = install_run(start, rc, status_failed=status).replace("args=--source-local x", f"args={args}")
+        if sync:
+            text = text.replace(
+                "step=first-sync seconds=34 rc=0 result=done", "step=first-sync seconds=34 rc=1 result=failed"
+            )
+        return text
+
+    def items(*runs: str) -> str:
+        log.write_text(LIST_RUN + "".join(runs), encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        summary = section(text, "Summary")
+        return summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
+
+    # the shape of the field's install.log: a folder named, exit 1 at the first sync; then no arguments
+    got = items(
+        run("2026-09-29T10:00:00Z", 1, f"--source-local {folder}", sync=True),
+        run("2026-09-29T10:20:00Z", 0, ""),
+    )
+    assert got == (
+        "- install.sh · step 2 · run 20260929T100000Z exited 1 at its first-sync step; install.sh was run "
+        "again with other folders and ended 0"
+    ), got
+    assert "Alpha" not in got and ORG not in got, got
+    # two failed runs: the first's arguments differ from the run that worked, the second's are the same
+    got = items(
+        run("2026-09-29T10:00:00Z", 1, "--source-local x --confirm-install-agent", sync=True),
+        run("2026-09-29T10:10:00Z", 1, "--source-local x", sync=True),
+        run("2026-09-29T10:20:00Z", 0, "--source-local x"),
+    )
+    first, second = got.splitlines()
+    assert first.endswith("first-sync step; install.sh was run again with other arguments and ended 0"), got
+    assert second.endswith("first-sync step; the same command was run again and ended 0"), got
+
+    # Q21: the status step's [FAIL] lines in install.out, by the run's own header
+    failed = run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True)
+    worked = run("2026-09-29T10:20:00Z", 0, "--source-local x")
+    out.write_text(
+        "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "[ok  ] config — 2 sources\n"
+        "[FAIL] pandoc — `pandoc --version` did not answer within 60s: the check ran out of time (fix: run "
+        "~/.local/bin/agentsync status again)\n"
+        f"[FAIL] source.client-alpha.listable — {fake_mac['one']} does not exist (fix: sync it)\n"
+        "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n"
+        "[ok  ] pandoc — 3.6\n",
+        encoding="utf-8",
+    )
+    got = items(failed, worked)
+    assert got.startswith(
+        "- install.sh · step 2 · run 20260929T100000Z exited 1 at its status step ([FAIL] pandoc, timed out; "
+        "source."
+    ) and got.endswith(".listable); the same command was run again and ended 0"), got
+    assert "Client Alpha" not in got and "client-alpha" not in got, got
+    # the run's header is not among the install.out lines read
+    out.write_text(
+        "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n", encoding="utf-8"
+    )
+    assert items(failed, worked) == (
+        "- install.sh · step 2 · run 20260929T100000Z exited 1 at its status step (its [FAIL] lines are not "
+        "in the install.out lines read); the same command was run again and ended 0"
+    )
+
+
 def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outcome, list[int | None]]:
     """The latest attempt's outcome on its own runs, as the Summary computes it, and the exits of the runs
     that count as a retry."""

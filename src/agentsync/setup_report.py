@@ -107,6 +107,7 @@ import plistlib
 import pwd
 import queue
 import re
+import shlex
 import shutil
 import socket
 import sqlite3
@@ -8403,21 +8404,89 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
     return f"- F{e.line} · {step} · {e.kind} · {_shorten(r.red.redact(e.what))}{fix}"
 
 
-def _retry_line(run: InstallRun, layout: PromptLayout) -> str:
+def _without_folders(args: str) -> tuple[list[str], list[str]] | None:
+    """A start line's ``args=`` split into its arguments but the ``--source-local`` options, and those
+    options' folders; None when the shell quoting does not split. Compared, never printed."""
+    try:
+        words = shlex.split(args)
+    except ValueError:
+        return None
+    rest: list[str] = []
+    folders: list[str] = []
+    it = iter(words)
+    for word in it:
+        if word == "--source-local":
+            folders.append(next(it, ""))
+        else:
+            rest.append(word)
+    return rest, sorted(folders)
+
+
+def _again_words(run: InstallRun, ok: InstallRun) -> str:
+    """How the run that ended 0 (``ok``) repeated the failed ``run``: by their ``args=``, never printed
+    (they name folders). The same arguments are the same command; arguments that differ only in their
+    ``--source-local`` folders are other folders (step 1 of v22 leads to that re-run); anything else other
+    arguments (B13 round 14 Q12: Items said "the same command" of a run with other arguments)."""
+    if run.args.strip() == ok.args.strip():
+        return "the same command was run again and ended 0"
+    failed, worked = _without_folders(run.args), _without_folders(ok.args)
+    if failed is not None and worked is not None and failed[0] == worked[0]:
+        return "install.sh was run again with other folders and ended 0"
+    return "install.sh was run again with other arguments and ended 0"
+
+
+_TIMED_OUT_WORDS = ("ran out of time", "did not answer within")
+"""doctor's own words for a check that timed out (``[FAIL] pandoc — ... did not answer within 60s: the check
+ran out of time``), the only cause :func:`_status_fail_names` names."""
+
+
+def _status_fail_names(r: _Run, run: InstallRun) -> str:
+    """The ``[FAIL]`` checks a run's status step printed in install.out, for its retry line (B13 round 14
+    Q21: a pandoc that did not answer on its first start read only "exited 1 at its status step"):
+    `` ([FAIL] pandoc, timed out)``, at most three names, each redacted, ``timed out`` only on doctor's own
+    words for it. `` (its [FAIL] lines are not in the install.out lines read)`` when the run's output is not
+    among them; empty with no install.out or no [FAIL] line in the run's output."""
+    lines = r.facts.out_counted
+    if not lines:
+        return ""
+    start = next((i for i, ln in enumerate(lines) if ln.startswith(f"# run={run.run_id} ")), None)
+    if start is None:
+        return " (its [FAIL] lines are not in the install.out lines read)"
+    names: dict[str, bool] = {}
+    for ln in lines[start + 1 :]:
+        if _OUT_RUN_RE.match(ln):
+            break
+        m = _DOCTOR_TAG_RE.match(ln.strip())
+        if m is not None and m.group(1) == "FAIL":
+            timed_out = any(words in ln for words in _TIMED_OUT_WORDS)
+            names[m.group(2)] = names.get(m.group(2), False) or timed_out
+    if not names:
+        return ""
+    shown = [r.red.redact(name) + (", timed out" if late else "") for name, late in list(names.items())[:3]]
+    more = f"; +{len(names) - 3} more" if len(names) > 3 else ""
+    return f" ([FAIL] {'; '.join(shown)}{more})"
+
+
+def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) -> str:
     """One of :func:`retried_runs` as an item that was not one command: the run, its exit and the first step
-    that did not end rc 0 (a step name is printed only when it is one of install.sh's own words)."""
+    that did not end rc 0 (a step name is printed only when it is one of install.sh's own words), a status
+    step's [FAIL] checks (:func:`_status_fail_names`), and how the run that ended 0 (``ok``) repeated it
+    (:func:`_again_words`)."""
     failing = next(
         (
-            f" at its {_step_word(name)} step"
+            (name, f" at its {_step_word(name)} step")
             for name, fields in run.steps
             if name != "report"
             and (fields.get("result") == "failed" or fields.get("rc", "0") not in ("0", ""))
         ),
-        "",
+        None,
     )
+    at = ""
+    if failing is not None:
+        at = failing[1] + (_status_fail_names(r, run) if failing[0] in ("status", "doctor") else "")
     return (
-        f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{failing}; the "
-        "same command was run again and ended 0"
+        f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; "
+        + _again_words(run, ok)
     )
 
 
@@ -8708,7 +8777,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 + (" (install.out has its warning)" if warned else "")
                 + "; the folder question was a turn agentsync caused"
             )
-        out += [_retry_line(run, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]
+        if retried:  # retried_runs stops at the attempt's first install run that ended 0
+            ok = next(run for run in install_runs_only(runs) if run.rc == 0)
+            out += [_retry_line(r, run, ok, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]
         if len(retried) > INSTALL_RUNS_SHOWN:
             out.append(f"- install.sh · {len(retried) - INSTALL_RUNS_SHOWN} more such run(s) (see Installer)")
         out += [_item_line(r, att, e) for e in items]
