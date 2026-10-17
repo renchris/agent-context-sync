@@ -15,10 +15,14 @@ wording: ``convert_file`` then converts the file with the registry's converter t
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
+import os
 import re
+import stat
 import subprocess
+import sys
 import tempfile
 import unicodedata
 import zipfile
@@ -258,12 +262,70 @@ return { ocr, figures, rest }
 """.replace("@ENGINE@", _ENGINE_LABEL)
 
 
+# The pandoc release each pypandoc_binary wheel ships, keyed by the sha256 the wheel's RECORD lists for
+# ``pypandoc/files/pandoc`` (urlsafe base64, unpadded, as RECORD writes it).  A wheel not listed here never
+# gets a native copy: its version is not known without running it.
+_WHEEL_PANDOC_VERSIONS: Mapping[str, str] = {
+    "17HnXNIO5qeIoTmUkr4H1FWZSeGOVfNM_FyRgH_fqQ0": "3.9",  # pypandoc_binary 1.17, macOS (x86_64 binary)
+}
+_WHEEL_PANDOC_RECORD = "pypandoc/files/pandoc"
+# Under HOME: ``<version>-arm64/bin/pandoc``, installed by the operator, never by agentsync.
+_NATIVE_PANDOC_ROOT = Path(".local/share/agentsync/pandoc")
+
+
+@functools.cache
+def _wheel_pandoc_version(bundled: Path) -> str | None:
+    """The upstream version of the wheel's pandoc at ``bundled``, read from the wheel's RECORD (what pip
+    verified at install), never by running or hashing the binary.  None when the wheel, its RECORD, the
+    entry or its hash is missing, the entry is another file, or the hash is not in the table."""
+    import importlib.metadata  # noqa: PLC0415 - only when a pandoc converter actually runs
+
+    try:
+        dist = importlib.metadata.distribution("pypandoc_binary")
+        for entry in dist.files or ():
+            if entry.as_posix() != _WHEEL_PANDOC_RECORD or entry.hash is None or entry.hash.mode != "sha256":
+                continue
+            if (
+                Path(str(dist.locate_file(entry))).resolve() != bundled
+                or entry.size != bundled.stat().st_size
+            ):
+                return None
+            return _WHEEL_PANDOC_VERSIONS.get(entry.hash.value)
+    except (importlib.metadata.PackageNotFoundError, OSError, ValueError):
+        return None
+    return None
+
+
+def _native_pandoc(version: str) -> Path | None:
+    """``~/.local/share/agentsync/pandoc/<version>-arm64/bin/pandoc`` when it is an executable regular file
+    (``~`` read now: HOME is not fixed for the process)."""
+    native = Path.home() / _NATIVE_PANDOC_ROOT / f"{version}-arm64" / "bin" / "pandoc"
+    try:
+        mode = native.stat().st_mode
+    except OSError:
+        return None
+    return native if stat.S_ISREG(mode) and os.access(native, os.X_OK) else None
+
+
 def _bundled_pandoc() -> Path:
-    """Absolute path of the pypandoc_binary-bundled pandoc (never a PATH lookup)."""
+    """Absolute path of the pandoc to run when ``[convert] pandoc_path`` is unset (never a PATH lookup).
+
+    That is the pypandoc_binary-bundled pandoc, or on macOS a native arm64 copy of exactly the wheel's
+    pandoc version when the operator installed one under ``~/.local/share/agentsync/pandoc``.  The wheel's
+    binary is x86_64 and runs under Rosetta: about 0.16 s and 68 MB per run against 0.03 s and 30 MB, plus a
+    translation of every fresh copy at its first start (10 to 67 s).  Same version, same flags, so the same
+    bytes out; only the CPU architecture changes.  The version is the one the wheel's RECORD hash maps to,
+    so an unknown wheel, a missing copy or any error means the wheel's binary, as before
+    (load root cause 2026-10-17 X26)."""
     import pypandoc  # noqa: PLC0415 - heavy import, only when a pandoc converter actually runs
 
     bundled = Path(str(pypandoc.__file__)).resolve().parent / "files" / "pandoc"
     if bundled.is_file():
+        if sys.platform == "darwin":
+            version = _wheel_pandoc_version(bundled)
+            native = _native_pandoc(version) if version is not None else None
+            if native is not None:
+                return native
         return bundled
     raise ConversionError(
         f"bundled pandoc not found at {bundled} (is pypandoc_binary installed?); set [convert] pandoc_path"
