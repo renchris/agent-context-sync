@@ -309,9 +309,13 @@ list marks them, the agent asks only whether to add one, and when it cannot ask 
 When the list cannot read which folders the Mac syncs, it marks none, and the agent says so and does the same:
 a run with no folder keeps whatever was synced, unless the installed agentsync failed while reading that config.
 Then step 2 may stop at its config step and keep nothing until the config is fixed, so the agent shows you the
-list's own words instead of promising a keep. It stops and waits for you only on a Mac that syncs no folder yet,
+list's own words instead of promising a keep. When the installed agentsync is already this checkout's build, step 2 does not
+reinstall it and no folder can be added until the config is fixed, so the agent asks you nothing about folders
+and runs step 2 with no folder.
+It stops and waits for you only on a Mac that syncs no folder yet,
 or, on a Mac that already syncs folders, when the list asks you to sign in to OneDrive (or the app it names)
-first; once you say you have, it lists the folders again.
+first; once you say you have, it lists the folders again. When it cannot ask you (an unattended run, or a question
+left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
 Set up agentsync on this Mac (setup prompt v22). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
@@ -939,8 +943,11 @@ git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context
 ```
 
 The installer is safe to re-run and never prompts. `--list-folders` prints
-one full path per line; it exits 3 when OneDrive is not signed in or syncs no folder yet and 4 when macOS denied
-this terminal access, and its `NEXT:` line says which. Repeat `--source-local` for each folder. On a Mac that
+one full path per line. On a Mac that syncs no folder yet it exits 3 when it finds none (OneDrive not signed in,
+or nothing synced yet). On a Mac that already syncs folders it exits 3 when one of them under `~/Library/CloudStorage`
+is missing because its app is signed out, even if other folders are listed, and otherwise exits 0, even when
+nothing is listed. It exits 4, before any of these checks, when macOS denied this terminal access or is still
+asking, and its `NEXT:` line says which click it needs. Repeat `--source-local` for each folder. On a Mac that
 already has `sources.toml`, it adds only the folders not yet in it (`agentsync add-source FOLDER` does the same for
 one folder), `--list-folders` writes `[synced]` before each folder already synced (and a mark of its own before a
 folder inside one or around one: add only an unmarked folder), and `install.sh` with no

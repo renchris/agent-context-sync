@@ -2883,6 +2883,27 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         "folders, when the list asks you to sign in to OneDrive (or the app it names) first; once you say "
         "you have, it lists the folders again."
     ) in flat_intro and SIGNED_OUT in step1
+    # B13 round 13 O12, O62, O71 (one defect): since v21 an agent that cannot ask does not wait for that
+    # sign-in and goes to the report, which the intro did not say
+    assert (
+        "When it cannot ask you (an unattended run, or a question left unanswered), it does not wait for "
+        "that sign-in and logs nothing for it: it goes to step 3's report (since v21)."
+    ) in flat_intro
+    assert (
+        "If you cannot ask me (your tool runs unattended, or the question comes back unanswered), do not "
+        in (" ".join(step1.split()))
+        and "wait and log nothing for it: go to step 3's report." in " ".join(step1.split())
+    )
+    # B13 round 13 O61: when step 2 does not reinstall agentsync, round 12 N29's NEXT adds no folder and v21
+    # asks nothing about folders
+    assert (
+        "When the installed agentsync is already this checkout's build, step 2 does not reinstall it and no "
+        "folder can be added until the config is fixed, so the agent asks you nothing about folders and runs "
+        "step 2 with no folder."
+    ) in flat_intro
+    assert "ask me nothing about folders: no folder can be added until I fix the config" in " ".join(
+        step1.split()
+    )
     # B13 round 9 K73: the intro says what the agent does when the list could not read the config
     assert "When the list cannot read which folders the Mac syncs, it marks none, and the agent says so" in (
         flat_intro
@@ -5698,6 +5719,102 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
     ) in feedback
     assert "(renamed, moved or deleted there) keeps exit 0, logged `gone=N`" in feedback
     assert "Since v20, step 1 waits for that sign-in as for a click, then lists the folders again" in feedback
+    # B13 round 13 O62, O71 (one defect with O12): since v21 an agent that cannot ask goes to the report
+    assert (
+        "Since v21, an agent that cannot ask (an unattended tool, or a question that comes back unanswered) "
+        "does not wait there and logs nothing for it: it goes to step 3's report."
+    ) in deploy
+    assert (
+        "Since v21 (B13 round 12 N32, N6), an agent that cannot ask does not wait and logs nothing for that "
+        "sign-in: it goes to step 3's report, whose expected-turns line is the set-up Mac sign-in row below "
+        "(K45)."
+    ) in feedback
+    # B13 round 13 O65: README's Install section gave round 10's exit 3 rule, with no set-up Mac
+    readme = _page("README.md")
+    assert "it exits 3 when OneDrive is not signed in or syncs no folder yet" not in readme
+    assert (
+        "On a Mac that syncs no folder yet it exits 3 when it finds none (OneDrive not signed in, or nothing "
+        "synced yet). On a Mac that already syncs folders it exits 3 when one of them under "
+        "`~/Library/CloudStorage` is missing because its app is signed out, even if other folders are "
+        "listed, and otherwise exits 0, even when nothing is listed. It exits 4, before any of these checks, "
+        "when macOS denied this terminal access or is still asking"
+    ) in readme
+
+
+def test_the_guide_moves_a_late_step_1_run_at_any_gap() -> None:
+    """B13 round 13 O60: round 12 N23 moved the unbroken run of step 1 lines dated at or after the end line
+    to the attempt a step 1 error opens, whatever the gap (``late_run``'s ``at >= end``); the guide's second
+    sentence on it still said "each more than 10 minutes after the earlier attempt's end line"."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    late_run = source[source.index("    def late_run()") : source.index("        return moved\n")]
+    assert "at >= end" in late_run and "_NEW_SESSION_GAP" not in late_run
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "each more than 10 minutes after the earlier attempt's end line" not in page
+    assert (
+        "When a step 1 error opens such an attempt, the unbroken run of step 1 lines just before it, dated "
+        "at or after the earlier attempt's end line, is that session's and moves with it, whatever the gap "
+        "(since round 12, N23: the finished session runs nothing after its report); a late line no such "
+        "error follows stays where it is."
+    ) in page
+    assert (
+        "The unbroken run of step 1 lines just before it, at or after the closing line, moves with it" in page
+    )
+
+
+def test_the_guide_says_a_config_step_2_cannot_reinstall_for_adds_no_folder() -> None:
+    """B13 round 13 O61: since round 12 N29 a list whose installed agentsync is this checkout's build and
+    failed on the config ends on `no folder can be added until the config is fixed`, not the folder question,
+    and v21 asks nothing about folders there; the guide still called it the folder question's NEXT and said
+    step 1 asks whether to add one."""
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert (
+        'NEXT_MSG="no folder can be added until the config is fixed: run $SELF with no --source-local, which '
+        'shows the error$kept"'
+    ) in installer
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        "In that case the list does not end on the folder question: its `NEXT:` opens `no folder can be "
+        "added until the config is fixed: run <install.sh> with no --source-local, which shows the error`, "
+        "followed by the same clause, and the list logs done (B13 round 12 N29)."
+    ) in page
+    assert (
+        "and asks only whether to add one (since v21, nothing when step 2 does not reinstall agentsync)"
+    ) in page
+    assert (
+        "Since v21, when that line says step 2 does not reinstall agentsync, step 1 asks nothing about "
+        "folders and runs step 2 with no `--source-local`."
+    ) in page
+
+
+def test_section_5_counts_the_sign_in_step_1_waits_for() -> None:
+    """B13 round 13 O64: section 5 listed the OneDrive sign-in only as a precondition at which "the prompt
+    stops at step 1", though since v20 step 1 waits for it on a set-up Mac and the report counts it among the
+    expected turns (round 12 N5); its unavoidable steps did not name it."""
+    page = _page("docs/deploy/setup-feedback.md")
+    unavoidable = page[page.index("Current unavoidable human steps") : page.index("Moved out of this list:")]
+    assert (
+        "- **The OneDrive sign-in step 1 waits for** (or the sign-in to the app the list names), on a Mac "
+        "that already syncs folders whose app is signed out or still setting up."
+    ) in unavoidable
+    assert "An agent that cannot ask does not wait: it goes to the report." in unavoidable
+    # the report counts that turn from v20 on, the prompt's logging rule is v21's
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert setup_report.SIGN_IN_WAITS == 20
+    assert (
+        "Since v21 the prompt logs it as neither a click nor a question; the report counts it among the "
+        "expected turns for any v20 or later attempt"
+    ) in unavoidable
+    preconditions = page[page.index("Preconditions, outside the setup's count") :]
+    assert (
+        "- **Signing in to OneDrive** before setup. The OneDrive app owns that sign-in." not in preconditions
+    )
+    assert (
+        "- **Signing in to OneDrive** before setup, on a Mac that syncs no folder yet. The OneDrive app owns "
+        "that sign-in."
+    ) in preconditions
 
 
 def test_the_guide_names_every_source_of_a_proxy_number() -> None:

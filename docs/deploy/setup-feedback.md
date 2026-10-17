@@ -320,7 +320,7 @@ any gap (2 minutes after the end line is enough). Its session's step 1 stopped b
 the Xcode and git stops log that error before the report; since v19 only when the folder's installer is the
 prompt's version, and otherwise they log nothing and write no report), so the report
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line, since it was logged after the
-previous attempt finished". The unbroken run of step 1 lines just before it, after the closing line, moves with it
+previous attempt finished". The unbroken run of step 1 lines just before it, at or after the closing line, moves with it
 at any gap: the finished session runs nothing after its report. When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
 prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v22, <agent>: ` now), the words step 1 gives `--log-start`, so the
 Summary's `prompt:` and `agent:`, the attempt's line in the friction log section and the issue link's
@@ -336,9 +336,10 @@ latest time. Such an attempt is listed as "no Attempt: line, since another sessi
 attempt, which has no end line". When such an error is the log's first line its words are read too, and the attempt
 is "no Attempt: line, since its session stopped before `install.sh --log-start`". Since round 10 (L26) an attempt
 with no header and no words yet reads them from its first step 1 error that states them, wherever it sits: a
-stopping session may log a deviation or a prompt line first. When a step 1 error opens such an attempt, the step 1
-lines just before it, each more than 10 minutes after the earlier attempt's end line, are that session's and move
-with it; a late line no such error follows stays where it is. A step 1 error without those words and a line of
+stopping session may log a deviation or a prompt line first. When a step 1 error opens such an attempt, the unbroken
+run of step 1 lines just before it, dated at or after the earlier attempt's end line, is that session's and moves
+with it, whatever the gap (since round 12, N23: the finished session runs nothing after its report); a late line no
+such error follows stays where it is. A step 1 error without those words and a line of
 another step or kind are never read that way. Any
 other late line stays in its attempt (run `install.sh --report-only` again to put it in the report). A report
 written more than 10 minutes after the last attempt's end line, with no run in install.log since (`--report-only`
@@ -503,7 +504,9 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the line, the `[synced]` lines and exit 3, logged `note=not-signed-in apps=<app> missing=M synced=N` (B13 round 11
   M4, narrowed by round 12 N41, N61; the app and the missing count since round 13 O5). Its `NEXT:` asks for that app's sign-in and a re-run, and says the folders marked `[synced]`
   are kept. A click the list ends on (exit 4) comes first. Since v20, step 1 waits for that sign-in as for a click,
-  then lists the folders again, before the folder question above. A folder missing while its app is signed in
+  then lists the folders again, before the folder question above. Since v21 (B13 round 12 N32, N6), an agent that
+  cannot ask does not wait and logs nothing for that sign-in: it goes to step 3's report, whose expected-turns line
+  is the set-up Mac sign-in row below (K45). A folder missing while its app is signed in
   (renamed, moved or deleted there) keeps exit 0, logged `gone=N`; the `NEXT:` names it and step 2's doctor names
   its fix. So does a folder in a SharePoint library not synced on this Mac (`OneDrive-SharedLibraries-Contoso` gone,
   or there and empty, beside `OneDrive-Contoso`); its `NEXT:` says to sync the library on its SharePoint page.
@@ -518,15 +521,20 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   fixed`: step 2's reinstall reads a config an older agentsync rejected for a newer key (B13 round 10 L11). When the
   installed agentsync is already this checkout's build, step 2 does not reinstall it, and the sentence says so
   instead: `The installed agentsync is already this checkout's build (commit <sha>), so step 2 (run from this
-  checkout) does not reinstall it: ...until the person fixes the config` (B13 round 11 M37).
+  checkout) does not reinstall it: ...until the person fixes the config` (B13 round 11 M37). In that case the list
+  does not end on the folder question: its `NEXT:` opens `no folder can be added until the config is fixed: run
+  <install.sh> with no --source-local, which shows the error`, followed by the same clause, and the list logs done
+  (B13 round 12 N29).
   Since v18 step 1 treats that list like the one above: it runs the offered re-run once, says the list could not
-  read the folders, and asks only whether to add one; an agent that cannot ask adds none and runs step 2 with no
+  read the folders, and asks only whether to add one (since v21, nothing when step 2 does not reinstall agentsync);
+  an agent that cannot ask adds none and runs step 2 with no
   `--source-local`, which is not a deviation. If step 2 then says no folder is synced yet (the config held none),
   the Mac syncs no folder after all, and step 1's folder question applies as on a new Mac. Up to v17 an agent that
   could not ask logged a deviation and waited there (B13 round 9 K9, K20, K32, K73, K78). Since v19 (B13 round 10
   L62, L11, L10): when the offered re-run's `NEXT:` no longer says the config could not be read, step 1 follows that
   list as on any Mac. When it says the installed agentsync failed while reading the config (`marks=failed`), step 1
-  shows that line in its own words and does not say step 2 keeps the folders. After step 2's "no folder is synced
+  shows that line in its own words and does not say step 2 keeps the folders. Since v21, when that line says step 2
+  does not reinstall agentsync, step 1 asks nothing about folders and runs step 2 with no `--source-local`. After step 2's "no folder is synced
   yet", an agent that cannot ask logs a step 1 deviation and waits, runs no `--report-only` and adds no "## Not used"
   section. Its finish says `none: waiting for your folder answer` and `none` for bring-back.md, and the answer goes
   to step 2 again with one `--source-local` per folder, not to the add-source its `NEXT:` names. The sign-in `NEXT:`s
@@ -870,6 +878,13 @@ Current unavoidable human steps (these do not break "fully one command"):
   `install.sh --list-folders`. A click that comes only after step 2's install command failed (a listing
   macOS held, or a terminal denied at the first sync) cost a second install run, so that report reads "worked
   with help" (section 4, "The computed outcome").
+- **The OneDrive sign-in step 1 waits for** (or the sign-in to the app the list names), on a Mac that already
+  syncs folders whose app is signed out or still setting up. Step 1's list exits 3 with `note=not-signed-in
+  apps=<app> missing=M synced=N` and keeps the `[synced]` folders. Since prompt v20 the agent waits for the sign-in as for a click, then
+  lists the folders again (K44; B13 round 11 M4). Since v21 the prompt logs it as neither a click nor a question;
+  the report counts it among the expected turns for any v20 or later attempt (`the OneDrive sign-in step 1 asked
+  for`; K45, B13 round 12 N5), so a clean run still reads as worked. An agent that
+  cannot ask does not wait: it goes to the report.
 - **IT consent** for Outlook, Teams and unsynced SharePoint: an Entra admin must register the app and consent
   ([it-request.md](it-request.md)). `agentsync it-request` only drafts the request; the person sends it.
 
@@ -888,4 +903,6 @@ Preconditions, outside the setup's count because the prompt stops at step 1 and 
 
 - **Installing the Xcode Command Line Tools** when they are missing. `xcode-select --install` opens a macOS dialog,
   and a managed Mac may need an admin or Self Service.
-- **Signing in to OneDrive** before setup. The OneDrive app owns that sign-in.
+- **Signing in to OneDrive** before setup, on a Mac that syncs no folder yet.
+  The OneDrive app owns that sign-in. Step 1's list exits 3 and the prompt shows its `NEXT:` line and goes to the
+  report.
