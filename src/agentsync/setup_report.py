@@ -1543,7 +1543,9 @@ def parse_friction(text: str) -> Friction:
     When a step 1 error opens a header-less attempt, the unbroken run of step 1 lines just before it, each
     dated at or after the previous attempt's end line, is that session's too and moves with it (L26: it was
     counted in the attempt that had finished; B13 round 12 N23: whatever the gap, since the finished session
-    runs nothing after its ``--report-only``); a late line no such error follows stays where it is."""
+    runs nothing after its ``--report-only``); so does that run before an ``Attempt:`` header (B13 round 13
+    O24: a new session's step 1 line logged before its own header was counted in the finished attempt). A late
+    line no such error or ``Attempt:`` header follows stays where it is."""
     attempts: list[Attempt] = []
     cur: dict[str, object] | None = None
     shell_step1: dict[int, str] = {}  # line number -> kind, for the lines install.sh reads as step 1's
@@ -1631,7 +1633,11 @@ def parse_friction(text: str) -> Friction:
             shell_step1[n] = strict.group("kind")
         attempt = _ATTEMPT_RE.match(line)
         if attempt is not None:
-            cur = begin(n, parse_time(attempt.group(1)))
+            # the finished attempt's trailing step 1 lines are this header's session's, as before a step 1
+            # error (B13 round 13 O24); the attempt still begins at its Attempt: time
+            moved = late_run()
+            cur = begin(moved[0].line if moved else n, parse_time(attempt.group(1)))
+            cast("list[FrictionEvent]", cur["events"]).extend(moved)
             continue
         key = _FRICTION_KEY_RE.match(line)
         event = _EVENT_RE.match(line) if key is None else None

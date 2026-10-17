@@ -5760,6 +5760,26 @@ def test_a_new_sessions_step_1_line_before_its_error_leaves_the_finished_attempt
         head + end + "2026-10-16T15:58:29Z | step 1 | deviation | x | -\n"
     ).attempts
     assert [e.kind for e in only.events] == ["finished", "deviation"], only.events
+    # B13 round 13 O24: nor did the run move before the new session's own Attempt: header, at any gap (71 s,
+    # 13 minutes); the new attempt still begins at its Attempt: time
+    new = "Attempt: {}\nPrompt: v21\nAgent: Contoso Agent\n"
+    for asked, started in (
+        ("2026-10-16T15:58:29Z", "2026-10-16T15:59:00Z"),
+        ("2026-10-16T16:10:18Z", "2026-10-16T16:11:00Z"),
+    ):
+        log = head + "2026-10-16T15:52:00Z | step 2 | start | x | -\n" + end
+        log += f"{asked} | step 1 | question | asked which folders | -\n" + new.format(started)
+        first, second = setup_report.parse_friction(log).attempts
+        assert [e.kind for e in first.events] == ["start", "finished"], (asked, first.events)
+        assert [e.kind for e in second.events] == ["question"], (asked, second.events)
+        assert second.started == setup_report.parse_time(started) and second.first_line == 6
+        write_friction(fake_mac, log)
+        _text, summary = summary_of(fake_mac)
+        assert "- human turns: 1 (1 question; " in summary, summary
+    # two headers with no end line between them: the line stays where it was logged
+    log = head + "2026-10-16T15:58:29Z | step 1 | question | asked | -\n" + new.format("2026-10-16T15:59:00Z")
+    first, second = setup_report.parse_friction(log).attempts
+    assert [e.kind for e in first.events] == ["question"] and second.events == ()
 
 
 def test_a_header_less_step_1_error_states_its_prompt_and_agent(fake_mac: dict[str, Path]) -> None:

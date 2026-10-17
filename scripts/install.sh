@@ -2327,13 +2327,17 @@ friction_latest_has_step() {
 	[ -f "$f" ] || return 1
 	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		BEGIN { step = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|] step [0-9]+ [|]" }
-		function fresh() { has = 0; ended = "" }
+		function fresh() { has = 0; ended = ""; late = 0 }
 		{ q = track($0) }
 		NH { NH = 0; fresh() }
-		/^Attempt:/ { fresh(); next }
+		# the trailing step 1 lines of the finished attempt, at or after its end line, go to the next Attempt: header,
+		# as parse_friction moves them (B13 round 13 O24); the attempt still begins at its Attempt: time
+		/^Attempt:/ { carried = ended != "" && late; fresh(); has = carried; next }
 		q { fresh() }
 		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { fresh(); restate($0) }
-		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); next }
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); late = 0; next }
+		# the run is unbroken when the last timed line since the end line is such a step 1 line
+		ended != "" && $0 ~ step { late = $0 ~ /^[^|]*[|] step 1 [|]/ && secs($0) >= secs(ended) }
 		$0 ~ step { has = 1 }
 		END { exit !has }' "$f" 2>/dev/null
 }

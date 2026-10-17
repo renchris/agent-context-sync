@@ -3268,6 +3268,27 @@ def test_an_uncomputed_outcome_names_step_lines_only_when_the_attempt_has_them(
     assert outcome == NO_STEP_LINE.format(where), outcome
 
 
+def test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report(
+    env: dict[str, str],
+) -> None:
+    """B13 round 13 O24, the shell twin: a new session's step 1 line logged after the finished attempt's end
+    line and before its own Attempt: header was read as the finished attempt's, so the latest attempt had "no
+    step line". The run moves to the next header, as parse_friction moves it; with no end line it stays."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    head = "Attempt: 2026-10-16T15:50:00Z\nPrompt: v20\nAgent: Contoso Agent\n"
+    end = "2026-10-16T15:52:00Z | step 2 | start | x | -\n2026-10-16T15:57:18Z | end | finished\n"
+    asked = "2026-10-16T15:58:29Z | step 1 | question | asked which folders | -\n"
+    new = "Attempt: 2026-10-16T15:59:00Z\nPrompt: v21\nAgent: Contoso Agent\n"
+    for log, has in ((head + end + asked + new, True), (head + end + new, False)):
+        friction_path(env).write_text(log)
+        assert install_sh(env, "--report-only").returncode == 0
+        outcome = _summary(report_path(env).read_text())[2]
+        assert ("the Outcome is yours to choose from the friction log's step lines" in outcome) is has, (
+            outcome
+        )
+
+
 @pytest.mark.parametrize(
     "later",
     [
