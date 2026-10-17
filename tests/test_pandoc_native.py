@@ -8,8 +8,9 @@ otherwise the wheel's binary.  HOME is the test's own tmp dir (``conftest._isola
 from __future__ import annotations
 
 import importlib.metadata
+import inspect
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -43,7 +44,9 @@ def _stub(home: Path, version: str, *, executable: bool = True) -> Path:
 
 @pytest.fixture(autouse=True)
 def _darwin_known_wheel(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Every test starts on darwin with this venv's wheel mapped to 3.9, whatever the host."""
+    """Every test starts on darwin with this venv's wheel mapped to 3.9, whatever the host, and reads only its
+    own HOME (conftest's wrapper, which also reads the real home's copy, is taken off)."""
+    monkeypatch.setattr(pandoc_mod, "_native_pandoc", inspect.unwrap(pandoc_mod._native_pandoc))
     monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(pandoc_mod, "_WHEEL_PANDOC_VERSIONS", {_record_hash(): "3.9"})
     pandoc_mod._wheel_pandoc_version.cache_clear()
@@ -109,6 +112,29 @@ def test_home_is_read_at_each_call(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     native = _stub(other, "3.9")
     monkeypatch.setenv("HOME", str(other))
     assert pandoc_mod._bundled_pandoc() == native
+
+
+def test_the_operators_copy_reaches_a_test_and_is_only_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _operator_native_pandoc: Callable[[str], Path | None]
+) -> None:
+    """B13 round 14 Q61: each test's HOME is a tmp folder with no copy, so under the gate the converters ran
+    the wheel's pandoc under Rosetta whatever the operator installed. conftest's wrapper finds the copy in
+    the home the suite started under, which a test's own copy still outranks; it links and writes nothing."""
+    import conftest  # noqa: PLC0415 - the fixture under test
+
+    real = tmp_path / "real-home"
+    copy = _stub(real, "3.9")
+    before = (copy.read_bytes(), copy.stat().st_mtime_ns)
+    monkeypatch.setattr(conftest, "_REAL_HOME", real)
+    monkeypatch.setattr(pandoc_mod, "_native_pandoc", _operator_native_pandoc)
+    assert Path.home() != real and pandoc_mod._bundled_pandoc() == copy
+    assert not (Path.home() / ".local/share/agentsync").exists(), "nothing is linked into the test's home"
+    assert (copy.read_bytes(), copy.stat().st_mtime_ns) == before
+    own = _stub(Path.home(), "3.9")
+    assert pandoc_mod._bundled_pandoc() == own, "a test's own copy comes first"
+    monkeypatch.setattr(conftest, "_REAL_HOME", tmp_path / "no-copy")
+    (Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc").unlink()
+    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="the table lists the macOS wheel")

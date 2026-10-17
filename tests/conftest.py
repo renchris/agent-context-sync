@@ -9,9 +9,11 @@ Claude Code skill folders (~/.claude/skills, $CLAUDE_CONFIG_DIR/skills) every sy
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import pwd
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -244,6 +246,40 @@ def _isolate_home(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         mp.delenv("AGENTSYNC_CONFIG", raising=False)
         mp.delenv("CLAUDE_CONFIG_DIR", raising=False)  # every sync writes the skill there too
         yield home
+
+
+_REAL_HOME = Path("~").expanduser()
+"""The home folder the suite started under, read when this module loads, before any test's HOME."""
+
+
+@pytest.fixture(autouse=True)
+def _operator_native_pandoc(_isolate_home: Path) -> Iterator[Callable[[str], Path | None]]:
+    """B13 round 14 Q61: the converters run the operator's native arm64 pandoc when one is installed
+    (load root cause 2026-10-17 X26), but ``_native_pandoc`` reads ``Path.home()``, which is each test's own
+    tmp folder, so under the gate every pandoc run was the wheel's under Rosetta. When the test's own home
+    has no copy, the one under :data:`_REAL_HOME` is used, as a path only: nothing is linked into the test's
+    home, so no test can write into the real copy. ``tests/test_pandoc_native.py``, the doctor tests and the
+    converters' bundled-path test put the original back (``inspect.unwrap``), to stay hermetic. Yields the
+    wrapper."""
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415 - as the tests that convert import it
+
+    original = pandoc_mod._native_pandoc
+
+    @functools.wraps(original)
+    def native(version: str) -> Path | None:
+        found = original(version)
+        if found is not None:
+            return found
+        real = _REAL_HOME / pandoc_mod._NATIVE_PANDOC_ROOT / f"{version}-arm64" / "bin" / "pandoc"
+        try:
+            mode = real.stat().st_mode
+        except OSError:
+            return None
+        return real if stat.S_ISREG(mode) and os.access(real, os.X_OK) else None
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(pandoc_mod, "_native_pandoc", native)
+        yield native
 
 
 @contextlib.contextmanager

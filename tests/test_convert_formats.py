@@ -10,6 +10,7 @@ import errno
 import functools
 import hashlib
 import html
+import inspect
 import io
 import json
 import logging
@@ -129,7 +130,9 @@ def _write(tmp_path: Path, name: str, data: bytes | str) -> Path:
 # ---------------------------------------------------------------------------------------------------------
 
 
-def test_pandoc_uses_bundled_binary_by_absolute_path() -> None:
+def test_pandoc_uses_bundled_binary_by_absolute_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    # the test's HOME only: an operator's native copy is conftest._operator_native_pandoc's (round 14 Q61)
+    monkeypatch.setattr(pandoc_mod, "_native_pandoc", inspect.unwrap(pandoc_mod._native_pandoc))
     runner = _PandocRunner(None)
     path = runner.path()
     assert path.is_absolute() and path == _bundled_pandoc()

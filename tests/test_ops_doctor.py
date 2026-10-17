@@ -10,6 +10,7 @@ import dataclasses
 import errno
 import fcntl
 import importlib.metadata
+import inspect
 import os
 import plistlib
 import re
@@ -59,6 +60,8 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     """Hermetic defaults: no launchd, no other W1b module, a real absolute git."""
     state: dict[str, object] = {"loaded": set()}
     monkeypatch.setattr(doctor, "_git_path", lambda: Path(GIT))
+    # the operator's native pandoc is not these tests' (conftest._operator_native_pandoc): their HOME only
+    monkeypatch.setattr(pandoc_mod, "_native_pandoc", inspect.unwrap(pandoc_mod._native_pandoc))
     monkeypatch.setattr(doctor, "_materialize_policy", lambda: 1)
     monkeypatch.setattr(doctor, "_volume_uuid", lambda p: "11111111-2222-3333-4444-555555555555")
     monkeypatch.setattr(doctor, "_is_loaded", lambda label: label in state["loaded"])  # type: ignore[operator]
