@@ -676,9 +676,13 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
     the floor, write ``Pin.swift``, build release.  The tree ``<folder>/build`` is kept (a rebuild is then
     incremental) and owner-only, and so is ``<folder>/swiftpm``: both steps get its ``cache``, ``config``
     and ``security`` folders, since SwiftPM on Darwin finds its user-level folders through Foundation, which
-    ignores HOME, and would otherwise write the real ``~/Library``.  They do not keep SwiftPM off the real
-    ``~/.swiftpm/security`` symlink, which both steps re-create whatever the flags say (CONTRACTS §16.102
-    N18).  Raises SpeechError or OSError."""
+    ignores HOME, and would otherwise write the real ``~/Library``.  The flags do not keep SwiftPM off the
+    real ``~/.swiftpm`` links, which both steps re-create whatever the flags say (CONTRACTS §16.102 N18), so
+    the two swift steps alone also get ``CFFIXED_USER_HOME``, Foundation's home, set to ``swiftpm/home``:
+    the links and the ``<home>_.swiftpm.lock`` in ``$TMPDIR`` are then the build's own.  SwiftPM finds its
+    default netrc through that home too, so the person's ``~/.netrc``, when there is one, is passed as
+    ``--netrc-file``.  git and the seed's curl read HOME and keep it (B13 round 13 O69).  Raises
+    SpeechError or OSError."""
     developer = ocr._tool([ocr._XCODE_SELECT, "-p"])
     if not developer or not Path(developer).is_dir():
         raise SpeechError("no Xcode or Command Line Tools (xcode-select -p names no folder)")
@@ -699,6 +703,12 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         places = [
             arg for what in ("cache", "config", "security") for arg in (f"--{what}-path", str(spm / what))
         ]
+        home = spm / "home"
+        home.mkdir(mode=0o700, exist_ok=True)
+        netrc = Path.home() / ".netrc"
+        if netrc.is_file():
+            places += ["--netrc-file", str(netrc)]
+        spm_env = {**_build_env(), "CFFIXED_USER_HOME": str(home)}
         for name, data in _sources().items():
             (tree / name).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             (tree / name).write_bytes(data)
@@ -707,7 +717,11 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         log.info("building the on-device %s (FluidAudio from github.com; up to 20 minutes)", kind.name)
         _seed(spm / "cache" / "artifacts", git=git, cwd=tree, deadline=deadline)
         _step(
-            [swift, "package", *places, "resolve"], cwd=tree, deadline=deadline, what="swift package resolve"
+            [swift, "package", *places, "resolve"],
+            cwd=tree,
+            deadline=deadline,
+            what="swift package resolve",
+            env=spm_env,
         )
         checkout = tree / ".build" / "checkouts" / "FluidAudio"
         resolved = _step(
@@ -735,6 +749,7 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
             cwd=tree,
             deadline=deadline,
             what="swift build",
+            env=spm_env,
         )
         built = tree / ".build" / "release" / _TARGET
         if not built.is_file():

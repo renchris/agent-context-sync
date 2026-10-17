@@ -13578,6 +13578,9 @@ re-create the account's real `~/.swiftpm/security` symlink (to `~/Library/org.sw
 finds it through Foundation, so `HOME` is ignored, and no flag moves it (measured with a sandbox that kills the
 process on a write there). The `~/Library` cache, configuration and security folders are not written. SwiftPM's
 lock, `_Users_<login>_.swiftpm.lock`, is in `$TMPDIR`, not in the home.
+Amended 2026-10-17, §16.108 O69: `CFFIXED_USER_HOME`, Foundation's own home override, which N18 never tried, does
+move it: the swift steps get it set to `<cache>/speech/swiftpm/home`, so the `~/.swiftpm` links and the
+`<home>_.swiftpm.lock` in `$TMPDIR` are the build's own, with SwiftPM's manifest sandbox on.
 
 Behind a proxy set only in the environment the speech build seeds SwiftPM's cache itself (R83). SwiftPM downloads
 FluidAudio's one remote binary target, `NemoTextProcessing.xcframework.zip` from text-processing-rs v0.3.1, with
@@ -20050,6 +20053,9 @@ tells a sandbox's own build by the lock files in its `$TMPDIR` and the `manifest
 never by `~/.swiftpm` mtimes, which every build on the Mac moves. Tests:
 `test_speech.py::test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree` (unchanged: the three
 paths) and `test_speech.py::test_the_build_says_which_real_home_path_its_flags_do_not_cover`.
+Amended 2026-10-17, §16.108 O69: `CFFIXED_USER_HOME`, Foundation's own home override, which N18 never tried, does
+move it: the swift steps get it set to `<cache>/speech/swiftpm/home`, so the `~/.swiftpm` links and the
+`<home>_.swiftpm.lock` in `$TMPDIR` are the build's own, with SwiftPM's manifest sandbox on.
 
 **A page read that says neither goes by the probe in every docstring (N59; `agentsync.convert.registry`,
 `agentsync.setup_report`; amends §16.71 H56, §16.96 M66).** §16.97 M79 corrected the `_Mirror` comment and the
@@ -20203,6 +20209,26 @@ read (`_Cycle._page_withheld`, round 9 K50) decide by it too: each reads the pag
 `publish._withheld_on_page` first and calls it directly only on the YAML fallback. Test:
 `test_policy.py::test_page_says_withheld_names_every_reader`, which walks `src/` for every function that calls it
 or `_withheld_on_page` and fails on one the docstring does not name.
+
+**The swift steps keep SwiftPM off the real `~/.swiftpm` (O69; `agentsync.convert.speech`; amends §16.102 N18,
+§16.48 R90).** N18 found no flag that moves the `~/.swiftpm` links both swift steps re-create, since SwiftPM finds
+them through Foundation, and built no code. Foundation's own override, `CFFIXED_USER_HOME`, was never tried: with
+it, the links and SwiftPM's `<home>_.swiftpm.lock` in `$TMPDIR` move to the home it names. `_compile` makes
+`<cache>/speech/swiftpm/home` (owner-only, under the folder its `finally` already makes owner-only) and runs
+`swift package resolve` and `swift build` alone with `CFFIXED_USER_HOME` set to it; git and the seed's curl read
+`HOME` and keep it. SwiftPM finds its default netrc through the same home, so the person's `~/.netrc`, when there
+is one, is passed as `--netrc-file` beside the three path flags; with none, the fake home has none either, as
+before. No sandbox is dropped. Measured on Swift 6.2.4 with SwiftPM's manifest sandbox on: the verifier's
+one-dependency package built, and a full build of the speech helper from FluidAudio (701 s, its binary artifact
+download included) exited 0, left the real `~/.swiftpm/security` link at the same inode and ctime, and its private
+`$TMPDIR` held `..._speech_swiftpm_home_.swiftpm.lock` and no lock named for the real home. The fake home holds
+the three links, empty `Library/org.swift.swiftpm` folders, and SwiftPM's `Library/Caches/swift-package` and
+`Library/HTTPStorages` from the artifact download, which before went to the real `~/Library`. A rehearsal tells it
+by that lock name, not by mtimes under `~/.swiftpm`. Tests:
+`test_speech.py::test_the_swift_steps_alone_get_a_foundation_home_of_their_own`,
+`test_speech.py::test_the_persons_netrc_reaches_both_swift_steps`,
+`test_speech.py::test_the_build_says_which_real_home_path_its_flags_do_not_cover` (now: the docstring and both
+dated lines).
 
 **A build's time limit in the tests counts from the compiler's start (O73; tests only).** Under load (about 300)
 `test_a_speech_build_out_of_time_leaves_no_compiler_running` failed: the 2 s covers the steps before `swift build`

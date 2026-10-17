@@ -640,9 +640,11 @@ def test_swiftpm_keeps_its_cache_config_and_security_beside_the_build_tree(
 def test_the_build_says_which_real_home_path_its_flags_do_not_cover() -> None:
     """B13 round 12 N18: R90 read as if the three SwiftPM flags keep the build out of the whole home, but on
     Swift 6.2.4 both steps re-create the real ``~/.swiftpm/security`` symlink whatever the flags (or HOME)
-    say, and no flag moves it. ``_compile`` and R90's paragraph say so; the build is unchanged (an outer deny
-    sandbox would need ``--disable-sandbox``)."""
-    assert "``~/.swiftpm/security``" in (speech._compile.__doc__ or "")
+    say, and no flag moves it. Round 13 O69: Foundation's own override, ``CFFIXED_USER_HOME``, which N18
+    never tried, moves it with SwiftPM's manifest sandbox on, so the swift steps get it. ``_compile``,
+    R90's paragraph and N18's say so."""
+    doc = " ".join((speech._compile.__doc__ or "").split())
+    assert "``~/.swiftpm`` links" in doc and "``CFFIXED_USER_HOME``" in doc and "``--netrc-file``" in doc
     text = (Path(__file__).parents[1] / "docs" / "design" / "CONTRACTS.md").read_text(encoding="utf-8")
     r90 = " ".join(
         text.split("SwiftPM's own folders live beside the build tree (R90).", 1)[1].split("\n\n")[0].split()
@@ -651,6 +653,47 @@ def test_the_build_says_which_real_home_path_its_flags_do_not_cover() -> None:
         "Amended 2026-10-16, §16.102 N18: the flags keep SwiftPM out of the real `~/Library` folders" in r90
     )
     assert "re-create the account's real `~/.swiftpm/security` symlink" in r90 and "is in `$TMPDIR`" in r90
+    o69 = "Amended 2026-10-17, §16.108 O69: `CFFIXED_USER_HOME`"
+    n18 = " ".join(text.split("(N18; `agentsync.convert.speech`", 1)[1].split("\n\n")[0].split())
+    assert o69 in r90 and o69 in n18, "R90's and N18's paragraphs each carry O69's dated line"
+
+
+def test_the_swift_steps_alone_get_a_foundation_home_of_their_own(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 13 O69: SwiftPM finds ``~/.swiftpm`` through Foundation, which ignores HOME, so both swift
+    steps re-created the real ``~/.swiftpm`` links and took a ``<real home>_.swiftpm.lock``. They run with
+    ``CFFIXED_USER_HOME`` at ``<cache>/speech/swiftpm/home`` (owner-only); git, which reads HOME, does not,
+    and without a ``~/.netrc`` no ``--netrc-file`` is passed."""
+    ran: list[tuple[list[str], str | None]] = []
+    run_build = ocr._run_build
+
+    def spy(argv: Any, **kw: Any) -> Any:
+        ran.append(([Path(argv[0]).name, *argv[1:]], (kw.get("env") or {}).get("CFFIXED_USER_HOME")))
+        return run_build(argv, **kw)
+
+    monkeypatch.setattr(ocr, "_run_build", spy)
+    cache = tmp_path / "cache"
+    home = cache / "speech" / "swiftpm" / "home"
+    with loose_umask():
+        speech.build(cache)
+    swift = [(argv[1], fake) for argv, fake in ran if argv[0] == "swift"]
+    others = [(argv[0], fake) for argv, fake in ran if argv[0] != "swift"]
+    assert swift == [("package", str(home)), ("build", str(home))], ran
+    assert others and all(fake is None for _, fake in others), ran
+    assert all("--netrc-file" not in argv for argv, _ in ran) and mode(home) == 0o700
+
+
+def test_the_persons_netrc_reaches_both_swift_steps(tools: Path, tmp_path: Path) -> None:
+    """B13 round 13 O69: SwiftPM finds its default netrc through Foundation's home, which the swift steps now
+    move into the build's folder, so a ``~/.netrc`` the person keeps is passed as ``--netrc-file`` to both."""
+    netrc = Path.home() / ".netrc"
+    netrc.write_text("machine artifacts.contoso.example login contoso password x\n", encoding="utf-8")
+    speech.build(tmp_path / "cache")
+    calls = [line.split() for line in lines_of(tools / "swift.calls")]
+    assert [c[0] for c in calls] == ["package", "build"]
+    for call in calls:
+        assert call[call.index("--netrc-file") + 1] == str(netrc), call
 
 
 def test_the_persons_swiftpm_mirrors_and_registries_reach_the_build_and_leave_with_them(
