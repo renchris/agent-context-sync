@@ -368,6 +368,9 @@ one stays the `no converter for .msg` stub).
 .m4v .mov` → `recording-av` (it stays registered under a label rule); otherwise the `no converter for .mp4`
 REFUSED stub.
 **SUPERSEDED (2026-10-08, §16.35):** `.vtt` → `vtt-turns` (was `text-plain`, which it replaces).
+Amended 2026-10-17, §16.114 Q62: with no `[convert] pandoc_path`, `pandoc-gfm` runs on macOS a native arm64 copy
+of the wheel's pandoc version, `~/.local/share/agentsync/pandoc/<version>-arm64/bin/pandoc`, when the operator
+installed one, and the pypandoc_binary pandoc otherwise (load root cause 2026-10-17 X26).
 The cache is write-once under `Config.cache_dir` (`~/Library/Caches/agentsync`), never in git; OK and UNREADABLE
 results are cached, FAILED/REFUSED are not. `Converter.version()` is the version **as run**.
 `double_conversion_differs` backs the NONDETERMINISTIC land-gate lint.
@@ -1364,6 +1367,7 @@ class ConvertConfig:
     max_rows_per_sheet: int = 5000
     max_page_bytes: int = 1_000_000  # hard cap before a unit is split / row-capped with a sidecar
     pandoc_path: Path | None = None  # None = the pypandoc_binary bundled pandoc, by absolute path
+    # Amended 2026-10-17, §16.114 Q62: None = that pandoc, or on macOS its native arm64 copy when installed
     ocr: bool = True  # False = never build or run the on-device OCR helper (§16.25)
     recordings: bool = True  # False = no media helper; recordings stay unconverted (§16.34)
 
@@ -9771,6 +9775,10 @@ start_pandoc_once    # run "<that pandoc> --version" once, for at most PANDOC_ST
   installed tool's interpreter reads the config for it (`python -I`, public names only, at most 20 s), so
   the installer and the check cannot disagree about a config. No interpreter, no config yet, a config that
   does not load, or a path that is not a program: nothing is started, and status reports what it finds.
+  Amended 2026-10-17, §16.114 Q62: the tool's bundled one is the one the converters run, the operator's native
+  arm64 copy when there is one: `status_pandoc` asks the installed tool's `convert.pandoc.resolved_pandoc`, as
+  the check does, so the converters cannot disagree either. A tool older than it names the bundled pandoc,
+  which its status checks, and a bundled pandoc that is missing names none.
 - **Every run, not only after an install.** A run stopped during the wait leaves the tool installed, so the
   next run skips step 2 and would meet the same cold pandoc. A warm start costs under a second.
 - **What it prints.** Nothing when the start is quick. A start that outlasts a progress interval prints
@@ -20748,6 +20756,9 @@ on the real clock. The speech test holds `speech._clock` at 0, so each step gets
 do nothing: `ocr._compile` passes its limit straight to `_run_build`. Measured: with the compiler's start 1 s late
 and a SIGINT 0.3 s in, the old stub left no pid, the new one a pid and a compiler stopped. Nothing in the product
 changed; the shared budget stays `test_the_build_gets_twenty_minutes_of_its_own`'s.
+Amended 2026-10-17, §16.114 Q83: the measurement is two tests now, which fail on the stub's old body
+("no compiler started"): `test_ocr.py::test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`
+and `test_speech.py::test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`.
 
 ### 16.109 Round 13: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 13 lane D)
 
@@ -21031,7 +21042,78 @@ Reserved for round 14 lane B of B13.
 
 ### 16.114 Round 14: native pandoc, doctor's pandoc check and load-timing tests (2026-10-17, wave B13 round 14 lane E)
 
-Reserved for round 14 lane E of B13.
+Lane E's round 14 items (`docs/plans/bring-back-ocr.md`, "B13 round 14"; specs `round14/items/Q<n>.md`, the
+verifier's corrected fix built): Q56, Q60, Q61, Q62, Q76 and Q83. Q56, Q60 and Q76 are one defect, built once;
+Q62 and Q76's docs half are its CONTRACTS text. A dated line this round writes reads `Amended 2026-10-17, §16.114
+Q<n>`. No item needs prompt words, so none went to lane P. Lane RB (round 14) agreed to lane E's edit of
+`status_pandoc` in `scripts/install.sh`; it keeps `start_pandoc_once`.
+
+**The native pandoc route (load root cause 2026-10-17 X26; `agentsync.convert.pandoc`).** On macOS only, with no
+`[convert] pandoc_path`, the converters run `~/.local/share/agentsync/pandoc/<version>-arm64/bin/pandoc` when it is
+an executable regular file (`~` read at each call). The operator installs it; agentsync never does. `<version>` is
+the one `_WHEEL_PANDOC_VERSIONS` maps the sha256 to that the pypandoc_binary RECORD lists for
+`pypandoc/files/pandoc` (what pip checked at install): the binary is never run or hashed for this. An unknown hash,
+a missing RECORD, entry or copy, a size or path that does not match, or any other platform means the wheel's
+binary. The copy is the same version with the same flags, so the same bytes come out; only the CPU architecture
+changes (the wheel's binary is x86_64 and runs under Rosetta: about 0.16 s and 68 MB per run against 0.03 s and
+30 MB, plus 10 to 67 s at the first start of each fresh copy). Tests: `tests/test_pandoc_native.py`.
+
+**Doctor, the setup report and the installer check the pandoc the converters run (Q56, Q60, Q76;
+`agentsync.convert.pandoc`, `agentsync.ops.doctor`, `agentsync.setup_report`, `scripts/install.sh`).** X26 changed
+only the converters. Doctor's `_pandoc_path`, whose docstring said "the pandoc the converters will run", the
+report's `pandoc` line and `status_pandoc` still named `pypandoc/files/pandoc`: with the copy installed a copy that
+exits 137 read OK while every conversion failed, a Mac with the copy and no Rosetta read the EBADARCH FAIL while
+conversions worked, and every install still paid Rosetta's first start of a binary nothing then ran. The rule now
+lives in one place, `convert.pandoc.resolved_pandoc(pandoc_path) -> (path, kind)`, kind `configured`, `native` or
+`wheel`, which `_PandocRunner.path` calls; it reads RECORD and runs nothing, and raises ConversionError for a
+configured path that is not an absolute file and for a missing wheel binary. Doctor keeps `[convert] pandoc_path`
+as written, for its own not-absolute and not-executable lines, and otherwise asks the resolver; a missing wheel
+binary is still named, for its `missing or not executable` line and fix, not raised. Its OK line says which copy
+ran: `pandoc 3.9 at <path> (native arm64 copy)` or `(bundled with pypandoc_binary)`. A native copy's FAIL line
+says `(native arm64 copy)` after the path, and its fix is `replace or remove
+~/'.local/share/agentsync/pandoc/<version>-arm64' (the converters run it instead of the bundled pandoc), or set
+[convert] pandoc_path to an absolute pandoc`: not `uv sync`, which does not touch it, and no Rosetta words, which
+are the wheel's binary's alone, as is the slow-first-start reason on a line that ran out of time. The report runs
+the resolver's pandoc, adds ` (native arm64 copy)` for the copy and gives the resolver's reason for a missing
+wheel binary. `status_pandoc` imports `resolved_pandoc` (and `agentsync.errors.ConversionError`) from the
+installed tool; one older than that has no resolver and its status checks the wheel's pandoc, which is then the
+one named, and a ConversionError names none. Tests: `test_ops_doctor.py::test_the_pandoc_check_runs_the_native_copy_the_converters_run`,
+`test_ops_doctor.py::test_a_native_pandoc_that_fails_names_that_copy_and_not_rosetta`,
+`test_ops_doctor.py::test_a_missing_bundled_pandoc_is_the_checks_fail_and_no_crash`,
+`test_setup_report.py::test_the_pandoc_line_is_the_pandoc_the_converters_run`,
+`test_install_oneshot.py::test_the_pandoc_the_installer_starts_is_the_one_the_converters_run` (the current tool,
+an older one and a missing wheel binary, run by bash 3.2).
+
+**The operator's native pandoc reaches the test gate (Q61; tests only).** X26 was aimed at the gate's load (51
+sandbox denies per 10 s on a worktree venv's pandoc), but `_native_pandoc` reads `Path.home()`, and every test's
+HOME is its own tmp folder, so under the gate every pandoc run was the wheel's under Rosetta. conftest records the
+home the suite started under when it loads (`_REAL_HOME`), and its autouse `_operator_native_pandoc` wraps
+`_native_pandoc`: the test's own copy first, else the real home's, by path only, with the same regular-file and
+executable test. Nothing is linked into a test's home, so no test can write into the real copy.
+`test_pandoc_native.py`, `test_ops_doctor.py` and
+`test_convert_formats.py::test_pandoc_uses_bundled_binary_by_absolute_path` take the wrapper off (`inspect.unwrap`)
+to stay hermetic. Test:
+`test_pandoc_native.py::test_the_operators_copy_reaches_a_test_and_is_only_read`. The design's Verify step (a gate
+with the copy installed, `log show` pandoc denies per 10 s against 51) needs the operator's copy (OP-3), which this
+Mac did not have on 2026-10-17.
+
+**CONTRACTS records the route, and the texts that said the wheel's pandoc is what runs say the copy too (Q62, Q76;
+`docs/design/CONTRACTS.md`; dated lines at §7, §15 and §16.32).** e72a536d wrote no §16 entry. The route is the
+paragraph above; §7's routing, §15's `ConvertConfig.pandoc_path` and §16.32's "Which pandoc" have dated lines,
+and `config.py`'s `pandoc_path` comment, the doctor's Rosetta comment and `convert.pandoc`'s module and
+`PandocConverter` docstrings name the copy. `_bundled_pandoc` keeps its name (18 test references; the rename buys
+only naming) and now returns `resolved_pandoc(None)`'s path. Test: the dated-line pins in `test_deploy_pack.py`.
+
+**The late-start case pins O73's hold (Q83; tests only; amends §16.108 O73).** Round 13 lane E recorded O73's
+measurement and wrote no test, calling one load-sensitive; putting back the stub's old body left every test green.
+`test_ocr.compiling(pidfile, start_after)` makes its compiler sleep after it has its session and before it writes
+its pid. With the compiler 1.5 s late against the OCR build's 1 s limit, and 2.5 s against the speech build's 2 s
+(its `_clock` held), the SIGINT always comes first: the old body fails both with "no compiler started" (measured,
+about 31 s each), the new one passes in about 2 and 3.5 s. Load cannot reorder the two, since the SIGINT comes from
+`_run_build`'s real-clock wait; a SIGINT delayed past the pid write still passes and only does not exercise the
+hold. The window the existing tests share stays: a SIGINT before bash runs the stub's first trap line kills it.
+Tests: `test_ocr.py::test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`,
+`test_speech.py::test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_too`.
 
 ### 16.115 Round 14: deploy docs and CONTRACTS cross-references (2026-10-17, wave B13 round 14 lane D)
 
