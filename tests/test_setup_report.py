@@ -5992,6 +5992,31 @@ def install_run(start: str, rc: int | None, *, status_failed: bool = False) -> s
     return "\n".join(lines) + "\n"
 
 
+def test_the_outcome_of_a_status_fail_stop_names_the_status_step(tmp_path: Path) -> None:
+    """B13 round 13 O33: a run that exited 1 on doctor's [FAIL] lines read ``install.sh exited 1`` with no
+    step: no step logged ``result=failed``. Its status step (``doctor`` in older logs) logged
+    ``note=fail-lines`` with rc 1, and the outcome says so. A failed step keeps priority, and another status
+    note (an Allow click macOS holds, exit 3) names no status step."""
+
+    def outcome(text: str) -> str:
+        log = tmp_path / "install.log"
+        log.write_text(text, encoding="utf-8")
+        return "; ".join(setup_report.compute_outcome(None, setup_report.read_install_runs(log)).why)
+
+    failed = install_run("2026-09-29T10:00:00Z", 1, status_failed=True)
+    assert outcome(failed) == "install.sh exited 1: its status step reported [FAIL] lines (rc 1)"
+    assert outcome(failed.replace("step=status", "step=doctor")) == (
+        "install.sh exited 1: its status step reported [FAIL] lines (rc 1)"
+    )
+    pending = failed.replace("rc=1 result=done note=fail-lines", "rc=3 result=done note=tcc-pending")
+    assert outcome(pending.replace("end rc=1", "end rc=3")) == "install.sh exited 3"
+    config = failed.replace(
+        "step=config seconds=1 rc=0 result=done", "step=config seconds=1 rc=78 result=failed"
+    )
+    assert outcome(config) == "install.sh exited 1: its config step failed with rc 78"
+    assert outcome(install_run("2026-09-29T10:00:00Z", 0)).startswith("install.sh exit 0")
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dict[str, Path]) -> None:
     """B13 round 5 F37: a probe install.sh ran after the attempt's end line, and the Summary said "2 install

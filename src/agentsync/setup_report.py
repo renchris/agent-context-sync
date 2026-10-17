@@ -2289,7 +2289,7 @@ def compute_outcome(
             last_failed = f" after its failed {failing[0]} step" if failing else ""
             detail = f"install.sh has no end line{last_failed}, {_open_state(last)}"
         else:
-            detail = f"install.sh exited {last.rc}{where}"
+            detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
         return Outcome("failed", layout.install_step, (detail,), version)
     if attempt is None:
         return Outcome("unknown", None, ("no friction log and no install.sh run in install.log",), version)
@@ -2330,6 +2330,19 @@ def compute_outcome(
             "failed", 1, (f"no install run: only install.sh --list-folders ran, in step 1{said}",), version
         )
     return Outcome("unknown", None, ("no install.sh run in this attempt and no step logged",), version)
+
+
+def _status_fail_words(run: InstallRun) -> str:
+    """Why a run that ended non-zero with no failed step stopped, when its status step (``doctor`` before
+    it was renamed) logged ``note=fail-lines`` with a non-zero rc: ``: its status step reported [FAIL] lines
+    (rc 1)``; install.log carries no count of them. Empty otherwise, and for a run that ended 0 (B13 round 13
+    O33: the outcome of a doctor-FAIL stop named no step). Not :meth:`InstallRun.failed_step`'s: a status
+    FAIL skips the sync and stops no step, so neither the no-end-line words nor the first sync's read it."""
+    status = run.step("status") or run.step("doctor") or {}
+    rc = status.get("rc", "")
+    if run.rc in (None, 0) or status.get("note") != "fail-lines" or rc in ("", "0"):
+        return ""
+    return f": its status step reported [FAIL] lines (rc {rc})"
 
 
 def home_path() -> str:
