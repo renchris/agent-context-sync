@@ -5175,6 +5175,11 @@ _ROUND_12_PARAGRAPH_AMENDS = (
 )
 """Round 12's dated lines at sections its claims name with no item, as :data:`_ROUND_11_PARAGRAPH_AMENDS`."""
 
+_ROUND_13_PARAGRAPH_AMENDS = (
+    ("16.22", "- doctor `heartbeat.<id>` (incomplete for 3 passes or more) names no folder", "§16.107 O51"),
+)
+"""Round 13's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5200,6 +5205,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     paragraph."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
+    assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5209,7 +5215,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
     from §16.92 on names has a pin there. Rounds 7 to 10's lines are not read: never mutation-tested."""
     _claims, bare, held_at, unheld = _dated_line_scan()
     assert unheld == []
-    pins = (*_ROUND_11_PARAGRAPH_AMENDS, *_ROUND_12_PARAGRAPH_AMENDS)
+    pins = (*_ROUND_11_PARAGRAPH_AMENDS, *_ROUND_12_PARAGRAPH_AMENDS, *_ROUND_13_PARAGRAPH_AMENDS)
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
     lines = [
