@@ -798,14 +798,23 @@ def compiling(pidfile: Path) -> str:
     """A stub tool body that starts a "compiler" in a session of its own, which writes its pid, and stops it
     on SIGINT only, as swiftc and SwiftPM do (measured: their compilers outlive a SIGTERM or SIGKILL).  On
     SIGINT it writes a line before it stops the compiler: a tool whose output has no reader left dies of
-    SIGPIPE there.  The trap is set before the compiler starts, so a SIGINT never finds it unset."""
+    SIGPIPE there.  The first trap is set before the compiler starts, so a SIGINT never finds it unset; it
+    only notes the stop until the compiler has written its pid, so a time limit counts from the compiler's
+    start: a SIGINT before then killed the compiler before it wrote one, and the test waited 30 s for a pid
+    that never came (B13 round 13 O73, under load)."""
     child = (
         "import os, sys, time; os.setsid(); open(sys.argv[1] + '.tmp', 'w').write(str(os.getpid())); "
         "os.replace(sys.argv[1] + '.tmp', sys.argv[1]); time.sleep(300)"
     )
+    pid = shlex.quote(str(pidfile))
     return (
-        "trap 'echo \"error: build cancelled\" >&2; kill $!; exit 130' INT\n"
-        f"{shlex.quote(sys.executable)} -c {shlex.quote(child)} {shlex.quote(str(pidfile))} &\n"
+        "stop=\n"
+        "trap 'stop=1' INT\n"
+        f"{shlex.quote(sys.executable)} -c {shlex.quote(child)} {pid} &\n"
+        f"while [ ! -e {pid} ] && kill -0 $! 2>/dev/null; do sleep 0.05; done\n"
+        'halt() { echo "error: build cancelled" >&2; kill $!; exit 130; }\n'
+        "trap halt INT\n"
+        '[ -n "$stop" ] && halt\n'
         "wait $!\n"
     )
 

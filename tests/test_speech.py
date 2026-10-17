@@ -259,6 +259,11 @@ def test_the_build_gets_twenty_minutes_of_its_own(
 def test_a_speech_build_out_of_time_leaves_no_compiler_running(
     tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """swift build's compiler is stopped when the build's time is up. The limit counts from the compiler's
+    start: each step gets the whole 2 s (``_clock`` stands still), so the steps before swift build cannot
+    use it up under load and leave no compiler to find (B13 round 13 O73); ``compiling`` holds a SIGINT
+    until its compiler has written its pid. The shared budget is
+    ``test_the_build_gets_twenty_minutes_of_its_own``'s."""
     pidfile = tmp_path / "compiler.pid"
     script(
         tools / "swift",
@@ -267,6 +272,7 @@ def test_a_speech_build_out_of_time_leaves_no_compiler_running(
         + ";; esac",
     )
     monkeypatch.setattr(speech, "_BUILD_TIMEOUT_S", 2.0)
+    monkeypatch.setattr(speech, "_clock", lambda: 0.0)
     with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
         speech.build(tmp_path / "cache")
     assert gone(compiler_pid(pidfile)), "swift build's compiler outlived the build's time limit"
