@@ -9399,6 +9399,8 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
     [
         "plain",
         "inside a longer word",
+        "inside a longer word, mid-word",
+        "inside a longer word, a second organization",
         "an email address",
         "a quoted word before it",
         "a quoted word alone",
@@ -9410,7 +9412,10 @@ def test_the_org_legend_explains_only_what_the_report_shows(env: dict[str, str],
     address, and never the organization cut out of a longer word (FUZZY=o: ContosoDrive reads <org-1>Drive).
     Its example is the app the body shows, and each clause is printed only where the body shows its case.
     B13 round 13 O45: any "<word>-<org-N>" counted as an app's folder, so a quoted "sales-Contoso" gave
-    "(OneDrive-<org-N>, sales-<org-N>)"; only an app's name counts, a fixed one or this Mac's own."""
+    "(OneDrive-<org-N>, sales-<org-N>)"; only an app's name counts, a fixed one or this Mac's own. B13 round
+    14 Q5: the in-word example was always "<org-1>Drive"; it is a word the body shows."""
+    if case == "inside a longer word, a second organization":
+        (_cloud(env) / "OneDrive-Fabrikam" / "Project Beta").mkdir(parents=True)
     provider = {
         "an email address": "GoogleDrive-someone@contoso.com",
         "this Mac's own app": "ProtonDrive-Contoso",
@@ -9419,6 +9424,9 @@ def test_the_org_legend_explains_only_what_the_report_shows(env: dict[str, str],
     quoted = {
         "plain": "Project Alpha under OneDrive-Contoso",
         "inside a longer word": "ContosoDrive under OneDrive-Contoso",
+        "inside a longer word, mid-word": "MyContosoTeam under OneDrive-Contoso",
+        "inside a longer word, a second organization": "Project Alpha under OneDrive-Contoso, FabrikamHub "
+        "under OneDrive-Fabrikam",
         "an email address": f"Project Alpha under {provider}",
         "a quoted word before it": "the sales-Contoso team folder under OneDrive-Contoso",
         "a quoted word alone": "the sales-Contoso team folder",
@@ -9438,6 +9446,10 @@ def test_the_org_legend_explains_only_what_the_report_shows(env: dict[str, str],
         "plain": base + "(OneDrive-<org-N>)",
         "inside a longer word": base
         + "(OneDrive-<org-N>), also where it stands inside a longer word (such as <org-1>Drive)",
+        "inside a longer word, mid-word": base
+        + "(OneDrive-<org-N>), also where it stands inside a longer word (such as My<org-1>Team)",
+        "inside a longer word, a second organization": base
+        + "(OneDrive-<org-N>), also where it stands inside a longer word (such as <org-2>Hub)",
         "an email address": base + "(GoogleDrive-<org-N>), and an account's email address",
         "a quoted word before it": base + "(OneDrive-<org-N>)",
         "a quoted word alone": base + "(OneDrive-<org-N>)",

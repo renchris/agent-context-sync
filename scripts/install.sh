@@ -2887,7 +2887,7 @@ say_item() { # TEXT
 }
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
-	local org_item apps="" heads e email="" inword="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
+	local org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
@@ -2957,13 +2957,18 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		apps="$(LC_ALL=C grep -oE "(^|[^A-Za-z0-9])($heads)(-SharedLibraries)?-<org-[0-9]+>" "$3" 2>/dev/null |
 			LC_ALL=C sed -E 's/^[^A-Za-z]//; s/-<org-[0-9]+>$/-<org-N>/' | LC_ALL=C sort -u | LC_ALL=C awk 'NR <= 2' |
 			LC_ALL=C paste -sd ',' - | LC_ALL=C sed 's/,/, /g')"
+		# the in-word example is a whole word the body shows, by the detector's pattern, so the two agree; a
+		# word over 32 bytes (a hash, a run-together path piece) is no example (B13 round 14 Q5)
 		! LC_ALL=C grep -qE '[A-Za-z0-9]<org-[0-9]+>|<org-[0-9]+>[A-Za-z0-9]' "$3" 2>/dev/null || inword=1
+		[ -z "$inword" ] || inword_ex="$(LC_ALL=C grep -oE '[A-Za-z0-9]+<org-[0-9]+>[A-Za-z0-9]*|<org-[0-9]+>[A-Za-z0-9]+' "$3" 2>/dev/null |
+			LC_ALL=C awk 'length($0) <= 32' | LC_ALL=C sort -u | LC_ALL=C awk 'NR == 1')"
 	else # no body to read: every clause, as before
 		in_list=1 whole=1 skip_generic=1 skip_agent=1 email=1 inword=1 apps="OneDrive-<org-N>, Dropbox-<org-N>"
+		inword_ex="<org-1>Drive"
 	fi
 	org_item="- <org-N>: the organization or team after the app's name in a CloudStorage folder (${apps:-OneDrive-<org-N>})"
 	[ -z "$email" ] || org_item+=", and an account's email address"
-	[ -z "$inword" ] || org_item+=", also where it stands inside a longer word (such as <org-1>Drive)"
+	[ -z "$inword" ] || org_item+=", also where it stands inside a longer word${inword_ex:+ (such as $inword_ex)}"
 	folder_item="- <folder-N>: the names of the folders under CloudStorage that --source-local, sources.toml"
 	if [ -n "$in_list" ]; then
 		folder_item+=", install.log or step 1's folder list in install.out name"
