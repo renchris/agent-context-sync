@@ -9353,6 +9353,51 @@ def test_a_dropbox_team_folder_is_an_org_and_its_app_name_no_residue(
     assert set(re.findall(r"<org-\d+>", text)) == {"<org-1>", "<org-2>"}
 
 
+@pytest.mark.parametrize(
+    ("text", "hits"),
+    [
+        ("~/Library/CloudStorage/Dropbox/<folder-3>", []),
+        ("/Users/<user>/Library/CloudStorage/Box/<folder-1>", []),
+        ("~/Library/CloudStorage/GoogleDrive-<name>/<folder-2>", []),
+        ("~/Library/CloudStorage/Box-Box/<folder-2>", []),
+        ("~/Library/CloudStorage/Egnyte-<org-1>/Shared/<folder-1>", []),
+        ("~/Library/CloudStorage/Dropbox-Acme-<org-1>/<folder-1>", ["Acme"]),
+        ("Contoso<org-1>", ["Contoso"]),
+        ("Dropbox <folder-1>", ["Dropbox"]),
+        ("<folder-1> Box", ["Box"]),
+    ],
+)
+def test_an_app_name_is_no_residue_only_as_the_provider_folder(text: str, hits: list[str]) -> None:
+    """B13 round 14 Q14, Q37: ``~/Library/CloudStorage/Dropbox/<folder-3>`` flagged ``Dropbox``, the app's own
+    folder name, since only a provider folder that names an organisation was skipped. An app name inside the
+    provider folder right after ``CloudStorage/`` is no hit; any other word there is, and so is an app name
+    anywhere else (a project's leftover second word)."""
+    assert setup_report.residue(text) == hits
+
+
+def test_a_personal_dropbox_folder_leaves_no_residue_in_the_report(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 14 Q14, Q37: a report from a Mac with a personal Dropbox folder said "Residue check: 2
+    capitalized or joined word(s) ... (Installer: Dropbox; Doctor: Dropbox); check them"."""
+    gamma = fake_mac["home"] / "Library" / "CloudStorage" / "Dropbox" / "Project Gamma"
+    gamma.mkdir(parents=True)
+    assert cli.main(["add-source", str(gamma), "--config", str(fake_mac["config"])]) == 0
+    gamma.rmdir()  # its doctor FAIL prints the path
+    log = fake_mac["setup"] / "install.log"
+    quoted = str(gamma).replace(" ", "\\ ")
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        + "2026-09-29T11:00:00Z run=20260929T110000Z-4343 start install.sh commit=0123456789ab "
+        f"kind=checkout source=- args=--source-local {quoted}\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "Gamma" not in text and re.search(r"CloudStorage/Dropbox/<folder-\d+>", text), text
+    check = next(ln for ln in section(text, "Redaction").splitlines() if "Residue check:" in ln)
+    assert check.startswith("Residue check: no capitalized or joined word"), check
+
+
 def test_recount_counts_numbered_placeholders_in_the_text_and_leaves_the_rest() -> None:
     """A numbered kind counts as often as the text shows its placeholders, and one the text never shows drops
     out; an unnumbered kind keeps its replacement count; a disabled Redactor is unchanged (B13 N31)."""

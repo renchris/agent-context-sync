@@ -8808,6 +8808,13 @@ def _section(title: str, fn: Callable[[], list[str]]) -> list[str]:
     return ["", f"## {title}", "", *body]
 
 
+_PROVIDER_DIR_RE = re.compile(rf"(?<=CloudStorage/)(?:{'|'.join(sorted(_CONTEXT_HEADS))})[^/\s]*")
+"""The provider folder right after ``CloudStorage/`` in a path (``Dropbox``, ``Box-Box``,
+``GoogleDrive-<name>``, ``Egnyte-<org-1>``): an app name inside it is the app's, never residue (B13 round 14
+Q14, Q37). Any other word in it still is (``Acme`` in ``Dropbox-Acme-<org-1>``), and so is an app name
+anywhere else (``<folder-1> Box``)."""
+
+
 def residue(text: str, *, ignore: frozenset[str] = frozenset()) -> list[str]:
     """Capitalised words right next to a name, organisation, library, folder or source placeholder in ``text``
     (redacted text), and words of any case joined to one by ``-`` or ``_`` or glued to one with no separator
@@ -8817,11 +8824,18 @@ def residue(text: str, *, ignore: frozenset[str] = frozenset()) -> list[str]:
     second word), and so is the home with :data:`_GENERIC_HOME_DIRS` below it (``~/Development/<folder-1>`` is
     no hit, ``<folder-1> Development`` is one). The fixed macOS path components (Users, Library, Application
     Support, ...) are no hit, and neither is a word in ``ignore`` (a CloudStorage folder's app name before its
-    ``<org-N>``)."""
+    ``<org-N>``), nor an app's name inside the provider folder after ``CloudStorage/``
+    (:data:`_PROVIDER_DIR_RE`)."""
     found: list[str] = []
-    for m in _RESIDUE_RE.finditer(_HOME_CONTAINER_RE.sub("~/", _USER_HOME_RE.sub("~/", text))):
-        word = next((g for g in m.groups() if g), None)
+    plain = _HOME_CONTAINER_RE.sub("~/", _USER_HOME_RE.sub("~/", text))
+    providers = [m.span() for m in _PROVIDER_DIR_RE.finditer(plain)]
+    for m in _RESIDUE_RE.finditer(plain):
+        hit = next((n for n, g in enumerate(m.groups(), 1) if g), None)
+        word = m.group(hit) if hit is not None else None
         known = word in _RESIDUE_IGNORED or word in _GENERIC_FOLDERS or word in ignore
+        if hit is not None and word in _CONTEXT_HEADS:
+            at, end = m.span(hit)
+            known = known or any(start <= at and end <= stop for start, stop in providers)
         if word and not known and word not in found:
             found.append(word)
     return found
