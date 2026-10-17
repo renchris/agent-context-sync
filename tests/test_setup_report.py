@@ -5951,13 +5951,14 @@ def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_en
     headed, new = setup_report.parse_friction(open_v12 + same).attempts
     assert headed.said("Agent") == agent and not headed.finished
     assert new.said("Agent") == "claude code,  Claude-Opus-5-5" and new.events[0].what == "x"
-    # A header-less attempt with stated words: the same words 30 seconds on stay (case and spacing aside)...
+    # A header-less attempt with stated words: a second stated line is another session's at any gap, since
+    # a session writes the prefix once, at its Xcode or git stop, then goes to its report (round 14 Q28; the
+    # same words 30 seconds on stayed). Its prefix is stripped as the first's is.
     words = "2026-09-29T09:58:00Z | step 1 | error | prompt v12, Claude Code, claude-opus-5-5: y | -\n"
-    [one] = setup_report.parse_friction(words + same).attempts
-    assert one.said("Agent") == agent and one.events[1].what.startswith("prompt v12, ")
-    # ...more than 10 minutes after the attempt's latest time they are another session's...
+    one, two = setup_report.parse_friction(words + same).attempts
+    assert one.said("Agent") == agent and [e.what for e in one.events] == ["y"]
+    assert two.said("Agent") == "claude code,  Claude-Opus-5-5" and [e.what for e in two.events] == ["x"]
     assert len(setup_report.parse_friction(words + same.replace("09:58:30Z", "10:08:01Z")).attempts) == 2
-    # ...and so is another agent at once.
     other = same.replace("claude code,  Claude-Opus-5-5", "Contoso Agent")
     assert len(setup_report.parse_friction(words + other).attempts) == 2
     # A stopped v11 copy closes its attempt; a v12 paste two minutes later is its own, within the gap too.
@@ -5971,6 +5972,39 @@ def test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_en
         {},
         {"Prompt": "v12", "Agent": "x"},
     ]
+
+
+PRX_LOG = (
+    "Attempt: 2026-10-17T16:40:00Z\nPrompt: v22\nAgent: Claude Code, claude-opus-5-5\n"
+    "2026-10-17T16:58:00Z | end | finished\n"
+    "2026-10-17T17:03:50Z | step 1 | error | prompt v22, Claude Code claude-opus-5-5: xcode-select -p exited "
+    "2 | -\n"
+    "2026-10-17T17:08:26Z | step 1 | error | prompt v22, Claude Code claude-opus-5-5: git -C "
+    "~/src/agent-context-sync pull exited 1 | -\n"
+)
+"""Probe prx (B13 round 14 Q28): a finished attempt, then two sessions that each stopped at step 1, 4m36s
+apart, each writing the prefix once as the prompt says, then going to the report."""
+
+
+def test_two_sessions_that_each_stop_at_step_1_within_the_gap_are_two_attempts(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 14 Q28: the second stated step 1 error joined the first's header-less attempt within the
+    10-minute gap: one 4m36s session, the first stop read as friction, and the second line kept its
+    ``prompt v22, <agent>:`` prefix. Each is its own attempt now, its prefix stripped."""
+    attempts = setup_report.parse_friction(PRX_LOG).attempts
+    assert len(attempts) == 3, attempts
+    whats = ("xcode-select -p exited 2", "git -C ~/src/agent-context-sync pull exited 1")
+    for att, what in zip(attempts[1:], whats, strict=True):
+        assert att.stated == {"Prompt": "v22", "Agent": "Claude Code claude-opus-5-5"}
+        assert [e.what for e in att.events] == [what]
+    write_friction(fake_mac, PRX_LOG)
+    now = datetime(2026, 10, 17, 17, 30, tzinfo=UTC)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
+    summary, fr = section(text, "Summary"), section(text, "Agent friction log")
+    assert "4m36s" not in summary + fr and "3 attempt(s):" in fr, fr
+    assert "· step 1 · error · git -C ~/src/agent-context-sync pull exited 1" in summary, summary
+    assert "prompt v22, Claude Code" not in summary, summary
 
 
 def test_a_prefixed_step_1_error_after_a_finished_attempt_is_reported_as_its_own(

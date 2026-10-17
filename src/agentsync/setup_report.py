@@ -1486,15 +1486,6 @@ def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
     return FrictionEvent(line_no, moment, step, kind or "?", what, fix)
 
 
-def _agent_key(agent: str) -> str:
-    """An agent's words as :func:`parse_friction` compares them: ASCII letters in lower case, quotes (curly
-    ones too) dropped, blanks and tabs collapsed: what install.sh's awk reads in the C locale, so the
-    installer's NEXT and this report judge the same attempt (B13 round 5 F54)."""
-    dropped = re.sub("[\"'\u2018\u2019\u201c\u201d*]", " ", agent)
-    lowered = re.sub("[A-Z]+", lambda m: m.group().lower(), dropped)
-    return re.sub("[ \t]+", " ", lowered).strip(" ")
-
-
 _STEP1_STATED_RE = re.compile(
     r"[\s'\"\u2018\u2019]*prompt v(\d{1,3})(?![\d\w])[ ,:;-]+([^:\s][^:]{0,99}?)\s*:[\s'\"\u2018\u2019]*",
     re.IGNORECASE | re.ASCII,
@@ -1532,10 +1523,11 @@ def parse_friction(text: str) -> Friction:
     (:data:`_STEP1_STATED_RE`) when the open attempt has a header (a Prompt:, Agent:, Outcome: or Run:
     line; an ``Attempt:`` line alone is not one), whatever the gap:
     the prefix is written only before ``--log-start``, which writes the header, so after a header it is
-    always another session's (B13 round 5 F23). After a header-less attempt with stated words, it does when
-    the line's version or agent (casefolded, spaces collapsed, quotes dropped) differs from them, or the line
-    is more than the gap after the attempt's latest time, whether or not the attempt has an end line: a
-    session that stopped at the folder question leaves none (B13 round 4 Q21). Any other line
+    always another session's (B13 round 5 F23). After a header-less attempt with stated words it does too,
+    whatever the gap: a session writes the prefix once, at the Xcode or git stop, then goes to its report,
+    so a second stated line is another session's (B13 round 14 Q28: two sessions that each stopped at step
+    1 four minutes apart read as one, the second line's prefix kept; round 4 Q21 compared the version, the
+    agent and the gap). Any other line
     stays in its attempt (a line logged late in the same session must not become the latest attempt), and
     :func:`stopping_error` does not judge it. When an attempt with no header and no stated words holds a step
     1 error with those words, at any place in it, the attempt states that version and agent
@@ -1559,28 +1551,13 @@ def parse_friction(text: str) -> Friction:
         closed = [e.at for e in events if e.kind == "finished" and e.at]
         if closed and event.at - max(closed) > _NEW_SESSION_GAP:
             return True
-        # A line that states its prompt and agent is another session's when they differ from the attempt's,
-        # or when it comes more than the gap after the attempt's last time, end line or not: a session that
-        # stopped at the folder question leaves no end line (B13 round 4 Q21)
-        stated = _STEP1_STATED_RE.match(event.what)
+        # A line that states its prompt and agent is written once per session, only before --log-start
+        # (which writes the header), at the Xcode or git stop, and the session then goes to its report: after
+        # a header, or after a header-less attempt that already has stated words, it is always another
+        # session's, whatever the gap (B13 round 5 F23; an Attempt: line alone is not one, G51; round 14
+        # Q28: two sessions that each stopped at step 1 within the gap were one attempt)
         header, prior = cast("dict[str, str]", cur["header"]), cast("dict[str, str]", cur["stated"])
-        if stated is None or not (header or prior):
-            return False
-        # The prefix is written only before --log-start, which writes the header: after a header it is always
-        # another session's, whatever the gap (B13 round 5 F23; an Attempt: line alone is not one, G51)
-        if header:
-            return True
-        said = header.get("Prompt") or prior.get("Prompt", "")
-        version = re.search(r"\bv?(\d{1,3})\b", said, re.ASCII)  # ASCII digits, as install.sh's awk (F54)
-        if version is not None and int(version.group(1)) != int(stated.group(1)):
-            return True
-        agent = header.get("Agent") or prior.get("Agent", "")
-        if agent and _agent_key(agent) != _agent_key(stated.group(2)):
-            return True
-        times = [
-            t for t in (cast("datetime | None", cur["started"]), *(e.at for e in events)) if t is not None
-        ]
-        return bool(times) and event.at - max(times) > _NEW_SESSION_GAP
+        return _STEP1_STATED_RE.match(event.what) is not None and bool(header or prior)
 
     def close() -> None:
         if cur is not None:

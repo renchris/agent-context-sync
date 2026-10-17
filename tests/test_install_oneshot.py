@@ -2886,9 +2886,14 @@ def test_the_installer_and_the_report_split_the_same_attempts_after_any_header()
         "2026-10-01T10:05:00Z | end | finished\nPrompt: v4\nAgent: Claude Code\n"
         "2026-10-02T10:00:00Z | step 2 | ok | b | -\n",
         f"Attempt: 2026-10-06T10:00:00Z\nPrompt: v12\nPrompt: v12\n2026-10-06T10:01:00Z {err}",
+        # B13 round 14 Q28 (probe prx): two sessions that each stopped at step 1, 4m36s apart, after a
+        # finished attempt are two attempts, not one
+        "Attempt: 2026-10-17T16:40:00Z\nPrompt: v22\nAgent: Claude Code\n"
+        f"2026-10-17T16:58:00Z | end | finished\n2026-10-17T17:03:50Z {err}2026-10-17T17:08:26Z {err}",
     ]
     for log in logs:
         assert _awk_attempts(log) == len(setup_report.parse_friction(log).attempts), log
+    assert len(setup_report.parse_friction(logs[-1]).attempts) == 3
 
 
 def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[str, str]) -> None:
@@ -3426,7 +3431,8 @@ def test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shel
         [("1", "error", "git pull failed again")],
         [("1", "prompt", "the person said to go on")],
         [("1", "question", "which folder?")],
-        [("1", "deviation", "asked"), ("1", "error", "prompt v15, Contoso Agent: still no network")],
+        # a session writes the prefix once (B13 round 14 Q28: a second prefixed line is another session's)
+        [("1", "deviation", "asked"), ("1", "error", "still no network")],
     ],
 )
 def test_the_shell_report_computes_a_step_1_failure_past_its_first_line(

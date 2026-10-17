@@ -693,11 +693,12 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
 # a step 1 error line, which after an end line may open a header-less attempt (parse_friction). track(LINE),
-# called on every line first, keeps the open attempt's prompt number PV, agent AG and latest time LT, and is 1
-# for a step 1 error that states "prompt vN, <agent>:" words another session's: after any header line
-# parse_friction keeps (Prompt, Agent, Outcome, Run: HD, which an Attempt: line clears) always, since a prefixed line is written only before --log-start, so after a header it is
-# always another session's (B13 round 5 F23); after a header-less attempt, a version or agent that differs
-# from its words, or a time more than gap after its latest, end line or not (B13 round 4 Q21).
+# called on every line first, keeps the open attempt's prompt number PV and agent AG, and is 1 for a step 1
+# error that states "prompt vN, <agent>:" words another session's: after any header line parse_friction keeps
+# (Prompt, Agent, Outcome, Run: HD, which an Attempt: line clears), and after a header-less attempt that
+# already has stated words, always, at any gap: a session writes the prefix once, only before --log-start (so
+# after a header it is another session's, B13 round 5 F23), at the Xcode or git stop, then goes to its
+# report, so a second stated line is another session's too (B13 round 14 Q28).
 # restate(LINE) gives an attempt a step 1 error opened the words that line states; an attempt with no header and
 # no words takes them from its first step 1 error that states them, wherever it sits (B13 round 10 L26).
 # A second Prompt: line in one attempt opens another, as in parse_friction, for any log version (B13 round 6
@@ -731,9 +732,9 @@ FRICTION_AWK='
 		}
 		function restate(line) { HD = 0; PS = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
 		function track(line,    a, new) {
-			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PS = 0; PV = ""; AG = ""; LT = substr(line, 10, 20); return 0 }
+			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PS = 0; PV = ""; AG = ""; return 0 }
 			if (line ~ /^[-* ]*Prompt:/) {
-				if (PS) { NH = 1; PV = ""; AG = ""; LT = "" }
+				if (PS) { NH = 1; PV = ""; AG = "" }
 				SEEN = 1; HD = 1; PS = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0
 			}
 			if (line ~ /^[-* ]*(Outcome|Run):/) { SEEN = 1; HD = 1; return 0 }
@@ -744,11 +745,9 @@ FRICTION_AWK='
 			if (line !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/) return 0
 			new = 0
 			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }
-			else if (line ~ s1 && (HD || PV != "" || AG != "") && stated(line)) {
-				if (HD || (PV != "" && SV != PV) || (AG != "" && SA != AG) || (LT != "" && secs(line) - secs(LT) > gap)) new = 1
-			} else if (line ~ s1 && stated(line)) { PV = SV; AG = SA } # no header and no words yet: the error states them (L26)
-			if (new) { HD = 0; PS = 0; PV = SV; AG = SA; LT = substr(line, 1, 20) }
-			else if (LT == "" || secs(line) > secs(LT)) LT = substr(line, 1, 20)
+			else if (line ~ s1 && (HD || PV != "" || AG != "") && stated(line)) new = 1
+			else if (line ~ s1 && stated(line)) { PV = SV; AG = SA } # no header and no words yet: the error states them (L26)
+			if (new) { HD = 0; PS = 0; PV = SV; AG = SA }
 			return new
 		}
 '
