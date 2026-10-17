@@ -5865,9 +5865,18 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
     # B13 round 13 O65: README's Install section gave round 10's exit 3 rule, with no set-up Mac
     readme = _page("README.md")
     assert "it exits 3 when OneDrive is not signed in or syncs no folder yet" not in readme
+    # B13 round 14 Q74: a config the list could not read gets a new Mac's exits (synced is empty, so the
+    # signed-out check never runs) and a NEXT that says so; the Install section said a set-up Mac exits 0
+    installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     assert (
-        "On a Mac that syncs no folder yet it exits 3 when it finds none (OneDrive not signed in, or nothing "
-        "synced yet). On a Mac that already syncs folders it exits 3 when one of them under "
+        'NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"'
+        in installer
+    )
+    assert "On a Mac that already syncs folders it exits 3" not in readme
+    assert (
+        "On a Mac that syncs no folder yet, or whose config the list could not read (its `NEXT:` line then "
+        "says so), it exits 3 when it finds none (OneDrive not signed in, or nothing synced yet). On a Mac "
+        "whose config shows it already syncs folders it exits 3 when one of them under "
         "`~/Library/CloudStorage` is missing because its app is signed out, even if other folders are "
         "listed, and otherwise exits 0, even when nothing is listed. It exits 4, before any of these checks, "
         "when macOS denied this terminal access or is still asking"
