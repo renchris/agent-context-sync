@@ -1074,7 +1074,11 @@ run() {
 
 # Setup log (see the header): appended to, never printed; a log that cannot be written is ignored.
 SETUP_LOG="${AGENTSYNC_SETUP_LOG:-$HOME/agent-context/setup/install.log}"
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+# One clock read for the run id and its start time, so the Installer section shows one second for both
+# (B13 round 13 O4): the start line used to be stamped later, after the commit read.
+RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+RUN_ID="$RUN_STAMP-$$"
+RUN_AT="${RUN_STAMP:0:4}-${RUN_STAMP:4:2}-${RUN_STAMP:6:2}T${RUN_STAMP:9:2}:${RUN_STAMP:11:2}:${RUN_STAMP:13:2}Z"
 STEP=""
 STEP_T0=0
 STEP_AT=""
@@ -1108,7 +1112,7 @@ log_start() { # the run's "start" line, once
 	[ "$STARTED" -eq 0 ] || return 0
 	STARTED=1
 	[ "$SIMULATE" -eq 0 ] || sim=" launchd=simulated"
-	log_at "$(utc_now)" "start install.sh compat=$SETUP_PROMPT_COMPAT commit=$COMMIT${DIRTY:+ tree=$DIRTY}" \
+	log_at "$RUN_AT" "start install.sh compat=$SETUP_PROMPT_COMPAT commit=$COMMIT${DIRTY:+ tree=$DIRTY}" \
 		"kind=$SOURCE_KIND" \
 		"source=$(printf '%q' "${SOURCE:--}")$sim args=${ORIG_ARGS# }"
 }
@@ -1133,7 +1137,7 @@ start_capture() {
 	) 2>/dev/null || return 0
 	[ -f "$INSTALL_OUT" ] && [ ! -L "$INSTALL_OUT" ] && [ -w "$INSTALL_OUT" ] || return 0
 	trim_install_out
-	printf '# run=%s %s install.sh%s\n' "$RUN_ID" "$(utc_now)" "$ALL_ARGS" >>"$INSTALL_OUT" 2>/dev/null || return 0
+	printf '# run=%s %s install.sh%s\n' "$RUN_ID" "$RUN_AT" "$ALL_ARGS" >>"$INSTALL_OUT" 2>/dev/null || return 0
 	exec > >(
 		trap '' INT TERM HUP
 		exec tee -a "$INSTALL_OUT"

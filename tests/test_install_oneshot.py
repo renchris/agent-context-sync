@@ -3522,6 +3522,33 @@ def _fingerprint(git: list[str]) -> str:
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+def test_a_runs_id_and_its_start_line_name_one_second(env: dict[str, str], tmp_path: Path) -> None:
+    """B13 round 13 O4: the run id was stamped when install.sh loaded and the start line later, after the
+    commit read, so a slow git put the Installer section's id and start seconds apart, and start plus
+    `seconds` fell after the end line. One clock read now gives both. git is slowed by a core.fsmonitor hook
+    (install.sh calls /usr/bin/git by its path, so a stub on PATH would not be run)."""
+    src = tmp_path / "checkout"
+    src.mkdir()
+    (src / "pyproject.toml").write_text('[project]\nname = "agentsync"\nversion = "0.1.0"\n')
+    git = _git_checkout(src)
+    hook = _write_exe(tmp_path / "slow-fsmonitor", "#!/bin/bash\nsleep 2\nexit 1\n")
+    subprocess.run([*git, "config", "core.fsmonitor", str(hook)], check=True, capture_output=True)
+    (src / "pyproject.toml").write_text('[project]\nname = "agentsync"\nversion = "0.1.1"\n')
+    install_sh(env, str(src))
+    log = install_log(env)
+    [start] = [ln for ln in log if " start install.sh " in ln]
+    [end] = [ln for ln in log if " end rc=" in ln]
+    stamp = re.search(r" run=(\d{8}T\d{6}Z)-\d+ ", start)
+    assert stamp, start
+    at = datetime.strptime(stamp.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+    assert start.split()[0] == at.strftime("%Y-%m-%dT%H:%M:%SZ"), (start, "the start line is the id's second")
+    seconds = int(re.search(r" seconds=(\d+)", end).group(1))  # type: ignore[union-attr]
+    ended = datetime.strptime(end.split()[0], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    assert abs((at + timedelta(seconds=seconds) - ended).total_seconds()) <= 1, (start, end)
+    assert seconds >= 2, "git was slowed, so a later stamp would have shown"
+
+
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
 def test_version_of_a_dirty_checkout_names_its_diff(tmp_path: Path) -> None:
     src = tmp_path / "checkout"
     (src / "scripts").mkdir(parents=True)
