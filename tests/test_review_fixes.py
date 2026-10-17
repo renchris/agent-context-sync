@@ -1112,7 +1112,9 @@ def test_graph_delta_passes_leave_the_incomplete_count_and_doctor_at_ok(
     )
     # B13 round 6 G54: the fix is sync -v, as the loop's; a plain sync of a drive is FULL in the cases
     # that reach three, and a delta otherwise resets the count.
-    assert line.fix == f"~/.local/bin/agentsync sync -v (a full pass that lists all of {DRIVE} clears this)"
+    assert line.fix == f"~/.local/bin/agentsync sync -v; a full pass that lists all of {DRIVE} clears this"
+    # B13 round 13 O51: the fix's own bracket nested inside the line's "(fix: ...)"
+    assert doctor.format_results([line]).count("(") == 1, doctor.format_results([line])
 
 
 @pytest.mark.parametrize("why", ["moved-out-of-scope", "moved:ARCHIVE-FOLDER", "excluded"])

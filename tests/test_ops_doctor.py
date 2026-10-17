@@ -18,7 +18,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -1181,6 +1181,51 @@ def test_cloud_source_listing_times_out_with_click_allow_hint(
     assert "source.local-fixture.sentinel" not in r and "source.local-fixture.volume" not in r
 
 
+@pytest.mark.parametrize("there", [True, False])
+def test_a_held_provider_folder_never_holds_status_past_the_listing_bound(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, there: bool
+) -> None:
+    """B13 round 13 O47: status read every cloud source's provider folder for the missing-source fix before
+    its timed listing, so a hidden Allow prompt holding reads under OneDrive-Contoso held status there, past
+    the bound that gives the click-Allow FAIL. The fix is read only once the listing has answered, and within
+    the same bound; unread, it keeps the path fix (``there``: the source folder exists, else it is
+    missing)."""
+    provider = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso"
+    root = provider / "Docs"
+    (provider / "Other").mkdir(parents=True)
+    if there:
+        root.mkdir()
+        (root / "a.docx").write_bytes(b"x")
+    release = threading.Event()
+    real_iterdir, real_first = Path.iterdir, doctor._first_entry
+
+    def iterdir(self: Path) -> Iterator[Path]:
+        if self == provider:
+            release.wait(5.0)
+        return real_iterdir(self)
+
+    def first_entry(p: Path) -> str | None:
+        if p == root and there:
+            release.wait(5.0)
+        return real_first(p)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    monkeypatch.setattr(doctor, "_first_entry", first_entry)
+    monkeypatch.setattr(doctor, "_LISTING_TIMEOUT_S", 0.2, raising=False)
+    src = dataclasses.replace(sample_config.sources[0], id="docs", path=root, sentinel=None)
+    try:
+        started = time.monotonic()
+        r = by_name(doctor._check_local_source(sample_config, src, Path(sys.executable)))
+        assert time.monotonic() - started < 2.0, "held behind the provider folder's read"
+    finally:
+        release.set()
+    listable = r["source.docs.listable"]
+    if there:
+        assert "did not return" in listable.detail and "click Allow" in (listable.fix or ""), listable
+    else:
+        assert listable.fix == 'fix path in [[source]] id = "docs", or sync that folder in OneDrive', listable
+
+
 def test_tcc_note_inside_launchd(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Test" / "P"
     root.mkdir(parents=True)
@@ -1676,12 +1721,12 @@ def test_heartbeat_incomplete_fix_by_source_kind(
     the line is a note, since install.sh prints the loop's line."""
     local = sample_config.sources[0]
     fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=SourceKind.INBOX))
-    assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
+    assert fix == "~/.local/bin/agentsync sync -v; a full pass that lists all of team-drive clears this"
     assert_fix_parses(fix)
     # B13 round 6 G54: since F69 a delta resets the count, and the three FULL passes the warn needs come only
     # where a plain sync is FULL too, so a Graph source keeps sync -v, as the loop and CONTRACTS say.
     fix = doctor._incomplete_fix(dataclasses.replace(local, id="team-drive", kind=SourceKind.GRAPH_DRIVE))
-    assert fix == "~/.local/bin/agentsync sync -v (a full pass that lists all of team-drive clears this)"
+    assert fix == "~/.local/bin/agentsync sync -v; a full pass that lists all of team-drive clears this"
     assert_fix_parses(fix)
     root = Path.home() / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Projects"
     (root / "Bids").mkdir(parents=True)
@@ -1770,11 +1815,27 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
     # the setup report (no loop_checks) runs after install's sync: an inbox not held by empty folders keeps
     # sync -v, which names a cause no plain sync clears
     r = by_name(doctor._check_heartbeat(inbox, loop_checks=None))[name]
-    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v "), r
+    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v; "), r
     # and outside install.sh an inbox no wait names keeps sync -v on status's path too
     monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV)
     r = by_name(doctor._check_heartbeat(inbox, loop_checks=()))[name]
-    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v "), r
+    assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v; "), r
+
+
+@pytest.mark.parametrize("note", [doctor._LISTING_YOURS_NOTE, doctor.LISTING_YOURS_REPORT_NOTE])
+def test_a_held_listing_line_says_held_once(note: str) -> None:
+    """B13 round 13 O36: "deletions held (held at its last walk: ...)" used "held" for the deletions and for
+    the listing's state, and the report's note a third time ("still holds it"). The note dates the state
+    ("as of its last walk"), and the line has one "held"."""
+    line = CheckResult(
+        "heartbeat.contoso-docs",
+        False,
+        "enumeration incomplete for 4 consecutive passes; deletions held",
+        Severity.WARN,
+        note=note,
+    )
+    shown = format_results([line])
+    assert shown.count("held") == 1 and "(as of its last walk: " in shown, shown
 
 
 def assert_fix_parses(fix: str | None) -> None:
@@ -1941,7 +2002,20 @@ def test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cau
         f"Sync on its SharePoint page, or {table}"
     }
     assert fixes() == shared and all("(" not in (f or "") for f in fixes())
-    gone.rmdir()
+    # B13 round 13 O52: the library folder there but empty beside OneDrive-Contoso is a library not synced or
+    # still setting up, never the sign-in the empty-folder rule (N61) gave it
+    library.mkdir()
+    (library / ".tmp.drivedownload").mkdir()
+    assert fixes() == {
+        f"{library} is empty while OneDrive-Contoso is there: sync the SharePoint library to this Mac with "
+        f"Sync on its SharePoint page, or let OneDrive finish setting it up, or {table}"
+    }
+    gone.rmdir()  # ... and beside no OneDrive-Contoso, the empty-folder rule's sign-in as before
+    assert fixes() == {
+        f"sign in to OneDrive on this Mac or let it finish setting up, since {library} is empty, then run "
+        "~/.local/bin/agentsync status again"
+    }
+    shutil.rmtree(library)
     cfg = dataclasses.replace(sample_config, sources=(src,))
     gone.mkdir()
     (gone / ".tmp.drivedownload").mkdir()

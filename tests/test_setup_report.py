@@ -9374,10 +9374,13 @@ def _yours_step() -> loop.NextStep:
     [
         " (fix: each WAITING ON YOU line about project-x says what stops the listing and what to do: "
         "another sync does not clear it)",
+        " (as of its last walk: the end of this run says whether this run's sync cleared it)",
+        " (as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)",
+        # an installed agentsync from before B13 round 13 O36
         " (held at its last walk: the end of this run says whether this run's sync cleared it)",
         " (held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)",
     ],
-    ids=["by-hand", "install.sh", "report"],
+    ids=["by-hand", "install.sh", "report", "install.sh-before-O36", "report-before-O36"],
 )
 def test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected(
     fake_mac: dict[str, Path], tail: str

@@ -835,16 +835,24 @@ def test_a_listing_held_after_the_first_sync_exits_1_and_names_the_click(
 
 
 _HELD_WARN = (
-    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes; deletions held (held "
-    "at its last walk: the end of this run says whether this run's sync cleared it)"
+    "[warn] heartbeat.fy26-projects — enumeration incomplete for 3 consecutive passes; deletions held (as of "
+    "its last walk: the end of this run says whether this run's sync cleared it)"
 )
 """Step 5's warn on a held listing; an installed agentsync from before B13 round 12 N17 bracketed the
-"(deletions held)", which install.sh's anchor matches too."""
-_HELD_WARN_BEFORE_N17 = _HELD_WARN.replace("passes; deletions held (held", "passes (deletions held) (held")
+"(deletions held)", and one from before round 13 O36 began its note "held at", which install.sh's anchor
+matches too."""
+_HELD_WARN_BEFORE_O36 = _HELD_WARN.replace("(as of its last walk", "(held at its last walk")
+_HELD_WARN_BEFORE_N17 = _HELD_WARN_BEFORE_O36.replace(
+    "passes; deletions held (held", "passes (deletions held) (held"
+)
 _CLEARED = "heartbeat.fy26-projects: this run's sync listed it in full; deletions are no longer held"
 
 
-@pytest.mark.parametrize("warn", [_HELD_WARN, _HELD_WARN_BEFORE_N17], ids=["one bracket", "before N17"])
+@pytest.mark.parametrize(
+    "warn",
+    [_HELD_WARN, _HELD_WARN_BEFORE_O36, _HELD_WARN_BEFORE_N17],
+    ids=["one bracket", "before O36", "before N17"],
+)
 @pytest.mark.parametrize("case", ["cleared", "still held", "fail skips the sync"])
 def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
     env: dict[str, str], folder: Path, wheel: Path, case: str, warn: str
@@ -859,7 +867,9 @@ def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
     if case == "cleared":
         e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{ok}"
     elif case == "still held":
-        e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{wait}\n" + warn.partition(" (held")[0]
+        e["STUB_STATUS_OUT"] = f"NEXT: {LOOP_NEXT}\n{wait}\n" + re.sub(
+            r" \((as of|held at) its last walk.*", "", warn
+        )
     else:
         fail = "[FAIL] docs_repo.git — /x/docs does not exist and /x is not writable (fix: mkdir -p /x/docs)"
         e |= {"STUB_DOCTOR_OUT": f"{warn}\n{fail}", "STUB_DOCTOR_RC": "1", "STUB_STATUS_OUT": ok}
@@ -870,6 +880,9 @@ def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
     if case == "cleared":
         assert lines.index(_CLEARED) < len(lines) - 1 and one_next(cp)
         assert last_line(cp).startswith(f"NEXT: {LOOP_NEXT}")
+    # B13 round 13 O36: "deletions held (held at its last walk ..." used the word in two senses
+    if warn == _HELD_WARN:
+        assert [ln.count("held") for ln in lines if ln.startswith("[warn] heartbeat.fy26-projects")] == [1]
 
 
 def test_a_held_listing_beside_the_launchers_tcc_pending_still_exits_1(

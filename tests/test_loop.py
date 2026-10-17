@@ -761,7 +761,7 @@ def test_doctor_points_an_inbox_held_by_an_empty_cloud_folder_at_the_loops_wait(
     )
     assert (
         checks["heartbeat.bare"].fix
-        == "~/.local/bin/agentsync sync -v (a full pass that lists all of bare clears this)"
+        == "~/.local/bin/agentsync sync -v; a full pass that lists all of bare clears this"
     )
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     checks = {c.name: c for c in doctor._check_heartbeat(config)}

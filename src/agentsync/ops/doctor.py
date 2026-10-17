@@ -87,13 +87,14 @@ _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # whether the wait stays, goes, or a FAIL skips the sync (B13 round 4 Q26, Q32). The answer can be a WAITING
 # ON YOU line, the NEXT line (a listing held for a privacy prompt), install.sh's line that the sync cleared
 # it, or nothing when a FAIL skips the sync, so it names no line type; no reader infers "cleared" from a
-# missing line (B13 round 6 G33). No parentheses: the report's fix parser strips one level.
-_LISTING_YOURS_NOTE = "held at its last walk: the end of this run says whether this run's sync cleared it"
+# missing line (B13 round 6 G33). No parentheses: the report's fix parser strips one level. "as of", not "held
+# at", since the detail before it says "deletions held" (B13 round 13 O36: one word in two senses).
+_LISTING_YOURS_NOTE = "as of its last walk: the end of this run says whether this run's sync cleared it"
 # The same note in the setup report, whose run prints no WAITING ON YOU line at its end (``--report-only``
 # prints none at all): the waits are on its Summary's Loop line. It promises no line, since the report's
 # doctor calls a local listing yours by the source's kind, not by the loop's waits (B13 round 5 F12, F45).
 LISTING_YOURS_REPORT_NOTE = (
-    "held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it"
+    "as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it"
 )
 
 # The bundled pandoc is an Intel (x86_64) program, in the Apple silicon wheel of pypandoc_binary too, so
@@ -893,8 +894,12 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     ~/Library/CloudStorage has no sync client to sign in to. A SharePoint library folder
     (``OneDrive-SharedLibraries-<org>``) missing beside its organization's ``OneDrive-<org>`` is a library not
     synced on this Mac, never a sign-in, since that account is signed in (B13 round 12 N53). The sign-in names
-    the command to run after it (round 12 N56: "then re-run" named none). No parenthesis: a FAIL line puts its
-    fix in one. One rule for the listing, the volume and the launcher's probe."""
+    the command to run after it (round 12 N56: "then re-run" named none). A library folder that is there but
+    empty beside its organization's ``OneDrive-<org>`` is a library OneDrive has not synced or set up yet, no
+    sign-in either (B13 round 13 O52: the empty-folder rule ran first). The provider folder is read within the
+    listing's time bound, since a hidden Allow prompt holds that read too, and unread it keeps the path fix
+    (B13 round 13 O47). No parenthesis: a FAIL line puts its fix in one. One rule for the listing, the volume
+    and the launcher's probe."""
     fix_path = f'fix path in [[source]] id = "{src.id}"'
     if not is_cloud_path(root):
         return fix_path
@@ -902,18 +907,28 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
     if provider is None:
         return f"{fix_path}, or sign in to the sync client"
     app = provider.name.split("-", 1)[0] or "the sync client"
+    org = org_of(provider.name) if provider.name.startswith("OneDrive-SharedLibraries-") else None
+    signed_in_org = org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}")
     if os.path.lexists(provider):
-        shown: list[str] = ["?"]  # unreadable: not shown empty, so the path fix as before
-        with contextlib.suppress(OSError):
-            shown = [p.name for p in provider.iterdir() if not p.name.startswith(".")]
+        shown: list[str] = ["?"]  # unreadable or held: not shown empty, so the path fix as before
+        with contextlib.suppress(OSError, CallTimedOutError):
+            shown = call_with_timeout(
+                lambda: [p.name for p in provider.iterdir() if not p.name.startswith(".")],
+                _LISTING_TIMEOUT_S,
+                name="doctor-provider",
+            )
+        if not shown and signed_in_org:
+            return (
+                f"{provider} is empty while OneDrive-{org} is there: sync the SharePoint library to this Mac "
+                f"with Sync on its SharePoint page, or let OneDrive finish setting it up, or {fix_path}"
+            )
         if not shown:  # a stale provider folder, as install.sh's list reads it (B13 round 12 N61)
             return (
                 f"sign in to {app} on this Mac or let it finish setting up, since {provider} is empty, "
                 f"then run {BIN} status again"
             )
         return f"{fix_path}, or sync that folder in {app}"
-    org = org_of(provider.name) if provider.name.startswith("OneDrive-SharedLibraries-") else None
-    if org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}"):
+    if signed_in_org:
         return (
             f"{provider} is missing while OneDrive-{org} is there: sync the SharePoint library to this Mac "
             f"with Sync on its SharePoint page, or {fix_path}"
@@ -942,7 +957,14 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         return [_bad(base, "no path configured", fix=f'set path in the [[source]] with id = "{src.id}"')]
     root = expand(src.path)
     cloud = is_cloud_path(root)
-    missing_fix = _missing_source_fix(src, root)
+
+    # only once the listing has answered: the fix reads the provider folder, which a hidden Allow prompt
+    # holds too (B13 round 13 O47: read first, it held status past the listing's bound); once, for the
+    # listing and the volume
+    @functools.cache
+    def missing_fix() -> str:
+        return _missing_source_fix(src, root)
+
     # An error with no rule of its own (an I/O error, a sync app that stopped answering) is the person's to
     # look at, so its fix says where: for the listing, and for the sentinel read below.
     sync_app = " and that its sync app is running and signed in" if cloud else ""
@@ -991,7 +1013,7 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         )
         return out
     except FileNotFoundError:
-        out.append(_bad(f"{base}.listable", f"{root} does not exist", fix=missing_fix))
+        out.append(_bad(f"{base}.listable", f"{root} does not exist", fix=missing_fix()))
     except NotADirectoryError:
         out.append(
             _bad(
@@ -1063,7 +1085,13 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
     # domain as for a plain folder: nothing in it is the domain's, so it is labelled as what it is.
     kind = "volume"
     if not listed and _is_missing(root):
-        out.append(_bad(f"{base}.volume", f"{kind} UUID not checked: {root} is missing", fix=missing_fix))
+        out.append(
+            _bad(
+                f"{base}.volume",
+                f"{kind} UUID not checked: {root} is missing",
+                fix=missing_fix(),
+            )
+        )
         return out
     try:
         uuid = _volume_uuid(root)
@@ -1866,7 +1894,9 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int 
     # takes three incomplete FULL passes in a row, and those come only with no cursor kept or a drive not
     # baselined, where a plain sync is itself FULL; otherwise a plain sync runs a delta, which clears the
     # count. reconcile is only an explicit FULL, and the loop says sync again for the same source.
-    return f"{BIN} sync -v (a full pass that lists all of {src.id} clears this)"
+    # prose after "; ", as the local fix's, never in a bracket: the line puts the fix in one (B13 round
+    # 13 O51)
+    return f"{BIN} sync -v; a full pass that lists all of {src.id} clears this"
 
 
 def _check_logs(config: Config) -> list[CheckResult]:
