@@ -689,24 +689,41 @@ def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
         assert "the report" not in last_line(cp)
 
 
+@pytest.mark.parametrize("rc", ["78", "1"])
 def test_first_sync_failure_fails_the_run_before_the_agent(
-    env: dict[str, str], folder: Path, wheel: Path
+    env: dict[str, str], folder: Path, wheel: Path, rc: str
 ) -> None:
-    e = {**env, "STUB_SYNC_RC": "78", "STUB_SYNC_OUT": "  alpha: converted 0, deferred 0 online-only"}
+    """B13 round 14 Q22: an exit 78 at the first sync is a config the sync cycle refuses (a source still
+    mirrored but gone from sources.toml), which loads, so the config step passed: "fix what the first sync
+    printed above ..., then re-run" sent the agent to a re-run that fails the same way, or to an edit of the
+    person's sources.toml. Its NEXT names the owner, as the config error's does; another code keeps the
+    re-run."""
+    e = {**env, "STUB_SYNC_RC": rc, "STUB_SYNC_OUT": "  alpha: converted 0, deferred 0 online-only"}
     cp = install_sh(e, str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     assert cp.returncode == 1
     # a failed first sync shows everything it printed, not a summary
     assert "stub cycle" in cp.stdout and "  alpha: converted 0, deferred 0 online-only" in cp.stdout
     got = calls(env)
     assert not any(c.startswith(("agentsync install-agent", "launchctl")) for c in got)
-    assert "the first sync (agentsync sync --once) exited 78 (configuration invalid)" in cp.stderr
-    assert last_line(cp) == (
-        f"NEXT: fix what the first sync printed above (configuration invalid), then re-run: "
-        f"{rerun(wheel, folder)} [setup report: {report_path(env)}]"
-    )
+    meaning = {"78": "configuration invalid", "1": "failed"}[rc]
+    assert f"the first sync (agentsync sync --once) exited {rc} ({meaning})" in cp.stderr
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    if rc == "78":
+        assert last_line(cp) == (
+            f"NEXT: the first sync refused the config {cfg} (the configuration error above; "
+            "~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the "
+            "agent, so show them the error and go on to the report; once it is fixed, the next run is: "
+            f"{rerun(wheel, folder)} [setup report: {report_path(env)}]"
+        ), last_line(cp)
+        assert "fix what the first sync printed above" not in cp.stdout
+    else:
+        assert last_line(cp) == (
+            f"NEXT: fix what the first sync printed above ({meaning}), then re-run: "
+            f"{rerun(wheel, folder)} [setup report: {report_path(env)}]"
+        )
     assert got[-1].startswith("agentsync setup-report --out"), "the report is still written"
     assert steps(install_log(env))[-2:] == [
-        ("first-sync", "failed", "78", ""),
+        ("first-sync", "failed", rc, ""),
         ("report", "done", "0", "agentsync"),
     ]
 

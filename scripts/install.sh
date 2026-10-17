@@ -5221,6 +5221,16 @@ else
 		# (B13 round 7 H31: a third line said the same news again).
 		say "$SYNC_LABEL: skipped, lock busy"
 		step_end skipped 75 lock-busy
+	elif [ "$SYNC_RC" -eq 78 ]; then
+		# A config the sync cycle refuses (a source still mirrored but gone from sources.toml: cycle.py's
+		# _refuse_vanished_sources) loads, so the config step passed and status never shows it; a re-run fails
+		# the same way, and its fix chooses what to sync, so the NEXT names the owner, as config_failed's does
+		# (B13 round 14 Q22). sync, not status, prints it again.
+		step_end failed 78
+		LAST_ERROR="the first sync (agentsync sync --once) exited 78 ($(rc_meaning 78))"
+		printf 'error: %s\n' "$LAST_ERROR" >&2
+		NEXT_MSG="the first sync refused the config $CONFIG (the configuration error above; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$ORIG_ARGS"
+		exit 1
 	else
 		step_end failed "$SYNC_RC"
 		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC ($(rc_meaning "$SYNC_RC"))"
