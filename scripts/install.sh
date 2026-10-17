@@ -2857,13 +2857,38 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# where a configured name every drive has (a pair of flag w) has its placeholder in the body; the list-only
 	# rule where a name step 1's list alone gave, and folder_parts skipped, is in the body as a whole word.
 	if [ -n "${3:-}" ]; then
+		# the agent's own name is no folder: every whole-word copy of an Agent: header's value is left out of
+		# the list-only test (B13 round 13 O10), as setup_report._without_agents; read through a here-string,
+		# since a grep -q at a pipe's end can fail the pipe under pipefail
+		local unagent
+		unagent="$(LC_ALL=C awk '
+			function strip(s, v,    out, k, b, e) {
+				out = ""
+				while ((k = index(s, v)) > 0) {
+					b = k > 1 ? substr(s, k - 1, 1) : substr(out, length(out), 1)
+					e = substr(s, k + length(v), 1)
+					if (b !~ /[A-Za-z0-9_]/ && e !~ /[A-Za-z0-9_]/) out = out substr(s, 1, k - 1) " "
+					else out = out substr(s, 1, k - 1 + length(v))
+					s = substr(s, k + length(v))
+				}
+				return out s
+			}
+			NR == FNR {
+				if (match($0, /^[[:space:]>*-]*([0-9]+[[:space:]]+)?[Aa][Gg][Ee][Nn][Tt]:[[:space:]]*/)) {
+					v = substr($0, RLENGTH + 1); sub(/[[:space:]]+$/, "", v)
+					if (v != "" && !(v in seen)) { seen[v] = 1; a[++n] = v }
+				}
+				next
+			}
+			{ line = $0; for (i = 1; i <= n; i++) line = strip(line, a[i]); print line }
+		' "$3" "$3" 2>/dev/null || true)"
 		while IFS=$'\t' read -r fl v; do
 			case "$fl" in
 			keep) in_list=1 ;;
 			# which kind of skipped name, as folder_parts checks them: a name every drive has first (B13 round 12
 			# N45), so the clause gives no Copilot example for a quoted Documents, nor Documents for a Copilot
 			skip)
-				if LC_ALL=C grep -qiwF -- "$v" "$3" 2>/dev/null; then
+				if LC_ALL=C grep -qiwF -- "$v" <<<"$unagent"; then
 					if generic_folder "$v"; then skip_generic=1; else skip_agent=1; fi
 				fi
 				;;

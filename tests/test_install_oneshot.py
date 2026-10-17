@@ -9135,6 +9135,7 @@ def _folder_item(text: str, head: str = "- <folder-N>: ") -> str:
         "a list-only Documents quoted",
         "a list-only Copilot quoted",
         "a configured Documents, a list-only Copilot quoted",
+        "only the Agent line names Copilot",
     ],
 )
 def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[str, str], state: str) -> None:
@@ -9167,9 +9168,13 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
         "a list-only Copilot quoted": "Copilot",
         "a configured Documents, a list-only Copilot quoted": "Copilot under Documents",
     }.get(state, "Documents")
+    # B13 round 13 O10: the agent's own product name is no folder a listing names
+    agent_line = "x"
+    if state == "only the Agent line names Copilot":
+        agent_line, quoted = "GitHub Copilot CLI gpt-5", "Project Alpha"
     friction_path(env).write_text(
-        f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | deviation | "
-        f"picked {quoted} | -\n"
+        f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: {agent_line}\n2026-10-10T00:00:01Z | step 1 | "
+        f"deviation | picked {quoted} | -\n"
     )
     assert install_sh(env, "--report-only").returncode == 0
     item = _folder_item(report_path(env).read_text())
@@ -9188,6 +9193,7 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
     agent = "one made of coding-agent product words (Copilot, GitHub Copilot)"
     want = {
         "plain": base,
+        "only the Agent line names Copilot": base,
         "list-only names quoted": base + only,
         "a configured Documents": base + whole,
         "a list-only Documents quoted": base + "; not a name every OneDrive or Google Drive has, such as "

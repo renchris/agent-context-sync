@@ -2287,6 +2287,17 @@ def test_the_folder_legend_says_why_a_listed_generic_or_agent_name_stays_in_clea
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         assert f"{item}; not {which}, where only a folder listing names it)" in section(text, "Redaction")
     assert "google" not in setup_report.report_words()
+    # B13 round 13 O10: the agent's own product name, in the friction log's Agent: line and the Summary's
+    # agent: clause, is no folder a listing names
+    write_friction(
+        fake_mac, V5_HAPPY.replace("Agent: Claude Code, claude-opus-5-5", "Agent: GitHub Copilot CLI gpt-5")
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "Agent: GitHub Copilot CLI gpt-5" in text and "agent: GitHub Copilot CLI gpt-5" in section(
+        text, "Summary"
+    )
+    red = section(text, "Redaction")
+    assert item + ")" in red and "where only a folder listing names it" not in red, red
     assert all(w in setup_report.report_words() for w in re.findall(r"[a-z]{3,}", clause.lower())), (
         "the clause adds no report word"
     )

@@ -8595,13 +8595,31 @@ _KEPT_AGENT = "one made of coding-agent product words, such as Copilot or GitHub
 matched (B13 round 12 N3). Only the kind the body shows is named, as the shell's since §16.99 N45."""
 
 
+_AGENT_LINE_RE = re.compile(r"(?im)^[ \t>*-]*(?:\d+[ \t]+)?Agent:[ \t]*(.*?)[ \t]*$")
+"""A friction log ``Agent:`` header line in a report body (after an optional ``- ``, ``> `` or the friction
+section's line number) and its value: the agent's own name, which :func:`_without_agents` takes out."""
+
+
+def _without_agents(body: str) -> str:
+    """``body`` less every whole-word occurrence of an ``Agent:`` header's value (:data:`_AGENT_LINE_RE`): the
+    header line itself, the Summary's ``agent:`` clause, the attempt line's. As install.sh's
+    ``fallback_redaction`` does."""
+    for agent in sorted({m for m in _AGENT_LINE_RE.findall(body) if m}, key=len, reverse=True):
+        body = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(agent)}(?![A-Za-z0-9_])", " ", body)
+    return body
+
+
 def _legend_item(red: Redactor, kind: str, body: str) -> str:
     """One kind's legend item; the folder item adds the list-only clause (:data:`_KEPT_AGENT`) when a listed
     name kept in clear (:attr:`Redactor.kept_listed`) stands in ``body`` as a whole word, any case, as the
-    shell's ``grep -qiwF`` test does: the item alone says every CloudStorage folder became ``<folder-N>``."""
+    shell's ``grep -qiwF`` test does: the item alone says every CloudStorage folder became ``<folder-N>``.
+    The agent's own name (:func:`_without_agents`: the ``Agent:`` header's value, wherever the body prints
+    it) is left out of the match: a coding agent's product name is no folder (B13 round 13 O10: "Agent:
+    GitHub Copilot CLI" alone printed the clause, which points at a folder listing the body does not hold)."""
     item = _LEGEND[kind]
     if kind != "folder":
         return item
+    body = _without_agents(body)
     shown = [
         name
         for name in red.kept_listed
