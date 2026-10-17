@@ -1481,8 +1481,9 @@ class _SourceAcc:
     enumeration_complete: bool = False
     counts: Counter[Verdict] = field(default_factory=Counter)
     materialised_bytes: int = 0
-    deferred: int = 0
-    deferred_online_only: int = 0
+    # the stable ids left for a later run, and those of them online-only; counted while still DEFERRED (O50)
+    deferred_ids: set[str] = field(default_factory=set)
+    deferred_online_ids: set[str] = field(default_factory=set)
     absent_marked: int = 0
     absent_removed: int = 0
     converted: int = 0
@@ -1518,6 +1519,18 @@ class _SourceAcc:
                 del self.counts[prev]
         self.counts[verdict] += 1
         self.counted_as[stable_id] = verdict
+
+    @property
+    def deferred(self) -> int:
+        """Files left for a later run: those deferred this cycle that no later settle read (B13 round 13
+        O50: a recording deferred and then read in the same cycle still read ``1 deferred``). Keyed by stable
+        id, so a file deferred twice counts once."""
+        return sum(1 for sid in self.deferred_ids if self.counted_as.get(sid) is Verdict.DEFERRED)
+
+    @property
+    def deferred_online_only(self) -> int:
+        """Of :attr:`deferred`: the files whose reading needs a download."""
+        return sum(1 for sid in self.deferred_online_ids if self.counted_as.get(sid) is Verdict.DEFERRED)
 
     @property
     def new(self) -> int:
@@ -3605,7 +3618,7 @@ class _Cycle:
         if row.dataless and not new_bytes and self._keeps_page(row, acc):
             return
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
-        acc.deferred += 1
+        acc.deferred_ids.add(row.stable_id)
         acc.settle(row.stable_id, Verdict.DEFERRED)
         waits = row.state in (RowState.LIVE, RowState.DATALESS) and row.state_reason is None
         if waits:  # never over a quarantine's or a refused download's own reason
@@ -4426,8 +4439,8 @@ class _Cycle:
             )  # a new file reads deferred=1, not created=1 (B13 round 12 N50)
             if row.state in (RowState.LIVE, RowState.DATALESS):  # never over a quarantine's own reason
                 self.manifest.set_state(sid, stable, row.state, HYDRATION_REFUSED)
-            acc.deferred += 1
-            acc.deferred_online_only += 1
+            acc.deferred_ids.add(stable)
+            acc.deferred_online_ids.add(stable)
             acc.alarms.append(f"{row.rel_path}: hydration refused by the OS ({exc}); deferred")
             return
         except AuthRequiredError:
@@ -4477,13 +4490,13 @@ class _Cycle:
         from the row; a fetch that raised BudgetExhaustedError after the pre-check passed (a file the manifest
         saw local that materialise found dataless) passes True."""
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.DEFERRED)
-        acc.deferred += 1
+        acc.deferred_ids.add(row.stable_id)
         acc.settle(row.stable_id, Verdict.DEFERRED)
         cost = _download_cost(src, row)
         if online_only is None:
             online_only = cost > 0 and budget.used + cost > budget.max_bytes
         if online_only:
-            acc.deferred_online_only += 1
+            acc.deferred_online_ids.add(row.stable_id)
         size = max(row.size or 0, 0)
         cap = self.budget_bytes if self.budget_bytes is not None else src.max_materialise_bytes
         if online_only and size > cap:

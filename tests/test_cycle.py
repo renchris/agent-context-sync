@@ -6414,13 +6414,15 @@ def test_a_new_recording_read_in_the_cycle_that_deferred_it_is_counted_once(
     tmp_path: Path, meetings: Path, rec: Rec
 ) -> None:
     """B13 round 12 N50: ``_recording_defer`` settled a new recording DEFERRED and the same poll cycle's
-    recording pass settled it CHANGED, so three files read ``changed=3, deferred=1``."""
+    recording pass settled it CHANGED, so three files read ``changed=3, deferred=1``. Round 13 O50: the count
+    moved but the line still said ``1 deferred``, a file left for a later run, beside no deferred count."""
     config = config_with(tmp_path, meetings)
     stub_recording(meetings / MEETING, 12)
     report = run(config)
     assert report.exit_code == 0 and rec.opened, report
     (rep,) = report.sources
     assert dict(rep.counts) == {Verdict.CHANGED: 3} and rep.new == 3, rep.counts
+    assert rep.deferred == 0 and rep.deferred_online_only == 0, rep
 
 
 def test_a_new_file_the_os_will_not_hydrate_is_counted_deferred(
@@ -6443,7 +6445,7 @@ def test_a_new_file_the_os_will_not_hydrate_is_counted_deferred(
     monkeypatch.setattr(al, "materialise", refused)
     (rep,) = run(config).sources
     assert rep.counts.get(Verdict.DEFERRED) == 1 and Verdict.CREATED not in rep.counts, rep.counts
-    assert _files(rep.counts) == before + 1 and rep.deferred == 1, rep.counts
+    assert _files(rep.counts) == before + 1 and rep.deferred == 1 == rep.deferred_online_only, rep
 
 
 def test_every_m66_site_names_a_page_read_that_says_neither() -> None:
