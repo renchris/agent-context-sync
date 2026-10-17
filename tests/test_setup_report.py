@@ -11201,6 +11201,7 @@ def _shell_local_work_line(home: Path, setup: Path) -> str | None:
     """install.sh's ``fallback_local_work_line`` run alone under /bin/bash, as the shell report runs it."""
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     [where] = re.findall(r'(?m)^LOCAL_WORK_WHERE=".*"$', script)
+    [again] = re.findall(r'(?m)^LOCAL_WORK_AGAIN=".*"$', script)
     functions = [
         re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}$", script)
         for name in ("checkout_ref_sha", "checkout_git_dirs", "local_work_counts", "fallback_local_work_line")
@@ -11210,6 +11211,7 @@ def _shell_local_work_line(home: Path, setup: Path) -> str | None:
             "set -euo pipefail",
             "say() { printf '%s\\n' \"$*\"; }",
             where,
+            again,
             *(f.group(0) for f in functions if f),
         ]
     )
@@ -11222,6 +11224,36 @@ def _shell_local_work_line(home: Path, setup: Path) -> str | None:
         env={"PATH": "/usr/bin:/bin", "HOME": str(home), "SETUP_DIR": str(setup), "LC_ALL": "C"},
     )
     return cp.stdout.removesuffix("\n") or None
+
+
+def test_both_readers_count_a_patch_this_account_cannot_read_apart(fake_mac: dict[str, Path]) -> None:
+    """B13 round 14 Q29: a kept patch this account cannot read is not in bring-back.md, yet both readers'
+    local-work line said each patch goes to its section 3. They count it apart, with the remedy, and say
+    nothing more once it is readable."""
+    home, setup = fake_mac["home"], fake_mac["setup"]
+    patches = setup / "local-work"
+    patches.mkdir(parents=True, exist_ok=True)
+    for name in ("0001-a.patch", "0002-b.patch"):
+        (patches / name).write_text("Subject: [PATCH] x\n", encoding="utf-8")
+        os.utime(patches / name, (1791950084, 1791950084))
+    line = (
+        "- local work kept by setup prompt step 1: 2 patch file(s) in the setup folder's local-work{}, "
+        f"newest written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 0 local-work branch(es) in "
+        "the checkout"
+    )
+    assert setup_report.LOCAL_WORK_AGAIN == "~/src/agent-context-sync/scripts/install.sh --report-only"
+    locked = patches / "0002-b.patch"
+    locked.chmod(0)
+    try:
+        python, shell = setup_report._local_work_line(), _shell_local_work_line(home, setup)
+    finally:
+        locked.chmod(0o600)
+    unread = (
+        ", 1 of them unreadable and not in bring-back.md (chmod u+r, then run "
+        "~/src/agent-context-sync/scripts/install.sh --report-only again)"
+    )
+    assert shell == python == line.format(unread), (shell, python)
+    assert _shell_local_work_line(home, setup) == setup_report._local_work_line() == line.format("")
 
 
 def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_mac: dict[str, Path]) -> None:

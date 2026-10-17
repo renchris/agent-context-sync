@@ -605,7 +605,9 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
     shared.mkdir()
     (shared / ".hidden").write_text("x\n", encoding="utf-8")
     cases["library-empty"] = _source_fails(cfg, dataclasses.replace(base, path=library))
-    assert all("is empty while OneDrive-Contoso" in ln for ln in cases["library-empty"]), cases["library-empty"]
+    assert all("is empty while OneDrive-Contoso" in ln for ln in cases["library-empty"]), cases[
+        "library-empty"
+    ]
     (shared / ".hidden").unlink()
     shared.rmdir()
     (org / "Team Site - Archive").rmdir()
@@ -2274,7 +2276,8 @@ def test_a_bring_back_file_that_cannot_be_written_is_not_named_as_the_one_to_rev
     _failing_tool(env, "mv", "/.bring-back.")
     cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert f"warning: could not write {back}" in cp.stderr
+    # B13 round 14 Q19: mv printed its own error, and the warning says so
+    assert f"warning: could not write {back}: chmod or mv failed (its error is above)\n" in cp.stderr
     setup = back.parent / "setup"
     # B13 round 13 O14: the earlier-file note is inside the one bracket, and the path is printed once
     held = (
@@ -2318,7 +2321,11 @@ def test_a_folder_at_the_bring_back_path_takes_no_file(
         back.symlink_to(inside)
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert f"warning: could not write {back}" in cp.stderr
+    # B13 round 14 Q19: the warning names the cause the NEXT says to fix
+    assert (
+        f"warning: could not write {back}: a folder, or a link to a folder, is at that path; move it away\n"
+        in cp.stderr
+    ), cp.stderr
     assert "bring back: " not in cp.stdout
     assert last_line(cp).startswith(f"NEXT: {back} could not be written (see the warning above): copy "), (
         last_line(cp)
@@ -2429,10 +2436,20 @@ def test_a_patch_this_account_cannot_read_is_counted_not_sent(env: dict[str, str
     if readable:
         assert "~diff\n+def ocr(): ...\n~~~" in section3 and section3.count("~diff\n") == 1
         assert "Section 3 holds one patch per kept commit" in " ".join(head.split())
+        # B13 round 14 Q29: the remedy is in the header beside a patch that was sent, too
+        assert (
+            "Section 3 does not hold 1 patch file(s) this account cannot read: make them readable "
+            "(chmod u+r) and run the report again (install.sh --report-only); see its last line."
+            in " ".join(head.split())
+        ), head
     else:
         assert "diff" not in section3 and "\nnone\n" not in section3
         assert "holds one patch per kept commit" not in " ".join(head.split())
-        assert "Section 3 sends no patch: 1 patch file(s) could not be read; see its last line." in head
+        assert (
+            "Section 3 sends no patch: 1 patch file(s) could not be read: make them readable (chmod u+r) "
+            "and run the report again (install.sh --report-only); see its last line."
+            in " ".join(head.split())
+        ), head
         assert "Section 3 is not redacted" not in " ".join(head.split())
 
 
@@ -2471,14 +2488,77 @@ def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, s
     if beside == "one sent before":
         assert "earlier report and is listed by its hash" not in head, head
         assert (
-            "Section 3 sends no patch: 1 patch file(s) could not be read; see its last line, and the others "
-            "were in an earlier report and are listed by their hash." in head
+            "Section 3 sends no patch: 1 patch file(s) could not be read: make them readable (chmod u+r) "
+            "and run the report again (install.sh --report-only); see its last line, and the others were in "
+            "an earlier report and are listed by their hash." in head
         ), head
         assert "not repeated: " in text and "not sent: 1 patch file(s)" in text
     else:
         fence = text.split("diff\n", 1)[0]
         assert set(fence) == {"~"} and len(fence) == 41, fence
         assert text.count(fence + "\n") == 1 and "~" * 40 + "\n" in text
+
+
+@pytest.mark.parametrize("private", [False, True])
+def test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable(
+    env: dict[str, str], tmp_path: Path, private: bool
+) -> None:
+    """B13 round 14 Q20, Q29 (probe bw2): with a mode-000 patch the NEXT still said "review bring-back.md and
+    copy that one file back", with the issue link and without one. Made readable and reported in a later
+    attempt, the patch was "not repeated: ... at or before an earlier attempt's report", which had not carried
+    it, so it was never sent. The NEXT gives the remedy first, and the later report sends the patch."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    old = tmp_path / "report.md"
+    old.write_text(
+        "# agentsync setup report\n\n## Redaction\n\n"
+        + "Private only: one of your folder, library or organization names is ...\n" * private
+        + f"Send it: ...\n\n{ISSUE_LINK}\n"
+    )
+    e = {**env, "STUB_REPORT_FILE": str(old)}
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-07T15:58:32Z\nPrompt: v{COMPAT}\nAgent: x\n")
+    patch = _keep_patch(env, "2026-10-07T15:58:27Z")
+    back, setup = report_path(env).parent / "bring-back.md", report_path(env).parent / "setup"
+    link = "" if private else ", or paste the setup report into the issue the link above opens"
+    patch.chmod(0)
+    try:
+        cp = install_sh(e, "--report-only")
+    finally:
+        patch.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(
+        f"NEXT: {back} does not hold 1 kept patch file(s) this account cannot read (see the warning above): "
+        f"make them readable (chmod u+r on the files in {setup}/local-work) and run this command again, then "
+        f"review {back} and copy that one file back privately{link} (nothing is sent for you)"
+    ), last_line(cp)
+    # that report's own time, and its attempt's end, as if it ran a day before this one: every run here is
+    # in one second, and the record and the end are compared by the second
+    notsent = setup / "local-work" / ".not-sent"
+    [record] = notsent.read_text().splitlines()
+    notsent.write_text(record.split(" ")[0] + " 2026-10-07T16:00:05Z\n")
+    log = re.sub(
+        r"(?m)^\S+ \| end \| finished$",
+        "2026-10-07T16:00:00Z | end | finished",
+        friction_path(env).read_text(),
+    )
+    friction_path(env).write_text(log + f"Attempt: 2026-10-08T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n")
+    cp = install_sh(e, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert last_line(cp).startswith(f"NEXT: review {back} and copy that one file back privately"), last_line(
+        cp
+    )
+    text = back.read_text(encoding="utf-8")
+    assert "~diff\n+def ocr(): ...\n~~~" in text and "not repeated: " not in text, text
+    assert "earlier report" not in " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+    assert _local_work(e) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n", "each report of that attempt"
+    with friction_path(env).open("a", encoding="utf-8") as f:
+        f.write(f"Attempt: 2026-10-09T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n")
+    assert _local_work(e).startswith("not repeated: "), "the attempt that sent it carried it"
+    patch.unlink()
+    _local_work(e)
+    assert not (setup / "local-work" / ".not-sent").exists(), "a patch gone leaves the list"
 
 
 def _two_attempts(env: dict[str, str], *, ended: str = f"{ENDED} | end | finished", extra: str = "") -> None:
@@ -9101,11 +9181,22 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
         back = (report_path(env).parent / "bring-back.md").read_text()
         return back.split("\n## 3. Local work kept by setup prompt step 1 (", 1)[1].split(")\n\n", 1)[1]
 
-    # B13 round 13 O23: section 3 says the branches hold commits it does not carry, not a bare "none"
+    # B13 round 13 O23: section 3 says the branches hold commits it does not carry, not a bare "none"; round
+    # 14 Q30: with a remedy that names no branch, and the header says so
     assert section3() == (
         "none: no patch file is in ~/agent-context/setup/local-work, but 2 local-work branch(es) in "
-        "~/src/agent-context-sync hold commits this file does not carry\n"
+        "~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch "
+        '`git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C '
+        '~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o '
+        "~/agent-context/setup/local-work` (a branch that writes nothing holds no new commit), then run this "
+        "command again\n"
     ), section3()
+    head = (report_path(env).parent / "bring-back.md").read_text().split("\n## 1. Setup report", 1)[0]
+    assert (
+        "Section 3 sends no patch: 2 local-work branch(es) hold commits this file does not carry; its line "
+        "says how to add them." in " ".join(head.split())
+    ), head
+    assert "20261014" not in section3() + head, "no branch is named"
     (git / "refs" / "heads" / "local-work-20261014-005444").write_text("c" * 40 + "\n")
     (git / "refs" / "remotes" / "origin").mkdir(parents=True)
     (git / "refs" / "remotes" / "origin" / "main").write_text("b" * 40 + "\n")

@@ -882,6 +882,8 @@ NEXT_MSG=""    # the NEXT line the EXIT trap prints
 FAIL_NEXT=""   # the NEXT fail() writes in place of its own, set by a step that knows better (config_failed)
 RERUN=""       # the command a stopped run names (default: this script with the same arguments)
 LAST_ERROR=""  # the last error message, for the shell report
+BACK_WHY=""    # why write_bring_back wrote no bring-back.md, for its warning (B13 round 14 Q19)
+BACK_UNREAD=0  # the kept patches write_bring_back could not read, for the NEXT (B13 round 14 Q20, Q29)
 DOCTOR_LOG=""  # this run's doctor output, for the shell report
 SYNC_OUT=""    # the first sync's stdout
 LOOP_OUT=""    # the closing status's output (the loop's NEXT)
@@ -2571,6 +2573,9 @@ checkout_ref_sha() { # GIT REF
 }
 # The words after the local-work line patch count, as setup_report.LOCAL_WORK_WHERE (B13 round 10 L8, L25).
 LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch an earlier report already carried is listed there by its hash"
+# The command that sends a patch made readable, as setup_report.LOCAL_WORK_AGAIN (B13 round 14 Q29).
+# shellcheck disable=SC2088 # the ~ is printed
+LOCAL_WORK_AGAIN="~/src/agent-context-sync/scripts/install.sh --report-only"
 # The count-only line that says step 1 kept local work, as setup_report._local_work_line writes it (B13 round 9
 # K30, round 10 L8, L25, L40, L58). Patches are the measure of kept work: the *.patch files at the top of the
 # setup folder local-work, the files section 3 of bring-back.md reads, with the newest time. The checkout
@@ -2578,13 +2583,18 @@ LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the p
 # to install them; a .git file names the git dir, B13 round 11 M49, M70), are counted beside them, less a
 # branch at the main or origin/main commit or at any commit the origin/main reflog names, which holds no commit
 # of its own, unless a patch is named for it (*.<branch>.patch; round 11 M54, M71). The patches are counted
-# whatever the checkout is. With branches but no patch the line does not say kept.
+# whatever the checkout is. With branches but no patch the line does not say kept. Patches this account cannot
+# read are counted apart: bring-back.md does not hold them (B13 round 14 Q29).
 fallback_local_work_line() {
-	local n newest b counts
+	local n newest b counts u=0 p unread=""
 	counts="$(local_work_counts)"
 	IFS='|' read -r n newest b <<<"$counts"
 	if [ "$n" -gt 0 ]; then
-		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
+		while IFS= read -r p; do
+			[ -z "$p" ] || [ -r "$p" ] || u=$((u + 1))
+		done < <(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null || true)
+		[ "$u" -eq 0 ] || unread=", $u of them unreadable and not in bring-back.md (chmod u+r, then run $LOCAL_WORK_AGAIN again)"
+		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work$unread${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
 	elif [ "$b" -gt 0 ]; then
 		# the counted branches hold commits of their own: those commits are on the branch only (B13 round 13 O23)
 		say "- local-work branch(es) in the checkout: $b with commits of their own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)"
@@ -3338,7 +3348,12 @@ utc_stamp() {
 # first 12 hex digits of its SHA-256, so whoever receives the file can check it against what they hold, and
 # says where it still is. This Mac cannot know what was copied back, so the line claims nothing about that.
 # Every doubt sends the patch: no friction log, no earlier finished attempt, a time or a hash that cannot be
-# read. Nothing is deleted or moved.
+# read. Nothing is deleted or moved. A patch this account could not read when a report was written is listed in
+# local-work/.not-sent, which no *.patch glob reads, by its identity (device, inode, time and size: chmod changes
+# none of them) and the time of that report; one listed at or after the earlier attempt's end is sent whatever
+# its time, since that attempt's report did not carry it, in each report of the attempt (B13 round 14 Q29). The
+# list is rewritten once the file is in place: a patch gone or changed leaves it. Not ctime, which a Finder or
+# Spotlight attribute write and a moved folder change (it would send the 2026-10-07 patch again).
 # Each embedded file sits inside a tilde fence longer than any tilde run that starts one of its lines (at least
 # 10), so its own headings are no headings of this file and none of its lines can close the fence (B13 round 5
 # F14): the outline is this file's title and its three numbered sections, and every embedded byte is kept, so
@@ -3393,19 +3408,30 @@ source_excludes_line() { # CONFIG
 }
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
-	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches
+	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
+	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work"
+	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
 	# mv onto a folder (or a link to one) moves the file into it and exits 0, so the run would name a folder as
 	# the file to send and leave the unredacted file hidden in it (B13 round 13 O7, O26): build nothing for it
-	[ ! -d "$out" ] || return 1
+	# Each return 1 sets BACK_WHY, which the caller's warning names, since its NEXT says to fix the cause (B13
+	# round 14 Q19).
+	[ ! -d "$out" ] || {
+		BACK_WHY="a folder, or a link to a folder, is at that path; move it away"
+		return 1
+	}
 	prev="$(utc_stamp "$(friction_earlier_end)")"
+	BACK_WHY="could not make a temporary file in ${REPORT_PATH%/*}"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
 	local_work="$(mktemp "${REPORT_PATH%/*}/.bring-back-local-work.XXXXXX" 2>/dev/null)" || {
 		rm -f "$tmp"
 		return 1
 	}
+	BACK_WHY="could not write a temporary file in ${REPORT_PATH%/*}"
+	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+	[ ! -f "$kept/.not-sent" ] || [ -L "$kept/.not-sent" ] || [ -L "$kept" ] || wasnot="$(cat "$kept/.not-sent" 2>/dev/null || true)"
 	# Section 3 first, so the header names only what the file holds: the review sentence only the sections that
 	# hold something, and the author lines only when a patch is embedded (a patch not repeated has none; B13
 	# round 10 L4)
@@ -3421,12 +3447,18 @@ write_bring_back() {
 			[ -e "$p" ] && [ ! -L "$p" ] && [ -f "$p" ] && [ ! -L "$SETUP_DIR/local-work" ] || continue
 			# a patch this account cannot read is counted, not sent: its cat failed unseen, under a fence
 			# already opened, and the header said section 3 held it (B13 round 13 O25)
+			id="$(/usr/bin/stat -f %d:%i:%m:%z "$p" 2>/dev/null || true)" nsat=""
+			[ -z "$id" ] || nsat="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 } END { print s }' <<<"$wasnot" 2>/dev/null || true)"
 			[ -r "$p" ] || {
 				unread=$((unread + 1))
+				[ -z "$id" ] || notsent+="$id $now"$'\n'
 				continue
 			}
+			[ -z "$nsat" ] || notsent+="$id $nsat"$'\n'
 			at=""
-			[ -z "$prev" ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
+			# one the earlier attempt could not read at its end is sent: its report did not carry it (B13 round 14
+			# Q29)
+			[ -z "$prev" ] || { [ -n "$nsat" ] && [ "${nsat//[!0-9]/}" -ge "${prev//[!0-9]/}" ]; } || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
 			if [ -n "$at" ] && [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ]; then
 				sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"
 				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
@@ -3447,11 +3479,14 @@ write_bring_back() {
 		[ "$unread" -eq 0 ] || printf 'not sent: %s patch file(s) in %s/local-work this account cannot read; make them readable (chmod u+r) and run this command again\n' "$unread" "$shown"
 		if [ "$sent" -eq 0 ] && [ -z "$skipped" ] && [ "$unread" -eq 0 ]; then
 			# local-work branches with commits of their own and no patch: those commits are not here (B13 round 13
-			# O23: a bare "none" read as no kept work)
+			# O23: a bare "none" read as no kept work). Its remedy names no branch, with the keep's own --suffix,
+			# so the patch pairs with its branch; a branch at an older commit of origin/main writes nothing (B13
+			# round 14 Q30).
 			branches="$(local_work_counts)"
 			branches="${branches##*|}"
 			if [ "${branches:-0}" -gt 0 ]; then
-				printf 'none: no patch file is in %s/local-work, but %s local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry\n' "$shown" "$branches"
+				# shellcheck disable=SC2016 # the backticks are text
+				printf 'none: no patch file is in %s/local-work, but %s local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch `git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C ~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o %s/local-work` (a branch that writes nothing holds no new commit), then run this command again\n' "$shown" "$branches" "$shown"
 			else
 				printf 'none\n'
 			fi
@@ -3462,6 +3497,7 @@ write_bring_back() {
 	}
 	# a read that failed partway would leave a patch cut short in section 3
 	[ "$catfail" -eq 0 ] || {
+		BACK_WHY="a kept patch in $SETUP_DIR/local-work could not be read in full"
 		rm -f "$tmp" "$local_work"
 		return 1
 	}
@@ -3483,12 +3519,16 @@ write_bring_back() {
 			printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
 				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
 				"set, a name and address git filled in from this Mac's account), so check those lines too."
+			# the remedy here too, in the file the person reviews (B13 round 14 Q29)
+			[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $unread patch file(s) this account cannot read: make them readable (chmod u+r) and run the report again (install.sh --report-only); see its last line."
 		elif [ "$unread" -gt 0 ]; then # before the hash sentences, which would call every patch an earlier one
-			printf '%s\n' "Section 3 sends no patch: $unread patch file(s) could not be read; see its last line${skipped:+, and the others were in an earlier report and are listed by their hash}."
+			printf '%s\n' "Section 3 sends no patch: $unread patch file(s) could not be read: make them readable (chmod u+r) and run the report again (install.sh --report-only); see its last line${skipped:+, and the others were in an earlier report and are listed by their hash}."
 		elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
 			printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
 		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
 			printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
+		elif [ "${branches:-0}" -gt 0 ]; then # B13 round 14 Q30: it said nothing of section 3
+			printf '%s\n' "Section 3 sends no patch: $branches local-work branch(es) hold commits this file does not carry; its line says how to add them."
 		fi
 		printf '\n## 1. Setup report\n\n'
 		embed "$REPORT_PATH" markdown
@@ -3501,13 +3541,26 @@ write_bring_back() {
 		return 1
 	}
 	rm -f "$local_work"
+	BACK_WHY="a folder, or a link to a folder, is at that path; move it away"
 	# a file left behind would hold section 3's patches, which are not redacted; a folder made at the path since
 	# the check above would take the file inside it, so it is checked again here
-	if [ -d "$out" ] || ! { chmod 600 "$tmp" && mv -f "$tmp" "$out"; }; then
+	if [ -d "$out" ] || ! {
+		BACK_WHY="chmod or mv failed (its error is above)"
+		chmod 600 "$tmp" && mv -f "$tmp" "$out"
+	}; then
 		rm -f "$tmp"
 		return 1
 	fi
+	BACK_WHY=""
+	if [ -d "$kept" ] && [ ! -L "$kept" ]; then
+		if [ -n "$notsent" ]; then
+			(umask 077 && printf '%s' "$notsent" >"$kept/.not-sent") 2>/dev/null || true
+		else
+			rm -f "$kept/.not-sent"
+		fi
+	fi
 	say "bring back: $out (one file: report, fix request, local work)"
+	BACK_UNREAD="$unread"
 	[ "$unread" -eq 0 ] || warn "$unread patch file(s) in $SETUP_DIR/local-work could not be read, so $out does not hold them"
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
@@ -3849,12 +3902,17 @@ on_exit() {
 				# report that was not stopped), and nothing this attempt prints names it (B13 round 4 Q20).
 				# A dry run (2) and a report not written (*) leave it.
 				rm -f "$SETUP_DIR/stopped-copy-report.md"
-				if write_bring_back; then wrote=1; else wrote=0; warn "could not write $back"; fi
+				if write_bring_back; then wrote=1; else wrote=0; warn "could not write $back${BACK_WHY:+: $BACK_WHY}"; fi
 				link="$(report_issue_link)"
 				if [ -n "$link" ]; then
 					[ "$REPORT_ONLY" -eq 0 ] ||
 						NEXT_MSG="review $back and copy that one file back privately, or paste the setup report into the issue the link above opens (nothing is sent for you)"
 					say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
+				fi
+				# not "that one file" while it lacks a kept patch: the remedy first, with a link or without one (B13
+				# round 14 Q20, Q29)
+				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ "$BACK_UNREAD" -gt 0 ]; then
+					NEXT_MSG="$back does not hold $BACK_UNREAD kept patch file(s) this account cannot read (see the warning above): make them readable (chmod u+r on the files in $SETUP_DIR/local-work) and run this command again, then review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier

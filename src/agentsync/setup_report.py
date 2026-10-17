@@ -8967,6 +8967,10 @@ LOCAL_WORK_WHERE = (
 nothing this report cannot know (which patches an earlier report carried), B13 round 10 L8, L25. "any patch",
 not "one", which read as a count beside the patch count (B13 round 11 M18)."""
 
+LOCAL_WORK_AGAIN = f"{INSTALL_SH} --report-only"
+"""The command that sends a kept patch this account could not read once it is made readable, word for word in
+install.sh's fallback (B13 round 14 Q29): bring-back.md does not hold such a patch."""
+
 
 def _published_shas(git: Path) -> set[str]:
     """Every commit ``origin/main`` has pointed at, from its reflog (``logs/refs/remotes/origin/main``, both
@@ -9028,6 +9032,7 @@ def _local_work_line() -> str | None:
         ]
     )
     times = [path.stat().st_mtime for path in patches]
+    unread = sum(1 for path in patches if not os.access(path, os.R_OK))
     dirs = _checkout_git_dirs(expand(INSTALL_SH).parents[1])
     branches: list[str] = []
     if dirs is not None:
@@ -9054,7 +9059,14 @@ def _local_work_line() -> str | None:
         newest = datetime.fromtimestamp(max(times), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         return (
             f"- local work kept by setup prompt step 1: {len(times)} patch file(s) in the setup folder's "
-            f"local-work, newest written {newest} ({LOCAL_WORK_WHERE}); {len(branches)} local-work "
+            "local-work"
+            + (
+                f", {unread} of them unreadable and not in bring-back.md (chmod u+r, then run "
+                f"{LOCAL_WORK_AGAIN} again)"
+                if unread
+                else ""
+            )
+            + f", newest written {newest} ({LOCAL_WORK_WHERE}); {len(branches)} local-work "
             "branch(es) in the checkout"
         )
     if branches:

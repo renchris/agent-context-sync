@@ -167,7 +167,10 @@ words) is yours to remove. The CLI always redacts.
   Both reports also say in counts that step 1 kept local work, under Run metadata in the agentsync report and at
   the end of the shell fallback's Summary: `- local work kept by setup prompt step 1: N patch file(s) in the setup folder's local-work, newest written
   <time> (no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch
-  an earlier report already carried is listed there by its hash); M local-work branch(es) in the checkout`. It counts
+  an earlier report already carried is listed there by its hash); M local-work branch(es) in the checkout`. Patches
+  this account cannot read are not in bring-back.md, so after `local-work` the line then adds `, U of them unreadable
+  and not in bring-back.md (chmod u+r, then run ~/src/agent-context-sync/scripts/install.sh --report-only again)`
+  (B13 round 14 Q29); a later report sends such a patch once it is readable. It counts
   the patches at the top of `local-work` (the files section 3 reads), whatever the checkout is, and the local-work
   branches that hold a commit of their own (one at main's or origin/main's commit, or at any commit origin/main's
   reflog names, is not counted unless a patch is named for it), read from the checkout's common dir, so a checkout
@@ -176,9 +179,12 @@ words) is yours to remove. The CLI always redacts.
   setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)`, and
   section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M local-work branch(es) in
   ~/src/agent-context-sync hold commits this file does not carry` (B13 round 13 O23). Those commits exist only on
-  the branch: ask the person to run `git -C ~/src/agent-context-sync format-patch origin/main..<branch> -o
-  ~/agent-context/setup/local-work` for each local-work branch, then run the report again. A public report shows
-  that the work exists, never the patches.
+  the branch. Since B13 round 14 Q30 that line goes on with the remedy, naming no branch (`; to send them, for each
+  branch ... run git -C ~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch>
+  -o ~/agent-context/setup/local-work (a branch that writes nothing holds no new commit), then run this command
+  again`), and the file's header says section 3 sends no patch and that its line says how to add them; ask the
+  person for that only if the file came back without it. A public report shows that the work exists, never the
+  patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
   not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
   hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with
