@@ -3649,6 +3649,42 @@ def test_runs_started_in_one_second_are_numbered_alike_in_both_readers(
         assert "(run ids without their process id, numbered .2 on for runs started in one second):" in part
 
 
+@pytest.mark.parametrize("order", ["list-first", "install-first", "own-second"])
+def test_a_run_named_by_its_start_time_carries_its_label_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, order: str
+) -> None:
+    """B13 round 13 O22: a Summary line naming an earlier run by its start time ("the install run of <time>",
+    the shell's "the last one, started <time>") did not carry the ``.2`` label the Installer section gives
+    it, so with a list and an install run started in one second the time named two runs. Both readers add
+    ", run <label>" when another run started in that second, the bare stamp included; a run alone in its
+    second is named by its time only."""
+    stamp, at = "20261016T155217Z", "2026-10-16T15:52:17Z"
+    install = _n21_run(stamp, 30586, "install").replace(
+        " end rc=0",
+        " step=first-sync seconds=9 rc=0 result=done note=converted-0-deferred-0\n"
+        f"{at} run={stamp}-30586 end rc=0",
+    )
+    log = {
+        "list-first": _n21_run(stamp, 30077, "list") + install,
+        "install-first": install + _n21_run(stamp, 30077, "list"),
+        "own-second": _n21_run("20261016T155200Z", 30077, "list") + install,
+    }[order]
+    label = {"list-first": f", run {stamp}.2", "install-first": f", run {stamp}", "own-second": ""}[order]
+    install_log_path(env).parent.mkdir(parents=True)
+    install_log_path(env).write_text(log)
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text("Attempt: 2026-10-16T16:30:00Z\nPrompt: v21\nAgent: x\n")
+    assert install_sh(env, "--report-only").returncode == 0
+    shell = report_path(env).read_text()
+    assert f"; the last one, started {at}{label}, exit 0" in shell, shell
+    monkeypatch.setenv("HOME", env["HOME"])
+    text, _red = setup_report.build_report(None, hooks=setup_report.ReportHooks())
+    summary = text.split("\n## Summary\n", 1)[1].split("\n## ", 1)[0]
+    assert f"(install.log: the install run of {at}{label}, before this attempt; " in summary, summary
+    if label:  # the label is the Installer section's
+        assert f"run {label.removeprefix(', run ')}: exit 0" in text.split("\n## Installer\n", 1)[1]
+
+
 @pytest.mark.parametrize(
     ("lines", "head"),
     [

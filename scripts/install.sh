@@ -2227,6 +2227,20 @@ last_install_run() {
 			for (i = n; i > 0; i--) if (!(order[i] in lists)) { print at[order[i]] " " rc[order[i]]; exit }
 		}' "$SETUP_LOG" 2>/dev/null || true
 }
+# The label of that run when another run of install.log started in its second, as strip_run_pids numbers
+# them (first-appearance order over the whole log, the first keeping the bare stamp); nothing when none did.
+# Its start time alone names two runs then (B13 round 13 O22), as setup_report._run_named says.
+install_run_label() {
+	[ -f "$SETUP_LOG" ] || return 0
+	LC_ALL=C awk '
+		$2 !~ /^run=/ { next }
+		{ id = substr($2, 5) }
+		!(id in label) { st = substr(id, 1, 16); k = ++seen[st]; label[id] = k == 1 ? st : st "." k; stamp[id] = st; order[++n] = id }
+		index($0 " ", " step=list-folders ") { lists[id] = 1 }
+		END {
+			for (i = n; i > 0; i--) if (!(order[i] in lists)) { if (seen[stamp[order[i]]] > 1) print label[order[i]]; exit }
+		}' "$SETUP_LOG" 2>/dev/null || true
+}
 # When the friction log's latest attempt began, as parse_friction draws it (Attempt.begin): its Attempt: time,
 # else its first timed line's; an attempt opens at an Attempt: line, at a step 1 error track() reads as another
 # session's, and at a step 1 error dated more than NEW_SESSION_GAP after an end line. Nothing when there is no
@@ -2512,7 +2526,7 @@ commit_shown() {
 	fi
 }
 fallback_install_line() { # RC
-	local head last at rc begin what
+	local head last at rc begin what label
 	head="- install.sh: setup-prompt-compat $SETUP_PROMPT_COMPAT, source commit $(commit_shown)"
 	if [ "$REPORT_ONLY" -eq 0 ]; then
 		say "$head, exit $1 ($(rc_meaning "$1"))"
@@ -2532,10 +2546,12 @@ fallback_install_line() { # RC
 	fi
 	if [ -z "$rc" ]; then what="has no end line (stopped or still running)"; else what="exit $rc ($(rc_meaning "$rc"))"; fi
 	begin="$(utc_stamp "$(friction_attempt_begin)")"
+	label="$(install_run_label)"
+	[ -z "$label" ] || label=", run $label" # a comma, as the Python report's: no bracket in the line's own
 	if [ -n "$begin" ] && [ -n "$(utc_stamp "$at")" ] && [[ "$at" < "$begin" ]]; then
-		say "$head; no install run during this attempt (began $begin); the last one, started $at, $what"
+		say "$head; no install run during this attempt (began $begin); the last one, started $at$label, $what"
 	else
-		say "$head; the last install run (started $at) $what"
+		say "$head; the last install run (started $at$label) $what"
 	fi
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.

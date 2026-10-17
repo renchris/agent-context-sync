@@ -7797,7 +7797,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         text, counts = _sync_step_words(pool[-1].step("first-sync") or {})
         if borrowed:
             text += (
-                f" (install.log: the install run of {_iso(pool[-1].started)}, before this attempt; this "
+                f" (install.log: {_run_named(pool[-1], r.install_runs)}, before this attempt; this "
                 "attempt ran none)"
             )
         else:
@@ -7848,7 +7848,7 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             pass  # unscoped, the whole log's runs: as before
         elif r.facts.first_sync_run:
             out_source = (
-                f"install.out: the install run of {_iso(printed_by.started)}, before this attempt"
+                f"install.out: {_run_named(printed_by, r.install_runs)}, before this attempt"
                 if printed_by is not None and printed_by.started is not None
                 else "install.out: an earlier run's, before this attempt"
             )
@@ -7858,8 +7858,8 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             if newest is not None:
                 said, _counts = _sync_step_words(newest.step("first-sync") or {})
                 parts.append(
-                    f"the newest earlier run's sync: {said} (install.log: the install run of "
-                    f"{_iso(newest.started)}, before this attempt)"
+                    f"the newest earlier run's sync: {said} (install.log: "
+                    f"{_run_named(newest, r.install_runs)}, before this attempt)"
                 )
                 own_line = False
         else:
@@ -7923,6 +7923,16 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     if pool:
         parts += _reread_since(r, pool[-1])
     return f"- {label}: " + " · ".join(parts)
+
+
+def _run_named(run: InstallRun, every: Sequence[InstallRun]) -> str:
+    """``the install run of <start>``, and ``, run <label>`` when another run of ``every`` (the whole log,
+    ``--list-folders`` runs included) started in the same second: its time alone then names two runs, which
+    the Installer section tells apart by label (B13 round 13 O22). Not by a "." in the label: a first run
+    with the bare stamp is as ambiguous. A comma, not a bracket: the name sits in the line's own bracket."""
+    stamp = re.sub(r"-\d+$", "", run.run_id)
+    shared = any(x is not run and re.sub(r"-\d+$", "", x.run_id) == stamp for x in every)
+    return f"the install run of {_iso(run.started)}" + (f", run {run.display_id}" if shared else "")
 
 
 def _sync_step_words(v: dict[str, str]) -> tuple[str, tuple[int, int, int] | None]:
