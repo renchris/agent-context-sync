@@ -25,6 +25,15 @@ make -C probes CFLAGS='-O2 -Wall -Wextra -Werror' && make -C probes check
 `.github/workflows/download-hosts.yml` is not in this list: it follows the installer's live download redirects
 weekly, so the network, not a commit, decides its result.
 
+`scripts/gate.sh` runs exactly this list and is the land gate: the same checks and the same full test set
+(`tests/test_deploy_pack.py` first, then the rest, after a check that the two parts collect the full set), ending
+`GATE GREEN at <sha>`. It never reads the journal below. Lanes pre-gate with `scripts/gate.sh --affected`: every
+static step, then the test files the diff from `origin/main` can turn red (the files it touches, their direct
+importers, the readers of a touched doc, and the whole-tree scanners); a change to `tests/conftest.py`,
+`pyproject.toml`, `uv.lock` or an unmapped path runs the full set. `scripts/gate.sh --lane` is a lane's full run.
+The two lane modes journal each test to `<git-common-dir>/gate-journal/`, and a run killed part way resumes on the
+same tree without the tests that passed. Every run appends its verdict to `<git-common-dir>/gate-verdicts.log`.
+
 pytest runs one worker per core (`-n auto`, pytest-xdist): about 2 minutes on a busy 10-core machine against 11
 serial. Every
 test keeps its own HOME and tmp tree (`tests/conftest.py::_isolate_home`), which is what makes that safe; a new
