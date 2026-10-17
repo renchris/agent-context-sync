@@ -11403,6 +11403,10 @@ A FAIL is never "yours", and no wait names a `launchd.*` or `config.*` check, so
 `unexpected N` counts every other warn and every FAIL, so on a Mac with such a wait it drops by the yours
 count while `N warn` stays; compare warn totals, or `yours + unexpected`, across reports.
 
+Amended 2026-10-17, §16.110 Q3, Q18, Q36: two FAIL groups leave `unexpected` without changing the outcome, the
+sign-in stop's (§16.104 O13) and the folders step 1's list found not on disk (`from the folder step 1 found not on
+disk N`, by check name and path).
+
 Why: the report said "yours" in its Doctor section and "unexpected" in its Summary for a wait its own Loop line
 listed two lines above, on every round, which trains a reader to skip the word meant to catch a stopped
 background sync. Amends §16.14 (dated lines there, in K16b and in the `ReportHooks` and `NextStep` blocks) and
@@ -20286,6 +20290,11 @@ eligible; no later bound). Tests: `test_the_installer_table_shows_what_the_folde
 `test_the_sign_in_step_1_asked_for_is_no_extra_click`,
 `test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped`.
 
+Amended 2026-10-17, §16.110 Q13, Q48, Q52: the map is install.sh's tokens only (onedrive, googledrive, dropbox,
+box, egnyte, other); three apps read `the OneDrive, Dropbox and Box sign-ins` and a list with `another sync app`
+among two or more `the sign-ins`; and the "Every run" table's last step of that list reads `list-folders (stopped,
+rc 3)` too.
+
 **The unattended sign-in stop is an item** (O13). With no install run and no friction stop, an exit 3 of step 1's
 list is an installer-side item, `- install.sh · step 1 · the folder list stopped: <the expected-turns words> (not
 logged: an unattended run goes to the report)` (a `no-folders` exit too), and a doctor FAIL of a source's
@@ -20293,6 +20302,13 @@ logged: an unattended run goes to the report)` (a `no-folders` exit too), and a 
 `from the sign-in stop N: ...`, not `unexpected`. `_doctor_fails` and the outcome are unchanged. The app is
 install.log's `apps=`, not the disk (the finder's fix predates O5). The shell report has no Items list and no
 doctor buckets, so it has nothing to match. Test: `test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops`.
+
+Amended 2026-10-17, §16.110 Q3, Q18, Q36, Q46, Q47, Q55: a source's FAIL is the sign-in stop's only when its
+provider folder is signed out by install.sh's rule (`doctor.provider_state`: gone with no other folder of its app,
+or holding only hidden entries; never a library beside its `OneDrive-<org>`); a folder step 1's list found not on
+disk (`gone=N`) has a bucket of its own, `from the folder step 1 found not on disk N`; and the item's reason is
+`(not logged: on this stop step 1 goes to the report)` on every exit 3 but a sign-in on a Mac that already syncs
+folders.
 
 **The Installer table's words** (O3, O9). The launcher, agent, wait and report rows read `skipped (not-requested)`
 and `done (agentsync)`; `_STEP_NOTE_WORDS` words install.sh's notes of those steps (`background sync was not asked
@@ -20302,6 +20318,10 @@ row reads `2 already synced, 1 of them not on disk` for `gone=1` (gone= also cou
 another of that app's, so never "renamed"); a gone= that is no count is dropped, and the Summary is unchanged.
 Tests: `test_the_installer_table_puts_every_steps_note_in_words`,
 `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`.
+
+Amended 2026-10-17, §16.110 Q4, Q17, Q78: the status row's notes are worded too (`agentsync status reported
+[FAIL] lines`); and the Summary's folders line adds `step 1's list found 1 synced folder not on disk: see Doctor`
+when this report's doctor still FAILs that folder.
 
 **Summary lines** (O8, O22, O32, O33). O8: from prompt v21 (`UNREAD_CURRENT_ASKS_NOTHING`), a list that could not
 read the config (`marks=failed`) and an installed agentsync already the checkout's build (the first install run's
@@ -20318,6 +20338,9 @@ reported [FAIL] lines (rc 1)`. Tests: `test_from_prompt_v18_an_unread_config_the
 `test_a_run_named_by_its_start_time_carries_its_label_in_both_readers`,
 `test_an_attempt_whose_install_stopped_before_its_sync_shows_no_earlier_runs_counts_as_its_own`,
 `test_the_outcome_of_a_status_fail_stop_names_the_status_step`.
+
+Amended 2026-10-17, §16.110 Q50: install.sh logs `note=fail-lines` only when status printed a `[FAIL]` line, and
+`note=status-error` for a non-zero exit with none, which reads `its status step exited 1 with no [FAIL] line`.
 
 **Attempts and local work** (O23, O24; dated line at §16.86 L58). O23: a counted local-work branch holds commits of
 its own (round 11's filter), so both readers read `- local-work branch(es) in the checkout: M with commits of their
@@ -20778,7 +20801,129 @@ says what N67 was and that N31 has since removed the guard. Tests: the dated-lin
 
 ### 16.110 Round 14: setup report (2026-10-17, wave B13 round 14 lane RA)
 
-Reserved for round 14 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 14").
+The setup report's findings of the v22 rehearsals, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 14"). Lane RA's round 14 items: Q3, Q4, Q12, Q13, Q14, Q17, Q18, Q21, Q25, Q28, Q36, Q37, Q46, Q47,
+Q48, Q50, Q52, Q53, Q55, Q78 (round 14's Q ids, not round 4's). All are built; none was recorded as making things
+worse. Q3, Q18 and Q36 are one defect, built once; so are Q14 and Q37, Q46 and Q55, and Q17 and Q78.
+
+**A folder step 1 found not on disk has its own doctor bucket** (Q3, Q18, Q36; amends §16.39 N16, §16.104 O13).
+Step 1's list logged `gone=1` and its NEXT said step 2's status fails on that folder, yet the Doctor line called the
+folder's FAILs unexpected. `_gone_folder_fails` takes `source.<id>.listable` and `.volume` of a live source under
+~/Library/CloudStorage whose own path is not on disk, by check name and path, never doctor's fix text, when the
+attempt's last list logged `gone=N` (N at least 1) and was no sign-in exit. The provider folder may be gone too:
+install.sh's `gone=` also counts the other-account and library cases. When more such sources are missing than N,
+which went missing after step 1 cannot be told, so all stay unexpected. The line reads `from the folder step 1 found
+not on disk 1: source.<id>.listable FAIL, source.<id>.volume FAIL` (N counts folders; `folders` for more than one;
+the step is the layout's folder-question step), before `unexpected`, and never holds a sign-in stop's FAIL.
+`_doctor_fails` and the outcome are unchanged; its docstring no longer says every FAIL is unexpected (Q52). Test:
+`test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket`.
+
+**The sign-in stop's bucket is install.sh's signed-out rule** (Q46, Q55; amends §16.104 O13). The bucket took a
+source when its provider folder was not on disk. A stale provider folder holding only hidden entries is signed out
+to install.sh's `signed_out` (rc 0), and its FAILs read as unexpected; a SharePoint library gone or empty beside its
+`OneDrive-<org>` (rc 3) and a provider folder gone beside another folder of its app (rc 2) are no sign-in, yet their
+FAILs landed in the bucket. doctor's classification is one function, `doctor.provider_state(provider)`:
+`signed-out`, `other-account`, `library` or `signed-in`, the library check before the empty-folder one (O52), the
+listing bounded by `_LISTING_TIMEOUT_S` (O47), an unreadable or held folder signed in (N61). `_missing_source_fix`
+maps its states to the same fix texts as before, and `_sign_in_stop_fails` takes a source only when its own path is
+not on disk (`_on_disk`, install.sh's `[ ! -e ]`: a dangling link is not on disk) and its provider folder is
+`signed-out`. The report reads each provider folder once (`_Run.provider_states`), its listing bounded by
+`_LISTING_S` and what is left of its budget, never doctor's 120 s; one that does not answer counts as signed in. The O13 test's
+gone `OneDrive-<org>` sat beside its `OneDrive-SharedLibraries-<org>`, which install.sh reads as another account
+(rc 2); it now uses a stale provider folder. Tests: `test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out`,
+`test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops`.
+
+**A new Mac's step 1 stop goes to the report attended or not** (Q47; amends §16.104 O13). The stop item said `(not
+logged: an unattended run goes to the report)` on every exit 3. From prompt v21 a sign-in on a Mac that syncs no
+folder is no click, so every run goes to the report there. That reason stays only for the prompt's first exception,
+a sign-in exit on a Mac that already syncs folders (`not-signed-in` with `synced=N`, N at least 1), where an
+attended run waits; any other exit 3 (a `no-folders` exit, a sign-in with `synced=0` or none) reads `(not logged: on
+this stop step 1 goes to the report)`. Test: `test_a_new_macs_step_1_stop_goes_to_the_report_attended_or_not`.
+
+**Sign-in words for three apps, and the run table's stopped list** (Q48, Q13, Q52; amends §16.104 O1, O19).
+Q48: `_signed_out` joins the sign-in's names as the stop's (`the OneDrive, Dropbox and Box sign-ins`, never `the
+OneDrive and Dropbox and Box sign-ins`), and makes it plural whenever more than one app is named, `another sync app`
+among them (`the sign-ins`); two known apps and one read as before. Q13: the "Every run" table's last step of the
+list whose sign-in step 1 asked for reads `list-folders (stopped, rc 3)`, the Installer row's word, keyed on that
+run (`_sign_in_run`), not on whether its Installer table is shown; install.log keeps `result=failed`. Q52: the map
+`_SIGN_IN_APPS` is install.sh's tokens only, `onedrive`, `googledrive`, `dropbox`, `box`, `egnyte` and `other`
+(`sharedlibraries` and `google%20drive` were never logged); a token none of these is still dropped. The dead
+`not-signed-in` entry of `_LIST_FOLDERS_NOTE_WORDS` goes. Tests: `test_the_sign_in_words_join_three_apps_and_count_another_one`,
+`test_the_installer_table_calls_the_sign_in_step_1_asked_for_stopped`,
+`test_the_sign_in_app_map_holds_the_tokens_install_sh_writes_and_no_others`.
+
+**The status step's notes** (Q4, Q50; amends §16.104 O3, O33). Q4: the Installer table's status row (`doctor` in
+older logs) read `done, rc 1 (fail-lines)`; `_STATUS_NOTE_WORDS` words its notes: `agentsync status reported [FAIL]
+lines`, `its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for` and `agentsync
+status exited with no [FAIL] line`, under both names, and install.sh's stopped-copy table (`STOPPED_STEP_WORDS`,
+§16.111 Q27) carries the same lines. Q50: install.sh logged `note=fail-lines` for any non-zero status exit; a status
+that exits non-zero with no `[FAIL]` line in its output (a traceback, a config or lock error) now logs
+`note=status-error`, which still blocks the sync, and the outcome reads `install.sh exited 1: its status step exited
+1 with no [FAIL] line`. A log from before keeps the fail-lines words. install.log keeps its tokens. Tests:
+`test_the_installer_table_puts_the_status_steps_note_in_words`, `test_sections_carry_the_facts`,
+`test_the_outcome_of_a_status_fail_stop_names_the_status_step`, `test_a_status_that_fails_with_no_fail_line_logs_status_error`.
+
+**The Summary's folders line** (Q17, Q78; amends §16.104 O9). The Installer row read `2 already synced, 1 of them
+not on disk` while the Summary read `kept the 2 already synced (none added)`. `_folders_line` adds `step 1's list
+found 1 synced folder not on disk: see Doctor`, in every branch (`(none added; ...)`, `1 added to the 2 already
+synced (...)`), by the list's own `gone=` count, when the list run right before the last install run (no install
+run between) finished with `gone=` at least 1 and no sign-in note, and this report's doctor FAILs a source's
+listable check `<root> does not exist` that the Doctor line's own bucket (`_gone_folder_fails`, less the sign-in
+stop's) holds, so "see Doctor" always finds it; the step is the layout's folder-question step. Q17's ungated `step 1 found 1 of them not
+on disk` is not built: without the doctor gate it claims a folder missing after it was fixed. Test:
+`test_the_folders_line_says_step_1_found_a_synced_folder_not_on_disk`.
+
+**A retried run's item** (Q12, Q21). Q12: Items said `the same command was run again and ended 0` of a run whose
+re-run had other arguments; `_retry_line` now gets the attempt's first install run that ended 0 and compares the two
+runs' `args=`, never printing them: the same arguments (in any order or spacing) keep those words; arguments that
+differ only in their
+`--source-local` folders read `install.sh was run again with other folders and ended 0`; anything else (or quoting
+`shlex` cannot split) `with other arguments`. Each failed run is compared with the run that worked, not the next
+one. Q21: a run that failed at its status step names that run's `[FAIL]` checks from its install.out block (its `#
+run=<id>` header to the next): `exited 1 at its status step ([FAIL] pandoc, timed out; source.<folder-2>.listable)`,
+at most three and `+N more`, each redacted, `timed out` only on doctor's own words (`ran out of time`, `did not
+answer within`); `(its [FAIL] lines are not in the install.out lines read)` when the header is not among them; no
+install.out, or another failing step, is unchanged. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+**Residue: an app's own provider folder** (Q14, Q37). `~/Library/CloudStorage/Dropbox/<folder-3>` flagged
+`Dropbox`: only a provider folder naming an organisation was skipped (`provider_heads`). `residue()` skips an app
+name (`_CONTEXT_HEADS`) only inside the provider folder right after `CloudStorage/` (`_PROVIDER_DIR_RE`: `Dropbox`,
+both words of `Box-Box`, `GoogleDrive-<name>`, `Egnyte-<org-1>`); any other word there is still a hit (`Acme` in
+`Dropbox-Acme-<org-1>`), and so is an app name anywhere else (`<folder-1> Box`, a project's leftover second word).
+The names are not added to `_RESIDUE_IGNORED`. The finding's stated cause, `report_words()` skipping
+`_SIGN_IN_APPS`, was not it: `residue()` never reads `report_words()`. Tests:
+`test_an_app_name_is_no_residue_only_as_the_provider_folder`, `test_a_personal_dropbox_folder_leaves_no_residue_in_the_report`.
+
+**The issue title's step 2** (Q25). The v7-and-later layout named step 2 `install`, so a v22 title read `Failed at
+step 2 (install)` beside the field `Failed at step 2 (install and start)`; every prompt since v7 calls the step
+"Install and start". The layout reads `install and start`, and setup-feedback.md's example of a title that differs
+from its field is a v5 attempt's step 3 (`Failed at step 3 (install and start)` against `Failed at step 2 (install
+and start)`). The older sections that quote v7's step 2 as `install` (§16.52, §16.58, §16.62) describe the layout
+of their round. Test: `test_setup_feedback_states_the_report_rules_of_round_6`.
+
+**Two sessions that each stop at step 1 within the gap are two attempts** (Q28). Probe prx: a finished attempt, then
+two stated step 1 errors (`prompt v22, <agent>: ...`) 4m36s apart, read as one 4m36s session with the first stop as
+friction and the second line's prefix kept. A session writes that prefix once, only before `--log-start`, at the
+Xcode or git stop, then goes to its report, so after a header, or after a header-less attempt that already has
+stated words, a stated step 1 error is another session's at any gap (after stated words, only a line in the awk's
+strict `<stamp> | step 1 | error |` form, so both readers split a loosely written line alike). `parse_friction`'s `orphan()` and install.sh's
+`track()` change together (the version, agent and gap comparisons of round 4 Q21 and `_agent_key` go), so the
+installer's NEXT and the report judge the same attempts. Residual: an agent that logs its stated error twice gets a
+second `failed at step 1` attempt; round 9 K14's twice-prefixed shell case now logs its second line without the
+prefix. Tests: `test_two_sessions_that_each_stop_at_step_1_within_the_gap_are_two_attempts`,
+`test_a_step_1_error_with_another_sessions_words_leaves_an_attempt_with_no_end_line`,
+`test_the_installer_and_the_report_split_the_same_attempts_after_any_header`,
+`test_the_shell_report_computes_a_step_1_failure_past_its_first_line`.
+
+**The report's git lookup is inside its budget** (Q53). `_git_ro_err` looked git up (`xcrun --find git`, bounded
+only by 10 s) before reading the budget, and a failed lookup was not kept, so each call asked again. The budget is
+read first; `gitops.usr_bin_git(timeout=...)` is bounded by what is left of the budget (not the call's own 3 s,
+so a slow but working xcrun still answers) and its answer, the `/usr/bin/git` fallback
+included, is kept on the report's `_Run.git`; the time left is read again before git runs. gitops' per-process memo
+still keeps successes only. Test: `test_the_reports_git_lookup_is_asked_once_within_its_time_budget`.
+
+**Comments** (Q52). install.sh's `friction_latest_has_step` comment named `friction_step1_stated`'s attempt
+boundaries, which O24 changed only for has_step; it names parse_friction's.
 
 ### 16.111 Round 14: installer, persons_fails and the shell report (2026-10-17, wave B13 round 14 lane RB)
 
