@@ -51,10 +51,12 @@ from pathlib import Path
 
 from agentsync import curate, gitops, governance, it_request, skill
 from agentsync.arm_local import (
+    UNKNOWN_MISSING,
     UNKNOWN_MODE,
     UNKNOWN_OTHER,
     UNKNOWN_PRIVACY,
     _unexcluded,
+    cloud_provider_root,
     files_below,
     split_empty,
 )
@@ -531,6 +533,39 @@ def _unlisted_kinds(manifest: Manifest, src: SourceConfig, names: Sequence[str])
     if not isinstance(stored, dict) or not names or not all(isinstance(stored.get(n), str) for n in names):
         return None
     return frozenset(str(stored[n]) for n in names)
+
+
+def _missing_root_wait(config: Config, sid: str, pause: str) -> str:
+    """The wait for a source whose last walk found no root folder (``UNKNOWN_MISSING``; B13 round 14 Q6, Q11,
+    Q34): it was renamed, moved or deleted, or what holds it is not there. Worded from the configured path
+    alone, never a read (a hidden Allow prompt can hold one, and status reads this: B13 round 13 O47): under
+    ~/Library/CloudStorage its app is signed out, still setting up, or (a SharePoint library) not synced on
+    this Mac; under /Volumes the volume is not mounted. No Files and Folders grant, which cannot bring back a
+    folder that does not exist; no path, which the sync's alarm names."""
+    src = next((s for s in config.sources if s.id == sid), None)
+    fix_path = f'fix path in [[source]] id = "{sid}" in {_shown(config.config_path)}'
+    root = expand(src.path) if src is not None and src.path is not None else None
+    provider = cloud_provider_root(root) if root is not None else None
+    if provider is not None and provider.name.startswith("OneDrive-SharedLibraries-"):
+        cause = "renamed, moved or deleted, or its SharePoint library is not synced on this Mac"
+        fix = (
+            "sync the SharePoint library to this Mac with Sync on its SharePoint page, put the folder back "
+            f"under that name, or {fix_path}"
+        )
+    elif provider is not None:
+        app = provider.name.split("-", 1)[0] or "its sync app"
+        cause = f"renamed, moved or deleted in {app}, or {app} is not signed in on this Mac"
+        fix = f"put it back under that name, sign in to {app} or let it finish setting up, or {fix_path}"
+    elif root is not None and root.parts[:2] == ("/", "Volumes"):
+        cause = "its volume is not mounted, or it was renamed, moved or deleted"
+        fix = f"mount the volume, or {fix_path}"
+    else:
+        cause = "renamed, moved or deleted"
+        fix = f"put it back under that name, or {fix_path}"
+    return (
+        f"the folder of {sid} does not exist ({cause}; nothing is deleted, and another sync does not clear "
+        f"it): {fix}; to stop syncing it on purpose, {pause}"
+    )
 
 
 def _access_fix(kinds: frozenset[str] | None, *, one: bool = False) -> str:
@@ -1067,17 +1102,23 @@ def next_step(
     checks.extend(c for s, _ in sorted(unlisted) if (c := f"heartbeat.{s}") not in checks)
     for sid in sorted(root_unlisted):  # a root cannot be excluded: never offer it
         pause = f'set state = "paused" in [[source]] id = "{sid}" in {_shown(config.config_path)}'
-        waits.append(
+        if root_kinds.get(sid) == frozenset({UNKNOWN_MISSING}):
+            waits.append(_missing_root_wait(config, sid, pause))
+        elif root_kinds.get(sid) == frozenset({UNKNOWN_MODE}):
             # B13 round 11 M42: a root refused with EACCES is no unmounted volume, and no grant overrides it
-            f"the folder of {sid} itself could not be listed: its own permissions do not let this account "
-            "read it (EACCES; no Files and Folders grant overrides them, and another sync does not clear "
-            f"it): check its owner and mode with `ls -ld`; to stop syncing it on purpose, {pause}"
-            if root_kinds.get(sid) == frozenset({UNKNOWN_MODE})
-            else f"the folder of {sid} itself could not be listed or is empty (an unmounted volume, a sync "
-            "client that has not filled it yet, or no access; another sync does not clear it): mount it or "
-            "let the sync client fill it, or grant Files and Folders access; to stop syncing it on purpose, "
-            f"{pause}"
-        )
+            waits.append(
+                f"the folder of {sid} itself could not be listed: its own permissions do not let this "
+                "account read it (EACCES; no Files and Folders grant overrides them, and another sync does "
+                "not clear it): check its owner and mode with `ls -ld`; to stop syncing it on purpose, "
+                f"{pause}"
+            )
+        else:
+            waits.append(
+                f"the folder of {sid} itself could not be listed or is empty (an unmounted volume, a sync "
+                "client that has not filled it yet, or no access; another sync does not clear it): mount it "
+                "or let the sync client fill it, or grant Files and Folders access; to stop syncing it on "
+                f"purpose, {pause}"
+            )
         checks.append(f"heartbeat.{sid}")
         names_source(sid)
     if blocked:

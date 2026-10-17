@@ -1318,12 +1318,84 @@ def test_a_source_root_a_sync_cannot_list_never_offers_an_exclude(tmp_path: Path
         f'state = "paused" in [[source]] id = "work" in {config.config_path}'
     ]
     assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
-    folder.rename(folder.with_name("Work unmounted"))
+    # B13 round 14 Q6, Q11, Q34: a root renamed away is a folder that does not exist, not one to mount, fill
+    # or grant access to: put it back or fix the path
+    folder.rename(folder.with_name("Work renamed"))
+    run_cycle(config, mode=None)
+    assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [
+        "WAITING ON YOU: the folder of work does not exist (renamed, moved or deleted; nothing is deleted, "
+        "and another sync does not clear it): put it back under that name, or fix path in [[source]] id = "
+        f'"work" in {config.config_path}; to stop syncing it on purpose, set state = "paused" in [[source]] '
+        f'id = "work" in {config.config_path}'
+    ]
+    assert loop.next_step(config, count_queue=False).checks == ("heartbeat.work",)
+    folder.with_name("Work renamed").rename(folder)
+    # a root that is there but empty (an unmounted volume's mount point) keeps the words for that
+    aside = tmp_path / "aside"
+    aside.mkdir()
+    for child in list(folder.iterdir()):
+        child.rename(aside / child.name)
     run_cycle(config, mode=None)
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [root_wait]
-    folder.with_name("Work unmounted").rename(folder)
+    for child in list(aside.iterdir()):
+        child.rename(folder / child.name)
     run_cycle(config, mode=None)
     assert not any(ln.startswith("WAITING ON YOU") for ln in _lines(config))
+
+
+@pytest.mark.parametrize(
+    ("provider", "words"),
+    [
+        (
+            "Dropbox-Contoso",
+            "(renamed, moved or deleted in Dropbox, or Dropbox is not signed in on this Mac; nothing is "
+            "deleted, and another sync does not clear it): put it back under that name, sign in to Dropbox "
+            'or let it finish setting up, or fix path in [[source]] id = "gamma"',
+        ),
+        (
+            "OneDrive-SharedLibraries-Contoso",
+            "(renamed, moved or deleted, or its SharePoint library is not synced on this Mac; nothing is "
+            "deleted, and another sync does not clear it): sync the SharePoint library to this Mac with Sync "
+            "on its SharePoint page, put the folder back under that name, or fix path in [[source]] "
+            'id = "gamma"',
+        ),
+    ],
+)
+def test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant(
+    tmp_path: Path, provider: str, words: str
+) -> None:
+    """B13 round 14 Q6, Q11, Q34: a source whose app folder is gone (Dropbox signed out) or whose SharePoint
+    library is not synced read "could not be listed or is empty ...: mount it or let the sync client fill
+    it, or grant Files and Folders access", while step 1 and doctor named the sign-in. The walk stores the
+    root as missing and the wait names the app's fixes from the configured path, reading nothing."""
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage"
+    root = cloud / provider / "Shared Gamma"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    config = _setup(tmp_path, local_source_table("gamma", root))
+    assert run_cycle(config, mode=None).exit_code == 0
+    (root / NOTE_NAME).unlink()
+    root.rmdir()
+    (cloud / provider).rmdir()
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_meta(cycle_module._UNLISTED_KINDS_META + "gamma") == '{".": "missing"}'
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert wait.startswith(f"WAITING ON YOU: the folder of gamma does not exist {words} in "), wait
+    assert "Files and Folders" not in wait and "unmounted" not in wait and "Shared Gamma" not in wait
+
+
+def test_a_gone_root_under_volumes_is_a_volume_to_mount(tmp_path: Path) -> None:
+    """B13 round 14 Q34: under /Volumes a gone root is most likely a volume not mounted (by its path only)."""
+    config = _setup(tmp_path, local_source_table("work", tmp_path / "w"))
+    config = dataclasses.replace(
+        config, sources=(dataclasses.replace(config.sources[0], path=Path("/Volumes/Contoso Disk/Work")),)
+    )
+    wait = loop._missing_root_wait(config, "work", "PAUSE")
+    assert wait == (
+        "the folder of work does not exist (its volume is not mounted, or it was renamed, moved or "
+        "deleted; nothing is deleted, and another sync does not clear it): mount the volume, or fix path in "
+        f'[[source]] id = "work" in {config.config_path}; to stop syncing it on purpose, PAUSE'
+    )
 
 
 def test_a_listing_macos_holds_is_a_click_allow_wait_for_every_source_under_it(

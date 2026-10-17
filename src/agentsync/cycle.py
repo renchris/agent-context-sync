@@ -53,6 +53,7 @@ from agentsync import __version__, curate, gitops, governance, lints, materialis
 from agentsync import policy as content_policy
 from agentsync.arm_local import (
     UNKNOWN_EMPTY,
+    UNKNOWN_MISSING,
     InboxArm,
     LocalArm,
     SettleBudget,
@@ -285,9 +286,10 @@ folders the could-not-be-listed wait beside theirs, on the first sync, not after
 _UNLISTED_KINDS_META = "unlisted_kinds:"
 """Manifest meta ``unlisted_kinds:<source id>``: the folders the source's last walk could not list for a cause
 other than an empty cloud folder ("." for the root), each with its kind (``arm_local.UNKNOWN_PRIVACY`` for
-EPERM, ``UNKNOWN_MODE`` for EACCES, ``UNKNOWN_OTHER``), a JSON object ("" when there were none).
-``loop.next_step`` words the fix of a could-not-be-listed wait by it; a folder it does not hold (state from
-before B13 round 11 M42) keeps the generic words."""
+EPERM, ``UNKNOWN_MODE`` for EACCES, ``UNKNOWN_OTHER``; ``UNKNOWN_MISSING`` for a root that does not exist,
+B13 round 14 Q34), a JSON object ("" when there were none). ``loop.next_step`` words the fix of a
+could-not-be-listed wait by it; a folder it does not hold (state from before B13 round 11 M42) keeps the
+generic words."""
 _SENTINEL_MISSING_META = "sentinel_missing:"
 """Manifest meta ``sentinel_missing:<source id>``: the sentinel the source's last walk looked for and did not
 find, as sources.toml set it then ("" when it found it, or none was set). ``loop.next_step`` gives the source
@@ -3037,16 +3039,26 @@ class _Cycle:
         )
         return scan, pc, rows, fast_ids, restamp
 
-    def _note_empty_dirs(self, source_id: str, stats: WalkStats | None, sentinel: str | None = None) -> None:
+    def _note_empty_dirs(
+        self,
+        source_id: str,
+        stats: WalkStats | None,
+        sentinel: str | None = None,
+        *,
+        root_missing: bool = False,
+    ) -> None:
         """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), whether its root was
         unlisted (:data:`_ROOT_UNLISTED_META`), the other folders it could not list
-        (:data:`_UNLISTED_DIRS_META`), the kind of each (:data:`_UNLISTED_KINDS_META`) and the ``sentinel`` it
+        (:data:`_UNLISTED_DIRS_META`), the kind of each (:data:`_UNLISTED_KINDS_META`; ``root_missing``, a
+        root that does not exist, is ``UNKNOWN_MISSING`` for "." (B13 round 14 Q34)) and the ``sentinel`` it
         did not find (:data:`_SENTINEL_MISSING_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
         root = stats is None or stats.unknown_dirs == (".",)
         other = sorted(set(stats.unknown_dirs) - set(found) - {"."}) if stats is not None else []
         why = stats.unknown_why if stats is not None else ()
         kinds = {u.name: u.kind for u in why if u.kind != UNKNOWN_EMPTY}
+        if stats is None and root_missing:
+            kinds = {".": UNKNOWN_MISSING}
         for key, value in (
             (_EMPTY_DIRS_META + source_id, json.dumps(list(found), ensure_ascii=False) if found else ""),
             (_ROOT_UNLISTED_META + source_id, "1" if root else ""),
@@ -3122,7 +3134,7 @@ class _Cycle:
                 if scan.pass_kind is PassKind.FULL:
                     self.manifest.set_enumeration_complete(src.id, scan.enumeration_complete, self.run_id)
                 if isinstance(arm, LocalArm):
-                    self._note_empty_dirs(src.id, arm.last_stats, src.sentinel)
+                    self._note_empty_dirs(src.id, arm.last_stats, src.sentinel, root_missing=arm.root_missing)
                 self.manifest.record_source_pass(
                     self.run_id,
                     src.id,

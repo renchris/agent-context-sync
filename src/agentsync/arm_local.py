@@ -136,6 +136,9 @@ UNKNOWN_MODE = (
     "mode"  # EACCES: the folder's own owner, mode or ACL keep this account out; no grant overrides it
 )
 UNKNOWN_OTHER = "other"  # a provider error, a folder that vanished, anything else
+# the root itself does not exist (ENOENT): renamed, moved or deleted, or its sync app or volume is not there;
+# stored for "." only, so a wait names that cause, not access (B13 round 14 Q6, Q11, Q34)
+UNKNOWN_MISSING = "missing"
 
 
 class UnknownDir(NamedTuple):
@@ -1041,6 +1044,7 @@ class LocalArm:
         self.kind = cfg.kind
         self.root = cfg.path
         self.last_stats: WalkStats | None = None  # stats of the most recent scan (for STATE.md / reports)
+        self.root_missing = False  # the most recent scan found no root (ENOENT), before or during the walk
         # stable_id -> stored H0 of this source (``Manifest.observation_index``), set by the cycle before a
         # scan: files whose lstat tuple still matches skip the per-file getattrlist (see ``walk``).
         self.known_h0: Mapping[str, _KnownStat] | None = None
@@ -1229,11 +1233,13 @@ class LocalArm:
                 return root_st, exc
 
         # The root's own metadata reads share the listings' time limit: a privacy prompt may hold them too.
+        self.root_missing = False
         try:
             root_st, volume = call_with_timeout(root_reads, self.listing_timeout_s, name="agentsync-root")
         except CallTimedOutError:
             return self._held(f"reading the root did not return within {self.listing_timeout_s:.0f}s")
         except FileNotFoundError:
+            self.root_missing = True
             return self._incomplete(f"source root missing: {self.root} (walk skipped; nothing is deleted)")
         except OSError as exc:
             return self._incomplete(f"source root unreadable: {self.root}: {exc.strerror}")
@@ -1254,6 +1260,7 @@ class LocalArm:
                 listing_timeout_s=self.listing_timeout_s,
             )
         except FileNotFoundError:
+            self.root_missing = True
             return self._incomplete(f"source root vanished during the walk: {self.root}")
         except CallTimedOutError as exc:
             return self._held(str(exc))
