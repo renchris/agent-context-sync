@@ -3431,7 +3431,8 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # "<details><summary>the last N line(s) of ..." line and "</details>", and the second says so in that summary
 # line, at the end of the renderer's bracket ("; K of them left out: the bring-back and issue link lines"): the
 # fence holds fewer lines than N (G16). Inside it, so the bracket, which says whose output all N lines are, is
-# not read as why K were left out, and with no "an earlier run's": K can span runs (B13 round 12 N22). An
+# not read as why K were left out, and with no "an earlier run's": K can span runs (B13 round 12 N22); the
+# fence's one marker line is number-neutral for the same reason (B13 round 13 O70). An
 # older summary wording is left as it is. The second read also gives the summary F20's label where the agentsync that rendered the report is
 # older than F20 (a stopped copy stops before step 2 reinstalls it): only where the report's own Summary says
 # no run of this attempt is in install.out's tail, as the renderer's condition is, and with its two texts (G17).
@@ -3456,7 +3457,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	if {
 		printf '%s\n\n' "$note" &&
 			LC_ALL=C awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
-				-v gone="(an earlier run's bring-back and issue link lines are left out of this report)" \
+				-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
 				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 				-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
 				-v changed=", or the --log-start value was changed" '

@@ -6761,7 +6761,7 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
     tail = [f"filler {n}" for n in range(56)] + end
     old = tmp_path / "old-report.md"
     side = report_path(env).parent / "setup" / "stopped-copy-report.md"
-    gone = "(an earlier run's bring-back and issue link lines are left out of this report)"
+    gone = "(earlier runs' bring-back and issue link lines are left out of this report)"
     # B13 round 12 N22: the count sits at the end of the renderer's bracket, which says whose output all the
     # lines are, so the bracket is not read as why they were left out; two earlier runs in the tail give 4
     for runs, k in ((tail, 2), ([f"filler {n}" for n in range(52)] + end + end, 4)):
@@ -6776,6 +6776,8 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
         )
         assert found is not None, head
         assert (int(found[1]), int(found[2])) == (60, k) and fenced.count(gone) == 1
+        # B13 round 13 O70: one marker stands for the lines of every earlier run, so it is number-neutral
+        assert "an earlier run's" not in "\n".join(fenced)
         assert int(found[1]) == len(fenced) - 1 + int(found[2]), "the marker is no install.out line"
         assert "an earlier run's" not in head and head.count(" (") == 1, head
     _sends_nothing(side)
@@ -6820,7 +6822,7 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     assert stopped.returncode == 0 and "(agentsync setup-report)" in stopped.stdout, stopped.stdout
     assert "## Redaction" in side.read_text()
     _sends_nothing(side)
-    gone = "(an earlier run's bring-back and issue link lines are left out of this report)"
+    gone = "(earlier runs' bring-back and issue link lines are left out of this report)"
     lines = side.read_text().splitlines()
     assert lines.count(gone) == 1, side.read_text()
     assert lines[lines.index(gone) + 1].startswith("NEXT: stop: "), (
