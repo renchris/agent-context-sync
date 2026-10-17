@@ -1151,6 +1151,47 @@ def test_parse_friction_v5_lines() -> None:
     assert none.attempts == () and none.latest is None
 
 
+STEP1_ONE_LINER = (
+    'export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f '
+    "~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C "
+    "~/src/agent-context-sync pull --ff-only; else git clone "
+    "https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && "
+    "~/src/agent-context-sync/scripts/install.sh --version"
+)
+"""Step 1's whole one-liner (its start), which an agent may log as "the failed command" (B13 round 14 Q31)."""
+
+
+def test_a_logged_command_keeps_its_bars_and_its_error(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 14 Q31: a step 1 error that logged step 1's whole one-liner was split on every ``|``, so its
+    ``||`` came back as ``| |``, and the Items line, cut at 220 characters, ended inside the command with no
+    word of git's error. The what-text is now kept as written, the fix is still the text after the last
+    ``|``, and an error line too long for the cut keeps its error."""
+    error = "fatal: unable to access 'https://github.com/': Could not resolve proxy: gw.contoso.invalid"
+    what = f"{STEP1_ONE_LINER} failed (exit 1): {error}"
+    line = f"2026-10-06T02:16:01Z | step 1 | error | {what} | set the proxy\n"
+    [event] = setup_report.parse_friction(line).attempts[0].events
+    assert (event.step, event.kind, event.fix) == (1, "error", "set the proxy")
+    assert event.what == what, "the what-text is the line's own"
+    assert "] || [" in event.what and "| |" not in event.what
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY + line)
+    monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")
+    _text, summary = summary_of(fake_mac)
+    [item] = [ln for ln in summary.splitlines() if ln.startswith("- F5 · step 1 · error · ")]
+    assert "failed (exit 1): fatal: unable to access" in item, item
+    assert (
+        item.startswith("- F5 · step 1 · error · export GIT_CEILING_DIRECTORIES=")
+        and "→ set the proxy" in item
+    )
+    returned = setup_report._item_what(f"{STEP1_ONE_LINER} returned exit code 128: {error}", "error")
+    assert "returned exit code 128: fatal: unable to access" in returned and len(returned) <= 220
+    short = "2026-10-06T02:16:01Z | step 1 | error | git pull failed (exit 1): a || b | -\n"
+    [event] = setup_report.parse_friction(short).attempts[0].events
+    assert (event.what, event.fix) == ("git pull failed (exit 1): a || b", "")
+
+
 def test_run_type_is_computed(fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
     write_friction(
         fake_mac, V5_HAPPY.replace("Agent: Claude Code, claude-opus-5-5\n", "Agent: x\nRun: real\n")

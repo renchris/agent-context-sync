@@ -1473,14 +1473,15 @@ def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
         kind = "finished" if head == "finished" or word.startswith("finish") or not word else f"end {word}"
         return FrictionEvent(line_no, moment, None, kind, " | ".join(parts[1:]), "")
     step_m = _STEP_RE.match(head)
-    if step_m is not None:
-        step: int | None = int(step_m.group(1))
-        rest_parts = parts[1:]
-    else:  # no step column: "<time> | <kind> | ..."
-        step, rest_parts = None, parts
-    kind = rest_parts[0].strip("*` ").lower() if rest_parts else "?"
-    tail = rest_parts[1:]
-    what, fix = (" | ".join(tail[:-1]), tail[-1]) if len(tail) > 1 else ((tail or [""])[0], "")
+    step: int | None = int(step_m.group(1)) if step_m is not None else None
+    # only the leading columns are split off (the step, when there is one, then the kind): the what-text is
+    # kept as written, a `||` in a logged command included, and the fix is the text after the last `|`, the
+    # column install.sh's awk reads (B13 round 14 Q31: a split on every `|` gave `] | | [`)
+    remainder = rest.partition("|")[2] if step is not None else rest
+    kind_text, _, remainder = remainder.partition("|")
+    kind = kind_text.strip().strip("*` ").lower()
+    what_text, bar, fix_text = remainder.rpartition("|")
+    what, fix = (what_text.strip(), fix_text.strip()) if bar else (fix_text.strip(), "")
     if fix in ("-", "\u2013", "\u2014"):  # a dash: no fix
         fix = ""
     return FrictionEvent(line_no, moment, step, kind or "?", what, fix)
@@ -8458,7 +8459,28 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
     cut = 640 if _PROMPT_STOP_RE.match(e.what) else 160
     fix = f" → {_shorten(r.red.redact(e.fix), cut)}" if e.fix else ""
     step = f"step {e.step}" if e.step is not None else "no step"
-    return f"- F{e.line} · {step} · {e.kind} · {_shorten(r.red.redact(e.what))}{fix}"
+    return f"- F{e.line} · {step} · {e.kind} · {_item_what(r.red.redact(e.what), e.kind)}{fix}"
+
+
+_FAILED_EXIT_RE = re.compile(r"(?:\b(?:failed|exited|returned)\b|\(exit\b)[^:]{0,24}?\d+\)?\s*:")
+"""Where an error line's command ends and its error starts ("... failed (exit 1): fatal: ...", "... returned
+exit code 128: ...", "... (exit 1): ..."), the shapes the prompt's friction rule invites ("include its exit
+code")."""
+
+
+def _item_what(what: str, kind: str) -> str:
+    """An Items line's what-text, cut to 220 characters. An error line too long for that, whose command
+    ends where :data:`_FAILED_EXIT_RE` matches, keeps the start of the command and all it can of the error:
+    a step 1 error that logged step 1's whole one-liner was cut inside the command, with no word of git's
+    error (B13 round 14 Q31)."""
+    what = " ".join(what.split())
+    m = _FAILED_EXIT_RE.search(what) if kind == "error" else None
+    if m is None or len(what) <= 220:
+        return _shorten(what)
+    head = _shorten(what[: m.start()], 80)
+    if not head:
+        return _shorten(what)
+    return f"{head} {_shorten(what[m.start() :], 219 - len(head))}"
 
 
 def _without_folders(args: str) -> tuple[list[str], list[str]] | None:
