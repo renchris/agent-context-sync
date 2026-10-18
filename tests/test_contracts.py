@@ -8,6 +8,7 @@ import importlib
 import inspect
 import pkgutil
 import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -453,3 +454,14 @@ def test_dataclass_stubs_list_the_code_fields() -> None:
     # B13 round 5 F86: §15's module reference (### headers) too, where 13 stubs had fallen behind
     assert {"PurgeReport", "Suppressions", "GovernanceConfig", "ProxySettings", "CycleReport"} <= set(checked)
     assert len(checked) >= 65
+
+
+def test_no_private_function_in_src_is_left_for_the_tests_alone() -> None:
+    """B13 round 15 S46, S69: doctor's ``_pandoc_path`` and convert.pandoc's ``_bundled_pandoc`` stayed in
+    src as one-line wrappers after their last caller moved to the function they wrap, called by tests only.
+    Every module-level private function in src is named in src outside its own ``def``."""
+    texts = [p.read_text(encoding="utf-8") for p in sorted(Path(agentsync.__file__).parent.rglob("*.py"))]
+    named = Counter(n for t in texts for n in re.findall(r"\b_[A-Za-z]\w*", t))
+    defs = [d for t in texts for d in re.findall(r"^(?:async )?def (_[A-Za-z]\w*)\(", t, re.M)]
+    assert len(defs) > 500, "the scan is broken"
+    assert sorted(d for d in defs if named[d] == 1) == []

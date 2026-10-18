@@ -1,7 +1,7 @@
 """The native arm64 pandoc of the wheel's version (load root cause 2026-10-17 X26).
 
-``_bundled_pandoc`` returns ``~/.local/share/agentsync/pandoc/<version>-arm64/bin/pandoc`` on macOS when that
-is an executable regular file and ``<version>`` is the one the pypandoc_binary RECORD hash maps to;
+``resolved_pandoc(None)`` returns ``~/.local/share/agentsync/pandoc/<version>-arm64/bin/pandoc`` on macOS when
+that is an executable regular file and ``<version>`` is the one the pypandoc_binary RECORD hash maps to;
 otherwise the wheel's binary.  HOME is the test's own tmp dir (``conftest._isolate_home``).
 """
 
@@ -56,28 +56,28 @@ def _darwin_known_wheel(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 def test_native_copy_of_the_wheels_version_is_returned() -> None:
     native = _stub(Path.home(), "3.9")
-    assert pandoc_mod._bundled_pandoc() == native
+    assert pandoc_mod.resolved_pandoc(None)[0] == native
 
 
 def test_native_copy_of_another_version_is_ignored() -> None:
     _stub(Path.home(), "3.8")
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_no_native_copy_means_the_wheel() -> None:
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_unknown_record_hash_means_the_wheel(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub(Path.home(), "3.9")
     monkeypatch.setattr(pandoc_mod, "_WHEEL_PANDOC_VERSIONS", {})
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_missing_record_means_the_wheel(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub(Path.home(), "3.9")
     monkeypatch.setattr(importlib.metadata, "distribution", lambda _name: SimpleNamespace(files=None))
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_missing_distribution_means_the_wheel(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -87,31 +87,31 @@ def test_missing_distribution_means_the_wheel(monkeypatch: pytest.MonkeyPatch) -
         raise importlib.metadata.PackageNotFoundError(name)
 
     monkeypatch.setattr(importlib.metadata, "distribution", missing)
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_not_darwin_means_the_wheel(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub(Path.home(), "3.9")
     monkeypatch.setattr(sys, "platform", "linux")
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_non_executable_copy_means_the_wheel() -> None:
     _stub(Path.home(), "3.9", executable=False)
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_directory_in_place_of_the_copy_means_the_wheel() -> None:
     (Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc").mkdir(parents=True)
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 def test_home_is_read_at_each_call(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
     other = tmp_path / "other-home"
     native = _stub(other, "3.9")
     monkeypatch.setenv("HOME", str(other))
-    assert pandoc_mod._bundled_pandoc() == native
+    assert pandoc_mod.resolved_pandoc(None)[0] == native
 
 
 def test_the_operators_copy_reaches_a_test_and_is_only_read(
@@ -127,14 +127,14 @@ def test_the_operators_copy_reaches_a_test_and_is_only_read(
     before = (copy.read_bytes(), copy.stat().st_mtime_ns)
     monkeypatch.setattr(conftest, "_REAL_HOME", real)
     monkeypatch.setattr(pandoc_mod, "_native_pandoc", _operator_native_pandoc)
-    assert Path.home() != real and pandoc_mod._bundled_pandoc() == copy
+    assert Path.home() != real and pandoc_mod.resolved_pandoc(None)[0] == copy
     assert not (Path.home() / ".local/share/agentsync").exists(), "nothing is linked into the test's home"
     assert (copy.read_bytes(), copy.stat().st_mtime_ns) == before
     own = _stub(Path.home(), "3.9")
-    assert pandoc_mod._bundled_pandoc() == own, "a test's own copy comes first"
+    assert pandoc_mod.resolved_pandoc(None)[0] == own, "a test's own copy comes first"
     monkeypatch.setattr(conftest, "_REAL_HOME", tmp_path / "no-copy")
     (Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc").unlink()
-    assert pandoc_mod._bundled_pandoc() == _wheel_binary()
+    assert pandoc_mod.resolved_pandoc(None)[0] == _wheel_binary()
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="the table lists the macOS wheel")

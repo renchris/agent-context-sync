@@ -50,7 +50,7 @@ from agentsync.convert.diagram import DiagramConverter
 from agentsync.convert.eml import EmlConverter
 from agentsync.convert.markdown import MarkdownConverter
 from agentsync.convert.msg import NOT_MSG_REASON, MsgConverter
-from agentsync.convert.pandoc import PandocConverter, _bundled_pandoc, _PandocRunner, _PandocWithoutOcr
+from agentsync.convert.pandoc import PandocConverter, _PandocRunner, _PandocWithoutOcr, resolved_pandoc
 from agentsync.convert.pdf import PdfConverter
 from agentsync.convert.pptx import PptxConverter
 from agentsync.convert.registry import Registry
@@ -135,7 +135,7 @@ def test_pandoc_uses_bundled_binary_by_absolute_path(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(pandoc_mod, "_native_pandoc", inspect.unwrap(pandoc_mod._native_pandoc))
     runner = _PandocRunner(None)
     path = runner.path()
-    assert path.is_absolute() and path == _bundled_pandoc()
+    assert path.is_absolute() and path == resolved_pandoc(None)[0]
     assert "pypandoc" in path.parts and path.parent.name == "files"
     assert re.fullmatch(r"1\.0\.0\+pandoc-\d+(\.\d+)+", PandocConverter(CFG).version())
 
@@ -2677,7 +2677,7 @@ def _doc_one(src: Path, engine: ocr.OcrEngine | None, cfg: ConvertConfig = CFG) 
 def _gfm_blocks(body: str) -> tuple[list[str], set[str]]:
     """(The type of each top-level block, every element type) of ``body`` as pandoc's gfm reader parses it."""
     run = subprocess.run(
-        [str(_bundled_pandoc()), "-f", "gfm", "-t", "json"],
+        [str(resolved_pandoc(None)[0]), "-f", "gfm", "-t", "json"],
         input=body.encode(),
         capture_output=True,
         check=True,
@@ -3231,7 +3231,7 @@ def _pandoc_that(tmp_path: Path, name: str, first: str) -> Path:
         "#!/bin/sh\n"
         'for arg in "$@"; do case "$arg" in --lua-filter=*) filter="${arg#--lua-filter=}";; esac; done\n'
         f"{first}\n"
-        f'exec "{_bundled_pandoc()}" "$@"\n',
+        f'exec "{resolved_pandoc(None)[0]}" "$@"\n',
         encoding="utf-8",
     )
     script.chmod(0o700)

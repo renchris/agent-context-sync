@@ -346,12 +346,6 @@ def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
     )
 
 
-def _bundled_pandoc() -> Path:
-    """Absolute path of the pandoc to run when ``[convert] pandoc_path`` is unset: the wheel's, or its
-    native arm64 copy (:func:`resolved_pandoc`)."""
-    return resolved_pandoc(None)[0]
-
-
 def _decode_html(data: bytes) -> str:
     """Decode HTML bytes: BOM/UTF-8 first, then a declared ``<meta charset>``, then cp1252/latin-1."""
     if not data.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff")):

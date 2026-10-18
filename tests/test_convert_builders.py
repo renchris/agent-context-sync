@@ -29,7 +29,7 @@ from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches
 
 from agentsync.convert.ocr import OcrEngine
-from agentsync.convert.pandoc import _bundled_pandoc
+from agentsync.convert.pandoc import resolved_pandoc
 from test_ocr import fake_engine
 
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
@@ -55,7 +55,7 @@ def png_bytes() -> bytes:
 def pandoc_build(text: str, src_fmt: str, out: Path, *, cwd: Path | None = None) -> Path:
     """Write ``out`` from ``text`` with the bundled pandoc (the writer is chosen by the out suffix)."""
     subprocess.run(
-        [str(_bundled_pandoc()), "-f", src_fmt, "-s", "-o", str(out)],
+        [str(resolved_pandoc(None)[0]), "-f", src_fmt, "-s", "-o", str(out)],
         input=text.encode("utf-8"),
         check=True,
         cwd=str(cwd or out.parent),
