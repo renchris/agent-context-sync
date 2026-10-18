@@ -1698,7 +1698,7 @@ def test_redaction_variants_residue_and_pid(fake_mac: dict[str, Path], tmp_path:
     red = section(text, "Redaction")
     assert (
         "Residue check: 1 capitalized or joined word next to a placeholder in this report (Agent friction "
-        "log: Board); check them." in red
+        "log: Board); check it." in red
     ), "the whole report is checked, hits listed by section (K9)"
     assert "are template placeholders, not redactions" in red
     inst = section(text, "Installer")
@@ -2616,7 +2616,7 @@ def test_the_residue_check_names_a_word_glued_to_the_organisation(
     red = section(text, "Redaction")
     assert (
         "Residue check: 1 capitalized or joined word next to a placeholder in this report (Agent friction "
-        "log: Drive); check them." in red
+        "log: Drive); check it." in red
     ), red
 
 
@@ -2951,7 +2951,7 @@ def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Pa
     assert "<folder-2> Roadmap failed" in section(text, "Recent errors")
     assert (
         "Residue check: 1 capitalized or joined word next to a placeholder in this report (Recent errors: "
-        "Roadmap); check them." in section(text, "Redaction")
+        "Roadmap); check it." in section(text, "Redaction")
     )
     assert setup_report.residue_by_section(
         "# t\n## A\n<folder-1> Alpha\n## B\nnone\n## C\nBeta <org-1>\n"
@@ -7667,7 +7667,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "because the helper had stopped working · 1 the engine failed on (a helper failure, or the file's "
         "own time limit) · 1 that say pages past the OCR page limit were not read · 1 that say pictures past "
         "the picture limit were not read · 4 reads again (1 of them could not be converted and kept "
-        "their page)\n" in ocr_part
+        "its page)\n" in ocr_part
     ), "a re-read keeps its page only when its conversion failed: 0 there is no count of unchanged pages"
     started = "2026-10-06T10:00:00Z | 1m05s"
     assert [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)] == [
@@ -8642,6 +8642,44 @@ def test_a_running_or_crash_closed_run_is_no_earlier_builds(fake_mac: dict[str, 
     )
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_an_install_out_of_one_line_is_the_last_line_never_the_last_1_line(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 16 T49: the Installer section's embed read "the last 1 line of", the wording
+    ``_the_last`` exists to avoid (S31); install.sh's stopped-copy reader takes both forms."""
+    write_install_log(fake_mac)
+    (fake_mac["setup"] / "install.out").write_text("one line of output\n", encoding="utf-8")
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    inst = section(text, "Installer")
+    assert "<details><summary>the last line of ~/agent-context/setup/install.out (" in inst, inst
+    assert "the last 1 line" not in text
+
+
+@pytest.mark.parametrize(("last_used", "said"), [(5, "the newest run (5)"), (4, "the run before it")])
+def test_one_repeat_conversion_is_it_never_them(fake_mac: dict[str, Path], last_used: int, said: str) -> None:
+    """B13 round 16 T49, T63: the converter-cache line agreed its verb with a count of 1, then said "made
+    them" and "1 of them last by the newest run". One conversion is "it", and the line says which run used
+    it last."""
+    seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    seed.n = next(SEED_NUMBERS)
+    seed.m._db.execute(
+        "INSERT INTO cache (action_key, converter_id, converter_version, options_hash, canonical_sha256, "
+        "status, unit_count, bytes, created_run, last_used_run) "
+        "VALUES (?, 'c', '1', 'o', 'c', 'ok', 1, 1, 1, ?)",
+        (f"loop-{seed.n}", last_used),
+    )
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    line = next(ln for ln in part.splitlines() if ln.startswith("- converter cache: "))
+    assert line.startswith(
+        "- converter cache: 1 conversion was used again by a later run than the one that made it (the same "
+        f"bytes converted again, by the same file or by a copy of it); it was used last by {said}"
+    ), line
+    assert "made them" not in line and "1 of them" not in line, line
+
+
 def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: dict[str, Path]) -> None:
     seed_ocr(fake_mac)
     seed = Seed(fake_mac["config"])
@@ -8907,6 +8945,26 @@ def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Pa
         ln for ln in status_parts(fake_mac)[1]["Empty cloud folders"].splitlines() if ln.startswith("- <")
     )
     assert "1 materialised-and-empty (no longer empty on this Mac, by its link count); " in line, line
+    # B13 round 16 T49: one checked folder that holds a mirrored file and is excluded now: never "1 of the
+    # checked folder"
+    seed = Seed(fake_mac["config"])
+    seed.item(seed.ids()[0], "old.docx", rel="Wingtip merger/old.docx")
+    seed.close()
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            'kind = "local"\n', 'kind = "local"\nexclude = ["Wingtip*"]\n', 1
+        ),
+        encoding="utf-8",
+    )
+    line = next(
+        ln for ln in status_parts(fake_mac)[1]["Empty cloud folders"].splitlines() if ln.startswith("- <")
+    )
+    assert (
+        "; the checked folder is excluded in sources.toml now; the mirror still holds 1 file below the "
+        in (line)
+    ), line
+    assert "of the checked folder" not in line, line
 
 
 def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
@@ -12238,7 +12296,7 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     part = ocr_part(first, {"converted": 2, "reread": 2, "reread_kept": 1, "ocr_ms": 1000})
     assert (
         " · 3 reads again (1 of them a first read of a stub whose bytes had never been read, also in the "
-        "converted count; 1 could not be converted and kept their page)\n" in part
+        "converted count; 1 could not be converted and kept its page)\n" in part
     ), part
     rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
     assert rows[0].endswith("| 1 first read | - |") and rows[1].endswith("| 2 (1) | - |"), rows
@@ -12246,7 +12304,18 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
     assert rows[0].endswith("| 3 (1), 1 of them a first read | - |"), rows
     part = ocr_part({"converted": 1, "reread": 1, "ocr_ms": 1000}, {"converted": 0, "ocr_ms": 1000})
-    assert " · 1 read again (0 of them could not be converted and kept their page)\n" in part, part
+    # B13 round 16 T49: one re-read is "it", never "0 of them ... their page"
+    assert " · 1 read again (it was converted)\n" in part, part
+    assert (
+        setup_report._reread_clause(1, 0, 1) == "1 read again (it could not be converted and kept its page)"
+    )
+    assert (
+        setup_report._reread_clause(2, 0, 1)
+        == "2 reads again (1 of them could not be converted and kept its page)"
+    )
+    assert setup_report._reread_clause(2, 0, 2).endswith(
+        "(2 of them could not be converted and kept their page)"
+    )
 
 
 @pytest.mark.parametrize(

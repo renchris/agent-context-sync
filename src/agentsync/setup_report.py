@@ -4440,7 +4440,7 @@ def _installer_output(r: _Run) -> list[str]:
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
         "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",
-        f"<details><summary>the last {_plural(len(shown), 'line')} of {path} ({saw})</summary>",
+        f"<details><summary>{_the_last(len(shown), 'line')} of {path} ({saw})</summary>",
         "",
         *_fence(_utc_log_times(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown)),
         "",
@@ -6178,13 +6178,21 @@ def _reread_clause(again: int, first: int, kept: int) -> str:
             "converted "
             "count"
         )
+    # each pronoun by its own count: never "1 read again (0 of them ... their page)" (B13 round 16 T49)
+    page = "its page" if kept == 1 else "their page"
     if first:
         return (
             f"{_plural(again, 'read')} again ({first} of them a first read of a stub whose bytes had "
             "never been read, "
-            f"also in the converted count; {kept} could not be converted and kept their page)"
+            f"also in the converted count; {kept} could not be converted and kept {page})"
         )
-    return f"{_plural(again, 'read')} again ({kept} of them could not be converted and kept their page)"
+    if again == 1:
+        return (
+            "1 read again (it could not be converted and kept its page)"
+            if kept
+            else "1 read again (it was converted)"
+        )
+    return f"{_plural(again, 'read')} again ({kept} of them could not be converted and kept {page})"
 
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
@@ -6729,9 +6737,10 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             )
             gone = len(checked) - len(reached)
             # a zero is said in words, not dropped: "none excluded" is a measurement (B13 round 4 Q17)
-            excluded = (
-                f"{gone} of the checked {'folder' if len(checked) == 1 else 'folders'} excluded in "
-                "sources.toml now"
+            excluded = (  # never "1 of the checked folder" (B13 round 16 T49)
+                "the checked folder is excluded in sources.toml now"
+                if gone and len(checked) == 1
+                else f"{gone} of the checked folders excluded in sources.toml now"
                 if gone
                 else "it is not excluded in sources.toml now"
                 if len(checked) == 1
@@ -6747,8 +6756,9 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         )
         rest = f"{rest[:-2]}; " if rest else ""
         holds = (
-            f"the mirror still holds {_plural(held, 'file')} below {folders} of the checked "
-            f"{'folder' if len(checked) == 1 else 'folders'}"
+            f"the mirror still holds {_plural(held, 'file')} below the checked folder"
+            if held and len(checked) == 1
+            else f"the mirror still holds {_plural(held, 'file')} below {folders} of the checked folders"
             if held
             else f"the mirror holds no file below {'it' if len(checked) == 1 else 'them'}"
         )
@@ -6876,13 +6886,24 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         total += int(files)
         if last_used in again:
             again[int(last_used)] += int(files)
+    one = total == 1  # "made it" and which run used it last, never "1 of them" (B13 round 16 T49, T63)
+    split = (
+        (
+            f"it was used last by the newest run ({newest})"
+            if again[newest]
+            else "it was used last by the run before it"
+            if again[newest - 1]
+            else "it was used last by an earlier run"
+        )
+        if one
+        else f"{again[newest]} of them last by the newest run ({newest}), {again[newest - 1]} by the run "
+        "before it"
+    )
     out += [
         "",
-        f"- converter cache: {_plural(total, 'conversion')} {'was' if total == 1 else 'were'} used again "
-        "by a "
-        "later run than the one that made "
-        f"them (the same bytes converted again, by the same file or by a copy of it); {again[newest]} of "
-        f"them last by the newest run ({newest}), {again[newest - 1]} by the run before it"
+        f"- converter cache: {_plural(total, 'conversion')} {'was' if one else 'were'} used again by a later "
+        f"run than the one that made {'it' if one else 'them'} (the same bytes converted again, by the same "
+        f"file or by a copy of it); {split}"
         + (" (a count that also holds for runs of an earlier build)" if earlier else "")
         + ("; the newest run is still running, so its count can still grow" if running else ""),
     ]
@@ -9483,7 +9504,10 @@ def _redaction_section(
     unnumbered = ", ".join(k for k in _LEGEND if k in _UNNUMBERED)
     check = (
         f"Residue check: {_plural(listed, 'capitalized or joined word')} next to a placeholder in this "
-        "report (" + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits) + "); check them."
+        "report ("
+        + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
+        + ")"
+        + ("; check it." if listed == 1 else "; check them.")
         if hits
         else "Residue check: no capitalized or joined word next to a placeholder in this report."
     )

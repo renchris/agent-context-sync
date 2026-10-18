@@ -8644,6 +8644,20 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
         r"lines\)</summary>",
         head,
     ), head
+    # B13 round 16 T49: a renderer that says "the last line of" for one line gets the note too
+    old.write_text(
+        _old_renderer_report(["- install.sh: exit 0 (finished)"], end[1:2]).replace(
+            " 1 line(s) of ", " line of "
+        )
+    )
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    head, fenced = _embed(side)
+    assert re.fullmatch(
+        r"<details><summary>the last line of \S+ \(.*; 1 of them left out: the bring-back and issue link "
+        r"lines\)</summary>",
+        head,
+    ), head
     old.write_text(
         _old_renderer_report(["- install.sh: exit 0 (finished)"], tail).replace(" line(s) of ", " rows of ")
     )

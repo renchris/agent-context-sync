@@ -4048,7 +4048,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					n = length($0) - length(saw)
 					if (noout && n > 0 && substr($0, n + 1) == saw)
 						$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
-					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line(s|\(s\))? of .* \(.*\)<\/summary>$/)
+					if (k > 0 && $0 ~ /^<details><summary>the last ([0-9]+ )?line(s|\(s\))? of .* \(.*\)<\/summary>$/)
 						$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
 				}
 				index($0, "## ") == 1 { sec = $0; det = 0 }
