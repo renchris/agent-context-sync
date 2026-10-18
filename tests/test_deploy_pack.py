@@ -6597,12 +6597,20 @@ def test_a_first_sync_refusal_is_no_config_that_does_not_load() -> None:
     the finish's does-not-load case on "configuration error", so the agent skipped a real inbox and told the
     person the file did not load. v24 keys the inbox skip on config_failed's NEXT ("does not load"), which
     the exit-78 NEXT does not say, and the does-not-load case on the report's "loads: no:" alone; the refused
-    config's folders are listed, with the report's reason (:data:`REFUSED_CONFIG`)."""
+    config's folders are listed, with the report's reason (:data:`REFUSED_CONFIG`). The same holds for
+    init's and add-source's exit 78 on a config that loads (a bad [governance] value or policy.toml): its
+    config_failed NEXT says "loads, but agentsync refuses it", never "does not load" (B13 round 16 T1, T10,
+    T29, T45, T67, T81)."""
     script = SCRIPTS[0].read_text(encoding="utf-8")
     code = [ln for ln in script.splitlines() if not ln.lstrip().startswith("#")]
     [refused] = [ln for ln in code if "NEXT_MSG=" in ln and "the first sync refused the config" in ln]
     [unloaded] = [ln for ln in code if "FAIL_NEXT=" in ln and "the config $CONFIG does not load" in ln]
+    [loads] = [
+        ln for ln in code if "FAIL_NEXT=" in ln and "the config $CONFIG loads, but agentsync refuses" in ln
+    ]
     assert "configuration error" in refused and "does not load" not in refused, refused
+    assert "configuration error" in loads and "does not load" not in loads, loads
+    assert "not a step for the agent, so show them the error and go on to the report" in loads, loads
     step2 = " ".join(_prompt_steps()[2].split())
     assert INBOX_WHEN in step2 and "unless it printed a configuration error" not in step2
     assert "unless its NEXT: line says the config does not load" in step2 and "does not load" in unloaded

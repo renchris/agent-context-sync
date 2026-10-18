@@ -6123,36 +6123,102 @@ def test_a_failed_add_source_still_fails_the_run_through_the_filter(
 
 
 @pytest.mark.parametrize(
-    ("call", "knob", "rc"),
+    ("call", "knob", "rc", "loads"),
     [
-        ("init", "STUB_INIT_RC", "78"),
-        ("add-source", "STUB_ADD_SOURCE_RC", "78"),
-        ("init", "STUB_INIT_RC", "1"),
-        ("add-source", "STUB_ADD_SOURCE_RC", "2"),
+        ("init", "STUB_INIT_RC", "78", False),
+        ("add-source", "STUB_ADD_SOURCE_RC", "78", False),
+        ("init", "STUB_INIT_RC", "78", True),
+        ("add-source", "STUB_ADD_SOURCE_RC", "78", True),
+        ("init", "STUB_INIT_RC", "1", True),
+        ("add-source", "STUB_ADD_SOURCE_RC", "2", True),
     ],
 )
 def test_a_config_that_does_not_load_is_the_persons_to_fix(
-    env: dict[str, str], folder: Path, wheel: Path, call: str, knob: str, rc: str
+    env: dict[str, str], folder: Path, wheel: Path, call: str, knob: str, rc: str, loads: bool
 ) -> None:
     """B13 round 11 M23, M39: a config that was there and does not load (agentsync's exit 78) got fail's
     "fix the error above, then re-run: install.sh", which the prompt's step 2 rule reads two ways (re-run,
     which fails the same way, or edit the person's sources.toml). Its NEXT names the config and its owner.
-    Any other exit (add-source's 2 for a folder the agent typed, a failed init) keeps the generic line."""
-    cfg = _write_config(env, _inbox(env))
+    Any other exit (add-source's 2 for a folder the agent typed, a failed init) keeps the generic line.
+    B13 round 16 T1, T10, T29, T45, T67, T81: an exit 78 on a config the installed agentsync loads is no
+    config that "does not load" (the words the prompt skips the inbox on): it loads, but agentsync refuses
+    it. The installed agentsync, not the exit code, says which."""
+    _tool_python(env)  # the installed agentsync, asked whether the config loads (no helper is built with it)
+    cfg = _write_config(env, _inbox(env), "" if loads else "\n[[source]\n")
     args = [str(wheel), "--source-local", str(folder)] if call == "add-source" else [str(wheel)]
-    cp = install_sh({**env, knob: rc}, *args)
+    cp = install_sh({**env, knob: rc, "AGENTSYNC_OCR": "0"}, *args)
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert ("config", "failed", rc, "") in steps(install_log(env))
     assert one_next(cp)
-    if rc == "78":
+    status = "~/.local/bin/agentsync status prints it again"
+    tail = (
+        "fixing it is the person's, not a step for the agent, so show them the error and go on to the report"
+    )
+    if rc == "78" and not loads:
         assert last_line(cp).startswith(
             f"NEXT: the config {cfg} does not load with this agentsync (the configuration error above; "
-            "~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the "
-            "agent, so show them the error and go on to the report; once it loads, the next run is: "
-            f"{INSTALL_SH} "
+            f"{status}): {tail}; once it loads, the next run is: {INSTALL_SH} "
         )
+    elif rc == "78":
+        assert last_line(cp).startswith(
+            f"NEXT: the config {cfg} loads, but agentsync refuses it (the configuration error above; "
+            f"{status}): {tail}; once it is fixed, the next run is: {INSTALL_SH} "
+        )
+        assert "does not load" not in cp.stdout + cp.stderr
     else:
         assert last_line(cp).startswith("NEXT: fix the error above, then re-run: ")
+
+
+@pytest.mark.parametrize(
+    ("state", "call"),
+    [
+        ("policy.toml", "init"),
+        ("[governance] history_days", "init"),
+        ("[governance] archive", "add-source"),
+        ("policy.toml, a new config", "init"),
+    ],
+)
+def test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_load(
+    real_env: dict[str, str], wheel: Path, state: str, call: str
+) -> None:
+    """B13 round 16 T1, T10, T29, T45, T67, T81, with the real agentsync: init and add-source exit 78 on a
+    config that loads when policy.toml beside it or a [governance] value is not valid, after they wrote the
+    inbox or the folder's block. Step 2's NEXT said the config "does not load", so the prompt's step 2 skipped
+    the inbox the config holds, and the report said "loads: yes, but a sync refuses it". The NEXT now says
+    so too, and keeps the person's stop: shown, not a step for the agent, the report next. A config this run
+    created with a bad policy.toml beside it is the same: it loads, and policy.toml is the person's."""
+    env = real_env
+    home = Path(env["HOME"])
+    ctx = home / "agent-context"
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    cfg = ctx / "sources.toml"
+    if state != "policy.toml, a new config":
+        first = install_sh(env, str(wheel), "--source-local", str(folder))
+        assert first.returncode == 0, first.stdout + first.stderr
+    ctx.mkdir(parents=True, exist_ok=True)
+    if state.startswith("policy.toml"):
+        (ctx / "policy.toml").write_text('[policy]\nrefuse_unlabelled = "yes"\n', encoding="utf-8")
+    else:
+        bad = 'history_days = "thirty"' if "history_days" in state else 'archive = "yes"'
+        cfg.write_text(cfg.read_text(encoding="utf-8") + f"\n[governance]\n{bad}\n", encoding="utf-8")
+    other = folder.parent / "Beta"
+    other.mkdir()
+    args = [str(wheel), "--source-local", str(other)] if call == "add-source" else [str(wheel)]
+    cp = install_sh(env, *args)
+    out = cp.stdout + cp.stderr
+    assert cp.returncode == 1, out
+    assert "configuration error: " in cp.stderr, out
+    assert one_next(cp) and last_line(cp).startswith(
+        f"NEXT: the config {cfg} loads, but agentsync refuses it (the configuration error above; "
+        "~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the "
+        "agent, so show them the error and go on to the report; once it is fixed, the next run is: "
+    ), out
+    assert "does not load" not in out
+    # the config holds the inbox the prompt's step 2 then tells the person about
+    assert 'kind = "inbox"' in cfg.read_text(encoding="utf-8")
+    assert "- loads: yes, but a sync refuses it: " in report_path(env).read_text(encoding="utf-8")
 
 
 def _mode(path: Path) -> int:

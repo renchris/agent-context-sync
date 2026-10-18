@@ -19194,6 +19194,9 @@ config that exists" it told the agent its own typo was the person's to fix (M23'
 NEXT that names the fix as the person's is neither a command nor a click, so the rule sends the agent to the report.
 Tests: `test_a_config_that_does_not_load_is_the_persons_to_fix` (init and add-source at 78; init at 1, add-source at
 2), `test_a_failed_add_source_still_fails_the_run_through_the_filter` (a created config at 78: the generic line).
+Amended 2026-10-18, §16.124 T1: the "does not load" NEXT is for a config the installed agentsync cannot load; an exit
+78 on one it loads (a bad policy.toml or `[governance]` value) says `the config <CONFIG> loads, but agentsync refuses
+it`, a created config included.
 
 **Step 1 says step 2 reinstalls agentsync only when it will** (M37; amends §16.87 L11). For a config the installed
 agentsync failed on, step 1's NEXT said `Step 2 reinstalls agentsync first, and if that version cannot load it
@@ -22260,7 +22263,35 @@ Reserved for round 16 lane RB of B13.
 
 ### 16.124 Round 16: setup prompt v25 and the config a sync refuses (2026-10-18, wave B13 round 16 lane P)
 
-Reserved for round 16 lane P of B13.
+The B13 round 16 items of lane P (specs `round16/items/T<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): T1, T6, T10, T29, T30, T45, T67, T70, T72, T81. T1, T10, T29, T45, T67 and T81
+are one defect from six finders (config_failed's "does not load" for a config that loads), built once; T6 and T30
+are one (step 1 and a mirrored folder whose block is gone), built once.
+
+**A config that loads but init or add-source refuses is no config that does not load** (T1, T10, T29, T45, T67,
+T81; amends §16.93 M23). init and add-source also exit 78 on a config `load_config` reads: a policy.toml beside it
+or a `[governance]` value that is not valid (`cli._ensure_setup` runs `governance.load_governance` and the policy
+after `_ensure_inbox`, and add-source after it appended the folder's block). `config_failed` keyed on the exit code
+alone and said `the config <CONFIG> does not load with this agentsync`, so the prompt's step 2 skipped the inbox the
+config holds, and the report said `- loads: yes, but a sync refuses it`. It now asks the agentsync step 2 installed,
+after the call, whether the config loads (`synced_count`, a number only when `load_config` reads it, within its
+10 s bound): when it does, the NEXT is `the config <CONFIG> loads, but agentsync refuses it (the configuration error
+above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show
+them the error and go on to the report; once it is fixed, the next run is: <install.sh and its arguments>`; when it
+does not, or nothing can say (no installed interpreter, a dry run, the bound), the config that was there before keeps
+the "does not load" NEXT. Never read off the error's words: a `[governance]` error names sources.toml, which loads
+(T1's verifier). A config this run created that loads, with a bad policy.toml beside it, gets the "loads, but" NEXT
+too (it had fail's generic "fix the error above", which let the agent edit the compliance-owned policy.toml); one
+that does not load keeps the generic line. T29's verifier also proposed moving the governance check in front of
+every write in cli.py, so a refused config is left unchanged; not built, as T67's verifier measured against it: the
+inbox and the folder's block init and add-source wrote are valid blocks of a config that loads, the prompt's step 2
+tells the person about that inbox and the finish lists that folder as added, both true once the NEXT stops saying
+"does not load", and the re-run after the person's fix keeps them. No prompt words: v24's step 2 already keys the
+inbox skip on "says the config does not load" and the finish on the report's "loads: yes, but". Tests:
+`test_a_config_that_does_not_load_is_the_persons_to_fix` (an installed agentsync that loads the config, and one that
+does not), `test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_load` (the real agentsync:
+policy.toml, `[governance] history_days`, `[governance] archive` through add-source, and a new config beside a bad
+policy.toml), `test_a_first_sync_refusal_is_no_config_that_does_not_load`.
 
 ### 16.125 Round 16: the person's fixes, the CLI's counts and WARNING lines (2026-10-18, wave B13 round 16 lane B)
 

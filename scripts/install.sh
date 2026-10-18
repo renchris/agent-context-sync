@@ -5170,14 +5170,25 @@ synced_count() {
 	esac
 	printf '%s' "$n"
 }
-# A config that was there before and does not load with this agentsync (exit 78, EX_CONFIG: "configuration
-# error: ...") is the person's to fix: a re-run fails the same way, and the agent's own mistakes here (a
-# folder that is not there, one inside the docs repo) exit 2, which keeps fail's "fix the error above". So the
-# NEXT names the owner and leads with what the agent does now (B13 round 11 M23, M39).
+# A config agentsync refuses (exit 78, EX_CONFIG: "configuration error: ...") is the person's to fix: a re-run
+# fails the same way, and the agent's own mistakes here (a folder that is not there, one inside the docs repo)
+# exit 2, which keeps fail's "fix the error above". So the NEXT names the owner and leads with what the agent
+# does now (B13 round 11 M23, M39). Whether the config loads is asked of the agentsync step 2 installed, after
+# the call (synced_count: a number only when load_config reads it), never read off the exit code or the error:
+# init and add-source also exit 78 for a config that loads, a bad [governance] value or policy.toml beside it,
+# after they wrote the inbox or the folder's block. That one "loads, but" is refused, as the report's
+# Configuration section says, and never "does not load", the words the prompt's step 2 skips the inbox on
+# (B13 round 16 T1, T10, T29, T45, T67, T81). Only a config that was there before, and does not load, does not
+# load; one this run created that does not load is the generic failure.
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	local rc=$?
-	[ "$rc" -ne 78 ] || [ "$CONFIG_STATE" = "created" ] ||
-		FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$ORIG_ARGS"
+	if [ "$rc" -eq 78 ]; then
+		if [ -n "$(synced_count)" ]; then
+			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses it (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$ORIG_ARGS"
+		elif [ "$CONFIG_STATE" != "created" ]; then
+			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$ORIG_ARGS"
+		fi
+	fi
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
