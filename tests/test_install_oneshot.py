@@ -8903,6 +8903,164 @@ def test_no_renderer_line_writes_s_beside_a_count() -> None:
     assert found == []
 
 
+_DOT = "\u00b7"
+_V10_DOCTOR = [
+    "[FAIL] docs_repo.permissions \u2014 group/other can read tenant data: ~/agent-context/docs/_eval (fix: "
+    "agentsync sync (it makes these owner-only))",
+    *(
+        line
+        for n in (1, 2)
+        for line in (  # v10's words: the volume line's path comes after its first clause
+            f"[FAIL] source.<folder-{n}>.listable \u2014 ~/Library/CloudStorage/OneDrive-<org-1>/"
+            f"<folder-{n}> does not exist (fix: fix path in [[source]], or sign in to the sync client)",
+            f"[FAIL] source.<folder-{n}>.volume \u2014 File Provider root UUID not checked: "
+            f"~/Library/CloudStorage/OneDrive-<org-1>/<folder-{n}> is missing (fix: fix path in [[source]], "
+            "or sign in to the sync client)",
+        )
+    ),
+    "[FAIL] source.<folder-3>.listable \u2014 ~/Documents/<folder-3> does not exist (fix: fix path in "
+    "[[source]])",
+    "[FAIL] source.<folder-4>.listable \u2014 ~/Library/CloudStorage/Dropbox/<folder-4> does not exist (fix: "
+    "fix path in [[source]], or sign in to the sync client)",
+    "[warn] install.commit \u2014 installed from aaaaaaaaaaaa, but the checkout at "
+    "~/src/agent-context-sync is "
+    "at bbbbbbbbbbbb (fix: re-run install.sh (~/src/agent-context-sync/scripts/install.sh))",
+]
+_V10_FAILS = [
+    "docs_repo.permissions FAIL",
+    *(f"source.<folder-{n}>.{c} FAIL" for n in (1, 2) for c in ("listable", "volume")),
+    "source.<folder-3>.listable FAIL",
+    "source.<folder-4>.listable FAIL",
+]
+
+
+def _v10_step1_report(summary: list[str]) -> str:
+    """A report as the v10 build (4a42af9) renders a step 1 sign-in stop, with made-up names."""
+    return "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            *summary,
+            "",
+            "## Doctor",
+            "",
+            "54 check(s): 46 ok, 1 info, 1 warn, 7 FAIL. Only the lines that are not ok:",
+            "",
+            "~~~text",
+            *_V10_DOCTOR,
+            "~~~",
+            "",
+        ]
+    )
+
+
+_V10_SUMMARY = [
+    "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran (step 1))",
+    "- Loop: baseline drafted; NEXT: the docs_repo.permissions check failed: do what the fix on its [FAIL] "
+    "line below says",
+    "- expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add one; "
+    "not logged) \u00b7 Allow clicks: none possible (sandbox)",
+    "- friction (attempt 2): 1 event line(s): 1 finished",
+    "- installer output: 2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 0 "
+    "other "
+    "instruction-like line(s) in the last 139 line(s) of install.out",
+    f"- doctor: 7 FAIL, 1 warn (54 checks) {_DOT} unexpected 8: "
+    + ", ".join([*_V10_FAILS, "install.commit warn"]),
+]
+_NOW_SUMMARY = [
+    "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran (step "
+    "1); it "
+    "stopped: OneDrive is not signed in)",
+    _V10_SUMMARY[1],
+    "- expected turns: none (step 1's list stopped: OneDrive is not signed in, so the 2 folders this Mac "
+    "already "
+    "syncs are missing; they are kept: no folder question and no Allow click)",
+    "- installer output: 2 NEXT: lines in 2 runs (exactly one per install.sh run is expected) and 0 other "
+    "instruction-like lines in the last 139 lines of install.out",
+    f"- doctor: 7 FAIL, 1 warn (54 checks) {_DOT} expected 1: install.commit (step 1 stopped this attempt "
+    f"before step 2 reinstalls agentsync) {_DOT} from the sign-in stop 4: "
+    + ", ".join(_V10_FAILS[1:5])
+    + f" {_DOT} unexpected 3: "
+    + ", ".join([_V10_FAILS[0], *_V10_FAILS[5:]]),
+]
+
+
+def _step1_stop_home(env: dict[str, str], tmp_path: Path, report: str, *, last: str = "list") -> str:
+    """M1o's state (rehearsal B): an install by an older build, then this attempt's step 1, which stopped on
+    OneDrive's sign-in, then --report-only, whose report the installed build renders (``report``); the
+    report as install.sh leaves it. ``last="install"``: an install run after the list."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-18T09:00:00Z\nPrompt: v10\nAgent: x\n2026-10-18T09:05:00Z | end | finished\n"
+        f"Attempt: 2026-10-18T10:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n",
+        encoding="utf-8",
+    )
+    log = [
+        "2026-10-18T09:00:10Z run=20261018T090010Z-41 start install.sh compat=10 commit=- kind=- source=- "
+        "args=--source-local x",
+        "2026-10-18T09:00:30Z run=20261018T090010Z-41 end rc=0 seconds=20",
+        "2026-10-18T10:00:10Z run=20261018T100010Z-42 start install.sh compat=24 commit=- kind=- source=- "
+        "args=--list-folders",
+        "2026-10-18T10:00:11Z run=20261018T100010Z-42 step=list-folders seconds=1 rc=3 result=failed "
+        "note=not-signed-in apps=onedrive missing=2 synced=2",
+        "2026-10-18T10:00:11Z run=20261018T100010Z-42 end rc=3 seconds=1",
+    ]
+    if last == "install":
+        log += [
+            "2026-10-18T10:10:10Z run=20261018T101010Z-43 start install.sh compat=24 commit=- kind=- "
+            "source=- "
+            "args=",
+            "2026-10-18T10:10:30Z run=20261018T101010Z-43 end rc=1 seconds=20",
+        ]
+    (home / "agent-context" / "setup" / "install.log").write_text("\n".join(log) + "\n", encoding="utf-8")
+    stub = tmp_path / "rendered.md"
+    stub.write_text(report, encoding="utf-8")
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(stub)}, "--report-only")
+    assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout + cp.stderr
+    assert not (report_path(env).parent / "setup" / "stopped-copy-report.md").exists(), "not a stopped copy"
+    return report_path(env).read_text(encoding="utf-8")
+
+
+def test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 16 T11 (rehearsal B, M1o): after the current prompt's step 1 stopped on a sign-in, the field
+    Mac's report is rendered by the installed v10 build (step 2 never reinstalled it): it named no cause,
+    called the sign-in stop's FAILs and install.commit unexpected, kept the dropped friction line and wrote
+    "(s)" beside its counts. The installer keeps that renderer (one build in doctor) and rewrites only the
+    renderer-only words and the stop's three lines; the Loop NEXT and the Doctor part stay as it wrote them,
+    a source FAIL of another app or outside CloudStorage stays unexpected, and a report already in the
+    current words passes unchanged."""
+    text = _step1_stop_home(env, tmp_path, _v10_step1_report(_V10_SUMMARY))
+    summary = text.split("## Summary\n\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    assert summary == _NOW_SUMMARY, summary
+    doctor = text.split("## Doctor\n\n", 1)[1]
+    assert doctor.startswith("54 checks: 46 ok, 1 info, 1 warn, 7 FAIL. Only the lines that are not ok:\n")
+    assert "\n".join(_V10_DOCTOR) in doctor, "the Doctor part as the installed build wrote it"
+    bring_back = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    assert _NOW_SUMMARY[0] in bring_back, "bring-back.md embeds the rewritten report"
+    now = _v10_step1_report(_NOW_SUMMARY).replace("54 check(s):", "54 checks:")
+    assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
+
+
+@pytest.mark.parametrize("state", ["an install run after the list", "no install.commit warn"])
+def test_a_report_that_is_no_step_1_stop_of_an_older_build_is_left_as_rendered(
+    env: dict[str, str], tmp_path: Path, state: str
+) -> None:
+    """B13 round 16 T11: the rewrite fires only for this attempt's own step 1 stop rendered by an installed
+    build older than the checkout (its install.commit warn says so)."""
+    report = _v10_step1_report(_V10_SUMMARY)
+    if state == "no install.commit warn":
+        report = report.replace(", but the checkout at ", ", the checkout at ")
+    last = "install" if state.startswith("an install") else "list"
+    assert _step1_stop_home(env, tmp_path, report, last=last) == report
+
+
 def test_the_shell_stopped_copy_words_are_the_reports() -> None:
     """B13 round 14 Q27: the shim's step words are setup_report._STEP_NOTE_WORDS (less the helpers step,
     which the stopped copy's renderer already words), and its held-listing bracket is doctor's report note."""

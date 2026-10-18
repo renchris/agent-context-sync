@@ -924,6 +924,7 @@ COMMIT_TRIED=0 # read_commit ran: a "-" after it is git that could not read the 
 DIRTY="" # the SOURCE checkout's local-change fingerprint (tree_fingerprint), empty when clean or unknown
 PARSED=0       # 1 once the arguments are read: from then on every exit writes the report and a NEXT line
 NEXT_MSG=""    # the NEXT line the EXIT trap prints
+REPORT_BY=""   # agentsync when write_report's report is the installed agentsync's (step1_report_note)
 FAIL_NEXT=""   # the NEXT fail() writes in place of its own, set by a step that knows better (config_failed)
 RERUN=""       # the command a stopped run names (default: this script with the same arguments)
 LAST_ERROR=""  # the last error message, for the shell report
@@ -3783,6 +3784,7 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode
 		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" AGENTSYNC_REPORT_UNREAD_PATCHES="$(unread_patch_count)" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
 		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ]; then
+			REPORT_BY=agentsync
 			say "report: $REPORT_PATH (agentsync setup-report)"
 			step_end "done" 0 agentsync
 			return 0
@@ -3836,6 +3838,9 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 # of its fix, the Doctor header gains (or counts in) the note on expected warns, and the Summary's doctor line
 # moves "install.commit warn" from its unexpected list to its expected one. Only that old wording is changed: a
 # newer renderer never lists the warn as unexpected for a stopped copy, and on_exit runs this only for one.
+# The reason the report of this attempt's own step 1 stop gives install.commit's warn, which the older installed
+# build lists as unexpected: nothing reinstalled it (B13 round 16 T11; older_report_rewrite step1)
+STEP1_STOP_WARN="step 1 stopped this attempt before step 2 reinstalls agentsync"
 STOPPED_COPY_WARN="the installer stopped this copy in step 1, before step 2 reinstalls agentsync" # setup_report._STOPPED_COPY_WARN (a test keeps them equal)
 # A Doctor header beside that reason ends "nothing for this setup to do" plus these words, whichever renderer wrote
 # it: the shim's own note and a renderer from J18 up to K24 wrote the bare words (B13 round 10 L19, L39).
@@ -4009,6 +4014,387 @@ stopped_run_labels() {
 			}
 		}'
 }
+# The rewrite of a report an agentsync older than this checkout rendered (stopped_report_note's, above), on
+# stdout, MODE copy or step1. "copy" is a stopped copy's: everything above. "step1" is the report of this
+# attempt's own step 1 stop, which the installed build renders too, as nothing reinstalled it (B13 round 16
+# T11; on_exit names when): only the renderer-only words (the counts, the quiet friction line, the Installer
+# table's tokens and its fix: sentence, the Status words), install.commit moved to the Summary's expected list
+# with STEP1_STOP_WARN, and three shims for the stop (step1_stop_facts): its cause in the outcome's computed
+# bracket, the expected-turns line, and the stopped app's source FAILs in the doctor line's "from the sign-in
+# stop" bucket, as setup_report._sign_in_stop_fails takes them. Its Loop NEXT and Doctor part stay as the
+# installed build wrote them: doctor stays one build (a checkout's renderer over an old install mixed two
+# builds, §16.110 Q27).
+older_report_rewrite() { # MODE
+	local cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}"
+	[ "$1" != copy ] || { cp=1 note="" apps="" cause="" turns=""; }
+	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" awk -v cp="$cp" -v s1note="$note" -v s1apps="$apps" \
+		-v s1cause="$cause" -v s1turns="$turns" -v w1="$STEP1_STOP_WARN" -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
+		-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
+		-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
+		-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
+		-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
+		-v heldold="$STOPPED_HELD_OLD" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" '
+		function load(    m, i, ws, p, q, rest) { # words[step, token]: one "<step> <token> <words>" a line (not -v: a newline)
+			m = split(ENVIRON["STEPWORDS"], ws, "\n")
+			for (i = 1; i <= m; i++) {
+				p = index(ws[i], " "); rest = substr(ws[i], p + 1); q = index(rest, " ")
+				words[substr(ws[i], 1, p - 1), substr(rest, 1, q - 1)] = substr(rest, q + 1)
+			}
+		}
+		BEGIN {
+			load()
+			one["were"] = "was"; one["are"] = "is"; one["have"] = "has"; one["end"] = "ends"
+			one["keep"] = "keeps"; one["hold"] = "holds"; one["name"] = "names"
+		}
+		function trim(x) { sub(/^ +/, "", x); sub(/ +$/, "", x); return x }
+		function ulen(x) { gsub(/[\200-\277]/, "", x); return length(x) } # characters, as Python counts them
+		function fill(x, w,    i) { for (i = ulen(x); i < w; i++) x = x " "; return x }
+		function lfill(x, w,    i, p) { p = ""; for (i = ulen(x); i < w; i++) p = p " "; return p x }
+		function dashes(w,    x) { x = ""; while (w-- > 0) x = x "-"; return x }
+		function table(    i, k, c, ch, w1, w2, w3, tok, x) { # the Installer table buffered in tb[1..tn]
+			for (; blank > 0; blank--) print ""
+			ch = tn >= 3 && tb[2] ~ /^\|-+\|-+:\|-+\|$/
+			for (i = 1; ch && i <= tn; i++) {
+				if (i == 2) continue
+				if (split(substr(tb[i], 3, length(tb[i]) - 4), c, " \\| ") != 3) { ch = 0; break }
+				S[i] = trim(c[1]); N[i] = trim(c[2]); R[i] = trim(c[3])
+				if (i > 2 && match(R[i], / \([^()]*\)$/)) {
+					tok = substr(R[i], RSTART + 2, RLENGTH - 3)
+					if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
+				}
+				# each cell: its "(s)" by its count, after the token lookup, which reads the token as written; the
+				# table is padded again (B13 round 14 Q39 "listed N folders", round 16 T23)
+				if (i > 2 && (x = plural_all(R[i])) != R[i]) { R[i] = x; ch = 2 }
+				if (i > 2 && (x = plural_all(S[i])) != S[i]) { S[i] = x; ch = 2 }
+			}
+			if (ch == 2) {
+				w1 = w2 = w3 = 0
+				for (i = 1; i <= tn; i++) if (i != 2) {
+					if (ulen(S[i]) > w1) w1 = ulen(S[i])
+					if (ulen(N[i]) > w2) w2 = ulen(N[i])
+					if (ulen(R[i]) > w3) w3 = ulen(R[i])
+				}
+				for (i = 1; i <= tn; i++)
+					if (i == 2) print "|" dashes(w1 + 2) "|" dashes(w2 + 1) ":|" dashes(w3 + 2) "|"
+					else print "| " fill(S[i], w1) " | " lfill(N[i], w2) " | " fill(R[i], w3) " |"
+			} else for (i = 1; i <= tn; i++) print tb[i]
+			tn = 0
+		}
+		function quiet(line,    c, n, a, i, x) { # a friction count line of quiet kinds only ("; N legacy" keeps it)
+			if (index(line, "- friction (attempt ") != 1 || !index(line, " event line(s): ") || index(line, "; ")) return 0
+			c = substr(line, index(line, " event line(s): ") + 16)
+			if (c == "none") return 1
+			n = split(c, a, ", ")
+			for (i = 1; i <= n; i++) {
+				x = a[i]
+				if (!sub(/^[0-9]+ /, "", x) || !index(quietkinds, " " x " ")) return 0
+			}
+			return 1
+		}
+		function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
+		function old(line) { return index(line, "[warn] install.commit \342\200\224 ") == 1 && index(line, ", but the checkout at ") > 0 && index(line, " (fix: ") > 0 }
+		function doctor_line(line, why,    k, p, i, j, a, m, items, rest, e, done) { # the Summary\047s, as c6aa4485 writes it
+			k = split(substr(line, 11), p, " \302\267 "); e = 0; done = 0
+			for (i = 2; i <= k; i++) {
+				if (!done && p[i] ~ /^unexpected [0-9]+: /) {
+					rest = substr(p[i], index(p[i], ": ") + 2); m = split(rest, a, ", "); items = ""
+					for (j = 1; j <= m; j++) if (!done && a[j] == "install.commit warn") done = 1; else items = items (items == "" ? "" : ", ") a[j]
+					if (done) p[i] = "unexpected " (substr(p[i], 12) - 1) (items == "" ? "" : ": " items)
+				}
+				if (p[i] ~ /^expected [0-9]+: /) e = i
+			}
+			if (!done) return line
+			if (e) p[e] = "expected " (substr(p[e], 10) + 1) substr(p[e], index(p[e], ":")) "; install.commit (" why ")"
+			line = "- doctor: " p[1] (e ? "" : " \302\267 expected 1: install.commit (" why ")")
+			for (i = 2; i <= k; i++) line = line " \302\267 " p[i]
+			return line
+		}
+		# A Doctor [FAIL] line of a source check under the CloudStorage folder of an app the step 1 list found
+		# signed out (s1apps, its apps= tokens), as setup_report._sign_in_stop_fails takes them: its check name,
+		# else "". By the redacted path the line names ("~/Library/CloudStorage/OneDrive-<org-1>/..."), never
+		# the fix text; "another sync app" (other) names no folder.
+		function stopped_fail(line,    name, k, prov, n, t, i, rest) {
+			if (!match(line, /^\[FAIL\] source\.[^ ]+\.(listable|volume) \342\200\224 /)) return ""
+			name = substr(line, 8, RLENGTH - 12); rest = substr(line, RSTART + RLENGTH)
+			# the path is the detail\047s first ~/Library/CloudStorage/ one before the fix: v10\047s volume line
+			# opens "File Provider root UUID not checked: ~/Library/..."
+			if ((k = index(rest, " (fix: ")) > 0) rest = substr(rest, 1, k - 1)
+			if (!(k = index(rest, "~/Library/CloudStorage/"))) return ""
+			prov = tolower(substr(rest, k + 23)); k = index(prov, "/"); if (k) prov = substr(prov, 1, k - 1)
+			n = split(s1apps, t, ",")
+			for (i = 1; i <= n; i++) if (t[i] != "other" && t[i] != "" && (prov == t[i] || index(prov, t[i] "-") == 1)) return name
+			return ""
+		}
+		# The Summary doctor line with those FAILs out of its unexpected list and in "from the sign-in stop N",
+		# after the expected and yours parts, as the renderer orders them
+		function stop_bucket(line,    k, p, i, j, a, m, items, moved, nm, out, put) {
+			k = split(substr(line, 11), p, " \302\267 "); moved = ""; nm = 0
+			for (i = 2; i <= k; i++) if (p[i] ~ /^unexpected [0-9]+: /) {
+				m = split(substr(p[i], index(p[i], ": ") + 2), a, ", "); items = ""
+				for (j = 1; j <= m; j++) {
+					if (a[j] ~ / FAIL$/ && (substr(a[j], 1, length(a[j]) - 5) in mv)) { moved = moved (nm++ ? ", " : "") a[j] }
+					else items = items (items == "" ? "" : ", ") a[j]
+				}
+				p[i] = "unexpected " (substr(p[i], 12) - nm) (items == "" ? "" : ": " items)
+			}
+			if (!nm) return line
+			out = "- doctor: " p[1]; put = 0
+			for (i = 2; i <= k; i++) {
+				if (!put && p[i] !~ /^(expected|yours) [0-9]+: /) { out = out " \302\267 from the sign-in stop " nm ": " moved; put = 1 }
+				out = out " \302\267 " p[i]
+			}
+			return out (put ? "" : " \302\267 from the sign-in stop " nm ": " moved)
+		}
+		function ends(line, tail) { return length(line) >= length(tail) && substr(line, length(line) - length(tail) + 1) == tail }
+		# An older renderer writes "(s)" beside a known count in the lines the current one words by the count (B13
+		# round 14 Q39, Q42, Q43, Q81 and Q41, renderer only; round 15 S20): each keyed on the number in its
+		# own line, and never inside a <details> block, which holds history (the install.out tail).
+		function pl(n, w, many) { return n " " (n == 1 ? w : (many == "" ? w "s" : many)) }
+		# Every "word(s)" or "word(ies)" outside <details> and ~~~ fences, by its count, as the current renderer
+		# words them all (B13 round 15 S26; round 16 T23, T84, T18): the count is the nearest whole number
+		# before it in its clause (back to a ";", "," or "("), at most three words before it, so "5 of 6
+		# source(s)" goes by 6 and "2 legacy v4 line(s)" by 2 ("v4" is no number). A plural verb right after
+		# it agrees with a count of 1 ("1 conversion was"). An "(s)" with no count in its clause stays. Run
+		# at the print and on the Installer table cells, so quiet() and the Doctor header, which read the
+		# old "(s)" forms, see them first.
+		function plural_all(line,    out, pre, noun, ies, base, cl, i, c, m, ws, j, n, gap, w) {
+			out = ""
+			while (match(line, /[A-Za-z]+\((s|ies)\)/)) {
+				pre = substr(line, 1, RSTART - 1); noun = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH)
+				ies = substr(noun, length(noun) - 4) == "(ies)"
+				base = substr(noun, 1, length(noun) - (ies ? 5 : 3))
+				cl = out pre
+				for (i = length(cl); i > 0; i--) { c = substr(cl, i, 1); if (c == ";" || c == "," || c == "(") break }
+				m = split(substr(cl, i + 1), ws, " "); n = -1; gap = 0
+				for (j = m; j >= 1 && gap <= 3; j--) { if (ws[j] ~ /^[0-9]+$/) { n = ws[j] + 0; break }; gap++ }
+				if (n < 0) { out = out pre noun; continue }
+				# "entry(ies)" (61474fdf) or "entr(ies)"
+				if (ies && base ~ /y$/) base = substr(base, 1, length(base) - 1)
+				out = out pre base (n == 1 ? (ies ? "y" : "") : (ies ? "ies" : "s"))
+				if (n == 1 && match(line, /^ [a-z]+/) && (w = substr(line, 2, RLENGTH - 1)) in one)
+					line = " " one[w] substr(line, RLENGTH + 1)
+			}
+			return out line
+		}
+		function fix(line, pat, at, n, to,    i) { # swap the first match of pat, from its at-th character
+			if (!match(line, pat)) return line
+			return substr(line, 1, RSTART - 1) to substr(line, RSTART + RLENGTH)
+		}
+		# The exclude-empty waits of the Summary, each up to the next one, by the count that opens it: the clauses
+		# that are not "N word(s)" (a count in another clause, a pronoun); plural_all does the rest. The next
+		# wait is looked for after the whole count, so "12 empty" is not read as a wait at its "2" (B13 round 16
+		# T43), and v10\047s loop.py wrote "if they are meant" (T18).
+		function counted(line,    k, seg, out, rest, n) {
+			out = ""
+			while (match(line, /[0-9]+ empty cloud folder/)) {
+				out = out substr(line, 1, RSTART - 1); line = substr(line, RSTART)
+				n = substr(line, 1, index(line, " ") - 1) + 0
+				rest = index(line, " ")
+				k = match(substr(line, rest), /[0-9]+ empty cloud folder/) ? rest + RSTART - 2 : length(line)
+				seg = substr(line, 1, k); line = substr(line, k + 1)
+				seg = fix(seg, "empty cloud folder\\(s\\) keep the listing", 0, n, n == 1 ? "empty cloud folder keeps the listing" : "empty cloud folders keep the listing")
+				seg = fix(seg, "if (they|the folder\\(s\\)) are meant", 0, n, n == 1 ? "if the folder is meant" : "if the folders are meant")
+				if (n == 1) seg = fix(seg, "\\(it adds (them|it) to that source", 0, n, "(it adds the folder to that source")
+				if (match(seg, /which names the folder(\(s\)|s)?, up to five, and past five how to list the rest/))
+					seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") (n > 5 ? ", up to five, and past five how to list the rest" : "") substr(seg, RSTART + RLENGTH)
+				else if (match(seg, /which names the folder\(s\)/))
+					seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") substr(seg, RSTART + RLENGTH)
+				out = out seg
+			}
+			return out line
+		}
+		function status_one(line,    n) { # a Status unknown line of one folder: its own pronouns
+			if (index(line, " 1 materialised-and-empty (1 of them still empty on this Mac, by their link count of 2)"))
+				line = fix(line, "\\(1 of them still empty on this Mac, by their link count of 2\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
+			# v10 (4a42af9) wrote "(1 of them with a link count of 2: no entry by the folder\047s own metadata)" (B13 round 16 T18)
+			if (index(line, " 1 materialised-and-empty (1 of them with a link count of 2: "))
+				line = fix(line, "\\(1 of them with a link count of 2: [^)]*\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
+			# "its last walk listed all N file(s)": the current words (B13 round 15 S30, round 16 T23)
+			if (match(line, /its last walk listed all [0-9]+ file\(s\)/)) {
+				n = substr(line, RSTART + 25) + 0
+				line = substr(line, 1, RSTART - 1) "its last walk listed " (n == 1 ? "the one file" : "every one of the " n " files") substr(line, RSTART + RLENGTH)
+			}
+			if (match(line, /; 1 of [0-9]+ checked; /)) {
+				line = fix(line, "; none of them excluded in sources\\.toml now;", 0, 1, "; it is not excluded in sources.toml now;")
+				line = fix(line, "; the mirror holds no file below them;", 0, 1, "; the mirror holds no file below it;")
+			}
+			return line
+		}
+		function prompt_line(line,    i, j, r, q) { # the copy note gains the stop line\047s second reason
+			if (index(line, "- prompt: ") != 1 || index(line, changed)) return line
+			if (!(i = index(line, " (older than the installer\047s v"))) i = index(line, " (newer than the installer\047s v")
+			if (!i && !(i = index(line, "; older than the installer\047s v"))) i = index(line, "; newer than the installer\047s v")
+			if (!i) return line
+			r = substr(line, i + 2)
+			if (!(j = index(r, ")"))) return line
+			q = i + 1 + j
+			return substr(line, 1, q - 1) changed substr(line, q)
+		}
+		FNR == 1 { sec = "" }
+		NR == FNR {
+			if (index($0, "## ") == 1) sec = $0
+			if (sec == "## Doctor" && old($0)) c++
+			if (s1note != "" && sec == "## Doctor" && stopped_fail($0)) mv[stopped_fail($0)] = ++nmv
+			if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
+			if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
+			if (index($0, "- install.sh: no run during this attempt") == 1) norun = 1
+			if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
+			if (inside && $0 == "</details>") inside = 0
+			if (inside && left($0)) k++
+			next
+		}
+		cp && FNR == at {
+			n = length($0) - length(saw)
+			if (noout && n > 0 && substr($0, n + 1) == saw)
+				$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
+			if (k > 0 && $0 ~ /^<details><summary>the last ([0-9]+ )?line(s|\(s\))? of .* \(.*\)<\/summary>$/)
+				$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
+		}
+		index($0, "## ") == 1 { sec = $0; det = 0; fence = 0 }
+		index($0, "<details><summary>") == 1 { $0 = plural_all($0) } # its summary is the renderer\047s words
+		index($0, "<details>") == 1 { det = 1 }
+		!det && (sec == "## Summary" || index($0, "- [policy] label rule: on (") == 1) { $0 = counted($0) }
+		!det && sec == "## Status" && index($0, "- ") == 1 { $0 = status_one($0) }
+		$0 == "</details>" { det = 0 }
+		!det && index($0, "~~~") == 1 { fence = !fence }
+		# the Installer output paragraph of a renderer from before ba5e253f lacks its sentence on a fix: line
+		# (B13 round 16 T23)
+		!det && sec == "## Installer" && index($0, "Installer output: ") == 1 && (j = index($0, nextstep)) && !index($0, "whose stopping [FAIL] lines") {
+			$0 = substr($0, 1, j + length(nextstep) - 3) "; " fixline " " substr($0, j + length(nextstep))
+		}
+		cp && sec == "## Summary" { $0 = prompt_line($0) }
+		sec == "## Summary" && quiet($0) { next }
+		# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13
+		# round 11 M27, M52; the rule of G9 and J23/J40). Every renderer writes "setup prompt vN (python X, exe)".
+		cp && index($0, "- agentsync: ") == 1 && match($0, /, setup prompt v[0-9]+ \(/) && substr($0, RSTART + 16, RLENGTH - 18) != compat && !index($0, "the installed agentsync, which renders this report") {
+			$0 = substr($0, 1, RSTART + RLENGTH - 1) "the installed agentsync, which renders this report; the checkout\047s installer, which stopped this copy, is for setup prompt v" compat ", and the fresh copy\047s step 2 reinstalls agentsync; " substr($0, RSTART + RLENGTH)
+		}
+		cp && c && sec == "## Doctor" && old($0) { $0 = substr($0, 1, index($0, " (fix: ") - 1) " (expected: " w ")" }
+		# a renderer from before B13 round 15 S26 writes "N check(s):" and "N expected warn(s) end in", a newer one
+		# "N checks:" and "1 expected warn ends in" / "N expected warns end in": both are read, and a merged
+		# count keeps its form (in the newer form, noun and verb go by the sum)
+		cp && c && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ {
+			if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn" (c == 1 ? " ends" : "s end") " in (expected: <why>) instead of their fix: nothing for this setup to do."
+			else if (match($0, / [0-9]+ expected warn\(s\) end in /)) {
+				e = substr($0, RSTART + 1) + 0
+				$0 = substr($0, 1, RSTART) (e + c) substr($0, RSTART + 1 + length(e ""))
+			} else if (match($0, / [0-9]+ expected warns? ends? in /)) {
+				e = substr($0, RSTART + 1) + 0
+				$0 = substr($0, 1, RSTART) (e + c) " expected warns end in " substr($0, RSTART + RLENGTH)
+			}
+		}
+		cp && (c || st) && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ && !index($0, b) && ends($0, "nothing for this setup to do.") {
+			$0 = substr($0, 1, length($0) - 1) b "."
+		}
+		c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0, cp ? w : w1) }
+		s1note != "" && sec == "## Summary" && index($0, "- doctor: ") == 1 && nmv { $0 = stop_bucket($0) }
+		# the stop of step 1 (B13 round 16 T11): its cause, as a renderer from N31 on writes it, and the turns
+		s1cause != "" && sec == "## Summary" && index($0, "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran") == 1 && !index($0, "; it stopped: ") && ends($0, ")") {
+			$0 = substr($0, 1, length($0) - 1) "; it stopped: " s1cause ")"
+		}
+		s1turns != "" && sec == "## Summary" && index($0, "- expected turns: ") == 1 && !index($0, "list stopped: ") { $0 = s1turns }
+		cp && sec == "## Doctor" && (j = index($0, heldold)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldold)) }
+		cp && (index($0, "Send it: ") == 1 || index($0, u) == 1) { next }
+		cp && (index($0, u) > 0 || index($0, "bring back: ") == 1) { if (shown++) next; $0 = gone }
+		cp && (j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
+		sec == "## Installer" && index($0, "|") == 1 { tb[++tn] = $0; next }
+		tn { table() }
+		$0 == "" { blank++; next }
+		{ for (; blank > 0; blank--) print ""; print (det || fence ? $0 : plural_all($0)) }
+		END { if (tn) table(); if (cp) { print ""; print "Not for sending: see the note at the top of this report." } }' "$REPORT_PATH" "$REPORT_PATH"
+}
+# The step 1 stop older_report_rewrite step1 words (B13 round 16 T11): when install.log's last run is this
+# attempt's step 1 list (args=--list-folders, begun at or after friction_attempt_begin) that failed on a sign-in
+# or with no folders (note=not-signed-in or no-folders, its exit 3), S1_NOTE, S1_APPS (its apps= tokens),
+# S1_CAUSE (setup_report._list_stop_words) and S1_TURNS (the expected-turns line, as
+# setup_report._expected_turns_line words it for a list that stopped, with "none": an unattended stop has no
+# sign-in answer to count); else all empty, and 1 is returned. As files, with no agentsync: the installed one is
+# older, which is why this runs.
+step1_stop_facts() {
+	local facts begin who="" names t n=0 of missing gone app label
+	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS=""
+	[ -f "$SETUP_LOG" ] || return 1
+	begin="$(utc_stamp "$(friction_attempt_begin)")"
+	facts="$(BEGIN_AT="$begin" LC_ALL=C awk '
+		match($0, / run=[^ ]+ /) { r = substr($0, RSTART + 5, RLENGTH - 6); if (r != last) { last = r; st = ""; fl = "" } }
+		index($0, " start install.sh ") { st = $1 " " ($0 ~ / args=--list-folders$/) }
+		index($0, " step=list-folders ") { fl = $0 }
+		END {
+			split(st, a, " ")
+			if (a[2] != 1 || fl !~ / result=failed / || fl !~ / note=(not-signed-in|no-folders)( |$)/) exit
+			b = ENVIRON["BEGIN_AT"]; if (b != "" && a[1] < b) exit
+			n = fl; sub(/.* note=/, "", n); sub(/ .*/, "", n)
+			printf "%s|%s|%s|%s\n", n, v(fl, "apps"), v(fl, "missing"), v(fl, "synced")
+		}
+		function v(l, k,    x) { if (!match(l, " " k "=[^ ]*")) return ""; x = substr(l, RSTART + length(k) + 2, RLENGTH - length(k) - 2); return x }
+	' "$SETUP_LOG" 2>/dev/null)" || return 1
+	[ -n "$facts" ] || return 1
+	IFS='|' read -r S1_NOTE S1_APPS missing of <<<"$facts"
+	case "$missing" in *[!0-9]* | "") missing="" ;; esac
+	case "$of" in *[!0-9]* | "") of="" ;; esac
+	if [ "$S1_NOTE" = no-folders ]; then
+		S1_CAUSE="no folders are synced yet"
+	else
+		# the apps by setup_report._SIGN_IN_APPS, a token none of them dropped; joined "A, B and C"
+		names=()
+		IFS=',' read -r -a t <<<"$S1_APPS"
+		# each token from its app's name, as list_folders writes it: an app name in lower case on a line of this
+		# script would be a report word (report_word), and an organisation of that name would go unreplaced
+		for t in ${t[@]+"${t[@]}"}; do
+			t="$(printf '%s' "$t" | LC_ALL=C tr '[:upper:]' '[:lower:]')" app=""
+			[ "$t" != other ] || app="another sync app"
+			for label in OneDrive "Google Drive" Dropbox Box Egnyte; do
+				[ "$(printf '%s' "${label// /}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$t" ] || app="$label"
+			done
+			[ -n "$app" ] || continue
+			t="$app"
+			case " ${names[*]+"${names[*]}"} " in *" $t "*) continue ;; esac
+			names+=("$t")
+		done
+		n=${#names[@]}
+		if [ "$n" -eq 0 ]; then
+			if [ "${of:-0}" -gt 0 ]; then S1_CAUSE="a sync app is not signed in"; else S1_CAUSE="OneDrive is not signed in"; fi
+		else
+			who="${names[$((n - 1))]}"
+			[ "$n" -eq 1 ] || who="$(IFS=,; printf '%s' "${names[*]:0:$((n - 1))}" | LC_ALL=C sed 's/,/, /g') and $who"
+			if [ "$n" -eq 1 ]; then S1_CAUSE="$who is not signed in"; else S1_CAUSE="$who are not signed in"; fi
+		fi
+	fi
+	if [ "$S1_NOTE" = not-signed-in ] && [ "${of:-0}" -gt 0 ]; then
+		if [ -z "$missing" ] && [ "$of" -gt 1 ]; then
+			gone="some of the $of folders this Mac already syncs are"
+		elif [ -n "$missing" ] && [ "$missing" -gt 0 ] && [ "$missing" -lt "$of" ]; then
+			gone="$missing of the $of folders this Mac already syncs"
+			if [ "$missing" -eq 1 ]; then gone="$gone is"; else gone="$gone are"; fi
+		elif [ "$of" -eq 1 ]; then
+			gone="the 1 folder this Mac already syncs is"
+		else
+			gone="the $of folders this Mac already syncs are"
+		fi
+		if [ "$of" -eq 1 ]; then t="it is"; else t="they are"; fi
+		S1_TURNS="- expected turns: none (step 1's list stopped: $S1_CAUSE, so $gone missing; $t kept: no folder question and no Allow click)"
+	else
+		S1_TURNS="- expected turns: none (step 1's list stopped: $S1_CAUSE, so no folder was listed: no folder question and no Allow click)"
+	fi
+	return 0
+}
+# The report of this attempt's own step 1 stop rendered by the installed agentsync, which is older than this
+# checkout (its install.commit warn says so: nothing reinstalled it), in this checkout's words where they are
+# the renderer's only (older_report_rewrite step1; B13 round 16 T11). A report already in them passes unchanged.
+step1_report_note() {
+	local tmp
+	LC_ALL=C grep -q '^\[warn\] install\.commit .*, but the checkout at ' "$REPORT_PATH" 2>/dev/null || return 0
+	step1_stop_facts || return 0
+	tmp="$(mktemp "${REPORT_PATH%/*}/.step1-report.XXXXXX" 2>/dev/null)" || return 1
+	if older_report_rewrite step1 >"$tmp" && [ -s "$tmp" ]; then
+		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp"; return 0; fi
+		chmod 600 "$tmp" 2>/dev/null || true
+		mv -f "$tmp" "$REPORT_PATH" || { rm -f "$tmp"; return 1; }
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
 stopped_report_note() { # KEPT-REPORT-PATH
 	local tmp shown="$1" note="> This report is of an attempt started by a copy of the setup prompt that does not match this installer: do not send it or bring it back."
 	case "$shown" in "$HOME"/*) shown='~'"${shown#"$HOME"}" ;; *) shown="${shown##*/}" ;; esac
@@ -4016,237 +4402,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	tmp="$(mktemp "${REPORT_PATH%/*}/.stopped-report.XXXXXX" 2>/dev/null)" || return 1
 	if {
 		printf '%s\n\n' "$note" &&
-			LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" awk -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
-				-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
-				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
-				-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
-				-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
-				-v heldold="$STOPPED_HELD_OLD" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" '
-				function load(    m, i, ws, p, q, rest) { # words[step, token]: one "<step> <token> <words>" a line (not -v: a newline)
-					m = split(ENVIRON["STEPWORDS"], ws, "\n")
-					for (i = 1; i <= m; i++) {
-						p = index(ws[i], " "); rest = substr(ws[i], p + 1); q = index(rest, " ")
-						words[substr(ws[i], 1, p - 1), substr(rest, 1, q - 1)] = substr(rest, q + 1)
-					}
-				}
-				BEGIN {
-					load()
-					one["were"] = "was"; one["are"] = "is"; one["have"] = "has"; one["end"] = "ends"
-					one["keep"] = "keeps"; one["hold"] = "holds"; one["name"] = "names"
-				}
-				function trim(x) { sub(/^ +/, "", x); sub(/ +$/, "", x); return x }
-				function ulen(x) { gsub(/[\200-\277]/, "", x); return length(x) } # characters, as Python counts them
-				function fill(x, w,    i) { for (i = ulen(x); i < w; i++) x = x " "; return x }
-				function lfill(x, w,    i, p) { p = ""; for (i = ulen(x); i < w; i++) p = p " "; return p x }
-				function dashes(w,    x) { x = ""; while (w-- > 0) x = x "-"; return x }
-				function table(    i, k, c, ch, w1, w2, w3, tok, x) { # the Installer table buffered in tb[1..tn]
-					for (; blank > 0; blank--) print ""
-					ch = tn >= 3 && tb[2] ~ /^\|-+\|-+:\|-+\|$/
-					for (i = 1; ch && i <= tn; i++) {
-						if (i == 2) continue
-						if (split(substr(tb[i], 3, length(tb[i]) - 4), c, " \\| ") != 3) { ch = 0; break }
-						S[i] = trim(c[1]); N[i] = trim(c[2]); R[i] = trim(c[3])
-						if (i > 2 && match(R[i], / \([^()]*\)$/)) {
-							tok = substr(R[i], RSTART + 2, RLENGTH - 3)
-							if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
-						}
-						# each cell: its "(s)" by its count, after the token lookup, which reads the token as written; the
-						# table is padded again (B13 round 14 Q39 "listed N folders", round 16 T23)
-						if (i > 2 && (x = plural_all(R[i])) != R[i]) { R[i] = x; ch = 2 }
-						if (i > 2 && (x = plural_all(S[i])) != S[i]) { S[i] = x; ch = 2 }
-					}
-					if (ch == 2) {
-						w1 = w2 = w3 = 0
-						for (i = 1; i <= tn; i++) if (i != 2) {
-							if (ulen(S[i]) > w1) w1 = ulen(S[i])
-							if (ulen(N[i]) > w2) w2 = ulen(N[i])
-							if (ulen(R[i]) > w3) w3 = ulen(R[i])
-						}
-						for (i = 1; i <= tn; i++)
-							if (i == 2) print "|" dashes(w1 + 2) "|" dashes(w2 + 1) ":|" dashes(w3 + 2) "|"
-							else print "| " fill(S[i], w1) " | " lfill(N[i], w2) " | " fill(R[i], w3) " |"
-					} else for (i = 1; i <= tn; i++) print tb[i]
-					tn = 0
-				}
-				function quiet(line,    c, n, a, i, x) { # a friction count line of quiet kinds only ("; N legacy" keeps it)
-					if (index(line, "- friction (attempt ") != 1 || !index(line, " event line(s): ") || index(line, "; ")) return 0
-					c = substr(line, index(line, " event line(s): ") + 16)
-					if (c == "none") return 1
-					n = split(c, a, ", ")
-					for (i = 1; i <= n; i++) {
-						x = a[i]
-						if (!sub(/^[0-9]+ /, "", x) || !index(quietkinds, " " x " ")) return 0
-					}
-					return 1
-				}
-				function left(line) { return index(line, "Send it: ") == 1 || index(line, u) > 0 || index(line, "bring back: ") == 1 }
-				function old(line) { return index(line, "[warn] install.commit \342\200\224 ") == 1 && index(line, ", but the checkout at ") > 0 && index(line, " (fix: ") > 0 }
-				function doctor_line(line,    k, p, i, j, a, m, items, rest, e, done) { # the Summary\047s, as c6aa4485 writes it
-					k = split(substr(line, 11), p, " \302\267 "); e = 0; done = 0
-					for (i = 2; i <= k; i++) {
-						if (!done && p[i] ~ /^unexpected [0-9]+: /) {
-							rest = substr(p[i], index(p[i], ": ") + 2); m = split(rest, a, ", "); items = ""
-							for (j = 1; j <= m; j++) if (!done && a[j] == "install.commit warn") done = 1; else items = items (items == "" ? "" : ", ") a[j]
-							if (done) p[i] = "unexpected " (substr(p[i], 12) - 1) (items == "" ? "" : ": " items)
-						}
-						if (p[i] ~ /^expected [0-9]+: /) e = i
-					}
-					if (!done) return line
-					if (e) p[e] = "expected " (substr(p[e], 10) + 1) substr(p[e], index(p[e], ":")) "; install.commit (" w ")"
-					line = "- doctor: " p[1] (e ? "" : " \302\267 expected 1: install.commit (" w ")")
-					for (i = 2; i <= k; i++) line = line " \302\267 " p[i]
-					return line
-				}
-				function ends(line, tail) { return length(line) >= length(tail) && substr(line, length(line) - length(tail) + 1) == tail }
-				# An older renderer writes "(s)" beside a known count in the lines the current one words by the count (B13
-				# round 14 Q39, Q42, Q43, Q81 and Q41, renderer only; round 15 S20): each keyed on the number in its
-				# own line, and never inside a <details> block, which holds history (the install.out tail).
-				function pl(n, w, many) { return n " " (n == 1 ? w : (many == "" ? w "s" : many)) }
-				# Every "word(s)" or "word(ies)" outside <details> and ~~~ fences, by its count, as the current renderer
-				# words them all (B13 round 15 S26; round 16 T23, T84, T18): the count is the nearest whole number
-				# before it in its clause (back to a ";", "," or "("), at most three words before it, so "5 of 6
-				# source(s)" goes by 6 and "2 legacy v4 line(s)" by 2 ("v4" is no number). A plural verb right after
-				# it agrees with a count of 1 ("1 conversion was"). An "(s)" with no count in its clause stays. Run
-				# at the print and on the Installer table cells, so quiet() and the Doctor header, which read the
-				# old "(s)" forms, see them first.
-				function plural_all(line,    out, pre, noun, ies, base, cl, i, c, m, ws, j, n, gap, w) {
-					out = ""
-					while (match(line, /[A-Za-z]+\((s|ies)\)/)) {
-						pre = substr(line, 1, RSTART - 1); noun = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH)
-						ies = substr(noun, length(noun) - 4) == "(ies)"
-						base = substr(noun, 1, length(noun) - (ies ? 5 : 3))
-						cl = out pre
-						for (i = length(cl); i > 0; i--) { c = substr(cl, i, 1); if (c == ";" || c == "," || c == "(") break }
-						m = split(substr(cl, i + 1), ws, " "); n = -1; gap = 0
-						for (j = m; j >= 1 && gap <= 3; j--) { if (ws[j] ~ /^[0-9]+$/) { n = ws[j] + 0; break }; gap++ }
-						if (n < 0) { out = out pre noun; continue }
-						# "entry(ies)" (61474fdf) or "entr(ies)"
-						if (ies && base ~ /y$/) base = substr(base, 1, length(base) - 1)
-						out = out pre base (n == 1 ? (ies ? "y" : "") : (ies ? "ies" : "s"))
-						if (n == 1 && match(line, /^ [a-z]+/) && (w = substr(line, 2, RLENGTH - 1)) in one)
-							line = " " one[w] substr(line, RLENGTH + 1)
-					}
-					return out line
-				}
-				function fix(line, pat, at, n, to,    i) { # swap the first match of pat, from its at-th character
-					if (!match(line, pat)) return line
-					return substr(line, 1, RSTART - 1) to substr(line, RSTART + RLENGTH)
-				}
-				# The exclude-empty waits of the Summary, each up to the next one, by the count that opens it: the clauses
-				# that are not "N word(s)" (a count in another clause, a pronoun); plural_all does the rest. The next
-				# wait is looked for after the whole count, so "12 empty" is not read as a wait at its "2" (B13 round 16
-				# T43), and v10\047s loop.py wrote "if they are meant" (T18).
-				function counted(line,    k, seg, out, rest, n) {
-					out = ""
-					while (match(line, /[0-9]+ empty cloud folder/)) {
-						out = out substr(line, 1, RSTART - 1); line = substr(line, RSTART)
-						n = substr(line, 1, index(line, " ") - 1) + 0
-						rest = index(line, " ")
-						k = match(substr(line, rest), /[0-9]+ empty cloud folder/) ? rest + RSTART - 2 : length(line)
-						seg = substr(line, 1, k); line = substr(line, k + 1)
-						seg = fix(seg, "empty cloud folder\\(s\\) keep the listing", 0, n, n == 1 ? "empty cloud folder keeps the listing" : "empty cloud folders keep the listing")
-						seg = fix(seg, "if (they|the folder\\(s\\)) are meant", 0, n, n == 1 ? "if the folder is meant" : "if the folders are meant")
-						if (n == 1) seg = fix(seg, "\\(it adds (them|it) to that source", 0, n, "(it adds the folder to that source")
-						if (match(seg, /which names the folder(\(s\)|s)?, up to five, and past five how to list the rest/))
-							seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") (n > 5 ? ", up to five, and past five how to list the rest" : "") substr(seg, RSTART + RLENGTH)
-						else if (match(seg, /which names the folder\(s\)/))
-							seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") substr(seg, RSTART + RLENGTH)
-						out = out seg
-					}
-					return out line
-				}
-				function status_one(line,    n) { # a Status unknown line of one folder: its own pronouns
-					if (index(line, " 1 materialised-and-empty (1 of them still empty on this Mac, by their link count of 2)"))
-						line = fix(line, "\\(1 of them still empty on this Mac, by their link count of 2\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
-					# v10 (4a42af9) wrote "(1 of them with a link count of 2: no entry by the folder\047s own metadata)" (B13 round 16 T18)
-					if (index(line, " 1 materialised-and-empty (1 of them with a link count of 2: "))
-						line = fix(line, "\\(1 of them with a link count of 2: [^)]*\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
-					# "its last walk listed all N file(s)": the current words (B13 round 15 S30, round 16 T23)
-					if (match(line, /its last walk listed all [0-9]+ file\(s\)/)) {
-						n = substr(line, RSTART + 25) + 0
-						line = substr(line, 1, RSTART - 1) "its last walk listed " (n == 1 ? "the one file" : "every one of the " n " files") substr(line, RSTART + RLENGTH)
-					}
-					if (match(line, /; 1 of [0-9]+ checked; /)) {
-						line = fix(line, "; none of them excluded in sources\\.toml now;", 0, 1, "; it is not excluded in sources.toml now;")
-						line = fix(line, "; the mirror holds no file below them;", 0, 1, "; the mirror holds no file below it;")
-					}
-					return line
-				}
-				function prompt_line(line,    i, j, r, q) { # the copy note gains the stop line\047s second reason
-					if (index(line, "- prompt: ") != 1 || index(line, changed)) return line
-					if (!(i = index(line, " (older than the installer\047s v"))) i = index(line, " (newer than the installer\047s v")
-					if (!i && !(i = index(line, "; older than the installer\047s v"))) i = index(line, "; newer than the installer\047s v")
-					if (!i) return line
-					r = substr(line, i + 2)
-					if (!(j = index(r, ")"))) return line
-					q = i + 1 + j
-					return substr(line, 1, q - 1) changed substr(line, q)
-				}
-				FNR == 1 { sec = "" }
-				NR == FNR {
-					if (index($0, "## ") == 1) sec = $0
-					if (sec == "## Doctor" && old($0)) c++
-					if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
-					if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
-					if (index($0, "- install.sh: no run during this attempt") == 1) norun = 1
-					if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
-					if (inside && $0 == "</details>") inside = 0
-					if (inside && left($0)) k++
-					next
-				}
-				FNR == at {
-					n = length($0) - length(saw)
-					if (noout && n > 0 && substr($0, n + 1) == saw)
-						$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
-					if (k > 0 && $0 ~ /^<details><summary>the last ([0-9]+ )?line(s|\(s\))? of .* \(.*\)<\/summary>$/)
-						$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
-				}
-				index($0, "## ") == 1 { sec = $0; det = 0; fence = 0 }
-				index($0, "<details><summary>") == 1 { $0 = plural_all($0) } # its summary is the renderer\047s words
-				index($0, "<details>") == 1 { det = 1 }
-				!det && (sec == "## Summary" || index($0, "- [policy] label rule: on (") == 1) { $0 = counted($0) }
-				!det && sec == "## Status" && index($0, "- ") == 1 { $0 = status_one($0) }
-				$0 == "</details>" { det = 0 }
-				!det && index($0, "~~~") == 1 { fence = !fence }
-				# the Installer output paragraph of a renderer from before ba5e253f lacks its sentence on a fix: line
-				# (B13 round 16 T23)
-				!det && sec == "## Installer" && index($0, "Installer output: ") == 1 && (j = index($0, nextstep)) && !index($0, "whose stopping [FAIL] lines") {
-					$0 = substr($0, 1, j + length(nextstep) - 3) "; " fixline " " substr($0, j + length(nextstep))
-				}
-				sec == "## Summary" { $0 = prompt_line($0) }
-				sec == "## Summary" && quiet($0) { next }
-				# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13
-				# round 11 M27, M52; the rule of G9 and J23/J40). Every renderer writes "setup prompt vN (python X, exe)".
-				index($0, "- agentsync: ") == 1 && match($0, /, setup prompt v[0-9]+ \(/) && substr($0, RSTART + 16, RLENGTH - 18) != compat && !index($0, "the installed agentsync, which renders this report") {
-					$0 = substr($0, 1, RSTART + RLENGTH - 1) "the installed agentsync, which renders this report; the checkout\047s installer, which stopped this copy, is for setup prompt v" compat ", and the fresh copy\047s step 2 reinstalls agentsync; " substr($0, RSTART + RLENGTH)
-				}
-				c && sec == "## Doctor" && old($0) { $0 = substr($0, 1, index($0, " (fix: ") - 1) " (expected: " w ")" }
-				# a renderer from before B13 round 15 S26 writes "N check(s):" and "N expected warn(s) end in", a newer one
-				# "N checks:" and "1 expected warn ends in" / "N expected warns end in": both are read, and a merged
-				# count keeps its form (in the newer form, noun and verb go by the sum)
-				c && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ {
-					if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn" (c == 1 ? " ends" : "s end") " in (expected: <why>) instead of their fix: nothing for this setup to do."
-					else if (match($0, / [0-9]+ expected warn\(s\) end in /)) {
-						e = substr($0, RSTART + 1) + 0
-						$0 = substr($0, 1, RSTART) (e + c) substr($0, RSTART + 1 + length(e ""))
-					} else if (match($0, / [0-9]+ expected warns? ends? in /)) {
-						e = substr($0, RSTART + 1) + 0
-						$0 = substr($0, 1, RSTART) (e + c) " expected warns end in " substr($0, RSTART + RLENGTH)
-					}
-				}
-				(c || st) && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ && !index($0, b) && ends($0, "nothing for this setup to do.") {
-					$0 = substr($0, 1, length($0) - 1) b "."
-				}
-				c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0) }
-				sec == "## Doctor" && (j = index($0, heldold)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldold)) }
-				index($0, "Send it: ") == 1 || index($0, u) == 1 { next }
-				index($0, u) > 0 || index($0, "bring back: ") == 1 { if (shown++) next; $0 = gone }
-				(j = index($0, r)) > 0 { $0 = substr($0, 1, j - 1) "A" substr($0, j + length(r)) }
-				sec == "## Installer" && index($0, "|") == 1 { tb[++tn] = $0; next }
-				tn { table() }
-				$0 == "" { blank++; next }
-				{ for (; blank > 0; blank--) print ""; print (det || fence ? $0 : plural_all($0)) }
-				END { if (tn) table(); print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH" |
+			older_report_rewrite copy |
 			stopped_run_labels
 	} >"$tmp"; then
 		mv -f "$tmp" "$REPORT_PATH" || { # no temp file stays beside the report (B13 round 11 M84)
@@ -4334,6 +4490,8 @@ on_exit() {
 				# report that was not stopped), and nothing this attempt prints names it (B13 round 4 Q20).
 				# A dry run (2) and a report not written (*) leave it.
 				rm -f "$SETUP_DIR/stopped-copy-report.md"
+				# an older installed agentsync rendered a step 1 stop: before bring-back.md embeds the report
+				[ "$REPORT_BY" != agentsync ] || step1_report_note || warn "could not reword $REPORT_PATH in this checkout's words"
 				if write_bring_back; then wrote=1; else wrote=0; warn "could not write $back${BACK_WHY:+: $BACK_WHY}"; fi
 				link="$(report_issue_link)"
 				if [ -n "$link" ]; then
