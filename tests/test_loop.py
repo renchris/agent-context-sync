@@ -1455,7 +1455,7 @@ def test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since(
     assert cli.main(["exclude-empty", "work", "--config", str(config.config_path)]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "(1 empty cloud folder added)" in out, out
-    assert "; 1 empty cloud folder in work was left as it is: it held file(s) the mirror still has" in out, (
+    assert "; 1 empty cloud folder in work was left as it is: it held 1 file the mirror still has (" in out, (
         out
     )
     assert not _S_BESIDE_A_COUNT.search(out), out
@@ -1644,9 +1644,9 @@ def test_exclude_empty_says_the_alarm_names_five_only_past_five(
     assert cli.main(["exclude-empty", "work", "--config", str(config.config_path)]) == cli.EXIT_OK
     out = capsys.readouterr().out
     left = (
-        "7 empty cloud folders in work were left as they are: each held"
+        "7 empty cloud folders in work were left as they are: they held 7 files the mirror still has ("
         if gone == 7
-        else ("1 empty cloud folder in work was left as it is: it held")
+        else ("1 empty cloud folder in work was left as it is: it held 1 file the mirror still has (")
     )
     assert left in out, out
     assert "which names it, " not in out and "which names them, " not in out, out

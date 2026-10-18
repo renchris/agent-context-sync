@@ -83,7 +83,12 @@ def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK, out
     assert "(1 empty cloud folder added)" in out
-    assert "1 empty cloud folder in work was left as it is" in out
+    # B13 round 16 T38: the count it knows and the one cause it has, not "file(s) ..., or its exclude ..."
+    assert (
+        "1 empty cloud folder in work was left as it is: it held 1 file the mirror still has (excluding such "
+        "a folder retires its pages at once, with no deletion check); "
+    ) in out, out
+    assert "file(s)" not in out and "or its exclude" not in out and "has a [" not in out, out
     # B13 round 12 N40: "without them" after one folder, beside "files", and the left one is "it"
     assert "the next sync lists work without that folder; " in out and "without them" not in out, out
     assert "which names them" not in out, out
@@ -192,6 +197,12 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK and out.startswith("exclude-empty work: nothing to exclude; 1 empty"), out
     assert cfg.read_bytes() == before
+    # B13 round 16 T38: the cause in the loop's words, no hedge, and no "held" for a folder that held nothing
+    assert (
+        "; 1 empty cloud folder in work was left as it is: it has a [ in its name, so an exclude of it would "
+        "also match a folder whose files are mirrored: rename or remove the empty folder in the cloud drive; "
+    ) in out, out
+    assert "held" not in out and "file(s)" not in out and "or its exclude" not in out, out
     # B13 round 5 F65: the wait takes the command's rule, so it never names a command that leaves its folder
     # (the wait would never clear); its own line says what does clear it, and names no folder.
     run_cycle(load_config(cfg), mode=None)
@@ -203,6 +214,39 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     assert "STATE.md keeps the alarm line for work, which names it (a plain " in wait and "Plans" not in wait
     assert "(a plain `~/.local/bin/agentsync sync` prints it too)" in wait and "sync -v" not in wait
     assert "the mirror still has" not in wait, "not the gone line: the folder held no file"
+
+
+def test_folders_left_for_two_causes_are_said_apart(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 16 T38: two gone folders (2 and 1 files) beside two whose glob collides read "each held
+    file(s) ..., or its exclude would also match ..."; each cause now has its own clause and count, the
+    files summed, since each folder's count differs."""
+    root = _root()
+    for name, files in (("Gone A", 2), ("Gone B", 1)):
+        for i in range(files):
+            (root / name).mkdir(exist_ok=True)
+            (root / name / f"Note {i}.txt").write_text("Kickoff agenda.\n", encoding="utf-8")
+    for name in ("Plans [a]", "Plans [b]"):
+        (root / name).mkdir()
+    for name in ("Plans xa]", "Plans xb]"):
+        (root / name).mkdir()
+        (root / name / "Kickoff.txt").write_text("Kickoff agenda.\n", encoding="utf-8")
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    for name, files in (("Gone A", 2), ("Gone B", 1)):
+        for i in range(files):
+            (root / name / f"Note {i}.txt").unlink()
+    run_cycle(load_config(cfg), mode=None)
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK and out.startswith("exclude-empty work: nothing to exclude; "), out
+    assert (
+        "; 2 empty cloud folders in work were left as they are: they held 3 files the mirror still has "
+        "(excluding such a folder retires its pages at once, with no deletion check); 2 empty cloud folders "
+        "in work were left as they are: they have a [ in the name, so an exclude of one would also match a "
+        "folder whose files are mirrored: rename or remove the empty folders in the cloud drive; "
+    ) in out, out
+    assert "each held" not in out and "file(s)" not in out and "or its exclude" not in out, out
 
 
 class _Rows:
