@@ -1072,6 +1072,33 @@ every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r15-land.lock`): RA 
 (install.sh), P 5 (prompt v24), B 16 (loop, cli, arm_local, cycle, doctor), E 10 (pandoc route, ship-land.sh's CI reads,
 landed last), D 8 (docs/deploy, CONTRACTS). Lead: S71 (one operator cleanup, `b13-r14`, replacing the `b13-r13` one).
 
+### B13 round 15 landed (2026-10-18)
+
+All six lanes landed; CI green on `9ad94d42` (ci `39140575013`, diagrams `39140575047`; prompt v24). Notes
+`lanes/r15-<lane>.md`; the round's worktrees and branches are removed.
+
+| Lane | Landed (lane commits; ranges can hold another session's) |
+|---|---|
+| P | `88ddf164`, `4a87ea23` (v24) |
+| RA | `563ba24e..0c8e0b86`, 6 commits, plus the test fix `1df9a9ac` |
+| D | `83112288`, `d6807332` |
+| RB | `dd369f24..3a6dab63`, 13 commits |
+| B | `4bece992..fc10508d`, 12 commits |
+| E | `dfebaefc..9ad94d42`, 6 commits (landed last; `scripts/ship-land.sh` now exits 9 when it could not read CI) |
+
+Learnings: every lane landed with `scripts/ship-land.sh` and no lane waited on a push prompt. The busy-machine gate
+refused some fires, and re-running the fire script fired the missing lanes. Lane B's back-channel was rewired from
+window 20 to 377 after the lead's restart. RA's counted-noun sweep turned trunk red once on a test that pinned a
+timeout's words only; RA fixed it in `1df9a9ac`.
+
+Three items go to round 16's harvest (lead notes `round15/lead-notes.md`): the Q40 pandoc first-start CI flake, seen
+3 times, with S70's start-log output in ci run `39132985876` attempt 1; the CI timeout of `install.sh --list-folders`
+in `test_a_folder_list_that_could_not_read_the_config_goes_on_unattended` (run `39105995103` attempt 1); and
+install.sh's `config_failed` saying "does not load" for a config that loads but the sync refuses (lane P).
+
+Round 16: the round 15 workflow with prompt v24 on this section's landed tip, BASE `61474fdf` (ids T<n>, outputs
+`round16/`); scenario C also plays the v23 and v22 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
