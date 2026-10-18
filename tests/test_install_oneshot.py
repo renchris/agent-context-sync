@@ -9677,6 +9677,67 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
     assert cp.stdout == f"MDM server: https://<mdmhost>:443{path}\n"
 
 
+# ---- the shell report redacts a vanished source's id (T42) -------------------------------------------------
+
+SHELL_HELPER_FNS = re.compile(r"(?ms)^(?:generic_folder|id_key|listed_folder_lines)\(\) \{\n.*?^\}$")
+
+
+def test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone(tmp_path: Path) -> None:
+    """B13 round 16 T42: doctor's config.vanished_sources [FAIL] and the sync's refusal quote the id of a
+    source whose [[source]] block is gone, which no table of sources.toml names, so the shell fallback report
+    showed it in clear. The ids those lines quote are now pairs, numbered after the tables, the older
+    ``file(s)`` wording too; a configured id keeps its own number and one of agentsync's own words is kept."""
+    text = INSTALL_SH.read_text()
+    funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    generic = "\n".join(ln for ln in text.splitlines() if ln.startswith("GENERIC_SOURCE_IDS="))
+    home = tmp_path / "home"
+    (home / "notes").mkdir(parents=True)
+    config = tmp_path / "sources.toml"
+    config.write_text(f'[[source]]\nid = "contoso-alpha"\nkind = "local"\npath = "{home / "notes"}"\n')
+    doctor_log = tmp_path / "doctor.log"
+    doctor_log.write_text(
+        "[FAIL] config.vanished_sources — sources 'zeta-ledger' (3 files), 'mail' (1 file) are mirrored but "
+        "no longer in sources.toml, so every sync refuses this config (exit 78) (fix: put the [[source]] "
+        "block back)\n"
+    )
+    out = tmp_path / "install.out"
+    out.write_text(
+        "configuration error: source(s) 'omega-plans' (1 file(s)) are mirrored but no longer in "
+        "sources.toml\n"
+    )
+    said = (
+        "[FAIL] config.vanished_sources — sources 'zeta-ledger' (3 files), 'mail' (1 file) are mirrored\n"
+        "configuration error: source(s) 'omega-plans' (1 file(s)) and 'contoso-alpha' (2 files)\n"
+    )
+    lines = tmp_path / "lines.txt"
+    lines.write_text(said)
+    harness = "\n".join(
+        [
+            "with_timeout() { return 0; }",
+            "repo_slug() { echo contoso/agentsync; }",
+            'id() { case "$1" in -un) echo jdoe ;; -F) echo "Jane Doe" ;; esac; }',
+            generic,
+            f"FOLDERS=() CONFIG={config} SETUP_LOG=/nonexistent DOCTOR_LOG={doctor_log} INSTALL_OUT={out}",
+            helpers,
+            funcs,
+            f"redact_stream <{lines}",
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout == (
+        "[FAIL] config.vanished_sources — sources '<source-3>' (3 files), 'mail' (1 file) are mirrored\n"
+        "configuration error: source(s) '<source-2>' (1 file(s)) and '<source-1>' (2 files)\n"
+    ), cp.stdout + cp.stderr
+
+
 # ---- the shell report redacts a value in either Unicode form (N7) ------------------------------------------
 
 

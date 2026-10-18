@@ -309,24 +309,35 @@ clause, since a FAIL line puts its fix in one parenthesis. It starts "put the [[
 ``doctor.PERSONS_FIX_RE`` and install.sh's ``persons_fails`` read as the person's fix."""
 
 
+VANISHED_WORDS = "mirrored but no longer in sources.toml"
+"""The words of :func:`vanished_detail` after the ids, which the setup report reads in step 2's refusal."""
+VANISHED_ADVICE = f"retirement is explicit: put the [[source]] block back with {RETIRE_ADVICE}, or restore it"
+"""The tail of the cycle's vanished-source refusal (:meth:`Cycle._refuse_vanished_sources`), which the setup
+report's Configuration line gives too (B13 round 16 T87)."""
+
+
+def vanished_from(configured: Iterable[str], counts: Mapping[str, int]) -> dict[str, int]:
+    """The ids of ``counts`` (source id -> present file rows, ``Manifest.present_counts``) with rows and not
+    in ``configured``: :func:`vanished_sources`'s rule, which the setup report runs on its own read-only
+    connection (B13 round 16 T52, T87)."""
+    ids = set(configured)
+    return {sid: n for sid, n in counts.items() if sid not in ids and n}
+
+
 def vanished_sources(config: Config, manifest: Manifest) -> dict[str, int]:
     """Sources the manifest still mirrors (present file rows) whose [[source]] block is gone from
     sources.toml, with their file counts: the cycle refuses the config for them (exit 78), and doctor's
     ``config.vanished_sources`` check reports them, so status does not call such a config clean (B13 round
     15 S7). A block set to ``state = "retired"`` is still configured (``config.sources``, never
     ``live_sources()``): its retiring sync is the one that tombstones the pages."""
-    configured = {s.id for s in config.sources}
-    return {sid: n for sid, n in manifest.present_counts().items() if sid not in configured and n}
+    return vanished_from((s.id for s in config.sources), manifest.present_counts())
 
 
 def vanished_detail(vanished: Mapping[str, int]) -> str:
     """What :func:`vanished_sources` found, noun and verb by the count (``source 'a' (3 files) is ...``)."""
     names = ", ".join(f"{sid!r} ({plural(n, 'file')})" for sid, n in sorted(vanished.items()))
     one = len(vanished) == 1
-    return (
-        f"{'source' if one else 'sources'} {names} {'is' if one else 'are'} mirrored but no longer in "
-        "sources.toml"
-    )
+    return f"{'source' if one else 'sources'} {names} {'is' if one else 'are'} {VANISHED_WORDS}"
 
 
 _SENTINEL_MISSING_META = "sentinel_missing:"
@@ -2516,10 +2527,7 @@ class _Cycle:
         the fix, before anything is written (:func:`vanished_sources`, which doctor's check reads too)."""
         vanished = vanished_sources(self.config, self.manifest)
         if vanished:
-            raise ConfigError(
-                f"{vanished_detail(vanished)}; retirement is explicit: put the [[source]] block back with "
-                f"{RETIRE_ADVICE}, or restore it"
-            )
+            raise ConfigError(f"{vanished_detail(vanished)}; {VANISHED_ADVICE}")
 
     def _retag_published(self) -> None:
         """Keep ``published`` on HEAD when HEAD is an agentsync commit: a crash between commit_cycle and

@@ -399,6 +399,22 @@ _PENDING_VERDICTS: tuple[Verdict, ...] = (
 _PRESENT_STATES = PRESENT_STATES
 """Row states of an object that exists upstream (everything except a tombstone)."""
 
+
+def present_counts_on(conn: sqlite3.Connection) -> dict[str, int]:
+    """:meth:`Manifest.present_counts` over any connection to a manifest: the one copy of its query, which the
+    setup report runs on its own read-only connection (a :class:`Manifest` opens read-write and may migrate;
+    B13 round 16 T52, T87)."""
+    states = [st.value for st in _PRESENT_STATES]
+    return {
+        str(r[0]): int(r[1])
+        for r in conn.execute(
+            "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
+            f"AND state IN ({', '.join('?' for _ in states)}) GROUP BY source_id ORDER BY source_id",
+            states,
+        ).fetchall()
+    }
+
+
 _EXPORT_STATES: tuple[RowState, ...] = (*_PRESENT_STATES, RowState.TOMBSTONE)
 
 _AUTH_STATES = frozenset({"ok", "REAUTH_REQUIRED"})
@@ -2259,15 +2275,7 @@ class Manifest:
 
     def present_counts(self) -> dict[str, int]:
         """source_id -> number of non-directory rows that exist upstream (every source the manifest knows)."""
-        states = [st.value for st in _PRESENT_STATES]
-        return {
-            str(r[0]): int(r[1])
-            for r in self._db.execute(
-                "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
-                f"AND state IN ({', '.join('?' for _ in states)}) GROUP BY source_id ORDER BY source_id",
-                states,
-            ).fetchall()
-        }
+        return present_counts_on(self._db)
 
     def absent_counts(self) -> dict[str, int]:
         """source_id -> present rows a complete pass did not list (``extra.absent_since_run``), removed by a

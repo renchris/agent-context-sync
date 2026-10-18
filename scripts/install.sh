@@ -1407,6 +1407,7 @@ listed_folder_names() {
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
+	local tables=0 ids=" "
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1673,6 +1674,7 @@ redaction_pairs() {
 	# two folders "Reports" under two organisations, "reports-2" keeps its own <source-N>.
 	if [ -f "$CONFIG" ]; then
 		while IFS=$'\t' read -r i v f; do
+			tables="$i" ids="$ids$v "
 			case " $GENERIC_SOURCE_IDS " in
 			*" $v "*) case "$f" in "$cs"/* | \~/Library/CloudStorage/*) ;; *) continue ;; esac ;;
 			esac
@@ -1702,6 +1704,20 @@ redaction_pairs() {
 			inside && /^[[:space:]]*path[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/"[^"]*$/, "", v); path = v; next }
 			END { flush() }' "$CONFIG" 2>/dev/null)
 	fi
+	# A source still mirrored whose [[source]] block is gone is in no table above, yet doctor's
+	# config.vanished_sources [FAIL] and the sync's refusal quote its id ("source 'x' (3 files) is mirrored but
+	# no longer in sources.toml"): the ids those lines quote, numbered after the tables, as the Python report
+	# registers the manifest's ids after the configured ones (B13 round 16 T42).
+	while IFS= read -r v; do
+		case "$ids" in *" $v "*) continue ;; esac
+		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac
+		tables=$((tables + 1)) ids="$ids$v "
+		add_pair "$v" "<source-$tables>" w
+	done < <({
+		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
+		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
+	} 2>/dev/null | LC_ALL=C sed 's/ mirrored but no longer in sources\.toml.*//' |
+		LC_ALL=C grep -oE "'[a-z0-9][a-z0-9-]*' \([0-9]+ file(s|\(s\))?\)" | LC_ALL=C sed "s/^'//; s/' .*//" | LC_ALL=C sort -u)
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
 	# name run together ("janedoe" for "Jane Doe") is <user>, as in the Python report.
 	user="$(id -un 2>/dev/null || true)"
@@ -3022,7 +3038,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <folder-[0-9] "*) say_item "$folder_item" ;; esac
 	case "$used" in *" <source-[0-9] "*)
 		say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
-		say "  agentsync's own words, such as docs or inbox, only for a cloud folder"
+		say "  agentsync's own words, such as docs or inbox, only for a cloud folder; also the id of a source still mirrored"
+		say "  whose [[source]] block is gone, as doctor's config.vanished_sources line and the sync's refusal quote it"
 		;;
 	esac
 	case "$used" in *" <path> "*)

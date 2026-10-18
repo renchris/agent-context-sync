@@ -134,7 +134,6 @@ from agentsync.config import (
     DEFAULT_EXCLUDES,
     INBOX_IGNORES,
     OS_JUNK_EXCLUDES,
-    RETIRE_ADVICE,
     Config,
     load_config,
 )
@@ -3312,6 +3311,30 @@ def _project_values(path: Path) -> list[str]:
     return ["/".join(parts), parts[0]] if len(parts) > 1 else parts
 
 
+_UNCONFIGURED_IDS_S = 2.0  # the manifest's and the purge queue's ids, for redaction
+
+
+def _unconfigured_ids(config: Config) -> list[str]:
+    """The source ids the manifest's rows (any state) and the purge queue hold that ``config`` does not have,
+    sorted: a source whose [[source]] block is gone, a retired one's rows, a hand-edited queue. The manifest
+    is opened read-only, as every other read of the report's."""
+    from agentsync import governance  # noqa: PLC0415 - lazy, as in _purge_part
+
+    ids: set[str] = set()
+    db = expand(config.state_paths.db)
+    if db.is_file():
+        conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+        try:
+            ids.update(str(row[0]) for row in conn.execute("SELECT DISTINCT source_id FROM items").fetchall())
+        finally:
+            conn.close()
+    with contextlib.suppress(Exception):
+        queue = governance.pending_purges(config.state_paths.root)
+        ids.update(e.selector.source_id for e in queue[:_PURGES_READ] if e.selector.source_id)
+    configured = {src.id for src in config.sources}
+    return sorted(sid for sid in ids if sid and sid not in configured)
+
+
 def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
     red = Redactor()
@@ -3498,6 +3521,16 @@ def _build_redactor(r: _Run) -> Redactor:
     for src in r.config.sources if r.config is not None else ():
         if src.id in cloud_ids or src.id not in _GENERIC_IDS:
             red.add("source", src.id)
+    # Then every id the manifest or the purge queue holds that sources.toml no longer has, after the
+    # configured ones so their numbers stay: doctor's config.vanished_sources [FAIL] and the sync's refusal
+    # quote such an id, in Doctor, the install.out tail and Recent errors, where the report showed it in clear
+    # (B13 round 16 T42, T53, T66). An unreadable manifest or queue leaves the redactor as it was.
+    if r.config is not None:
+        config = r.config
+        with contextlib.suppress(Exception):
+            for sid in r.call(lambda: _unconfigured_ids(config), timeout=_UNCONFIGURED_IDS_S):
+                if sid not in _GENERIC_IDS:
+                    red.add("source", sid)
     for host in _proxy_hosts(_proxy_urls(r)):
         _add_proxy_host(red, host)
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
@@ -4629,10 +4662,6 @@ def _configuration(r: _Run) -> list[str]:
     return out
 
 
-_VANISHED_WORDS = "mirrored but no longer in sources.toml"
-"""The words of the cycle's vanished-source refusal (``cycle._refuse_vanished_sources``) that
-:func:`_sync_refusal` knows the live check reads again."""
-
 _TABLE_KEY_RE = re.compile(r"\[(?P<table>policy|governance)\](?:\.(?P<dot>[a-z_]+)|: (?P<key>[a-z_]+))?")
 """The table, and the key when one leads the message, of a ``[policy]`` or ``[governance]`` ConfigError
 (``policy.parse_policy_table``, ``governance.parse_governance``)."""
@@ -4662,7 +4691,8 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
     one ``agentsync sync`` prints. A source the config does not have is named as :class:`_Labels` names it,
     never by its id."""
     from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
-    from agentsync.model import PRESENT_STATES  # noqa: PLC0415
+    from agentsync.cycle import VANISHED_ADVICE, VANISHED_WORDS, vanished_from  # noqa: PLC0415
+    from agentsync.manifest import present_counts_on  # noqa: PLC0415
 
     sidecar = c.config_path.parent / policy.POLICY_FILE_NAME
     db = expand(c.state_paths.db)
@@ -4679,18 +4709,14 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
     vanished: list[tuple[str, int]] = []
     if db.is_file():
         try:
+            # its own read-only connection (a Manifest opens read-write and may migrate), with the cycle's
+            # query, rule and words (B13 round 16 T52, T87)
             conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
             try:
-                states = [st.value for st in PRESENT_STATES]
-                rows = conn.execute(
-                    "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
-                    f"AND state IN ({', '.join('?' for _ in states)}) GROUP BY source_id ORDER BY source_id",
-                    states,
-                ).fetchall()
+                counts = present_counts_on(conn)
             finally:
                 conn.close()
-            configured = {s.id for s in c.sources}
-            vanished = [(str(sid), int(n)) for sid, n in rows if str(sid) not in configured and n]
+            vanished = sorted(vanished_from((s.id for s in c.sources), counts).items())
         except sqlite3.Error:
             read = False
     if vanished:
@@ -4698,8 +4724,7 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
         names = ", ".join(f"{labels.of(sid)} ({_plural(n, 'file')})" for sid, n in vanished)
         which = "a source" if len(vanished) == 1 else f"{len(vanished)} sources"
         return (
-            f"{which} {names} {'is' if len(vanished) == 1 else 'are'} {_VANISHED_WORDS}; retirement is "
-            f"explicit: put the [[source]] block back with {RETIRE_ADVICE}, or restore it"
+            f"{which} {names} {'is' if len(vanished) == 1 else 'are'} {VANISHED_WORDS}; {VANISHED_ADVICE}"
         ), read
     return None, read
 
@@ -4709,9 +4734,10 @@ def _reads_again(said: str, read: bool) -> bool:
     policy (``[policy]``, or policy.toml's own "cannot read the policy table"), ``[governance]``, and, when
     the manifest could be read, the vanished-source refusal."""
     from agentsync import policy  # noqa: PLC0415 - lazy, as in _policy_line
+    from agentsync.cycle import VANISHED_WORDS  # noqa: PLC0415
 
     return (
-        (read and _VANISHED_WORDS in said)
+        (read and VANISHED_WORDS in said)
         or _TABLE_KEY_RE.search(said) is not None
         or policy.POLICY_FILE_NAME in said
         or f"the {policy.POLICY_TABLE} table" in said
@@ -4744,7 +4770,9 @@ def _sync_refusal(r: _Run, c: Config) -> str | None:
                 said = ln.strip()
     if said is not None and _reads_again(said, read):
         return None  # the live check reads that cause and no longer finds it
-    if said is not None and _VANISHED_WORDS in said:  # the manifest could not be read: ids by place only
+    from agentsync.cycle import VANISHED_WORDS  # noqa: PLC0415 - lazy, as in _live_refusal
+
+    if said is not None and VANISHED_WORDS in said:  # the manifest could not be read: ids by place only
         labels = _Labels(c, r.red)
         said = re.sub(r"'([^']*)'", lambda m: labels.of(m.group(1)), said)
     return f"- loads: yes, but step 2's sync refused it (run {run.display_id}): " + (

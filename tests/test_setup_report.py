@@ -43,6 +43,7 @@ from agentsync import (
     policy,
     setup_report,
 )
+from agentsync import manifest as manifest_mod
 from agentsync.config import (
     DEFAULT_EXCLUDES,
     RETIRE_ADVICE,
@@ -899,6 +900,65 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     assert gone not in line
     write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
     assert loads() == "- loads: yes"
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_vanished_sources_id_is_a_placeholder_in_every_section(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 16 T42, T53, T66: doctor's config.vanished_sources [FAIL] quotes the id of a source whose
+    [[source]] block is gone, and the report registered only the configured ids, so Doctor (and step 2's
+    refusal in the install.out tail) showed it in clear while Configuration named it by place. Every id the
+    manifest or the purge queue holds that sources.toml no longer has is now registered, after the configured
+    ones. An id sharing no word with any folder name, and no ``clean_doctor``: the [FAIL] line is the leak."""
+    cfg = fake_mac["config"]
+    gone = next(src.id for src in load_config(cfg).sources if src.path == fake_mac["two"])
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace(f'id = "{gone}"', 'id = "zeta-ledger"'), "utf-8")
+    for folder in (fake_mac["one"], fake_mac["two"]):
+        (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    head, *blocks = cfg.read_text(encoding="utf-8").split("[[source]]")
+    cfg.write_text("[[source]]".join([head, *(b for b in blocks if 'id = "zeta-ledger"' not in b)]), "utf-8")
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(cfg)]) == 78
+    [refused] = [ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("configuration error: ")]
+    assert "'zeta-ledger'" in refused
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"{refused}\n[FAIL] config.vanished_sources — {cycle.vanished_detail({'zeta-ledger': 1})}\n",
+        encoding="utf-8",
+    )
+    rc, text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    assert "zeta" not in text.lower(), [ln for ln in text.splitlines() if "zeta" in ln.lower()]
+    [fail] = [
+        ln for ln in section(text, "Doctor").splitlines() if ln.startswith("[FAIL] config.vanished_sources")
+    ]
+    assert re.search(r"source '<source-\d+>' \(1 file\) is mirrored", fail), fail
+    installer = section(text, "Installer")
+    assert installer.count(re.search(r"<source-\d+>", fail).group(0)) >= 2, installer  # type: ignore[union-attr]
+    assert "(not in the config, 1" in section(text, "Configuration"), "the evidence names it by place still"
+
+
+def test_the_reports_vanished_source_check_is_the_cycles(fake_mac: dict[str, Path]) -> None:
+    """B13 round 16 T52, T87: the report kept its own copy of the vanished-source query, rule and words, and
+    its tests wrote the refusal in an older wording, so a change to the cycle's would not have turned them
+    red. The report now runs the cycle's own on its read-only connection; this pins the two together."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    db = expand(config.state_paths.db)
+    conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
+    try:
+        assert manifest_mod.present_counts_on(conn) == Manifest(db).present_counts() != {}
+    finally:
+        conn.close()
+    for vanished in ({"contoso-a": 1}, {"contoso-a": 3, "contoso-b": 1}):
+        said = f"configuration error: {cycle.vanished_detail(vanished)}; {cycle.VANISHED_ADVICE}"
+        assert setup_report._reads_again(said, True), said
+        assert not setup_report._reads_again(said, False), "an unread manifest leaves it to step 2's line"
+    assert cycle.vanished_from(["a"], {"a": 2, "b": 0, "c": 1}) == {"c": 1}
 
 
 @pytest.mark.usefixtures("roomy_calls")
