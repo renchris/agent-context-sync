@@ -11292,6 +11292,9 @@ relays takes its number from the count now: step 1's list says `1 folder` or `N 
 or `them`), the scaffold count `1 scaffold file`, the converters' summaries `1 slide`, `1 layout`, `1 page`, `1
 comment`, `text of 1 picture read`, and the report's `listed 1 folder`, `1 of 2 sources` and the label rule's
 `1 excluded id`, `1 name` (`agentsync.text.plural`). Other `(s)` counts are as this note says.
+Amended 2026-10-18, §16.119 S65: so do the loop's relayed counts (recordings, online-only files, queued purges,
+the breaker's files gone, sources not fully listed, curation errors and rows, the re-read notes' files) and cli's
+over-budget and held-checkpoint lines.
 
 The cache count in the purge headline reads `1 cache entry` or `N cache entries` (0 included), followed by `would
 be removed` on a dry run and `removed` on a real run; it never reads `entr(ies)`. The other counts keep `(s)`
@@ -21313,6 +21316,10 @@ test_a_source_root_a_sync_cannot_list_never_offers_an_exclude` (EACCES, renamed,
 test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant` (Dropbox signed out, a SharePoint library),
 `test_loop.py::test_a_gone_root_under_volumes_is_a_volume_to_mount`, `test_loop.py::
 test_an_inbox_folder_that_does_not_exist_is_a_wait_not_a_later_sync_note`.
+Amended 2026-10-18, §16.119 S3, S41: under ~/Library/CloudStorage the cause follows what the provider folder said
+of the sign-in at the walk (`root_missing_state:<id>`, doctor's `provider_state`): a folder renamed in a signed-in
+app reads `... or not synced on this Mac` with `sync that folder in <App>` and no sign-in, another account's
+names that account, and the SharePoint words need the organization's `OneDrive-<org>` folder beside the library.
 
 **Q10, Q35: the held-listing note promises no end-of-run answer (`agentsync.ops.doctor`, `agentsync.cli`,
 `scripts/install.sh`; amends §16.107 O36).** Step 2's `[warn] heartbeat.<id>` said `the end of this run says
@@ -21328,6 +21335,10 @@ TCC_PENDING alone), `test_ops_doctor.py::test_the_pre_sync_listing_note_promises
 `test_install_oneshot.py::test_a_listing_the_first_sync_cleared_is_said_and_never_inferred` (`lock busy`),
 `test_setup_report.py::test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected` (both notes, and
 the one before Q35).
+Amended 2026-10-18, §16.119 S11, S28, S64: the note reads `if this run's sync succeeds`; a run that ends before
+its closing status after its sync ran says per held listing that it gives no answer and that status does; the
+skipped note reads `... so this run does not say what keeps it incomplete; ~/.local/bin/agentsync status names
+it`, with no `until` and one `held`.
 
 **Q23, Q41, Q58: a wait says what its alarm names by the alarm's own count (`agentsync.loop`; amends §16.89
 L36).** Every empty-folder wait said the alarm `names the folder, up to five, and past five how to list the rest`
@@ -21343,6 +21354,10 @@ pins in `test_loop.py`, `test_exclude_empty.py` and `test_arm_local.py`, and `te
 test_the_alarm_names_words_follow_the_walks_stored_count` (1, 5 and 6 stored, then 6 stored with 5 excluded
 since), `test_loop.py::test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since` (1 clear and 1
 gone, the clear one excluded since), `test_loop.py::test_exclude_empty_says_the_alarm_names_five_only_past_five`.
+Amended 2026-10-18, §16.119 S32, S42, S66: once a folder the walk stored is excluded since, the waits and
+exclude-empty's pointer say the alarm is from before the exclude and that a plain sync prints it again with the
+ones left, and each line's folders are `still not excluded`; exclude-empty's line past five with nothing excluded
+says `which names the folders, up to five, ...`.
 
 **Q43, Q81: one referent per pronoun, and file counts by number (`agentsync.loop`; amends §16.107 O35).** The
 one-folder exclude-empty wait read `(it adds it to that source's exclude ...)`: it now reads `(it adds the folder
@@ -21352,6 +21367,8 @@ mirror still has`, `held 1 file(s)`) take the noun by the number (`loop._files`)
 `the pages`, `later syncs take out its page if it is still absent` / `the pages of those still absent`, and `the
 one under the empty folder above` / `the ones under the empty folder(s) above among them`, by how many gone
 folders hold files (Q57). Tests: the pins in `test_loop.py`.
+Amended 2026-10-18, §16.119 S44: the `in all` words follow how many of the missed files lie under the gone empty
+folders (`loop._missed_below`), not the missed count: none drops the clause.
 
 **Q24, Q38, Q42, Q57: the alarm and exclude-empty count without `(s)` (`agentsync.arm_local`, `agentsync.cli`;
 amends §16.95 M5).** The alarm's head read `1 unknown dir(s) —` and its empty-only cause `empty cloud folder(s),
@@ -21884,7 +21901,131 @@ Register: `docs/deploy/setup-feedback.md` K48.
 
 ### 16.119 Round 15: missing roots, the heartbeat note and the waits (2026-10-18, wave B13 round 15 lane B)
 
-Reserved for round 15 lane B of B13.
+Lane B's round 15 items: S2, S3, S4, S7, S11, S13, S28, S32, S41, S42, S43, S44, S45, S64, S65, S66, all built.
+S2 and S13 are one defect from two finders (the WARNING a sync prints beside its alarm line), built once; so are
+S11, S28 and S64 (the held-listing note's promise), and S32 and S66 (the waits after an exclude since the walk).
+S3 and S41 share `loop._missing_root_wait` and are one change. S43 and S45 change no output: S43 drops a case no
+production path reaches, S45 two docstrings, so no test fails without them (S43's test now runs the production
+path). The optional widening of install.sh's `PERSONS_FAILS` words for S7 was not built: they are pinned in step
+2's and status's NEXT, which lane RB's no-[FAIL] NEXT also edits, and the fix's own words already say what to put
+back.
+
+**S2, S13: an alarm the report prints is not logged twice on its stderr (`agentsync.arm_local`, `agentsync.cli`).**
+`ArmLocal._incomplete` logged each alarm (a missing, unreadable or symlinked root, one not a folder, no volume
+UUID) as `<time> WARNING agentsync.arm_local: <id>: <alarm>` on stderr, above the run line, while the report
+printed the same text as that source's `alarm:` line. The record now carries `extra={arm_local.ECHOED_ALARM:
+True}`, and `cli._run` holds such records back from agentsync's stderr handler (`_alarms_in_the_report`) for the
+cycle whose report it prints. The LaunchAgent's job (`launchd.started_by_our_job`, `XPC_SERVICE_NAME`) keeps them:
+its stderr is the err.log whose WARNING lines the setup report's Recent errors lists, and no out.log alarm line
+matches that reader. A cycle that raises prints no report, so the held records are logged then. Logging at INFO,
+the finder's fix, was not built: no log keeps INFO at default verbosity, so the background record would vanish.
+Tests: `test_cli.py::test_a_sync_logs_an_alarm_its_report_prints_only_in_the_background_job` (a missing root and
+a file where the root belongs, foreground and job), `test_cli.py::
+test_a_cycle_that_raises_still_logs_the_alarms_it_held`.
+
+**S3, S41: the missing-root wait words its cause as doctor does (`agentsync.cycle`, `agentsync.loop`; amends
+§16.113 Q34).** The wait offered `OneDrive is not signed in` for a folder renamed in a signed-in OneDrive and for
+another account's folder, and the SharePoint library's words for a library whose OneDrive is signed out, while
+doctor's [FAIL] in the same status named the other fix. The walk now stores, for a missing root under
+~/Library/CloudStorage, `doctor.provider_state` of its provider folder (bounded by the listing's time limit, an
+unread folder counting as signed in) in its own meta key, `root_missing_state:<id>`, cleared once the root is
+back; `unlisted_kinds` keeps `{".": "missing"}`, which every reader, an older installed build's too, compares
+whole. Status reads the stored state, no folder: `signed-in` reads `renamed, moved or deleted in <App>, or not
+synced on this Mac` with `put it back under that name, sync that folder in <App>, or fix path ...`;
+`other-account` names the account it belongs to; `library` keeps the SharePoint words; `signed-out` today's. With
+no state stored (a walk from before this), a `OneDrive-SharedLibraries-<org>` folder gets the library words only
+when `OneDrive-<org>` is there, one lstat as `provider_state` does, never a listing, and OneDrive's sign-in words
+otherwise. Test: `test_loop.py::test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant` (Dropbox signed
+out, a library beside its OneDrive and one without, a folder renamed in a signed-in OneDrive, another account's
+folder; each with the state and then without it).
+
+**S4: doctor's fix for a folder renamed in a signed-in app names putting it back (`agentsync.ops.doctor`).** The
+`signed-in` fix read `fix path in [[source]] id = "<id>", or sync that folder in <App>`, while step 1 and the wait
+said to put it back under that name. It reads `..., or put the folder back under that name in <App>, or sync that
+folder in <App>`, with no parenthesis, and still starts `fix path in [[source]]` (the person's fix). Tests: the
+pins in `test_ops_doctor.py` and `test_setup_report.py`.
+
+**S7: a source still mirrored whose block is gone fails status as the person's (`agentsync.cycle`,
+`agentsync.ops.doctor`, `scripts/install.sh`).** With a mirrored source's [[source]] block deleted from
+sources.toml, status and doctor reported no [FAIL] and status's NEXT sent the agent to a sync, while every sync
+exited 78. `cycle.vanished_sources(config, manifest)` (configured ids from `config.sources`, so a block just set to
+retired is still there and its retiring sync runs) feeds both the cycle's refusal and a new doctor check,
+`config.vanished_sources`: `[FAIL] config.vanished_sources — source '<id>' (N files) is mirrored but no longer in
+sources.toml, so every sync refuses this config (exit 78) (fix: <cycle.VANISHED_FIX>)`, its detail from
+`cycle.vanished_detail`, which the refusal starts with too (counted, `source 'a' (3 files) is ...`). The fix is
+the refusal's advice, `config.RETIRE_ADVICE` word for word (round 5 F97), with its bracket made a clause: `put the
+[[source]] block back with state = "retired" and retired_reason = "<why>", which means its pages become tombstones
+in one labelled commit, or restore it` (no parenthesis), and `put the \[\[source\]\] block back `
+joins `doctor.PERSONS_FIX_RE` and install.sh's `persons_fails` as one whole alternative, so status's NEXT names
+it as the person's and step 2 stops before the first sync. The check says nothing before the first sync or when
+the manifest cannot be read. install.sh's exit-78 branch stays, for an older installed build. Tests:
+`test_cli.py::test_a_mirrored_source_whose_block_is_deleted_fails_status_as_the_persons` (deleted: status,
+doctor, sync; retired: no [FAIL], the sync tombstones), `test_cli.py::
+test_the_vanished_source_check_says_nothing_before_the_first_sync`, the `vanished` case of
+`test_install_oneshot.py::_persons_fail_lines`.
+
+**S11, S28, S64: the held-listing note promises only what the run's end says (`agentsync.ops.doctor`,
+`scripts/install.sh`; amends §16.113 Q10).** The note said `if this run's sync runs, the end of this run says
+whether it cleared it`, but a first sync that exits 78, 80 or another code, or a `--confirm-install-agent` wait
+that fails after it, ends the run before its closing status, and nothing named the listing. It now reads `if this
+run's sync succeeds`, and install.sh's `unanswered_listings`, called from `on_exit` before the report and the
+issue link, prints `heartbeat.<id>: this run ended before its closing status, so it does not say whether its sync
+cleared it: <bin> status does` for each listing the step-5 status held, when this run's sync ran (not a dry run, a
+skipped sync or a busy lock) and no closing status did; it reads `SYNC_GO` and `SYNC_RC` as unset before step 6.
+Under a [FAIL] that stops the sync, `_LISTING_SKIPPED_NOTE` said `it stays held until a sync after that fix`, tying
+the listing to a [FAIL] about another folder, with a second `held`; it reads `as of its last walk: a [FAIL] line
+stops this run's sync, so this run does not say what keeps it incomplete; ~/.local/bin/agentsync status names it`.
+S43: the report hook compared that note too, which `_status_checks` never carries; it compares
+`_LISTING_YOURS_NOTE` alone, and its test runs the production path. Tests: `test_install_oneshot.py::
+test_a_run_that_ends_before_its_closing_status_says_a_held_listing_has_no_answer` (exits 1, 80, 78, a wait
+timeout; a busy lock, a dry run, a [FAIL] and an early exit print none), `test_ops_doctor.py::
+test_a_held_listing_line_says_held_once` (the skipped note too), `test_cli.py::
+test_status_under_install_says_a_fail_stops_the_sync_a_held_listing_waits_for`, `test_setup_report.py::
+test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected` (both notes from before this round).
+
+**S32, S42, S66: after an exclude since the walk, the waits say their alarm predates it (`agentsync.loop`,
+`agentsync.cli`; amends §16.113 Q58).** With seven empty folders stored and five excluded by hand, the wait
+pointed at an alarm that `names the folders, up to five, ...`: STATE.md's alarm named the five now excluded and
+hid the two left behind its `+2 more`. When the walk stored more folders than are not excluded today
+(`len(below) < stored`), the clear, collide and gone waits and exclude-empty's pointer read `<STATE.md> keeps the
+alarm line for <id> from its last sync, before the exclude, so it may name folders now excluded; a plain
+`<bin> sync` prints it again with the N folders left` (`loop._named_since`; in STATE.md, `the alarm line under ##
+<id> below is from that source's last sync, ...`), with no `prints it too`, and each line's folders are `still not
+excluded` (`1 empty cloud folder, still not excluded, keeps ...`), so a count below the alarm's reads true (S66, the
+option round 14 Q58's verifier asked for). With nothing excluded since, past five, exclude-empty's line said
+`which names it, up to five` of one folder the alarm's five may not hold; it says `which names the folders, up to
+five, ...` (S42), and at one to five keeps `it`. Tests: `test_loop.py::
+test_the_alarm_names_words_follow_the_walks_stored_count`, `test_loop.py::
+test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since`, `test_loop.py::
+test_exclude_empty_says_the_alarm_names_five_only_past_five` (seven left; one left beside six excluded),
+`test_exclude_empty.py::test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count`. S45: the `_named`
+docstring and one test's said every wait carries the five clause, `true for any count`; they state the past-five
+rule.
+
+**S44: the in-all clause follows the missed files under the gone folders (`agentsync.loop`, `agentsync.manifest`;
+amends §16.113 Q81).** The could-not-list line's `in all, ... did not list N files ..., the one under the empty
+folder above` chose its words by the missed count alone. A row last listed under an earlier root is not counted,
+so the one file counted could be the locked folder's; a folder the walk listed in part holds files it did list.
+`Manifest.unlisted_paths` gives the rows `unlisted_count` counts, and `loop._missed_below` how many lie under the
+gone empty folders and how many of those folders hold one: none drops the `in all` clause, all of them reads `the
+one under ...` or `all under the empty folder(s) above`, some `the one` or `the ones under ... among them`. Test:
+`test_loop.py::test_the_in_all_clause_follows_the_files_under_the_gone_folder` (both missed, a scope root, a
+folder listed in part), and the pin in `test_loop.py::
+test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs`.
+
+**S65: relayed lines count by number (`agentsync.loop`, `agentsync.cli`, `scripts/install.sh`; amends §16.39
+N36).** The NEXT, WAITING ON YOU and note lines beside a known count still read `(s)`: `1 recording(s) ... they do
+not block`, `1 online-only file(s) in X are larger ... their size`, `1 queued purge(s)`, `(1 file(s) gone): if
+they really were deleted`, `1 source(s) not fully listed`, `1 curation error(s) hold`, `1 curation row(s) queued
+... up to 10 of them`, the re-read notes' `1 file(s) in X are still to be read again` and `none of them`. Each
+takes its noun, verb and pronoun from the count (`text.plural`, `loop._files`); a re-read note with no count known
+keeps `file(s)`. cli's `N online-only files left for a later run` and `checkpoint held: 1 curation error; fix it`
+do the same; install.sh's unreadable-patch warning and its NEXT (`1 kept patch file ... make it readable`) were
+counted by lane RB's S14 (§16.117), which landed first, and lane B's build of them gave way to it at the rebase.
+The purge command's own lines, the report's Summary lines and the lines older readers parse keep `(s)`. The guide's
+two quotes read `N files`. Tests: the pins in `test_loop.py`, `test_cycle.py`, `test_cli.py`,
+`test_setup_report.py`, count 1 and count 2, and `test_install_oneshot.py::
+test_two_unreadable_patches_are_counted_by_their_number` (RB's words, two patches).
 
 ### 16.120 Round 15: the pandoc fix texts and ship-land's CI reads (2026-10-18, wave B13 round 15 lane E)
 
