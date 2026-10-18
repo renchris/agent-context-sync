@@ -7571,7 +7571,15 @@ def _stopped_run_labels(tmp_path: Path, log: list[str], report: str) -> str:
 
 
 @pytest.mark.parametrize(
-    "shape", ["one second", "a second apart", "an unrelated pair", "already numbered", "both clauses"]
+    "shape",
+    [
+        "one second",
+        "a second apart",
+        "an unrelated pair",
+        "already numbered",
+        "already named",
+        "both clauses",
+    ],
 )
 def test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_line(
     tmp_path: Path, shape: str
@@ -7580,7 +7588,11 @@ def test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_
     when that run's stamp is shared, in the renderer only, so a stopped copy rendered by the older installed
     agentsync named its first sync's run by a start time two runs share (or, a second apart, a time no row's
     id shows). The shim labels it on the path that numbers the rest: the last run of that start time that
-    logged a first sync (install.log's clause) or that is no list (install.out's)."""
+    logged a first sync (install.log's clause) or that is no list (install.out's).
+    B13 round 15 S19: a renderer from 3b47e3e7 up to 878ebc7e (e2a8e8df, the v21 field build) numbers the
+    runs but names none, and the shim left such a report as it was, so the fix never reached the renderer its
+    finding came from: its sync line gains the label now, and every other line is left as it is (a relabel
+    would number the list run twice)."""
     st, at, later = "20261017T170253Z", "2026-10-17T17:02:53Z", "2026-10-17T17:02:54Z"
     start = later if shape == "a second apart" else at
     named = "20261017T160000Z" if shape == "an unrelated pair" else st
@@ -7603,17 +7615,24 @@ def test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_
     if shape == "both clauses":
         sync += f" (install.out: the install run of {start}, before this attempt)"
     rows = [f"| {st} | {at} | list-folders |", f"| {st} | {start} | install |"]
-    if shape == "already numbered":
+    heads: list[str] = []
+    if shape.startswith("already"):  # an e2a8e8df render's shape: numbered headings and rows
         rows[1] = rows[1].replace(f"| {st} |", f"| {st}.2 |")
+        heads = [f"run {st}: exit 0 after 0s", "", f"run {st}.2: exit 0 after 9s", ""]
+        if shape == "already named":  # a renderer from 878ebc7e on
+            sync = sync.replace(f"run of {start},", f"run of {start}, run {st}.2,")
     report = "\n".join(
-        ["# agentsync setup report", "", "## Summary", "", sync, "", "## Installer", "", *rows, ""]
+        ["# agentsync setup report", "", "## Summary", "", sync, "", "## Installer", "", *heads, *rows, ""]
     )
     out = _stopped_run_labels(tmp_path, log, report)
     [line] = [ln for ln in out.splitlines() if ln.startswith("- sync: ")]
-    if shape in ("an unrelated pair", "already numbered"):
+    if shape == "already numbered":
+        labelled = sync.replace(f"run of {start},", f"run of {start}, run {st}.2,")
+        assert out == report.replace(sync, labelled), "the sync line is named, every other line as it was"
+    elif shape in ("an unrelated pair", "already named"):
         assert line == sync, line
-        if shape == "already numbered":
-            assert out == report, "a report already numbered is left as it is"
+        if shape == "already named":
+            assert out == report, "a report whose sync line is named already is left as it is"
     else:
         assert line == sync.replace(f"run of {start},", f"run of {start}, run {st}.2,"), line
         assert line.count(f", run {st}.2,") == (2 if shape == "both clauses" else 1), line

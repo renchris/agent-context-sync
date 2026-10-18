@@ -21153,6 +21153,8 @@ the Summary's `the install run of <start>` (install.log's clause, install.out's,
 logged a first sync (install.log's clause) or that is no list. Test:
 `test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_line` (one second, a second apart, an
 unrelated pair, already numbered, both clauses).
+Amended 2026-10-18, §16.117 S19: a report already numbered (a renderer from 3b47e3e7 up to 878ebc7e) is no longer
+left whole: its Summary and sync lines pass through the same naming, and only the relabel is skipped.
 
 **A stopped copy words its Installer table and its held listing** (Q27). Round 13 O3 and O36 changed the renderer
 only. `stopped_report_note` maps a launcher, agent, wait or report row's bracket that is exactly a known token
@@ -21723,6 +21725,18 @@ it is`, the mirror claim goes, and the gone one ends `; its pages are kept`. The
 on, `is no longer on disk` and `is not on disk`, stay, as do the line's prefix, the exit and the note. Tests:
 `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2` (each layout with one and two synced folders),
 `test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does` (the library alone).
+
+**A stopped copy by a renderer that numbers runs names its sync line's run too** (S19; amends §16.111 Q26). Q26's
+naming ran only on the relabel path, after `if (!shared) ... exit` had already sent any report holding a `.N` label
+out unchanged. Every renderer from 3b47e3e7 (N21, numbered labels) up to 878ebc7e (O22, `_run_named`) writes that
+input, e2a8e8df (the v21 field build) among them, so the fix never reached the renderer its finding came from (C5/C6:
+`- sync: done in 4s (install.log: the install run of 2026-10-18T05:16:39Z, ...)` beside rows `.2`). "Already numbered"
+is now apart from "shared": with no shared stamp the report is printed as it is; with one and numbered labels, every
+relabel is skipped (a second numbering would label the list run `.2` twice) but the Summary, `- sync: ` and `- first
+sync: ` lines still go through `named()`, which skips a time already followed by `, run ` and adds a label only for a
+shared stamp. On the rehearsal's real e2a8e8df render one line changes, the sync line, and `.2` goes from 14 to 15.
+Test: `test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_line` (already numbered: the sync
+line gains `, run <st>.2,` and every other line is byte-identical; already named: byte-identical).
 
 **The two twins join the signed-out apps alike, and an unlogged step 2 stop is an item** (S40; amends §16.99 N41,
 §16.104 O13 and §16.112 Q7). (a) Round 14 Q48 made the report say `OneDrive, Dropbox and Box are not signed in` and

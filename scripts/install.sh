@@ -3749,7 +3749,8 @@ STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a W
 # "# run=" headers (the last ones of install.out), both lead-ins' "numbered .2 on" clause, and the Summary's retry
 # line and the doctor's first-sync note (the run whose end rc matches, or that logged its status step; else the
 # last of the stamp). Only where the report holds no numbered label and install.log has a shared second: a newer
-# renderer's report is left as it is. Reads the report on stdin.
+# renderer's labels are left as they are, and only its Summary and sync lines pass through named() below (one
+# from 3b47e3e7 up to 878ebc7e numbers runs but names none: B13 round 15 S19). Reads the report on stdin.
 # The Summary's "the install run of <start>" (the first sync's install.log clause, or install.out's) gains
 # ", run <label>" when that run's stamp is shared, as the renderer's _run_named does since 878ebc7e: the run is
 # the last of that start time that logged a first sync, or that is no list (B13 round 14 Q26).
@@ -3789,10 +3790,23 @@ stopped_run_labels() {
 		}
 		{ L[++n] = $0 }
 		END {
-			shared = 0
+			shared = 0; numbered = 0
 			for (st in runs) if (runs[st] > 1) shared = 1
-			for (i = 1; i <= n; i++) if (match(L[i], sp "\\.[0-9]")) shared = 0
+			for (i = 1; i <= n; i++) if (match(L[i], sp "\\.[0-9]")) numbered = 1
 			if (!shared) { for (i = 1; i <= n; i++) print L[i]; exit }
+			# a renderer from 3b47e3e7 up to 878ebc7e numbers the runs but names none in its Summary: no relabel
+			# (the list run would be numbered twice), but the Summary and sync lines still gain ", run <label>"
+			# (B13 round 15 S19)
+			if (numbered) {
+				sec = ""
+				for (i = 1; i <= n; i++) {
+					t = L[i]
+					if (index(t, "## ") == 1) sec = t
+					if (sec == "## Summary" || index(t, "- sync: ") == 1 || index(t, "- first sync: ") == 1) t = named(t)
+					print t
+				}
+				exit
+			}
 			# the first read: how many of each stamp the report shows, in each place
 			sec = ""; blk = ""
 			for (i = 1; i <= n; i++) {
