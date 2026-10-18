@@ -901,6 +901,88 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     assert loads() == "- loads: yes"
 
 
+@pytest.mark.usefixtures("roomy_calls")
+@pytest.mark.parametrize(
+    ("policy", "governance", "secret", "said"),
+    [
+        (
+            '[policy]\nexclude_label_ids = ["Contoso Restricted Zebra"]\n',
+            "",
+            "Zebra",
+            "exclude_label_ids: <label> is not a label GUID",
+        ),
+        (
+            '[policy]\nexclude_label_ids = ["Contoso\'s Zebra"]\n',
+            "",
+            "Zebra",
+            "exclude_label_ids: <label> is not a label GUID",
+        ),
+        (
+            "",
+            'remote_url_prefixes = ["zeta-git.example"]',
+            "zeta",
+            "remote_url_prefixes: <remote> is not a remote URL",
+        ),
+        (
+            "",
+            'remote_url_prefixes = ["https://bob:pw@zeta-git.example/x"]',
+            "zeta",
+            "remote_url_prefixes: <remote> carries a password",
+        ),
+        # the error prints the prefix unstripped: a blank before it, a newline after it (review, T3)
+        (
+            "",
+            'remote_url_prefixes = [" https://bob:pw@zeta-git.example/x"]',
+            "zeta",
+            "remote_url_prefixes: <remote> carries a password",
+        ),
+        (
+            "",
+            'remote_url_prefixes = ["https://bob:pw@zeta-git.example/x\\n"]',
+            "zeta",
+            "remote_url_prefixes: <remote>",
+        ),
+    ],
+)
+def test_a_policy_or_governance_errors_value_is_never_in_the_report(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    policy: str,
+    governance: str,
+    secret: str,
+    said: str,
+) -> None:
+    """B13 round 16 T3: the Configuration line held a policy error's words back, as they can name a label or
+    a host, while Doctor's [FAIL] line and the install.out tail showed them: the label's name, and a remote's
+    host. The value is now a placeholder wherever the report shows the error, matched by pattern (a label
+    name is often a word the report prints, so it is never registered as a value). No ``clean_doctor``: the
+    check's own [FAIL] line is what leaked."""
+    cfg = fake_mac["config"]
+    if policy:
+        (cfg.parent / "policy.toml").write_text(policy, encoding="utf-8")
+    if governance:
+        cfg.write_text(f"[governance]\n{governance}\n\n" + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", str(cfg)]) == 78
+    [line] = [ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("configuration error: ")]
+    assert secret in line, "the sync itself keeps the value: the person needs it to find the entry"
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + line + "\n",
+        encoding="utf-8",
+    )
+    rc, text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    assert secret not in text and secret.lower() not in text.lower(), [
+        ln for ln in text.splitlines() if secret.lower() in ln.lower()
+    ]
+    assert said in section(text, "Installer"), section(text, "Installer")
+    [fail] = [ln for ln in section(text, "Doctor").splitlines() if said in ln]
+    assert fail.startswith(("[FAIL] policy ", "[FAIL] governance.config ")), fail
+    placeholder = "<label>" if "label" in said else "<remote>"
+    assert setup_report._LEGEND[placeholder[1:-1]] in section(text, "Redaction"), section(text, "Redaction")
+
+
 # ---- the v5 friction log -------------------------------------------------------------------------------
 
 

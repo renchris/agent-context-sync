@@ -68,9 +68,13 @@ MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter valu
 proxy hosts, those in git's config files included, and the LaunchAgent's own (``launchctl setenv``) proxy,
 the host of each git URL rewrite (``insteadOf``; github.com kept) and its path when a company word is in it,
 and the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
-``/var/folders/<x>/<y>``: ``<tmp>``). A dotless generic host (``proxy``, ``wpad``, ``gateway``:
-:data:`_GENERIC_PROXY_HOSTS`) is replaced only where a URL names it (after ``//`` or ``@``, or before
-``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable; any other dotless host is matched bare.
+``/var/folders/<x>/<y>``: ``<tmp>``), and the value a policy or ``[governance]`` error quotes: a label id or
+name after ``exclude_label_ids:`` or ``exclude_label_names:`` (``<label>``) and a remote URL prefix after
+``remote_url_prefixes:`` (``<remote>``), matched by pattern wherever the report shows the error (Doctor, the
+install.out tail, Recent errors), as no value of policy.toml is registered (B13 round 16 T3). A dotless
+generic host (``proxy``, ``wpad``, ``gateway``: :data:`_GENERIC_PROXY_HOSTS`) is replaced only where a URL
+names it (after ``//`` or ``@``, or before ``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable;
+any other dotless host is matched bare.
 Folder, library, organisation and full-name values also match their case, space, hyphen, underscore and
 CamelCase variants, in NFC, NFD, mixed or unaccented spelling, and the shell-escaped form install.sh logs its
 arguments in (``Client\\ Alpha``). A folder, library, organisation or full-name value of two or more words
@@ -411,10 +415,21 @@ _SIMULATED_RE = re.compile(r"\blaunchd\s*[=:]\s*simulated\b", re.IGNORECASE)
 _RUN_SIMULATED_RE = re.compile(r"simulated\b.*\blaunchd|\blaunchd\b.*\bsimulated", re.IGNORECASE)
 _EMAIL_RE = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
 _GUID_RE = r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+_REPR = r"""(?:'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*")"""  # a Python repr of a str: '...', or "..." with a '
+# The value a policy or [governance] error quotes (policy.py, governance.py): a label's id or name, a remote
+# URL prefix, or that prefix with its password cut (``carries a password``, printed unstripped: a blank may
+# stand before it, and a newline after it puts the words on the next line). By pattern, the key kept: a
+# label name is often a word the report prints ("Confidential"), so it is never registered as a value (B13
+# round 16 T3)
+_LABEL_VALUE_RE = rf"(?:(?<=exclude_label_ids: )|(?<=exclude_label_names: )){_REPR}"
+_REMOTE_VALUE_RE = (  # the unquoted form is a URL (``://`` or ``@``): never the words "expected a list ..."
+    rf"(?<=remote_url_prefixes: )(?:{_REPR}(?= is not a remote URL| carries a password)"
+    rf"|[ \t]*[^\s'\"]*(?:://|@)[^\s'\"]*)"
+)
 _HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-Fa-f]{16,}(?![0-9A-Za-z])"
 _REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
 _LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
-_UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "mdmhost", "tmp"})
+_UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "mdmhost", "tmp", "label", "remote"})
 _NUMBERED_RE = re.compile(r"<[a-z]+-[0-9]+>")  # a numbered placeholder (<folder-12>); never <mdmhost>
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
 _GENERIC_FOLDERS = frozenset(
@@ -712,6 +727,8 @@ _LEGEND = {
         "also a host a friction line's resolver error names (it need not be a proxy)"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
+    "label": "<label> a label id or name a policy error quotes",
+    "remote": "<remote> a remote URL prefix a [governance] error quotes",
 }
 _FIXED_PLACEHOLDERS = frozenset(
     {*(f"<{k}>" for k in _UNNUMBERED), "<path>", "<org>", "<Org>", "<team>", "<TEAMID>"}
@@ -1171,6 +1188,7 @@ class Redactor:
             # placeholder whole: a value spelled like its word ("Host" in "<host>", "Folder 1" in
             # "<folder-1>") made it <<folder-1>>. Only the shapes :data:`_FIXED_PLACEHOLDERS` names are held:
             # "<contoso>" still has its value replaced (R69).
+            alts += [f"(?P<label>{_LABEL_VALUE_RE})", f"(?P<remote>{_REMOTE_VALUE_RE})"]
             alts += [f"(?P<email>{_EMAIL_RE})", f"(?P<guid>(?<![0-9A-Fa-f-]){_GUID_RE}(?![0-9A-Fa-f-]))"]
             if self._commits:
                 prefixes = "|".join(sorted(self._commits))
@@ -1254,7 +1272,11 @@ class Redactor:
         groups = m.groupdict()
         if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
-        if groups.get("email") is not None:
+        if groups.get("label") is not None or groups.get("remote") is not None:
+            kind = "label" if groups.get("label") is not None else "remote"
+            placeholder = f"<{kind}>"
+            self._kind_of.setdefault(placeholder, kind)
+        elif groups.get("email") is not None:
             placeholder = self._pattern("email", text)
         elif groups.get("guid") is not None:
             placeholder = self._pattern("guid", text)
