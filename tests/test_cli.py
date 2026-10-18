@@ -40,7 +40,7 @@ from agentsync import (
     skill,
 )
 from agentsync import cycle as cycle_mod
-from agentsync.config import Config, canonical_source_root, inbox_source_table, load_config
+from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, inbox_source_table, load_config
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
 from agentsync.errors import AuthError, GitError, LockHeldError
 from agentsync.graph import auth as graph_auth
@@ -2447,6 +2447,74 @@ PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
     "path or a sign-in), not a step for the agent: show it to them"
 )
+
+
+def _drop_block(cfg: Path, sid: str, retire: bool = False) -> None:
+    """Delete (or retire, with a reason) the [[source]] block of ``sid`` in sources.toml, as a hand edit."""
+    text = cfg.read_text(encoding="utf-8")
+    head, *blocks = text.split("[[source]]")
+    kept = []
+    for b in blocks:
+        if f'id = "{sid}"' not in b:
+            kept.append(b)
+        elif retire:
+            kept.append(
+                b.replace(
+                    f'id = "{sid}"\n', f'id = "{sid}"\nstate = "retired"\nretired_reason = "moved"\n', 1
+                )
+            )
+    cfg.write_text("[[source]]".join([head, *kept]), encoding="utf-8")
+
+
+@pytest.mark.parametrize("retire", [False, True])
+def test_a_mirrored_source_whose_block_is_deleted_fails_status_as_the_persons(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str], retire: bool
+) -> None:
+    """B13 round 15 S7: with a mirrored source's [[source]] block deleted from sources.toml, status and doctor
+    reported no [FAIL] and status's NEXT sent the agent to a sync, while every sync refused the config (exit
+    78) and printed no NEXT. Doctor's config.vanished_sources check fails in the sync's own words, and its fix
+    is the person's, so status's NEXT says so. A block set to retired, before the sync that retires it, is
+    still configured: no [FAIL], and that sync runs and tombstones its pages."""
+    second = tmp_path / "beta"
+    (second / "notes").mkdir(parents=True)
+    (second / "notes" / "plan.txt").write_text("The plan.\n", encoding="utf-8")
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(second), "--config", cfg]) == cli.EXIT_OK
+    [beta] = [
+        s.id for s in load_config(initialised.config_path).sources if s.path and Path(s.path).name == "beta"
+    ]
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    _drop_block(initialised.config_path, beta, retire=retire)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    fails = [ln for ln in out if ln.startswith("[FAIL] config.vanished_sources")]
+    if retire:
+        assert not fails, out
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK, capsys.readouterr()
+        with Manifest(initialised.state_paths.db) as m:
+            assert not m.present_counts().get(beta), "the retiring sync tombstoned its pages"
+        return
+    assert rc == cli.EXIT_FAILED and len(fails) == 1, out
+    assert f"source '{beta}' (1 file) is mirrored but no longer in sources.toml" in fails[0], fails
+    assert fails[0].endswith(f"(fix: {cycle_mod.VANISHED_FIX})"), fails
+    assert out[0] == f"NEXT: the config.vanished_sources check failed: {PERSONS_STEP}", out[0]
+    assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
+    assert any(ln.startswith("[FAIL] config.vanished_sources") for ln in capsys.readouterr().out.splitlines())
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_CONFIG
+    err = capsys.readouterr().err
+    assert (
+        f"source '{beta}' (1 file) is mirrored but no longer in sources.toml; retirement is explicit: " in err
+    )
+    assert f"put the [[source]] block back with {RETIRE_ADVICE}, or restore it" in err, err
+
+
+def test_the_vanished_source_check_says_nothing_before_the_first_sync(
+    initialised: Config, tmp_path: Path
+) -> None:
+    """B13 round 15 S7: no manifest yet, no line (the manifest checks report one that cannot be read)."""
+    fresh = dataclasses.replace(initialised, state_dir=tmp_path / "no-state")
+    assert not fresh.state_paths.db.exists()
+    assert doctor._check_vanished_sources(fresh) == []
 
 
 def test_status_names_a_persons_fail_fix_as_theirs_and_sync_keeps_its_next(

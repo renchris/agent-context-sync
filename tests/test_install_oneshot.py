@@ -54,6 +54,8 @@ from agentsync.config import (
     local_source_table,
 )
 from agentsync.convert import pandoc as pandoc_converter
+from agentsync.cycle import VANISHED_FIX
+from agentsync.cycle import vanished_detail as cycle_vanished_detail
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
 
@@ -667,6 +669,15 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
     cases["not-a-folder"] = _source_fails(cfg, dataclasses.replace(base, path=afile))
     cases["sentinel"] = _source_fails(cfg, dataclasses.replace(cfg.sources[0], sentinel="nope.txt"))
     cases["no-path"] = _source_fails(cfg, dataclasses.replace(base, path=None))
+    # B13 round 15 S7: a source still mirrored whose [[source]] block is gone; its fix is the sync's own
+    vanished = doctor.CheckResult(
+        "config.vanished_sources",
+        False,
+        f"{cycle_vanished_detail({'team-site': 3})}, so every sync refuses this config (exit 78)",
+        doctor.Severity.ERROR,
+        fix=VANISHED_FIX,
+    )
+    cases["vanished"] = doctor.format_results([vanished]).splitlines()
     assert all(cases.values()), cases
     return cases
 

@@ -33,7 +33,7 @@ from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
-from agentsync.cycle import _holds_home, _sync_leaves
+from agentsync.cycle import VANISHED_FIX, _holds_home, _sync_leaves, vanished_detail, vanished_sources
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
@@ -936,7 +936,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
 # a test pins the two equal (B13 round 14 Q1, Q9, Q33).
 PERSONS_FIX_RE = re.compile(
     r"(fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to "
-    r"|/.* is (missing|empty) while (OneDrive-|another ))"
+    r"|/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back )"
 )
 
 
@@ -1832,6 +1832,33 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     ]
 
 
+def _check_vanished_sources(config: Config) -> list[CheckResult]:
+    """A source still mirrored whose [[source]] block is gone from sources.toml: every sync refuses the config
+    (exit 78) for it, while status and doctor said nothing, so status's NEXT sent the agent to that sync and
+    install.sh's step 2 ran into it (B13 round 15 S7). One [FAIL] in the sync's own words and fix
+    (``cycle.vanished_sources``, by ``config.sources``: a block just set to retired is still there, and its
+    retiring sync must run). Nothing before the first sync, or when the manifest cannot be read (the manifest
+    checks report that)."""
+    db = config.state_paths.db
+    if not db.exists():
+        return []
+    try:
+        with Manifest(db) as manifest:
+            vanished = vanished_sources(config, manifest)
+    except (OSError, sqlite3.Error, AgentSyncError):
+        return []
+    if not vanished:
+        return []
+    return [
+        _bad(
+            "config.vanished_sources",
+            f"{vanished_detail(vanished)}, so every sync refuses this config (exit 78)",
+            Severity.ERROR,
+            fix=VANISHED_FIX,
+        )
+    ]
+
+
 def _check_heartbeat(
     config: Config,
     *,
@@ -2111,6 +2138,7 @@ _CHECKS: tuple[tuple[str, Callable[[Config], list[CheckResult]]], ...] = (
     ("state_dir", _check_state_dir),
     ("sources", _check_sources),
     ("sources.shared_content", _check_shared_content),
+    ("config.vanished_sources", _check_vanished_sources),
     ("materialise", _check_materialise),
     ("graph", _check_graph),
     ("disk", _check_disk),

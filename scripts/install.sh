@@ -5317,7 +5317,7 @@ blocking_fails() {
 persons_fails() {
 	local b
 	b="$(blocking_fails "$1")"
-	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another ))' >/dev/null
+	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back )' >/dev/null
 }
 PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path or a sign-in), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
@@ -5560,9 +5560,10 @@ else
 		step_end skipped 75 lock-busy
 	elif [ "$SYNC_RC" -eq 78 ]; then
 		# A config the sync cycle refuses (a source still mirrored but gone from sources.toml: cycle.py's
-		# _refuse_vanished_sources) loads, so the config step passed and status never shows it; a re-run fails
-		# the same way, and its fix chooses what to sync, so the NEXT names the owner, as config_failed's does
-		# (B13 round 14 Q22). sync, not status, prints it again.
+		# _refuse_vanished_sources) loads, so the config step passed; a re-run fails the same way, and its fix
+		# chooses what to sync, so the NEXT names the owner, as config_failed's does (B13 round 14 Q22). Status
+		# FAILs it since B13 round 15 S7 (doctor's config.vanished_sources, the person's fix), which stops this
+		# step before it: this branch is the backstop for an older installed build, whose status does not.
 		step_end failed 78
 		LAST_ERROR="the first sync (agentsync sync --once) exited 78 ($(rc_meaning 78))"
 		printf 'error: %s\n' "$LAST_ERROR" >&2

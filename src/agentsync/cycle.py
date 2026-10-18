@@ -43,7 +43,7 @@ import time
 import unicodedata
 import zlib
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -298,6 +298,37 @@ _ROOT_MISSING_STATE_META = "root_missing_state:"
 time bound; "" otherwise. ``loop._missing_root_wait`` words the wait's cause from it, so status reads no
 folder (round 13 O47). Its own key, never a suffix on ``unlisted_kinds``' "missing", which every reader, an
 older installed build's too, compares whole (B13 round 15 S3)."""
+VANISHED_FIX = (
+    "put the [[source]] block back with "
+    + RETIRE_ADVICE.replace(" (", ", which means ", 1).removesuffix(")")
+    + ", or restore it"
+)
+"""Doctor's fix for a source still mirrored whose [[source]] block is gone (B13 round 15 S7): the sync's
+refusal advice, :data:`config.RETIRE_ADVICE` word for word (round 5 F97), with its bracket turned into a
+clause, since a FAIL line puts its fix in one parenthesis. It starts "put the [[source]] block back ", which
+``doctor.PERSONS_FIX_RE`` and install.sh's ``persons_fails`` read as the person's fix."""
+
+
+def vanished_sources(config: Config, manifest: Manifest) -> dict[str, int]:
+    """Sources the manifest still mirrors (present file rows) whose [[source]] block is gone from
+    sources.toml, with their file counts: the cycle refuses the config for them (exit 78), and doctor's
+    ``config.vanished_sources`` check reports them, so status does not call such a config clean (B13 round
+    15 S7). A block set to ``state = "retired"`` is still configured (``config.sources``, never
+    ``live_sources()``): its retiring sync is the one that tombstones the pages."""
+    configured = {s.id for s in config.sources}
+    return {sid: n for sid, n in manifest.present_counts().items() if sid not in configured and n}
+
+
+def vanished_detail(vanished: Mapping[str, int]) -> str:
+    """What :func:`vanished_sources` found, noun and verb by the count (``source 'a' (3 files) is ...``)."""
+    names = ", ".join(f"{sid!r} ({plural(n, 'file')})" for sid, n in sorted(vanished.items()))
+    one = len(vanished) == 1
+    return (
+        f"{'source' if one else 'sources'} {names} {'is' if one else 'are'} mirrored but no longer in "
+        "sources.toml"
+    )
+
+
 _SENTINEL_MISSING_META = "sentinel_missing:"
 """Manifest meta ``sentinel_missing:<source id>``: the sentinel the source's last walk looked for and did not
 find, as sources.toml set it then ("" when it found it, or none was set). ``loop.next_step`` gives the source
@@ -2482,17 +2513,12 @@ class _Cycle:
     def _refuse_vanished_sources(self) -> None:
         """Retirement is an explicit verb, not an absence: a source whose [[source]] block was deleted while
         its pages are still mirrored would keep them ``status: current`` forever.  Refuse (exit 78) and name
-        the fix, before anything is written."""
-        configured = {s.id for s in self.config.sources}
-        vanished = {
-            sid: n for sid, n in self.manifest.present_counts().items() if sid not in configured and n
-        }
+        the fix, before anything is written (:func:`vanished_sources`, which doctor's check reads too)."""
+        vanished = vanished_sources(self.config, self.manifest)
         if vanished:
-            names = ", ".join(f"{sid!r} ({plural(n, 'file')})" for sid, n in sorted(vanished.items()))
-            lead = "source {} is" if len(vanished) == 1 else "sources {} are"  # B13 round 15 S14
             raise ConfigError(
-                f"{lead.format(names)} mirrored but no longer in sources.toml; retirement is explicit: put "
-                f"the [[source]] block back with {RETIRE_ADVICE}, or restore it"
+                f"{vanished_detail(vanished)}; retirement is explicit: put the [[source]] block back with "
+                f"{RETIRE_ADVICE}, or restore it"
             )
 
     def _retag_published(self) -> None:
