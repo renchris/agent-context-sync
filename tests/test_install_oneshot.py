@@ -45,7 +45,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agentsync import lints, net, paths, setup_report
+from agentsync import cli, lints, net, paths, setup_report
 from agentsync.config import (
     Config,
     SourceConfig,
@@ -680,7 +680,18 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
         fix=VANISHED_FIX,
     )
     cases["vanished"] = doctor.format_results([vanished]).splitlines()
+    # B13 round 16 T2, T9: a [policy] value in policy.toml, or a [governance] one, that does not load
+    policy = cfg.config_path.parent / "policy.toml"
+    policy.write_text('[policy]\nrefuse_unlabelled = "yes"\n', encoding="utf-8")
+    cases["policy"] = doctor.format_results(cli._policy_check(cfg)).splitlines()
+    policy.unlink()
+    governed = cfg.config_path.parent / "governed.toml"
+    governed.write_text("[governance]\nhold = true\n", encoding="utf-8")
+    cases["governance"] = doctor.format_results(
+        cli._governance_checks(dataclasses.replace(cfg, config_path=governed))
+    ).splitlines()
     assert all(cases.values()), cases
+    assert all(ln.startswith("[FAIL] ") for k in ("policy", "governance") for ln in cases[k]), cases
     return cases
 
 
@@ -725,8 +736,9 @@ PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu")
 
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
-    "or sync, a [[source]] path, a sign-in, Rosetta to install or a native pandoc copy), not a step for the "
-    "agent, so show them those lines and go on to the report; once fixed, "
+    "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
+    "sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those "
+    "lines and go on to the report; once fixed, "
 )
 
 
@@ -814,6 +826,9 @@ def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> Non
         assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1]) is (case in PANDOC_PERSONS), (case, line)
     assert not doctor.is_persons_fix(LISTING_HELD_FAIL.split(" (fix: ", 1)[1])
     assert not doctor.is_persons_fix(None) and not doctor.is_persons_fix("")
+    # B13 round 16 T5, T9: the kinds status's NEXT lists are PERSONS_FAILS's, word for word
+    kinds = f"(each names its fix: {cli.PERSONS_KINDS}), not a step for the agent"
+    assert f"PERSONS_FAILS=\"the [FAIL] lines above are the person's to fix {kinds}" in text
 
 
 def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(

@@ -5821,8 +5821,8 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
             'fix path in [[source]] id = "contoso", or put the folder back under that name in OneDrive, or '
             "sync that folder in OneDrive",
             "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a "
-            "[[source]] path, a sign-in, Rosetta to install or a native pandoc copy), not a step for the "
-            "agent: show it to them",
+            "[[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a sign-in, "
+            "Rosetta to install or a native pandoc copy), not a step for the agent: show it to them",
         ),
     ],
 )

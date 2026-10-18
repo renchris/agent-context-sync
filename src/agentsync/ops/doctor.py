@@ -958,14 +958,16 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
 
 # The first words of a [FAIL] fix that is the person's: a [[source]] path or sentinel, a folder or file to
 # put back, a sign-in, or a folder to sync in its app (the source checks and _missing_source_fix write them);
-# Rosetta to install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53).
+# a deleted [[source]] block to put back (the config.vanished_sources check, cycle.VANISHED_FIX; B13 round
+# 15 S7); a [policy] or [governance] value (cli's POLICY_FIX and GOVERNANCE_FIX; round 16 T2, T9); Rosetta
+# to install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53).
 # A re-run fails the same way and an edit would choose a folder for them. install.sh's persons_fails reads
 # the same words from the [FAIL] lines with its own copy, since the installer runs the older installed build;
 # a test pins the two equal (B13 round 14 Q1, Q9, Q33).
 PERSONS_FIX_RE = re.compile(
     r"(fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to "
     r"|/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back "
-    r"|Rosetta is yours to install|the native pandoc copy at )"
+    r"|the person fixes \[(policy|governance)\] |Rosetta is yours to install|the native pandoc copy at )"
 )
 
 

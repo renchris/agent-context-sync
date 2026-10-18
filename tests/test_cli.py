@@ -2445,8 +2445,51 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
-    "path, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent: show it to them"
+    "path, a [[source]] block to put back, a [policy] or [governance] value, a sign-in, Rosetta to install "
+    "or a native pandoc copy), not a step for the agent: show it to them"
 )
+
+
+@pytest.mark.parametrize(
+    ("name", "where", "table", "detail"),
+    [
+        (
+            "policy",
+            "policy.toml",
+            '[policy]\nrefuse_unlabelled = "yes"\n',
+            "refuse_unlabelled must be true or false",
+        ),
+        ("governance.config", "sources.toml", "[governance]\nhold = true\n", "hold = true needs hold_reason"),
+    ],
+)
+def test_a_policy_or_governance_value_that_does_not_load_is_the_persons_in_status(
+    initialised: Config,
+    capsys: pytest.CaptureFixture[str],
+    name: str,
+    where: str,
+    table: str,
+    detail: str,
+) -> None:
+    """B13 round 16 T2, T9: a [policy] value in the compliance-owned policy.toml or a [governance] value in
+    sources.toml that does not load failed status with "fix: fix [policy] / policy.toml" or "fix: fix
+    [governance]", and status's NEXT sent the agent to do it, while step 2's NEXT for the same config error
+    says it is the person's. The fix now starts with the person's words, so status's NEXT names it as
+    theirs. (A bad [policy] table in sources.toml never reaches this check: the config does not load.)"""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    target = initialised.config_path.parent / where
+    old = target.read_text(encoding="utf-8") if target.exists() else ""
+    target.write_text(f"{old}\n{table}", encoding="utf-8")
+    capsys.readouterr()
+    rc = cli.main(["status", "--config", cfg])
+    cap = capsys.readouterr()
+    out = cap.out.splitlines()
+    fails = [ln for ln in out if ln.startswith(f"[FAIL] {name} ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1, (out, cap.err)
+    assert f"{where}: [" in fails[0] and detail in fails[0], fails
+    assert fails[0].endswith(f"(fix: {cli.POLICY_FIX if name == 'policy' else cli.GOVERNANCE_FIX})"), fails
+    assert out[0] == f"NEXT: the {name} check failed: {PERSONS_STEP}", out[0]
+    assert "do what the fix" not in "\n".join(out)
 
 
 def _drop_block(cfg: Path, sid: str, retire: bool = False) -> None:

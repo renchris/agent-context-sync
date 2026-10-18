@@ -1187,17 +1187,25 @@ class _Status:
         return [*self.loop, self.line, *self.check_lines(), *self.detail]
 
 
+# The kinds of fix ``doctor.is_persons_fix`` reads as the person's, in the words of install.sh's
+# PERSONS_FAILS; tests pin the two lists equal (B13 round 16 T5, T9).
+PERSONS_KINDS = (
+    "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
+    "[governance] value, a sign-in, Rosetta to install or a native pandoc copy"
+)
+
+
 def _fail_step(result: doctor.CheckResult) -> str:
     """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
     keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it. A
-    fix that is the person's (``doctor.is_persons_fix``: a [[source]] path, a folder to put back or sync, a
-    sign-in, Rosetta or the native pandoc copy) is named as theirs, as install.sh's NEXT names it, not as a
-    step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S47, S53)."""
+    fix that is the person's (``doctor.is_persons_fix``: a [[source]] path, a deleted [[source]] block to
+    put back, a [policy] or [governance] value, a folder to put back or sync, a sign-in, Rosetta or the
+    native pandoc copy) is named as theirs, as install.sh's NEXT names it, not as a step for the agent (B13
+    round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9)."""
     if doctor.is_persons_fix(result.fix):
         return (
-            f"the {result.name} check failed: its fix on the [FAIL] line below is the person's (a folder "
-            "or file to put back or sync, a [[source]] path, a sign-in, Rosetta to install or a native "
-            "pandoc copy), not a step for the agent: show it to them"
+            f"the {result.name} check failed: its fix on the [FAIL] line below is the person's "
+            f"({PERSONS_KINDS}), not a step for the agent: show it to them"
         )
     if result.fix:
         return f"the {result.name} check failed: do what the fix on its [FAIL] line below says"
@@ -1511,11 +1519,21 @@ def _broker_check(config: Config) -> list[doctor.CheckResult]:
     ]
 
 
+# A [governance] or [policy] value that does not load is the person's to fix, as install.sh's NEXT for the
+# same config error says: policy.toml is their compliance team's file, and the agent never edits either
+# (B13 round 16 T2, T9). Only policy.toml's [policy] reaches the policy check: one in sources.toml stops
+# the config from loading (exit 78), as a bad [governance] value does not.
+GOVERNANCE_FIX = "the person fixes [governance] in sources.toml: what the error names"
+POLICY_FIX = (
+    "the person fixes [policy] in policy.toml, which their compliance team owns: what the error names"
+)
+
+
 def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     try:
         gov = governance.load_governance(config.config_path)
     except ConfigError as exc:
-        return [_check("governance.config", False, str(exc), doctor.Severity.ERROR, fix="fix [governance]")]
+        return [_check("governance.config", False, str(exc), doctor.Severity.ERROR, fix=GOVERNANCE_FIX)]
     out: list[doctor.CheckResult] = []
     findings = _refuse_remotes(config, gov)
     if findings:
@@ -1592,7 +1610,7 @@ def _policy_check(config: Config) -> list[doctor.CheckResult]:
     try:
         pol = content_policy.load_policy(config)
     except ConfigError as exc:
-        return [_check("policy", False, str(exc), doctor.Severity.ERROR, fix="fix [policy] / policy.toml")]
+        return [_check("policy", False, str(exc), doctor.Severity.ERROR, fix=POLICY_FIX)]
     if not pol.labels_active:
         detail = "no label rules (encrypted Office/PDF files are still stubbed, never converted)"
     else:
