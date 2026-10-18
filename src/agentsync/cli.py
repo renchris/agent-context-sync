@@ -929,8 +929,11 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             clear, _collides = loop._excludable(found)
         gone = len(below) - len(clear)
         left = "it" if gone == 1 else "them"  # B13 round 12 N40: by the count, as the line's own folders
-        # past five folders stored, the alarm names five and how to list the rest (B13 round 14 Q41's rule)
-        left = loop._alarm_names(left, found.stored)
+        if found.stored > 5:
+            # past five the alarm names five and how to list the rest (B13 round 14 Q41's rule), and the left
+            # folder may be among the rest: the loop's own words, as its gone wait says (round 15 S42: "names
+            # it, up to five" of a folder the alarm does not name)
+            left = loop._alarm_names("the folders", found.stored)
         one = gone == 1  # noun, verb and pronoun by the count (B13 round 14 Q42, Q57: "1 ... folder(s) were")
         held = (
             f"; {gone} empty cloud {'folder' if one else 'folders'} in {src.id} "

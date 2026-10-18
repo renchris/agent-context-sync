@@ -1503,25 +1503,36 @@ def test_an_inbox_folder_that_does_not_exist_is_a_wait_not_a_later_sync_note(
     assert not any("was not fully listed" in ln for ln in lines), lines
 
 
+@pytest.mark.parametrize(("gone", "empty"), [(7, 0), (1, 6)])
 def test_exclude_empty_says_the_alarm_names_five_only_past_five(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], gone: int, empty: int
 ) -> None:
     """B13 round 14 Q41's rule (review): exclude-empty's line about the folders it left said the alarm "names
-    them" with seven stored, where the alarm names five and how to list the rest."""
+    them" with seven stored, where the alarm names five and how to list the rest. Round 15 S42: one folder
+    left beside six it excluded read "names it, up to five", and the alarm's five did not hold it; past five
+    the line takes the loop's words, "the folders"."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
-    for i in range(7):
+    for i in range(empty):
+        (root / f"Empty {i}").mkdir(parents=True)
+    for i in range(gone):
         _write(root / f"Gone {i}" / "plan.txt", "The plan.\n")
     config = _setup(tmp_path, local_source_table("work", root))
     run_cycle(config, mode=None)
-    for i in range(7):
+    for i in range(gone):
         (root / f"Gone {i}" / "plan.txt").unlink()
     run_cycle(config, mode=None)
     capsys.readouterr()
     assert cli.main(["exclude-empty", "work", "--config", str(config.config_path)]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "7 empty cloud folders in work were left as they are: each held" in out, out
-    assert f"which names them, {loop._UP_TO_FIVE} (a plain" in out, out
+    left = (
+        "7 empty cloud folders in work were left as they are: each held"
+        if gone == 7
+        else ("1 empty cloud folder in work was left as it is: it held")
+    )
+    assert left in out, out
+    assert f"which names the folders, {loop._UP_TO_FIVE}" in out, out
+    assert "which names it, " not in out and "which names them, " not in out, out
 
 
 def test_a_gone_root_under_volumes_is_a_volume_to_mount(tmp_path: Path) -> None:
