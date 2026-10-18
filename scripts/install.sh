@@ -3429,7 +3429,7 @@ source_excludes_line() { # CONFIG
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
-	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work"
+	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem
 	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
@@ -3495,8 +3495,11 @@ write_bring_back() {
 		done
 		[ "$sent" -eq 0 ] || printf '%s\n' "$fence"
 		printf '%s' "$skipped"
+		# a known count needs no "(s)" (B13 round 15 S14; agentsync.text.plural)
+		up="$unread patch files" uthem=them
+		[ "$unread" != 1 ] || { up="1 patch file" uthem=it; }
 		# no file name: a patch's name carries its commit's subject
-		[ "$unread" -eq 0 ] || printf 'not sent: %s patch file(s) in %s/local-work this account cannot read; make them readable (chmod u+r) and run this command again\n' "$unread" "$shown"
+		[ "$unread" -eq 0 ] || printf 'not sent: %s in %s/local-work this account cannot read; make %s readable (chmod u+r) and run this command again\n' "$up" "$shown" "$uthem"
 		if [ "$sent" -eq 0 ] && [ -z "$skipped" ] && [ "$unread" -eq 0 ]; then
 			# local-work branches with commits of their own and no patch: those commits are not here (B13 round 13
 			# O23: a bare "none" read as no kept work). Its remedy names no branch, with the keep's own --suffix,
@@ -3540,9 +3543,9 @@ write_bring_back() {
 				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
 				"set, a name and address git filled in from this Mac's account), so check those lines too."
 			# the remedy here too, in the file the person reviews (B13 round 14 Q29)
-			[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $unread patch file(s) this account cannot read: make them readable (chmod u+r) and run the report again (install.sh --report-only); see its last line."
+			[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $up this account cannot read: make $uthem readable (chmod u+r) and run the report again (install.sh --report-only); see its last line."
 		elif [ "$unread" -gt 0 ]; then # before the hash sentences, which would call every patch an earlier one
-			printf '%s\n' "Section 3 sends no patch: $unread patch file(s) could not be read: make them readable (chmod u+r) and run the report again (install.sh --report-only); see its last line${skipped:+, and the others were in an earlier report and are listed by their hash}."
+			printf '%s\n' "Section 3 sends no patch: $up could not be read: make $uthem readable (chmod u+r) and run the report again (install.sh --report-only); see its last line${skipped:+, and the others were in an earlier report and are listed by their hash}."
 		elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
 			printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
 		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
@@ -3581,7 +3584,7 @@ write_bring_back() {
 	fi
 	say "bring back: $out (one file: report, fix request, local work)"
 	BACK_UNREAD="$unread"
-	[ "$unread" -eq 0 ] || warn "$unread patch file(s) in $SETUP_DIR/local-work could not be read, so $out does not hold them"
+	[ "$unread" -eq 0 ] || warn "$up in $SETUP_DIR/local-work could not be read, so $out does not hold $uthem"
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
@@ -3960,7 +3963,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 }
 
 on_exit() {
-	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held wrote
+	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held wrote up uthem
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
@@ -4026,7 +4029,9 @@ on_exit() {
 				# not "that one file" while it lacks a kept patch: the remedy first, with a link or without one (B13
 				# round 14 Q20, Q29)
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ "$BACK_UNREAD" -gt 0 ]; then
-					NEXT_MSG="$back does not hold $BACK_UNREAD kept patch file(s) this account cannot read (see the warning above): make them readable (chmod u+r on the files in $SETUP_DIR/local-work) and run this command again, then review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
+					up="$BACK_UNREAD kept patch files" uthem="them readable (chmod u+r on the files"
+					[ "$BACK_UNREAD" != 1 ] || { up="1 kept patch file" uthem="it readable (chmod u+r on the file"; }
+					NEXT_MSG="$back does not hold $up this account cannot read (see the warning above): make $uthem in $SETUP_DIR/local-work) and run this command again, then review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier

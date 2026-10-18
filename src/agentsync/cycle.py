@@ -2481,9 +2481,10 @@ class _Cycle:
             sid: n for sid, n in self.manifest.present_counts().items() if sid not in configured and n
         }
         if vanished:
-            names = ", ".join(f"{sid!r} ({n} file(s))" for sid, n in sorted(vanished.items()))
+            names = ", ".join(f"{sid!r} ({plural(n, 'file')})" for sid, n in sorted(vanished.items()))
+            lead = "source {} is" if len(vanished) == 1 else "sources {} are"  # B13 round 15 S14
             raise ConfigError(
-                f"source(s) {names} are mirrored but no longer in sources.toml; retirement is explicit: put "
+                f"{lead.format(names)} mirrored but no longer in sources.toml; retirement is explicit: put "
                 f"the [[source]] block back with {RETIRE_ADVICE}, or restore it"
             )
 

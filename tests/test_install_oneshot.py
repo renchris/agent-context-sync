@@ -2499,43 +2499,58 @@ def _stamp(text: str) -> float:
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
 
 
-@pytest.mark.parametrize("readable", [False, True])
-def test_a_patch_this_account_cannot_read_is_counted_not_sent(env: dict[str, str], readable: bool) -> None:
+@pytest.mark.parametrize(("readable", "locked_n"), [(False, 1), (True, 1), (False, 2), (True, 2)])
+def test_a_patch_this_account_cannot_read_is_counted_not_sent(
+    env: dict[str, str], readable: bool, locked_n: int
+) -> None:
     """B13 round 13 O25: a mode-000 patch opened section 3's fence and was counted before its cat failed
     unseen, so bring-back.md held an empty diff block under a header saying section 3 holds one patch per
     kept commit, with no warning. Such a patch is now counted on a "not sent:" line (no file name: it
-    carries the commit's subject) and in a warning; a readable one beside it is still sent in full."""
+    carries the commit's subject) and in a warning; a readable one beside it is still sent in full.
+    B13 round 15 S14: the count is known, so the lines say "1 patch file ... it" or "2 patch files ... them",
+    never "(s)"."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
-    locked = _keep_patch(env, "2026-10-07T16:00:00Z", body="+def contoso(): ...\n", name="0002-x.patch")
+    locked = [
+        _keep_patch(env, "2026-10-07T16:00:00Z", body="+def contoso(): ...\n", name=f"000{n}-x.patch")
+        for n in range(2, 2 + locked_n)
+    ]
     if readable:
         _keep_patch(env, "2026-10-07T16:00:00Z")
-    locked.chmod(0)
+    for path in locked:
+        path.chmod(0)
     try:
         cp = install_sh(env, "--report-only")
     finally:
-        locked.chmod(0o600)
+        for path in locked:
+            path.chmod(0o600)
     assert cp.returncode == 0, cp.stderr
     shown = "~/agent-context/setup/local-work"
     setup = home / "agent-context" / "setup"
+    files, them = ("1 patch file", "it") if locked_n == 1 else (f"{locked_n} patch files", "them")
     assert (
-        f"warning: 1 patch file(s) in {setup}/local-work could not be read, so "
-        f"{report_path(env).parent / 'bring-back.md'} does not hold them"
+        f"warning: {files} in {setup}/local-work could not be read, so "
+        f"{report_path(env).parent / 'bring-back.md'} does not hold {them}"
     ) in cp.stderr
     text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
     head, section3 = text.split("\n## 1. Setup report", 1)[0], text.split("## 3. Local work", 1)[1]
     assert section3.rstrip("\n").endswith(
-        f"not sent: 1 patch file(s) in {shown} this account cannot read; make them readable (chmod u+r) and "
+        f"not sent: {files} in {shown} this account cannot read; make {them} readable (chmod u+r) and "
         "run this command again"
     ), section3
-    assert "contoso" not in section3 and "0002-x" not in section3
+    assert "contoso" not in section3 and "0002-x" not in section3 and "(s)" not in text.split("## 1.")[0]
+    kept = "1 kept patch file" if locked_n == 1 else f"{locked_n} kept patch files"
+    assert (
+        f"does not hold {kept} this account cannot read (see the warning above): make {them} readable "
+        "(chmod u+r on the file" in last_line(cp)
+    ), last_line(cp)
     if readable:
         assert "~diff\n+def ocr(): ...\n~~~" in section3 and section3.count("~diff\n") == 1
         assert "Section 3 holds one patch per kept commit" in " ".join(head.split())
         # B13 round 14 Q29: the remedy is in the header beside a patch that was sent, too
         assert (
-            "Section 3 does not hold 1 patch file(s) this account cannot read: make them readable "
+            f"Section 3 does not hold {files} this account cannot read: make {them} readable "
             "(chmod u+r) and run the report again (install.sh --report-only); see its last line."
             in " ".join(head.split())
         ), head
@@ -2543,7 +2558,7 @@ def test_a_patch_this_account_cannot_read_is_counted_not_sent(env: dict[str, str
         assert "diff" not in section3 and "\nnone\n" not in section3
         assert "holds one patch per kept commit" not in " ".join(head.split())
         assert (
-            "Section 3 sends no patch: 1 patch file(s) could not be read: make them readable (chmod u+r) "
+            f"Section 3 sends no patch: {files} could not be read: make {them} readable (chmod u+r) "
             "and run the report again (install.sh --report-only); see its last line."
             in " ".join(head.split())
         ), head
@@ -2585,11 +2600,11 @@ def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, s
     if beside == "one sent before":
         assert "earlier report and is listed by its hash" not in head, head
         assert (
-            "Section 3 sends no patch: 1 patch file(s) could not be read: make them readable (chmod u+r) "
+            "Section 3 sends no patch: 1 patch file could not be read: make it readable (chmod u+r) "
             "and run the report again (install.sh --report-only); see its last line, and the others were in "
             "an earlier report and are listed by their hash." in head
         ), head
-        assert "not repeated: " in text and "not sent: 1 patch file(s)" in text
+        assert "not repeated: " in text and "not sent: 1 patch file in" in text
     else:
         fence = text.split("diff\n", 1)[0]
         assert set(fence) == {"~"} and len(fence) == 41, fence
@@ -2626,8 +2641,8 @@ def test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable(
         patch.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert last_line(cp).startswith(
-        f"NEXT: {back} does not hold 1 kept patch file(s) this account cannot read (see the warning above): "
-        f"make them readable (chmod u+r on the files in {setup}/local-work) and run this command again, then "
+        f"NEXT: {back} does not hold 1 kept patch file this account cannot read (see the warning above): "
+        f"make it readable (chmod u+r on the file in {setup}/local-work) and run this command again, then "
         f"review {back} and copy that one file back privately{link} (nothing is sent for you)"
     ), last_line(cp)
     # that report's own time, and its attempt's end, as if it ran a day before this one: every run here is

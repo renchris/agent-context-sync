@@ -1347,6 +1347,20 @@ def test_removing_a_source_block_is_refused_not_silently_kept_current(tmp_path: 
         run(write_config(tmp_path, only_other))
     # B13 round 5 F97: the advice is the one doctor gives, and names retired_reason, which the loader needs
     assert RETIRE_ADVICE in str(refused.value)
+    # B13 round 15 S14: one source (its file and its sentinel), in words that agree with the counts
+    assert str(refused.value).startswith(f"source {SID!r} (2 files) is mirrored but no longer"), refused.value
+
+
+def test_two_vanished_sources_are_named_with_counted_nouns() -> None:
+    """B13 round 15 S14: "source(s) 'x' (4 file(s)) are mirrored": the counts are known."""
+    fake = cast(
+        Any,
+        type("Fake", (), {"config": type("C", (), {"sources": ()})(), "manifest": None})(),
+    )
+    fake.manifest = type("M", (), {"present_counts": staticmethod(lambda: {"b": 3, "a": 1})})()
+    with pytest.raises(cycle.ConfigError) as refused:
+        cycle._Cycle._refuse_vanished_sources(fake)
+    assert str(refused.value).startswith("sources 'a' (1 file), 'b' (3 files) are mirrored but no longer")
 
 
 def test_empty_root_without_sentinel_deletes_nothing(tmp_path: Path) -> None:

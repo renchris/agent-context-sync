@@ -42,6 +42,7 @@ from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
 from agentsync.paths import default_cache_dir, default_log_dir, expand, is_cloud_path
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -1910,10 +1911,9 @@ def _check_heartbeat(
             # is still being written), but it says what the heartbeat holds: an incomplete pass sets
             # last_success_at too, and the loop may already print a WAITING ON YOU line about this source.
             if isinstance(incomplete, int) and incomplete > 0:
-                detail += (
-                    f"; listing incomplete for the last {incomplete} pass(es), {_held(src)}, "
-                    f"a warn after {_INCOMPLETE_RUNS}"
-                )
+                passes = plural(incomplete, "pass", "passes")
+                detail += f"; listing incomplete for the last {passes}, {_held(src)}, "
+                detail += f"a warn after {_INCOMPLETE_RUNS}"
             out.append(_ok(name, detail))
     return out
 

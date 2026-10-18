@@ -1774,8 +1774,10 @@ def test_heartbeat_states(sample_config: Config, monkeypatch: pytest.MonkeyPatch
         r = by_name(run_checks(sample_config))[name]
         assert r.ok and r.severity is Severity.INFO and r.fix is None
         assert r.detail.startswith("last success ")
+        # B13 round 15 S14: the count is known, so no "(s)"
+        passes = "1 pass" if n == 1 else f"{n} passes"
         assert r.detail.endswith(
-            f"; listing incomplete for the last {n} pass(es), deletions held, a warn after 3"
+            f"; listing incomplete for the last {passes}, deletions held, a warn after 3"
         )
     _beat(sample_config)
     r = by_name(run_checks(sample_config))[name]

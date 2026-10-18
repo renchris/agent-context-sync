@@ -21604,6 +21604,16 @@ config error's shape (§16.14 K02's O11 line). It promises no error, since a sig
 and the skipped sync stay. Tests: `test_a_status_that_fails_with_no_fail_line_logs_status_error`,
 `test_launcher.py::test_install_sh_doctor_failure_blocks_the_agent`.
 
+**A known count needs no "(s)" in install.sh, doctor's heartbeat line or the vanished-source refusal** (S14; the
+cluster lane RA's S26, S30 and S31 and lane B's S65 and S52 close in their files). install.sh's unread-patch lines
+(section 3's `not sent:` line, both header sentences, the warning and the `--report-only` NEXT) read `1 patch file ...
+make it readable` or `2 patch files ... make them readable`, set once where the count is known, as list_folders does;
+doctor's `listing incomplete for the last 1 pass` / `2 passes`; the cycle's refusal `source 'x' (1 file) is mirrored`
+or `sources 'x' (1 file), 'y' (3 files) are mirrored`. The Summary's `N patch file(s) in the setup folder's
+local-work` line is left for a change of its own (setup_report, the guide's quote and its pin move together). Tests:
+`test_a_patch_this_account_cannot_read_is_counted_not_sent`, `test_ops_doctor.py::test_heartbeat_states`,
+`test_review_fixes.py::test_two_vanished_sources_are_named_with_counted_nouns`.
+
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 
 The B13 round 15 items of lane P (specs `round15/items/S<n>.md`, the verifier's corrected fix built unless a
