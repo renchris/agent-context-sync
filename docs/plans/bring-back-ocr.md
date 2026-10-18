@@ -1018,6 +1018,38 @@ which adds the land lock): RA 20 (setup_report.py), RB 18 (install.sh, persons_f
 `7b51f3cf` and fails on any real-home SwiftPM lock) and Q85 (one operator cleanup, `b13-r13`, replacing the `b13-r12`
 one).
 
+### B13 round 14 landed (2026-10-18)
+
+All six lanes landed; CI green on `ba3d1f10` (prompt v23). Notes `lanes/r14-<lane>.md`. Every item is built; parts
+left out are optional extras with a reason in the note (Q2's second option, Q30's public pointer, Q17's separate
+not-on-disk clause, lane B's "ran no sync" end line). Lane B records one residual for round 15's rehearsal: under
+`--confirm-install-agent`, a first sync that exits 0 followed by a failed background wait exits 1 with no closing
+status, so the heartbeat note's "the end of this run says" gets no answer. CI flaked once on lane RB's pandoc
+first-start test (Q40; run `39081380800`, attempt 2 green). The lead's Q85 cleanup ran (operator, 2026-10-17): every
+round 5 to 13 leftover and `origin/b13/r7-d` are gone.
+
+| Lane | Landed (lane commits; ranges can hold another session's) |
+|---|---|
+| RB | `c57cfa7c..7dec0347`, 12 commits |
+| RA | `7dec0347..37a4f567`, 15 commits |
+| E | `37a4f567..696e37f7`, 4 commits |
+| P | `e24212be`, `326d3083` (v23) |
+| D | `326d3083..f675585a`, 8 commits |
+| B | `f675585a..ba3d1f10`, 6 commits |
+
+Outside the wave, another session landed `06733df7`: `scripts/ship-land.sh`, one locked fetch, rebase, gate, trunk
+CI check and push that a user-level allow rule runs with no prompt. From round 15 lanes land with it
+(`--lock /tmp/b13-r15-land.lock`), which ends the push-prompt waits.
+
+Learnings: the lockf around the gate alone did not stop rejected pushes, because each push ran after the lock was
+released; a mkdir mutex held from fetch through the push did, once every lane took it, but each push still waited on
+the operator (lane D about 4 hours). The auto-mode classifier refused `git -C … push` and one locked rebase-and-gate
+retry; each cleared only when the operator typed an approval in the lane's pane. Load reached about 435, and a gate
+was killed once more.
+
+Round 15: the round 14 workflow with prompt v23 on `06733df7`, BASE `c57cfa7c` (ids S<n>, outputs `round15/`); every
+scenario copies helpers for any build before `7b51f3cf` and fails on a real-home SwiftPM lock (Q84).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
