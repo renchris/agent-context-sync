@@ -833,7 +833,7 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
 
     line = loads()
     assert line == (
-        "- loads: yes, but a sync refuses it: a source (not in the config, 1) (1 file) is mirrored but no "
+        "- loads: yes, but a sync refuses it: a source (not in the config, 1; 1 file) is mirrored but no "
         "longer in sources.toml; retirement is explicit: put the [[source]] block back with "
         f"{RETIRE_ADVICE}, or restore it"
     ), line
@@ -863,7 +863,7 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     assert "Payroll" not in text
     assert loads() == (
         "- loads: yes, but a sync refuses it: [policy] exclude_label_ids in policy.toml is not valid "
-        "(ConfigError; the error's words are not shown here, as they can name a label or a host: "
+        "(the error's words are not shown here, as they can name a label or a host: "
         "`~/.local/bin/agentsync sync` prints them)"
     )
     policy_toml.unlink()
@@ -895,11 +895,46 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     line = loads()
     assert line.startswith(
         "- loads: yes, but step 2's sync refused it (run 20260929T100000Z): configuration error: source(s) "
-        "(not in the config, 1) (1 file(s)) are mirrored but no longer in sources.toml"
+        "(not in the config, 1; 1 file(s)) are mirrored but no longer in sources.toml"
     ), line
     assert gone not in line
     write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
     assert loads() == "- loads: yes"
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_vanished_sources_count_is_inside_its_labels_bracket(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 16 T7, T15: the loads line read ``a source (not in the config, 1) (4 files)``, two brackets
+    side by side. The count now sits inside the label's own bracket, which keeps the label the evidence tables
+    name the source by; so does step 2's line from install.out, an older build's ``file(s)`` included."""
+    cfg = fake_mac["config"]
+    for n in range(4):
+        (fake_mac["two"] / f"notes-{n}.txt").write_text("notes\n", encoding="utf-8")
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    gone = next(src.id for src in load_config(cfg).sources if src.path == fake_mac["two"])
+    head, *blocks = cfg.read_text(encoding="utf-8").split("[[source]]")
+    cfg.write_text("[[source]]".join([head, *(b for b in blocks if f'id = "{gone}"' not in b)]), "utf-8")
+    _rc, text, _ = report(tmp_path, cfg)
+    [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- loads: ")]
+    assert line.startswith(
+        "- loads: yes, but a sync refuses it: a source (not in the config, 1; 4 files) is "
+    ), line
+    assert ") (" not in line, line
+    labels = setup_report._Labels(load_config(cfg), setup_report.Redactor())
+    said = (
+        "configuration error: sources 'a' (3 files), 'b' (1 file) are mirrored but no longer in sources.toml"
+    )
+    shown = setup_report._QUOTED_COUNT_RE.sub(
+        lambda m: setup_report._with_count(labels.of(m.group(1)), m.group(2)), said
+    )
+    assert shown == (
+        "configuration error: sources (not in the config, 1; 3 files), (not in the config, 2; 1 file) are "
+        "mirrored but no longer in sources.toml"
+    ), shown
+    assert setup_report._with_count("<source-2>", "1 file") == "<source-2> (1 file)"
 
 
 @pytest.mark.usefixtures("roomy_calls")

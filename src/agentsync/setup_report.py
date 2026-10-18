@@ -4667,9 +4667,22 @@ _TABLE_KEY_RE = re.compile(r"\[(?P<table>policy|governance)\](?:\.(?P<dot>[a-z_]
 (``policy.parse_policy_table``, ``governance.parse_governance``)."""
 
 
+_QUOTED_COUNT_RE = re.compile(r"'([^']*)' \(((?:[^()]|\(s\))*)\)")
+
+
+def _with_count(label: str, count: str) -> str:
+    """A source's label and its count in one bracket: ``(not in the config, 1; 4 files)``, where the two side
+    by side read ``(not in the config, 1) (4 files)`` (B13 round 16 T7); a label that is no bracket keeps its
+    count beside it."""
+    if label.startswith("(") and label.endswith(")"):
+        return f"{label[:-1]}; {count})"
+    return f"{label} ({count})"
+
+
 def _table_refusal(exc: Exception, file: str) -> str:
     """A ``[policy]`` or ``[governance]`` refusal as the table, its key when it is one of the table's own
-    and the file: never the message's other words, which can quote a label's name or id or a remote's host."""
+    and the file: never the message's other words, which can quote a label's name or id or a remote's host,
+    nor the exception's class name, which is no word of the person's (B13 round 16 T15)."""
     from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
 
     m = _TABLE_KEY_RE.search(str(exc))
@@ -4678,8 +4691,8 @@ def _table_refusal(exc: Exception, file: str) -> str:
     keys = policy.POLICY_KEYS if table == "policy" else governance._GOVERNANCE_KEYS
     named = f"[{table}] {key}" if key in keys else f"the [{table}] table"
     return (
-        f"{named} in {file} is not valid ({type(exc).__name__}; the error's words are not shown here, as "
-        f"they can name a label or a host: `{AGENTSYNC_BIN} sync` prints them)"
+        f"{named} in {file} is not valid (the error's words are not shown here, as they can name a label or "
+        f"a host: `{AGENTSYNC_BIN} sync` prints them)"
     )
 
 
@@ -4721,7 +4734,8 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
             read = False
     if vanished:
         labels = _Labels(c, r.red)
-        names = ", ".join(f"{labels.of(sid)} ({_plural(n, 'file')})" for sid, n in vanished)
+        # the count inside the label's own bracket, one bracket a source (B13 round 16 T7, T15)
+        names = ", ".join(_with_count(labels.of(sid), _plural(n, "file")) for sid, n in vanished)
         which = "a source" if len(vanished) == 1 else f"{len(vanished)} sources"
         return (
             f"{which} {names} {'is' if len(vanished) == 1 else 'are'} {VANISHED_WORDS}; {VANISHED_ADVICE}"
@@ -4774,6 +4788,8 @@ def _sync_refusal(r: _Run, c: Config) -> str | None:
 
     if said is not None and VANISHED_WORDS in said:  # the manifest could not be read: ids by place only
         labels = _Labels(c, r.red)
+        # an id and its count, "'x' (3 files)" or an older build's "'x' (1 file(s))", as one bracket (T7)
+        said = _QUOTED_COUNT_RE.sub(lambda m: _with_count(labels.of(m.group(1)), m.group(2)), said)
         said = re.sub(r"'([^']*)'", lambda m: labels.of(m.group(1)), said)
     return f"- loads: yes, but step 2's sync refused it (run {run.display_id}): " + (
         said if said is not None else "its configuration error is not in the install.out lines read"
