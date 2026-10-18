@@ -775,6 +775,23 @@ def test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report(
     )
 
 
+def test_the_reports_tcc_pending_pattern_is_install_shs_blocking_fails() -> None:
+    """B13 round 16 T48: the report leaves a TCC_PENDING [FAIL] out of a run's stopping [FAIL] lines by its
+    own copy of install.sh's ``blocking_fails`` pattern, and no test tied the two. They are one pattern, and
+    it reads the line doctor writes for that check (padded name, ``TCC_PENDING: `` detail) and no other."""
+    m = re.search(
+        r"blocking_fails\(\) \{\n\tgrep '\^\\\[FAIL' \"\$1\" 2>/dev/null \| grep -Ev '([^']*)' \|\| true",
+        INSTALL_SH.read_text(encoding="utf-8"),
+    )
+    assert m, "blocking_fails's pattern"
+    assert m.group(1) == setup_report._TCC_PENDING_FAIL_RE.pattern
+    pending = doctor.CheckResult("tcc.contoso-plans", False, "TCC_PENDING: the launcher waits for Allow")
+    other = doctor.CheckResult("source.contoso-plans.listable", False, "TCC_PENDING: not this check")
+    lines = doctor.format_results([pending, other]).splitlines()
+    assert setup_report._TCC_PENDING_FAIL_RE.match(lines[0]), lines
+    assert not setup_report._TCC_PENDING_FAIL_RE.match(lines[1]), lines
+
+
 def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> None:
     """B13 round 14 Q1, Q9, Q33: status's NEXT names a [FAIL] fix as the person's by
     ``doctor.PERSONS_FIX_RE``, and install.sh's persons_fails by its own copy (it runs the older installed
