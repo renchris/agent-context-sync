@@ -209,10 +209,13 @@ def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = Fa
     (a run that does not select the source keeps that source's last one, tagged with its run: round 7 H73).
     STATE.md comes first, since it holds the line wherever the wait prints: install.sh's closing step and
     ``status`` print no alarm line, only a plain sync does (B13 round 7 H35). The alarm names five and itself
-    points at ``sync -v`` for the rest, so the wait never does (round 7 H12); every wait says so, ``{what},
-    up to five, and past five how to list the rest`` (:data:`_UP_TO_FIVE`; a could-not-be-listed wait,
-    :data:`_WHAT_FAILED`), true for any count, since the alarm caps each kind of unknown folder on its own,
-    the folders it could not read and the empty cloud folders, never on the wait's own count (B13 round 9 K40;
+    points at ``sync -v`` for the rest, so the wait never does (round 7 H12); a wait whose walk stored more
+    than five folders of a kind says so, ``{what}, up to five, and past five how to list the rest``
+    (:data:`_UP_TO_FIVE` via :func:`_alarm_names`; a could-not-be-listed wait, :data:`_WHAT_FAILED` via
+    ``failed_names``), and at one to five, which the alarm lists in full, names ``{what}`` alone (B13 round
+    14 Q23, Q41; round 15 S45: this said "true for any count" after those). The count is the walk's stored
+    count, since the alarm caps each kind of unknown folder on its own, the folders it could not read and the
+    empty cloud folders, never the wait's own count (B13 round 9 K40;
     round 10 L36, L67: the pointer is the alarm's only past five, and the could-not-be-listed waits said
     "names it" of six folders; round 11 M5, M45: one cap over both kinds hid an unreadable folder behind five
     empty ones). Two

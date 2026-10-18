@@ -434,10 +434,11 @@ def test_six_empty_folders_on_one_wait_are_not_said_to_be_all_named(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """B13 round 9 K40: with six empty folders the one exclude-empty wait said the alarm line "names the
-    folder(s)", but the alarm names five and how to list the sixth. Every empty-folder wait now says the
-    alarm names the folder(s), up to five, and past five how to list the rest, which is true for any count
-    (B13 round 10 L36: "up to five, and how to list any more" promised a pointer one to five folders lack);
-    no path and no ``sync -v`` in the wait (round 7 H12, round 5 F43)."""
+    folder(s)", but the alarm names five and how to list the sixth. An empty-folder wait whose walk stored
+    more than five now says the alarm names the folders, up to five, and past five how to list the rest; at
+    one to five it names the folder(s) alone (B13 round 14 Q23, Q41; round 15 S45) (B13 round 10 L36: "up
+    to five, and how to list any more" promised a pointer one to five folders lack); no path and no
+    ``sync -v`` in the wait (round 7 H12, round 5 F43)."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     for n in range(1, 7):
         (root / f"Empty {n}").mkdir(parents=True)
