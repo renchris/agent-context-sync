@@ -126,7 +126,14 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 
 from agentsync import __version__, gitops, net
 from agentsync.arm_local import CallTimedOutError, call_with_timeout
-from agentsync.config import DEFAULT_EXCLUDES, INBOX_IGNORES, OS_JUNK_EXCLUDES, Config, load_config
+from agentsync.config import (
+    DEFAULT_EXCLUDES,
+    INBOX_IGNORES,
+    OS_JUNK_EXCLUDES,
+    RETIRE_ADVICE,
+    Config,
+    load_config,
+)
 from agentsync.materialise import file_provider_marker
 from agentsync.ops.lock import Stage
 from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary, provider_link_resolved
@@ -4493,7 +4500,11 @@ def _configuration(r: _Run) -> list[str]:
             out.append(f"- loads: no: {r.config_error}")
         return out
     c = r.config
-    out.append("- loads: yes")
+    try:
+        refused = _sync_refusal(r, c)
+    except Exception as exc:  # the check is a reading of its own: the rest of the section still prints
+        refused = f"- loads: yes (whether a sync refuses it: not read, {type(exc).__name__})"
+    out.append(refused or "- loads: yes")
     kinds = Counter(s.kind.value for s in c.sources)
     states = Counter(s.state.value for s in c.sources)
     under_cloud = sum(1 for s in c.sources if s.path is not None and _cloud_parts(s.path) is not None)
@@ -4537,6 +4548,129 @@ def _configuration(r: _Run) -> list[str]:
             "other"
         )
     return out
+
+
+_VANISHED_WORDS = "mirrored but no longer in sources.toml"
+"""The words of the cycle's vanished-source refusal (``cycle._refuse_vanished_sources``) that
+:func:`_sync_refusal` knows the live check reads again."""
+
+_TABLE_KEY_RE = re.compile(r"\[(?P<table>policy|governance)\](?:\.(?P<dot>[a-z_]+)|: (?P<key>[a-z_]+))?")
+"""The table, and the key when one leads the message, of a ``[policy]`` or ``[governance]`` ConfigError
+(``policy.parse_policy_table``, ``governance.parse_governance``)."""
+
+
+def _table_refusal(exc: Exception, file: str) -> str:
+    """A ``[policy]`` or ``[governance]`` refusal as the table, its key when it is one of the table's own
+    and the file: never the message's other words, which can quote a label's name or id or a remote's host."""
+    from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
+
+    m = _TABLE_KEY_RE.search(str(exc))
+    table = m.group("table") if m is not None else "policy"
+    key = (m.group("dot") or m.group("key")) if m is not None else None
+    keys = policy.POLICY_KEYS if table == "policy" else governance._GOVERNANCE_KEYS
+    named = f"[{table}] {key}" if key in keys else f"the [{table}] table"
+    return (
+        f"{named} in {file} is not valid ({type(exc).__name__}; the error's words are not shown here, as "
+        f"they can name a label or a host: `{AGENTSYNC_BIN} sync` prints them)"
+    )
+
+
+def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
+    """(why every sync refuses ``c``, a config that loads, or None; whether the vanished-source check could
+    read the manifest). The sync's own read-only checks before it writes anything, in its order: the policy
+    (``Publisher``), the ``[governance]`` table (``Cycle.__init__``), then the manifest's present rows against
+    the configured ids (``cycle._refuse_vanished_sources``, in ``Cycle.run``), so the first refusal is the
+    one ``agentsync sync`` prints. A source the config does not have is named as :class:`_Labels` names it,
+    never by its id."""
+    from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
+    from agentsync.model import PRESENT_STATES  # noqa: PLC0415
+
+    sidecar = c.config_path.parent / policy.POLICY_FILE_NAME
+    db = expand(c.state_paths.db)
+    read = True
+    try:
+        policy.load_policy(c)
+    except Exception as exc:
+        file = policy.POLICY_FILE_NAME if str(exc).startswith(str(sidecar)) else c.config_path.name
+        return _table_refusal(exc, file), read
+    try:
+        governance.load_governance(c.config_path)
+    except Exception as exc:
+        return _table_refusal(exc, c.config_path.name), read
+    vanished: list[tuple[str, int]] = []
+    if db.is_file():
+        try:
+            conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+            try:
+                states = [st.value for st in PRESENT_STATES]
+                rows = conn.execute(
+                    "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
+                    f"AND state IN ({', '.join('?' for _ in states)}) GROUP BY source_id ORDER BY source_id",
+                    states,
+                ).fetchall()
+            finally:
+                conn.close()
+            configured = {s.id for s in c.sources}
+            vanished = [(str(sid), int(n)) for sid, n in rows if str(sid) not in configured and n]
+        except sqlite3.Error:
+            read = False
+    if vanished:
+        labels = _Labels(c, r.red)
+        names = ", ".join(f"{labels.of(sid)} ({_plural(n, 'file')})" for sid, n in vanished)
+        which = "a source" if len(vanished) == 1 else f"{len(vanished)} sources"
+        return (
+            f"{which} {names} {'is' if len(vanished) == 1 else 'are'} {_VANISHED_WORDS}; retirement is "
+            f"explicit: put the [[source]] block back with {RETIRE_ADVICE}, or restore it"
+        ), read
+    return None, read
+
+
+def _reads_again(said: str, read: bool) -> bool:
+    """Whether :func:`_live_refusal` reads the cause of step 2's ``configuration error:`` line ``said``: the
+    policy (``[policy]``, or policy.toml's own "cannot read the policy table"), ``[governance]``, and, when
+    the manifest could be read, the vanished-source refusal."""
+    from agentsync import policy  # noqa: PLC0415 - lazy, as in _policy_line
+
+    return (
+        (read and _VANISHED_WORDS in said)
+        or _TABLE_KEY_RE.search(said) is not None
+        or policy.POLICY_FILE_NAME in said
+        or f"the {policy.POLICY_TABLE} table" in said
+    )
+
+
+def _sync_refusal(r: _Run, c: Config) -> str | None:
+    """The Configuration section's loads line for a config that loads but that a sync refuses (exit 78,
+    ``configuration error: ...``), or None (B13 round 15 S8, S55). A live check first (:func:`_live_refusal`);
+    else, when the latest attempt's last install.sh run with a first sync had it exit 78 for a cause the
+    live check does not read, that run's ``configuration error:`` line from install.out, its quoted source ids
+    named as :class:`_Labels` names them. A refusal the live check reads and no longer finds was fixed since:
+    no line. It never begins "loads: no" or "loads: not", the prompt's finish's keys for a config that does
+    not load or was not checked."""
+    live, read = _live_refusal(r, c)
+    if live is not None:
+        return f"- loads: yes, but a sync refuses it: {live}"
+    runs = [run for run in _latest_runs(r) if run.step("first-sync") is not None]
+    if not runs or (runs[-1].step("first-sync") or {}).get("rc") != "78":
+        return None
+    run = runs[-1]
+    lines = r.facts.out_counted
+    start = next((i for i, ln in enumerate(lines) if ln.startswith(f"# run={run.run_id} ")), None)
+    said: str | None = None
+    if start is not None:
+        for ln in lines[start + 1 :]:
+            if _OUT_RUN_RE.match(ln):
+                break
+            if ln.strip().startswith("configuration error:"):
+                said = ln.strip()
+    if said is not None and _reads_again(said, read):
+        return None  # the live check reads that cause and no longer finds it
+    if said is not None and _VANISHED_WORDS in said:  # the manifest could not be read: ids by place only
+        labels = _Labels(c, r.red)
+        said = re.sub(r"'([^']*)'", lambda m: labels.of(m.group(1)), said)
+    return f"- loads: yes, but step 2's sync refused it (run {run.display_id}): " + (
+        said if said is not None else "its configuration error is not in the install.out lines read"
+    )
 
 
 def _excludes_line(c: Config, red: Redactor) -> str:

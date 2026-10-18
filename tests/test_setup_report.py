@@ -43,7 +43,14 @@ from agentsync import (
     policy,
     setup_report,
 )
-from agentsync.config import DEFAULT_EXCLUDES, Config, ConvertConfig, load_config, set_source_exclude
+from agentsync.config import (
+    DEFAULT_EXCLUDES,
+    RETIRE_ADVICE,
+    Config,
+    ConvertConfig,
+    load_config,
+    set_source_exclude,
+)
 from agentsync.convert import image, media, msg, ocr, pdf, recording, speech, vtt
 from agentsync.convert import registry as registry_mod
 from agentsync.convert.cache import ConverterCache
@@ -790,6 +797,108 @@ def test_missing_config_is_a_finding(tmp_path: Path) -> None:
     assert "Not run: the config does not load" in section(text, "Doctor")
     assert "NEXT: not read (the config does not load)" in section(text, "Summary")
     assert "no sources.toml yet" not in text
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """B13 round 15 S8, S55: a sources.toml that loads, but that every sync refuses with exit 78 and a
+    ``configuration error:`` line, read ``- loads: yes`` with no reason, so v23's finish told the person it
+    "does not load". A live check of the sync's own read-only refusals now says ``- loads: yes, but a sync
+    refuses it: ...``: a source deleted from the file while its pages are mirrored (named by place, never by
+    id), and a policy.toml beside it that does not pass (its table and key, never its words, which can name
+    a label). A refusal the live check reads and no longer finds drops the line; one it cannot read is
+    taken from step 2's first sync in install.out. No such line begins "loads: no" or "loads: not", the
+    finish's keys for a file that does not load or was not checked."""
+    cfg = fake_mac["config"]
+    for folder in (fake_mac["one"], fake_mac["two"]):
+        (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    whole = cfg.read_text(encoding="utf-8")
+    gone = next(src.id for src in load_config(cfg).sources if src.path == fake_mac["two"])
+    head, *blocks = whole.split("[[source]]")
+    kept = [b for b in blocks if f'id = "{gone}"' not in b]
+    assert len(kept) == len(blocks) - 1
+    trimmed = "[[source]]".join([head, *kept])
+    cfg.write_text(trimmed, encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 78  # every sync refuses it; the file still loads
+    load_config(cfg)
+
+    def loads() -> str:
+        rc, text, _ = report(tmp_path, cfg)
+        assert rc == 0
+        [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- loads: ")]
+        assert not line.startswith(("- loads: no", "- loads: not")), line
+        return line
+
+    line = loads()
+    assert line == (
+        "- loads: yes, but a sync refuses it: a source (not in the config, 1) (1 file) is mirrored but no "
+        "longer in sources.toml; retirement is explicit: put the [[source]] block back with "
+        f"{RETIRE_ADVICE}, or restore it"
+    ), line
+    # the sync's order: a policy that does not pass is what it prints first, so the report gives that one
+    (cfg.parent / "policy.toml").write_text("[policy]\nrefuse_unlabelled = 1\n", encoding="utf-8")
+    assert loads().startswith(
+        "- loads: yes, but a sync refuses it: [policy] refuse_unlabelled in policy.toml"
+    )
+    (cfg.parent / "policy.toml").unlink()
+    # step 2's first sync refused it; the live check still reads the cause, so the line is the live one
+    write_install_log(fake_mac, rc=1, first_sync="seconds=3 rc=78 result=failed")
+    out = fake_mac["setup"] / "install.out"
+    said = f"configuration error: source(s) {gone!r} (1 file(s)) are mirrored but no longer in sources.toml"
+    out.write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + said + "\n",
+        encoding="utf-8",
+    )
+    assert loads() == line
+    # fixed since step 2: the live check finds nothing, and the cause is one it reads, so no line
+    cfg.write_text(whole, encoding="utf-8")
+    assert loads() == "- loads: yes"
+    # a policy.toml beside it that does not pass: its key and file, not the value, which can name a label
+    policy_toml = cfg.parent / "policy.toml"
+    policy_toml.write_text('[policy]\nexclude_label_ids = ["Payroll Only"]\n', encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 78
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "Payroll" not in text
+    assert loads() == (
+        "- loads: yes, but a sync refuses it: [policy] exclude_label_ids in policy.toml is not valid "
+        "(ConfigError; the error's words are not shown here, as they can name a label or a host: "
+        "`~/.local/bin/agentsync sync` prints them)"
+    )
+    policy_toml.unlink()
+    # a cause the live check does not read: step 2's own line, from install.out
+    out.write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "configuration error: a refusal no report check reads\n",
+        encoding="utf-8",
+    )
+    assert loads() == (
+        "- loads: yes, but step 2's sync refused it (run 20260929T100000Z): configuration error: a refusal "
+        "no report check reads"
+    )
+    # a policy.toml step 2 could not read, fixed since: the live check reads that cause, so no line
+    out.write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"configuration error: {cfg.parent}/policy.toml: cannot read the policy table: Expected '='\n",
+        encoding="utf-8",
+    )
+    assert loads() == "- loads: yes"
+    # a manifest the report cannot read: step 2's vanished-source line, its ids by place, never in clear
+    out.write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + said + "\n",
+        encoding="utf-8",
+    )
+    cfg.write_text(trimmed, encoding="utf-8")
+    db = expand(load_config(cfg).state_paths.db)
+    db.write_bytes(b"not a database, " * 64)
+    line = loads()
+    assert line.startswith(
+        "- loads: yes, but step 2's sync refused it (run 20260929T100000Z): configuration error: source(s) "
+        "(not in the config, 1) (1 file(s)) are mirrored but no longer in sources.toml"
+    ), line
+    assert gone not in line
+    write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
+    assert loads() == "- loads: yes"
 
 
 # ---- the v5 friction log -------------------------------------------------------------------------------
