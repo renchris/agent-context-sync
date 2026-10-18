@@ -8777,7 +8777,9 @@ def synced_before(runs: Sequence[InstallRun]) -> int | None: ...
   run that named a folder the config already had reads `kept the 1 already synced (none added) · 1 named
   with --source-local`. The folders after the options are never read: the line holds counts and fixed words.
 - Without the counts there is no `folders:` line. A count is a whole number of at most 6 digits (`_count`);
-  anything else is no count.
+  anything else is no count. Amended 2026-10-18, §16.116 S9: the line reads every install run of the
+  attempt inside its end line, not the last one alone: kept is the first run's `kept`, added the sum of the
+  `done` config steps' `added`, named the distinct folders the options name.
 
 Tests: `tests/test_setup_report.py` (a Mac with two folders synced and a run that adds none: fully one
 command, 0 human turns, no folder question, and the `folders:` line under the `install.sh:` line; eight
@@ -20941,6 +20943,9 @@ stop's) holds, so "see Doctor" always finds it; the step is the layout's folder-
 on disk` is not built: without the doctor gate it claims a folder missing after it was fixed. Test:
 `test_the_folders_line_says_step_1_found_a_synced_folder_not_on_disk`.
 
+Amended 2026-10-18, §16.116 S9: the counts are the attempt's install runs', not the last run's alone; the
+not-on-disk clause still follows the list run right before the last install run.
+
 **A retried run's item** (Q12, Q21). Q12: Items said `the same command was run again and ended 0` of a run whose
 re-run had other arguments; `_retry_line` now gets the attempt's first install run that ended 0 and compares the two
 runs' `args=`, never printing them: the same arguments (in any order or spacing) keep those words; arguments that
@@ -21436,6 +21441,22 @@ an error line longer than 220 characters starts the error where `_FAILED_EXIT_RE
 `exited`, `returned` or `(exit` first; the shapes `<cmd> exit 1: <error>`, `exit code 1:`, `exit status 128:`, `rc=1:`
 and `rc 1:` were cut inside the command, with no word of git's error. A second arm matches them; the leftmost match
 is unchanged for the old shapes. Test: `test_a_logged_command_keeps_its_bars_and_its_error`.
+
+**The folders line reads the attempt's install runs** (S9; amends §16.110 Q17). `_folders_line` took `kept`,
+`added` and the named options from the last install run alone, so a run that added a folder and exited 1 at status,
+then a re-run with no options, read `kept the 3 already synced (none added) · 0 named` while the prompt's finish
+named the folder added (and, on a new Mac, `kept the 1 already synced`). Over the install runs inside the attempt's
+end line whose config step logged both counts: kept is the first run's `kept`, what was synced before the attempt,
+never a sum (2 + 3 would be 5); added is the sum of `added` over the `done` config steps (a config step that wrote
+sources.toml before a status exit 1 still wrote it); named counts distinct folders (`_without_folders`, compared in
+memory, never printed), so a retry with the same `--source-local` names one. An added count from a run that is not
+the last names it: `1 added to the 2 already synced (by run <label>, which exited 1) · 1 named with --source-local
+(install.log)`, or `1 added (none was synced before; by run <label>) · ...`. When the counts do not chain (a source
+changed by hand between runs: first `kept` plus the sum is not the last run's `kept` plus its own), the line is the
+last run's, with `(last run; install.log)`. One counted run, or a last run after the end line, reads as before; the
+not-on-disk clause (`_gone_clause`) keeps the list run right before the last install run. Test:
+`test_the_folders_line_counts_what_was_kept_added_and_named` (RT's two runs, a same-options retry, a run after the
+end line, counts that do not chain).
 
 **The not-on-disk doctor bucket counts checks** (S12, S27: one defect from two finders, built once; amends §16.110
 Q3, §16.39 N16). The bucket was the one whose number counted folders, so `found not on disk 1:` was

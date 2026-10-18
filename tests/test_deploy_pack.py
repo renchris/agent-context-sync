@@ -5341,6 +5341,9 @@ _ROUND_14_PARAGRAPH_AMENDS = (
 )
 """Round 14's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
+_ROUND_15_PARAGRAPH_AMENDS = (("16.29", "- Without the counts there is no `folders:` line.", "§16.116 S9"),)
+"""Round 15's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5364,11 +5367,13 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     rule that reads one claim's line alone also finds §16.86's M54 line. Round 12's §16.103 N58 has two, and
     §16.101 (lane B) four, §16.99 (lane RB) two, §16.102 (lane E) one: N73's at §16.12's STATE.md
     paragraph. Round 14's §16.114 (lane E) three, Q62's, and §16.115 (lane D) two: Q80's at §16.22's
-    nothing-stored bullet and Q67's at §16.109's opening paragraph."""
+    nothing-stored bullet and Q67's at §16.109's opening paragraph. Round 15's §16.116 (lane RA) one, S9's at
+    §16.29's folders-line bullet."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
+    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5383,6 +5388,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_12_PARAGRAPH_AMENDS,
         *_ROUND_13_PARAGRAPH_AMENDS,
         *_ROUND_14_PARAGRAPH_AMENDS,
+        *_ROUND_15_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

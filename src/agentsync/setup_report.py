@@ -8545,31 +8545,87 @@ def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
     )
 
 
-def _folders_line(r: _Run, runs: Sequence[InstallRun]) -> str | None:
+def _folders_line(r: _Run, runs: Sequence[InstallRun], end: datetime | None = None) -> str | None:
     """``- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)``:
-    what the last install run did with the folder choice, in counts and no names. The counts are its config
-    step's ``kept`` and ``added`` fields (the folders synced before the step and the ones it added, counted
-    by the installed agentsync), and the named ones are the ``--source-local`` options of its arguments: a
-    folder named again adds nothing. A folder step 1's list found not on disk is named by count
+    what the attempt's install runs did with the folder choice, in counts and no names. The counts are the
+    config steps' ``kept`` and ``added`` fields (the folders synced before the step and the ones it added,
+    counted by the installed agentsync), and the named ones are the ``--source-local`` options of the runs'
+    arguments: a folder named again adds nothing. A folder step 1's list found not on disk is named by count
     (:func:`_gone_clause`). None when no install run logged the counts (an installer from before them, or a
-    config agentsync could not read)."""
+    config agentsync could not read).
+
+    Over the attempt's runs inside its end line (``end``; B13 round 15 S9: an earlier run that added a
+    folder and exited 1 was dropped for the last run's ``kept the 3 already synced (none added) · 0
+    named``): kept is the first such run's ``kept``, what was synced before the attempt, never a sum; added
+    is the sum of the ``done`` config steps' ``added``, the run that added named when it is not the last;
+    named counts distinct folders, so a retry with the same options names one. When the counts do not
+    chain (a source changed by hand between runs), the last run's alone, said so."""
     installs = install_runs_only(runs)
     if not installs:
         return None
+    gone = _gone_clause(r, runs)
+    late = _after_end(runs, end)
+    counted = [
+        run
+        for run in installs
+        if run not in late
+        and _count(run.step("config"), "kept") is not None
+        and _count(run.step("config"), "added") is not None
+    ]
     last = installs[-1]
-    kept, added = _count(last.step("config"), "kept"), _count(last.step("config"), "added")
+    if len(counted) < 2 or counted[-1] is not last:
+        return _folders_said(*_kept_added(last), gone, len(_NAMED_FOLDER_RE.findall(last.args)))
+    kept0 = _kept_added(counted[0])[0] or 0
+    adds = [(run, n) for run in counted if (n := _kept_added(run)[1] or 0) and _done(run)]
+    added = sum(n for _run, n in adds)
+    final_kept, final_added = _kept_added(last)
+    if kept0 + added != (final_kept or 0) + (final_added or 0 if _done(last) else 0):
+        said = _folders_said(final_kept, final_added, gone, len(_NAMED_FOLDER_RE.findall(last.args)))
+        return None if said is None else said.replace(" (install.log)", " (last run; install.log)")
+    by = [run for run, _n in adds if run is not last]
+    which = "; ".join(
+        f"by run {run.display_id}" + (f", which exited {run.rc}" if run.rc else "") for run in by
+    )
+    return _folders_said(kept0, added, "; ".join(x for x in (which, gone) if x), _named(counted))
+
+
+def _kept_added(run: InstallRun) -> tuple[int | None, int | None]:
+    """An install run's config step ``kept`` and ``added`` counts (None for one it did not log)."""
+    step = run.step("config")
+    return _count(step, "kept"), _count(step, "added")
+
+
+def _done(run: InstallRun) -> bool:
+    """Whether the run's config step wrote sources.toml (``result=done``); an exit 1 at a later step, status
+    for one, leaves what it wrote."""
+    return (run.step("config") or {}).get("result") == "done"
+
+
+def _named(runs: Sequence[InstallRun]) -> int:
+    """The distinct folders the runs' ``--source-local`` options name, compared in memory and never printed;
+    a run whose quoting does not split counts its options, and the count is never below any one run's."""
+    folders: set[str] = set()
+    most = 0
+    for run in runs:
+        split = _without_folders(run.args)
+        if split is not None:
+            folders.update(split[1])
+        most = max(most, len(_NAMED_FOLDER_RE.findall(run.args)))
+    return max(len(folders), most)
+
+
+def _folders_said(kept: int | None, added: int | None, why: str, named: int) -> str | None:
+    """The folders line for these counts; ``why`` (which run added, the not-on-disk clause) in its bracket."""
     if kept is None or added is None:
         return None
-    gone = _gone_clause(r, runs)
     if kept and not added:
-        did = f"kept the {kept} already synced (none added{'; ' + gone if gone else ''})"
+        did = f"kept the {kept} already synced (none added{'; ' + why if why else ''})"
     elif kept:
-        did = f"{added} added to the {kept} already synced" + (f" ({gone})" if gone else "")
+        did = f"{added} added to the {kept} already synced" + (f" ({why})" if why else "")
     elif added:
-        did = f"{added} added (none was synced before{'; ' + gone if gone else ''})"
+        did = f"{added} added (none was synced before{'; ' + why if why else ''})"
     else:
-        did = "none synced and none added" + (f" ({gone})" if gone else "")
-    named = len(_NAMED_FOLDER_RE.findall(last.args))
+        did = "none synced and none added" + (f" ({why})" if why else "")
     return f"- folders: {did} · {named} named with --source-local (install.log)"
 
 
@@ -8946,7 +9002,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     out.append(
         _install_line(r, runs, scoped=att is not None and att.begin is not None, end=_attempt_end(att))
     )
-    folders = _folders_line(r, runs)
+    folders = _folders_line(r, runs, _attempt_end(att))
     if folders is not None:
         out.append(folders)
     if r.facts.instructions is not None:

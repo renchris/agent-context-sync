@@ -4603,7 +4603,8 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
                 ("", "skipped note=exists kept=1 added=0"),
             ],
             ASKED,
-            "kept the 1 already synced (none added) · 0 named with --source-local",
+            # B13 round 15 S9: the earlier run added it, not the last (which said kept=1 added=0)
+            "1 added (none was synced before; by run 20260929T100000Z) · 1 named with --source-local",
         ),
         (
             "",  # the list finished with no count: it printed no mark, so the question was asked
@@ -4627,6 +4628,53 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
         assert found == ([f"- folders: {folders} (install.log)"] if folders else []), (listed, installs)
         for raw in (*RAW, "Plans"):
             assert raw not in text, raw
+    # B13 round 15 S9: the attempt's runs, not the last one alone. RT's run that added a folder and exited
+    # 1 at status, then a run with no options; a retry naming the same folder; a run after the end line
+    # (10:01:10) is the last run's alone; counts that do not chain (a source removed by hand between runs)
+    # say so.
+    by_first = "1 added to the 2 already synced (by run 20260929T100000Z, which exited 1) · 1 named with "
+    for installs, rc0, folders in (
+        (
+            [
+                (f"--source-local {one}", "done note=add-source kept=2 added=1"),
+                ("", "skipped note=exists kept=3 added=0"),
+            ],
+            1,
+            by_first + "--source-local",
+        ),
+        (
+            [
+                (f"--source-local {one}", "done note=add-source kept=2 added=1"),
+                (f"--source-local {one}", "done note=add-source kept=3 added=0"),
+            ],
+            1,
+            by_first + "--source-local",
+        ),
+        (
+            [
+                (f"--source-local {one}", "done note=add-source kept=2 added=1"),
+                ("", "skipped note=exists kept=3 added=0"),
+                (f"--source-local {two}", "done note=add-source kept=3 added=1"),
+            ],
+            0,
+            "1 added to the 3 already synced · 1 named with --source-local",
+        ),
+        (
+            [
+                (f"--source-local {one}", "done note=add-source kept=2 added=1"),
+                ("", "skipped note=exists kept=2 added=0"),
+            ],
+            0,
+            "kept the 2 already synced (none added) · 0 named with --source-local (last run;",
+        ),
+    ):
+        log = set_up_log(fake_mac, *installs, listed=" synced=2")
+        first = "2026-09-29T10:00:00Z run=20260929T100000Z-4242 end rc=0 "
+        log.write_text(log.read_text(encoding="utf-8").replace(first, first.replace("rc=0", f"rc={rc0}")))
+        write_friction(fake_mac, V11_HAPPY)
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        line = _line(section(text, "Summary"), "- folders: ")
+        assert line.startswith(f"- folders: {folders}"), (installs, line)
     runs = setup_report.read_install_runs(set_up_log(fake_mac, ("--source-local x", "done note=created")))
     assert [run.args for run in runs] == ["--list-folders", "--source-local x"]
     assert setup_report.synced_before(runs) == 2 and setup_report.synced_before(runs[1:]) is None
