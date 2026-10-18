@@ -22227,3 +22227,27 @@ beside the patches.
 H11's, §16.73 H43's and §16.79 J60's, and none had a dated line: Q25's heading names no amends, so the scan never read
 it. Each gets one, and Q25's paragraph a line naming the right sections. Tests: the dated-line scan, and the §16.14
 pin in `_ROUND_15_PARAGRAPH_AMENDS`.
+
+### 16.122 Round 16: setup report (2026-10-18, wave B13 round 16 lane RA)
+
+Reserved for round 16 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 16").
+
+### 16.123 Round 16: installer, bring-back.md's patches and the stopped copy (2026-10-18, wave B13 round 16 lane RB)
+
+Reserved for round 16 lane RB of B13.
+
+### 16.124 Round 16: setup prompt v25 and the config a sync refuses (2026-10-18, wave B13 round 16 lane P)
+
+Reserved for round 16 lane P of B13.
+
+### 16.125 Round 16: the person's fixes, the CLI's counts and WARNING lines (2026-10-18, wave B13 round 16 lane B)
+
+Reserved for round 16 lane B of B13.
+
+### 16.126 Round 16: the pandoc fix and wait, the CI flakes, converter counts (2026-10-18, wave B13 round 16 lane E)
+
+Reserved for round 16 lane E of B13.
+
+### 16.127 Round 16: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 16 lane D)
+
+Reserved for round 16 lane D of B13.

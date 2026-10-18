@@ -1099,6 +1099,36 @@ install.sh's `config_failed` saying "does not load" for a config that loads but 
 Round 16: the round 15 workflow with prompt v24 on this section's landed tip, BASE `61474fdf` (ids T<n>, outputs
 `round16/`); scenario C also plays the v23 and v22 blocks.
 
+### B13 round 16: v24 rehearsal, cross-lane review, harvest (2026-10-18)
+
+Run `wf_992b6eef-81f` on `791d9d4b` (103 agents, 0 errors). All six scenarios pass their EXPECTED with no turn; the
+field Mac's path is clean (v10 build with copied helpers, pulled to v24, "fully one command"), every v23 and v22 copy is
+refused in step 1 with exit 2, and no sandbox holds a lock named for the real home. 92 findings, 90 confirmed (0 turn,
+22 wrong, 68 small), 2 refuted (T78, T91); 5 need prompt text, so the next prompt is v25. The count rose because the
+finders converged on the same seams: the 22 wrongs are 11 defects. They come from lane P's refused-config probes and
+review, not the plain rehearsed paths: install.sh's config_failed and v24 call a config that loads but a sync refuses
+"does not load" (T1, T10, T29, T45, T67, T81: six finders); status hands the person's policy.toml and [governance]
+fixes to the agent (T2, T9); a policy error's label name leaks into the report (T3); the report after a step 1 stop on
+the field Mac is rendered by the installed v10 build (T11); an unreadable manifest passes status and doctor (T12); an
+unreadable patch an earlier report carried counts as missing (T24); step 1 says "none is needed" for a mirrored
+folder whose block is gone (T30); the new config.vanished_sources [FAIL] shows a source id in clear (T42, T53, T66);
+the stopped copy's count fix-up misreads counts of 10 or more (T43); doctor's bundled-pandoc fix is a bare
+`uv tool upgrade` without install.sh's lock and TLS settings (T59, T65). The harvest found the causes of the lead's two
+CI flakes: the pandoc ticker's TERM trap exits 1, not 3, under `set -e`, which drops "pandoc: started after Ns" under
+load (T41, T79, the Q40 flake); and install.sh can sit silent for a watchdog's whole limit (T80, the `--list-folders`
+timeout).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90 over rounds 2 and 4 to 16; turns 3, 0,
+0, 1, 5, 2, 4, 1, 1, 3, 1, 0, 0, 0; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22 (11 distinct). The third
+round in a row with no turn.
+
+Lanes (`--account auto`, CONTRACTS §16.122 to §16.127, brief `lanes/COMMON15.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r16-land.lock`): RA 20 (setup_report.py), RB 17
+(install.sh: bring-back.md's patches, the stopped copy, the re-run command), P 10 (prompt v25, config_failed, the
+deleted block in step 1), B 20 (status's person's fixes, the CLI's counts and WARNING lines, loop), E 13 (pandoc fix,
+ticker and wait, `with_timeout`, converters, the gate journal; lands last), D 9 (docs/deploy, CONTRACTS). Lead: T92
+(one operator cleanup, `b13-r15`, replacing the `b13-r14` one).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
