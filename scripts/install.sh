@@ -3376,7 +3376,10 @@ utc_stamp() {
 # Spotlight attribute write and a moved folder change (it would send the 2026-10-07 patch again). A patch is
 # listed only when the report would have sent it, so one an earlier attempt's report carried is not (B13 round
 # 15 S22); a listed patch sent once readable gets a third field, when its attempt began, and goes from the list
-# once a later attempt reports, since the attempt's report carried it (S34).
+# once a later attempt reports, since the attempt's report carried it (S34). local-work/.sent keeps each patch a
+# report embedded, by identity and that first report's time: an attempt step 1 stopped writes no header and so no
+# end line, so the time rule cannot see its report, and a later attempt's report lists such a patch by its hash;
+# a report of the same attempt sends it again (S21).
 # Each embedded file sits inside a tilde fence longer than any tilde run that starts one of its lines (at least
 # 10), so its own headings are no headings of this file and none of its lines can close the fence (B13 round 5
 # F14): the outline is this file's title and its three numbered sections, and every embedded byte is kept, so
@@ -3433,6 +3436,7 @@ write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
 	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem rec sentat begin force
+	local wassent="" sentlist="" carried
 	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
@@ -3459,6 +3463,7 @@ write_bring_back() {
 	BACK_WHY="could not write a temporary file in ${REPORT_PATH%/*}"
 	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	[ ! -f "$kept/.not-sent" ] || [ -L "$kept/.not-sent" ] || [ -L "$kept" ] || wasnot="$(cat "$kept/.not-sent" 2>/dev/null || true)"
+	[ ! -f "$kept/.sent" ] || [ -L "$kept/.sent" ] || [ -L "$kept" ] || wassent="$(cat "$kept/.sent" 2>/dev/null || true)"
 	# Section 3 first, so the header names only what the file holds: the review sentence only the sections that
 	# hold something, and the author lines only when a patch is embedded (a patch not repeated has none; B13
 	# round 10 L4)
@@ -3490,11 +3495,20 @@ write_bring_back() {
 			at=""
 			[ -z "$prev" ] || [ "$force" -eq 1 ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
 			[ -z "$at" ] || [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ] || at=""
+			# the report that first embedded it (.sent), when that was before this attempt began: an attempt with
+			# no header writes no end line, so the time rule above cannot see its report (B13 round 15 S21)
+			carried=""
+			[ -z "$id" ] || carried="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 } END { print s }' <<<"$wassent" 2>/dev/null || true)"
+			carried="$(utc_stamp "$carried")"
+			[ -z "$carried" ] || sentlist+="$id $carried"$'\n'
+			if [ -n "$carried" ] && { [ "$force" -eq 1 ] || [ -n "$at" ] || [ "$begin" = "-" ] || [ "${carried//[!0-9]/}" -ge "${begin//[!0-9]/}" ]; }; then
+				carried="" # .not-sent's rule, the time rule, no attempt to tell, or this attempt's own report
+			fi
 			[ -r "$p" ] || {
 				unread=$((unread + 1))
 				# listed only when this report would have sent it: a patch an earlier attempt's report carried is
 				# not, or the next readable report would send it again (B13 round 15 S22)
-				[ -z "$id" ] || [ -n "$at" ] || notsent+="$id $now"$'\n'
+				[ -z "$id" ] || [ -n "$at$carried" ] || notsent+="$id $now"$'\n'
 				continue
 			}
 			if [ "$force" -eq 1 ]; then # sent now: the record says by which attempt (B13 round 15 S34)
@@ -3502,16 +3516,22 @@ write_bring_back() {
 			elif [ -n "$nsat" ]; then
 				notsent+="$id $nsat${sentat:+ $sentat}"$'\n'
 			fi
-			if [ -n "$at" ]; then
+			if [ -n "$at$carried" ]; then
 				sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"
 				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
 				[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
-					skipped="${skipped}not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
+					if [ -n "$at" ]; then
+						skipped="${skipped}not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
+					else
+						skipped="${skipped}not repeated: a patch file an earlier attempt's report held ($carried): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
+					fi
 					nskip=$((nskip + 1))
 					continue
 					;;
 				esac
 			fi
+			# embedded: the first report that does is the one .sent keeps (B13 round 15 S21)
+			[ -z "$id" ] || case "$sentlist" in "$id "* | *$'\n'"$id "*) ;; *) sentlist+="$id $now"$'\n' ;; esac
 			[ "$sent" -gt 0 ] || printf '%sdiff\n' "$fence"
 			sent=$((sent + 1))
 			cat "$p" || catfail=1
@@ -3613,6 +3633,15 @@ write_bring_back() {
 			(umask 077 && printf '%s' "$notsent" >"$kept/.not-sent") 2>/dev/null || true
 		else
 			rm -f "$kept/.not-sent"
+		fi
+		# what this file embeds, by identity and the first report that did (B13 round 15 S21); a link is left
+		# alone, as one at .not-sent is never read
+		if [ -L "$kept/.sent" ]; then
+			:
+		elif [ -n "$sentlist" ]; then
+			(umask 077 && printf '%s' "$sentlist" >"$kept/.sent") 2>/dev/null || true
+		else
+			rm -f "$kept/.sent"
 		fi
 	fi
 	say "bring back: $out (one file: report, fix request, local work)"

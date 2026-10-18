@@ -21103,6 +21103,9 @@ line gives a count-only remedy with the keep's `--suffix`, and the header says s
 Amended 2026-10-18, §16.117 S22, S34: a patch is listed in `.not-sent` only when that report would have sent it, and
 a listed patch sent once readable gets the time its attempt began as a third field; the record goes once a later
 attempt reports, so the time rule then lists the patch by its hash.
+Amended 2026-10-18, §16.117 S21: `local-work/.sent` keeps each embedded patch and the first report that embedded it,
+so a later attempt's report lists the patch by its hash even when the attempt that sent it had no header and so no
+end line.
 
 **The first sync's config refusal is the person's** (Q22). An exit 78 at the first sync is a config that loads but the
 sync cycle refuses (`cycle._refuse_vanished_sources`: a source still mirrored, gone from sources.toml), so the config
@@ -21667,6 +21670,26 @@ time, though no earlier report carried it. Tests:
 `test_a_patch_made_readable_in_the_attempt_that_could_not_read_it_is_sent_once` (on the real clock, and with the end
 and the listing 3 s apart), `test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent`,
 `test_a_patch_unreadable_at_two_finished_reports_is_sent_once_readable`.
+
+**A report of an attempt with no header counts as carrying its patches** (S21; amends §16.111 Q29). An attempt step 1
+stopped (Xcode, git) has no `Attempt:` line, so `friction_close_attempt` writes no end line for it and the time rule
+(`friction_earlier_end`) never sees its report: Variant R's second session, 12 minutes after the first one's report,
+embedded both patches again with no `not repeated:` line, and bw3 did the same after a finished headed attempt. Once
+bring-back.md is in place, `local-work/.sent` (0600, skipped when it or local-work is a link, as `.not-sent` is) holds
+one line per embedded patch, `<device:inode:mtime:size> <report time>`, keeping the first report's time while the
+patch is unchanged; a patch gone or changed leaves it. A patch whose record is strictly before the current attempt's
+begin (`friction_attempt_begin`) is listed `not repeated: a patch file an earlier attempt's report held (<time>): N
+lines, sha256 <12 hex>; still in ~/agent-context/setup/local-work`; `.not-sent` keeps its priority, the time rule its
+place, and an attempt that cannot be told (no friction log), a record of this attempt or a time that cannot be read
+sends it. So a second report in one attempt still sends it (the same section 3), and header-less sessions that
+parse_friction merges into one attempt (unstated words under 10 minutes apart) send it in each report. Not the
+finder's "listed whatever the end lines say": the second report of the same attempt would then drop the patch from
+the file that replaces the first. Not the alternative of an end line for a header-less attempt, which reverses the
+tested "no end line for it" rule and how parse_friction reads the attempt. A patch `.sent` holds is not put in
+`.not-sent` when it is unreadable (S22's rule). docs/deploy/README.md's setup/ row names `local-work/.sent`. Tests:
+`test_a_report_of_an_attempt_with_no_header_is_counted_as_carrying_its_patches` (with no earlier attempt, and after a
+finished one), `test_a_patch_unreadable_after_a_report_with_no_header_embedded_it_is_not_listed`,
+`test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 

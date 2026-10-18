@@ -5803,6 +5803,8 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         '--suffix=".<branch>.patch" origin/main..<branch> -o ~/agent-context/setup/local-work' in page
     )
     assert f"then run {setup_report.LOCAL_WORK_AGAIN} again" in page and "run this command again`" not in page
+    # B13 round 15 S21: the line for a patch an earlier attempt's report embedded, by local-work/.sent
+    assert "`not repeated: a patch file an earlier attempt's report held (<time>)`" in page
     # B13 round 14 Q29: the clause for patches this account cannot read
     assert (
         "`, U of them unreadable and not in bring-back.md (chmod u+r, then run "

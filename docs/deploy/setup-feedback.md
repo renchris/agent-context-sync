@@ -189,7 +189,9 @@ words) is yours to remove. The CLI always redacts.
   not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
   hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with
   the patch you hold (`shasum -a 256`). If you hold none, that work never arrived: the Mac cannot know what was
-  copied back, so ask for the file the line names. The header's sentence on each patch's author is there only
+  copied back, so ask for the file the line names. A patch an earlier attempt's report embedded is listed the same
+  way even when that attempt stopped at step 1 and wrote no end line (`local-work/.sent`): its line reads `not
+  repeated: a patch file an earlier attempt's report held (<time>)`. The header's sentence on each patch's author is there only
   when section 3 sends a patch; when it sends none because each was in an earlier report, the header says so (`its one patch` when there is one).
   Whoever looks after agentsync for your team triages it there with this page, exactly like an issue; that needs
   no contact with the agentsync maintainer.

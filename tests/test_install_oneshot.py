@@ -2805,6 +2805,83 @@ def test_a_patch_unreadable_at_two_finished_reports_is_sent_once_readable(env: d
     assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
 
 
+def _stated_stop(env: dict[str, str], stamp: str) -> None:
+    """A step 1 git stop logged with the prompt's stated words and no header (an attempt step 1 ended)."""
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    with friction_path(env).open("a", encoding="utf-8") as f:
+        f.write(
+            f"{stamp} | step 1 | error | prompt v{COMPAT}, Contoso agent: git pull --ff-only exited 1 | -\n"
+        )
+
+
+def _carried_not_repeated(patch: Path, held: str) -> str:
+    """The line section 3 has for a patch an earlier attempt's report embedded (``.sent``)."""
+    data = patch.read_bytes()
+    lines, sha = data.count(b"\n"), hashlib.sha256(data).hexdigest()[:12]
+    return (
+        f"not repeated: a patch file an earlier attempt's report held ({held}): {lines} lines, sha256 {sha}; "
+        "still in ~/agent-context/setup/local-work\n"
+    )
+
+
+@pytest.mark.parametrize("before", ["no earlier attempt", "a finished attempt"])
+def test_a_report_of_an_attempt_with_no_header_is_counted_as_carrying_its_patches(
+    env: dict[str, str], before: str
+) -> None:
+    """B13 round 15 S21 (Variant R, probe bw3): an attempt step 1 stopped writes no header and so no end
+    line, so the time rule never saw its report, and the next session's report sent its patches again.
+    local-work/.sent keeps each embedded patch's identity and the first report that embedded it; a later
+    attempt's report lists such a patch by its hash. Two reports in one attempt both send it."""
+    if before == "a finished attempt":
+        _new_attempt(env, "2026-10-07T06:40:00Z")
+        with friction_path(env).open("a", encoding="utf-8") as f:
+            f.write("2026-10-07T06:45:00Z | end | finished\n")
+    _stated_stop(env, "2026-10-07T10:00:00Z")
+    one = _keep_patch(env, "2026-10-07T09:59:00Z", "+one = 1\n", "0001-one.patch")
+    two = _keep_patch(env, "2026-10-07T09:59:00Z", "+two = 2\n", "0002-two.patch")
+    both = "~~~~~~~~~~diff\n+one = 1\n+two = 2\n~~~~~~~~~~\n"
+    assert _local_work(env) == both
+    assert _local_work(env) == both, "a second report of the same attempt sends them again"
+    ledger = Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / ".sent"
+    assert ledger.stat().st_mode & 0o777 == 0o600
+    # the report's time, as if it ran a minute after the stop: every run here is in one second
+    ledger.write_text(re.sub(r" \S+$", " 2026-10-07T10:01:00Z", ledger.read_text(), flags=re.MULTILINE))
+    _stated_stop(env, "2026-10-07T10:13:00Z")
+    held = "2026-10-07T10:01:00Z"
+    assert _local_work(env) == _carried_not_repeated(one, held) + _carried_not_repeated(two, held)
+    assert friction_path(env).read_text(encoding="utf-8").endswith("exited 1 | -\n"), "still no end line"
+    # a patch kept since is sent beside them, and the ledger keeps the first report's time
+    three = _keep_patch(env, "2026-10-07T10:12:00Z", "+three = 3\n", "0003-three.patch")
+    section = _local_work(env)
+    assert section.startswith("~~~~~~~~~~diff\n+three = 3\n~~~~~~~~~~\n"), section
+    assert section.count(f"({held})") == 2
+    assert len(ledger.read_text().splitlines()) == 3
+    three.unlink()
+    one.write_text("+one = 1, changed\n", encoding="utf-8")
+    assert _local_work(env).startswith("~~~~~~~~~~diff\n+one = 1, changed\n~~~~~~~~~~\n"), "changed: sent"
+    assert len(ledger.read_text().splitlines()) == 2, "a patch gone or changed leaves the ledger"
+
+
+def test_a_patch_unreadable_after_a_report_with_no_header_embedded_it_is_not_listed(
+    env: dict[str, str],
+) -> None:
+    """B13 round 15 S21 with S22: a patch an earlier header-less attempt's report embedded and unreadable at a
+    later report is not put in .not-sent, so once readable it is listed by its hash, not sent again."""
+    _stated_stop(env, "2026-10-07T10:00:00Z")
+    patch = _keep_patch(env, "2026-10-07T09:59:00Z")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+    ledger = Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / ".sent"
+    ledger.write_text(re.sub(r" \S+$", " 2026-10-07T10:01:00Z", ledger.read_text(), flags=re.MULTILINE))
+    _stated_stop(env, "2026-10-07T10:13:00Z")
+    patch.chmod(0)
+    try:
+        assert _local_work(env).startswith("not sent: 1 patch file in ")
+    finally:
+        patch.chmod(0o600)
+    assert not (ledger.parent / ".not-sent").exists()
+    assert _local_work(env) == _carried_not_repeated(patch, "2026-10-07T10:01:00Z")
+
+
 def test_bring_back_does_not_repeat_local_work_an_earlier_attempt_reported(env: dict[str, str]) -> None:
     """Field report 2026-10-07: the bring-back file carried the same 3,587-line patch a second time, a round
     after it had been rebuilt, because section 3 was every patch in the folder. A patch last written at or
