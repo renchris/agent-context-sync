@@ -4408,6 +4408,71 @@ out = [str(len(synced)), str(len(first)), *first, *body]
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 ' "$CONFIG" "$2" "$SYNCED_MARK" "$INSIDE_MARK" "$CONTAINS_MARK"
 }
+# The sources the manifest still mirrors (present file rows) whose [[source]] block is gone from the config,
+# read by the interpreter $1 as cycle.vanished_sources reads them, which step 2's status FAILs on and every sync
+# refuses (B13 round 16 T6, T30): prints how many match no folder of the file $2 (the list's unmarked folders,
+# one per line), then each listed folder that one --source-local adds back: the folder the manifest recorded as
+# that source's root (meta scope_root:<id>, "<run>:<path>", which every sync since 2026-10-06 writes), whose
+# derive_source_id (the configured ids taken, as add-source derives it) is that id. A name alone never matches:
+# a folder of the same name elsewhere is another folder. A source the inbox step 2 adds back is none.
+# A reader of its own, after synced_folders and allowed to fail: the list and its marks do not depend on it.
+# The manifest is opened read-only (sqlite3 mode=ro, never agentsync's Manifest, which migrates it), with the
+# same query as setup_report._live_refusal, and a manifest it cannot read is none. Only names every agentsync
+# since 2026-09-29 has, PRESENT_STATES behind a guard. Prints no source id: the report names none either.
+vanished_folders() { # PYTHON LIST
+	with_timeout 5 "$1" -I -c '
+import os, sqlite3, sys
+from pathlib import Path
+from agentsync.config import canonical_source_root, derive_source_id, load_config
+from agentsync.paths import expand
+
+try:
+    from agentsync.model import PRESENT_STATES
+
+    states = [st.value for st in PRESENT_STATES]
+except ImportError:
+    states = ["live", "dataless", "quarantined", "refused"]
+config = load_config(Path(sys.argv[1]))
+configured = {s.id for s in config.sources}
+db = expand(config.state_paths.db)
+vanished, roots = set(), {}
+if db.is_file():
+    try:
+        conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+        marks = ", ".join("?" for _ in states)
+        try:
+            rows = conn.execute(
+                "SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 "
+                f"AND state IN ({marks}) GROUP BY source_id",
+                states,
+            ).fetchall()
+            vanished = {str(sid) for sid, n in rows if str(sid) not in configured and n}
+            try:
+                roots = dict(
+                    conn.execute("SELECT key, value FROM meta WHERE key LIKE ?", ("scope_root:%",)).fetchall()
+                )
+            except sqlite3.Error:
+                roots = {}
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        vanished = set()
+inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")
+if not any(s.path is not None and s.path == inbox for s in config.sources):
+    vanished.discard(derive_source_id(inbox, configured))
+with open(sys.argv[2], "rb") as fh:
+    listed = [os.fsdecode(line) for line in fh.read().split(b"\n") if line]
+back = {}
+for p in listed:
+    folder = canonical_source_root(Path(p))
+    sid = derive_source_id(folder, configured)
+    root = str(roots.get("scope_root:" + sid, "")).partition(":")[2]
+    if sid in vanished and sid not in back and root == str(folder):
+        back[sid] = p
+out = [str(len(vanished) - len(back)), *back.values()]
+sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
+' "$CONFIG" "$2"
+}
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
 # 0 listed, 3 none or a synced folder under CloudStorage whose app is signed out (B13 round 11 M4, round 12
@@ -4416,7 +4481,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -4493,6 +4558,24 @@ list_folders() {
 			warn "could not read which folders $CONFIG already syncs ($why), so none is marked below"
 			;;
 		esac
+		# A source still mirrored whose [[source]] block is gone (B13 round 16 T6, T30): step 2's status FAILs on
+		# it, so the NEXT says which, never "none is needed". Read only once the folders were read and with no
+		# provider denied or still asking (that exit 4 comes first); a reader that fails changes nothing.
+		if [ -n "$synced" ] && [ -z "$denied$asking" ]; then
+			tail -n +3 "$tmp/marked" | LC_ALL=C grep -v '^\[' >"$tmp/unmarked" || true
+			if vanished_folders "$py" "$tmp/unmarked" >"$tmp/vanished" 2>/dev/null; then
+				vother="$(sed -n 1p "$tmp/vanished")"
+				case "$vother" in
+				'' | *[!0-9]*) vother=0 ;;
+				*)
+					while IFS= read -r line; do
+						vback=$((vback + 1))
+						vpaths="${vpaths:+$vpaths; }$line"
+					done < <(sed -n '2,$p' "$tmp/vanished")
+					;;
+				esac
+			fi
+		fi
 	fi
 	# Every synced folder is printed with its mark, so the reader can name each: the ones the list does not
 	# reach (deeper than it goes, outside ~/Library/CloudStorage, past its cap) come first, then the list. A list
@@ -4573,6 +4656,20 @@ list_folders() {
 	fi
 	[ "$total" -le "$max" ] || say "($((total - max)) more)"
 	rm -rf "$tmp"
+	# The words for those sources: a listed folder one --source-local adds back under the same id, else only
+	# the block put back; never "on disk" or "not signed in", the words the prompt's other step 1 cases read.
+	# Logged as a count, never an id (B13 round 16 T6, T30).
+	if [ "$vback" -eq 1 ]; then
+		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again (one --source-local \"$vpaths\") or its [[source]] block is put back, as it was or retired"
+	elif [ "$vback" -gt 1 ]; then
+		vtail="; $vback folders in the list above are still mirrored but have no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on each until it is added again (one --source-local for each) or its [[source]] block is put back, as it was or retired"
+	fi
+	if [ "$vother" -eq 1 ]; then
+		vtail="$vtail; 1 source that no folder in the list above adds back is still mirrored but has no [[source]] block in $CONFIG. Step 2's status fails on it until its [[source]] block is put back, as it was or retired"
+	elif [ "$vother" -gt 1 ]; then
+		vtail="$vtail; $vother sources that no folder in the list above adds back are still mirrored but have no [[source]] block in $CONFIG. Step 2's status fails on each until its [[source]] block is put back, as it was or retired"
+	fi
+	[ $((vback + vother)) -eq 0 ] || vlog=" vanished=$((vback + vother))"
 	term="$(terminal_app)"
 	term="this terminal app${term:+ ($term)}"
 	# A config whose folders could not be read is still there: the NEXTs that ask for a folder or a sign-in
@@ -4630,7 +4727,9 @@ list_folders() {
 		elif [ "$total" -eq 0 ]; then
 			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF (no folder to add is listed: no folders are synced yet in $cs)"
 		else
-			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above (none is needed)"
+			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above"
+			# none is needed, unless a source still mirrored has no block (T6, T30)
+			[ -n "$vtail" ] || NEXT_MSG="$NEXT_MSG (none is needed)"
 		fi
 		# A folder gone while its app is signed in: no sign-in (a re-run of this list would stop the same way),
 		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause
@@ -4659,9 +4758,10 @@ list_folders() {
 		elif [ "$libs" -gt 1 ]; then
 			NEXT_MSG="$NEXT_MSG; $libs of them are not on disk because their SharePoint libraries are not synced on this Mac (each organization's OneDrive folder is there): $libpaths. Step 2's status fails on each and names the fix (sync each SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then; a sync still mirrors the folders that are there"
 		fi
+		NEXT_MSG="$NEXT_MSG$vtail"
 		gone=$((gone + others + libs))
 		[ "$gone" -eq 0 ] || more=" gone=$gone"
-		step_end "done" 0 "listed-$total synced=$synced$more"
+		step_end "done" 0 "listed-$total synced=$synced$more$vlog"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"
@@ -4677,8 +4777,8 @@ list_folders() {
 		NEXT_MSG="no folder can be added until the config is fixed: run $SELF with no --source-local, which shows the error$kept"
 		step_end "done" 0 "listed-$total$unread"
 	else
-		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$kept"
-		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread"
+		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$vtail$kept"
+		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread$vlog"
 	fi
 	return "$rc"
 }

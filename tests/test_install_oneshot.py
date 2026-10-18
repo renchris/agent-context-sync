@@ -31,6 +31,7 @@ import resource
 import shlex
 import shutil
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -48,6 +49,7 @@ from agentsync import lints, net, paths, setup_report
 from agentsync.config import (
     Config,
     SourceConfig,
+    canonical_source_root,
     default_config_text,
     inbox_source_table,
     load_config,
@@ -5757,6 +5759,199 @@ def test_the_synced_folder_reader_imports_no_agentsync_name_an_older_build_lacks
     assert not nested, "an import inside a function would not be seen here"
 
 
+VANISHED_BASELINE_NAMES = {
+    "agentsync.config": {"canonical_source_root", "derive_source_id", "load_config"},
+    "agentsync.paths": {"expand"},
+}
+"""What install.sh's vanished-source reader may import from agentsync with no fallback (every agentsync since
+2026-09-29 has them); ``PRESENT_STATES`` (2026-10-15) only behind a guard."""
+
+
+def test_the_vanished_source_reader_imports_no_agentsync_name_an_older_build_lacks() -> None:
+    """B13 round 16 T6, T30: step 1's vanished-source reader runs the agentsync an earlier setup left, like
+    the synced-folder reader. Its unguarded imports are baseline names, ``PRESENT_STATES`` falls back to the
+    standard library's list of the same states, and its query is the manifest's ``present_counts`` (the one
+    ``cycle.vanished_sources`` and the report read), on a connection opened read-only."""
+    from agentsync import manifest  # noqa: PLC0415
+    from agentsync.model import PRESENT_STATES  # noqa: PLC0415
+
+    tree = _install_sh_python("vanished_folders")
+    seen: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("agentsync"):
+            extra = {a.name for a in node.names} - VANISHED_BASELINE_NAMES.get(node.module or "", set())
+            assert not extra, f"unguarded import of {sorted(extra)} from {node.module}"
+            seen |= {a.name for a in node.names}
+        elif isinstance(node, ast.Import):
+            assert not any(a.name.startswith("agentsync") for a in node.names), ast.unparse(node)
+        elif isinstance(node, ast.Try) and any(isinstance(n, ast.ImportFrom) for n in node.body):
+            [handler] = node.handlers
+            assert isinstance(handler.type, ast.Name) and handler.type.id == "ImportError", "ImportError only"
+            assert "agentsync" not in ast.unparse(handler), "a fallback uses the standard library alone"
+            [fallback] = [n for n in handler.body if isinstance(n, ast.Assign)]
+            assert ast.literal_eval(fallback.value) == [st.value for st in PRESENT_STATES]
+            seen |= {a.name for n in node.body if isinstance(n, ast.ImportFrom) for a in n.names}
+    assert seen == {"canonical_source_root", "derive_source_id", "expand", "load_config", "PRESENT_STATES"}
+    code = ast.unparse(tree)
+    present = Path(manifest.__file__).read_text(encoding="utf-8")
+    for words in ("SELECT source_id, COUNT(*) FROM items WHERE is_dir = 0 ", "AND state IN ("):
+        assert words in code and words in present, words
+    assert "?mode=ro" in code and "Manifest" not in code
+
+
+def _state_db(env: dict[str, str]) -> Path:
+    """The manifest path of the config in ``env``'s home, as install.sh's agentsync expands it there."""
+    with patch.dict(os.environ, {"HOME": env["HOME"]}):
+        return paths.expand(load_config(Path(env["HOME"]) / "agent-context" / "sources.toml").state_paths.db)
+
+
+def _manifest_rows(
+    env: dict[str, str], *rows: tuple[str, str, int], roots: dict[str, Path] | None = None
+) -> None:
+    """A manifest at the config's state path holding ``rows`` (source id, state, count) of files and the root
+    each source of ``roots`` was synced under (meta ``scope_root:<id>``, as a sync records it): only what step
+    1's vanished-source reader reads."""
+    db = _state_db(env)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db)
+    with contextlib.closing(conn), conn:
+        conn.execute("CREATE TABLE items (source_id TEXT, is_dir INTEGER, state TEXT)")
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        for sid, state, n in rows:
+            conn.executemany("INSERT INTO items VALUES (?, 0, ?)", [(sid, state)] * n)
+            conn.execute("INSERT INTO items VALUES (?, 1, ?)", (sid, state))
+        for sid, root in (roots or {}).items():
+            conn.execute(
+                "INSERT INTO meta VALUES (?, ?)", (f"scope_root:{sid}", f"3:{canonical_source_root(root)}")
+            )
+
+
+def _tool_python_without(env: dict[str, str], module: str, name: str) -> Path:
+    """:func:`_tool_python` whose ``module`` lacks ``name`` when install.sh's ``-c`` code runs: an older
+    agentsync's, or one that cannot run a reader."""
+    py = _tool_python(env)
+    run = 'exec(compile(sys.argv.pop(1), "<string>", "exec"))'
+    shim = f"import sys, {module} as _m\ndel _m.{name}\ndel _m\n{run}\n"
+    return _write_exe(
+        py,
+        "#!/bin/bash\n"
+        '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+        'code="$3"\nshift 3\n'
+        f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+    )
+
+
+def _vanished_list(env: dict[str, str]) -> tuple[Path, Path, Path]:
+    """CloudStorage with the folders Project Alpha and Project Beta, a config that syncs Alpha alone (the
+    inbox beside it): the state of probe CF, Beta's block deleted."""
+    cs = _cloud(env)
+    alpha, beta = (cs / "OneDrive-Contoso" / name for name in ("Project Alpha", "Project Beta"))
+    for d in (alpha, beta):
+        d.mkdir(parents=True)
+    cfg = _write_config(env, local_source_table("project-alpha", alpha), _inbox(env))
+    return cfg, alpha, beta
+
+
+@pytest.mark.parametrize("older", [False, True])
+def test_list_folders_names_a_mirrored_folder_whose_block_is_gone(env: dict[str, str], older: bool) -> None:
+    """B13 round 16 T6, T30 (probe CF): a folder still mirrored whose [[source]] block was deleted from
+    sources.toml was listed unmarked and the NEXT said "(none is needed)", though step 2's status FAILs on it
+    (config.vanished_sources) and every sync refuses the config. Step 1 reads the manifest read-only and says
+    which listed folder one --source-local adds back under the same id, or that the block is put back; it
+    logs only the count. An agentsync from before 2026-10-15 (no ``agentsync.model.PRESENT_STATES``, as on a
+    Mac set up earlier) reads the same."""
+    cfg, alpha, beta = _vanished_list(env)
+    _manifest_rows(
+        env,
+        ("project-alpha", "live", 3),
+        ("project-beta", "live", 14),
+        ("project-beta", "dataless", 2),
+        roots={"project-alpha": alpha, "project-beta": beta},
+    )
+    if older:
+        _tool_python_without(env, "agentsync.model", "PRESENT_STATES")
+    else:
+        _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:-1] == [
+        "already synced on this Mac: 1 folder (marked [synced] below)",
+        f"[synced] {alpha}",
+        f"{beta}",
+    ]
+    assert last_line(cp) == (
+        f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
+        '--source-local "<folder>" for each unmarked folder to add from the list above; 1 folder in the list '
+        f"above is still mirrored but has no [[source]] block in {cfg}: {beta}. Step 2's status fails on it "
+        f'until it is added again (one --source-local "{beta}") or its [[source]] block is put back, as it '
+        "was or retired"
+    )
+    assert install_log(env)[-2].endswith(" result=done note=listed-2 synced=1 vanished=1")
+    assert "project-beta" not in "\n".join(install_log(env))
+
+
+def test_list_folders_names_a_mirrored_source_that_is_no_listed_folder_without_its_id(
+    env: dict[str, str],
+) -> None:
+    """B13 round 16 T6, T30: a vanished source no listed folder adds back (a custom id, another kind) gets
+    the put-back alone, by count, never its id; tombstones and an inbox step 2 adds back are not counted.
+    A listed folder of the same name is no match unless the manifest recorded it as that source's root (a
+    folder named Project Beta elsewhere is another folder), nor is one with no recorded root. With no live
+    folder left, the folder question's NEXT carries the same words."""
+    cfg, _alpha, beta = _vanished_list(env)
+    cfg.write_text(default_config_text(), encoding="utf-8")  # no inbox, no folder
+    elsewhere = Path(env["HOME"]) / "Documents" / "Project Beta"
+    _manifest_rows(
+        env,
+        ("contoso-notes", "live", 3),
+        ("contoso-mail", "refused", 1),
+        ("old-source", "tombstone", 5),
+        ("inbox", "live", 2),
+        ("project-beta", "live", 4),
+        ("project-alpha", "live", 1),
+        roots={"project-beta": elsewhere},
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert last_line(cp) == (
+        f"{LIST_NEXT}; 4 sources that no folder in the list above adds back are still mirrored but have no "
+        f"[[source]] block in {cfg}. Step 2's status fails on each until its [[source]] block is put back, "
+        "as it was or retired"
+    )
+    assert str(beta) not in last_line(cp)
+    assert install_log(env)[-2].endswith(" result=done note=listed-2 synced=0 vanished=4")
+    assert "contoso" not in cp.stdout + "\n".join(install_log(env))
+
+
+@pytest.mark.parametrize("manifest", ["none", "not a database", "a reader that fails"])
+def test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing(
+    env: dict[str, str], manifest: str
+) -> None:
+    """B13 round 16 T6, T30: the reader is allowed to fail. No manifest, one it cannot read, and an installed
+    agentsync it cannot run (one without derive_source_id) leave the list, its marks and "(none is needed)"
+    as they were."""
+    _cfg, alpha, beta = _vanished_list(env)
+    _tool_python(env)
+    if manifest == "not a database":
+        db = _state_db(env)
+        db.parent.mkdir(parents=True)
+        db.write_bytes(b"not a database, " * 64)
+    elif manifest == "a reader that fails":
+        _manifest_rows(env, ("project-beta", "live", 14), roots={"project-beta": beta})
+        _tool_python_without(env, "agentsync.config", "derive_source_id")
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines() == [
+        "already synced on this Mac: 1 folder (marked [synced] below)",
+        f"[synced] {alpha}",
+        f"{beta}",
+        f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
+        '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)',
+    ]
+    assert install_log(env)[-2].endswith(" result=done note=listed-2 synced=1")
+
+
 STUB_FIND_HELD = """#!/bin/bash
 for a in "$@"; do
   case "$a" in
@@ -5867,6 +6062,43 @@ def real_env(env: dict[str, str], tmp_path: Path) -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": str(gitconfig),
         "GIT_CONFIG_NOSYSTEM": "1",
     }
+
+
+def test_a_mirrored_folder_whose_block_is_gone_is_named_in_step_1_and_added_back_in_step_2(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 16 T6, T30 (probe CF), with the real agentsync: a folder synced once, then its [[source]]
+    block deleted from sources.toml while its pages stay mirrored. Step 1 named no such folder and said
+    "(none is needed)"; step 2 then stopped on [FAIL] config.vanished_sources. Step 1 now names the folder
+    and the one --source-local that adds it back: step 2 with no folder still stops on that [FAIL], and with
+    that folder it exits 0 with sources.toml byte for byte as before the block was deleted."""
+    env = real_env
+    projects = _cloud(env) / "OneDrive-Contoso"
+    alpha, beta = (projects / name for name in ("Project Alpha", "Project Beta"))
+    for d in (alpha, beta):
+        d.mkdir(parents=True)
+        (d / "plan.txt").write_text(f"a made-up plan for {d.name}\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(alpha), "--source-local", str(beta))
+    assert first.returncode == 0, first.stdout + first.stderr
+    cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
+    whole = cfg.read_text(encoding="utf-8")
+    head, *tables = whole.split("\n[[source]]\n")
+    kept = [t for t in tables if not t.startswith('id = "project-beta"\n')]
+    assert len(kept) == len(tables) - 1
+    cfg.write_text("\n[[source]]\n".join([head, *kept]), encoding="utf-8")
+    listed = install_sh(env, "--list-folders")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert "(none is needed)" not in listed.stdout
+    assert last_line(listed).endswith(
+        f"; 1 folder in the list above is still mirrored but has no [[source]] block in {cfg}: {beta}. "
+        f'Step 2\'s status fails on it until it is added again (one --source-local "{beta}") or its '
+        "[[source]] block is put back, as it was or retired"
+    )
+    bare = install_sh(env, str(wheel))
+    assert bare.returncode == 1 and "[FAIL] config.vanished_sources" in bare.stdout, bare.stdout + bare.stderr
+    again = install_sh(env, str(wheel), "--source-local", str(beta))
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert cfg.read_text(encoding="utf-8") == whole
 
 
 def _config_line(env: dict[str, str]) -> str:

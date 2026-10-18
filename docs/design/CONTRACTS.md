@@ -22293,6 +22293,33 @@ does not), `test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_doe
 policy.toml, `[governance] history_days`, `[governance] archive` through add-source, and a new config beside a bad
 policy.toml), `test_a_first_sync_refusal_is_no_config_that_does_not_load`.
 
+**Step 1 names a mirrored folder whose [[source]] block is gone** (T6, T30). Step 1's list read the config alone,
+so a folder whose block was deleted while its pages stay mirrored was listed unmarked and the NEXT said `(none is
+needed)`, though step 2's status FAILs on it (`config.vanished_sources`, §16.119 S7) and every sync refuses the
+config. After the synced-folder reader, a reader of its own (`vanished_folders`, 5 s, allowed to fail: a failure, no
+manifest or one it cannot read change nothing) reads the manifest read-only (sqlite3 `mode=ro`, never `Manifest`,
+which migrates it) with `present_counts`' query, keeps the ids the config does not have (any state, as
+`cycle.vanished_sources` does) and drops the one the inbox step 2 adds back. A listed unmarked folder whose
+`derive_source_id` (the configured ids taken, as add-source derives it) is such an id is one `--source-local` adds
+back under the same id; the NEXT then drops `(none is needed)` and adds `; 1 folder in the list above is still
+mirrored but has no [[source]] block in <CONFIG>: <folder>. Step 2's status fails on it until it is added again (one
+--source-local "<folder>") or its [[source]] block is put back, as it was or retired` (N folders: "on each", "one
+--source-local for each"), and for an id no listed folder derives (a custom id, another kind) `; 1 source that is no
+folder in the list above is still mirrored but has no [[source]] block in <CONFIG>. Step 2's status fails on it
+until its [[source]] block is put back, as it was or retired`, never its id (the report names none either), on every
+exit 0 that points to step 2, the folder question included. The log line gets `vanished=N`. The words say neither
+"on disk" nor "not signed in", which the prompt's other step 1 cases read. Imports: baseline names only
+(`canonical_source_root`, `derive_source_id`, `load_config`, `paths.expand`, all since 2026-09-29), and
+`model.PRESENT_STATES` (2026-10-15) behind a fallback to the same four states. Not T30's `[mirrored, not in
+sources.toml]` mark: the NEXT names the folder, the list stays as it was, and its unmarked line is the one the
+person's add question covers. Not T6's "drop 'a re-run keeps them'": the re-run keeps every configured folder, as for
+a folder gone from disk. Tests: `test_list_folders_names_a_mirrored_folder_whose_block_is_gone` (also with an
+agentsync without `PRESENT_STATES`), `test_list_folders_names_a_mirrored_source_that_is_no_listed_folder_without_its_id`,
+`test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing`,
+`test_the_vanished_source_reader_imports_no_agentsync_name_an_older_build_lacks`,
+`test_a_mirrored_folder_whose_block_is_gone_is_named_in_step_1_and_added_back_in_step_2` (the real agentsync: step 2
+with no folder stops on the [FAIL], and with the named one exits 0 with sources.toml byte for byte as before).
+
 ### 16.125 Round 16: the person's fixes, the CLI's counts and WARNING lines (2026-10-18, wave B13 round 16 lane B)
 
 Reserved for round 16 lane B of B13.
