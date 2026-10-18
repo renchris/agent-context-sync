@@ -3373,7 +3373,10 @@ utc_stamp() {
 # none of them) and the time of that report; one listed at or after the earlier attempt's end is sent whatever
 # its time, since that attempt's report did not carry it, in each report of the attempt (B13 round 14 Q29). The
 # list is rewritten once the file is in place: a patch gone or changed leaves it. Not ctime, which a Finder or
-# Spotlight attribute write and a moved folder change (it would send the 2026-10-07 patch again).
+# Spotlight attribute write and a moved folder change (it would send the 2026-10-07 patch again). A patch is
+# listed only when the report would have sent it, so one an earlier attempt's report carried is not (B13 round
+# 15 S22); a listed patch sent once readable gets a third field, when its attempt began, and goes from the list
+# once a later attempt reports, since the attempt's report carried it (S34).
 # Each embedded file sits inside a tilde fence longer than any tilde run that starts one of its lines (at least
 # 10), so its own headings are no headings of this file and none of its lines can close the fence (B13 round 5
 # F14): the outline is this file's title and its three numbered sections, and every embedded byte is kept, so
@@ -3429,7 +3432,7 @@ source_excludes_line() { # CONFIG
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
-	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem
+	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem rec sentat begin force
 	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
@@ -3443,6 +3446,10 @@ write_bring_back() {
 		return 1
 	}
 	prev="$(utc_stamp "$(friction_earlier_end)")"
+	# the attempt this report is part of, by when it began ("-" when that cannot be told): .not-sent marks the
+	# attempt whose report sent a patch by it (B13 round 15 S34)
+	begin="$(utc_stamp "$(friction_attempt_begin)")"
+	begin="${begin:--}"
 	BACK_WHY="could not make a temporary file in ${REPORT_PATH%/*}"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
 	local_work="$(mktemp "${REPORT_PATH%/*}/.bring-back-local-work.XXXXXX" 2>/dev/null)" || {
@@ -3467,19 +3474,35 @@ write_bring_back() {
 			[ -e "$p" ] && [ ! -L "$p" ] && [ -f "$p" ] && [ ! -L "$SETUP_DIR/local-work" ] || continue
 			# a patch this account cannot read is counted, not sent: its cat failed unseen, under a fence
 			# already opened, and the header said section 3 held it (B13 round 13 O25)
-			id="$(/usr/bin/stat -f %d:%i:%m:%z "$p" 2>/dev/null || true)" nsat=""
-			[ -z "$id" ] || nsat="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 } END { print s }' <<<"$wasnot" 2>/dev/null || true)"
+			id="$(/usr/bin/stat -f %d:%i:%m:%z "$p" 2>/dev/null || true)" rec=""
+			[ -z "$id" ] || rec="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 " " $3 } END { print s }' <<<"$wasnot" 2>/dev/null || true)"
+			nsat="" sentat=""
+			read -r nsat sentat _ <<<"$rec" || true
+			# a record a report already sent the patch by, in an attempt that has ended since, goes: that report
+			# carried it, so the time rule below decides (B13 round 15 S34); a two-field record is not sent yet
+			if [ -n "$sentat" ] && [ "$sentat" != "$begin" ]; then
+				nsat="" sentat=""
+			fi
+			# one the earlier attempt could not read at its end is sent: its report did not carry it (B13 round 14
+			# Q29), in each report of this attempt
+			force=0
+			[ -z "$nsat" ] || { [ -n "$prev" ] && [ "${nsat//[!0-9]/}" -lt "${prev//[!0-9]/}" ]; } || force=1
+			at=""
+			[ -z "$prev" ] || [ "$force" -eq 1 ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
+			[ -z "$at" ] || [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ] || at=""
 			[ -r "$p" ] || {
 				unread=$((unread + 1))
-				[ -z "$id" ] || notsent+="$id $now"$'\n'
+				# listed only when this report would have sent it: a patch an earlier attempt's report carried is
+				# not, or the next readable report would send it again (B13 round 15 S22)
+				[ -z "$id" ] || [ -n "$at" ] || notsent+="$id $now"$'\n'
 				continue
 			}
-			[ -z "$nsat" ] || notsent+="$id $nsat"$'\n'
-			at=""
-			# one the earlier attempt could not read at its end is sent: its report did not carry it (B13 round 14
-			# Q29)
-			[ -z "$prev" ] || { [ -n "$nsat" ] && [ "${nsat//[!0-9]/}" -ge "${prev//[!0-9]/}" ]; } || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
-			if [ -n "$at" ] && [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ]; then
+			if [ "$force" -eq 1 ]; then # sent now: the record says by which attempt (B13 round 15 S34)
+				notsent+="$id $nsat $begin"$'\n'
+			elif [ -n "$nsat" ]; then
+				notsent+="$id $nsat${sentat:+ $sentat}"$'\n'
+			fi
+			if [ -n "$at" ]; then
 				sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"
 				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
 				[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])

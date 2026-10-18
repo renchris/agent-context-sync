@@ -21100,6 +21100,9 @@ line gives a count-only remedy with the keep's `--suffix`, and the header says s
 `test_setup_report.py::test_both_readers_count_a_patch_this_account_cannot_read_apart`,
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+Amended 2026-10-18, §16.117 S22, S34: a patch is listed in `.not-sent` only when that report would have sent it, and
+a listed patch sent once readable gets the time its attempt began as a third field; the record goes once a later
+attempt reports, so the time rule then lists the patch by its hash.
 
 **The first sync's config refusal is the person's** (Q22). An exit 78 at the first sync is a config that loads but the
 sync cycle refuses (`cycle._refuse_vanished_sources`: a source still mirrored, gone from sources.toml), so the config
@@ -21646,6 +21649,24 @@ other patch was in an earlier report and is listed by its hash.` or `The other N
 are listed by their hash.`; with nothing sent, the others are exactly the patches listed by their hash. The arm beside
 a patch that was sent drops its second colon the same way. (The counts above take S14's nouns.) Test:
 `test_an_unreadable_patch_leaves_the_rest_of_section_3_right` (one and two listed by their hash).
+
+**`.not-sent` lists only a patch the report would have sent, and lets go once the attempt that sent it ends** (S22,
+S34; amends §16.111 Q29). S22 (probe bw3): a patch an earlier attempt's report carried, unreadable at a later report,
+was listed, so once readable it was sent again. The unreadable branch now lists a patch only when the readable one
+would send it: no earlier end, a listing at or after it, or a time unknown or after it. S34: `--report-only` writes the
+end line before bring-back.md, so a listing is at or after its own attempt's end; made readable and reported again in
+that attempt (Q20's remedy), the patch was sent and the listing kept, so the next attempt, whose earlier end is that
+end line, sent it once more. A listed patch that a report sends now gets a third field, `<id> <listed> <begin>`, the
+time its attempt began (`friction_attempt_begin`, parse_friction's boundaries; `-` when that cannot be told); while
+that attempt lasts each report sends it (the same section 3), and once another attempt reports the listing goes and
+the time rule lists the patch by its hash. A two-field listing is not sent yet. Corrected by measurement: the
+verifier keyed the third field on the earlier attempt's end (`prev`), which every header-less attempt after the last
+end line shares, so a patch sent in one would be forced again in the next; the attempt's begin tells them apart. Not
+the finder's "drop the listing once sent": a third report in an attempt with an earlier end would then skip it by its
+time, though no earlier report carried it. Tests:
+`test_a_patch_made_readable_in_the_attempt_that_could_not_read_it_is_sent_once` (on the real clock, and with the end
+and the listing 3 s apart), `test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent`,
+`test_a_patch_unreadable_at_two_finished_reports_is_sent_once_readable`.
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 

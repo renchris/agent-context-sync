@@ -2711,6 +2711,100 @@ def _not_repeated(patch: Path, written: str, ended: str = ENDED) -> str:
     )
 
 
+def _end_at(env: dict[str, str], stamp: str) -> None:
+    """Set the friction log's last ``end | finished`` line (a ``--report-only``'s) to ``stamp``."""
+    lines = friction_path(env).read_text(encoding="utf-8").splitlines(keepends=True)
+    [last] = [i for i, ln in enumerate(lines) if ln.endswith(" | end | finished\n")][-1:]
+    lines[last] = f"{stamp} | end | finished\n"
+    friction_path(env).write_text("".join(lines), encoding="utf-8")
+
+
+def _new_attempt(env: dict[str, str], stamp: str) -> None:
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    with friction_path(env).open("a", encoding="utf-8") as f:
+        f.write(f"Attempt: {stamp}\nPrompt: v{COMPAT}\nAgent: x\n")
+
+
+@pytest.mark.parametrize("clock", ["real", "hand-set"])
+def test_a_patch_made_readable_in_the_attempt_that_could_not_read_it_is_sent_once(
+    env: dict[str, str], clock: str
+) -> None:
+    """B13 round 15 S34: --report-only writes the end line before bring-back.md, so an unreadable patch's
+    record is at or after its own attempt's end. Made readable and reported again in that attempt (Q20's
+    remedy), it was sent, and its record kept its time, so the next attempt, whose earlier end is that end
+    line, sent it again: the 2026-10-07 field repeat. The record now says which attempt sent it; once that
+    attempt has ended the record goes and the time rule lists the patch by its hash. Within the attempt each
+    report still sends it (the same section 3)."""
+    _two_attempts(env)
+    patch = _keep_patch(env, "2026-10-07T15:58:27Z")
+    notsent = Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / ".not-sent"
+    sent = "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+    patch.chmod(0)
+    try:
+        assert _local_work(env).startswith("not sent: 1 patch file in ")
+    finally:
+        patch.chmod(0o600)
+    if clock == "hand-set":  # the finder's measure: the end and the record 3 s apart
+        _end_at(env, "2026-10-07T16:00:00Z")
+        [record] = notsent.read_text().splitlines()
+        notsent.write_text(record.split(" ")[0] + " 2026-10-07T16:00:03Z\n")
+    assert _local_work(env) == sent, "made readable: sent in the attempt that could not read it"
+    assert _local_work(env) == sent, "a second report of the attempt writes the same section 3"
+    _new_attempt(env, "2026-10-09T09:00:00Z")
+    section = _local_work(env)
+    assert section.startswith("not repeated: a patch file last written 2026-10-07T15:58:27Z"), section
+    assert "+def ocr" not in section
+    assert not notsent.exists(), "its sending attempt has ended: the record goes"
+
+
+def test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent(env: dict[str, str]) -> None:
+    """B13 round 15 S22 (probe bw3): a patch an earlier attempt's report carried, unreadable at a later
+    report, went into .not-sent, so once readable again it was sent a second time. It is listed only when that
+    report would have sent it; a new patch unreadable at its report is still sent in each report once
+    readable."""
+    _new_attempt(env, "2026-10-06T10:00:00Z")
+    old = _keep_patch(env, "2026-10-06T09:59:00Z", "+old = 1\n", "0001-old.patch")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+old = 1\n~~~~~~~~~~\n", "attempt 1 sends it"
+    _end_at(env, "2026-10-06T10:05:00Z")
+    _new_attempt(env, "2026-10-07T10:00:00Z")
+    assert _local_work(env) == _not_repeated(old, "2026-10-06T09:59:00Z", "2026-10-06T10:05:00Z")
+    _end_at(env, "2026-10-07T10:05:00Z")
+    _new_attempt(env, "2026-10-08T10:00:00Z")
+    new = _keep_patch(env, "2026-10-08T10:01:00Z", "+new = 2\n", "0002-new.patch")
+    for path in (old, new):
+        path.chmod(0)
+    try:
+        assert _local_work(env).startswith("not sent: 2 patch files in ")
+    finally:
+        for path in (old, new):
+            path.chmod(0o600)
+    _end_at(env, "2026-10-08T10:05:00Z")
+    _new_attempt(env, "2026-10-09T10:00:00Z")
+    expected = "~~~~~~~~~~diff\n+new = 2\n~~~~~~~~~~\n" + _not_repeated(
+        old, "2026-10-06T09:59:00Z", "2026-10-08T10:05:00Z"
+    )
+    assert _local_work(env) == expected, "the carried patch is not sent again, the new one is"
+    assert _local_work(env) == expected, "in each report of the attempt"
+
+
+def test_a_patch_unreadable_at_two_finished_reports_is_sent_once_readable(env: dict[str, str]) -> None:
+    """B13 round 15 S22: a patch no report carried stays listed while it is unreadable, through any number of
+    finished attempts, so it is sent once it can be read."""
+    _new_attempt(env, "2026-10-06T10:00:00Z")
+    patch = _keep_patch(env, "2026-10-06T09:59:00Z")
+    patch.chmod(0)
+    try:
+        for n, day in enumerate(("06", "07")):
+            if n:
+                _new_attempt(env, f"2026-10-{day}T10:00:00Z")
+            assert _local_work(env).startswith("not sent: 1 patch file in ")
+            _end_at(env, f"2026-10-{day}T10:05:00Z")
+    finally:
+        patch.chmod(0o600)
+    _new_attempt(env, "2026-10-08T10:00:00Z")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+
+
 def test_bring_back_does_not_repeat_local_work_an_earlier_attempt_reported(env: dict[str, str]) -> None:
     """Field report 2026-10-07: the bring-back file carried the same 3,587-line patch a second time, a round
     after it had been rebuilt, because section 3 was every patch in the folder. A patch last written at or
