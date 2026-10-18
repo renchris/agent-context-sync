@@ -5628,13 +5628,13 @@ def test_the_guide_classes_an_image_by_its_stub_page_not_the_ocr_probe() -> None
     )
     assert "one that does not parse, one past the report's page-read time" in page
     assert f"at most {setup_report._PAGES_S} s), and one that says neither" in page
-    mirror.pages_unread, mirror.pages_failed = 1, False
+    mirror.pages_unread, mirror.pages_failed = 2, False  # B13 round 15 S31: "N image stubs ... are"
     ready = setup_report._unread_pages(mirror)
     mirror.images_by_probe = False
     off = setup_report._unread_pages(mirror)
     mirror.pages_failed = True
     failed = setup_report._unread_pages(mirror)
-    assert f"`{ready.replace(' 1 image', ' N image')}`" in page
+    assert f"`{ready.replace(' 2 image', ' N image')}`" in page
     assert f"`... {off.partition('counted ')[2]}`" in page
     assert f"(`{failed.partition(': ')[2]}`)" in page and "every image stub is counted" in failed
     table = " ".join(
@@ -5780,15 +5780,15 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     # B13 round 10 L8, L25, L40, L58: the line reads by the patch count, and its bracket is LOCAL_WORK_WHERE
     for words in (
         "- local work kept by setup prompt step 1: ",
-        " patch file(s) in the setup folder's ",
+        "'patch file')} in the setup folder's local-work",  # B13 round 15 S31: the noun by the count
         "({LOCAL_WORK_WHERE}); ",
-        " local-work ",
+        '"local-work branch", "local-work branches"',
         "- local-work branch(es) in the checkout: ",
     ):
         assert words in work, words
     assert (
-        "`- local work kept by setup prompt step 1: N patch file(s) in the setup folder's local-work, newest "
-        f"written <time> ({setup_report.LOCAL_WORK_WHERE}); M local-work branch(es) in the checkout`" in page
+        "`- local work kept by setup prompt step 1: N patch files in the setup folder's local-work, newest "
+        f"written <time> ({setup_report.LOCAL_WORK_WHERE}); M local-work branches in the checkout`" in page
     )
     assert (  # B13 round 13 O23
         "`- local-work branch(es) in the checkout: M with commits of their own, no patch file in the setup "
@@ -6263,8 +6263,8 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
 
     source = Path(setup_report.__file__).read_text(encoding="utf-8")
     assert (
-        '(this attempt\'s runs only; the Installer section also counts the "\n        f"{total - k} earlier '
-        'run(s) in the lines read)"'
+        '(this attempt\'s runs only; the Installer section also counts the "\n        f"{_plural(total - k, '
+        "'earlier run')} in the lines read)\""
     ) in source
     # B13 round 12 N31: read on a Mac that already syncs too, whose sign-in stop has a line of its own
     assert "list_stop = _list_stopped(runs)\n" in source
@@ -6272,7 +6272,7 @@ def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
     assert "this attempt's runs only: ..." not in page
     assert (
         "and a bracket says so and names the earlier runs the Installer section also counts (`(this "
-        "attempt's runs only; the Installer section also counts the N earlier run(s) in the lines read)`)"
+        "attempt's runs only; the Installer section also counts the N earlier runs in the lines read)`)"
     ) in page
     assert (
         "| On a Mac that syncs no folder (no list logged `synced=N`, N at least 1), the attempt's only runs "

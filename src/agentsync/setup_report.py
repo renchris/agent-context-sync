@@ -2321,18 +2321,20 @@ def compute_outcome(
             if layout.logs_steps and not any(
                 e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
             ):
-                legacy = f" ({len(attempt.legacy)} legacy v4 line(s))" if attempt.legacy else ""
+                legacy = f" ({_plural(len(attempt.legacy), 'legacy v4 line')})" if attempt.legacy else ""
                 why.append(f"human turns unknown: the attempt has no v5 event line{legacy}")
             elif not layout.logs_steps and attempt.started is None:
                 why.append("human turns unknown: the attempt has no Attempt: line (install.sh --log-start)")
             if attempt.extra_questions():
-                why.append(f"{len(attempt.extra_questions())} question(s) beyond the folder question")
+                why.append(
+                    f"{_plural(len(attempt.extra_questions()), 'question')} beyond the folder question"
+                )
             extra = _extra_clicks(attempt, runs)  # the sign-in step 1 asked for is no extra click (N5)
             if extra:
-                why.append(f"{len(extra)} click(s) beyond the Allow clicks")
+                why.append(f"{_plural(len(extra), 'click')} beyond the Allow clicks")
             approvals = len(attempt.of_kind("approval"))
             if approvals:
-                why.append(f"{approvals} approval(s)")
+                why.append(_plural(approvals, "approval"))
             unread = unread_asked(attempt, runs)
             if unread:  # asked again, since the list could not mark them (B13 round 7 H17, H28; round 9 K20)
                 why.append(
@@ -2340,7 +2342,7 @@ def compute_outcome(
                     "Mac already syncs"
                 )
         if doctor_fails:
-            why.append(f"{len(doctor_fails)} unexpected doctor FAIL(s): {', '.join(doctor_fails)}")
+            why.append(f"{_plural(len(doctor_fails), 'unexpected doctor FAIL')}: {', '.join(doctor_fails)}")
         if not why:
             return Outcome(
                 "fully one command",
@@ -3902,9 +3904,9 @@ def _environment(r: _Run) -> list[str]:
         # a link is no provider folder of its own (--list-folders lists folders only: B13 round 4 Q33)
         links = sum(1 for n, link, _folder in entries if link and not n.startswith("."))
         others = sum(1 for n, link, folder in entries if not (link or folder or n.startswith(".")))
-        counted = f"listable, {len(names) - links - others} provider folder(s)"
-        counted += f" and {links} symlink(s)" if links else ""
-        counted += f" and {others} other entry(ies)" if others else ""
+        counted = f"listable, {_plural(len(names) - links - others, 'provider folder')}"
+        counted += f" and {_plural(links, 'symlink')}" if links else ""
+        counted += f" and {_plural(others, 'other entry', 'other entries')}" if others else ""
         tagged = [f"{n} ({_domain_text(root / n)})" for n in names]
         return counted + (f": {', '.join(tagged)}" if names else "")
 
@@ -4230,17 +4232,20 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
         f" and {persons} fix: on [FAIL] lines that are the person's (their run's NEXT says so; not hints for "
         "the agent)"
     )
-    in_runs = f" in {runs} run(s)" if runs else ""
-    whole = f" (whole runs only: the {cut} line(s) read before the first run header are not counted)"
+    in_runs = f" in {_plural(runs, 'run')}" if runs else ""
+    whole = (
+        f" (whole runs only: the {_plural(cut, 'line')} read before the first run header "
+        f"{'is' if cut == 1 else 'are'} not counted)"
+    )
     due = f"; the run writing this report prints its NEXT: after the report, so {runs - 1} expected here"
     return (
-        f"{counts['NEXT:']} NEXT: line(s){in_runs} (exactly one per install.sh run is expected"
+        f"{_plural(counts['NEXT:'], 'NEXT: line')}{in_runs} (exactly one per install.sh run is expected"
         + (due if pending else "")
         + ") and "
-        f"{other_total} other instruction-like line(s)"
+        f"{_plural(other_total, 'other instruction-like line')}"
         + (f" ({', '.join(others)})" if others else "")
         + (theirs if persons else "")
-        + f" in the last {read} line(s) of install.out"
+        + f" in {_the_last(read, 'line')} of install.out"
         + (whole if cut else "")
     )
 
@@ -4267,7 +4272,7 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     """The Summary's ``installer output:`` line: the Installer section's counts, kept to the latest attempt's
     runs when the attempt has a time (as the install.sh line is). install.out holds every run, earlier
     attempts' too, and the attempt's runs are its last, so the count starts at the first header of one of
-    them: the lines counted stay "the last N line(s)". Unchanged when every run read is the attempt's."""
+    them: the lines counted stay "the last N lines". Unchanged when every run read is the attempt's."""
     assert r.facts.instructions is not None
     counts, read, total, cut, pending = r.facts.instructions
     whole = f"- installer output: {_instruction_text(counts, read, total, cut, pending)}"
@@ -4277,8 +4282,8 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     lines = r.facts.out_counted
     if start is None:
         return (
-            f"- installer output: no run of this attempt in the last {read} line(s) of install.out (the "
-            f"Installer section counts the {total} earlier run(s) in the lines read)"
+            f"- installer output: no run of this attempt in {_the_last(read, 'line')} of install.out (the "
+            f"Installer section counts the {_plural(total, 'earlier run')} in the lines read)"
         )
     if start == 0:
         return whole
@@ -4287,7 +4292,7 @@ def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) ->
     text = _instruction_text(instruction_counts(mine), len(mine), k, pending=pending)
     return (
         f"- installer output: {text} (this attempt's runs only; the Installer section also counts the "
-        f"{total - k} earlier run(s) in the lines read)"
+        f"{_plural(total - k, 'earlier run')} in the lines read)"
     )
 
 
@@ -4361,7 +4366,7 @@ def _installer_output(r: _Run) -> list[str]:
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
         "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",
-        f"<details><summary>the last {len(shown)} line(s) of {path} ({saw})</summary>",
+        f"<details><summary>the last {_plural(len(shown), 'line')} of {path} ({saw})</summary>",
         "",
         *_fence(_utc_log_times(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown)),
         "",
@@ -4499,7 +4504,8 @@ def _installer_runs(r: _Run) -> list[str]:
     shown = runs[-INSTALL_RUNS_SHOWN:]
     held = "; this run's report step not counted" if _provisional(runs[-1], runs) else ""
     out = [
-        f"{len(runs)} install.sh run(s) in {log}, {sum(totals)}s in total (runs with an end line{held}); "
+        f"{_plural(len(runs), 'install.sh run')} in {log}, {sum(totals)}s in total (runs with an end "
+        f"line{held}); "
         f"the last {len(shown)} (run ids without their process id{_numbered(shown)}):"
     ]
     # the list whose sign-in step 1 asked for, as the Summary counts it (B13 round 13 O19)
@@ -4742,11 +4748,11 @@ def _excludes_line(c: Config, red: Redactor) -> str:
             continue
         folders = sum(1 for g in extra if len(g) > 2 and g.startswith("/") and g.endswith("/"))
         counted.append(
-            f"{labels.of(src.id)} {len(extra)}" + (f" ({folders} folder glob(s))" if folders else "")
+            f"{labels.of(src.id)} {len(extra)}" + (f" ({_plural(folders, 'folder glob')})" if folders else "")
         )
     if not counted:
         return "- source excludes beyond agentsync's own: none"
-    rest = f"; 0 on the other {others} source(s)" if others else ""
+    rest = f"; 0 on the other {_plural(others, 'source')}" if others else ""
     return (
         f"- source excludes beyond agentsync's own: {', '.join(counted)}{rest} (globs not shown; an excluded "
         "folder is not mirrored if it later gains files)"
@@ -4835,11 +4841,12 @@ def _doctor(r: _Run) -> list[str]:
             continue  # a continuation of an ok line
         shown.append(line)
     r.facts.doctor = tags
-    summary = f"{sum(tags.values())} check(s): " + ", ".join(
+    summary = f"{_plural(sum(tags.values()), 'check')}: " + ", ".join(
         f"{tags.get(t, 0)} {t}" for t in ("ok", "info", "warn", "FAIL")
     )
     note = (
-        f" {annotated} expected warn(s) end in (expected: <why>) instead of their fix: nothing for this "
+        f" {_plural(annotated, 'expected warn')} end{'s' if annotated == 1 else ''} in (expected: <why>) "
+        "instead of their fix: nothing for this "
         f"setup to do{_STOPPED_COPY_BEYOND * stopped_note}."
         if annotated
         else ""
@@ -5383,7 +5390,7 @@ def _table(header: Sequence[str], rows: Sequence[Sequence[object]], limit: int =
     out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     out += ["| " + " | ".join(str(cell) for cell in row) + " |" for row in rows[:limit]]
     if len(rows) > limit:
-        out.append(f"(+{len(rows) - limit} more row(s) not shown)")
+        out.append(f"(+{_plural(len(rows) - limit, 'more row')} not shown)")
     return out
 
 
@@ -5621,9 +5628,10 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
             waiting[str(sid)] += int(files)
     # count first, as the document lines put it ("1 with a page", never "page 1": B13 round 4 Q4)
     shown = " · ".join(f"{outcomes[name]} {name}" for name in _IMAGE_OUTCOMES if outcomes[name])
-    out.append(f"- images: {sum(outcomes.values())} file(s)" + (f": {shown}" if shown else ""))
+    out.append(f"- images: {_plural(sum(outcomes.values()), 'file')}" + (f": {shown}" if shown else ""))
     out.append(
-        f"- images that are not on this Mac: {absent[0] + absent[1]} file(s), {_megabytes(absent[2])} "
+        f"- images that are not on this Mac: {_plural(absent[0] + absent[1], 'file')}, "
+        f"{_megabytes(absent[2])} "
         f"({absent[0]} online-only, {absent[1]} of a Graph source; none is downloaded for OCR; a deferred "
         "image on this Mac waits for a cycle's OCR time or its file limit)"
     )
@@ -5678,7 +5686,10 @@ def _ocr_files(r: _Run, m: _Mirror, labels: _Labels, state: str, label_rule: boo
             identities[found.group(1)] += int(pages)
     out.append(
         "- engine identities on pages: "
-        + (", ".join(f"{name} ({n} page(s))" for name, n in sorted(identities.items())[:6]) or "none")
+        + (
+            ", ".join(f"{name} ({_plural(n, 'page')})" for name, n in sorted(identities.items())[:6])
+            or "none"
+        )
     )
     return [
         *out,
@@ -5779,7 +5790,7 @@ def _reread_lines(
     )
     if looked is None:
         scan = (
-            f"{f'None of the last {len(runs)} run(s) says' if runs else 'No run is recorded that says'} what "
+            f"{_none_says(len(runs))} what "
             "its re-read looked for (a run of this build that reaches a local source does), so the second "
             "column is as last recorded, by whichever build wrote the record."
         )
@@ -5853,7 +5864,7 @@ def _reread_finished(
         named += f" and {len(sources) - _ROWS_SHOWN} more"
     if looked is None:
         measured = ""
-        said = f"None of the last {len(runs)} run(s) says" if runs else "No run is recorded that says"
+        said = _none_says(len(runs))
         after = (
             f" {said} what its re-read looked for (a run of this build that reaches a local source does), so "
             "`finished` is as last recorded, by whichever build wrote the record."
@@ -5877,7 +5888,13 @@ def _reread_finished(
         after += " A label rule is on, so no image is read or counted."
     # one sentence, the same facts, every branch kept (B13 round 7 H5, round 8 J3, J15, round 9 K5, K16)
     return (
-        f"- re-read, per source: finished in all {len(sources)} local or inbox source(s) with a record "
+        "- re-read, per source: finished in "
+        + (
+            "its one local or inbox source"
+            if len(sources) == 1
+            else f"all {len(sources)} local or inbox sources"
+        )
+        + " with a record "
         f"({named}); nothing is left to read again, none failed or was given up, and no read was cut off "
         f"when a cycle died{measured}.{after}"
     )
@@ -5916,7 +5933,8 @@ def _failed_once(m: _Mirror, labels: _Labels, once: dict[str, list[str]]) -> lis
         shown = " · ".join(f"{found[name]} {name}" for name in order if found[name])
         more = f" (the first {_FAILED_READ} are looked up)" if len(ids) > len(asked) else ""
         out.append(
-            f"- {labels.of(source_id)}, the {len(ids)} file(s) that failed once, by their row in the "
+            f"- {labels.of(source_id)}, the {_plural(len(ids), 'file')} that failed once, by "
+            f"{'its' if len(ids) == 1 else 'their'} row in the "
             f"manifest now{more}: {shown}"
         )
     return out
@@ -5958,8 +5976,11 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     newest = engine[0] if engine else None
     waiting = (
         f"- waiting for OCR: the newest run that had an engine (run {newest.run_id}) left "
-        f"{newest.n('ocr_deferred')} file(s) for a later cycle's OCR; the {len(runs)} run(s) add up to "
-        f"{total('ocr_deferred')} wait(s), a file counted once in every run it waited in"
+        f"{_plural(newest.n('ocr_deferred'), 'file')} for a later cycle's OCR; the "
+        f"{_plural(len(runs), 'run')} "
+        f"add{'s' if len(runs) == 1 else ''} up to {_plural(total('ocr_deferred'), 'wait')}, a file "
+        "counted once "
+        "in every run it waited in"
         if newest is not None
         else "- waiting for OCR: no run that had an engine is recorded"
     )
@@ -5973,13 +5994,14 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     ]
     gap = f" ({'; '.join(why)})" if why else ""
     out = [
-        f"- OCR time: of the last {len(runs)} run(s), {len(recorded)} recorded these counts{gap} and "
+        f"- OCR time: of {_the_last(len(runs), 'run')}, {len(recorded)} recorded these counts{gap} and "
         f"{len(engine)} had an engine; {total('ocr_over')} used up the cycle's "
         f"OCR time; {total('ocr_down')} ended with the helper not working; the helper ran "
         f"{total('ocr_ms') / 1000:.0f}s in all",
         waiting,
         "- in those runs, each count a sum over the runs (a file converted or read in two of them counts "
-        f"twice): {total('ocr_without_budget')} conversion(s) without OCR because the cycle's OCR time was "
+        f"twice): {_plural(total('ocr_without_budget'), 'conversion')} without OCR because the cycle's OCR "
+        "time was "
         f"used up · {total('ocr_without_down')} without OCR because the helper had stopped working · "
         f"{total('ocr_failed')} the engine failed on (a helper failure, or the file's own time limit) · "
         f"{total('ocr_page_cap')} that say pages past the OCR page limit were not read · "
@@ -6034,7 +6056,7 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     if len(pool) > len(shown):
         title = (
             f"The last {len(shown)} of the {len(pool)} {what}, newest first (the sums above are over all "
-            f"{len(runs)} run(s) read, so these rows do not add up to them)"
+            f"{_plural(len(runs), 'run')} read, so these rows do not add up to them)"
         )
     notes = (
         f"A run starts no more re-reads once it has spent {_REREAD_BUDGET_S:.0f}s on them, whatever OCR time "
@@ -6066,13 +6088,18 @@ def _reread_clause(again: int, first: int, kept: int) -> str:
     When every re-read was a first read, kept is 0 (cycle.py counts a kept re-read and returns before it
     counts a first read), so that branch has no kept clause (B13 round 12 N49)."""
     if first and first == again:
-        return f"{again} first read(s) of a stub whose bytes had never been read, also in the converted count"
+        return (
+            f"{_plural(again, 'first read')} of a stub whose bytes had never been read, also in the "
+            "converted "
+            "count"
+        )
     if first:
         return (
-            f"{again} read(s) again ({first} of them a first read of a stub whose bytes had never been read, "
+            f"{_plural(again, 'read')} again ({first} of them a first read of a stub whose bytes had "
+            "never been read, "
             f"also in the converted count; {kept} could not be converted and kept their page)"
         )
-    return f"{again} read(s) again ({kept} of them could not be converted and kept their page)"
+    return f"{_plural(again, 'read')} again ({kept} of them could not be converted and kept their page)"
 
 
 def _ocr_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
@@ -6145,10 +6172,14 @@ def _refused_types(m: _Mirror, labels: _Labels) -> list[str]:
         cells = [cell(*x) for x in listed[:_TYPES_SHOWN]]
         cells += [cell(*x) for name in last for x in found if x[0] == name]
         rest = listed[_TYPES_SHOWN:]
-        more = f" (+{sum(x[1] for x in rest)} file(s) of {len(rest)} more type(s))" if rest else ""
+        more = (
+            f" (+{_plural(sum(x[1] for x in rest), 'file')} of {_plural(len(rest), 'more type')})"
+            if rest
+            else ""
+        )
         out.append(f"- {label}, no converter by type: {' · '.join(cells)}{more}")
     if len(by_source) > _ROWS_SHOWN:
-        out.append(f"(+{len(by_source) - _ROWS_SHOWN} more source(s) not shown)")
+        out.append(f"(+{_plural(len(by_source) - _ROWS_SHOWN, 'more source')} not shown)")
     return out
 
 
@@ -6162,9 +6193,9 @@ def _unread_pages(m: _Mirror) -> str:
     )
     if m.pages_failed:
         return f", and every image stub is counted {how}: the manifest query for their pages failed"
-    return f", and {m.pages_unread} image stub(s) whose page could not be read are counted {how}" * bool(
-        m.pages_unread
-    )
+    stubs = _plural(m.pages_unread, "image stub")
+    are = "is" if m.pages_unread == 1 else "are"
+    return f", and {stubs} whose page could not be read {are} counted {how}" * bool(m.pages_unread)
 
 
 def _quarantine_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
@@ -6332,7 +6363,8 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     # False only when _alias_of found no alias table. Every id counted as `no row` went through it.
     alias_table = m.kept.get("aliases") is not False
     return [
-        f"- {len(queue)} purge(s) queued{more}. For a queued stable id the last six columns say what the "
+        f"- {_plural(len(queue), 'purge')} queued{more}. For a queued stable id the last six columns say "
+        "what the "
         "manifest holds now: a live file elsewhere with the same bytes (a renamed or re-exported copy), a "
         "live file with another id at the same path, the file itself listed again, nothing live in its "
         "place, or no row at all.",
@@ -6369,7 +6401,8 @@ def _purge_audit(path: Path, since: str) -> str:
     span = f"since {day} (the oldest queued day)" if day else "in all (no queued day is known)"
     return (
         f"- audit trail {span}: {actions['purge-enqueued']} purge-enqueued, {actions['purge']} purge (one "
-        f"per item erased) and {actions['purge-summary']} purge-summary (one per purge that ran) line(s)"
+        f"per item erased) and {actions['purge-summary']} purge-summary (one per purge that ran) "
+        f"line{'' if actions['purge-enqueued'] + actions['purge'] + actions['purge-summary'] == 1 else 's'}"
     )
 
 
@@ -6385,7 +6418,8 @@ def _purge_notes(fates: Counter[str], aliased: Counter[str], *, kept: int, alias
     renamed = sum(aliased.values())
     if renamed:
         out.append(
-            f"- renamed or re-keyed: {renamed} queued id(s) are an earlier id of a file the manifest now "
+            f"- renamed or re-keyed: {_plural(renamed, 'queued id')} {'is' if renamed == 1 else 'are'} an "
+            "earlier id of a file the manifest now "
             "holds under a later one (it was saved again, or its volume's id changed). Each is counted by "
             "that file's row, since a purge follows the alias to it"
         )
@@ -6405,16 +6439,24 @@ def _purge_notes(fates: Counter[str], aliased: Counter[str], *, kept: int, alias
             )
         else:
             run = "A run of the queue would erase that file's page and its history"
-        out.append(f"- still listed: {listed} queued purge(s) name a file the manifest lists now{via}. {run}")
+        name = "names" if listed == 1 else "name"
+        out.append(
+            f"- still listed: {_plural(listed, 'queued purge')} {name} a file the manifest lists "
+            f"now{via}. {run}"
+        )
     if fates["no row"] and alias_table:
         out.append(
-            f"- no trace: {fates['no row']} queued id(s) have no row and are no alias. A re-key leaves an "
+            f"- no trace: {_plural(fates['no row'], 'queued id')} "
+            + ("has no row and is no alias" if fates["no row"] == 1 else "have no row and are no alias")
+            + ". A re-key leaves an "
             "alias, so what took such a row away is a purge that already ran, or an erasure. A run of the "
             "queue erases only what history still names for them and takes them off the queue"
         )
     elif fates["no row"]:
         out.append(
-            f"- no row: {fates['no row']} queued id(s) have no row. This manifest has no alias table, so "
+            f"- no row: {_plural(fates['no row'], 'queued id')} "
+            f"{'has' if fates['no row'] == 1 else 'have'} no "
+            "row. This manifest has no alias table, so "
             "none was looked up as an alias: an earlier id of a file listed now cannot be told from one a "
             "purge took away"
         )
@@ -6470,7 +6512,7 @@ def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 where = "has the same folder as"
                 pruned = "n/a"
             else:
-                where = f"contains, {len(rel.split('/'))} folder level(s) down,"
+                where = f"contains, {_plural(len(rel.split('/')), 'folder level')} down,"
                 pruned = "no" if arm_local._unexcluded(outer, [rel]) else "yes"
             counts = [
                 _lines(functools.partial(_source_counts, m, sid))[0].removeprefix("- ")
@@ -6483,9 +6525,11 @@ def _overlap_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 f"{labels.of(inner.id)}: {counts[1]}"
             )
     if not out:
-        return [f"- none: no source's folder is inside another's ({len(roots)} source(s) with a folder)"]
+        return [
+            f"- none: no source's folder is inside another's ({_plural(len(roots), 'source')} with a folder)"
+        ]
     if pairs > _PAIRS_SHOWN:
-        out.append(f"- (+{pairs - _PAIRS_SHOWN} more pair(s) not shown)")
+        out.append(f"- (+{_plural(pairs - _PAIRS_SHOWN, 'more pair')} not shown)")
     return out
 
 
@@ -6582,9 +6626,14 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 (int(walk), src.id),
             )[0]
             missed = (  # "did not list 0" read as a double negative (B13 round 3 R14)
-                f"its last walk listed all {total} file(s) the mirror holds for it"
+                # never "all 1 file" or "1 of the 1 file" (B13 round 15 S30)
+                "its last walk listed "
+                f"{'the one file' if total == 1 else f'every one of the {total} files'} the "
+                "mirror holds for it"
                 if unseen == 0
-                else f"its last walk did not list {unseen} of the {total} file(s) the mirror holds for it"
+                else "its last walk did not list the one file the mirror holds for it"
+                if total == 1
+                else f"its last walk did not list {unseen} of the {total} files the mirror holds for it"
             )
         # The exclude rule costs names x folder levels x globs, and the sync's own advice for these folders
         # is one more glob each: asked of the checked folders only, and stopped like the lstat calls.
@@ -6596,7 +6645,8 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             gone = len(checked) - len(reached)
             # a zero is said in words, not dropped: "none excluded" is a measurement (B13 round 4 Q17)
             excluded = (
-                f"{gone} of the checked folder(s) excluded in sources.toml now"
+                f"{gone} of the checked {'folder' if len(checked) == 1 else 'folders'} excluded in "
+                "sources.toml now"
                 if gone
                 else "it is not excluded in sources.toml now"
                 if len(checked) == 1
@@ -6612,7 +6662,8 @@ def _empty_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         )
         rest = f"{rest[:-2]}; " if rest else ""
         holds = (
-            f"the mirror still holds {held} file(s) below {folders} of the checked folder(s)"
+            f"the mirror still holds {_plural(held, 'file')} below {folders} of the checked "
+            f"{'folder' if len(checked) == 1 else 'folders'}"
             if held
             else f"the mirror holds no file below {'it' if len(checked) == 1 else 'them'}"
         )
@@ -6684,7 +6735,9 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     recorded = [x for x in runs if "converted" in x.counts]
     looping = sum(1 for x in recorded if x.n("converted_again"))
     out = [
-        f"- of the last {len(runs)} run(s), {len(recorded)} recorded what they converted; {looping} of those "
+        f"- of {_the_last(len(runs), 'run')}, {len(recorded)} recorded what "
+        f"{'it' if len(recorded) == 1 else 'they'} "
+        f"converted; {looping} of those "
         "converted at least one file again from the same bytes and converter options its own page was made "
         "from, which the run just before had converted too (the sign of a loop; a copy of a file is a new "
         "file and is not counted, nor is a file re-screened for a label-rule change)",
@@ -6706,7 +6759,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         # a re-screen after a label-rule change is a new conversion (the rule is one of the converter's
         # options), so the "same bytes" column read 0 for runs that re-read unchanged files (B13 round 8 J30)
         each = "; ".join(
-            f"run {x.run_id}, {x.n('rescreened')} file(s) ({x.n('rescreened_unchanged')} came out the same)"
+            f"run {x.run_id}, {_plural(x.n('rescreened'), 'file')} ({x.n('rescreened_unchanged')} came "
+            "out the same)"
             for x in rescreened
         )
         out += [
@@ -6739,7 +6793,9 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             again[int(last_used)] += int(files)
     out += [
         "",
-        f"- converter cache: {total} conversion(s) were used again by a later run than the one that made "
+        f"- converter cache: {_plural(total, 'conversion')} {'was' if total == 1 else 'were'} used again "
+        "by a "
+        "later run than the one that made "
         f"them (the same bytes converted again, by the same file or by a copy of it); {again[newest]} of "
         f"them last by the newest run ({newest}), {again[newest - 1]} by the run before it"
         + (" (a count that also holds for runs of an earlier build)" if earlier else "")
@@ -6799,7 +6855,8 @@ def _evidence_line(r: _Run) -> str:
     if count == 0:
         return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
     return (
-        f'- evidence: {count} line(s) at the end of Status say "not measured": write the report again when '
+        f"- evidence: {_plural(count, 'line')} at the end of Status {'says' if count == 1 else 'say'} "
+        '"not measured": write the report again when '
         f"this Mac is idle (`{INSTALL_SH} --report-only`) before sending it"
     )
 
@@ -7053,7 +7110,7 @@ def _plist_compared(r: _Run, config: Config) -> list[str]:
             named.append(f"{key} (installed {a}, this build {b})" if plain else key)
         out.append(
             f"- {label}: differs in {', '.join(named) or 'no key this build writes'}"
-            + (f"; {unknown} key(s) this build does not write" if unknown else "")
+            + (f"; {_plural(unknown, 'key')} this build does not write" if unknown else "")
         )
         if "ProgramArguments" in differing:
             args = installed.get("ProgramArguments")
@@ -7352,7 +7409,7 @@ def _recent_errors(r: _Run) -> list[str]:
     )
     window = f" in the last {_TAIL_BYTES // 1024} KiB of each log file" if longer_any else ""
     head = (
-        f"The last {min(len(hits), RECENT_ERROR_LINES)} of {len(hits)} WARNING/ERROR line(s){window}"
+        f"The last {min(len(hits), RECENT_ERROR_LINES)} of {_plural(len(hits), 'WARNING/ERROR line')}{window}"
         f" in {log_dir}{merged} (item paths and document names shown as <path>):"
     )
     return [*problems, head, "", *_fence(hits[-RECENT_ERROR_LINES:])]
@@ -7574,12 +7631,13 @@ def _friction_section(r: _Run) -> list[str]:
             f"creates it; ${FRICTION_ENV} names another file)."
         ]
     out = [
-        f"Embedded from {r.friction_path} as this report read it: {fr.line_count} line(s), last modified "
+        f"Embedded from {r.friction_path} as this report read it: {_plural(fr.line_count, 'line')}, last "
+        "modified "
         f"{_iso(fr.mtime)} (a line written after that is not in this report: run "
         f"`{INSTALL_SH} --report-only` again). "
         "Redacted with the same placeholders as the rest of the report.",
         "",
-        f"{len(fr.attempts)} attempt(s):",
+        f"{_plural(len(fr.attempts), 'attempt')}:",
     ]
     for i, att in enumerate(fr.attempts):
         outcome = _attempt_outcome(r, i)
@@ -7592,12 +7650,13 @@ def _friction_section(r: _Run) -> list[str]:
             f"prompt {_prompt_version(att) or 'not stated'}{stated}",
             f"agent {att.said('Agent') or 'not stated'}",
         ]
-        tail = [f"{len(att.events)} event line(s): {_kind_counts(att)}"]
+        tail = [f"{_plural(len(att.events), 'event line')}: {_kind_counts(att)}"]
         if att.legacy:
-            tail.append(f"{len(att.legacy)} legacy v4 line(s) (F<n> | ...), shown, not counted")
+            tail.append(f"{_plural(len(att.legacy), 'legacy v4 line')} (F<n> | ...), shown, not counted")
         if att.untyped:
             tail.append(
-                f"{len(att.untyped)} line(s) with a kind outside the prompt's list, shown, not counted"
+                f"{_plural(len(att.untyped), 'line')} with a kind outside the prompt's list, shown, not "
+                "counted"
             )
         if not att.finished:  # a finished one says so in its counts ("1 finished")
             tail.append('no "end | finished" line')
@@ -7978,7 +8037,7 @@ def _agent_friction_line(att: Attempt, stop: FrictionEvent | None) -> str:
     )
     uncounted = len(att.untyped) + len(att.legacy)
     if uncounted:
-        text += f"; {uncounted} line(s) without a prompt kind (untyped or v4), shown, not counted"
+        text += f"; {_plural(uncounted, 'line')} without a prompt kind (untyped or v4), shown, not counted"
     if stop is not None:
         return text + f"; F{stop.line} stopped the run (the outcome says so)"
     if not lines and not uncounted:
@@ -8310,7 +8369,7 @@ def _newer_sync(
 
 def _reread_since(r: _Run, run: InstallRun) -> list[str]:
     """The re-reads since install run ``run`` began by the runs other than its own sync, a sum over the runs
-    as the OCR part's ``read(s) again`` is (a file read in two of them counts twice), from the run records the
+    as the OCR part's ``reads again`` is (a file read in two of them counts twice), from the run records the
     OCR part read (``_Facts.runs_read``): nothing when there are none, or when the records or the run's start
     were not read. The installer's sync is the run that started inside its first-sync step
     (the step's start and seconds, a second's slack for the stamps); its own count is the clause before, and a
@@ -8338,8 +8397,9 @@ def _reread_since(r: _Run, run: InstallRun) -> list[str]:
     oldest = rows[-1][1]
     least = "at least " if len(rows) >= _RUNS_READ and oldest is not None and oldest >= began else ""
     return [
-        f"since this install run began, {least}{sum(a for _n, a in others)} read(s) again by {len(others)} "
-        f"other run(s) (the newest is run {others[0][0]}; the background job's runs and syncs typed in a "
+        f"since this install run began, {least}{_plural(sum(a for _n, a in others), 'read')} again by "
+        f"{_plural(len(others), 'other run')} (the newest is run {others[0][0]}; the background job's "
+        "runs and syncs typed in a "
         "terminal are recorded alike: see the OCR part)"
     ]
 
@@ -8359,7 +8419,7 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     except OSError as exc:
         return f"- IT draft: {IT_DRAFT} cannot be read: {type(exc).__name__}: {exc.strerror or exc}"
     person, admin = it_draft_fields(text)
-    mine = f"{len(person)} field(s) left for you" + (f" ({', '.join(person)})" if person else "")
+    mine = f"{_plural(len(person), 'field')} left for you" + (f" ({', '.join(person)})" if person else "")
     line = f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
     head = re.split(r"^---[ \t]*$", text, maxsplit=1, flags=re.MULTILINE)[0]
     filled = [ln for ln in head.splitlines() if ln.startswith("Filled from this Mac:")]
@@ -8706,6 +8766,19 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
     return f"- F{e.line} · {step} · {e.kind} · {_item_what(r.red.redact(e.what), e.kind)}{fix}"
 
 
+def _the_last(n: int, word: str) -> str:
+    """``the last line`` or ``the last N lines``: a known count takes its noun from the count, and one is
+    never "the last 1 line" (B13 round 15 S31)."""
+    return f"the last {word}" if n == 1 else f"the last {n} {word}s"
+
+
+def _none_says(runs: int) -> str:
+    """How the OCR part's re-read lines say no run recorded what its re-read looked for, by the run count."""
+    if not runs:
+        return "No run is recorded that says"
+    return "The last run does not say" if runs == 1 else f"None of the last {runs} runs says"
+
+
 _FAILED_EXIT_RE = re.compile(
     r"(?:\b(?:failed|exited|returned)\b|\(exit\b)[^:]{0,24}?\d+\)?\s*:"
     r"|\b(?:exit(?:\s+(?:code|status))?|rc)\s*=?\s*\d+\)?\s*:"
@@ -9006,8 +9079,8 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         # "1 finished", on every attempt that reached a report (B13 round 12 N20): a missing one has its own
         # WARNING, and the friction log section still counts it
         if att.legacy or any(k not in (*PROBLEM_KINDS, "finished") for k in att.kinds()):
-            extra = f"; {len(att.legacy)} legacy v4 line(s)" if att.legacy else ""
-            counted = f"{len(att.events)} event line(s): {_kind_counts(att)}{extra}"
+            extra = f"; {_plural(len(att.legacy), 'legacy v4 line')}" if att.legacy else ""
+            counted = f"{_plural(len(att.events), 'event line')}: {_kind_counts(att)}{extra}"
             out.append(f"- friction (attempt {att.number}): {counted}")
         timing = []
         late = _after_end(runs, _attempt_end(att))
@@ -9109,7 +9182,10 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             ok = next(run for run in install_runs_only(runs) if run.rc == 0)
             out += [_retry_line(r, run, ok, att.layout) for run in retried[:INSTALL_RUNS_SHOWN]]
         if len(retried) > INSTALL_RUNS_SHOWN:
-            out.append(f"- install.sh · {len(retried) - INSTALL_RUNS_SHOWN} more such run(s) (see Installer)")
+            out.append(
+                f"- install.sh · {_plural(len(retried) - INSTALL_RUNS_SHOWN, 'more such run')} (see "
+                "Installer)"
+            )
         out += [_item_line(r, att, e) for e in items]
     else:
         out.append("- none" + ("" if att is not None else " (no friction log)"))
@@ -9237,9 +9313,8 @@ def _redaction_section(
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
     unnumbered = ", ".join(k for k in _LEGEND if k in _UNNUMBERED)
     check = (
-        f"Residue check: {listed} capitalized or joined word(s) next to a placeholder in this report ("
-        + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits)
-        + "); check them."
+        f"Residue check: {_plural(listed, 'capitalized or joined word')} next to a placeholder in this "
+        "report (" + "; ".join(f"{title}: {', '.join(found)}" for title, found in hits) + "); check them."
         if hits
         else "Residue check: no capitalized or joined word next to a placeholder in this report."
     )
@@ -9276,7 +9351,9 @@ def _redaction_section(
         "",
         "## Redaction",
         "",
-        f"{red.total} replacement(s) of {red.values} value(s) ({kinds}). Numbered placeholders are counted "
+        f"{_plural(red.total, 'replacement')} of {_plural(red.values, 'value')} ({kinds}). Numbered "
+        "placeholders "
+        "are counted "
         f"each time this report shows one. The unnumbered kinds ({unnumbered}) are counted each time a value "
         "was replaced, even in a line that was cut short later, because the report also writes ~/ paths and "
         "template fields of its own, and those are not replacements.",
@@ -9542,16 +9619,17 @@ def _local_work_line() -> str | None:
     if times:
         newest = datetime.fromtimestamp(max(times), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         return (
-            f"- local work kept by setup prompt step 1: {len(times)} patch file(s) in the setup folder's "
-            "local-work"
+            "- local work kept by setup prompt step 1: "
+            f"{_plural(len(times), 'patch file')} in the setup folder's local-work"
             + (
                 f", {unread} of them unreadable and not in bring-back.md (chmod u+r, then run "
                 f"{LOCAL_WORK_AGAIN} again)"
                 if unread
                 else ""
             )
-            + f", newest written {newest} ({LOCAL_WORK_WHERE}); {len(branches)} local-work "
-            "branch(es) in the checkout"
+            + f", newest written {newest} ({LOCAL_WORK_WHERE}); "
+            + _plural(len(branches), "local-work branch", "local-work branches")
+            + " in the checkout"
         )
     if branches:
         # the counted branches hold commits of their own, so "a keep with nothing to keep writes none" was
@@ -9688,7 +9766,7 @@ def build_report(
         lines += bodies[title]
     main = _redact_lines(red, lines)
     red.recount(main)
-    counts = f"{red.total} replacement(s) of {red.values} value(s) (legend under Redaction)"
+    counts = f"{_plural(red.total, 'replacement')} of {_plural(red.values, 'value')} (legend under Redaction)"
     main = main.replace(_REDACTION_MARK, counts)
     try:
         link = _issue_link(r, red)

@@ -241,19 +241,19 @@ def test_the_report_of_each_install_run_expects_its_own_next_line_after_it(tmp_p
     install = (str(wheel), "--source-local", str(folder), "--confirm-install-agent")
     first = run(*install)
     assert first.startswith(
-        "- installer output: 0 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected; the "
+        "- installer output: 0 NEXT: lines in 1 run (exactly one per install.sh run is expected; the "
         "run writing this report prints its NEXT: after the report, so 0 expected here) and "
     ), first
     second = run(*install)
     assert second.startswith(
-        "- installer output: 1 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected; the "
+        "- installer output: 1 NEXT: line in 2 runs (exactly one per install.sh run is expected; the "
         "run writing this report prints its NEXT: after the report, so 1 expected here) and "
     ), second
     bring_back = (home / "agent-context" / "bring-back.md").read_text(encoding="utf-8")
     assert second in bring_back.splitlines(), "the bring-back file carries the same line"
     last = run("--report-only")
     assert last.startswith(
-        "- installer output: 2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and "
+        "- installer output: 2 NEXT: lines in 2 runs (exactly one per install.sh run is expected) and "
     ), last
     out = (home / "agent-context" / "setup" / "install.out").read_text(encoding="utf-8").splitlines()
     assert sum(ln.startswith("# run=") for ln in out) == 2

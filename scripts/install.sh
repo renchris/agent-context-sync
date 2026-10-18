@@ -2596,7 +2596,11 @@ fallback_local_work_line() {
 			[ -z "$p" ] || [ -r "$p" ] || u=$((u + 1))
 		done < <(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null || true)
 		[ "$u" -eq 0 ] || unread=", $u of them unreadable and not in bring-back.md (chmod u+r, then run $LOCAL_WORK_AGAIN again)"
-		say "- local work kept by setup prompt step 1: $n patch file(s) in the setup folder's local-work$unread${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b local-work branch(es) in the checkout"
+		# a known count takes its noun from the count, as the report's line does (B13 round 15 S31)
+		local pf="patch files" lb="local-work branches"
+		[ "$n" != 1 ] || pf="patch file"
+		[ "$b" != 1 ] || lb="local-work branch"
+		say "- local work kept by setup prompt step 1: $n $pf in the setup folder's local-work$unread${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b $lb in the checkout"
 	elif [ "$b" -gt 0 ]; then
 		# the counted branches hold commits of their own: those commits are on the branch only (B13 round 13 O23)
 		say "- local-work branch(es) in the checkout: $b with commits of their own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)"
@@ -2750,8 +2754,8 @@ fallback_body() {
 		o="$(find "$cs" -mindepth 1 -maxdepth 1 ! -name '.*' ! -type d ! -type l 2>/dev/null | wc -l | tr -d ' ')"
 	fi
 	v="$n (OneDrive: $k)"
-	[ "$l" -eq 0 ] || v="$v and $l symlink(s)"
-	[ "$o" -eq 0 ] || v="$v and $o other entry(ies)"
+	[ "$l" -eq 0 ] || { [ "$l" -eq 1 ] && v="$v and 1 symlink" || v="$v and $l symlinks"; }
+	[ "$o" -eq 0 ] || { [ "$o" -eq 1 ] && v="$v and 1 other entry" || v="$v and $o other entries"; }
 	say "- ~/Library/CloudStorage providers: $v"
 	say ""
 	say "## Installer"
@@ -2774,7 +2778,11 @@ fallback_body() {
 				}
 				END { if (hit) printf ", numbered .2 on for runs started in one second" }' "$SETUP_LOG" 2>/dev/null || true)"
 			if [ "$n" -le 60 ]; then
-				say "All $n line(s) of $SETUP_LOG (run ids without their process id$numbered):"
+				if [ "$n" -eq 1 ]; then
+					say "The one line of $SETUP_LOG (run ids without their process id$numbered):"
+				else
+					say "All $n lines of $SETUP_LOG (run ids without their process id$numbered):"
+				fi
 			else
 				say "The last 60 of $n lines of $SETUP_LOG (run ids without their process id$numbered):"
 			fi
@@ -3392,7 +3400,7 @@ source_excludes_line() { # CONFIG
 		function flush() {
 			if (!open) return
 			if (kind == "local" || kind == "inbox") {
-				if (extra) { out = out (out == "" ? "" : ", ") "(source " n ") " extra (folders ? " (" folders " folder glob(s))" : "") }
+				if (extra) { out = out (out == "" ? "" : ", ") "(source " n ") " extra (folders ? " (" folders " folder glob" (folders == 1 ? "" : "s") ")" : "") }
 				else others++
 			}
 			open = 0
@@ -3414,7 +3422,7 @@ source_excludes_line() { # CONFIG
 		END {
 			flush()
 			if (out == "") { print "- source excludes beyond agentsync\047s own: none"; exit }
-			print "- source excludes beyond agentsync\047s own: " out (others ? "; 0 on the other " others " source(s)" : "") \
+			print "- source excludes beyond agentsync\047s own: " out (others ? "; 0 on the other " others " source" (others == 1 ? "" : "s") : "") \
 				" (globs not shown; an excluded folder is not mirrored if it later gains files)"
 		}' "$1" 2>/dev/null || true
 }
@@ -3892,7 +3900,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					if (sec == "## Doctor" && ends($0, "(expected: " w ")")) st = 1
 					if (index($0, "- installer output: no run of this attempt in the last ") == 1) noout = 1
 					if (index($0, "- install.sh: no run during this attempt") == 1) norun = 1
-					if (!at && index($0, "<details><summary>the last ") == 1 && index($0, " line(s) of ") > 0) { at = FNR; inside = 1; next }
+					if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
 					if (inside && $0 == "</details>") inside = 0
 					if (inside && left($0)) k++
 					next
@@ -3901,7 +3909,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					n = length($0) - length(saw)
 					if (noout && n > 0 && substr($0, n + 1) == saw)
 						$0 = substr($0, 1, n) was (norun ? "this attempt ran no install.sh" : "none of this attempt\047s runs is in it") ")</summary>"
-					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line\(s\) of .* \(.*\)<\/summary>$/)
+					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line(s|\(s\))? of .* \(.*\)<\/summary>$/)
 						$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
 				}
 				index($0, "## ") == 1 { sec = $0 }
@@ -3913,14 +3921,20 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					$0 = substr($0, 1, RSTART + RLENGTH - 1) "the installed agentsync, which renders this report; the checkout\047s installer, which stopped this copy, is for setup prompt v" compat ", and the fresh copy\047s step 2 reinstalls agentsync; " substr($0, RSTART + RLENGTH)
 				}
 				c && sec == "## Doctor" && old($0) { $0 = substr($0, 1, index($0, " (fix: ") - 1) " (expected: " w ")" }
-				c && sec == "## Doctor" && $0 ~ /^[0-9]+ check\(s\): .*\. Only the lines that are not ok:/ {
-					if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do."
+				# a renderer from before B13 round 15 S26 writes "N check(s):" and "N expected warn(s) end in", a newer one
+				# "N checks:" and "1 expected warn ends in" / "N expected warns end in": both are read, and a merged
+				# count keeps its form (in the newer form, noun and verb go by the sum)
+				c && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ {
+					if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn" (c == 1 ? " ends" : "s end") " in (expected: <why>) instead of their fix: nothing for this setup to do."
 					else if (match($0, / [0-9]+ expected warn\(s\) end in /)) {
 						e = substr($0, RSTART + 1) + 0
 						$0 = substr($0, 1, RSTART) (e + c) substr($0, RSTART + 1 + length(e ""))
+					} else if (match($0, / [0-9]+ expected warns? ends? in /)) {
+						e = substr($0, RSTART + 1) + 0
+						$0 = substr($0, 1, RSTART) (e + c) " expected warns end in " substr($0, RSTART + RLENGTH)
 					}
 				}
-				(c || st) && sec == "## Doctor" && $0 ~ /^[0-9]+ check\(s\): .*\. Only the lines that are not ok:/ && !index($0, b) && ends($0, "nothing for this setup to do.") {
+				(c || st) && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ && !index($0, b) && ends($0, "nothing for this setup to do.") {
 					$0 = substr($0, 1, length($0) - 1) b "."
 				}
 				c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0) }

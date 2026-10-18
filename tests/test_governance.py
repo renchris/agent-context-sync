@@ -1713,3 +1713,12 @@ def test_a_purge_leaves_a_queued_purge_it_cannot_stand_in_for(world: World) -> N
     before = queue.read_bytes()
     assert gv.purge(world.config, s1, reason=gv.PurgeReason.OPERATOR, now=NOW).verified
     assert queue.read_bytes() == before
+
+
+def test_the_compaction_line_takes_its_noun_from_the_day_count(tmp_docs_repo: Path) -> None:
+    """B13 round 15 S26: doctor's governance line, which the setup report shows, read "no commit older than 37
+    day(s)" though the count is known."""
+    for days, said in ((1, "older than 1 day "), (37, "older than 37 days ")):
+        gov = gv.GovernanceConfig(history_days=days, compaction_slack_days=0)
+        state, line = gv.compaction_state(tmp_docs_repo, gov)
+        assert state == "ok" and said in line and "(s)" not in line, line

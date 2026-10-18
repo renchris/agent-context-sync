@@ -889,5 +889,5 @@ def test_setup_report_reads_the_install_sh_log(
     monkeypatch.setenv("HOME", stubs["HOME"])
     text, _red = setup_report.build_report(Path(stubs["HOME"]) / "agent-context" / "sources.toml")
     installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
-    assert "1 install.sh run(s)" in installer and "exit 0 after" in installer
+    assert "1 install.sh run" in installer and "exit 0 after" in installer
     assert "step=launcher" in installer and "step=report" in installer

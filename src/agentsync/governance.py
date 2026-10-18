@@ -64,6 +64,7 @@ from agentsync.ops.lock import SingleWriterLock
 from agentsync.paths import StatePaths, expand, glob_match, is_cloud_path, is_under
 from agentsync.policy import POLICY_FILE_NAME
 from agentsync.skill import AGENTSYNC_BIN
+from agentsync.text import plural
 from agentsync.tm_exclude import TM_EXCLUDE_XATTR
 from agentsync.tm_exclude import has_xattr as _has_xattr
 from agentsync.tm_exclude import set_exclusion as _set_tm_exclusion
@@ -2838,15 +2839,16 @@ def compaction_state(repo: Path, gov: GovernanceConfig, *, now: datetime | None 
         return "ok", ARCHIVE_KEEPS_HISTORY
     span = gov.history_days + gov.compaction_slack_days
     if not compaction_due(repo, gov, now=now):
-        return "ok", f"no commit older than {span} day(s) (history_days {gov.history_days} + slack)"
+        return "ok", f"no commit older than {plural(span, 'day')} (history_days {gov.history_days} + slack)"
     late = dataclasses.replace(gov, compaction_slack_days=2 * gov.compaction_slack_days)
     if compaction_due(repo, late, now=now):
         return (
             "overdue",
-            f"history holds commits older than {gov.history_days + 2 * gov.compaction_slack_days} day(s): "
+            f"history holds commits older than "
+            f"{plural(gov.history_days + 2 * gov.compaction_slack_days, 'day')}: "
             "retention compaction has not run",
         )
-    return "due", f"history holds commits older than {span} day(s); the next RECONCILE compacts them"
+    return "due", f"history holds commits older than {plural(span, 'day')}; the next RECONCILE compacts them"
 
 
 def compact_history(

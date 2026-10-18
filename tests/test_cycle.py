@@ -6472,3 +6472,24 @@ def test_every_m66_site_names_a_page_read_that_says_neither() -> None:
         para = " ".join(text.split(head, 1)[1].split("\n\n", 1)[0].split())
         assert line in para, head
     assert flat.count(line) == 2
+
+
+def test_the_rescreen_lines_take_their_noun_from_the_count() -> None:
+    """B13 round 15 S26: STATE.md read "[policy] changed: 1 label-capable file(s) not yet re-screened ...
+    their mirror pages" though the count is known."""
+
+    class _Manifest:
+        def __init__(self, left: int) -> None:
+            self.left = left
+
+        def get_meta(self, _key: str) -> str:
+            return "x"
+
+        def pending_named(self, _suffixes: object) -> int:
+            return self.left
+
+    for left, said in ((1, "1 label-capable file not yet"), (3, "3 label-capable files not yet")):
+        fake = type("C", (), {"manifest": _Manifest(left)})()
+        [line] = [ln for ln in cycle_mod._Cycle._rescreen_lines(fake) if ln.startswith("- [policy]")]  # type: ignore[arg-type]
+        assert said in line and "(s)" not in line, line
+        assert ("its mirror page reflects" if left == 1 else "their mirror pages reflect") in line, line

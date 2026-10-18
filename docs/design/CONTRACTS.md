@@ -21109,6 +21109,9 @@ page`, and the report's `listed 1 folder`, `1 of 2 sources` and `(1 excluded id,
 its `(s)` until it is converted again for another reason. Tests: `test_deploy_pack.py::test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`
 (one folder), `test_list_folders_marks_the_folders_this_mac_already_syncs` (two), `tests/test_text.py`.
 
+Amended 2026-10-18, §16.116 S26, S30, S31: every count the setup report knows takes its noun from the count, not
+only the lines listed here; install.sh's report readers accept both forms.
+
 **The shell legend's in-word example is a word the report shows** (Q5; amends §16.105 O45). It was always
 `<org-1>Drive`; it is the first whole word the in-word detector's own pattern finds in the body (at most 32 bytes),
 and `<org-1>Drive` only with no body. Test: `test_the_org_legend_explains_only_what_the_report_shows` (mid-word, a
@@ -21520,6 +21523,40 @@ person's fix beside a `chmod 700` [FAIL]) keeps both as `fix:`, since its NEXT s
 a fix on a [warn], [ok] or TCC_PENDING line stays `fix:`, and a NEXT holding `fix:` is still a `NEXT:`. Not per
 line: a per-line split would call a mixed run's person's fix "not a hint" under a NEXT that asks the agent to act.
 The Installer sentence says so. Test: `test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent`.
+
+**A known count takes its noun from the count, everywhere in the report** (S26, S30, S31: one defect from three
+finders, built once; amends §16.111 Q39). Q39 moved a few lines to `plural`; the report still wrote `(s)` after
+some 60 counts it knows, so it mixed `(42 checks)` with `42 check(s):` and `1 attempt(s):`. Every `{n} <noun>(s)`
+in `setup_report.py` is `_plural` (`agentsync.text.plural`) now, with `many=` for an irregular plural (`other
+entries`, `local-work branches`), and the verb after a count agrees (`1 expected warn ends in` / `N expected warns
+end in`; `1 queued id is` / `has no row`; `1 queued purge names`; `1 line ... says`; `the 1 run adds up to`; `1
+conversion was used again`; `the 1 line read before the first run header is not counted`). A one reads as one:
+`the last line of install.out`, `of the last run, ...`, `The last run does not say what its re-read looked for`,
+`finished in its one local or inbox source with a record`, and the Empty cloud folders line's `its last walk listed
+the one file the mirror holds for it` / `did not list the one file` (S30; never `all 1 file` or `1 of the 1 file`),
+with `every one of the N files` for more and `of the checked folder` by the checked count. `(s)` stays only where no
+count stands before the noun (`- local-work branch(es) in the checkout: N with commits ...`). Beyond the report:
+cycle.py's `[policy] changed: N label-capable files ...` (log and STATE.md, `its mirror page reflects` for one) and
+governance's `no commit older than N days` (doctor's governance line, which the report shows). install.sh's own
+counts take theirs (`N patch files` / `1 patch file` and `M local-work branches` in the fallback local-work line,
+the providers line's `1 symlink` / `1 other entry`, `All N lines of install.log` or `The one line of ...`, the
+shell report's `folder glob` and `source`); lane RB's S14 owns the unread-patch lines (3491, 3535, 3537, 3576, 4015).
+
+install.sh rewrites a stopped copy that any installed renderer may have written, so its readers accept both forms
+(an older agentsync still writes `(s)`): the install.out details summary (` line(s) of ` or ` lines of `, for the
+`k of them left out` note), and the Doctor header (`N check(s):` or `N checks:`; `N expected warn(s) end in`
+spliced as before, `1 expected warn ends in` / `N expected warns end in` rebuilt with the sum, so noun and verb
+agree). `quiet()` stays on ` event line(s): `: a renderer that writes the new form writes no quiet-only friction
+line. No emitter version moved, and pages converted before keep their `(s)` (Q39). The guide's quotes
+(setup-feedback.md: the local-work line, the installer-output row, the no-converter and stub notes) move with them.
+Tests: `test_setup_report.py::test_a_report_writes_no_s_after_a_count_it_knows` (a report whose counts are 1 and 2:
+no `<number> <noun>(s)` in its own lines), `test_install_oneshot.py::test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected`
+(a new-form header, alone and with `1 expected warn ends in` merged to `2 expected warns end in`) and
+`test_a_stopped_copys_embed_counts_the_lines_it_leaves_out` (`the last 60 lines of` gets the left-out note),
+`test_cycle.py::test_the_rescreen_lines_take_their_noun_from_the_count`,
+`test_governance.py::test_the_compaction_line_takes_its_noun_from_the_day_count`, and the pinned strings that moved.
+A stopped copy an older installed agentsync renders keeps that renderer's `(s)` where lane RB's S20 rewrite (§16.117)
+does not reach: older wording, not a wrong count.
 
 **The status step's tcc-pending words promise no wait** (S35; amends §16.110 Q4). Doctor gives a `tcc.<id>`
 TCC_PENDING [FAIL] whenever LaunchAgents are installed (`doctor.agents_wanted`), so a run with no

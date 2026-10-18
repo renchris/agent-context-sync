@@ -217,9 +217,9 @@ def test_headings_redaction_and_runtime(fake_mac: dict[str, Path], tmp_path: Pat
         text, "Installer"
     )
     assert not re.search(r"<folder-[4-9]>", text), "three folders, three placeholders"
-    m = re.search(r"^(\d+) replacement\(s\) of (\d+) value\(s\)", section(text, "Redaction"), re.MULTILINE)
+    m = re.search(r"^(\d+) replacements of (\d+) values", section(text, "Redaction"), re.MULTILINE)
     assert m and int(m.group(1)) > 10 and 10 <= int(m.group(2)) < int(m.group(1))
-    assert f"- redaction: {m.group(1)} replacement(s) of {m.group(2)} value(s)" in section(text, "Summary")
+    assert f"- redaction: {m.group(1)} replacements of {m.group(2)} values" in section(text, "Summary")
 
 
 def test_recent_errors_never_carry_an_item_path_or_document_name(
@@ -301,7 +301,7 @@ def test_recent_errors_merge_a_line_repeated_in_a_row(fake_mac: dict[str, Path],
     assert "15:05:00.000Z" not in errors and "Mooring" not in text and "Harbor" not in text
     assert "15:15:00.000Z WARNING agentsync.arm_local: src-b: directory '<path>' has no children\n" in errors
     assert "15:20:00.000Z WARNING agentsync.arm_local: src-a: directory '<path>' has no children\n" in errors
-    assert "The last 5 of 5 WARNING/ERROR line(s) in " in errors and "KiB" not in errors
+    assert "The last 5 of 5 WARNING/ERROR lines in " in errors and "KiB" not in errors
     assert (
         "(8 as logged: lines in a row that read the same here are shown once, with their count and last time)"
         in errors
@@ -318,7 +318,7 @@ def test_recent_errors_name_their_window(fake_mac: dict[str, Path], tmp_path: Pa
     assert log.stat().st_size > setup_report._TAIL_BYTES
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     errors = section(text, "Recent errors")
-    window = r"The last 40 of (\d+) WARNING/ERROR line\(s\) in the last 64 KiB of each log file in "
+    window = r"The last 40 of (\d+) WARNING/ERROR lines in the last 64 KiB of each log file in "
     head = re.search(window, errors)
     assert head and int(head[1]) == len(setup_report._tail(log)), errors[:300]
     assert "poll 2999 unstable" in errors
@@ -651,10 +651,10 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     for label in ("macOS", "architecture", "MDM enrollment", "Xcode Command Line Tools", "uv", "pandoc"):
         assert f"- {label}" in env, label
     assert "OneDrive.app:" in env and "Company Portal:" in env and "agentsync resolves:" in env
-    assert "listable, 2 provider folder(s)" in env and "~/.local/bin on PATH:" in env
+    assert "listable, 2 provider folders" in env and "~/.local/bin on PATH:" in env
     assert "- agentsync on PATH: " in env
     inst = section(text, "Installer")
-    assert "1 install.sh run(s)" in inst and "exit 0 after 57s" in inst and "57s in total" in inst
+    assert "1 install.sh run" in inst and "exit 0 after 57s" in inst and "57s in total" in inst
     assert re.search(r"^\| agentsync +\| +41 \| done +\|$", inst, re.MULTILINE), "the per-step table"
     assert re.search(
         r"^\| doctor +\| +3 \| done, rc 1 \(agentsync status reported \[FAIL\] lines\) +\|$",
@@ -671,7 +671,7 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     assert "- [policy] label rule: off\n" in conf
     doctor = section(text, "Doctor")
     m = re.search(r"^(\d+) ok: (.+)$", doctor, re.MULTILINE)
-    assert re.search(r"\d+ check\(s\): \d+ ok", doctor) and m and "python" in m.group(2).split(", ")
+    assert re.search(r"\d+ checks: \d+ ok", doctor) and m and "python" in m.group(2).split(", ")
     assert "[ok  ]" not in doctor, "only the lines that are not ok are listed"
     assert re.search(r"^\[(?:warn|FAIL)\s*\] \S+ ", doctor, re.MULTILINE), "non-ok lines are kept"
     optional = r"^\[info\s*\] launchd\.poll .* not installed \(optional background sync"  # KISS K11a
@@ -682,7 +682,7 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     assert "- com.agentsync.poll: not installed" in bg and "- com.agentsync.reconcile: not installed" in bg
     assert "TCC_PENDING reason=canary" in bg
     summary = section(text, "Summary")
-    tags = re.search(r"(\d+) check\(s\): \d+ ok, \d+ info, (\d+) warn, (\d+) FAIL", doctor)
+    tags = re.search(r"(\d+) checks: \d+ ok, \d+ info, (\d+) warn, (\d+) FAIL", doctor)
     assert tags and f"- doctor: {tags[3]} FAIL, {tags[2]} warn ({tags[1]} checks) · " in summary
     assert (
         "- install.sh: 1 install run; the last exit 0 after 57s (uv 0s · agentsync 41s · launcher 12s · "
@@ -690,7 +690,7 @@ def test_sections_carry_the_facts(fake_mac: dict[str, Path], tmp_path: Path) -> 
     )
     assert "- background sync: poll not installed · reconcile not installed" in summary
     errors = section(text, "Recent errors")
-    assert "The last 2 of 2 WARNING/ERROR line(s)" in errors and "not an error line" not in errors
+    assert "The last 2 of 2 WARNING/ERROR lines" in errors and "not an error line" not in errors
     assert "~~~text" in text and "```" not in text, "no backtick fences (the issue form wraps it in some)"
 
 
@@ -1006,7 +1006,7 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     ), "expected turns on their own line (K10)"
     # B13 round 8 J14: three zero counts need no "none of these changes the outcome by itself"
     assert "- agent friction: 0 deviation, 0 prompt, 0 error" in summary.splitlines()
-    assert "- friction (attempt 1): 12 event line(s): 4 start, 4 end, 1 question, 2 click, 1 finished" in (
+    assert "- friction (attempt 1): 12 event lines: 4 start, 4 end, 1 question, 2 click, 1 finished" in (
         summary
     ), "every event line counted once, the finished line too (L9)"
     assert (
@@ -1026,13 +1026,13 @@ def test_v5_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path:
     assert "Agent friction (attempt 1" not in summary
     fr = section(text, "Agent friction log")
     assert re.search(
-        r"Embedded from ~/agent-context/setup/friction\.md as this report read it: 15 line\(s\), last "
+        r"Embedded from ~/agent-context/setup/friction\.md as this report read it: 15 lines, last "
         r"modified \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ ",
         fr,
     ), "the report records what it embedded (J4)"
     assert (
         "- attempt 1 (lines 1-15; started 2026-09-29T09:58:00Z; prompt v5; agent Claude Code, "
-        "claude-opus-5-5): fully one command; 12 event line(s): 4 start, 4 end, 1 question, 2 click, 1 "
+        "claude-opus-5-5): fully one command; 12 event lines: 4 start, 4 end, 1 question, 2 click, 1 "
         "finished\n" in fr
     ), "a finished attempt says so once, in its counts (B13 round 6 G22)"
     assert "finished; finished" not in fr
@@ -1068,11 +1068,11 @@ def test_v5_turn_kinds_make_it_worked_with_help(fake_mac: dict[str, Path]) -> No
     )
     _text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: worked with help** (computed: install.sh exit 0; 1 question(s) beyond the folder "
-        "question; 1 click(s) beyond the Allow clicks; 1 approval(s))"
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 question beyond the folder "
+        "question; 1 click beyond the Allow clicks; 1 approval)"
     ), "person-facing facts only: the deviation, prompt and untyped lines are agent friction (K4)"
     assert (
-        "- agent friction: 1 deviation, 1 prompt, 0 error (F15, F16); 1 line(s) without a prompt kind "
+        "- agent friction: 1 deviation, 1 prompt, 0 error (F15, F16); 1 line without a prompt kind "
         "(untyped or v4), shown, not counted; none of these changes the outcome by itself" in summary
     )
     assert "- agent said: fully one command" in summary, (
@@ -1195,7 +1195,7 @@ def test_attempts_the_latest_is_judged_and_earlier_ones_listed(fake_mac: dict[st
     assert "- attempt: 2 of 2; earlier: attempt 1 failed at step 1" in summary
     assert "Items that were not one command (attempt 2):" in summary
     fr = section(text, "Agent friction log")
-    assert "2 attempt(s):" in fr
+    assert "2 attempts:" in fr
     assert (
         "- attempt 1 (lines 1-6; started 2026-09-29T09:00:00Z; prompt v5; agent Claude Code): failed at "
         "step 1" in fr
@@ -1219,7 +1219,7 @@ def test_v4_logs_are_legacy_and_never_counted(fake_mac: dict[str, Path]) -> None
     text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
         "- **outcome: worked with help** (computed: install.sh exit 0; human turns unknown: the attempt has "
-        "no v5 event line (1 legacy v4 line(s)))"
+        "no v5 event line (1 legacy v4 line))"
     ), "a second Prompt: block is a second attempt (J5); legacy lines never make it fully one command"
     assert "- agent said: in progress" in summary and "- attempt: 2 of 2; earlier: attempt 1 " in summary
     assert "- human turns: 0 (0 questions; clicks: none possible; approvals: not observable)" in summary, (
@@ -1231,7 +1231,7 @@ def test_v4_logs_are_legacy_and_never_counted(fake_mac: dict[str, Path]) -> None
     fr = section(text, "Agent friction log")
     assert (
         "no Attempt: line, since it is in the v4 format" in fr
-        and "2 legacy v4 line(s) (F<n> | ...), shown, not counted" in fr
+        and "2 legacy v4 lines (F<n> | ...), shown, not counted" in fr
     )
     assert "F2 | step 3 | needed help | 1 | asked which folders; I clicked Allow | say it first" in fr
 
@@ -1387,7 +1387,7 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(
     os.utime(draft, (noon, noon))
     text, summary = summary_of(fake_mac, doctor=doctor, status=status)
     assert (
-        f"- IT draft: {setup_report.IT_DRAFT} exists; 4 field(s) left for you (<it-contact>, "
+        f"- IT draft: {setup_report.IT_DRAFT} exists; 4 fields left for you (<it-contact>, "
         "<requester-upn>, <team>, <wanted-by>); 3 left for IT" in summary
     )
     # no date = in its Filled line: the file's date; and its email is not what it-request writes (N29)
@@ -1436,7 +1436,7 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(
     monkeypatch.setattr(it_request, "load_template", load_template)
     draft.write_text(draft_text.replace("`<team>`", "Finance").replace("`<wanted-by>`", "Friday"))
     _text, summary = summary_of(fake_mac, doctor=doctor, status=status)
-    assert "exists; 2 field(s) left for you (<it-contact>, <requester-upn>); 3 left for IT" in summary
+    assert "exists; 2 fields left for you (<it-contact>, <requester-upn>); 3 left for IT" in summary
     # LaunchAgents really installed by the last run: "not installed" is no longer expected
     write_install_log(fake_mac, simulated=False, agent="seconds=2 rc=0 result=done")
     _text, summary = summary_of(fake_mac, doctor=doctor, status=status)
@@ -1519,7 +1519,7 @@ def test_redaction_variants_residue_and_pid(fake_mac: dict[str, Path], tmp_path:
         assert raw.lower() not in lower, f"{raw!r} leaked"
     red = section(text, "Redaction")
     assert (
-        "Residue check: 1 capitalized or joined word(s) next to a placeholder in this report (Agent friction "
+        "Residue check: 1 capitalized or joined word next to a placeholder in this report (Agent friction "
         "log: Board); check them." in red
     ), "the whole report is checked, hits listed by section (K9)"
     assert "are template placeholders, not redactions" in red
@@ -1897,7 +1897,7 @@ def test_checks_render_once_from_one_offline_status_build(
     assert not re.search(r"^\[(ok|FAIL|warn|info)\s*\]", status, re.MULTILINE), (
         "the checks render in Doctor only"
     )
-    assert re.search(r"\d+ check\(s\): \d+ ok", section(text, "Doctor"))
+    assert re.search(r"\d+ checks: \d+ ok", section(text, "Doctor"))
 
 
 @pytest.mark.usefixtures("roomy_calls")
@@ -2042,7 +2042,7 @@ def test_an_unexpected_doctor_fail_is_not_fully_one_command(fake_mac: dict[str, 
 
     text, summary = summary_of(fake_mac, doctor=doctor)
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: worked with help** (computed: install.sh exit 0; 1 unexpected doctor FAIL(s): tcc)"
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 unexpected doctor FAIL: tcc)"
     )
     fr = section(text, "Agent friction log")
     assert "- attempt 1 (lines 1-15;" in fr and "): worked with help;" in fr, (
@@ -2437,7 +2437,7 @@ def test_the_residue_check_names_a_word_glued_to_the_organisation(
     assert "<org-1>Drive" in section(text, "Agent friction log"), section(text, "Agent friction log")
     red = section(text, "Redaction")
     assert (
-        "Residue check: 1 capitalized or joined word(s) next to a placeholder in this report (Agent friction "
+        "Residue check: 1 capitalized or joined word next to a placeholder in this report (Agent friction "
         "log: Drive); check them." in red
     ), red
 
@@ -2772,7 +2772,7 @@ def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Pa
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     assert "<folder-2> Roadmap failed" in section(text, "Recent errors")
     assert (
-        "Residue check: 1 capitalized or joined word(s) next to a placeholder in this report (Recent errors: "
+        "Residue check: 1 capitalized or joined word next to a placeholder in this report (Recent errors: "
         "Roadmap); check them." in section(text, "Redaction")
     )
     assert setup_report.residue_by_section(
@@ -2785,7 +2785,7 @@ def test_residue_check_covers_the_whole_report_by_section(fake_mac: dict[str, Pa
         setup_report.Redactor(), [("A", ["Alpha", "Beta"]), ("C", ["Beta"])]
     )
     assert (
-        "Residue check: 3 capitalized or joined word(s) next to a placeholder in this report (A: Alpha, "
+        "Residue check: 3 capitalized or joined words next to a placeholder in this report (A: Alpha, "
         "Beta; C: Beta)" in ("\n".join(twice))
     ), "the count is the number of words listed (field report 2026-10-06: 5 counted, 7 listed)"
     assert setup_report._shorten("word " * 60, 22) == "word word word word…", "never cut inside a word"
@@ -2813,13 +2813,13 @@ def test_installer_output_is_embedded_and_its_hints_counted(
     (fake_mac["setup"] / "install.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     counted = (
-        "1 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected) and 3 other "
-        "instruction-like line(s) (1 next:, 1 fix:, 1 run:) in the last 75 line(s) of install.out"
+        "1 NEXT: line in 1 run (exactly one per install.sh run is expected) and 3 other "
+        "instruction-like lines (1 next:, 1 fix:, 1 run:) in the last 75 lines of install.out"
     )
     inst = section(text, "Installer")
     assert f"Installer output: {counted}." in inst
     assert f"- installer output: {counted}" in section(text, "Summary")
-    head = "<details><summary>the last 60 line(s) of ~/agent-context/setup/install.out (what the agent saw)"
+    head = "<details><summary>the last 60 lines of ~/agent-context/setup/install.out (what the agent saw)"
     shown = inst.split(head + "</summary>", 1)[1]
     assert "filler 13\n" not in shown and "filler 14\n" in shown and shown.rstrip().endswith("</details>")
     assert "4242" not in shown, "no process id"
@@ -2862,9 +2862,8 @@ def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
     both = setup_report.instruction_counts(run_one + run_two)
     assert both == {"NEXT:": 2, setup_report.PERSONS_FIX: 2, "fix:": 3}, both
     text = setup_report._instruction_text(setup_report.instruction_counts([*run_one[:3], next_line]), 4, 1)
-    assert (
-        " and 0 other instruction-like line(s) and 2 fix: on [FAIL] lines that are the person's (their "
-        in (text)
+    assert " and 0 other instruction-like lines and 2 fix: on [FAIL] lines that are the person's (their " in (
+        text
     ), text
     write_install_log(fake_mac)
     write_friction(fake_mac)
@@ -2878,6 +2877,59 @@ def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
         in (inst)
     ), inst
     assert "a fix: on a [FAIL] line of a run whose stopping [FAIL] lines are all the person's is not" in inst
+
+
+_COUNTED_S_RE = re.compile(r"\b\d+ [A-Za-z:. -]{0,30}\((?:s|es|ies)\)")
+"""A number before a noun written with ``(s)``: the count is known, so the noun needs none (B13 round 15 S26,
+S30, S31)."""
+
+
+def _report_prose(text: str) -> list[str]:
+    """The report's own lines: not the fenced blocks or ``<details>`` bodies, which quote other programs."""
+    out: list[str] = []
+    fence = details = False
+    for line in text.splitlines():
+        if line.startswith(("~~~", "```")):
+            fence = not fence
+        elif line.startswith("<details>"):
+            details = True
+            out.append(line)  # its summary line is the report's
+        elif line == "</details>":
+            details = False
+        elif not fence and not details:
+            out.append(line)
+    return out
+
+
+def test_a_report_writes_no_s_after_a_count_it_knows(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """B13 round 15 S26, S30, S31: the report wrote "(s)" after some 60 counts it knows (``1 attempt:``,
+    ``1 event line``, ``2 NEXT: lines in 2 runs``, ``1 provider folder``, ``42 checks:``,
+    ``84 replacements of 7 values``), beside lines Q39 had moved to the count's noun. One attempt with an
+    error and its end line, two install runs, the fake Mac's provider folders: no count in the report's own
+    lines carries ``(s)``."""
+    write_install_log(fake_mac)
+    with (fake_mac["setup"] / "install.log").open("a", encoding="utf-8") as log:
+        log.write(
+            "2026-09-29T10:05:00Z run=20260929T100500Z-4243 start install.sh compat=10 commit=0123456789ab "
+            "kind=checkout source=- args=\n"
+            "2026-09-29T10:05:00Z run=20260929T100500Z-4243 end rc=0 seconds=1\n"
+        )
+    write_friction(
+        fake_mac,
+        V11_HAPPY.replace(
+            "| end | finished",
+            "| step 2 | error | git pull exit 1: a | -\n2026-09-29T10:01:10Z | end | finished",
+        ),
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh\nNEXT: review the report\n",
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    found = [(ln, m.group(0)) for ln in _report_prose(text) for m in _COUNTED_S_RE.finditer(ln)]
+    assert found == [], found
+    friction = section(text, "Agent friction log")
+    assert "1 attempt:" in friction and "2 event lines: " in friction, friction
 
 
 def out_run(number: int, filler: int) -> list[str]:
@@ -2894,7 +2946,7 @@ def out_run(number: int, filler: int) -> list[str]:
 def test_installer_output_counts_next_lines_and_runs_over_the_same_whole_runs(
     fake_mac: dict[str, Path],
 ) -> None:
-    """Field report 2026-10-07: "6 NEXT: line(s) in 5 run(s)", and no run had printed two. The report reads
+    """Field report 2026-10-07: "6 NEXT: lines in 5 runs", and no run had printed two. The report reads
     the last 64 KiB of install.out by bytes, which started inside a run: that run's NEXT: line (its last
     line) was read and its header (its first) was not. The count now starts at the first header read. The
     embedded tail is still the file's last 60 lines."""
@@ -2908,15 +2960,15 @@ def test_installer_output_counts_next_lines_and_runs_over_the_same_whole_runs(
     assert cut > 2 and window[cut - 1] == "NEXT: run 1 is done", "the read starts inside run 1"
     assert setup_report.instruction_counts(window)["NEXT:"] == 3, "read as it was: 3 NEXT: in 2 runs"
     counted = (
-        "2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 2 other "
-        "instruction-like line(s) (2 fix:) in the last 206 line(s) of install.out (whole runs only: the "
-        f"{cut} line(s) read before the first run header are not counted)"
+        "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected) and 2 other "
+        "instruction-like lines (2 fix:) in the last 206 lines of install.out (whole runs only: the "
+        f"{cut} lines read before the first run header are not counted)"
     )
     text, summary = summary_of(fake_mac)
     inst = section(text, "Installer")
     assert f"Installer output: {counted}." in inst
     assert f"- installer output: {counted}" in summary
-    shown = inst.split("<details><summary>the last 60 line(s) of ", 1)[1].split("~~~text\n", 1)[1]
+    shown = inst.split("<details><summary>the last 60 lines of ", 1)[1].split("~~~text\n", 1)[1]
     assert shown.split("\n~~~", 1)[0].splitlines() == [
         ln.replace("-4242", "") for ln in lines[-setup_report.INSTALL_OUT_TAIL :]
     ]
@@ -2927,8 +2979,8 @@ def test_installer_output_counts_next_lines_and_runs_over_the_same_whole_runs(
     assert not any(ln.startswith("# run=") for ln in window)
     text, summary = summary_of(fake_mac)
     counted = (
-        "1 NEXT: line(s) (exactly one per install.sh run is expected) and 1 other instruction-like line(s) "
-        f"(1 fix:) in the last {len(window)} line(s) of install.out"
+        "1 NEXT: line (exactly one per install.sh run is expected) and 1 other instruction-like line "
+        f"(1 fix:) in the last {len(window)} lines of install.out"
     )
     assert f"- installer output: {counted}\n" in summary + "\n"
     assert f"Installer output: {counted}. An instruction-like line" in section(text, "Installer")
@@ -2938,9 +2990,9 @@ def test_installer_output_counts_next_lines_and_runs_over_the_same_whole_runs(
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     _text, summary = summary_of(fake_mac)
     assert (
-        "- installer output: 1 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected) and 1 "
-        "other instruction-like line(s) (1 fix:) in the last 8 line(s) of install.out (whole runs only: the "
-        "7 line(s) read before the first run header are not counted)" in summary
+        "- installer output: 1 NEXT: line in 1 run (exactly one per install.sh run is expected) and 1 "
+        "other instruction-like line (1 fix:) in the last 8 lines of install.out (whole runs only: the "
+        "7 lines read before the first run header are not counted)" in summary
     )
 
 
@@ -2956,16 +3008,16 @@ def test_the_report_install_sh_writes_at_its_exit_expects_one_next_line_fewer(
     )
     monkeypatch.setenv(setup_report.REPORT_RUN_ENV, "20260922T100000Z-4242")
     pending = (
-        "1 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected; the run writing this "
-        "report prints its NEXT: after the report, so 1 expected here) and 2 other instruction-like line(s) "
-        "(2 fix:) in the last 15 line(s) of install.out"
+        "1 NEXT: line in 2 runs (exactly one per install.sh run is expected; the run writing this "
+        "report prints its NEXT: after the report, so 1 expected here) and 2 other instruction-like lines "
+        "(2 fix:) in the last 15 lines of install.out"
     )
     text, summary = summary_of(fake_mac)
     assert f"- installer output: {pending}\n" in summary + "\n"
     assert f"Installer output: {pending}." in section(text, "Installer")
     today = (
-        "1 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 2 other "
-        "instruction-like line(s) (2 fix:) in the last 15 line(s) of install.out"
+        "1 NEXT: line in 2 runs (exactly one per install.sh run is expected) and 2 other "
+        "instruction-like lines (2 fix:) in the last 15 lines of install.out"
     )
     for named in ("20260921T100000Z-4242", ""):
         monkeypatch.setenv(setup_report.REPORT_RUN_ENV, named)
@@ -3348,15 +3400,15 @@ def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_onl
     out = fake_mac["setup"] / "install.out"
     out.write_text("\n".join([*block(old, 2), *block(new, 1)]) + "\n", encoding="utf-8")
     whole = (
-        "2 NEXT: line(s) in 2 run(s) (exactly one per install.sh run is expected) and 3 other "
-        "instruction-like line(s) (3 fix:) in the last 11 line(s) of install.out"
+        "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected) and 3 other "
+        "instruction-like lines (3 fix:) in the last 11 lines of install.out"
     )
     text, summary = summary_of(fake_mac)
     assert f"Installer output: {whole}." in section(text, "Installer")
     assert (
-        "- installer output: 1 NEXT: line(s) in 1 run(s) (exactly one per install.sh run is expected) and 1 "
-        "other instruction-like line(s) (1 fix:) in the last 5 line(s) of install.out (this attempt's runs "
-        "only; the Installer section also counts the 1 earlier run(s) in the lines read)\n" in summary
+        "- installer output: 1 NEXT: line in 1 run (exactly one per install.sh run is expected) and 1 "
+        "other instruction-like line (1 fix:) in the last 5 lines of install.out (this attempt's runs "
+        "only; the Installer section also counts the 1 earlier run in the lines read)\n" in summary
     )
     write_friction(fake_mac, first)  # attempt 1 is the latest and owns both runs
     _text, summary = summary_of(fake_mac)
@@ -3370,11 +3422,11 @@ def test_the_summary_counts_the_installer_output_of_the_latest_attempts_runs_onl
     out.write_text("\n".join(block(old, 2)) + "\n", encoding="utf-8")
     _text, summary = summary_of(fake_mac)
     assert (
-        "- installer output: no run of this attempt in the last 6 line(s) of install.out (the Installer "
-        "section counts the 1 earlier run(s) in the lines read)\n" in summary
+        "- installer output: no run of this attempt in the last 6 lines of install.out (the Installer "
+        "section counts the 1 earlier run in the lines read)\n" in summary
     )
     # B13 round 5 F20: the tail it embeds is not "what the agent saw" then, but earlier attempts' output
-    saw = "<summary>the last 6 line(s) of ~/agent-context/setup/install.out ("
+    saw = "<summary>the last 6 lines of ~/agent-context/setup/install.out ("
     text, _summary = summary_of(fake_mac)
     installer = section(text, "Installer")
     assert saw + "earlier attempts' install.sh output: none of this attempt's runs is in it)" in installer
@@ -3969,8 +4021,8 @@ def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_t
             None,
             (
                 "install.sh exit 0",
-                "1 question(s) beyond the folder question",
-                "1 click(s) beyond the Allow clicks",
+                "1 question beyond the folder question",
+                "1 click beyond the Allow clicks",
             ),
             7,
         )
@@ -3986,7 +4038,7 @@ def test_a_v8_attempt_is_judged_like_v7_and_a_version_alone_says_nothing_about_t
     same = [[ln for ln in summaries[v] if not ln.startswith("- prompt: ")] for v in (7, 8, 9)]
     assert same[0] == same[1] == same[2] and len(same[0]) > 10
     said = "\n".join(same[1])
-    assert "- **outcome: worked with help** (computed: install.sh exit 0; 1 question(s) beyond" in said
+    assert "- **outcome: worked with help** (computed: install.sh exit 0; 1 question beyond" in said
     assert "- expected turns: the folder question (step 1; not logged as a question) · " in said
     assert "- agent friction: 1 deviation, 1 prompt, 1 error (F6, F7, F8); none of these changes" in said
     assert "IT draft" not in said, "since v7 there is no IT request step"
@@ -4072,7 +4124,7 @@ def test_a_stopped_log_start_value_the_session_ran_again_is_a_rerun_not_a_failur
         assert f"- attempt: 2 of 2; earlier: attempt 1 {earlier}" in summary.splitlines(), (at, summary)
         # B13 round 11 M31: the outcome's own note bracket is the only one on the line
         assert "))" not in next(ln for ln in summary.splitlines() if ln.startswith("- attempt: ")), summary
-        assert f"): {earlier}; 2 event line(s): 1 error, 1 finished" in text, text
+        assert f"): {earlier}; 2 event lines: 1 error, 1 finished" in text, text
     # the stopped attempt alone, or as the latest one, is as before: there is no next attempt to read
     write_friction(fake_mac, stop.format(said="v61", agent="Contoso Bot", installer=mine, why=newer))
     _rc, text, _ = report(tmp_path, fake_mac["config"])
@@ -5156,7 +5208,7 @@ def test_the_loop_line_carries_the_note_of_an_unfinished_re_read(fake_mac: dict[
         "converters have gained (each sync reads about 2 minutes' worth); it does not block the next step"
     )
     stuck = (
-        "note: 3 file(s) in one wait to be read again, and the last sync read none of them (a converter or "
+        "note: 3 files in one wait to be read again, and the last sync read none of them (a converter or "
         "on-device OCR that cannot run, or a folder that could not be listed): another sync does not clear "
         "it; it does not block the next step"
     )
@@ -5545,8 +5597,8 @@ def test_v6_every_logged_question_and_click_is_beyond_the_expected_ones(
     monkeypatch.setattr(setup_report, "home_path", lambda: "/Users/jdoe")
     _text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: worked with help** (computed: install.sh exit 0; 1 question(s) beyond the folder "
-        "question; 1 click(s) beyond the Allow clicks; 1 approval(s))"
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 question beyond the folder "
+        "question; 1 click beyond the Allow clicks; 1 approval)"
     )
     assert (
         "- human turns: 4 (2 questions; 1 click beyond the announced Allow clicks (not logged); 1 approval)"
@@ -5676,13 +5728,13 @@ def test_a_line_between_a_finished_attempt_and_the_next_header_is_its_own_attemp
     write_friction(fake_mac, V6_HAPPY + LATE_LINE + third)
     text, summary = summary_of(fake_mac)
     fr = section(text, "Agent friction log")
-    assert "3 attempt(s):" in fr
+    assert "3 attempts:" in fr
     assert "- attempt 1 (lines 1-4; started 2026-09-29T09:58:00Z; prompt v6; " in fr
-    assert re.search(r"^- attempt 1 \(.*\): fully one command; 1 event line\(s\): 1 finished", fr, re.M)
+    assert re.search(r"^- attempt 1 \(.*\): fully one command; 1 event line: 1 finished", fr, re.M)
     assert (
         # one line is "line 5", and no bracket sits inside the attempt's own (B13 round 10 L32)
         "- attempt 2 (line 5; no Attempt: line, since it was logged after the previous attempt finished; "
-        "prompt not stated; agent not stated): failed at step 1; 1 event line(s): 1 error; "
+        "prompt not stated; agent not stated): failed at step 1; 1 event line: 1 error; "
         'no "end | finished" line' in fr
     )
     assert "- attempt 3 (lines 6-9; started 2026-10-03T09:00:00Z; prompt v7; " in fr
@@ -5703,7 +5755,7 @@ def test_a_line_logged_after_the_closing_line_stays_and_cannot_stop_the_run(
     assert attempt.finished and attempt.last_line == 5
     assert setup_report.stopping_error(attempt, ()) is None
     text, summary = summary_of(fake_mac)
-    assert "1 attempt(s):" in section(text, "Agent friction log") and "- attempt:" not in summary
+    assert "1 attempt:" in section(text, "Agent friction log") and "- attempt:" not in summary
     assert "**outcome: failed" not in summary and "- prompt: v7 · " in summary
     assert "0 prompt, 1 error (F5); none of these changes the outcome by itself" in summary
 
@@ -5737,7 +5789,7 @@ def test_a_step_1_error_logged_long_after_the_closing_line_is_the_latest_attempt
     assert (
         # one line is "line 5", and no bracket sits inside the attempt's own (B13 round 10 L32)
         "- attempt 2 (line 5; no Attempt: line, since it was logged after the previous attempt finished; "
-        "prompt not stated; agent not stated): failed at step 1; 1 event line(s): 1 error; "
+        "prompt not stated; agent not stated): failed at step 1; 1 event line: 1 error; "
         'no "end | finished" line' in section(text, "Agent friction log")
     )
     link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
@@ -5920,8 +5972,7 @@ def test_a_go_ahead_in_the_chat_is_a_turn_and_what_it_allowed_is_agent_friction(
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     summary = section(text, "Summary")
     assert summary.strip().splitlines()[0] == (
-        "- **outcome: worked with help** (computed: install.sh exit 0; "
-        "1 question(s) beyond the folder question)"
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 question beyond the folder question)"
     )
     assert "- human turns: 2 (2 questions; clicks: none possible; approvals: not observable)" in summary
     items, agent_side = summary.split("Items that were not one command (attempt 1):", 1)[1].split(
@@ -6000,7 +6051,7 @@ def test_a_report_long_after_the_last_attempt_says_no_attempt_was_started_since(
             ),
             True,
             None,
-            "- friction (attempt 1): 2 event line(s): 1 question, 1 finished",
+            "- friction (attempt 1): 2 event lines: 1 question, 1 finished",
         ),
     ],
     ids=["stopped-copy", "headed-stop", "clean", "question"],
@@ -6292,7 +6343,7 @@ def test_two_sessions_that_each_stop_at_step_1_within_the_gap_are_two_attempts(
     now = datetime(2026, 10, 17, 17, 30, tzinfo=UTC)
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), now=now)
     summary, fr = section(text, "Summary"), section(text, "Agent friction log")
-    assert "4m36s" not in summary + fr and "3 attempt(s):" in fr, fr
+    assert "4m36s" not in summary + fr and "3 attempts:" in fr, fr
     assert "· step 1 · error · git -C ~/src/agent-context-sync pull exited 1" in summary, summary
     assert "prompt v22, Claude Code" not in summary, summary
 
@@ -6312,7 +6363,7 @@ def test_a_prefixed_step_1_error_after_a_finished_attempt_is_reported_as_its_own
     summary, fr = section(text, "Summary"), section(text, "Agent friction log")
     assert "- prompt: v12 (from the step 1 error line) · run: " in summary, summary
     assert re.search(r"· step 1 · error · git pull failed\b", summary)
-    assert "2 attempt(s):" in fr, fr
+    assert "2 attempts:" in fr, fr
     [first] = [ln for ln in fr.splitlines() if ln.startswith("- attempt 1 ")]
     assert "failed at step 1" not in first, first
 
@@ -6334,8 +6385,8 @@ def test_a_late_line_that_is_not_a_step_1_error_never_starts_an_attempt(fake_mac
     write_friction(fake_mac, V7_HAPPY + late + later)
     text, summary = summary_of(fake_mac)
     fr = section(text, "Agent friction log")
-    assert "2 attempt(s):" in fr and "failed at step" not in fr
-    assert re.search(r"^- attempt 1 \(lines 1-7; .*\): fully one command; 4 event line\(s\): ", fr, re.M)
+    assert "2 attempts:" in fr and "failed at step" not in fr
+    assert re.search(r"^- attempt 1 \(lines 1-7; .*\): fully one command; 4 event lines: ", fr, re.M)
     assert "- attempt: 2 of 2; earlier: attempt 1 fully one command" in summary
 
 
@@ -6607,7 +6658,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
         "again and ended 0"
     ), "the run is the item: the list said none beside worked with help"
     fr = section(text, "Agent friction log")
-    assert "1 attempt(s):" in fr and "- attempt:" not in summary, "the late lines start no attempt"
+    assert "1 attempt:" in fr and "- attempt:" not in summary, "the late lines start no attempt"
     assert re.search(
         r"^- attempt 1 \(lines 1-7; .*; prompt v8; .*\): worked with help; 4 event line", fr, re.M
     )
@@ -6840,7 +6891,7 @@ def test_expected_doctor_warns_are_annotated_not_their_fix(fake_mac: dict[str, P
 
     text, summary = summary_of(fake_mac, doctor=doctor)
     doc = section(text, "Doctor")
-    assert "4 expected warn(s) end in (expected: <why>) instead of their fix" in doc
+    assert "4 expected warns end in (expected: <why>) instead of their fix" in doc
     lines = {ln.split(" — ", 1)[0].split("] ", 1)[1].strip(): ln for ln in doc.splitlines() if " — " in ln}
     assert lines["launcher.signature"].endswith("new TCC subject (expected: ad hoc launcher)")
     assert lines["launcher.requirement"].endswith("cannot pin a cdhash) (expected: ad hoc launcher)")
@@ -7031,7 +7082,7 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     (root / "Icon\r").write_text("", encoding="utf-8")
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
-    assert "listable, 2 provider folder(s) and 1 symlink(s) and 1 other entry(ies): " in env, env
+    assert "listable, 2 provider folders and 1 symlink and 1 other entry: " in env, env
     assert (
         " (a symlink: read as the provider folder it points into, File Provider domain "
         "(com.apple.file-provider-domain-id))" in env
@@ -7160,11 +7211,11 @@ def test_the_evidence_parts_sit_under_status_and_say_so_when_nothing_has_synced(
     assert re.search(r"^- media helper: off \(.*\)\n- speech: off \(", parts["OCR"], re.MULTILINE), (
         "Doctor's speech probe"
     )
-    assert "- images: 0 file(s)\n" in parts["OCR"] and "- OCR time: no run is recorded" in parts["OCR"]
+    assert "- images: 0 files\n" in parts["OCR"] and "- OCR time: no run is recorded" in parts["OCR"]
     assert parts["Quarantine by reason"].strip() == "- no file is quarantined or refused"
     assert parts["Purge queue"].strip() == "- no purge is queued"
     assert parts["Overlapping sources"].strip() == (
-        "- none: no source's folder is inside another's (3 source(s) with a folder)"
+        "- none: no source's folder is inside another's (3 sources with a folder)"
     )
     assert parts["Empty cloud folders"].strip() == (
         "- none: no source's last walk held a zero-child cloud folder as unknown"
@@ -7252,7 +7303,7 @@ def test_the_ocr_part_folds_the_document_kinds_with_no_page_into_one_line(fake_m
     ], ocr
     assert not [ln for ln in ocr if "files with a page: 0 with an OCR identity, 0 without" in ln], ocr
     assert "- scanned PDFs with a stub: none" in ocr, ocr
-    assert [ln for ln in ocr if ln.startswith("- images that are not on this Mac: 0 file(s)")], ocr
+    assert [ln for ln in ocr if ln.startswith("- images that are not on this Mac: 0 files")], ocr
 
 
 def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, Path]) -> None:
@@ -7260,11 +7311,11 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     text, parts = status_parts(fake_mac)
     ocr_part = parts["OCR"]
     assert (
-        "- images: 8 file(s): 2 with a page · 1 no-text stub · 1 not-on-this-Mac stub · 1 no-converter stub "
+        "- images: 8 files: 2 with a page · 1 no-text stub · 1 not-on-this-Mac stub · 1 no-converter stub "
         "on this Mac · 1 deferred on this Mac · 1 deferred online-only · 1 failed\n" in ocr_part
     )
     assert (
-        "- images that are not on this Mac: 2 file(s), 8.0 MB (2 online-only, 0 of a Graph source; none is "
+        "- images that are not on this Mac: 2 files, 8.0 MB (2 online-only, 0 of a Graph source; none is "
         "downloaded for OCR;" in ocr_part
     )
     assert (
@@ -7284,7 +7335,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "- scanned PDFs with a stub: 1 no text layer (OCR not run), 1 no text layer (OCR found no text), 0 "
         "no text layer (over the OCR page limit)\n" in ocr_part
     )
-    assert "- engine identities on pages: ocr-paper-vision-r2-h0.3.0-l1 (3 page(s))\n" in ocr_part
+    assert "- engine identities on pages: ocr-paper-vision-r2-h0.3.0-l1 (3 pages)\n" in ocr_part
     # B13 round 10 L5: the kinds with no page are one line, not a row of zeros each
     assert "(.potx) files with a page" not in ocr_part and "(.odt) files with a page" not in ocr_part
     folded = [ln for ln in ocr_part.splitlines() if ln.startswith("- no ")]
@@ -7300,7 +7351,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     # both, so its counts are not read as what a cycle is about to do.
     lead = next(ln for ln in ocr_part.splitlines() if ln.startswith("- re-read, per source."))
     assert (
-        "None of the last 3 run(s) says what its re-read looked for (a run of this build that reaches a "
+        "None of the last 3 runs says what its re-read looked for (a run of this build that reaches a "
         "local source does), so the second column is as last recorded, by whichever build wrote the record."
         in lead
     )
@@ -7313,20 +7364,20 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         "whose page has no OCR identity or comes from the early OCR build (fourth column)." in lead
     )
     assert (
-        "- OCR time: of the last 3 run(s), 2 recorded these counts (a run of an earlier build did not) and 2 "
+        "- OCR time: of the last 3 runs, 2 recorded these counts (a run of an earlier build did not) and 2 "
         "had an engine; 1 used up the cycle's OCR time; 1 ended with the helper not working; the helper ran "
         "184s in all\n" in ocr_part
     )
     assert (
-        "- waiting for OCR: the newest run that had an engine (run 5) left 0 file(s) for a later cycle's "
-        "OCR; the 3 run(s) add up to 3 wait(s), a file counted once in every run it waited in\n" in ocr_part
+        "- waiting for OCR: the newest run that had an engine (run 5) left 0 files for a later cycle's "
+        "OCR; the 3 runs add up to 3 waits, a file counted once in every run it waited in\n" in ocr_part
     )
     assert (
         "- in those runs, each count a sum over the runs (a file converted or read in two of them counts "
-        "twice): 2 conversion(s) without OCR because the cycle's OCR time was used up · 2 without OCR "
+        "twice): 2 conversions without OCR because the cycle's OCR time was used up · 2 without OCR "
         "because the helper had stopped working · 1 the engine failed on (a helper failure, or the file's "
         "own time limit) · 1 that say pages past the OCR page limit were not read · 1 that say pictures past "
-        "the picture limit were not read · 4 read(s) again (1 of them could not be converted and kept "
+        "the picture limit were not read · 4 reads again (1 of them could not be converted and kept "
         "their page)\n" in ocr_part
     ), "a re-read keeps its page only when its conversion failed: 0 there is no count of unchanged pages"
     started = "2026-10-06T10:00:00Z | 1m05s"
@@ -7347,7 +7398,7 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
         in lead
     )
     assert (
-        "- <folder-2>, the 1 file(s) that failed once, by their row in the manifest now: 1 with no row\n"
+        "- <folder-2>, the 1 file that failed once, by its row in the manifest now: 1 with no row\n"
         in ocr_part
     ), "the record's id is no row of this manifest"
     for raw in ("id-9", "id-10", 'id-1"', "a" * 16, "KeyError"):
@@ -7399,15 +7450,14 @@ def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_i
     text, parts = status_parts(fake_mac)
     ocr_part = parts["OCR"]
     assert (
-        "7 run(s), 6 recorded these counts (a run of an earlier build did not) and 6 had an engine"
-        in ocr_part
+        "7 runs, 6 recorded these counts (a run of an earlier build did not) and 6 had an engine" in ocr_part
     )
     assert (
-        "the helper ran 600s in all\n" in ocr_part and " · 442 read(s) again (0 of them could not" in ocr_part
+        "the helper ran 600s in all\n" in ocr_part and " · 442 reads again (0 of them could not" in ocr_part
     )
     title = next(ln for ln in ocr_part.splitlines() if ln.startswith("The last "))
     assert title == (
-        "The last 5 of the 6 runs that had an engine, newest first (the sums above are over all 7 run(s) "
+        "The last 5 of the 6 runs that had an engine, newest first (the sums above are over all 7 runs "
         "read, so these rows do not add up to them). A run starts no more re-reads once it has spent 120s "
         "on them, whatever OCR time is left: that usually ends its reading first, though one long read can "
         "still use up the OCR time. `pages added + changed` is every page the run added or changed, whatever "
@@ -7425,7 +7475,7 @@ def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_i
     ], "the run that read 31 is the one not shown: the five rows add up to 411 of the 442"
     assert reread_rows(ocr_part)["<folder-2>"][:5] == ["yes", "1", "0", "5", "0"], "finished, 5 failed once"
     assert (
-        "- <folder-2>, the 5 file(s) that failed once, by their row in the manifest now: 1 on this Mac · 1 "
+        "- <folder-2>, the 5 files that failed once, by their row in the manifest now: 1 on this Mac · 1 "
         "online-only · 1 with a stub · 1 deleted · 1 with no row\n" in ocr_part
     )
     assert ocr_part.count("that failed once, by their row") == 1, "a source with none has no line"
@@ -7438,7 +7488,7 @@ def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_i
     seed.close()
     ocr_part = status_parts(fake_mac)[1]["OCR"]
     assert "\nThe last runs that had an engine, newest first. A run starts no more" in ocr_part
-    assert " · 411 read(s) again (0 of them" in ocr_part
+    assert " · 411 reads again (0 of them" in ocr_part
     # More runs than are shown and none had an engine: the same count of what is hidden.
     seed = Seed(fake_mac["config"])
     seed.m._db.execute("DELETE FROM runs")
@@ -7447,7 +7497,7 @@ def test_the_ocr_run_table_says_what_it_hides_and_what_a_file_that_failed_once_i
     seed.close()
     ocr_part = status_parts(fake_mac)[1]["OCR"]
     assert (
-        "\nThe last 5 of the 7 runs (none had an engine), newest first (the sums above are over all 7 run(s) "
+        "\nThe last 5 of the 7 runs (none had an engine), newest first (the sums above are over all 7 runs "
         "read, so these rows do not add up to them). A run starts" in ocr_part
     )
 
@@ -7550,9 +7600,9 @@ def test_an_image_of_a_graph_source_is_not_on_this_mac(fake_mac: dict[str, Path]
     seed.item(one, "Wingtip cloud.png", state="refused", reason=NO_CONVERTER, page="refused", dataless=True)
     seed.close()
     text, parts = status_parts(fake_mac)
-    assert "- images: 3 file(s): 2 not-on-this-Mac stub · 1 no-converter stub on this Mac\n" in parts["OCR"]
+    assert "- images: 3 files: 2 not-on-this-Mac stub · 1 no-converter stub on this Mac\n" in parts["OCR"]
     assert (
-        "- images that are not on this Mac: 2 file(s), 0.0 MB (1 online-only, 1 of a Graph source; none is "
+        "- images that are not on this Mac: 2 files, 0.0 MB (1 online-only, 1 of a Graph source; none is "
         "downloaded for OCR;" in parts["OCR"]
     )
     assert reread_rows(parts["OCR"]) == {"<folder-2>": ["no record", "1", "0", "0", "0", "0", "no"]}, (
@@ -7578,9 +7628,8 @@ def test_a_backlog_read_over_many_runs_is_reported_as_files_waiting_not_as_a_sum
     ocr_part = status_parts(fake_mac)[1]["OCR"]
     assert sum(left) == 16_170 and len(left) == 33
     assert (
-        "- waiting for OCR: the newest run that had an engine (run 34) left 0 file(s) for a later cycle's "
-        "OCR; the 35 run(s) add up to 16170 wait(s), a file counted once in every run it waited in\n"
-        in ocr_part
+        "- waiting for OCR: the newest run that had an engine (run 34) left 0 files for a later cycle's "
+        "OCR; the 35 runs add up to 16170 waits, a file counted once in every run it waited in\n" in ocr_part
     )
     assert "file(s) waited" not in ocr_part
     rows = [ln for ln in ocr_part.splitlines() if re.match(r"\| \d", ln)]
@@ -7639,7 +7688,7 @@ def test_an_image_a_label_rule_withholds_is_its_own_outcome_in_the_ocr_part(
         encoding="utf-8",
     )
     parts = status_parts(fake_mac)[1]
-    assert "- images: 1 file(s): 1 withheld-by-label-rule stub\n" in parts["OCR"], parts["OCR"]
+    assert "- images: 1 file: 1 withheld-by-label-rule stub\n" in parts["OCR"], parts["OCR"]
     assert "could not be read" not in parts["Quarantine by reason"], "the page was read (B13 round 9 K62)"
     assert "other stub" not in parts["OCR"]
     assert any(
@@ -7695,13 +7744,11 @@ def test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe(
     write_fake(ocr._helper_path(load_config(cfg).cache_dir))
     rows, ocr_part, part = classes()
     assert sorted(rows) == [["no converter", "1"], ["withheld by label rule", "2"]], rows
-    assert (
-        "- images: 3 file(s): 1 no-converter stub on this Mac · 2 withheld-by-label-rule stub\n" in ocr_part
-    )
+    assert "- images: 3 files: 1 no-converter stub on this Mac · 2 withheld-by-label-rule stub\n" in ocr_part
     assert "the page says so" not in part
     assert "an image is counted here as its stub page says" in part
     assert (
-        "and 1 image stub(s) whose page could not be read are counted as withheld because OCR is ready now"
+        "and 1 image stub whose page could not be read is counted as withheld because OCR is ready now"
         in " ".join(part.split())
     ), part
     assert [ln for ln in part.splitlines() if ", no converter by type: " in ln] == [
@@ -7712,7 +7759,7 @@ def test_an_images_class_follows_its_stub_page_not_this_reports_ocr_probe(
     rows, _ocr_part, part = classes()
     assert sorted(rows) == [["no converter", "2"], ["withheld by label rule", "1"]], rows
     assert (  # said with OCR not ready too (B13 round 9 K58)
-        "and 1 image stub(s) whose page could not be read are counted under no converter because OCR is not "
+        "and 1 image stub whose page could not be read is counted under no converter because OCR is not "
         "ready now" in " ".join(part.split())
     ), part
     assert unread
@@ -7802,7 +7849,7 @@ def test_image_stub_pages_are_all_read_and_the_unread_are_said_with_ocr_not_read
     assert sorted(rows) == [["no converter", "1"], ["withheld by label rule", "450"]], part
     flat = " ".join(part.split())
     assert (
-        "and 1 image stub(s) whose page could not be read are counted under no converter because OCR is not "
+        "and 1 image stub whose page could not be read is counted under no converter because OCR is not "
         "ready now" in flat
     ), part
 
@@ -7817,7 +7864,7 @@ def test_image_stubs_whose_pages_are_all_unread_still_get_the_legend(fake_mac: d
     seed.close()
     rows, part = quarantine_rows(fake_mac)
     assert rows == [["no converter", "1"]], part
-    assert "and 1 image stub(s) whose page could not be read are counted under no converter" in " ".join(
+    assert "and 1 image stub whose page could not be read is counted under no converter" in " ".join(
         part.split()
     ), part
 
@@ -7901,7 +7948,7 @@ def type_counts(part: str) -> dict[str, dict[str, int]]:
         if ", no converter by type: " not in line:
             continue
         source, cells = line[2:].split(", no converter by type: ", 1)
-        more = re.search(r" \(\+(\d+) file\(s\) of \d+ more type\(s\)\)$", cells)
+        more = re.search(r" \(\+(\d+) files? of \d+ more types?\)$", cells)
         if more is not None:
             cells = cells[: more.start()]
         out[source] = {"more": int(more.group(1))} if more is not None else {}
@@ -8043,7 +8090,7 @@ def test_a_source_with_many_refused_types_shows_the_most_and_counts_the_rest(
     shown = " · ".join(f"{suffix} {2 if n < 3 else 1}" for n, suffix in enumerate(types[:12]))
     assert line == (
         f"- <folder-2>, no converter by type: {shown} · no extension 1 · other 1 (1 distinct: 1 like a type) "
-        "(+3 file(s) of 3 more type(s))"
+        "(+3 files of 3 more types)"
     )
     counts = type_counts(part)["<folder-2>"]
     assert counts["more"] == 3 and sum(counts.values()) == table_counts(part)["<folder-2>"] == 20
@@ -8256,7 +8303,7 @@ def test_the_earlier_build_brackets_are_said_only_where_an_earlier_builds_run_is
         seed.run(run, {"converted": 1, "ocr_ms": 1000, "ocr_budget_s": 180})
     seed.close()
     parts = status_parts(fake_mac)[1]
-    assert "- OCR time: of the last 4 run(s), 4 recorded these counts and 4 had an engine;" in parts["OCR"], (
+    assert "- OCR time: of the last 4 runs, 4 recorded these counts and 4 had an engine;" in parts["OCR"], (
         parts["OCR"]
     )
     assert "earlier build" not in parts["Repeat conversions"], parts["Repeat conversions"]
@@ -8288,7 +8335,7 @@ def test_a_running_or_crash_closed_run_is_no_earlier_builds(fake_mac: dict[str, 
     parts = status_parts(fake_mac)[1]
     assert "earlier build" not in parts["OCR"] + parts["Repeat conversions"]
     assert (
-        "of the last 3 run(s), 1 recorded these counts (a run still running has none yet; a run crash "
+        "of the last 3 runs, 1 recorded these counts (a run still running has none yet; a run crash "
         "recovery closed has none) and 1 had an engine" in parts["OCR"]
     ), parts["OCR"]
     assert (
@@ -8326,7 +8373,7 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     # a paragraph of its own starts in capitals, as the OCR part's run table title (B13 round 11 M19)
     assert "\n\nThe last runs, newest first:\n\n" in part and "the last runs" not in part
     assert (
-        "- of the last 3 run(s), 2 recorded what they converted; 2 of those converted at least one file "
+        "- of the last 3 runs, 2 recorded what they converted; 2 of those converted at least one file "
         "again from the same bytes and converter options its own page was made from, which the run just "
         "before had converted too (the sign of a loop; a copy of a file is a new file and is not counted, "
         "nor is a file re-screened for a label-rule change)\n" in part
@@ -8351,7 +8398,7 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         '"image not readable", "too large", a "no text" class or "other"), never "conversion failed"' in part
     )
     assert (
-        "- converter cache: 4 conversion(s) were used again by a later run than the one that made them (the "
+        "- converter cache: 4 conversions were used again by a later run than the one that made them (the "
         "same bytes converted again, by the same file or by a copy of it); 2 of them last by the newest run "
         "(5), 1 by the run before it" in part
     )
@@ -8373,7 +8420,7 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     part = status_parts(fake_mac)[1]["Repeat conversions"]
     assert "| 5 | reconcile | ok | 2026-10-06T10:00:00Z | 14 | 0 | 0 | 0 | 0 |" in part, part
     assert (
-        "- re-screened for a rule change: run 5, 11 file(s) (10 came out the same). A label rule is one of "
+        "- re-screened for a rule change: run 5, 11 files (10 came out the same). A label rule is one of "
         "the converter's options, so a file re-screened for a label-rule change is a new conversion and is "
         "not in the 'same bytes' column; one re-screened for a secret rule is\n" in part + "\n"
     ), part
@@ -8435,8 +8482,7 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
     text, parts = status_parts(fake_mac)
     part = parts["Purge queue"]
     assert (
-        "- 10 purge(s) queued. For a queued stable id the last six columns say what the manifest holds"
-        in part
+        "- 10 purges queued. For a queued stable id the last six columns say what the manifest holds" in part
     )
     header = "| source | reason | selector | queued (UTC day) | purges | same bytes live | same path live | "
     assert header + "still listed | no live twin | no row | not looked up |" in part
@@ -8451,17 +8497,17 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         "| inbox | upstream-deleted | stable-id | 2026-10-02 | 8 | 1 | 1 | 3 | 2 | 1 | 0 |",
     ]
     assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
-        "- renamed or re-keyed: 2 queued id(s) are an earlier id of a file the manifest now holds under a "
+        "- renamed or re-keyed: 2 queued ids are an earlier id of a file the manifest now holds under a "
         "later one (it was saved again, or its volume's id changed). Each is counted by that file's row, "
         "since a purge follows the alias to it",
-        "- still listed: 3 queued purge(s) name a file the manifest lists now (1 of them under a later id). "
+        "- still listed: 3 queued purges name a file the manifest lists now (1 of them under a later id). "
         "A run of the queue keeps 2 of them queued (an upstream deletion or a label escalation of a file "
         "that is live or online-only) and erases the page and history of the other 1",
-        "- no trace: 2 queued id(s) have no row and are no alias. A re-key leaves an alias, so what took "
+        "- no trace: 2 queued ids have no row and are no alias. A re-key leaves an alias, so what took "
         "such a row away is a purge that already ran, or an erasure. A run of the queue erases only what "
         "history still names for them and takes them off the queue",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
-        "erased) and 1 purge-summary (one per purge that ran) line(s)",
+        "erased) and 1 purge-summary (one per purge that ran) lines",
     ], "what the columns mean for a run of the queue, in counts and fixed words"
     for raw in ("tailspin-bridge", "id-that-was", "id-after", "terms", "memo", "c" * 16, "merger/"):
         assert raw not in text, raw
@@ -8478,13 +8524,13 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         rows(part)[2] == "| inbox | upstream-deleted | stable-id | 2026-10-02 | 8 | 1 | 1 | 2 | 1 | 3 | 0 |"
     )
     assert [ln for ln in part.splitlines() if ln.startswith("- ")][1:] == [
-        "- still listed: 2 queued purge(s) name a file the manifest lists now. A run of the queue keeps 1 of "
+        "- still listed: 2 queued purges name a file the manifest lists now. A run of the queue keeps 1 of "
         "them queued (an upstream deletion or a label escalation of a file that is live or online-only) and "
         "erases the page and history of the other 1",
-        "- no row: 4 queued id(s) have no row. This manifest has no alias table, so none was looked up as an "
+        "- no row: 4 queued ids have no row. This manifest has no alias table, so none was looked up as an "
         "alias: an earlier id of a file listed now cannot be told from one a purge took away",
         "- audit trail since 2026-10-02 (the oldest queued day): 10 purge-enqueued, 2 purge (one per item "
-        "erased) and 1 purge-summary (one per purge that ran) line(s)",
+        "erased) and 1 purge-summary (one per purge that ran) lines",
     ]
     governance.audit_path(root).unlink()
     assert "\n- audit trail: no file" in status_parts(fake_mac)[1]["Purge queue"]
@@ -8519,7 +8565,7 @@ def test_overlapping_sources_part_names_the_pair_and_each_ones_counts(fake_mac: 
     part = parts["Overlapping sources"].strip()
     outer, inner_label = re.findall(r"<(?:folder|source)-\d+>", part)[:2]
     assert part == (
-        f"- {outer} (local, live) contains, 2 folder level(s) down, {inner_label} (local, live); the outer "
+        f"- {outer} (local, live) contains, 2 folder levels down, {inner_label} (local, live); the outer "
         f"source's exclude list prunes the inner folder: yes; {outer}: live 0 (online-only 0), stubs 0, "
         f"tombstones 1, listing complete: no; {inner_label}: live 4 (online-only 1), stubs 1, tombstones 0, "
         "listing complete: no"
@@ -8564,7 +8610,7 @@ def test_empty_cloud_folders_part_says_its_zeros_in_words(fake_mac: dict[str, Pa
         "2); 1 of 1 checked; it is not excluded in sources.toml now; the mirror holds no file below it; no "
         "walk of it is recorded"
     ), line
-    assert "0 gone" not in line and "0 of the checked" not in line and "0 file(s)" not in line
+    assert "0 gone" not in line and "0 of the checked" not in line and "0 files" not in line
     assert not re.search(r"\b(of them|below them|their)\b", line), line
     # the same folder with an entry since: no longer empty, by its link count
     (fake_mac["one"] / "Wingtip merger" / "arrived.txt").write_text("x", encoding="utf-8")
@@ -8616,7 +8662,7 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     assert line.split(": ", 1)[1] == (
         "6 unknown: 1 dataless, 2 materialised-and-empty (1 of them still empty on this Mac, by its link "
         "count of 2); 1 gone, 1 not a folder, 1 not checked; 6 of 6 checked; none of them "
-        "excluded in sources.toml now; the mirror still holds 4 file(s) below 1 of the checked folder(s); no "
+        "excluded in sources.toml now; the mirror still holds 4 files below 1 of the checked folders; no "
         "walk of it is recorded"
     )
     assert part.count("\n- ") == 1, "a source whose walk held none has no line"
@@ -8635,15 +8681,16 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
     seed.close()
     walked = status_parts(fake_mac)[1]["Empty cloud folders"]
     assert walked.rstrip().endswith(
-        "below 1 of the checked folder(s); its last walk did not list 4 of the 5 file(s) the mirror holds "
-        "for it"
+        "below 1 of the checked folders; its last walk did not list 4 of the 5 files the mirror holds for it"
     ), walked
     # A walk that listed every mirrored file says so, not "did not list 0" (B13 round 2 R14).
     seed = Seed(fake_mac["config"])
     seed.m._db.execute("UPDATE items SET last_seen_run = 2 WHERE source_id = ?", (one,))
     seed.close()
     walked = status_parts(fake_mac)[1]["Empty cloud folders"]
-    assert walked.rstrip().endswith("; its last walk listed all 5 file(s) the mirror holds for it"), walked
+    assert walked.rstrip().endswith(
+        "; its last walk listed every one of the 5 files the mirror holds for it"
+    ), walked
     # A newer walk that ended on an error may have stamped nothing: not counted against it.
     seed = Seed(fake_mac["config"])
     seed.run(3, {})
@@ -8666,7 +8713,7 @@ def test_empty_cloud_folders_part_says_which_are_dataless_without_listing_one(
         encoding="utf-8",
     )
     part = status_parts(fake_mac)[1]["Empty cloud folders"]
-    assert "; 2 of the checked folder(s) excluded in sources.toml now;" in part
+    assert "; 2 of the checked folders excluded in sources.toml now;" in part
     seed = Seed(cfg)
     seed.m.set_meta("empty_cloud_dirs:" + one, json.dumps([f"Wingtip {n}" for n in range(60)]))
     seed.close()
@@ -8704,7 +8751,7 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
     monkeypatch.setattr(arm_local, "_unexcluded", counting)
     part = status_parts(fake_mac)[1]["Empty cloud folders"]
     # "Wingtip 5" is one of the first 50; "Wingtip 50" to "Wingtip 59" are stored and not checked
-    assert "; 50 of 60 checked; 1 of the checked folder(s) excluded in sources.toml now;" in part
+    assert "; 50 of 60 checked; 1 of the checked folders excluded in sources.toml now;" in part
     assert asked == [setup_report._EMPTY_DIRS_CHECKED]
     release = threading.Event()
 
@@ -8723,7 +8770,7 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
     assert (
         f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror holds no file below" in part
     )
-    assert '- evidence: 1 line(s) at the end of Status say "not measured"' in section(text, "Summary")
+    assert '- evidence: 1 line at the end of Status say "not measured"' in section(text, "Summary")
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
 
@@ -8739,7 +8786,7 @@ def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
     for title in ("Quarantine by reason", "Empty cloud folders", "Repeat conversions"):
         assert parts[title].strip() == f"- {setup_report.NOT_MEASURED}", title
     assert (
-        '- evidence: 5 line(s) at the end of Status say "not measured": write the report again when this Mac '
+        '- evidence: 5 lines at the end of Status say "not measured": write the report again when this Mac '
         "is idle (`~/src/agent-context-sync/scripts/install.sh --report-only`) before sending it\n"
         in section(text, "Summary")
     )
@@ -8788,11 +8835,11 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     assert "- [policy] label rule: off\n" in parts["OCR"] and "too late" not in text
     assert "not measured" not in section(text, "Status"), "fixed words: a second report would say the same"
     assert (
-        "- images: 8 file(s): 2 with a page" in parts["OCR"]
-        and "- OCR time: of the last 3 run(s)" in parts["OCR"]
+        "- images: 8 files: 2 with a page" in parts["OCR"]
+        and "- OCR time: of the last 3 runs" in parts["OCR"]
     )
     assert "| <folder-2> | quarantined | no text in image | 1 | 0 | - |" in parts["Quarantine by reason"]
-    assert "of the last 3 run(s), 2 recorded what they converted" in parts["Repeat conversions"]
+    assert "of the last 3 runs, 2 recorded what they converted" in parts["Repeat conversions"]
     assert "- evidence: the 6 parts at the end of Status were measured\n" in section(text, "Summary")
     # On the report's own clock: a probe that answers after more time than the six parts have between them.
     clock = Clock()
@@ -8812,7 +8859,7 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
         "- [policy] label rule: off\n"
     ) in parts["OCR"]
     assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
-    assert "- images: 8 file(s): 2 with a page" in parts["OCR"]
+    assert "- images: 8 files: 2 with a page" in parts["OCR"]
 
 
 def test_the_ocr_part_has_a_speech_line_of_its_own(
@@ -8976,7 +9023,7 @@ def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
     text = "\n".join(setup_report._evidence(r))
     assert setup_report.NOT_MEASURED not in text and "not measured" not in text
     assert (
-        "- images: 17045 file(s): 11933 with a page · 1704 not-on-this-Mac stub · 1704 failed · 1704 other "
+        "- images: 17045 files: 11933 with a page · 1704 not-on-this-Mac stub · 1704 failed · 1704 other "
         "stub" in text
     )
     assert "- files whose row carries a reason: 9091 quarantined, 4546 refused" in text
@@ -8984,9 +9031,9 @@ def test_the_evidence_stays_bounded_on_a_manifest_of_50_000_files(
         r"^- (?:\(source \d\)|inbox), no converter by type: \.png (\d+) \((\d+) online-only\)$", text, re.M
     )
     assert len(by_type) == 3 and sum(int(files) for files, _online in by_type) == 4546
-    assert "; 50 of 60 checked;" in text and "of the last 200 run(s), 200 recorded" in text
+    assert "; 50 of 60 checked;" in text and "of the last 200 runs, 200 recorded" in text
     assert (
-        "- (source 1), the 2 file(s) that failed once, by their row in the manifest now: 1 on this Mac · 1 "
+        "- (source 1), the 2 files that failed once, by their row in the manifest now: 1 on this Mac · 1 "
         "with a stub\n" in text
     )
     assert (
@@ -9047,7 +9094,7 @@ def test_background_runs_say_which_arguments_of_an_installed_plist_differ(fake_m
     assert "Installed plist against what this build would write (classes and counts, never a value):" in bg
     assert (
         "- com.agentsync.poll: differs in ProgramArguments, EnvironmentVariables, StartInterval (installed "
-        "900, this build 300); 1 key(s) this build does not write\n" in bg
+        "900, this build 300); 1 key this build does not write\n" in bg
     )
     assert (
         "  - ProgramArguments: 21 installed, 23 in this build; positions that differ (from 0): 0 (launcher), "
@@ -9250,7 +9297,7 @@ def test_installer_lists_every_run_and_the_ones_with_no_end_line(
     write_install_log(fake_mac, start="2026-10-06T16:50:00Z", run="20261006T165000Z-901", append=True)
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
     inst = section(text, "Installer").split("<details>", 1)[0]
-    assert "5 install.sh run(s) in" in inst and "the last 3 (run ids without their process id):" in inst
+    assert "5 install.sh runs in" in inst and "the last 3 (run ids without their process id):" in inst
     assert "Every run, oldest first (the last 5 of 5; run ids without their process id):" in inst
     assert [ln for ln in inst.splitlines() if ln.startswith("| 2026")] == [
         "| 20260929T100000Z | 2026-09-29T10:00:00Z | install | 6 | agent (skipped) | exit 0 after 57s |",
@@ -9456,8 +9503,8 @@ def test_configuration_counts_the_source_excludes_beyond_agentsyncs_own(fake_mac
     label = line.split(": ", 1)[1].split(" ", 1)[0]
     assert re.fullmatch(r"<(?:source|folder)-\d+>|\(source", label), line
     assert line.endswith(
-        f" 2 (1 folder glob(s)); 0 on the other {len(rest)} source(s) (globs not shown; an excluded folder "
-        "is not mirrored if it later gains files)"
+        f" 2 (1 folder glob); 0 on the other {setup_report._plural(len(rest), 'source')} (globs not shown; "
+        "an excluded folder is not mirrored if it later gains files)"
     ), line
     assert "Empty Subfolder" not in text and "*.bak" not in text
 
@@ -9819,8 +9866,9 @@ def test_the_redaction_count_is_the_placeholders_the_report_shows(fake_mac: dict
     assert "source" in numbered and red.counts["source"] >= 3
     for kind in numbered:
         assert red.counts[kind] == len(re.findall(rf"<{kind}-\d+>", main)), kind
-    assert f"- redaction: {red.total} replacement(s)" in section(text, "Summary")
-    assert f"\n{red.total} replacement(s) of {red.values} value(s) (" in section(text, "Redaction")
+    said = f"{setup_report._plural(red.total, 'replacement')} of {setup_report._plural(red.values, 'value')}"
+    assert f"- redaction: {said}" in section(text, "Summary")
+    assert f"\n{said} (" in section(text, "Redaction")
     assert re.search(  # B13 round 6 G3: two sentences, each with its verb
         r"\. Numbered placeholders are counted each time this report shows one\. "
         r"The unnumbered kinds \([^)]*\) are counted each time a value was replaced, even in a line that "
@@ -9884,7 +9932,7 @@ def test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install
     line = _n32_line(fake_mac)
     assert line.startswith("- first sync: done in 2s (install.log) · converted 0, deferred 0 online-"), line
     assert line.endswith(
-        " · since this install run began, 20 read(s) again by 2 other run(s) (the newest is run 1736; the "
+        " · since this install run began, 20 reads again by 2 other runs (the newest is run 1736; the "
         "background job's runs and syncs typed in a terminal are recorded alike: see the OCR part)"
     ), line
 
@@ -9900,14 +9948,14 @@ def test_the_first_sync_line_counts_what_other_runs_read_again_since_the_install
         "seconds=0 rc=0 result=skipped note=status-failed",
     )
     (fake_mac["setup"] / "install.log").write_text(skipped, encoding="utf-8")
-    assert "began, 4 read(s) again by 1 other run(s) (the newest is run 1735;" in _n32_line(fake_mac)
+    assert "began, 4 reads again by 1 other run (the newest is run 1735;" in _n32_line(fake_mac)
 
     # More runs than the report reads, all since the install began: the count is a floor.
     monkeypatch.setattr(setup_report, "_RUNS_READ", 1)
     seed = Seed(fake_mac["config"])
     _n32_runs(seed, [(1740, "02:30:00", 6)])
     seed.close()
-    assert "began, at least 6 read(s) again by 1 other run(s) (the newest is run 1740;" in _n32_line(fake_mac)
+    assert "began, at least 6 reads again by 1 other run (the newest is run 1740;" in _n32_line(fake_mac)
 
 
 def test_an_all_zero_re_read_table_is_one_line(
@@ -9941,7 +9989,7 @@ def test_an_all_zero_re_read_table_is_one_line(
     # one sentence, the same facts, every branch kept (B13 round 7 H5, round 8 J3, J15); the kinds of file a
     # re-read looks at are the table's lead only, so the line names no early OCR build (B13 round 9 K5, K16)
     line = (
-        f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record "
+        f"- re-read, per source: finished in all {len(ids)} local or inbox sources with a record "
         f"({', '.join(names)}); nothing is left to read again, none failed or was given up, and no read was "
         "cut off when a cycle died (measured against run 6, the newest run that records what its re-read "
         "looked for; it had an engine).\n"
@@ -9987,11 +10035,11 @@ def test_an_all_zero_re_read_line_keeps_each_caveat_in_a_sentence_of_its_own(
     part = status_parts(fake_mac)[1]["OCR"]
     line = next(ln for ln in part.splitlines() if ln.startswith("- re-read, per source"))
     assert line.startswith(
-        f"- re-read, per source: finished in all {len(ids)} local or inbox source(s) with a record ("
+        f"- re-read, per source: finished in all {len(ids)} local or inbox sources with a record ("
     ), line
     assert line.count(".") == 4, line  # the sentence, then three caveats
     assert (
-        "and no read was cut off when a cycle died. None of the last 1 run(s) says what its re-read looked "
+        "and no read was cut off when a cycle died. The last run does not say what its re-read looked "
         "for (a run of this build that reaches a local source does), so `finished` is as last recorded, by "
         "whichever build wrote the record. The helper" in line
     ), line
@@ -10238,7 +10286,7 @@ def test_the_doctor_line_names_only_the_checks_status_would_run(
     hooks = setup_report.ReportHooks(doctor=lambda config: [])
     head = _doctor_head(setup_report.build_report(cfg, hooks=hooks)[0])
     assert "runs them" not in head and "runs it" not in head and "TCC canary" not in head, head
-    assert head == "0 check(s): 0 ok, 0 info, 0 warn, 0 FAIL. Only the lines that are not ok:", head
+    assert head == "0 checks: 0 ok, 0 info, 0 warn, 0 FAIL. Only the lines that are not ok:", head
 
     monkeypatch.setenv(doctor.AGENT_STEP_PENDING_ENV, "1")  # background sync wanted, a protected source
     assert launchd.canary_paths(load_config(cfg))
@@ -10368,8 +10416,8 @@ def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     metadata = section(text, "Summary").split(setup_report.RUN_METADATA_HEADING, 1)[1]
     assert (
-        "- local work kept by setup prompt step 1: 1 patch file(s) in the setup folder's local-work, newest "
-        f"written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 2 local-work branch(es) in the "
+        "- local work kept by setup prompt step 1: 1 patch file in the setup folder's local-work, newest "
+        f"written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 2 local-work branches in the "
         "checkout\n" in metadata
     ), metadata
     assert "the patches are in" not in text
@@ -10449,7 +10497,7 @@ def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Pat
         doctor_part.strip()
         .splitlines()[0]
         .endswith(
-            " 1 expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do "
+            " 1 expected warn ends in (expected: <why>) instead of their fix: nothing for this setup to do "
             "beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)."
         )
     ), doctor_part
@@ -10484,7 +10532,7 @@ def test_an_attempt_that_only_stopped_for_the_folder_answer_is_stopped_not_faile
     )
     assert summary.strip().startswith("- **outcome: failed at step 1** (computed: no install.sh run; step 1 ")
     fr = section(text, "Agent friction log")
-    assert "): stopped at step 1 (waiting for the folder answer); 1 event line(s): 1 deviation;" in fr, fr
+    assert "): stopped at step 1 (waiting for the folder answer); 1 event line: 1 deviation;" in fr, fr
 
     [only] = setup_report.parse_friction(head + wait).attempts
     stopped = setup_report.compute_outcome(only, ())
@@ -11247,7 +11295,7 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
         got.strip()
         .splitlines()[0]
         .startswith(
-            "- **outcome: worked with help** (computed: install.sh exit 0; 1 click(s) beyond the Allow clicks"
+            "- **outcome: worked with help** (computed: install.sh exit 0; 1 click beyond the Allow clicks"
         )
     ), got
     assert "2 clicks logged, one of them: the OneDrive sign-in step 1 asked for, F4" in _line(
@@ -11306,7 +11354,7 @@ def test_the_sign_in_step_1_asked_for_is_no_extra_click(
         assert (
             got.strip()
             .splitlines()[0]
-            .startswith("- **outcome: worked with help** (computed: install.sh exit 0; 1 click(s) beyond the")
+            .startswith("- **outcome: worked with help** (computed: install.sh exit 0; 1 click beyond the")
         ), (synced, got)
         assert "asked for" not in _line(got, "- expected turns: "), (synced, got)
         assert "I signed in to OneDrive" in got.split("Items that were not one command", 1)[1], got
@@ -11813,7 +11861,7 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     first = {"converted": 1, "reread": 1, "reread_first": 1, "ocr_ms": 1000}
     part = ocr_part(first, {"converted": 0, "ocr_ms": 1000})
     assert (
-        " · 1 first read(s) of a stub whose bytes had never been read, also in the converted count\n" in part
+        " · 1 first read of a stub whose bytes had never been read, also in the converted count\n" in part
     ), part
     assert "read(s) again" not in part
     # B13 round 12 N49: when every re-read was a first read no kept clause follows, as cycle.py counts a kept
@@ -11824,7 +11872,7 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     assert rows[0].endswith("| 0 + 0 | 1 first read | - |") and rows[1].endswith("| 0 (0) | - |"), rows
     part = ocr_part(first, {"converted": 2, "reread": 2, "reread_kept": 1, "ocr_ms": 1000})
     assert (
-        " · 3 read(s) again (1 of them a first read of a stub whose bytes had never been read, also in the "
+        " · 3 reads again (1 of them a first read of a stub whose bytes had never been read, also in the "
         "converted count; 1 could not be converted and kept their page)\n" in part
     ), part
     rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
@@ -11833,7 +11881,7 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
     rows = [ln for ln in part.splitlines() if re.match(r"\| \d", ln)]
     assert rows[0].endswith("| 3 (1), 1 of them a first read | - |"), rows
     part = ocr_part({"converted": 1, "reread": 1, "ocr_ms": 1000}, {"converted": 0, "ocr_ms": 1000})
-    assert " · 1 read(s) again (0 of them could not be converted and kept their page)\n" in part, part
+    assert " · 1 read again (0 of them could not be converted and kept their page)\n" in part, part
 
 
 @pytest.mark.parametrize(
@@ -12042,8 +12090,8 @@ def test_both_readers_count_a_patch_this_account_cannot_read_apart(fake_mac: dic
         (patches / name).write_text("Subject: [PATCH] x\n", encoding="utf-8")
         os.utime(patches / name, (1791950084, 1791950084))
     line = (
-        "- local work kept by setup prompt step 1: 2 patch file(s) in the setup folder's local-work{}, "
-        f"newest written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 0 local-work branch(es) in "
+        "- local work kept by setup prompt step 1: 2 patch files in the setup folder's local-work{}, "
+        f"newest written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 0 local-work branches in "
         "the checkout"
     )
     assert setup_report.LOCAL_WORK_AGAIN == "~/src/agent-context-sync/scripts/install.sh --report-only"
@@ -12092,9 +12140,9 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
 
     def kept(n: int, b: int) -> str:
         return (
-            f"- local work kept by setup prompt step 1: {n} patch file(s) in the setup folder's local-work, "
-            f"newest written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); {b} local-work "
-            "branch(es) in the checkout"
+            f"- local work kept by setup prompt step 1: {setup_report._plural(n, 'patch file')} in the setup "
+            f"folder's local-work, newest written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); "
+            f"{setup_report._plural(b, 'local-work branch', 'local-work branches')} in the checkout"
         )
 
     shutil.rmtree(patches)

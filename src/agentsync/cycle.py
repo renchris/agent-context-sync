@@ -174,6 +174,7 @@ from agentsync.publish import (
     render_tombstone,
     sidecar_rel,
 )
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -1953,7 +1954,11 @@ class _Cycle:
             )
             if marked:
                 self.manifest.set_meta(_RESCREEN_META, current)
-                log.warning("[policy] changed: %d label-capable file(s) queued for a re-screen", marked)
+                log.warning(
+                    "[policy] changed: %d label-capable %s queued for a re-screen",
+                    marked,
+                    "file" if marked == 1 else "files",
+                )
         self.manifest.set_meta(_POLICY_META, current)
 
     def _rerender_stubs(self) -> None:
@@ -2179,8 +2184,10 @@ class _Cycle:
         return [
             "## Content policy",
             "",
-            f"- [policy] changed: {left} label-capable file(s) not yet re-screened (fetched and screened as "
-            "the byte budget allows); until then their mirror pages reflect the previous policy",
+            f"- [policy] changed: {plural(left, 'label-capable file')} not yet re-screened (fetched and "
+            "screened as the byte budget allows); until then "
+            + ("its mirror page reflects" if left == 1 else "their mirror pages reflect")
+            + " the previous policy",
             "",
         ]
 

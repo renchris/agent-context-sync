@@ -1174,7 +1174,7 @@ def test_the_shell_report_counts_cloud_folders_apart_from_links_and_files(env: d
     (cs / ".hidden").write_text("")
     assert install_sh(env, "--report-only").returncode == 0
     assert (
-        "- ~/Library/CloudStorage providers: 1 (OneDrive: 1) and 1 symlink(s) and 1 other entry(ies)\n"
+        "- ~/Library/CloudStorage providers: 1 (OneDrive: 1) and 1 symlink and 1 other entry\n"
         in report_path(env).read_text()
     )
 
@@ -1543,8 +1543,8 @@ def test_the_shell_report_counts_the_source_excludes_beyond_agentsyncs_own(env: 
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text(encoding="utf-8")
     assert (
-        "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob(s)); 0 on the other 1 "
-        "source(s) (globs not shown; an excluded folder is not mirrored if it later gains files)\n" in text
+        "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob); 0 on the other 1 "
+        "source (globs not shown; an excluded folder is not mirrored if it later gains files)\n" in text
     ), text
     assert "Empty Subfolder" not in text and "*.bak" not in text
     # a hand-written list over several lines, with a bracket inside a glob
@@ -1554,7 +1554,7 @@ def test_the_shell_report_counts_the_source_excludes_beyond_agentsyncs_own(env: 
         encoding="utf-8",
     )
     assert install_sh(env, "--report-only").returncode == 0
-    assert "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob(s)) (globs" in report_path(
+    assert "- source excludes beyond agentsync's own: (source 1) 2 (1 folder glob) (globs" in report_path(
         env
     ).read_text(encoding="utf-8")
     config.write_text('[[source]]\nid = "a"\nkind = "local"\npath = "/x"\n', encoding="utf-8")
@@ -3898,7 +3898,8 @@ def test_a_run_named_by_its_start_time_carries_its_label_in_both_readers(
 @pytest.mark.parametrize(
     ("lines", "head"),
     [
-        (15, "All 15 line(s) of ~/agent-context/setup/install.log " + PIDLESS),
+        (15, "All 15 lines of ~/agent-context/setup/install.log " + PIDLESS),
+        (1, "The one line of ~/agent-context/setup/install.log " + PIDLESS),  # B13 round 15 S31
         (61, "The last 60 of 61 lines of ~/agent-context/setup/install.log " + PIDLESS),
         (0, "~/agent-context/setup/install.log is empty."),
     ],
@@ -7465,6 +7466,15 @@ _EXPECTED_NOTE = (
 )
 _STOPPED_NOTE = _EXPECTED_NOTE.removesuffix(".") + setup_report._STOPPED_COPY_BEYOND + "."
 """The header beside a stopped-copy reason, in K24's words (B13 round 10 L19, L39)."""
+_NEW_HEAD = "42 checks: 39 ok, 0 info, 3 warn, 0 FAIL. Only the lines that are not ok:"
+"""The Doctor header a renderer from B13 round 15 S26 on writes: the noun by the count."""
+
+
+def _new_note(n: int, stopped: bool = False) -> str:
+    """That renderer's expected-warn note, noun and verb by ``n``, with K24's words when ``stopped``."""
+    said = " 1 expected warn ends in" if n == 1 else f" {n} expected warns end in"
+    tail = setup_report._STOPPED_COPY_BEYOND if stopped else ""
+    return f"{said} (expected: <why>) instead of their fix: nothing for this setup to do{tail}."
 
 
 def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
@@ -7503,8 +7513,35 @@ def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
             [_COMMIT_WARN],
             "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
             f"({STOPPED_WARN}) · unexpected 0",
-            _DOCTOR_HEAD + " 1" + _STOPPED_NOTE,
+            _DOCTOR_HEAD + _new_note(1, stopped=True),  # the note the installer adds is in its own words
             [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+        ),
+        (  # B13 round 15 S26: a renderer that writes the noun by the count, a lone install.commit warn
+            "- doctor: 0 FAIL, 1 warn (42 checks) · unexpected 1: install.commit warn",
+            _NEW_HEAD,
+            [_COMMIT_WARN],
+            "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
+            f"({STOPPED_WARN}) · unexpected 0",
+            _NEW_HEAD + _new_note(1, stopped=True),
+            [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+        ),
+        (  # B13 round 15 S26: that renderer's "1 expected warn ends in" merged into "2 expected warns end in"
+            "- doctor: 0 FAIL, 3 warn (42 checks) · expected 1: launcher.signature (ad hoc launcher) · "
+            "unexpected 2: install.commit warn, launchd.poll warn",
+            _NEW_HEAD + _new_note(1),
+            [
+                "[warn] launcher.signature — ad hoc (expected: ad hoc launcher)",
+                _COMMIT_WARN,
+                "[warn] launchd.poll — x",
+            ],
+            "- doctor: 0 FAIL, 3 warn (42 checks) · expected 2: launcher.signature (ad hoc launcher); "
+            f"install.commit ({STOPPED_WARN}) · unexpected 1: launchd.poll warn",
+            _NEW_HEAD + _new_note(2, stopped=True),
+            [
+                "[warn] launcher.signature — ad hoc (expected: ad hoc launcher)",
+                _COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})",
+                "[warn] launchd.poll — x",
+            ],
         ),
         (  # beside an ad hoc launcher's expected warn and another unexpected one
             "- doctor: 0 FAIL, 3 warn (42 checks) · expected 1: launcher.signature (ad hoc launcher) · "
@@ -7705,8 +7742,20 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
         assert int(found[1]) == len(fenced) - 1 + int(found[2]), "the marker is no install.out line"
         assert "an earlier run's" not in head and head.count(" (") == 1, head
     _sends_nothing(side)
+    # B13 round 15 S26, S31: a renderer that takes the noun from the count writes "the last 60 lines of"
     old.write_text(
         _old_renderer_report(["- install.sh: exit 0 (finished)"], tail).replace(" line(s) of ", " lines of ")
+    )
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
+    head, fenced = _embed(side)
+    assert re.fullmatch(
+        r"<details><summary>the last 60 lines of \S+ \(.*; 2 of them left out: the bring-back and issue link "
+        r"lines\)</summary>",
+        head,
+    ), head
+    old.write_text(
+        _old_renderer_report(["- install.sh: exit 0 (finished)"], tail).replace(" line(s) of ", " rows of ")
     )
     assert install_sh(env, "--log-start", "x").returncode == 2
     assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
@@ -7754,7 +7803,7 @@ def test_the_real_report_of_a_stopped_copy_invites_no_bring_back(real_env: dict[
     )
     head, fenced = _embed(side)
     found = re.search(
-        r"the last (\d+) line\(s\) of \S+ \(.*; (\d+) of them left out: the bring-back and issue ", head
+        r"the last (\d+) lines? of \S+ \(.*; (\d+) of them left out: the bring-back and issue ", head
     )
     assert found is not None and int(found[1]) == len(fenced) - 1 + int(found[2]) == 5, (head, fenced)
     _backdate(real_env, 11)
@@ -9508,8 +9557,8 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     assert cp.returncode == 0, cp.stderr
     text = report_path(env).read_text()
     assert (
-        "- local work kept by setup prompt step 1: 1 patch file(s) in the setup folder's local-work, newest "
-        f"written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 2 local-work branch(es) in the "
+        "- local work kept by setup prompt step 1: 1 patch file in the setup folder's local-work, newest "
+        f"written 2026-10-14T03:54:44Z ({setup_report.LOCAL_WORK_WHERE}); 2 local-work branches in the "
         "checkout\n" in text
     ), text
     assert f'LOCAL_WORK_WHERE="{setup_report.LOCAL_WORK_WHERE}"\n' in INSTALL_SH.read_text(), "one wording"
