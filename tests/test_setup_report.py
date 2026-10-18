@@ -6943,9 +6943,20 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     )
     assert got == (
         "- install.sh · step 2 · run 20260929T100000Z exited 1 at its first-sync step; install.sh was run "
-        "again with other folders and ended 0"
+        "again with no --source-local and ended 0"
     ), got
     assert "Alpha" not in got and ORG not in got, got
+    # B13 round 16 T21: the reverse names folders added; other folders on both runs keep "other folders"
+    got = items(
+        run("2026-09-29T10:00:00Z", 1, "", sync=True),
+        run("2026-09-29T10:20:00Z", 0, f"--source-local {folder}"),
+    )
+    assert got.endswith("; install.sh was run again with --source-local folders added and ended 0"), got
+    got = items(
+        run("2026-09-29T10:00:00Z", 1, "--source-local x", sync=True),
+        run("2026-09-29T10:20:00Z", 0, f"--source-local {folder}"),
+    )
+    assert got.endswith("; install.sh was run again with other folders and ended 0"), got
     # two failed runs: the first's arguments differ from the run that worked, the second's are the same
     got = items(
         run("2026-09-29T10:00:00Z", 1, "--source-local x --confirm-install-agent", sync=True),

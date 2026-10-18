@@ -8943,12 +8943,18 @@ def _without_folders(args: str) -> tuple[list[str], list[str]] | None:
 def _again_words(run: InstallRun, ok: InstallRun) -> str:
     """How the run that ended 0 (``ok``) repeated the failed ``run``: by their ``args=``, never printed
     (they name folders). The same arguments are the same command; arguments that differ only in their
-    ``--source-local`` folders are other folders (step 1 of v22 leads to that re-run); anything else other
-    arguments (B13 round 14 Q12: Items said "the same command" of a run with other arguments)."""
+    ``--source-local`` folders are other folders (step 1 of v22 leads to that re-run), or, when one of the
+    two named none, no ``--source-local`` or ``--source-local`` folders added (B13 round 16 T21: a re-run
+    with no arguments read "with other folders"); anything else other arguments (B13 round 14 Q12: Items
+    said "the same command" of a run with other arguments)."""
     failed, worked = _without_folders(run.args), _without_folders(ok.args)
     if run.args.strip() == ok.args.strip() or (failed is not None and failed == worked):
         return "the same command was run again and ended 0"
     if failed is not None and worked is not None and failed[0] == worked[0]:
+        if not worked[1]:
+            return "install.sh was run again with no --source-local and ended 0"
+        if not failed[1]:
+            return "install.sh was run again with --source-local folders added and ended 0"
         return "install.sh was run again with other folders and ended 0"
     return "install.sh was run again with other arguments and ended 0"
 
