@@ -743,7 +743,12 @@ def test_install_sh_doctor_failure_blocks_the_agent(stubs: dict[str, str], launc
         c.startswith(("agentsync sync", "agentsync install-agent", "launchctl")) for c in calls(env)
     )
     assert "not installing the LaunchAgents" in cp.stderr
-    assert cp.stdout.strip().splitlines()[-1].startswith("NEXT: fix the [FAIL] lines above")
+    # the stub prints no [FAIL] line: status-error's NEXT (B13 round 15 S62)
+    assert (
+        cp.stdout.strip()
+        .splitlines()[-1]
+        .startswith("NEXT: agentsync status exited 1 (failed) with no [FAIL] line")
+    )
     assert "--confirm-install-agent" in cp.stdout.strip().splitlines()[-1]  # the NEXT line repeats the flags
     text = cfg.read_text()  # every existing byte kept; the flagless init only ensured the inbox (KISS K14)
     assert text.startswith("# existing\n[[source]]\n") and text.count('kind = "inbox"') == 1

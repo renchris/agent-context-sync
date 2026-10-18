@@ -5648,6 +5648,11 @@ elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
 	EXIT_RC=1
 	next="$PERSONS_FAILS, the next run is: $SELF$ORIG_ARGS"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null; then
+	# status exited non-zero with no [FAIL] line (note=status-error, B13 round 14 Q50): a re-run fails the same
+	# way, and a signal or a timeout prints no error, so the NEXT promises none (B13 round 15 S33, S58, S62)
+	EXIT_RC=1
+	next="agentsync status exited $DOCTOR_RC ($(rc_meaning "$DOCTOR_RC")) with no [FAIL] line: what it printed above (its error, if it printed one; $AGENTSYNC status prints it again) is the person's to fix, not a step for the agent, so show them those lines and go on to the report; once fixed, the next run is: $SELF$ORIG_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
 	EXIT_RC=1
 	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"

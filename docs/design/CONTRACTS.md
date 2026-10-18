@@ -20976,7 +20976,9 @@ that exits non-zero with no `[FAIL]` line in its output (a traceback, a config o
 `note=status-error`, which still blocks the sync, and the outcome reads `install.sh exited 1: its status step exited
 1 with no [FAIL] line`. A log from before keeps the fail-lines words. install.log keeps its tokens. Tests:
 `test_the_installer_table_puts_the_status_steps_note_in_words`, `test_sections_carry_the_facts`,
-`test_the_outcome_of_a_status_fail_stop_names_the_status_step`, `test_a_status_that_fails_with_no_fail_line_logs_status_error`.
+`test_the_outcome_of_a_status_fail_stop_names_the_status_step`, `test_a_status_that_fails_with_no_fail_line_logs_status_error`. Amended 2026-10-18, §16.117 S33, S58, S62: that run's
+closing NEXT is no longer `fix the [FAIL] lines above ...` but `agentsync status exited <rc> (<meaning>) with no [FAIL]
+line: ...`, which sends the agent to the report.
 
 Amended 2026-10-18, §16.116 S35: the tcc-pending words read `its only [FAIL] lines were a macOS Allow still to be
 clicked (the [FAIL] line names it)`, in both twins.
@@ -21587,7 +21589,20 @@ case install.sh produces. Test: `test_the_folders_line_says_step_1_found_a_synce
 
 ### 16.117 Round 15: installer, the no-[FAIL] status NEXT and the unread patch (2026-10-18, wave B13 round 15 lane RB)
 
-Reserved for round 15 lane RB of B13.
+Installer items from the v23 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 15"; specs `round15/items/S<n>.md`, the verifier's corrected fix built). The S ids are round 15's. A dated
+line this round writes reads `Amended 2026-10-18, §16.117 S<n>`.
+
+**A status that exits non-zero with no `[FAIL]` line gets a NEXT of its own** (S33, S58, S62, one defect; amends
+§16.110 Q50). Q50 logged `note=status-error` for it, but `DOCTOR_BLOCKS` still took the generic NEXT, `fix the [FAIL]
+lines above (each names its fix), then re-run: ...`, with no `[FAIL]` line above it, and README step 2 has the agent
+run that re-run into the same failure. Placed after the person's-fails arm and before the generic one, so a run with
+a `[FAIL]` line keeps its NEXT, it reads `agentsync status exited <rc> (<meaning>) with no [FAIL] line: what it printed
+above (its error, if it printed one; ~/.local/bin/agentsync status prints it again) is the person's to fix, not a step
+for the agent, so show them those lines and go on to the report; once fixed, the next run is: <install.sh ...>`, the
+config error's shape (§16.14 K02's O11 line). It promises no error, since a signal or a timeout prints none. Exit 1
+and the skipped sync stay. Tests: `test_a_status_that_fails_with_no_fail_line_logs_status_error`,
+`test_launcher.py::test_install_sh_doctor_failure_blocks_the_agent`.
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 

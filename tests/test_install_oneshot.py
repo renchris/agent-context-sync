@@ -615,6 +615,13 @@ def test_a_status_that_fails_with_no_fail_line_logs_status_error(
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert not any(c.startswith("agentsync sync") for c in calls(env))
     assert ("status", "done", "1", "status-error") in steps(install_log(env))
+    # B13 round 15 S33, S58, S62: no [FAIL] line to fix, and a re-run fails the same way, so the NEXT sends
+    # the agent to the report with what status printed, as the config-error NEXT does
+    nxt = last_line(cp)
+    assert nxt.startswith("NEXT: agentsync status exited 1 (failed) with no [FAIL] line: "), nxt
+    assert "not a step for the agent, so show them those lines and go on to the report" in nxt, nxt
+    assert "/agentsync status prints it again; " not in nxt and "/agentsync status prints it again)" in nxt
+    assert "fix the [FAIL] lines" not in cp.stdout
 
 
 def _source_fails(cfg: Config, src: SourceConfig) -> list[str]:
