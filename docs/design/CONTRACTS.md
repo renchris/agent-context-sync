@@ -18392,6 +18392,8 @@ patch file in the setup folder's local-work (moved, deleted or never written; th
 bring-back.md)`: the old parenthesis predated that filter. Section 3 then reads `none: no patch file is in
 ~/agent-context/setup/local-work, but M local-work branch(es) in ~/src/agent-context-sync hold commits this file
 does not carry`.
+Amended 2026-10-18, §16.123 T27, T50, T83, T82: those two lines now read as §16.104 O23's dated line of that date
+quotes them.
 
 **The OCR part folds the document kinds with no page** (L5; dated lines at §16.28's OCR part and §16.48's
 `.potx` paragraph). A Mac with no deck template or OpenDocument page printed `0 with an OCR identity, 0 without an
@@ -20503,6 +20505,10 @@ Amended 2026-10-18, §16.117 S23, S25: that remedy runs `git -C ~/src/agent-cont
 format.filenameMaxLength=128 format-patch ...` and ends `then run ~/src/agent-context-sync/scripts/install.sh
 --report-only again`, and the unreadable patch's `not sent:` line ends `and run
 ~/src/agent-context-sync/scripts/install.sh --report-only again`.
+Amended 2026-10-18, §16.123 T27, T50, T83, T82: section 3's line reads `but M local-work branches in
+~/src/agent-context-sync hold commits this file does not carry` (`1 local-work branch ... holds` for one), the header
+`Section 3 sends no patch: M local-work branches hold commits ...`, and both readers' branches-only line ends `...;
+those commits are not in bring-back.md, whose section 3 says how to send them)`.
 
 **Redaction and pronouns** (O10, O38, O54, O68; dated lines at §16.98 N57, §16.52 Q17 and §16.58 F48). O10: the
 folder legend's list-only clause is not printed for the agent's own name: both readers take every whole-word copy
@@ -21676,6 +21682,9 @@ governance's `no commit older than N days` (doctor's governance line, which the 
 counts take theirs (`N patch files` / `1 patch file` and `M local-work branches` in the fallback local-work line,
 the providers line's `1 symlink` / `1 other entry`, `All N lines of install.log` or `The one line of ...`, the
 shell report's `folder glob` and `source`); lane RB's S14 owns the unread-patch lines (3491, 3535, 3537, 3576, 4015).
+Amended 2026-10-18, §16.123 T27, T50, T83: install.sh's two bring-back.md lines with a known count of local-work
+branches are covered too (`M local-work branches ... hold`, `1 local-work branch ... holds`); the label line keeps its
+`(es)`, its count standing after the colon.
 Amended 2026-10-18, §16.127 T76: those numbers have moved with later scripts/install.sh changes. The unread-patch
 lines are `write_bring_back`'s section 3 `not sent: ... this account cannot read` line, the header's `Section 3 does
 not hold ... this account cannot read` and `Section 3 sends no patch: ... could not be read` sentences, the `could not
@@ -21697,6 +21706,9 @@ no `<number> <noun>(s)` in its own lines), `test_install_oneshot.py::test_a_stop
 `test_governance.py::test_the_compaction_line_takes_its_noun_from_the_day_count`, and the pinned strings that moved.
 A stopped copy an older installed agentsync renders keeps that renderer's `(s)` where lane RB's S20 rewrite (§16.117)
 does not reach: older wording, not a wrong count.
+Amended 2026-10-18, §16.123 T23, T84 (of round 15 S26's acceptance above): the rewrite now reaches every count
+outside `<details>` and fences (`plural_all`), the Installer table's cells and the summary of the install.out details
+too, so an older renderer's `(s)` beside a count is rewritten, no longer accepted.
 
 **The status step's tcc-pending words promise no wait** (S35; amends §16.110 Q4). Doctor gives a `tcc.<id>`
 TCC_PENDING [FAIL] whenever LaunchAgents are installed (`doctor.agents_wanted`), so a run with no
@@ -21778,6 +21790,7 @@ other patch was in an earlier report and is listed by its hash.` or `The other N
 are listed by their hash.`; with nothing sent, the others are exactly the patches listed by their hash. The arm beside
 a patch that was sent drops its second colon the same way. (The counts above take S14's nouns.) Test:
 `test_an_unreadable_patch_leaves_the_rest_of_section_3_right` (one and two listed by their hash).
+Amended 2026-10-18, §16.123 T25: a report that sends a patch says the same counted sentence of the others.
 
 **`.not-sent` lists only a patch the report would have sent, and lets go once the attempt that sent it ends** (S22,
 S34; amends §16.111 Q29). S22 (probe bw3): a patch an earlier attempt's report carried, unreadable at a later report,
@@ -21796,6 +21809,8 @@ time, though no earlier report carried it. Tests:
 `test_a_patch_made_readable_in_the_attempt_that_could_not_read_it_is_sent_once` (on the real clock, and with the end
 and the listing 3 s apart), `test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent`,
 `test_a_patch_unreadable_at_two_finished_reports_is_sent_once_readable`.
+Amended 2026-10-18, §16.123 T24: a patch an earlier attempt's report carried and unreadable now is no unread patch:
+it is a not-repeated line with no hash, and section 1 counts by the same rule.
 
 **A report of an attempt with no header counts as carrying its patches** (S21; amends §16.111 Q29). An attempt step 1
 stopped (Xcode, git) has no `Attempt:` line, so `friction_close_attempt` writes no end line for it and the time rule
@@ -21816,6 +21831,7 @@ tested "no end line for it" rule and how parse_friction reads the attempt. A pat
 `test_a_report_of_an_attempt_with_no_header_is_counted_as_carrying_its_patches` (with no earlier attempt, and after a
 finished one), `test_a_patch_unreadable_after_a_report_with_no_header_embedded_it_is_not_listed`,
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+Amended 2026-10-18, §16.123 T16, T26: `.sent`'s words come first; the time rule no longer clears it.
 
 **The list counts a synced folder gone from disk apart from one outside it** (S10; amends §16.29). Every synced
 folder no list line matches came first under `first the N outside the list`, the group §16.29 defines as deeper than
@@ -21828,6 +21844,8 @@ is still asking, the guard of the gone check below it (a read of a provider fold
 same prompt); then every one counts as outside, as before. The prefix up to the colon is unchanged. Tests:
 `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2` (all three layouts),
 `test_list_folders_names_a_synced_folder_when_the_list_reaches_none` (one outside and one gone).
+Amended 2026-10-18, §16.123 T46: only a synced folder under `~/Library/CloudStorage` is "not on disk"; one missing
+elsewhere stays outside the list.
 
 **With one synced folder the list's NEXT clause is that folder's** (S36; amends §16.99 N41). The head of the line
 said `this Mac already syncs 1 folder, and a re-run keeps it` since round 14 Q44, then `; 1 of them is no longer on
@@ -21868,6 +21886,8 @@ test: CI's shallow checkout has neither commit; the test builds the old lines fr
 `_list_folders_note` patched to the old words, and from the real renders' lines with made-up names. Test:
 `test_a_stopped_copy_by_an_older_agentsync_counts_its_nouns` (e2a8e8df and c57cfa7c shapes; one folder and seven;
 the same lines inside the install.out details block, unchanged; a line in the new words, unchanged).
+Amended 2026-10-18, §16.123 T18, T43, T23, T84: the next wait is looked for after the whole count (a count of 10
+or more was cut at its second digit), v10's "if they are meant" is read, and the noun rules fold into `plural_all`.
 
 **The two twins join the signed-out apps alike, and an unlogged step 2 stop is an item** (S40; amends §16.99 N41,
 §16.104 O13 and §16.112 Q7). (a) Round 14 Q48 made the report say `OneDrive, Dropbox and Box are not signed in` and
@@ -21968,6 +21988,8 @@ the host of a proxy, of a URL rewrite and of a "Could not resolve" or "Failed to
 is for your own words)". "As the command printed it", not the verifier's "as git printed it": the same sentence
 logs xcode-select's error. Not the finder's "the report replaces host names", which claims more than the code does
 (a host only in a 403 or TLS error is not replaced). Test: `test_readme_step1_is_one_command`.
+Amended 2026-10-18, §16.123 T88: both readers now replace a git remote's host as well, so a 403 or TLS error on a
+hand-set origin is replaced too.
 
 **A failed step 2 run whose NEXT the agent follows is not logged** (S18). Step 2's middle branch (do what a non-zero
 run's NEXT: says when it is an install.sh or agentsync command or a click) said nothing on logging, against the
@@ -22397,7 +22419,93 @@ the link's own name would leak it (round 5 F42's test). Tests: `test_a_provider_
 
 ### 16.123 Round 16: installer, bring-back.md's patches and the stopped copy (2026-10-18, wave B13 round 16 lane RB)
 
-Reserved for round 16 lane RB of B13.
+Installer items from the v24 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 16"; specs `round16/items/T<n>.md`, the verifier's corrected fix built). The T ids are round 16's. A dated
+line this round writes reads `Amended 2026-10-18, §16.123 T<n>`.
+
+**Section 3 names the report that carried a patch** (T16, T26, one root; dated line at §16.117 S21). The time rule
+(a patch last written at or before the earlier attempt's end) cleared `.sent`, so a patch the first report of an
+attempt could not read and a second one sent (O25's three reports), or one a later header-less attempt sent (bw3's
+A4), was listed against the earlier end's report, which had not held it. `.sent` names a report that embedded the
+patch, so its words, `not repeated: a patch file an earlier attempt's report held (<time>)`, come first; the time
+form stays for a patch with no `.sent` entry. The send decision is unchanged (either rule skips). T26's corrected fix
+(`.sent` keeping the embedding attempt's begin) is not built: with `.sent` first it changes nothing measured, and
+bw3's A5 and A6 name A4's report either way. Tests:
+`test_a_patch_made_readable_in_its_attempt_names_the_report_that_carried_it`,
+`test_a_patch_an_earlier_attempt_sent_names_the_report_that_held_it`,
+`test_a_patch_sent_late_is_not_listed_against_a_report_that_did_not_hold_it`.
+
+**A patch an earlier report carried is never missing** (T24; dated line at §16.117 S22). Unreadable at a later
+report, it was counted unread: the warning, the NEXT's chmod remedy, the header, `not sent:` and section 1's
+`unreadable and not in bring-back.md`, though the rerun once readable sends nothing. It is a not-repeated line with no
+hash (`...; this account cannot read it now, so no line count or hash; still in ...`), and a header sentence over
+such a line says `listed there`, not `by its hash`. One function, `patch_rule`, decides for section 3 and for section
+1's count (`unread_patch_count`): the shell fallback reads it, and install.sh hands agentsync the count in
+`AGENTSYNC_REPORT_UNREAD_PATCHES` (`setup_report.UNREAD_PATCHES_ENV`), which an older build ignores. Tests:
+`test_a_patch_an_earlier_report_carried_is_not_called_missing_when_unreadable`,
+`test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent`,
+`test_setup_report.py::test_the_local_work_line_counts_unread_patches_by_section_3s_rule`.
+
+**A report that sends a patch counts the ones listed by their hash** (T25; dated line at §16.117 S24). Its header said
+only `Section 3 holds one patch per kept commit`; it now ends with S24's sentence, `The one other patch was ...` or
+`The other N patches were in an earlier report and are listed by their hash.`, after the unread remedy when there is
+one. The first sentence is word for word. Test: `test_a_report_that_sends_a_patch_counts_the_ones_listed_by_their_hash`.
+
+**A known count of local-work branches takes its noun, and the public line points to section 3** (T27, T50, T83, T82;
+dated lines at §16.104 O23, §16.86 L58 and §16.116 S26). Section 3's branches-only line and bring-back.md's header
+read `1 local-work branch(es) ... hold`; they take the count's noun and verb. The Summary label `- local-work
+branch(es) in the checkout: N ...` keeps its `(es)`. That line, in both readers, ends `(...; those commits are not in
+bring-back.md, whose section 3 says how to send them)`: on the issue path the maintainer gets only the public report.
+Tests: `test_the_shell_report_says_step_1_kept_local_work_in_counts_only` (2 and 1),
+`test_setup_report.py::test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
+`test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+**A re-run names no folder the config step added, and quotes a spaced one** (T22, T35). Every add-source failure stops
+the run, so once the config step ends each `--source-local` folder is in the config, and the NEXTs after it re-run
+with no `--source-local` (`RERUN_ARGS`), as v24's step 2 says to name only folders to add; the report's "run again
+with no --source-local" is lane RA's T21. A NEXT shows a folder in double quotes, with `\ " $` and a backtick escaped
+(`shown_arg`); a name `printf %q` writes as `$'..'`, or one with `!`, which an interactive zsh expands in double
+quotes, keeps the `%q` form. install.log's `args=`, which both reports parse, keeps `%q`, and the shell fallback
+redacts a loose name in its quoted form too. Tests: `test_a_failed_step_2_names_no_folder_the_config_step_added`,
+`test_a_re_run_names_a_folder_in_double_quotes`.
+
+**The list counts only a CloudStorage folder as not on disk** (T46; dated line at §16.117 S10). The S10 header's
+`the 1 not on disk` counted a folder missing outside `~/Library/CloudStorage`, which no NEXT clause or `gone=` names;
+it stays "outside the list". `gone=` is unchanged. Test:
+`test_list_folders_names_a_synced_folder_when_the_list_reaches_none`.
+
+**Both readers redact a git remote's host** (T88; dated line at §16.118 S6). A hand-set origin's host, which a 403 or a
+TLS error names, printed in clear. Both read `[remote "<name>"] url` keys from the git config files they already read
+(no git process) and register the host as a `<proxy-N>`, last, so no other number moves; `record_proxy_hosts` keeps it
+too. Only a URL with `://` (not `file://`) or `[user@]host:path`, with a dot in the host, and none of the public or
+GitHub hosts: a local remote (`../x`, a bare word, a path) is no host. Both legends say so. Test:
+`test_a_git_remotes_host_is_redacted_in_both_readers`, `test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy`.
+
+**A stopped copy by an older renderer takes every count's noun** (T23, T84, T18, T43; dated lines at §16.116 S26 and
+§16.117 S20). Outside `<details>` and `~~~` fences, every `word(s)` or `word(ies)` takes the noun of the nearest whole
+number before it in its clause (back to `;`, `,` or `(`, at most three words before: `5 of 6 sources`, `2 legacy v4
+lines`), and a plural verb right after a count of 1 agrees (`1 conversion was`); an `(s)` with no count stays. It runs
+at the print and on the Installer table's cells (padded again), after `quiet()` and the Doctor header merge, which
+read the old forms. The Installer paragraph of a renderer before ba5e253f gains its fix: sentence (`STOPPED_FIX_LINE`),
+`its last walk listed all N file(s)` takes the current words, v10's `if they are meant` and one-folder Status bracket
+are read, and the wait fix-up looks for the next wait after the whole count (a count of 10 or more was cut at its
+second digit). Tests: `test_a_stopped_copy_by_an_older_agentsync_words_every_count`,
+`test_a_stopped_copys_waits_of_ten_or_more_folders_keep_their_count`,
+`test_a_stopped_copy_by_the_v10_agentsync_takes_its_one_folder_words`, `test_no_renderer_line_writes_s_beside_a_count`,
+`test_the_shell_stopped_copy_fix_line_is_the_reports`.
+
+**A step 1 stop the older installed agentsync rendered takes this checkout's words** (T11). After the current prompt's
+step 1 stopped, the field Mac's report is rendered by the installed build, which nothing reinstalled (rehearsal B's
+v10): no cause, the sign-in stop's FAILs and install.commit unexpected, the dropped friction line, `(s)`. Running the
+checkout's renderer would mix two builds in doctor (§16.110 Q27 turned it down; the verifier measured a false skill
+NEXT). So the installed build renders and install.sh rewrites (`older_report_rewrite step1`, stopped_report_note's awk
+with a mode) when install.log's last run is this attempt's failed step 1 list (`note=not-signed-in` or `no-folders`)
+and the report has install.commit's checkout warn: the renderer-only words above, the quiet friction line,
+install.commit moved to expected (`STEP1_STOP_WARN`), and from install.log (`step1_stop_facts`) the outcome's `; it
+stopped: <cause>`, the expected-turns line, and the stopped app's source FAILs in `from the sign-in stop N`, picked by
+the redacted CloudStorage path as `_sign_in_stop_fails` picks them. The Loop NEXT, the Doctor part and the Items list
+stay as written. Tests: `test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words`
+(a report in the current words passes unchanged), `test_a_report_that_is_no_step_1_stop_of_an_older_build_is_left_as_rendered`.
 
 ### 16.124 Round 16: setup prompt v25 and the config a sync refuses (2026-10-18, wave B13 round 16 lane P)
 
