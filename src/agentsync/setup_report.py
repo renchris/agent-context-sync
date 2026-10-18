@@ -726,6 +726,7 @@ _LEGEND = {
         "also a host a friction line's resolver error names (it need not be a proxy)"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
+    "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
     "remote": "<remote> a remote URL prefix a [governance] error quotes",
 }
@@ -753,7 +754,7 @@ _MARK = "[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]"  #
 _NAME_BRACKET_RE = re.compile(r"\s*[(\[{]([^()\[\]{}]*)[)\]}]")
 """A bracketed part of a full name ("Doe, Jane (Contoso)"): its inner text is group 1."""
 _PID_SUFFIX_RE = re.compile(r"(\brun=\S+?)-\d+(?=\s|$)")
-_RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+)>"
+_RESIDUE_PLACEHOLDER = r"<(?:name|user|org-\d+|library-\d+|folder-\d+|source-\d+|link-\d+)>"
 _RESIDUE_RE = re.compile(
     rf"{_RESIDUE_PLACEHOLDER}[ /_-]+([A-Z][\w&]*)|([A-Z][\w&]*)[ /_-]+(?={_RESIDUE_PLACEHOLDER})"
     rf"|{_RESIDUE_PLACEHOLDER}[-_]([A-Za-z][\w&]*)|([A-Za-z][\w&]*)[-_](?={_RESIDUE_PLACEHOLDER})"
@@ -2763,7 +2764,8 @@ def _domain_text(folder: Path) -> str:
                     "a symlink into no provider folder: read as a File Provider domain (the empty-folder "
                     "rule stands)"
                 )
-            return f"a symlink: read as the provider folder it points into, {_domain_text(real)}"
+            # the folder by its name, which the report redacts (OneDrive-<org-1>); never the target path
+            return f"a symlink into {real.name}: read as that folder, {_domain_text(real)}"
         if not stat.S_ISDIR(mode):
             return "not a folder: read as a File Provider domain (the empty-folder rule stands)"
         marker = file_provider_marker(folder)
@@ -3414,6 +3416,16 @@ def _build_redactor(r: _Run) -> Redactor:
             red.add("host", h, ignore_case=True)
     orgs: list[str] = []
     heads: set[str] = set()  # the app names before a registered organisation ("Dropbox" of "Dropbox-<team>")
+    # A CloudStorage entry that is a symlink names no organisation: its name is the person's own (B13 round
+    # 16 T40: "OneDrive-Link" read as a second organisation, and one sorting first took <org-1>). Kept apart
+    # and registered whole after the organisations, as a <link-N>.
+    links: list[str] = []
+
+    def linked(provider: str) -> bool:
+        with contextlib.suppress(OSError):
+            return (cloud_storage_root() / provider).is_symlink()
+        return False
+
     with contextlib.suppress(OSError):
         # OneDrive's first, so <org-1> stays the OneDrive organisation; hidden entries are skipped, as the
         # Environment line skips them.
@@ -3423,7 +3435,9 @@ def _build_redactor(r: _Run) -> Redactor:
         )
         for provider in names:
             org = _org_of(provider)
-            if org:
+            if org and linked(provider):
+                links.append(provider)
+            elif org:
                 orgs.append(org)
                 heads.add(provider.partition("-")[0])
     cloud_sources: list[tuple[str, str, list[str]]] = []  # (id, provider, components)
@@ -3442,7 +3456,9 @@ def _build_redactor(r: _Run) -> Redactor:
             if parts is not None:
                 cloud_sources.append((src.id, *parts))
                 org = _org_of(parts[0])
-                if org:
+                if org and linked(parts[0]):
+                    links.append(parts[0])
+                elif org:
                     orgs.append(org)
                     heads.add(parts[0].partition("-")[0])
             elif src.path is not None and not any(expand(src.path).is_relative_to(o) for o in own):
@@ -3466,6 +3482,11 @@ def _build_redactor(r: _Run) -> Redactor:
         # a custom domain: whole, so a word-named organisation's domain never prints (F42); after the
         # organisations, so OneDrive's stays <org-1> (B13 round 6 G49)
         red.add("org", tenant, ignore_case=True)
+    # a link named as an organisation is that organisation's (OneDrive-Contoso (1) beside OneDrive-Contoso)
+    named = {_norm(org) for org in orgs}
+    for name in dict.fromkeys(links):
+        if _norm(_org_of(name) or "") not in named:
+            red.add("link", name, ignore_case=True)
     for _sid, provider, comps in cloud_sources:
         shared = provider.startswith("OneDrive-SharedLibraries-") and bool(comps)
         if shared:

@@ -550,8 +550,36 @@ def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
     env = section(text, "Environment")
     assert "OneDrive-<org-" in env
     if link:
-        assert "(a symlink: read as the provider folder it points into, " in env, env  # B13 round 6 G40
+        # B13 round 6 G40; round 16 T40: the folder it points into, by its placeholder
+        assert "(a symlink into OneDrive-<org-1>: read as that folder, " in env, env
     assert "<org-2>'s own" not in text and "issue <org-" not in text
+
+
+@pytest.mark.parametrize("name", ["Link", "Aardvark"])
+def test_a_provider_symlink_is_no_second_organization(fake_mac: dict[str, Path], name: str) -> None:
+    """B13 round 16 T40: a CloudStorage symlink's name was registered as an organization, so the Environment
+    line read as two (``OneDrive-<org-1> ..., OneDrive-<org-2> (a symlink ...)``), a link sorting first
+    (``OneDrive-Aardvark``) took <org-1>, and the line never said which folder it points into. The link's
+    whole name is a <link-N>, never printed and never an organization, and the line names its target by
+    that folder's placeholder; a source configured through the link reads the same."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage"
+    entry = cloud / f"OneDrive-{name}"
+    entry.symlink_to(cloud / f"OneDrive-{ORG}", target_is_directory=True)
+    cfg = fake_mac["config"]
+    through = entry / fake_mac["one"].relative_to(cloud / f"OneDrive-{ORG}")
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + f'\n[[source]]\nid = "tailspin-deal"\nkind = "local"\npath = "{through}"\n',
+        encoding="utf-8",
+    )
+    text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    env = section(text, "Environment")
+    assert "<link-1> (a symlink into OneDrive-<org-1>: read as that folder, " in env, env
+    assert "<org-2>" not in text, [ln for ln in text.splitlines() if "<org-2>" in ln]
+    assert ORG not in text and f"OneDrive-{name}" not in text and name not in text.replace("link", ""), [
+        ln for ln in text.splitlines() if name in ln
+    ]
+    assert "<link-N> a symlink's own name" in section(text, "Redaction")
 
 
 def test_a_word_named_folder_makes_the_redaction_section_advise_sending_privately(
@@ -7372,8 +7400,8 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
     assert "listable, 2 provider folders and 1 symlink and 1 other entry: " in env, env
-    assert (
-        " (a symlink: read as the provider folder it points into, File Provider domain "
+    assert (  # B13 round 16 T40: the link's own name is a <link-N>, and the folder it points into is named
+        "<link-1> (a symlink into OneDrive-<org-1>: read as that folder, File Provider domain "
         "(com.apple.file-provider-domain-id))" in env
     ), env
     assert "(not a folder: read as a File Provider domain (the empty-folder rule stands))" in env
