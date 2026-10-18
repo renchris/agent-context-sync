@@ -9167,9 +9167,32 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     # whatever the outcome: the expected turns line points here (a reviewer's finding)
     unread = unread_asked(att, runs) if att is not None else None
     signed_out = _sign_in_stop_item(att, runs, stop) if att is not None else None
-    if att is not None and (items or retried or unread or signed_out):
+    # an install step stop no line logged is an installer-side item too, as step 1's exit 3 is (B13 round
+    # 15 S40; round 13 O13): keyed on the computed outcome, so a held listing, a run retried to 0 or a stopped
+    # run makes none
+    # Not when a line names an install step error (stopping_error counts it resolved once any install run
+    # ended 0, but its item is the agent's line), nor for a run with no end line (killed, or still running)
+    install_stop = None
+    last_install = install_runs_only(runs)[-1:] if att is not None else []
+    if (
+        att is not None
+        and stop is None
+        and signed_out is None
+        and outcome.kind == "failed"
+        and outcome.step == att.layout.install_step
+        and last_install
+        and last_install[0].rc is not None
+        and not any(e.step == att.layout.install_step for e in att.of_kind("error"))
+    ):
+        install_stop = (
+            f"- install.sh · step {outcome.step} · the install stopped: {'; '.join(outcome.why)} "
+            "(not logged: the agent logged no line for this stop)"
+        )
+    if att is not None and (items or retried or unread or signed_out or install_stop):
         if signed_out:
             out.append(signed_out)
+        if install_stop:
+            out.append(install_stop)
         if unread:
             warned = any("could not read which folders" in ln for ln in r.facts.out_counted)
             out.append(

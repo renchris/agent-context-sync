@@ -5176,25 +5176,29 @@ def test_list_folders_names_the_app_whose_folder_is_signed_out(
     assert install_log(env)[-2].endswith(f" result=failed note=not-signed-in apps={token} missing=1 synced=2")
 
 
-def test_list_folders_names_every_app_whose_folder_is_signed_out(env: dict[str, str]) -> None:
+@pytest.mark.parametrize("n", [3, 2])
+def test_list_folders_names_every_app_whose_folder_is_signed_out(env: dict[str, str], n: int) -> None:
+    """B13 round 15 S40: the apps are joined as the report joins them ("A, B and C"), and two read as
+    plural."""
     cs = _cloud(env)
     cs.mkdir(parents=True)
     tables = [
         local_source_table(i, cs / p / "Team")
-        for i, p in (("a", "OneDrive-Contoso"), ("b", "Dropbox"), ("c", "ProtonDrive-Contoso"))
+        for i, p in (("a", "OneDrive-Contoso"), ("b", "Dropbox"), ("c", "ProtonDrive-Contoso"))[:n]
     ]
     _write_config(env, *tables, _inbox(env))
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 3, cp.stdout + cp.stderr
+    apps = "Dropbox, OneDrive and ProtonDrive" if n == 3 else "Dropbox and OneDrive"
     assert last_line(cp).startswith(
-        "NEXT: Dropbox, OneDrive, ProtonDrive are not signed in on this Mac, so this Mac is missing 3 of the "
-        "folders this Mac already syncs: sign in to Dropbox, OneDrive, ProtonDrive (or let it finish "
-        "setting up)"
+        f"NEXT: {apps} are not signed in on this Mac, so this Mac is missing {n} of the folders this Mac "
+        f"already syncs: sign in to {apps} (or let it finish setting up)"
     ), last_line(cp)
     # B13 round 13 O5: fixed words in the list's order, an app outside them as "other", never its folder name
+    tokens = "dropbox,onedrive,other" if n == 3 else "dropbox,onedrive"
     assert install_log(env)[-2].endswith(
-        " result=failed note=not-signed-in apps=dropbox,onedrive,other missing=3 synced=3"
+        f" result=failed note=not-signed-in apps={tokens} missing={n} synced={n}"
     ), install_log(env)[-2]
 
 

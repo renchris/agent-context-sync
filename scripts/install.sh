@@ -4529,7 +4529,9 @@ list_folders() {
 		# folders are all there (one syncing only ~/Documents/notes too) keeps exit 0 below (B13 round 11 M4).
 		# The app is the one each missing folder's provider folder names, not always OneDrive (B13 round 12 N41).
 		rc=3
-		case "$apps" in *", "*) more="are not signed in on this Mac, so this Mac is" ;; *) more="is not signed in on this Mac, so it is" ;; esac
+		# several apps joined as the report joins them, "A, B and C" (B13 round 15 S40); the plural is read off
+		# the comma list first, since "A and B" holds no comma
+		case "$apps" in *", "*) more="are not signed in on this Mac, so this Mac is" apps="${apps%, *} and ${apps##*, }" ;; *) more="is not signed in on this Mac, so it is" ;; esac
 		NEXT_MSG="$apps $more missing $missing of the folders this Mac already syncs: sign in to $apps (or let it finish setting up), then re-run: $RERUN; the folders marked $SYNCED_MARK are kept"
 		# which apps, and how many folders are missing, beside how many this Mac syncs: the readers named
 		# OneDrive and counted every synced folder as missing (B13 round 13 O5)

@@ -6455,11 +6455,47 @@ def test_a_persons_step_2_stop_the_agent_logged_is_the_one_item(fake_mac: dict[s
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n### Run", 1)[0]
     found = [ln for ln in items.splitlines() if ln.startswith("- ")]
     assert len(found) == 1 and found[0].startswith("- F4 · step 2 · error · install.sh exited 1:"), items
-    write_friction(fake_mac, V7_HAPPY)  # the same stop with no line logged: no item at all
+    write_friction(fake_mac, V7_HAPPY)  # the same stop with no line logged: the installer's own item
     _text, summary = summary_of(fake_mac)
     assert summary.strip().startswith("- **outcome: failed at step 2** (computed: install.sh exited 1")
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n### Run", 1)[0]
     assert not [ln for ln in items.splitlines() if ln.startswith("- F")], items
+    # B13 round 15 S40: not "- none" beside "failed at step 2", the shape round 13 O13 fixed for step 1
+    found = [ln for ln in items.splitlines() if ln.startswith("- ")]
+    assert found == [
+        "- install.sh · step 2 · the install stopped: install.sh exited 1 (not logged: the agent logged no "
+        "line for this stop)"
+    ], items
+
+
+@pytest.mark.parametrize("shape", ["logged after a run that ended 0", "a run with no end line"])
+def test_an_install_step_stop_item_is_not_made_for_a_logged_line_or_a_killed_run(
+    fake_mac: dict[str, Path], shape: str
+) -> None:
+    """B13 round 15 S40, review: the unlogged step 2 stop's item is the installer's only when no line names an
+    install step error (stopping_error counts one resolved once any install run ended 0, so the item said
+    "not logged" beside the agent's own line), and only for a run that ended: a killed or unfinished run is
+    no stop the person made."""
+    log = fake_mac["setup"] / "install.log"
+    friction = V7_HAPPY
+    if shape == "a run with no end line":
+        log.write_text(LIST_RUN + install_run("2026-09-29T10:00:00Z", None))
+    else:
+        write_install_log(fake_mac, start="2026-09-29T10:00:00Z", rc=0, run="20260929T100000Z-4242")
+        write_install_log(
+            fake_mac, start="2026-09-29T10:00:30Z", rc=1, run="20260929T100030Z-4343", append=True
+        )
+        log.write_text(LIST_RUN + log.read_text().replace("compat=5", "compat=6"))
+        logged = (
+            "2026-09-29T10:01:00Z | step 2 | error | install.sh exited 1: its NEXT says the [FAIL] lines are "
+            "the person's to fix, not a step for the agent | -\n"
+        )
+        friction = _insert_before("2026-09-29T10:01:10Z | end", logged, V7_HAPPY)
+    write_friction(fake_mac, friction)
+    _text, summary = summary_of(fake_mac)
+    assert "**outcome: failed at step 2**" in summary, summary
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n### Run", 1)[0]
+    assert "the install stopped" not in items, items
 
 
 # ---- an install run that failed before the one that ended 0 (second bring-back, 2026-10-07) -------------

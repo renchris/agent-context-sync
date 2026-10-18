@@ -19908,6 +19908,8 @@ Amended 2026-10-17, §16.105 O41, O48, O57: those were two of doctor's three fix
 library's Sync and no sign-in.
 Amended 2026-10-18, §16.117 S36: with one synced folder each clause opens `; it is` for `; 1 of them is` and drops
 `; a sync still mirrors the folders that are there`, and the gone one ends `; its pages are kept`.
+Amended 2026-10-18, §16.117 S40: several signed-out apps are joined as the report joins them, `A, B and C` (`A and
+B` for two), in both places the exit 3's NEXT names them.
 
 Amended 2026-10-17, §16.109 O63: a later commit of the lane (42de9ecc) changed README.md's intro, docs/deploy/README.md and
 setup-feedback.md to match: the list's sign-in names the app, and exit 3 is only for a folder whose app is signed out.
@@ -20394,6 +20396,9 @@ logged: an unattended run goes to the report)` (a `no-folders` exit too), and a 
 `from the sign-in stop N: ...`, not `unexpected`. `_doctor_fails` and the outcome are unchanged. The app is
 install.log's `apps=`, not the disk (the finder's fix predates O5). The shell report has no Items list and no
 doctor buckets, so it has nothing to match. Test: `test_an_unattended_sign_in_stop_is_an_item_and_its_fails_are_the_stops`.
+Amended 2026-10-18, §16.117 S40: an attempt whose computed outcome is "failed" at the install step, with no friction
+stop and no sign-in item, has one too: `- install.sh · step <N> · the install stopped: <the outcome's computed clause>
+(not logged: the agent logged no line for this stop)`.
 
 Amended 2026-10-17, §16.110 Q3, Q18, Q36, Q46, Q47, Q55: a source's FAIL is the sign-in stop's only when its
 provider folder is signed out by install.sh's rule (`doctor.provider_state`: gone with no other folder of its app,
@@ -21202,6 +21207,8 @@ install.sh's person-owned NEXT lines by their shape, so round 14 lane RB's third
 is held too. Tests: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`PERSONS_NEXT`),
 `test_a_persons_step_2_stop_the_agent_logged_is_the_one_item`.
 Amended 2026-10-18, §16.118 S33, S58, S62: since v24 the bracket reads "(the [FAIL] lines, the configuration error or a status error with no [FAIL] line are mine to fix)", lane RB's words for its status NEXT with no [FAIL] line.
+Amended 2026-10-18, §16.117 S40: with no line logged, Items now has the installer-side item `- install.sh · step 2 ·
+the install stopped: ...`, not "none"; a logged line is still the one item.
 
 **The inbox is explained whether or not step 2 exited non-zero** (Q8). v22's "Then tell me about my inbox" came after
 the non-zero clause's "go to step 3's report", which never comes back, so a failed step 2 never explained it. It now
@@ -21716,6 +21723,24 @@ it is`, the mirror claim goes, and the gone one ends `; its pages are kept`. The
 on, `is no longer on disk` and `is not on disk`, stay, as do the line's prefix, the exit and the note. Tests:
 `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2` (each layout with one and two synced folders),
 `test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does` (the library alone).
+
+**The two twins join the signed-out apps alike, and an unlogged step 2 stop is an item** (S40; amends §16.99 N41,
+§16.104 O13 and §16.112 Q7). (a) Round 14 Q48 made the report say `OneDrive, Dropbox and Box are not signed in` and
+`the ... sign-ins`, while install.sh's exit 3 NEXT for the same state joined `$apps` with commas: `OneDrive, Dropbox,
+Box are not signed in ... sign in to OneDrive, Dropbox, Box`. The plural is read off the comma list first (two apps
+joined `A and B` hold no comma), then the last comma becomes ` and `, in place, so the pinned `sign in to $apps (or
+let it finish setting up), then re-run:` holds. The report words an unknown app `another sync app` where the
+installer prints its label, so only the join can agree. (b) A step 2 stop the agent logged no line for read `failed
+at step 2` over Items `- none`, the shape O13 fixed for step 1. When the computed outcome is `failed` at the install
+step and there is no friction stop and no sign-in item, Items has `- install.sh · step <N> · the install stopped:
+<the outcome's computed clause> (not logged: the agent logged no line for this stop)`. Keyed on the computed outcome,
+not the last run's exit, so a held listing's Allow click, a run retried to 0 and a stopped or killed run make none
+(Q7's verifier: those are no errors). Corrected by review: it also needs the last install run to have ended (a run
+with no end line computes "failed" too) and no logged install step error (`stopping_error` counts one resolved once
+any install run ended 0, so the item said "not logged" beside the agent's own line). Tests:
+`test_list_folders_names_every_app_whose_folder_is_signed_out` (two and three apps),
+`test_setup_report.py::test_a_persons_step_2_stop_the_agent_logged_is_the_one_item`,
+`test_setup_report.py::test_an_install_step_stop_item_is_not_made_for_a_logged_line_or_a_killed_run`.
 
 **The pandoc first-start test's failure carries the run** (S70). CI run 39081380800 failed it with only `ValueError:
 not enough values to unpack (expected 1, got 0)` at the `[started] = [...]` unpack: install.sh's output was captured
