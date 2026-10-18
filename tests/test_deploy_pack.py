@@ -544,7 +544,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (24, "a5fc7e4893c8e779d7db7c45fbe699efba69016968d2f494b45bd0ecaa10bacd")
+PROMPT = (25, "4085b979065cb668788aa025ad0ee3530f458b43beed5543887b95ae3b87e107")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -1161,7 +1161,8 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # a copy that is not the installer's could leave an earlier session's. The clause follows whether a report
     # ran.
     assert " ".join(finish.split()).endswith(
-        "step 1 kept; a patch an earlier report carried is not repeated, only listed by its hash); if the "
+        "step 1 kept; a patch an earlier report carried is not repeated, only listed there, by its hash when "
+        "it can be read); if the "
         "report's run printed that bring-back.md could not be written, say so, do not name "
         "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; if no "
         'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
@@ -2873,11 +2874,12 @@ says so."""
 
 
 GONE_FOLDER = (
-    "If that NEXT: line says any of them is no longer on disk or is not on disk, tell me which, that step 2"
-    " fails on each until it is fixed, and the fix: for a folder that line says was renamed, moved or"
-    " deleted, put it back under its name or fix its [[source]] path; otherwise the fix that line names in"
-    " parentheses (a sign-in with the account it belongs to, which is no sign-in to wait for, or Sync on its"
-    " SharePoint page, or the [[source]] path). Do not add another folder in its place unless I name it."
+    "If that NEXT: line says any of them is no longer on disk or is not on disk, tell me which, that step"
+    " 2 fails on each until it is fixed, and the fix: for a folder that line says was renamed, moved or"
+    " deleted, put it back under its name, sync it to this Mac in its app, or fix its [[source]] path;"
+    " otherwise the fix that line names in parentheses (a sign-in with the account it belongs to, which is"
+    " no sign-in to wait for, or Sync on its SharePoint page, or the [[source]] path). Do not add another"
+    " folder in its place unless I name it."
 )
 """The first exception's words, since v22, for the list's tail on a synced folder renamed or moved in a
 signed-in app (B13 round 12 N41, N61, lane RB: "1 of them is no longer on disk although its app is signed
@@ -2885,7 +2887,19 @@ in"). v21 had none, and listed the renamed folder unmarked for the add question,
 offered their own folder under its new name as a new source (B13 round 13 O30). Since v23 it keys on "on
 disk", which the list's other two tails also say ("is not on disk because" a provider folder of another
 account, or a SharePoint library not synced here), and gives each tail's own fix: v22's "put it back under its
-name" is wrong for a library that was never synced (B13 round 14 Q15, Q73: one defect)."""
+name" is wrong for a library that was never synced (B13 round 14 Q15, Q73: one defect). Since v25 the renamed
+branch also syncs the folder to this Mac in its app: a folder unticked in a signed-in app's folder choice is
+gone from disk too, and doctor's fix and the wait name that (B13 round 16 T72)."""
+
+MIRRORED_NO_BLOCK = (
+    "If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell"
+    " me what it says (which folder, or how many sources) and the fix it names, and add that folder again"
+    " only if I name it."
+)
+"""Step 1's words, since v25, for the list's tail on a source the manifest still mirrors whose [[source]]
+block is gone (B13 round 16 T6, T30): v24 had none, and the list said "(none is needed)" while step 2's
+status FAILed on it. Before the two exceptions, so both lists' tails reach it; the re-add stays the
+person's to choose, since deleting a block may have been a deliberate stop."""
 
 PERSONS_NEXT = (
     "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the"
@@ -2902,12 +2916,22 @@ exit 2 are no errors. Since v24 the bracket also names a status that exits non-z
 round 15 lane RB's words for its S33, S58, S62), whose NEXT says the same "not a step for the agent"."""
 
 FAIL_IS_MINE = (
-    "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder is mine too:"
-    " show it to me and do not make that edit. Re-running the command its fix names is yours."
+    "A [FAIL] line whose fix edits sources.toml (a [[source]] block or path, a [convert] line or a"
+    " [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, rename or"
+    " sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to replace or"
+    " remove, a state file that cannot be read) is mine too: show it to me and do not make that edit or"
+    " run its command. Otherwise, re-running the install.sh command its fix names is yours, once: if the"
+    " same [FAIL] line comes back after it, show it to me, log it and go to step 3's report."
 )
 """Step 2's words, since v22, on whose a [FAIL] line's fix is (B13 round 13 O11, O30): v21 named only [warn]
 and WAITING ON YOU: lines as the person's, so a renamed folder's "fix path in [[source]]" read as the agent's
-edit. Not every [FAIL]: a check that ran out of time is fixed by re-running install.sh, which its fix says."""
+edit. Not every [FAIL]: a check that ran out of time is fixed by re-running install.sh, which its fix says.
+Since v25 it names every kind of fix ``doctor.PERSONS_FIX_RE`` and install.sh's ``persons_fails`` read as the
+person's (B13 round 16 T70, with lane B's T5, T2 and T9 words): a [[source]] block put back, a [governance] or
+[policy] value, Rosetta to install and a native pandoc copy; and the re-run it leaves to the agent is an
+install.sh command, once, and only for a fix that is not the person's: never Rosetta's softwareupdate, a
+sign-in's ``agentsync status`` before the sign-in, or ``agentsync install-agent`` (B13 round 16 review).
+Lane B added a state file that cannot be read (its T12)."""
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
@@ -2923,6 +2947,7 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     says so."""
     step1, step2 = _prompt_steps()[1], _prompt_steps()[2]
     stop = "do not choose folders for me: log a deviation, stop and wait for my answer."
+    assert f"{stop} {MIRRORED_NO_BLOCK} Two exceptions." in step1, "for both lists, before the exceptions"
     kept = (
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
@@ -2933,6 +2958,15 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         "stop, and say in your final message that I gave no answer, so no folder was added."
     )
     assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
+    # B13 round 16 T6, T30: the mirrored-folder tail's words, which say neither "on disk" nor "not signed in"
+    # (the keys of the gone-folder sentence and the sign-in wait), on both of the list's NEXTs
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    for tail in (
+        "is still mirrored but has no [[source]] block",
+        "are still mirrored but have no [[source]] block",
+    ):
+        lines = [ln for ln in script.splitlines() if tail in ln and "vtail=" in ln]
+        assert len(lines) == 2 and not any("on disk" in ln or "signed in" in ln for ln in lines), lines
     # B13 round 11 M4 (lane RB's words): with OneDrive signed out, a Mac that already syncs folders got
     # "[synced]" lines for folders that are not on disk, and the exception sent an unattended agent on to a
     # step 2 that fails. The list now exits 3 with a NEXT: that asks the person to sign in; the exception

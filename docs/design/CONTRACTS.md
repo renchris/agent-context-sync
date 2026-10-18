@@ -20696,6 +20696,10 @@ and gives each tail's own fix: putting the folder back for a renamed one, the fi
 the others.
 Amended 2026-10-17, §16.112 Q7: since v23 step 2 says what to do with a person's NEXT ("not a step for the agent"):
 log it as a step 2 error, show the lines and go to the report, and do not run the re-run it names.
+Amended 2026-10-18, §16.124 T70: since v25 step 2's sentence names every kind of fix `persons_fails` reads as the
+person's (a [[source]] block or path, a [convert] line, a [governance] value, policy.toml's [policy] value, a folder
+or file to put back, Rosetta, a native pandoc copy, a state file that cannot be read), and only otherwise is
+re-running the install.sh command its fix names the agent's, once.
 
 **The finish names the files the NEXT: line says to copy back** (O15; amends §16.100 N71). v21's "name the files the
 NEXT: line names instead" took in bring-back.md, which that NEXT (`--report-only` after `write_bring_back` failed
@@ -21284,6 +21288,9 @@ the renamed tail, nor "no longer on disk" in every tail, which would say a never
 breaks install.sh's pinned words; install.sh's tails are unchanged. The test ties the trigger to all six tails (two
 counts each), to the fixes in their parentheses, and to the signed-out lines' "then re-run", which no tail has. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`
 (`GONE_FOLDER`).
+Amended 2026-10-18, §16.124 T72: since v25 the renamed branch reads "put it back under its name, sync it to this Mac
+in its app, or fix its [[source]] path", and install.sh's renamed tails give "or not synced on this Mac" inside their
+parenthesis.
 
 **A logged command keeps its bars, and step 1 logs only the command that failed** (Q31). Read literally, v22's "log
 the failed command" logged step 1's whole one-liner; `_parse_event` split the line on every `|` and joined the
@@ -22266,7 +22273,13 @@ Reserved for round 16 lane RB of B13.
 The B13 round 16 items of lane P (specs `round16/items/T<n>.md`, the verifier's corrected fix built unless a
 measurement below says otherwise): T1, T6, T10, T29, T30, T45, T67, T70, T72, T81. T1, T10, T29, T45, T67 and T81
 are one defect from six finders (config_failed's "does not load" for a config that loads), built once; T6 and T30
-are one (step 1 and a mirrored folder whose block is gone), built once.
+are one (step 1 and a mirrored folder whose block is gone), built once. T6, T30, T70 and T72 need prompt text, so
+the prompt is **setup prompt v25**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v25` and
+`setup-prompt-compat 25`, the issue form's placeholder and the block's digest move together, and a saved v24 copy is
+stopped at step 1 like every older copy. v25 moves no step, so it has no `PROMPT_LAYOUTS` entry. None adds an
+agentsync command, an installer flag, a config key or a friction kind. Lanes that sent words: lane B (the person's
+fixes, its T5 cluster, T2 and T9, folded into T70's sentence) and lane E (the bundled pandoc's fix is now an
+install.sh re-run, its T54, T59, T60, T65: the re-run clause of T70's sentence, once).
 
 **A config that loads but init or add-source refuses is no config that does not load** (T1, T10, T29, T45, T67,
 T81; amends §16.93 M23). init and add-source also exit 78 on a config `load_config` reads: a policy.toml beside it
@@ -22299,13 +22312,16 @@ needed)`, though step 2's status FAILs on it (`config.vanished_sources`, §16.11
 config. After the synced-folder reader, a reader of its own (`vanished_folders`, 5 s, allowed to fail: a failure, no
 manifest or one it cannot read change nothing) reads the manifest read-only (sqlite3 `mode=ro`, never `Manifest`,
 which migrates it) with `present_counts`' query, keeps the ids the config does not have (any state, as
-`cycle.vanished_sources` does) and drops the one the inbox step 2 adds back. A listed unmarked folder whose
-`derive_source_id` (the configured ids taken, as add-source derives it) is such an id is one `--source-local` adds
-back under the same id; the NEXT then drops `(none is needed)` and adds `; 1 folder in the list above is still
+`cycle.vanished_sources` does) and drops the one the inbox step 2 adds back. A listed unmarked folder is one
+`--source-local` adds back when it is the root the manifest recorded for such an id (meta `scope_root:<id>`,
+`<run>:<path>`, written by every sync since 2026-10-06) and its `derive_source_id` (the configured ids taken, as
+add-source derives it) is that id; a name alone never matches, since a folder of the same name elsewhere is another
+folder (the lane's review: T6's and T30's slug match would have offered it, and add-source would have put it under
+the old id); the NEXT then drops `(none is needed)` and adds `; 1 folder in the list above is still
 mirrored but has no [[source]] block in <CONFIG>: <folder>. Step 2's status fails on it until it is added again (one
 --source-local "<folder>") or its [[source]] block is put back, as it was or retired` (N folders: "on each", "one
---source-local for each"), and for an id no listed folder derives (a custom id, another kind) `; 1 source that is no
-folder in the list above is still mirrored but has no [[source]] block in <CONFIG>. Step 2's status fails on it
+--source-local for each"), and for any other id (a custom id, another kind, no recorded root, a folder past the list's cap or marked) `; 1 source that no folder
+in the list above adds back is still mirrored but has no [[source]] block in <CONFIG>. Step 2's status fails on it
 until its [[source]] block is put back, as it was or retired`, never its id (the report names none either), on every
 exit 0 that points to step 2, the folder question included. The log line gets `vanished=N`. The words say neither
 "on disk" nor "not signed in", which the prompt's other step 1 cases read. Imports: baseline names only
@@ -22319,6 +22335,50 @@ agentsync without `PRESENT_STATES`), `test_list_folders_names_a_mirrored_source_
 `test_the_vanished_source_reader_imports_no_agentsync_name_an_older_build_lacks`,
 `test_a_mirrored_folder_whose_block_is_gone_is_named_in_step_1_and_added_back_in_step_2` (the real agentsync: step 2
 with no folder stops on the [FAIL], and with the named one exits 0 with sources.toml byte for byte as before).
+v25's step 1, after the folder question's wait and before its two exceptions, so the tail on either list reaches it:
+"If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell me what it says
+(which folder, or how many sources) and the fix it names, and add that folder again only if I name it." Not "tell me
+which": a source no folder adds back is given by count only. The re-add is the person's to choose (deleting a block may have been a deliberate stop), so it is not added
+unasked; with no answer, the first exception's "add none and go on to step 2" and the new Mac's wait hold as before.
+Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`MIRRORED_NO_BLOCK`).
+
+**Step 2 names every kind of fix that is the person's** (T70, with lane B's words for its T5 cluster, T2 and T9;
+amends §16.106 O11). v24's "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder
+is mine too" missed fixes `doctor.PERSONS_FIX_RE` and install.sh's `persons_fails` read as the person's: Rosetta to
+install and a native pandoc copy (§16.120 S47, S53), and, from lane B's §16.125, a [[source]] block to put back and
+"the person fixes [policy] in policy.toml" / "the person fixes [governance] in sources.toml". Beside an
+agent-fixable [FAIL] the NEXT is the generic one, so only the prompt's sentence and the fix's own words say whose it
+is; and "Re-running the command its fix names is yours" read as licensing Rosetta's `softwareupdate`. v25: "A [FAIL]
+line whose fix edits sources.toml (a [[source]] block or path, a [convert] line or a [governance] value) or
+policy.toml (a [policy] value), asks me to sign in, or to put back, rename or sync a folder or file, or says it is
+mine (Rosetta to install, a native pandoc copy to replace or remove, a state file that cannot be read) is
+mine too: show it to me and do not make that edit or run its command. Otherwise, re-running the install.sh command
+its fix names is yours, once: if the same [FAIL] line comes back after it, show it to me, log it and go to step 3's
+report." "Otherwise" and "the install.sh command", not the verifier's "the install.sh or agentsync command" (the
+lane's review): a sign-in's fix ends "then run ~/.local/bin/agentsync status again", which before the sign-in only
+fails again, and a stale job's names `agentsync install-agent`, a background job step 2 does not start. Lane B's
+later words add a state file that cannot be read (its T12, exit 65). A timed-out check's fix ("run the
+same scripts/install.sh command again") stays the agent's, and so, from lane E's §16.126, does the bundled pandoc's
+("run scripts/install.sh again (it reinstalls agentsync ...), or set [convert] pandoc_path to an absolute pandoc"):
+the re-run is the agent's and the [convert] edit the person's. "Once" is the timed-out check's own rule (`_again_fix`:
+"if this line comes back: show the person this line") and lane E's: a line that comes back after a reinstall is a
+whole file a reinstall does not change. Test:
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`FAIL_IS_MINE`).
+
+**Step 1 gives a folder unticked in its app the sync fix** (T72; amends §16.112 Q15). For a synced folder gone while
+its app is signed in, doctor's fix (§16.119 S4) and the wait (§16.119 S3) name "not synced on this Mac" and "sync
+that folder in <App>", but `--list-folders` said only "(renamed, moved or deleted there)" and step 1's prompt "put it
+back under its name or fix its [[source]] path". A folder unticked in the app's folder choice is gone from disk too,
+and the list sent the person to the wrong fix. install.sh's two renamed tails now read "(renamed, moved or deleted
+there, or not synced on this Mac)" and "until the folder is back under that name, synced to this Mac again in its
+app, or its [[source]] path in <CONFIG> is fixed" (each folder, its name, for N); only causes sit in the parenthesis,
+which step 1 reads before "the fix that line names in parentheses". v25's renamed branch: "put it back under its
+name, sync it to this Mac in its app, or fix its [[source]] path". docs/deploy README and setup-feedback say the
+same. Tests: `test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2`,
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`GONE_FOLDER`, both counts' words),
+`test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3`.
+
+Register: `docs/deploy/setup-feedback.md` K49.
 
 ### 16.125 Round 16: the person's fixes, the CLI's counts and WARNING lines (2026-10-18, wave B13 round 16 lane B)
 
