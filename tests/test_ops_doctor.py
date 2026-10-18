@@ -1326,7 +1326,10 @@ def test_a_held_provider_folder_never_holds_status_past_the_listing_bound(
     if there:
         assert "did not return" in listable.detail and "click Allow" in (listable.fix or ""), listable
     else:
-        assert listable.fix == 'fix path in [[source]] id = "docs", or sync that folder in OneDrive', listable
+        assert listable.fix == (
+            'fix path in [[source]] id = "docs", or put the folder back under that name in OneDrive, or sync '
+            "that folder in OneDrive"
+        ), listable
 
 
 def test_tcc_note_inside_launchd(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2132,7 +2135,10 @@ def test_a_missing_source_fix_names_the_sign_in_only_when_the_sign_in_is_the_cau
         "~/.local/bin/agentsync status again"
     }
     (gone / "Other").mkdir()
-    assert fixes() == {f"{table}, or sync that folder in OneDrive"}
+    # B13 round 15 S4: a folder renamed in a signed-in OneDrive is put back, as step 1 and the wait say
+    assert fixes() == {
+        f"{table}, or put the folder back under that name in OneDrive, or sync that folder in OneDrive"
+    }
     plain = dataclasses.replace(src, path=sample_config.config_path.parent / "gone")
     r = by_name(run_checks(dataclasses.replace(cfg, sources=(plain,))))
     assert r["source.docs.listable"].fix == table
