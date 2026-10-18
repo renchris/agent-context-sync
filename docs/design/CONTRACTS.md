@@ -5337,6 +5337,8 @@ prompt v10):** `PROMPT_VERSION` is 10; v10 reworded three sentences and moved no
 `PROMPT_VERSION` is 11; v11 changed wording only and moved no step. **Amended (2026-10-11, §16.49):**
 `PROMPT_VERSION` is 12; v12 changed wording only and moved no step. **Redaction.**
 `build_report` has no `redact` argument: the report is always redacted.
+Amended 2026-10-18, §16.121 S67 (by §16.110 Q25): `PROMPT_LAYOUTS[7]` names step 2 `install and start`, as every
+prompt since v7 calls it, not `install`.
 
 ```python
 REPORT_TITLE = "# agentsync setup report"
@@ -6344,6 +6346,8 @@ or empty for this case (a source sat incomplete for 900 passes):
   install.sh calls `add-source` once per folder, and "0 scaffold file(s)" on the second call read as undone.
   **Amended (2026-10-07, §16.30 "Several folders print the summary once"):** install.sh still calls it once
   per folder, but prints the docs repo line of the first call only and the `sources:` line of the last.
+  Amended 2026-10-18, §16.121 S57 (by §16.111 Q39): the count takes its noun from the count, `1 scaffold file
+  written)` or `N scaffold files written)` (`agentsync.text.plural`).
 - `status`'s loop line says `to curate N` where it said `queue N`.
 
 **Root guides: the inbox line names the kept inbox.** `Publisher.root_guide` named the first live inbox source
@@ -6602,6 +6606,9 @@ page whose comments could not be read (Failure, below).
 - **Summary.** `; N comment(s) on M page(s)` follows the page count and the scanned clause. N is the number of
   comments emitted, M the number of pages with a block. `; comments not read on K page(s)` follows it when K
   pages' comments could not be read (Failure, below). The summary carries no comment text and no author.
+  Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): each count takes its noun from the count, `; 1 comment
+  on 1 page`, `; N comments on M pages` and `; comments not read on 1 page`; a page converted before keeps its
+  `(s)` until it is converted again (no emitter version moved).
 - **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
   …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
 - **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
@@ -7065,6 +7072,9 @@ deck and pandoc converters call it (below).
 on-device OCR (Apple Vision):]` (`_PICTURE_HEAD`) between a picture's `[image…]` line and the text read in
 it. The summary clauses are `text of N picture(s) read by on-device OCR` (`_PICTURES_READ`) and `pictures
 past the OCR picture limit not read` (`_PICTURES_CUT`), for a PDF too.
+Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the first clause is `text of 1 picture read by on-device
+OCR` or `text of N pictures read by on-device OCR`, from the function `_pictures_read(n)`, which replaced the
+constant `_PICTURES_READ`; a page converted before keeps its `(s)` until it is converted again.
 
 **Shared options.** `_OCR_OPTIONS` (`ocr_languages`, `ocr_max_pages`, `ocr_max_pictures`,
 `ocr_max_picture_bytes`) is the one set for every converter that has an engine: the limits here that can
@@ -7244,6 +7254,9 @@ Signed in Rotterdam
   it: a scanned cover now gives the title, where the second page did. The summary is counts only: `PDF: 3
   page(s), 1 read by on-device OCR, 1 without a text layer (OCR found no text); text of 1 picture(s) read by
   on-device OCR; 1 comment(s) on 1 page(s)`. It never holds text OCR read.
+  Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the example reads `PDF: 3 pages, 1 read by on-device
+  OCR, 1 without a text layer (OCR found no text); text of 1 picture read by on-device OCR; 1 comment on 1 page`;
+  a page converted before keeps its `(s)` until it is converted again.
 - **A PDF of page images** is a page as soon as OCR reads a line on any page. When OCR reads every page it
   may and finds nothing, and no comment is listed, it is refused with a reason of its own, `no text layer
   (scanned or image-only PDF; on-device OCR found no text)` (`_NO_TEXT_FOUND`): a settled UNREADABLE result,
@@ -7348,6 +7361,9 @@ North | 12
   before. That line is never one OCR read: a picture's text follows its own `[image…]` line. The summary
   gains counts only, before the titles: `Presentation: 3 slide(s); text of 2 picture(s) read by on-device
   OCR; titles: …`, and `; pictures past the OCR picture limit not read` when a limit cut the reading.
+  Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the example reads `Presentation: 3 slides; text of 2
+  pictures read by on-device OCR; titles: …` (`1 slide`, `text of 1 picture read` for one); a page converted
+  before keeps its `(s)` until it is converted again.
 - **Failure** (plan D10). Any failure of the pass is one `OcrError("on-device OCR failed")`, raised before
   a slide is written: `_read_pictures` left a picture unread (the helper may not be run, exits non-zero,
   runs out of time, answers something else, or Vision gave up), a copy cannot be written, memory runs out,
@@ -7485,6 +7501,9 @@ Approved \| 12 May
   document that opens with a letterhead table holding a logo keeps its title. Only a document with no line
   of its own is `Untitled Word document`. The summary gains counts only, before the headings: `Word document; text of 2
   picture(s) read by on-device OCR; headings: …`, and `; pictures past the OCR picture limit not read`.
+  Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the example reads `Word document; text of 2 pictures
+  read by on-device OCR; headings: …` (`text of 1 picture read` for one); a page converted before keeps its
+  `(s)` until it is converted again.
 - **Failure** (plan D10). One `OcrError("on-device OCR failed")`, raised before anything is returned:
   `_read_pictures` left a picture unread (the helper may not be run, exits non-zero, runs out of time,
   answers something else, or Vision gave up), a copy cannot be written, memory runs out, the pass raises;
@@ -7541,6 +7560,7 @@ Every other name in `agentsync.convert.image` is private (`_REREAD_BELOW`, `_FIE
 `_PictureText`, `_read_pictures`, `_read_each`, `_next_bytes`, `_raster_left`, `_OCR_OPTIONS`,
 `_DOCUMENT_BUDGET_S`, `_PAGE_S`, `_budget_s`, `_MAX_PICTURES`, `_MAX_PICTURE_BYTES`, `_PICTURE_HEAD`, `_PICTURES_READ`,
 `_PICTURES_CUT`).
+Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): `_PICTURES_READ` is now the function `_pictures_read`.
 
 Tests: `tests/test_convert_image.py` (the raster table, one case per type and per look-alike; the page byte
 for byte; the helper's working folder, time limit and frame count; every claimed suffix; the same page under
@@ -10983,6 +11003,9 @@ do, and agentsync status prints them)`, for an inbox as for a local source. When
 an empty cloud folder, the alarm keeps the old cause and ends `(grant the agent Files and Folders access for the
 other folders; for the empty ones, each WAITING ON YOU line about <id> says what to do, and agentsync status
 prints them)`. Only a walk with no empty cloud folder below the root keeps the old text.
+Amended 2026-10-18, §16.121 S57 (by §16.113 Q24, Q38, Q42, Q57): the head reads `1 unknown dir —` or `N unknown
+dirs —`, and the cause `1 empty cloud folder, zero children in a cloud tree` or `N empty cloud folders, zero
+children in a cloud tree`.
 
 #### Purge dry run (`agentsync.governance`)
 
@@ -11565,6 +11588,9 @@ exclude:
 - all unknown folders empty: `N unknown dir(s) — empty cloud folder(s), zero children in a cloud tree: ...;
   enumeration incomplete, no deletions this pass (each WAITING ON YOU line about <id> says what to do, and
   agentsync status prints them)`, for an inbox as for a local source;
+  Amended 2026-10-18, §16.121 S57 (by §16.113 Q24, Q38, Q42, Q57): the head reads `1 unknown dir —` or `N
+  unknown dirs —`, and the cause `1 empty cloud folder, zero children in a cloud tree` or `N empty cloud folders,
+  zero children in a cloud tree`.
 - mixed with another cause: the old cause, then `(grant the agent Files and Folders access for the other
   folders; for the empty ones, each WAITING ON YOU line about <id> says what to do, and agentsync status prints
   them)`;
@@ -14577,6 +14603,8 @@ the first fixed line that can be a title (never a table row), else the first lay
 **Amended 2026-10-13, §16.73 H54 (by §16.66 G59):** "the deck emitter's version is unchanged" no longer holds:
 `pptx._EMITTER_VERSION` is 1.0.1, so cached bytes get the new rendering on a new conversion, while
 `PptxConverter.outdated` is unchanged and reads no deck again by itself.
+Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the summary adds `1 layout` or `N layouts`; a page converted
+before keeps its `(s)` until it is converted again.
 
 **Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and §16.47 R33).**
 `policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
@@ -16445,6 +16473,8 @@ is the one G12 avoided, two buckets for step 3, now stated in the form and in se
 `tests/test_setup_report.py::test_prompt_layout_is_picked_by_explicit_version`,
 `tests/test_deploy_pack.py::test_setup_report_form_outcomes_match_the_readme_prompt` (every layout's failed step is
 an option) and `test_setup_report_form_has_a_run_type` (the options are `FORM_OUTCOME_OPTIONS`).
+Amended 2026-10-18, §16.121 S67 (by §16.110 Q25): v7's step 2 is `install and start`, the form's own option, so
+`form_label` returns it unmapped.
 
 **A git URL rewrite's host and path are redacted, in both reports** (H20; dated line at §16.46 Proxies). v15's git
 stop names a URL rewrite as a cause, and with `url."https://<mirror>/".insteadOf = https://github.com/` git's error
@@ -16846,6 +16876,8 @@ at step 1 (rerun: ...)` despite its error and end line; the guide's bullet says 
 checkout is older than the prompt`) is that rerun; an older or unstated copy's stop (`the pasted copy is not the
 current one`) stays `failed at step 1`, with a note naming both readings, since a fresh copy pasted inside the
 window looks the same.
+Amended 2026-10-18, §16.121 S67 (by §16.110 Q25): v7's step 2 is `install and start`, the form's own option, so
+only a v5 step still maps to the option for the same work.
 
 **A label-escalation entry stays queued while its file is published, in both guides** (H58, H63). Since §16.62
 G30, `governance.KEPT_REASONS` holds `label-escalation` as well as `upstream-deleted`: a run of the queue skips such
@@ -17418,6 +17450,8 @@ against its own field table. It now says the form has v6's four options plus v7'
 take the option of the same number and name, and step 2 (`install`) takes `Failed at step 2 (install and start)`;
 the v5 mapping is unchanged. Test: `test_the_guide_maps_each_prompts_steps_to_the_forms_options`, which reads each
 label from `form_label`.
+Amended 2026-10-18, §16.121 S67 (by §16.110 Q25): the layout names step 2 `install and start`, so it takes the option
+of the same number and name, as steps 1 and 3 do.
 
 **The Loop line paragraph names AGENTS.md and STATE.md in words** (J62). Since §16.69 H3 and H36 `_eval_by_name`
 shows the docs repo's AGENTS.md (rules 4, 6 and 8's baseline NEXT) and _sync/STATE.md (the waits for empty and
@@ -17555,6 +17589,7 @@ Amended 2026-10-14, §16.87 L37: the `failed` words read `the installed agentsyn
 install.sh's warning now names the class too (`... failed while reading it and raised SyntaxError`).
 Amended 2026-10-16, §16.98 N4: every list row starts `listed N folder(s): ` in place of `listed-6: `, with one
 colon still.
+Amended 2026-10-18, §16.121 S57 (by §16.111 Q39): the row starts `listed 1 folder: ` or `listed N folders: `.
 
 **An older copy's stop followed within two minutes stays a failure** (K11; dated line at §16.74 J9). A rehearsal
 copied a fresh prompt into a new session 23 s after the installer stopped a stale copy, and the report called the
@@ -19740,6 +19775,8 @@ fixed words for `denied`, `tcc-pending`, `not-signed-in` and `no-folders`; `_HEL
 `config-unreadable`, `no-devtools` and `no-interpreter`. A note the report does not know is shown as it is, and
 install.log keeps its tokens. Tests: `test_the_installer_table_shows_what_the_folder_list_read_of_the_config`,
 `test_the_helpers_steps_note_is_in_words_in_the_installer_table`.
+Amended 2026-10-18, §16.121 S57 (by §16.111 Q39): `_list_folders_note` gives `listed 1 folder` or `listed N
+folders`.
 
 **One bracket per Summary clause** (N14, N33; dated line at §16.92 M40). The first-sync line read `skipped in 601s, rc
 75 (lock busy: ...) (install.log)`, also on a stopped copy's borrowed line, and the install.sh step list put
@@ -20832,6 +20869,10 @@ report (since v21).`). None promises that the report names the app: it says OneD
 Amended 2026-10-17, §16.115 Q66 (by §16.104 O1): the report does name the app since O1, which landed beside
 §16.109's commits: from the list's `apps=` (`_SIGN_IN_APPS`), `a sync app` for a line with a synced count and no
 `apps=`, and OneDrive for `apps=onedrive` or `apps=sharedlibraries`, or a line with neither. The guides stay app-neutral on purpose.
+Amended 2026-10-18, §16.121 S37, S56 (by §16.110 Q52): `_SIGN_IN_APPS` holds no `sharedlibraries` since Q52
+(install.sh never wrote it), so the report says OneDrive for `apps=onedrive`, or for a line with no `apps=` token
+of the map and no synced count of 1 or more; a token outside the map is dropped, so `apps=sharedlibraries` with
+`synced=2` reads `a sync app is not signed in`.
 
 **A config step 2 cannot reinstall for adds no folder** (O61). Since §16.99 N29 a list whose installed agentsync is
 this checkout's build and failed on the config ends on `no folder can be added until the config is fixed: run
@@ -20976,6 +21017,8 @@ step 2 (install)` beside the field `Failed at step 2 (install and start)`; every
 from its field is a v5 attempt's step 3 (`Failed at step 3 (install and start)` against `Failed at step 2 (install
 and start)`). The older sections that quote v7's step 2 as `install` (§16.52, §16.58, §16.62) describe the layout
 of their round. Test: `test_setup_feedback_states_the_report_rules_of_round_6`.
+Amended 2026-10-18, §16.121 S67: the sections that quote v7's step 2 as `install` are §16.14, §16.69 H11, §16.73
+H43 and §16.79 J60, each with a dated line now; §16.52, §16.58 and §16.62 hold no such quote.
 
 **Two sessions that each stop at step 1 within the gap are two attempts** (Q28). Probe prx: a finished attempt, then
 two stated step 1 errors (`prompt v22, <agent>: ...`) 4m36s apart, read as one 4m36s session with the first stop as
@@ -21589,4 +21632,36 @@ Reserved for round 15 lane E of B13.
 
 ### 16.121 Round 15: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 15 lane D)
 
-Reserved for round 15 lane D of B13.
+Docs, dated lines and a test pin that lagged round 14's code (`docs/plans/bring-back-ocr.md`, "B13 round 15";
+specs `round15/items/S<n>.md`, the verifier's corrected fix built). Lane D's round 15 items: S37, S48, S50, S54,
+S56, S57, S61 and S67. S37 and S56 are one defect, built once; so are S48 and S57. All are built; none was
+recorded as making things worse. Every edit is outside the prompt block and no item needs prompt words, so none went
+to lane P. A dated line this round writes reads `Amended 2026-10-18, §16.121 S<n>`, with `(by §16.NN Q<n>)` when it
+records round 14's change.
+
+**The Q66 line's OneDrive tokens are Q52's map** (S37, S56, one defect; dated line at §16.109 O12). §16.115 Q66's
+line in O12's paragraph said the report says OneDrive for `apps=onedrive` or `apps=sharedlibraries`. §16.110 Q52,
+which landed after it, took `sharedlibraries` out of `_SIGN_IN_APPS` (install.sh never wrote it), and a token
+outside the map is dropped, so `apps=sharedlibraries` with a synced count reads `a sync app is not signed in`. The
+Q66 line stays as written; the dated line after it gives the map as it is. §16.104 O1's map is O1's record, which Q52
+amends, and stays. Test: `test_the_q66_lines_onedrive_tokens_are_the_sign_in_maps`, which reads the line against
+`_SIGN_IN_APPS` and `_signed_out`.
+
+**A known count's older lines say the count's noun** (S48, S57, one defect; dated lines at §16.22, §16.24, §16.26,
+§16.37, §16.39 N27, §16.54 Q77, §16.80 K23 and §16.98 N4). Since §16.111 Q39 (`agentsync.text.plural`) and §16.113
+Q24, Q38, Q42, Q57 the scaffold count, the PDF, deck and Word summaries, the template's layouts, the report's list
+row and the unknown-folder alarm take their noun from the count, but those items wrote dated lines only at §16.39
+N36 and §16.95 M5. The older lines still gave `N scaffold file(s) written)`, `N comment(s) on M page(s)`, `text of
+N picture(s)`, `Presentation: 3 slide(s)`, `N layout(s)`, `listed N folder(s)` and `N unknown dir(s) — empty cloud
+folder(s)` as current, and §16.26 named `_PICTURES_READ`, the constant Q39 replaced with `_pictures_read(n)`. Each
+gets a dated line with the current form; a converter's line says that a page converted before keeps its `(s)` until
+it is converted again, since no emitter version moved. The finder's fix dated them `§16.111 Q39`: that credits round
+14 with round 15's edit, and no claim of §16.111 or §16.113 names these paragraphs, so the dated-line test fails on
+every one (the verifier measured it). Tests: the dated-line scan, and `_ROUND_15_PARAGRAPH_AMENDS`'s pins.
+
+**v7's step 2 is `install and start` at every older line** (S67; dated lines at §16.14, §16.69 H11, §16.73 H43,
+§16.79 J60 and §16.110 Q25). §16.110 Q25 made the layout's step 2 `install and start` and said the older quotes of
+`install` were §16.52's, §16.58's and §16.62's, which hold none. The quotes are §16.14's `PROMPT_LAYOUTS[7]`, §16.69
+H11's, §16.73 H43's and §16.79 J60's, and none had a dated line: Q25's heading names no amends, so the scan never read
+it. Each gets one, and Q25's paragraph a line naming the right sections. Tests: the dated-line scan, and the §16.14
+pin in `_ROUND_15_PARAGRAPH_AMENDS`.

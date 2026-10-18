@@ -5341,7 +5341,38 @@ _ROUND_14_PARAGRAPH_AMENDS = (
 )
 """Round 14's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
-_ROUND_15_PARAGRAPH_AMENDS = (("16.29", "- Without the counts there is no `folders:` line.", "§16.116 S9"),)
+_ROUND_15_PARAGRAPH_AMENDS = (
+    ("16.29", "- Without the counts there is no `folders:` line.", "§16.116 S9"),
+    (
+        "16.22",
+        "`add-source` and `init`: the docs repo line ends `N scaffold file(s) written)`",
+        "§16.121 S57 (by §16.111 Q39)",
+    ),
+    (
+        "16.24",
+        "**Summary.** `; N comment(s) on M page(s)` follows the page count",
+        "§16.121 S48, S57 (by §16.111 Q39)",
+    ),
+    ("16.26", "**One wording for every document.**", "§16.121 S48, S57 (by §16.111 Q39)"),
+    ("16.26", "`PDF: 3 page(s), 1 read by on-device OCR", "§16.121 S48, S57 (by §16.111 Q39)"),
+    ("16.26", "`Presentation: 3 slide(s); text of 2 picture(s)", "§16.121 S48, S57 (by §16.111 Q39)"),
+    (
+        "16.26",
+        "`Word document; text of 2 picture(s) read by on-device OCR",
+        "§16.121 S48, S57 (by §16.111 Q39)",
+    ),
+    (
+        "16.26",
+        "Every other name in `agentsync.convert.image` is private",
+        "§16.121 S48, S57 (by §16.111 Q39)",
+    ),
+    (
+        "16.37",
+        'When every unknown folder of a `kind = "local"` walk is a zero-child cloud folder',
+        "§16.121 S57 (by §16.113 Q24, Q38, Q42, Q57)",
+    ),
+    ("16.14", "**Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install", "§16.121 S67 (by §16.110 Q25)"),
+)
 """Round 15's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
 
@@ -5368,12 +5399,13 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.101 (lane B) four, §16.99 (lane RB) two, §16.102 (lane E) one: N73's at §16.12's STATE.md
     paragraph. Round 14's §16.114 (lane E) three, Q62's, and §16.115 (lane D) two: Q80's at §16.22's
     nothing-stored bullet and Q67's at §16.109's opening paragraph. Round 15's §16.116 (lane RA) one, S9's at
-    §16.29's folders-line bullet."""
+    §16.29's folders-line bullet, and §16.121 (lane D) nine: S48 and S57's count lines at §16.22, §16.24,
+    §16.26 (five) and §16.37, and S67's at §16.14's "Prompt v7." paragraph."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
-    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 10
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5424,6 +5456,33 @@ def test_k02s_dated_line_follows_its_own_text() -> None:
     assert k02.index("A run that created the config and has no folder to sync exits 2") < dated
     assert k02.index("uv runs with `UV_TOOL_BIN_DIR` pinned to `~/.local/bin`.") < dated
     assert k02.endswith("any other blocking `[FAIL]` keeps `fix the [FAIL] lines above ...`.")
+
+
+def test_the_q66_lines_onedrive_tokens_are_the_sign_in_maps() -> None:
+    """B13 round 15 S37, S56 (one defect): §16.115 Q66's line in §16.109 O12's paragraph said the report
+    says OneDrive for `apps=sharedlibraries`, a token §16.110 Q52 took out of `_SIGN_IN_APPS` after that line
+    landed. The line stays; the dated line after it gives the map and the fallback as `_signed_out` reads
+    them."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    o12 = " ".join(
+        _contracts_section(
+            "**The intro and both guides say what v21 does at the sign-in stop with nobody to ask**", "\n\n"
+        ).split()
+    )
+    line = o12[o12.index("Amended 2026-10-18, §16.121 S37, S56 (by §16.110 Q52):") :]
+    assert "sharedlibraries" not in setup_report._SIGN_IN_APPS
+    assert "`_SIGN_IN_APPS` holds no `sharedlibraries` since Q52" in line
+    onedrive = "OneDrive is not signed in"
+    assert setup_report._signed_out({"apps": "onedrive", "synced": "2"})[0] == onedrive
+    assert setup_report._signed_out({"apps": "sharedlibraries"})[0] == onedrive
+    assert setup_report._signed_out({"apps": "sharedlibraries", "synced": "0"})[0] == onedrive
+    assert (
+        "OneDrive for `apps=onedrive`, or for a line with no `apps=` token of the map and no synced count"
+        " of 1 or more" in line
+    )
+    said = setup_report._signed_out({"apps": "sharedlibraries", "synced": "2"})[0]
+    assert f"`apps=sharedlibraries` with `synced=2` reads `{said}`" in line
 
 
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
