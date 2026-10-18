@@ -197,7 +197,7 @@ def test_rule_3_never_synced(tmp_path: Path, folder: Path) -> None:
     config = _setup(tmp_path, local_source_table("work", folder))
     skill.write_skill(config.docs_repo)
     assert _lines(config) == [
-        f"NEXT: 1 source(s) not fully listed or converted yet (work): run `{BIN} sync` again"
+        f"NEXT: 1 source not fully listed or converted yet (work): run `{BIN} sync` again"
     ]
 
 
@@ -207,7 +207,7 @@ def test_rule_3_a_local_file_not_converted_yet(tmp_path: Path, folder: Path) -> 
         (row,) = [r for r in manifest.iter_items("work") if not r.is_dir]
         manifest.set_verdict("work", row.stable_id, Verdict.DEFERRED)  # e.g. over the source's max_files
     assert _lines(config) == [
-        f"NEXT: 1 source(s) not fully listed or converted yet (work): run `{BIN} sync` again"
+        f"NEXT: 1 source not fully listed or converted yet (work): run `{BIN} sync` again"
     ]
 
 
@@ -232,10 +232,10 @@ def test_online_only_deferrals_are_a_note_and_reach_rules_4_to_9(
     config = _setup(tmp_path, local_source_table("work", folder) + "max_materialise_bytes = 1000\n")
     assert run_cycle(config, mode=None, budget_bytes=0).exit_code == 0
     waits_and_note = [
-        "WAITING ON YOU: 1 online-only file(s) in work are larger than the per-run download budget: run "
-        f"`{BIN} materialise --budget BYTES` with BYTES above their size, or raise that source's "
+        "WAITING ON YOU: 1 online-only file in work is larger than the per-run download budget: run "
+        f"`{BIN} materialise --budget BYTES` with BYTES above its size, or raise that source's "
         "max_materialise_bytes",
-        "note: 1 online-only file(s) in work wait for a later sync's download budget; they do not block the "
+        "note: 1 online-only file in work waits for a later sync's download budget; it does not block the "
         "next step",
     ]
     assert _lines(config) == [
@@ -249,8 +249,7 @@ def test_online_only_deferrals_are_a_note_and_reach_rules_4_to_9(
     _eval(config, "confirmed", "confirmed", "before")
     _hand_written(config, 1)
     assert _lines(config) == [
-        f"NEXT: 1 curation row(s) queued: run `{BIN} curate`, curate up to 10 of them, then run "
-        f"`{BIN} sync`; session done",
+        f"NEXT: 1 curation row queued: run `{BIN} curate`, curate it, then run `{BIN} sync`; session done",
         *waits_and_note,
     ]
 
@@ -279,8 +278,8 @@ def test_an_os_refused_download_is_a_wait_until_a_later_sync_reads_it(
     run_cycle(config, mode=None)
     assert _lines(config) == [
         f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
-        "WAITING ON YOU: 1 online-only file(s) in work could not be downloaded (macOS refused): in Finder, "
-        f"choose Download Now (or Always Keep on This Device) on their folder, then run `{BIN} sync`",
+        "WAITING ON YOU: 1 online-only file in work could not be downloaded (macOS refused): in Finder, "
+        f"choose Download Now (or Always Keep on This Device) on its folder, then run `{BIN} sync`",
     ]
     monkeypatch.setattr(arm_local, "materialise", real_materialise)
     assert run_cycle(config, mode=None).exit_code == 0
@@ -334,7 +333,7 @@ def test_a_folder_a_sync_cannot_list_is_a_wait_and_reaches_rule_4(tmp_path: Path
     assert 'exclude = ["~$*", "*.tmp", ".~lock.*#", "/Empty/"]\n' in path.read_text(encoding="utf-8")
     config = load_config(path)
     assert _lines(config) == [
-        f"NEXT: 1 source(s) not fully listed or converted yet (work): run `{BIN} sync` again"
+        f"NEXT: 1 source not fully listed or converted yet (work): run `{BIN} sync` again"
     ]
     run_cycle(config, mode=None)
     assert not any(ln.startswith("WAITING ON YOU") for ln in _lines(config))
@@ -567,7 +566,7 @@ def test_status_next_is_the_loops_with_and_without_a_fail(
         if checks:
             assert reads == 1 and want[0].startswith("NEXT: the fake.check check failed"), reads
         else:
-            assert reads == 2 and want[0].startswith("NEXT: 1 curation row(s) queued"), reads
+            assert reads == 2 and want[0].startswith("NEXT: 1 curation row queued"), reads
 
 
 def test_the_exclude_wait_counts_the_mirrored_files_the_walk_did_not_list(tmp_path: Path) -> None:
@@ -684,7 +683,7 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
         assert manifest.live_count("work") == 1
     assert [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")] == [
-        f"WAITING ON YOU: 2 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+        f"WAITING ON YOU: 2 queued purges: preview with `{BIN} purge --queue --dry-run` (writes nothing) "
         f"before you run `{BIN} purge --queue` (rewrites history)"
     ], "deleted upstream, not retired: each deletion queued its purge"
 
@@ -734,7 +733,7 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
         assert manifest.get_source("drop").enumeration_complete  # type: ignore[union-attr]
         assert manifest.live_count("drop") == 1
     assert [ln for ln in _lines(config) if ln.startswith(("WAITING ON YOU", "note: "))] == [
-        f"WAITING ON YOU: 1 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+        f"WAITING ON YOU: 1 queued purge: preview with `{BIN} purge --queue --dry-run` (writes nothing) "
         f"before you run `{BIN} purge --queue` (rewrites history)"
     ], "deleted, not retired: the deletion queued its purge"
 
@@ -1809,7 +1808,7 @@ def test_rule_7_checkpoint_blockers_uncommitted_then_held(tmp_path: Path, folder
         "---\nentity: orders\npurpose: who approves orders\nsources: []\n---\nbody\n",  # UNLISTED
     )
     want = [
-        f"NEXT: 1 curation error(s) hold the checkpoint: run `{BIN} curate`, fix every ERROR it lists, then "
+        f"NEXT: 1 curation error holds the checkpoint: run `{BIN} curate`, fix every ERROR it lists, then "
         f"run `{BIN} sync`"
     ]
     assert _lines(config) == want, "the session's uncommitted page"
@@ -1834,8 +1833,7 @@ def test_rule_9_the_queue_is_bounded_per_session(tmp_path: Path, folder: Path) -
     config = _synced(tmp_path, folder)
     _hand_written(config, 1)  # a page exists, no _eval: the baseline rules no longer apply
     assert _lines(config) == [
-        f"NEXT: 1 curation row(s) queued: run `{BIN} curate`, curate up to 10 of them, then run "
-        f"`{BIN} sync`; session done"
+        f"NEXT: 1 curation row queued: run `{BIN} curate`, curate it, then run `{BIN} sync`; session done"
     ]
 
 
@@ -1994,9 +1992,9 @@ def test_an_unfinished_re_read_is_a_sync_again_note_with_the_count_the_last_sync
     again:" and gives the count that sync left.  The setup prompt runs sync again while it does."""
     config = _synced(tmp_path, folder)
     assert not [line for line in _lines(config) if line.startswith("note: ")], "nothing to read again"
-    said = f"note: {loop.SYNC_AGAIN}37 file(s) in work are {REREAD_TAIL}"
+    said = f"note: {loop.SYNC_AGAIN}37 files in work are {REREAD_TAIL}"
     assert _reread(config, done=False, run={"reread": 12, "reread_left": 37}) == [said]
-    assert said.startswith("note: sync again: 37 file(s) in work are still to be read again")
+    assert said.startswith("note: sync again: 37 files in work are still to be read again")
     # The cycle's OCR time ran out before a file was read again: the next sync has it for them.
     assert _reread(config, done=False, run={"ocr_over": 1, "reread_left": 37}) == [said]
     assert _reread(config, done=True, run={"reread": 37}) == [], "finished: no note"
@@ -2026,24 +2024,24 @@ def test_a_re_read_that_downloads_keep_out_of_the_ocr_time_does_not_say_sync_aga
     def said(run: dict[str, int]) -> list[str]:
         return [note for note in _reread(config, done=False, run=run) if "read again" in note]
 
-    waits = "note: 1 online-only file(s) in work wait for a later sync's download budget"
+    waits = "note: 1 online-only file in work waits for a later sync's download budget"
     assert any(line.startswith(waits) for line in _lines(config)), "a later sync has a file to download"
-    again = f"note: {loop.SYNC_AGAIN}%d file(s) in work are {REREAD_TAIL}"
+    again = f"note: {loop.SYNC_AGAIN}%d files in work are {REREAD_TAIL}"
     with Manifest(config.state_paths.db) as manifest:
         manifest._db.execute("UPDATE runs SET counts_json = '{}'")  # as if no run had looked before
     assert said({"ocr_over": 1, "reread_left": 5}) == [again % 5], "the first look: nothing to hold it to"
     for left in (6, 7, 8):
-        crowded = f"note: {left} file(s) in work {CROWDED_TAIL}"
+        crowded = f"note: {left} files in work {CROWDED_TAIL}"
         assert said({"ocr_over": 1, "reread_left": left}) == [crowded]
         assert loop.SYNC_AGAIN not in crowded and "another sync does not clear it" not in crowded
     assert said({"ocr_over": 1, "reread_left": 8}) == [again % 8], "no more joined"
     assert said({"ocr_over": 1, "reread": 2, "reread_left": 9}) == [again % 9], (
         "it read two: more joined than were read, and the next sync reads on"
     )
-    assert said({"reread_left": 12}) == [f"note: 12 file(s) in work {STUCK_TAIL}"], (
+    assert said({"reread_left": 12}) == [f"note: 12 files in work {STUCK_TAIL}"], (
         "OCR time left and nothing read: that is not new files"
     )
-    assert said({"ocr_over": 1, "reread_left": 13}) == [f"note: 13 file(s) in work {CROWDED_TAIL}"]
+    assert said({"ocr_over": 1, "reread_left": 13}) == [f"note: 13 files in work {CROWDED_TAIL}"]
     online.clear()
     assert run_cycle(config, mode=None).exit_code == 0, "the last file is downloaded"
     assert not any(line.startswith(waits) for line in _lines(config))
@@ -2057,7 +2055,7 @@ def test_a_re_read_the_last_sync_read_nothing_of_does_not_say_sync_again(
     does not clear: pandoc cannot be run, the OCR helper stopped working, a folder is not listed.  The note
     then gives the count and does not say "sync again", so a loop on that note ends."""
     config = _synced(tmp_path, folder)
-    stuck = f"note: 37 file(s) in work {STUCK_TAIL}"
+    stuck = f"note: 37 files in work {STUCK_TAIL}"
     assert _reread(config, done=False, run={"reread_left": 37}) == [stuck]
     assert _reread(config, done=False, run={"reread": 3, "reread_left": 37, "ocr_down": 1}) == [stuck]
     assert loop.SYNC_AGAIN not in stuck
@@ -2074,7 +2072,7 @@ def test_a_sync_that_did_not_get_to_the_source_ends_the_sync_again_note(
     note now goes by the source's newest pass: skipped or failed, it does not say "sync again"."""
     config = _synced(tmp_path, folder)
     assert _reread(config, done=False, run={"reread": 12, "reread_left": 37}) == [
-        f"note: {loop.SYNC_AGAIN}37 file(s) in work are {REREAD_TAIL}"
+        f"note: {loop.SYNC_AGAIN}37 files in work are {REREAD_TAIL}"
     ]
     for _ in range(12):
         assert _pass_without_a_look(config, "work", held=held) == [f"note: file(s) in work {STUCK_TAIL}"], (
@@ -2090,7 +2088,7 @@ def test_a_sync_that_did_not_get_to_the_source_ends_the_sync_again_note(
             run_id, status="ok", commit_sha=None, counts={"reread_for": 7, "reread": 9, "reread_left": 28}
         )
     assert [line for line in _lines(config) if line.startswith("note: ")] == [
-        f"note: {loop.SYNC_AGAIN}28 file(s) in work are {REREAD_TAIL}"
+        f"note: {loop.SYNC_AGAIN}28 files in work are {REREAD_TAIL}"
     ]
 
 
@@ -2114,11 +2112,11 @@ def test_the_re_read_note_names_every_source_that_is_not_finished(tmp_path: Path
     config = _synced(tmp_path, folder, local_source_table("archive", other))
     _reread(config, done=False, run=None, sid="archive")
     assert _reread(config, done=False, run={"reread": 5, "reread_left": 9}) == [
-        f"note: {loop.SYNC_AGAIN}9 file(s) in archive, work are {REREAD_TAIL}"
+        f"note: {loop.SYNC_AGAIN}9 files in archive, work are {REREAD_TAIL}"
     ]
     # One of the two was not reached by the last sync: the count is the other's, and each has its note.
     assert _pass_without_a_look(config, "archive", held=True) == [
-        f"note: {loop.SYNC_AGAIN}9 file(s) in work are {REREAD_TAIL}",
+        f"note: {loop.SYNC_AGAIN}9 files in work are {REREAD_TAIL}",
         f"note: file(s) in archive {STUCK_TAIL}",
     ]
 
@@ -2140,9 +2138,9 @@ def test_waits_breaker_and_queued_purges(tmp_path: Path, folder: Path) -> None:
     assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
     assert _lines(config) == [
         f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`",
-        f"WAITING ON YOU: 1 queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
+        f"WAITING ON YOU: 1 queued purge: preview with `{BIN} purge --queue --dry-run` (writes nothing) "
         f"before you run `{BIN} purge --queue` (rewrites history)",
-        "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone): if they really were deleted, "
+        "WAITING ON YOU: the deletion breaker tripped on work (3 files gone): if they really were deleted, "
         f"run `{BIN} accept-deletions work`",
     ]
 
@@ -2164,6 +2162,11 @@ DRAFT_STEP = f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BAS
 FINDER_NOTE_TAIL = (
     "could not be downloaded by agentsync: in Finder choose Always Keep on This Device on their folder, or "
     "Download Now on a file; the next background sync reads them; they do not block the next step"
+)
+# B13 round 15 S65: one recording's note says "its", "it" and "it does"
+FINDER_NOTE_TAIL_ONE = (
+    "could not be downloaded by agentsync: in Finder choose Always Keep on This Device on its folder, or "
+    "Download Now on a file; the next background sync reads it; it does not block the next step"
 )
 
 
@@ -2224,7 +2227,7 @@ def test_the_waiting_note_says_n_of_m_minutes(tmp_path: Path, folder: Path) -> N
     _waiting(config, ids["standup.mp4"], "2100000 3600000")  # 35 of 60 minutes
     _waiting(config, ids["review.mov"], "59999 4020000")  # 0 of 67 minutes
     note = (
-        "note: 2 recording(s) in work are still being read ({}); each background sync reads more; they do "
+        "note: 2 recordings in work are still being read ({}); each background sync reads more; they do "
         "not block the next step"
     )
     assert _lines(config) == [DRAFT_STEP, note.format("35 of 127 minutes")]
@@ -2244,10 +2247,10 @@ def test_a_recording_that_waits_is_a_wait_or_a_note_never_rule_three(tmp_path: P
     assert step.rule == 4
     (wait,) = step.waits
     assert wait == (
-        "1 recording(s) in work wait to be read (10 of 60 minutes), and no background sync is installed to "
-        "read them (an interactive sync reads no recording): run "
-        f"`{loop.INSTALL_SH} --confirm-install-agent`, or `{BIN} materialise <file>` for one recording; they "
-        "do not block the next step"
+        "1 recording in work waits to be read (10 of 60 minutes), and no background sync is installed to "
+        "read it (an interactive sync reads no recording): run "
+        f"`{loop.INSTALL_SH} --confirm-install-agent`, or `{BIN} materialise <file>` for one recording; it "
+        "does not block the next step"
     )
     assert step.notes == ()
     for command in _commands(wait):
@@ -2257,8 +2260,8 @@ def test_a_recording_that_waits_is_a_wait_or_a_note_never_rule_three(tmp_path: P
     step = loop.next_step(config)
     assert (step.rule, step.waits) == (4, ())
     assert step.notes == (
-        "1 recording(s) in work are still being read (10 of 60 minutes); each background sync reads more; "
-        "they do not block the next step",
+        "1 recording in work is still being read (10 of 60 minutes); each background sync reads more; "
+        "it does not block the next step",
     )
 
 
@@ -2272,7 +2275,7 @@ def test_the_finder_note_counts_the_refused_recordings_and_their_size(tmp_path: 
     assert (step.rule, step.waits) == (4, ())
     assert step.lines() == [
         DRAFT_STEP,
-        f"note: 2 online-only recording(s) in work (1.6 GB) {FINDER_NOTE_TAIL}",
+        f"note: 2 online-only recordings in work (1.6 GB) {FINDER_NOTE_TAIL}",
     ]
 
 
@@ -2286,9 +2289,9 @@ def test_a_document_refused_beside_a_recording_keeps_its_own_wait(tmp_path: Path
     _refused(config, doc, 120)
     assert _lines(config) == [
         DRAFT_STEP,
-        "WAITING ON YOU: 1 online-only file(s) in work could not be downloaded (macOS refused): in Finder, "
-        f"choose Download Now (or Always Keep on This Device) on their folder, then run `{BIN} sync`",
-        f"note: 1 online-only recording(s) in work (0.5 GB) {FINDER_NOTE_TAIL}",
+        "WAITING ON YOU: 1 online-only file in work could not be downloaded (macOS refused): in Finder, "
+        f"choose Download Now (or Always Keep on This Device) on its folder, then run `{BIN} sync`",
+        f"note: 1 online-only recording in work (0.5 GB) {FINDER_NOTE_TAIL_ONE}",
     ]
 
 
@@ -2308,7 +2311,7 @@ def test_an_online_only_recording_is_never_over_the_document_budget(tmp_path: Pa
         conn.close()
     assert _lines(config) == [
         DRAFT_STEP,
-        "note: 1 online-only file(s) in work wait for a later sync's download budget; they do not block the "
+        "note: 1 online-only file in work waits for a later sync's download budget; it does not block the "
         "next step",
     ]
 
@@ -2319,7 +2322,7 @@ def test_the_purge_wait_names_the_preview_before_the_run(tmp_path: Path) -> None
     config = _setup(tmp_path)
     selector = governance.PurgeSelector(source_id="work", path_glob="*")
     assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
-    (wait,) = [w for w in loop.next_step(config).waits if "queued purge(s)" in w]
+    (wait,) = [w for w in loop.next_step(config).waits if "queued purge" in w]
     assert _commands(wait) == ["agentsync purge --queue --dry-run", "agentsync purge --queue"]
     for command in _commands(wait):
         _assert_fix_parses(command)
@@ -2341,7 +2344,7 @@ def test_the_breaker_wait_of_an_incomplete_source_asks_for_a_full_listing_first(
     lines = _lines(config)
     breaker = [line for line in lines if "deletion breaker" in line]
     assert breaker == [
-        "WAITING ON YOU: the deletion breaker tripped on work (3 file(s) gone): if they really were deleted, "
+        "WAITING ON YOU: the deletion breaker tripped on work (3 files gone): if they really were deleted, "
         f"run `{BIN} accept-deletions work` once a sync lists work in full"
     ]
 

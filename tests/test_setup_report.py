@@ -5449,7 +5449,7 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
     selector = governance.PurgeSelector(source_id=held, path_glob="*")
     assert governance.enqueue_purge(config.state_paths.root, selector, governance.PurgeReason.OPERATOR)
     purge = (
-        "WAITING ON YOU: 1 queued purge(s): preview with `~/.local/bin/agentsync purge --queue --dry-run` "
+        "WAITING ON YOU: 1 queued purge: preview with `~/.local/bin/agentsync purge --queue --dry-run` "
         "(writes nothing) before you run `~/.local/bin/agentsync purge --queue` (rewrites history)"
     )
 
@@ -5480,13 +5480,13 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
         )
         manifest.finish_run(run_id, status="ok", commit_sha=None, counts={"converted": 0})
     found = waits()
-    assert len(found) == 2 and "queued purge(s)" in found[0] and found[1].startswith(setup_report._WAIT_HELD)
+    assert len(found) == 2 and "queued purge" in found[0] and found[1].startswith(setup_report._WAIT_HELD)
     line = loop_line()
     assert re.search(
         r"; WAITING ON YOU: macOS held the listing of <(?:source|folder)-\d+> for a privacy prompt: click "
         r"Allow on the macOS prompt \(it can sit behind other windows\), then run "
         r"`~/\.local/bin/agentsync sync`; also waiting, which the command prints before it: WAITING ON "
-        r"YOU: 1 queued purge\(s\): preview with "
+        r"YOU: 1 queued purge: preview with "
         r"`~/\.local/bin/agentsync purge --queue --dry-run` \(writes nothing\) before you run "
         r"`~/\.local/bin/agentsync purge --queue` \(rewrites history\)$",
         line,
@@ -5510,7 +5510,7 @@ def test_the_loop_line_shows_the_wait_the_loop_stopped_on_not_the_first_one(
         r"about 10 in questions\.md \(all of them if there are fewer\), "
         r"correct the answers in answers\.md, and change both files to status: confirmed; also waiting, "
         r"which the command prints before it: WAITING ON YOU: 1 "
-        r"queued purge\(s\): preview with `~/\.local/bin/agentsync purge --queue --dry-run` \(writes "
+        r"queued purge: preview with `~/\.local/bin/agentsync purge --queue --dry-run` \(writes "
         r"nothing\) before you run `~/\.local/bin/agentsync purge --queue` \(rewrites history\); WAITING ON "
         r"YOU: macOS held the listing of "
         r"<(?:source|folder)-\d+> .*$",

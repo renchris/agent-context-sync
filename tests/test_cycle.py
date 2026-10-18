@@ -3531,7 +3531,7 @@ def test_each_run_records_its_ocr_time_and_the_images_that_waited_for_it(
     step = loop.next_step(sample_config)
     assert (step.rule, step.step) == (
         3,
-        f"1 source(s) not fully listed or converted yet ({SID}): run `{loop.BIN} sync` again",
+        f"1 source not fully listed or converted yet ({SID}): run `{loop.BIN} sync` again",
     )
     assert run(sample_config).exit_code == 0 and run(sample_config).exit_code == 0
     last = _run_record(sample_config)
@@ -3574,7 +3574,7 @@ def test_the_run_record_counts_what_was_converted_without_ocr_and_why(
     assert (record["converted"], record["ocr_without_budget"], record["ocr_over"]) == (1, 1, 1)
     assert "ocr_page_cap" not in record, "converted without OCR: no limit of OCR was reached"
     assert record["reread_left"] == 1 and "reread" not in record, "it waits for a sync with OCR time"
-    assert loop.next_step(sample_config).notes[-1].startswith("sync again: 1 file(s) in ")
+    assert loop.next_step(sample_config).notes[-1].startswith("sync again: 1 file in ")
     monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 180.0)
     assert run(sample_config).exit_code == 0
     record = _run_record(sample_config)
@@ -3830,8 +3830,10 @@ def _reread_notes(config: Config) -> list[str]:
 
 
 def _sync_again(left: int, sid: str = SID) -> str:
+    """By the count (B13 round 15 S65: "1 file(s) ... are")."""
+    files = f"1 file in {sid} is" if left == 1 else f"{left} files in {sid} are"
     return (
-        f"sync again: {left} file(s) in {sid} are still to be read again, once, for what this build's "
+        f"sync again: {files} still to be read again, once, for what this build's "
         "converters have gained (each sync reads about 2 minutes' worth); it does not block the next step"
     )
 
@@ -5027,7 +5029,7 @@ def test_the_loop_says_sync_again_while_a_sync_reads_more_of_what_is_left_and_no
         record = _run_record(sample_config)
         assert "reread" not in record and record["reread_left"] == 2
         assert _reread_notes(sample_config) == [
-            f"2 file(s) in {SID} wait to be read again, and the last sync read none of them (a converter or "
+            f"2 files in {SID} wait to be read again, and the last sync read none of them (a converter or "
             "on-device OCR that cannot run, or a folder that could not be listed): another sync does not "
             "clear it; it does not block the next step"
         ]
@@ -5084,13 +5086,19 @@ def test_downloads_that_take_the_ocr_time_end_the_sync_again_note_and_a_sync_wit
         return record.get("reread"), record.get("reread_left"), _reread_notes(sample_config)
 
     crowded = (
-        "{n} file(s) in local-fixture wait to be read again, and the last sync read none of them: new and "
+        "{n} files in local-fixture wait to be read again, and the last sync read none of them: new and "
         "changed files took its OCR time, more files joined, and more downloads wait. They are read once a "
+        "sync has OCR time left; it does not block the next step"
+    )
+    # B13 round 15 S65: one file's note by its count
+    crowded_one = (
+        "1 file in local-fixture waits to be read again, and the last sync did not read it: new and "
+        "changed files took its OCR time, more files joined, and more downloads wait. It is read once a "
         "sync has OCR time left; it does not block the next step"
     )
     # A file downloaded in a sync is counted from the next one, whose listing finds it on this Mac.
     assert sync(two) == (None, None, [])
-    assert sync(two) == (None, 1, [crowded.format(n=1)])
+    assert sync(two) == (None, 1, [crowded_one])
     assert sync(two) == (None, 2, [crowded.format(n=2)]), "two more scans are still online-only"
     assert len(online) == 2 and "sync again" not in crowded
     # No download: each sync reads one scan again before its OCR time is used, and the count falls.

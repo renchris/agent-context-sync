@@ -484,7 +484,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
                 _out(f"    alarm: {a}")
         if over:
             _out(
-                f"    {len(over)} online-only file(s) left for a later run (over this run's "
+                f"    {plural(len(over), 'online-only file')} left for a later run (over this run's "
                 f"--materialise-budget of {run_budget} bytes)"
             )
         for e in s.errors:
@@ -561,9 +561,10 @@ def _print_checkpoint(report: CycleReport) -> None:
             tag = report.snapshot_tag
             _out(f"  snapshot {tag}: a permanent tag; read a past page with git show {tag}:<path>")
     elif report.checkpoint == "held":
+        held = len(report.checkpoint_blockers)
         _out(
-            f"checkpoint held: {len(report.checkpoint_blockers)} curation error(s); fix them, then "
-            "sync again (every sync retries it)"
+            f"checkpoint held: {plural(held, 'curation error')}; {'fix it' if held == 1 else 'fix them'}, "
+            "then sync again (every sync retries it)"
         )
         for f in report.checkpoint_blockers:
             _out(f"  ERROR {f.code} {f.path}: {f.message}")

@@ -399,41 +399,67 @@ def _recording_lines(files: _Files, *, background: bool) -> tuple[list[str], lis
     person to Finder: it is never a wait, since the next background sync reads it once it is on the Mac."""
     waits: list[str] = []
     notes: list[str] = []
+    # the noun, verb and pronoun by the count (B13 round 15 S65: "1 recording(s) ... they do not block")
     if files.recording:
-        counted = f"{sum(files.recording.values())} recording(s) in {_ids(files.recording)}"
+        n = sum(files.recording.values())
+        one = n == 1
+        counted = f"{plural(n, 'recording')} in {_ids(files.recording)}"
+        block = "it does not block the next step" if one else "they do not block the next step"
         if background:
             notes.append(
-                f"{counted} are still being read{_minutes(files)}; each background sync reads more; they do "
-                "not block the next step"
+                f"{counted} {'is' if one else 'are'} still being read{_minutes(files)}; each background sync "
+                f"reads more; {block}"
             )
         else:
             waits.append(
-                f"{counted} wait to be read{_minutes(files)}, and no background sync is installed to read "
-                f"them (an interactive sync reads no recording): run `{INSTALL_SH} --confirm-install-agent`, "
-                f"or `{BIN} materialise <file>` for one recording; they do not block the next step"
+                f"{counted} {'waits' if one else 'wait'} to be read{_minutes(files)}, and no background sync "
+                f"is installed to read {'it' if one else 'them'} (an interactive sync reads no recording): "
+                f"run `{INSTALL_SH} --confirm-install-agent`, or `{BIN} materialise <file>` for one "
+                f"recording; {block}"
             )
     if files.recording_refused:
+        n = sum(files.recording_refused.values())
+        one = n == 1
         notes.append(
-            f"{sum(files.recording_refused.values())} online-only recording(s) in "
-            f"{_ids(files.recording_refused)} ({files.recording_refused_bytes / 1e9:.1f} GB) could not be "
-            "downloaded by agentsync: in Finder choose Always Keep on This Device on their folder, or "
-            "Download Now on a file; the next background sync reads them; they do not block the next step"
+            f"{plural(n, 'online-only recording')} in {_ids(files.recording_refused)} "
+            f"({files.recording_refused_bytes / 1e9:.1f} GB) could not be downloaded by agentsync: in Finder "
+            f"choose Always Keep on This Device on {'its' if one else 'their'} folder, or Download Now on a "
+            f"file; the next background sync reads {'it; it does' if one else 'them; they do'} not block the "
+            "next step"
         )
     return waits, notes
 
 
+# Each note's words for many files (or a count not known) and for one (B13 round 15 S65: "1 file(s) in work
+# are", "none of them")
 _REREAD_AGAIN = (
     "are still to be read again, once, for what this build's converters have gained (each sync reads about "
     f"{_REREAD_BUDGET_S / 60:g} minutes' worth)"
 )
+_REREAD_AGAIN_ONE = _REREAD_AGAIN.replace("are still", "is still", 1)
 _REREAD_STUCK = (
     "wait to be read again, and the last sync read none of them (a converter or on-device OCR that cannot "
     "run, or a folder that could not be listed): another sync does not clear it"
+)
+_REREAD_STUCK_ONE = _REREAD_STUCK.replace(
+    "wait to be read again, and the last sync read none of them",
+    "waits to be read again, and the last sync did not read it",
+    1,
 )
 _REREAD_CROWDED = (
     "wait to be read again, and the last sync read none of them: new and changed files took its OCR time, "
     "more files joined, and more downloads wait. They are read once a sync has OCR time left"
 )
+_REREAD_CROWDED_ONE = _REREAD_CROWDED.replace(
+    "wait to be read again, and the last sync read none of them",
+    "waits to be read again, and the last sync did not read it",
+    1,
+).replace("They are read once", "It is read once", 1)
+_REREAD_ONE = {
+    _REREAD_AGAIN: _REREAD_AGAIN_ONE,
+    _REREAD_STUCK: _REREAD_STUCK_ONE,
+    _REREAD_CROWDED: _REREAD_CROWDED_ONE,
+}
 
 
 def _reread_notes(
@@ -460,8 +486,10 @@ def _reread_notes(
       next sync downloads more.  Used-up OCR time is no progress then."""
 
     def said(ids: Sequence[str], count: int, words: str) -> str:
-        counted = f"{count} " if count else ""
-        return f"{counted}file(s) in {', '.join(ids)} {words}; it does not block the next step"
+        # 0: no count is known (a held source, a run that left none), and "file(s)" stays
+        counted = f"{_files(count)}" if count else "file(s)"
+        words = _REREAD_ONE[words] if count == 1 else words
+        return f"{counted} in {', '.join(ids)} {words}; it does not block the next step"
 
     notes: list[str] = []
     looked = sorted(set(sources) - set(unread))
@@ -844,8 +872,8 @@ def next_step(
     queued, kept = governance.partition_purges(config.state_paths)
     if queued:
         waits.append(
-            f"{len(queued)} queued purge(s): preview with `{BIN} purge --queue --dry-run` (writes nothing) "
-            f"before you run `{BIN} purge --queue` (rewrites history)"
+            f"{plural(len(queued), 'queued purge')}: preview with `{BIN} purge --queue --dry-run` (writes "
+            f"nothing) before you run `{BIN} purge --queue` (rewrites history)"
         )
         checks.append("governance.purge_queue")
     notes += governance.kept_lines(kept)
@@ -1002,9 +1030,11 @@ def next_step(
                         incomplete.append(src.id)
                 if row is not None and row.breaker_tripped_at is not None:
                     later = "" if row.enumeration_complete else f" once a sync lists {src.id} in full"
+                    tripped = row.breaker_candidates or 0
                     waits.append(
-                        f"the deletion breaker tripped on {src.id} ({row.breaker_candidates or 0} file(s) "
-                        f"gone): if they really were deleted, run `{BIN} accept-deletions {src.id}`{later}"
+                        f"the deletion breaker tripped on {src.id} ({_files(tripped)} gone): if "
+                        f"{'it really was' if tripped == 1 else 'they really were'} deleted, run "
+                        f"`{BIN} accept-deletions {src.id}`{later}"
                     )
                     names_source(src.id)
                 if src.kind.is_graph and row is not None and row.auth_state != "ok":
@@ -1014,17 +1044,20 @@ def next_step(
     else:
         incomplete = [s.id for s in live]
     if files.over:
+        one = sum(files.over.values()) == 1
         waits.append(
-            f"{sum(files.over.values())} online-only file(s) in {_ids(files.over)} are larger than the "
-            f"per-run download budget: run `{BIN} materialise --budget BYTES` with BYTES above their size, "
-            "or raise that source's max_materialise_bytes"
+            f"{plural(sum(files.over.values()), 'online-only file')} in {_ids(files.over)} "
+            f"{'is' if one else 'are'} larger than the per-run download budget: run `{BIN} materialise "
+            f"--budget BYTES` with BYTES above {'its' if one else 'their'} size, or raise that source's "
+            "max_materialise_bytes"
         )
         names_source(*files.over)
     if files.refused:
+        one = sum(files.refused.values()) == 1
         waits.append(
-            f"{sum(files.refused.values())} online-only file(s) in {_ids(files.refused)} could not be "
-            "downloaded (macOS refused): in Finder, choose Download Now (or Always Keep on This Device) on "
-            f"their folder, then run `{BIN} sync`"
+            f"{plural(sum(files.refused.values()), 'online-only file')} in {_ids(files.refused)} could not "
+            "be downloaded (macOS refused): in Finder, choose Download Now (or Always Keep on This Device) "
+            f"on {'its' if one else 'their'} folder, then run `{BIN} sync`"
         )
         names_source(*files.refused)
     if held:
@@ -1260,9 +1293,11 @@ def next_step(
             f"(`{BIN} sync -v` names the cause); it does not block the next step"
         )
     if files.online:
+        one = sum(files.online.values()) == 1
         notes.append(
-            f"{sum(files.online.values())} online-only file(s) in {_ids(files.online)} wait for a later "
-            "sync's download budget; they do not block the next step"
+            f"{plural(sum(files.online.values()), 'online-only file')} in {_ids(files.online)} "
+            f"{'waits' if one else 'wait'} for a later sync's download budget; "
+            f"{'it does' if one else 'they do'} not block the next step"
         )
     recording_waits, recording_notes = _recording_lines(
         files, background=bool(files.recording) and launchd.agents_installed(config)
@@ -1311,7 +1346,7 @@ def next_step(
     if incomplete or files.local:
         behind = sorted(set(incomplete) | set(files.local))
         return done(
-            f"{len(behind)} source(s) not fully listed or converted yet ({', '.join(behind)}): "
+            f"{plural(len(behind), 'source')} not fully listed or converted yet ({', '.join(behind)}): "
             f"run `{BIN} sync` again",
             3,
         )
@@ -1341,8 +1376,8 @@ def next_step(
     blockers = _checkpoint_blockers(docs, pending) if pages else 0
     if blockers:
         return done(
-            f"{blockers} curation error(s) hold the checkpoint: run `{BIN} curate`, fix every ERROR "
-            f"it lists, then run `{BIN} sync`",
+            f"{plural(blockers, 'curation error')} {'holds' if blockers == 1 else 'hold'} the checkpoint: "
+            f"run `{BIN} curate`, fix every ERROR it lists, then run `{BIN} sync`",
             7,
         )
 
@@ -1365,8 +1400,9 @@ def next_step(
     rows = queue_rows(config)
     if rows:
         return done(
-            f"{rows} curation row(s) queued: run `{BIN} curate`, curate up to {ROWS_PER_SESSION} of "
-            f"them, then run `{BIN} sync`; session done",
+            f"{plural(rows, 'curation row')} queued: run `{BIN} curate`, "
+            + ("curate it" if rows == 1 else f"curate up to {ROWS_PER_SESSION} of them")
+            + f", then run `{BIN} sync`; session done",
             9,
         )
     return done("nothing to do: session done", 10)

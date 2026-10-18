@@ -919,11 +919,11 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
     _topic(initialised, "topics/c.md", "mirror/source/projects/new.txt.md", pin="ab" * 32)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # a held checkpoint never fails the sync
     out = capsys.readouterr().out
-    assert "checkpoint held: 1 curation error(s)" in out and "(every sync retries it)" in out
+    assert "checkpoint held: 1 curation error; fix it" in out and "(every sync retries it)" in out
     assert "ERROR STALE topics/c.md" in out and "topics/a.md" not in out
     assert _curated(repo) == banner_head
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # c.md is committed now; still retried
-    assert "checkpoint held: 1 curation error(s)" in capsys.readouterr().out
+    assert "checkpoint held: 1 curation error" in capsys.readouterr().out
 
     held_head = git(repo, "rev-parse", "HEAD").strip()
     _topic(initialised, "topics/a.md")
@@ -1919,7 +1919,7 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     assert cli.main(["hold", "source", "--reason", "matter 7", "--owner", "legal", "--config", cfg]) == 0
 
     step = loop.next_step(initialised)
-    assert next(w for w in step.waits if "queued purge" in w).startswith("1 queued purge(s): ")
+    assert next(w for w in step.waits if "queued purge" in w).startswith("1 queued purge: ")
     assert f"1 {governance.KEPT_PURGES}" in step.notes
     lines = cli._status_lines(initialised)
     assert any(x.startswith("queued purges: 1 (") for x in lines) and any(
@@ -3238,7 +3238,7 @@ def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_o
     assert "source: full_enumeration · complete · 2 deferred" in out
     assert "exceeds the per-cycle budget" not in out, "no per-file alarm at budget 0"
     assert re.search(
-        r"^    2 online-only file\(s\) left for a later run \(over this run's --materialise-budget of 0 "
+        r"^    2 online-only files left for a later run \(over this run's --materialise-budget of 0 "
         r"bytes\)$",
         out,
         re.MULTILINE,
@@ -3252,7 +3252,7 @@ def test_sync_materialise_budget_0_converts_local_files_and_defers_online_only_o
     m = re.fullmatch(r"converted (\d+), deferred 2 online-only", lines[-3])
     assert m and int(m.group(1)) >= 8, lines[-3]
     assert lines[-1] == (
-        "note: 2 online-only file(s) in source wait for a later sync's download budget; they do not block "
+        "note: 2 online-only files in source wait for a later sync's download budget; they do not block "
         "the next step"
     )
     assert not re.search(r"(?m)^\s*(next|run|fix):", out)
@@ -3423,9 +3423,9 @@ def test_status_prints_the_recording_lines_and_their_commands_parse(
     cli.main(["status", "--config", cfg])
     out = capsys.readouterr().out.splitlines()
     sid = _local_id(initialised)
-    (wait,) = [line for line in out if line.startswith(f"WAITING ON YOU: 1 recording(s) in {sid} ")]
+    (wait,) = [line for line in out if line.startswith(f"WAITING ON YOU: 1 recording in {sid} ")]
     assert "(5 of 30 minutes)" in wait and "--confirm-install-agent" in wait
-    assert any(line.startswith(f"note: 1 online-only recording(s) in {sid} (0.0 GB)") for line in out)
+    assert any(line.startswith(f"note: 1 online-only recording in {sid} (0.0 GB)") for line in out)
     named = [
         span[span.index("agentsync ") :] for span in re.findall(r"`([^`]+)`", wait) if "agentsync " in span
     ]

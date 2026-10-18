@@ -2690,6 +2690,35 @@ def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, s
         assert text.count(fence + "\n") == 1 and "~" * 40 + "\n" in text
 
 
+def test_two_unreadable_patches_are_counted_by_their_number(env: dict[str, str]) -> None:
+    """B13 round 15 S65: the warning beside a known count read "1 patch file(s) ... does not hold them"; it
+    takes the noun and pronoun of its count, two here (one is the test above)."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    locked = [
+        _keep_patch(env, "2026-10-07T16:00:00Z", body="+def contoso(): ...\n", name=f"000{i}-x.patch")
+        for i in (2, 3)
+    ]
+    for kept in locked:
+        kept.chmod(0)
+    try:
+        cp = install_sh(env, "--report-only")
+    finally:
+        for kept in locked:
+            kept.chmod(0o600)
+    setup = home / "agent-context" / "setup"
+    back = report_path(env).parent / "bring-back.md"
+    assert (
+        f"warning: 2 patch files in {setup}/local-work could not be read, so {back} does not hold them"
+        in (cp.stderr)
+    ), cp.stderr
+    assert last_line(cp).startswith(
+        f"NEXT: {back} does not hold 2 kept patch files this account cannot read (see the warning above): "
+        f"make them readable (chmod u+r on the files in {setup}/local-work)"
+    ), last_line(cp)
+
+
 @pytest.mark.parametrize("private", [False, True])
 def test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable(
     env: dict[str, str], tmp_path: Path, private: bool

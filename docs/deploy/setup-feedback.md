@@ -398,7 +398,7 @@ stopped on is the draft baseline's when the NEXT line says "(see the WAITING ON 
 more waits, "(see the WAITING ON YOU lines)", else a listing macOS holds for an Allow click, else the
 first. The loop prints its queued purges first, so shown by place they hid the wait the NEXT line points at.
 When files are still to be read again, the loop's note about them
-follows (two notes when the last sync did not get to one of the sources): `note: sync again: N file(s) ...`
+follows (two notes when the last sync did not get to one of the sources): `note: sync again: N files ...`
 means the report was written before the one-time re-read finished (section "The evidence parts" says what that
 takes). The line holds no path (in an exclude line's list, agentsync's own globs show as written and every other
 entry as `"<path>"`, or `"/<path>/"` for a folder anchored at the source root, in the agentsync report and, since
@@ -765,7 +765,7 @@ A report written once the table says `yes` for every source, or the one line tha
 finished state.
 
 Since prompt v8 the report is not written that early. While files are left, `sync` prints
-`note: sync again: N file(s) in <sources> are still to be read again, ...`. Once the loop's `NEXT:` line has said
+`note: sync again: N files in <sources> are still to be read again, ...` (`1 file ... is` for one). Once the loop's `NEXT:` line has said
 "session done" (the loop runs at least one plain sync, even when the installer's NEXT already said it: the
 installer's sync downloads nothing), step 3 runs `agentsync sync --materialise-budget 0`, a sync that downloads nothing, and runs it
 again while a note starts with `sync again:`, up to 12 times in all, before it writes the report (12 syncs at
