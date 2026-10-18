@@ -5389,6 +5389,7 @@ _ROUND_15_PARAGRAPH_AMENDS = (
         "§16.121 S57 (by §16.113 Q24, Q38, Q42, Q57)",
     ),
     ("16.14", "**Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install", "§16.121 S67 (by §16.110 Q25)"),
+    ("16.32", "- **What it prints.** Nothing when the start is quick.", "§16.117 S17"),
 )
 """Round 15's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
@@ -5422,7 +5423,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
-    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 10
+    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 11
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:

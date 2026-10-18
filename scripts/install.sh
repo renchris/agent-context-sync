@@ -5275,7 +5275,9 @@ start_pandoc_once() {
 		while :; do
 			if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
 				last=$SECONDS said=1
-				say "pandoc: still running, $((SECONDS - t0))s (the first start after an install can take a minute; later ones are quick)"
+				# one text true of every run: a run stopped in this wait meets the same cold copy unreinstalled, and a
+				# later start took 110 s at load 600 (B13 round 15 S17)
+				say "pandoc: still running, $((SECONDS - t0))s (a new copy's first start can take a minute, and any start can on a busy Mac)"
 			fi
 			n=$SECONDS
 			w=0.2

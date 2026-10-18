@@ -6073,8 +6073,8 @@ on Apple silicon (an Intel program, which macOS prepares at its first start). Ev
 the file: how it went, and the command of the process that started it."""
 
 PANDOC_PROGRESS = (
-    r"pandoc: still running, \d+s \(the first start after an install can take a minute; later ones are "
-    r"quick\)"
+    r"pandoc: still running, \d+s \(a new copy's first start can take a minute, and any start can on a busy "
+    r"Mac\)"
 )
 
 
@@ -6125,6 +6125,21 @@ def test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_
     assert any(" -m agentsync status " in ln for ln in starts[1:]), (
         f"status's check then met a quick one: {starts}"
     )
+
+    # B13 round 15 S17: a re-run that installs nothing can still meet a slow start (a run stopped in the wait,
+    # a busy Mac): the same words, and none says it is the first start after an install
+    checkout, head = _committed_checkout(tmp_path)
+    stamp = (
+        Path(env["HOME"]) / ".local" / "share" / "uv" / "tools" / "agentsync" / ".agentsync-install-source"
+    )
+    stamp.write_text(f"commit={head} source={checkout}")
+    Path(f"{pandoc}.started").unlink()
+    slow = install_sh(env, "--source-local", str(alpha), script=checkout / "scripts" / "install.sh")
+    assert slow.returncode == 0, slow.stdout + slow.stderr
+    assert ("agentsync", "skipped", "0", "current") in steps(install_log(env)), "step 2 installed nothing"
+    assert any(re.fullmatch(PANDOC_PROGRESS, ln) for ln in slow.stdout.splitlines()), slow.stdout
+    assert any(re.fullmatch(r"pandoc: started after \d+s", ln) for ln in slow.stdout.splitlines())
+    assert "after an install" not in slow.stdout and "later ones are quick" not in slow.stdout
 
     # At the default interval (at the 1 s one above a line is printed whenever the clock's second turns):
     again = install_sh(real_env, *command)

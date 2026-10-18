@@ -9810,7 +9810,8 @@ start_pandoc_once    # run "<that pandoc> --version" once, for at most PANDOC_ST
 - **What it prints.** Nothing when the start is quick. A start that outlasts a progress interval prints
   `pandoc: still running, <N>s (the first start after an install can take a minute; later ones are quick)`
   at each interval (15 s; `AGENTSYNC_PROGRESS_SECONDS` is the tests' seam, as for the first sync), then
-  `pandoc: started after <N>s`.
+  `pandoc: started after <N>s`. Amended 2026-10-18, §16.117 S17: the bracket reads `(a new copy's first start can
+  take a minute, and any start can on a busy Mac)`.
 - **Its own limit.** 300 s, the time one conversion gives pandoc (`convert.pandoc`), five times the
   check's. Past it the start is stopped and the run prints `pandoc: no answer after 300s; status checks it
   next`. The wait is the function's own loop, so the stopped pandoc is the only process it ends.
@@ -21700,6 +21701,16 @@ the rest of the test is unchanged; the start-log asserts carry that log too. Not
 which fail every run at `waits[-1] < started`. Measured: with install.sh's `started after` line renamed, the test
 fails with an `AssertionError` holding the output and `--- pandoc starts ---`, not the bare `ValueError`. Test:
 `test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_checks`.
+
+**The pandoc wait's words are true of every run** (S17; amends §16.32). Its ticker said `(the first start after an
+install can take a minute; later ones are quick)` on every run, though a run stopped during the wait leaves the tool
+installed and the next run meets the same cold copy with no install (§16.32's "every run"), and the PD re-run, with no
+reinstall and pandoc already started once that role, printed seven ticker lines and `started after 110s` at load
+about 600. It reads `pandoc: still running, <N>s (a new copy's first start can take a minute, and any start can on a
+busy Mac)`, one text for every run rather than a branch on whether step 2 reinstalled, which a stopped run's re-run
+gets wrong. The guide's triage line says the same. Test:
+`test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_checks` (a re-run whose install stamp is
+current, step 2 skipped, with a slow start).
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 

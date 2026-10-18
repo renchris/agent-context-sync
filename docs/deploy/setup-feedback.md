@@ -701,8 +701,9 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
 
 Triage:
 
-- `pandoc: started after <N>s` in the installer output's tail is the first start after an install or an
-  update, and no friction. `pandoc: no answer after 300s; status checks it next` is a pandoc that does not
+- `pandoc: started after <N>s` in the installer output's tail is a new copy's first start (after an install
+  or an update, or on the run after one that stopped during the wait) or a start on a busy Mac, and no
+  friction. `pandoc: no answer after 300s; status checks it next` is a pandoc that does not
   start at all: read the `pandoc` line under Doctor.
 - A `[FAIL]` that says `ran out of time`, with an install run that exited 1 and a second one that ended 0,
   is "worked with help" by the outcome's rule (K22). For `pandoc` it means the installer's own start did not
