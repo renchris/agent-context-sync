@@ -929,6 +929,9 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             clear, _collides = loop._excludable(found)
         gone = len(below) - len(clear)
         left = "it" if gone == 1 else "them"  # B13 round 12 N40: by the count, as the line's own folders
+        # the alarm is from the walk before this exclude (or one by hand since): it names folders now excluded
+        # (B13 round 15 S32), so the pointer says so, as the loop's waits do
+        since = bool(clear) or len(below) < found.stored
         if found.stored > 5:
             # past five the alarm names five and how to list the rest (B13 round 14 Q41's rule), and the left
             # folder may be among the rest: the loop's own words, as its gone wait says (round 15 S42: "names
@@ -939,7 +942,8 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             f"; {gone} empty cloud {'folder' if one else 'folders'} in {src.id} "
             f"{'was left as it is: it' if one else 'were left as they are: each'} held file(s) the mirror "
             "still has, or its exclude would also match a folder that does (excluding such a folder retires "
-            f"its pages at once, with no deletion check); {loop._named(config, [src.id], left)}"
+            f"its pages at once, with no deletion check); "
+            + (loop._named_since(config, src.id, gone) if since else loop._named(config, [src.id], left))
             if gone
             else ""
         )

@@ -86,7 +86,10 @@ def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     assert "1 empty cloud folder in work was left as it is" in out
     # B13 round 12 N40: "without them" after one folder, beside "files", and the left one is "it"
     assert "the next sync lists work without that folder; " in out and "without them" not in out, out
-    assert "which names it" in out and "which names them" not in out, out
+    assert "which names them" not in out, out
+    # B13 round 15 S32: the alarm it points at is from before this exclude and names the folder it excluded
+    assert "from its last sync, before the exclude, so it may name folders now excluded" in out, out
+    assert "prints it again with the 1 folder left" in out and "which names it" not in out, out
     assert "Gone" not in out
     assert load_config(cfg).source("work").exclude[-1] == "/Empty/"
     assert "/Gone/" not in load_config(cfg).source("work").exclude

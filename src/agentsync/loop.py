@@ -243,6 +243,25 @@ def _named(config: Config, ids: Sequence[str], what: str, *, in_state: bool = Fa
     )
 
 
+def _named_since(config: Config, sid: str, left: int, *, in_state: bool = False) -> str:
+    """Where a wait's empty cloud folders are named when some the alarm lists were excluded after the walk it
+    is from (B13 round 15 S32): that alarm still names them, up to five, and past five may hide the
+    ``left`` ones behind its "+N more", so the pointer says it predates the exclude and that a plain sync
+    prints it again with those left. It replaces :func:`_named`'s whole pointer, its "(a plain sync prints it
+    too)" as well, so sync is said once. ``in_state``: written into STATE.md, as :func:`_named`."""
+    again = f"a plain `{BIN} sync` prints it again with the {plural(left, 'folder')} left"
+    if in_state:
+        return (
+            f"the alarm line under ## {sid} below is from that source's last sync, before the exclude, so it "
+            f"may name folders now excluded; {again}"
+        )
+    state = _shown(expand(config.docs_repo) / _STATE_MD)
+    return (
+        f"{state} keeps the alarm line for {sid} from its last sync, before the exclude, so it may name "
+        f"folders now excluded; {again}"
+    )
+
+
 def _baseline(docs: Path) -> str:
     """Where the Baseline questions section is, for the NEXT lines of rules 4, 6 and 8: the skill's section,
     and the docs repo's root AGENTS.md by its path (an agent that loads no skill reads that file; a bare
@@ -758,6 +777,9 @@ def next_step(
     def named(ids: Sequence[str], what: str) -> str:
         return _named(config, ids, what, in_state=in_state)
 
+    def named_since(sid: str, left: int) -> str:
+        return _named_since(config, sid, left, in_state=in_state)
+
     def names_source(*sources: str) -> None:
         """The wait just appended names each of these sources."""
         for sid in sources:
@@ -1010,12 +1032,25 @@ def next_step(
         # what the alarm names, by every empty folder it lists, which one line's count may be a part of: the
         # walk's stored count, not ``below``, which drops the folders excluded since (B13 round 14 Q58)
         alone = n_stored == 1
+        # Folders the walk stored and excluded since (by hand, or exclude-empty before the next sync): the
+        # alarm the pointer names is from before the exclude (B13 round 15 S32), and each line's folders are
+        # "still not excluded", so its count below the alarm's reads true, as folders_in's (round 15 S66,
+        # the option round 14 Q58's verifier asked for)
+        since = len(below) < n_stored
+        still = ", still not excluded," if since else ""
+
+        if since:
+            points = points_it = named_since(src.id, len(below))
+        else:
+            points = named([src.id], _alarm_names("the folder" if alone else "the folders", n_stored))
+            points_it = named([src.id], _alarm_names("it" if alone else "them", n_stored))
         if clear:
             one = len(clear) == 1
             waits.append(
                 # Each referent named, no pronoun (B13 round 4 Q11): "it" read as the folder, as if a sync
                 # would delete it, and excluding is not the only way the held deletions are released.
-                f"{len(clear)} empty cloud {'folder keeps' if one else 'folders keep'} the listing of "
+                f"{len(clear)} empty cloud {'folder' if one else 'folders'}{still} "
+                f"{'keeps' if one else 'keep'} the listing of "
                 f"{src.id} incomplete: an "
                 "empty folder in a cloud folder is expected and loses nothing, but while the listing is "
                 f"incomplete, deletions in {src.id} are held, not applied, and another sync does not "
@@ -1029,7 +1064,7 @@ def next_step(
                 f"{_shown(config.config_path)}; an excluded folder is not mirrored if it later gains files); "
                 # Which folders, by where they are named (B13 round 5 F43; round 6 G13, G42): the wait
                 # carries a count and never a path, and status prints no folder of the source.
-                + named([src.id], _alarm_names("the folder" if alone else "the folders", n_stored))
+                + points
                 + (f"; {size}" if size and not gone and not collides else "")
             )
             names_source(src.id)
@@ -1038,14 +1073,14 @@ def next_step(
             waits.append(
                 f"{len(collides)} empty cloud "
                 + (
-                    f"folder in {src.id} has a [ in its name, so an exclude of it"
+                    f"folder in {src.id}{still} has a [ in its name, so an exclude of it"
                     if one
-                    else f"folders in {src.id} have a [ in the name, so an exclude of one"
+                    else f"folders in {src.id}{still} have a [ in the name, so an exclude of one"
                 )
                 + " would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 f"empty {'folder' if one else 'folders'} in the cloud drive; "
-                + named([src.id], _alarm_names("it" if alone else "them", n_stored))
+                + points_it
                 + (f"; {size}" if size and not gone else "")
             )
             names_source(src.id)
@@ -1053,16 +1088,14 @@ def next_step(
             one = len(gone) == 1
             one_file = sum(gone) == 1  # the agreeing words follow the file count too (B13 round 14 Q81)
             waits.append(
-                f"{len(gone)} empty cloud {'folder' if one else 'folders'} in {src.id} held "
+                f"{len(gone)} empty cloud {'folder' if one else 'folders'} in {src.id}{still} held "
                 f"{_files(sum(gone))} the mirror still has (the listing stays incomplete, so "
                 f"{'its' if one_file else 'their'} deletion is held; another sync does not clear it): if "
                 f"{'the file was' if one_file else 'the files were'} removed on purpose, remove the empty "
                 f"{'folder' if one else 'folders'} from the cloud drive too, and later syncs take "
                 f"{'its page' if one_file else 'the pages'} out with the usual deletion check; "
                 "excluding such a folder instead retires its pages at once, with no deletion check and no "
-                "purge queued; "
-                + named([src.id], _alarm_names("the folder" if alone else "the folders", n_stored))
-                + (f"; in all, {size}" if size else "")
+                "purge queued; " + points + (f"; in all, {size}" if size else "")
             )
             names_source(src.id)
 

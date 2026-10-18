@@ -1365,9 +1365,11 @@ _S_BESIDE_A_COUNT = re.compile(r"\b\d+ [^;:,()]*?\(s\)")
 def test_the_alarm_names_words_follow_the_walks_stored_count() -> None:
     """B13 round 14 Q23, Q41: one empty folder's wait said the alarm "names the folder, up to five, and past
     five how to list the rest", and five's too, though the alarm lists one to five in full. The clause
-    follows how many folders the walk stored, which the alarm counts: kept past five, also once five of six
-    are excluded since (the alarm still names five and points at the sixth), never chosen by the wait's own
-    count. No "(s)" beside a count in the alarm or the wait (Q24, Q38, Q42)."""
+    follows how many folders the walk stored, which the alarm counts, never chosen by the wait's own count.
+    Once five of six are excluded since, the alarm names five folders now excluded and hides the sixth behind
+    "+1 more": the wait says the alarm predates the exclude and that a sync prints it again, and counts its
+    folder as still not excluded (B13 round 15 S32, S66). No "(s)" beside a count in the alarm or the wait
+    (Q24, Q38, Q42)."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
     config = _setup(Path.home() / "agent-context", local_source_table("work", root))
@@ -1398,10 +1400,30 @@ def test_the_alarm_names_words_follow_the_walks_stored_count() -> None:
         config.config_path, "work", exclude_globs(src, [f"Empty {i}" for i in range(5)]), expected=src.exclude
     )
     config = load_config(config.config_path)
+    # B13 round 15 S32, S66: the alarm is from before that exclude, so it names five folders now excluded and
+    # hides the one left behind its "+1 more"; the wait says so, and its one folder is "still not excluded"
+    assert clear_wait().startswith(
+        "WAITING ON YOU: 1 empty cloud folder, still not excluded, keeps the listing of work incomplete"
+    )
+    assert (
+        "keeps the alarm line for work from its last sync, before the exclude, so it may name folders now "
+        f"excluded; a plain `{BIN} sync` prints it again with the 1 folder left"
+    ) in clear_wait(), clear_wait()
+    assert loop._UP_TO_FIVE not in clear_wait() and "prints it too" not in clear_wait()
+    [in_state] = [
+        ln
+        for ln in loop.next_lines(config, in_state=True)
+        if ln.startswith("WAITING ON YOU") and "exclude-" in ln
+    ]
+    assert (
+        "the alarm line under ## work below is from that source's last sync, before the exclude" in in_state
+    )
+    assert "STATE.md" not in in_state, in_state
+    run_cycle(config, mode=None)  # the walk stores the one left: the words are the plain ones again
     assert clear_wait().startswith(
         "WAITING ON YOU: 1 empty cloud folder keeps the listing of work incomplete"
     )
-    assert f"which names the folders, {loop._UP_TO_FIVE}" in clear_wait()
+    assert "which names the folder (a plain" in clear_wait() and "still not excluded" not in clear_wait()
 
 
 def test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since(
@@ -1410,7 +1432,9 @@ def test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since(
     """B13 round 14 Q58: with one clear and one gone empty folder, the gone line said the alarm "names the
     folders"; after exclude-empty took the clear one and before the next sync, "names the folder", while
     STATE.md's alarm still listed both. The words follow the walk's stored count; the next sync stores one.
-    Q81: its file count reads "held 1 file", "its deletion", "if the file was removed", "its page"."""
+    Round 15 S32, S66: before that sync the line says the alarm predates the exclude, and its one folder is
+    still not excluded. Q81: its file count reads "held 1 file", "its deletion", "if the file was removed",
+    "its page"."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
     _write(root / "Gone" / "plan.txt", "The plan.\n")
@@ -1436,11 +1460,22 @@ def test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since(
         out
     )
     assert not _S_BESIDE_A_COUNT.search(out), out
+    # B13 round 15 S32: the alarm the command points at is from before its exclude
+    since = (
+        "keeps the alarm line for work from its last sync, before the exclude, so it may name folders now "
+    )
+    assert since in out and "which names" not in out, out
     config = load_config(config.config_path)
-    assert "which names the folders (a plain" in gone_line()
+    # B13 round 15 S66: one folder beside an alarm of two is the one still not excluded; S32: that alarm is
+    # from before the exclude
+    assert gone_line().startswith(
+        "WAITING ON YOU: 1 empty cloud folder in work, still not excluded, held 1 file"
+    )
+    assert since in gone_line() and "with the 1 folder left" in gone_line(), gone_line()
+    assert "which names" not in gone_line() and "prints it too" not in gone_line()
     assert any("'Empty', 'Gone'" in alarm for alarm in _kept_alarms(config)), _kept_alarms(config)
     run_cycle(config, mode=None)
-    assert "which names the folder (a plain" in gone_line()
+    assert "which names the folder (a plain" in gone_line() and "still not excluded" not in gone_line()
     assert not any(_S_BESIDE_A_COUNT.search(ln) for ln in [*_lines(config), *_kept_alarms(config)])
 
 
@@ -1565,7 +1600,8 @@ def test_exclude_empty_says_the_alarm_names_five_only_past_five(
     """B13 round 14 Q41's rule (review): exclude-empty's line about the folders it left said the alarm "names
     them" with seven stored, where the alarm names five and how to list the rest. Round 15 S42: one folder
     left beside six it excluded read "names it, up to five", and the alarm's five did not hold it; past five
-    the line takes the loop's words, "the folders"."""
+    the line takes the loop's words, "the folders", and once it excluded some, says the alarm predates that
+    (S32)."""
     root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
     for i in range(empty):
@@ -1586,8 +1622,11 @@ def test_exclude_empty_says_the_alarm_names_five_only_past_five(
         else ("1 empty cloud folder in work was left as it is: it held")
     )
     assert left in out, out
-    assert f"which names the folders, {loop._UP_TO_FIVE}" in out, out
     assert "which names it, " not in out and "which names them, " not in out, out
+    if empty:  # it excluded the six: the alarm is from before that (B13 round 15 S32)
+        assert "before the exclude, so it may name folders now excluded" in out and "which names" not in out
+    else:
+        assert f"which names the folders, {loop._UP_TO_FIVE}" in out, out
 
 
 def test_a_gone_root_under_volumes_is_a_volume_to_mount(tmp_path: Path) -> None:
