@@ -969,18 +969,26 @@ MANIFEST_FIX = (
 )
 
 
+def unreadable_code(exc: sqlite3.Error) -> bool:
+    """Whether ``exc`` is SQLITE_NOTADB or SQLITE_CORRUPT, an extended code (CORRUPT_VTAB, ...) included."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    return isinstance(code, int) and code & 0xFF in MANIFEST_UNREADABLE_CODES
+
+
 def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
-    open (no file is created, nothing is written); None when it reads, is missing, or is only locked, busy
-    or not openable now (B13 round 16 T12)."""
+    open (no file is created, nothing is written) of its schema, which every open of the manifest reads
+    first (a header alone can be intact over a damaged schema page); None when it reads, is missing, or is
+    only locked, busy or not openable now. Damage further in, under a table, shows when a command reads it
+    (``cli._state_readable``); status does not scan the whole file (B13 round 16 T12)."""
     try:
         conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
         try:
-            conn.execute("PRAGMA schema_version").fetchone()
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
-        if getattr(exc, "sqlite_errorcode", None) in MANIFEST_UNREADABLE_CODES:
+        if unreadable_code(exc):
             return exc
     return None
 

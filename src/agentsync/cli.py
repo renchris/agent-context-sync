@@ -630,19 +630,23 @@ def _state_readable(config: Config) -> Iterator[None]:
     """A database error whose cause is the manifest itself, no database or a damaged one, becomes one line
     naming the file and the person's fix (exit 65), never a traceback; init and add-source then stop where
     install.sh names the owner, not "fix the error above, then re-run" (B13 round 16 T12). A locked or busy
-    database, or another file's error, is raised as it was."""
+    database is raised as it was."""
     try:
         yield
     except sqlite3.DatabaseError as exc:
+        # the manifest is the one database these commands open: its own NOTADB or CORRUPT, or one the
+        # read-only probe finds, names it (damage under a table shows only when a command reads that table)
         db = expand(config.state_paths.db)
-        if doctor.manifest_unreadable(db) is None:
+        if not doctor.unreadable_code(exc) and doctor.manifest_unreadable(db) is None:
             raise
         raise StateUnreadableError(f"{db} cannot be read: {exc}") from exc
 
 
 def _run(config: Config, **kwargs: object) -> int:
-    with _alarms_in_the_report(config), _state_readable(config):
+    with _alarms_in_the_report(config) as held, _state_readable(config):
         report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
+    if held is not None:
+        held.log([r for r in held.held if not _printed(r, report)])
     budget = kwargs.get("budget_bytes")
     _print_report(report, run_budget=budget if isinstance(budget, int) else None)
     if kwargs.get("mode") is not CycleMode.DRY_RUN and report.exit_code in (EXIT_OK, EXIT_FAILED):

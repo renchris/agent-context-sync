@@ -2550,6 +2550,13 @@ def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.
     empty = db.with_name("empty.sqlite")
     empty.write_bytes(b"")
     assert doctor.manifest_unreadable(empty) is None
+    # an intact header over a damaged schema page: the probe reads the schema, as every open does (review)
+    page_one = db.with_name("page-one.sqlite")
+    broken = bytearray(db.read_bytes())
+    broken[100:400] = b"\xff" * 300
+    page_one.write_bytes(bytes(broken))
+    exc = doctor.manifest_unreadable(page_one)
+    assert exc is not None and doctor.unreadable_code(exc), exc
 
 
 def _drop_block(cfg: Path, sid: str, retire: bool = False) -> None:
