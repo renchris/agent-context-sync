@@ -1050,6 +1050,28 @@ was killed once more.
 Round 15: the round 14 workflow with prompt v23 on `06733df7`, BASE `c57cfa7c` (ids S<n>, outputs `round15/`); every
 scenario copies helpers for any build before `7b51f3cf` and fails on a real-home SwiftPM lock (Q84).
 
+### B13 round 15: v23 rehearsal, cross-lane review, harvest (2026-10-18)
+
+Run `wf_c57f23f2-473` on `06733df7` (82 agents, 0 errors; a first launch died on an unescaped `${P}` in the script).
+All six scenarios pass their EXPECTED with no turn and no wrong on any rehearsed path; the field Mac's path is clean
+(v10 build with copied helpers, pulled to v23, "fully one command"), and no sandbox holds a lock named for the real
+home (Q84's kit rule). 71 findings, 68 confirmed (0 turn, 10 wrong, 58 small), 3 refuted; 5 need prompt text, so the
+next prompt is v24. The wrongs come from probes and review, not the rehearsed paths: a status that exits non-zero with
+no [FAIL] line still gets install.sh's "fix the [FAIL] lines above" (S33, S58, S62), a patch made readable inside one
+attempt is sent again (S34), status with a mirrored source's block deleted (S7), the Summary's folders line reading
+only the last install run (S9), a SharePoint library gone because OneDrive is signed out (S41), v23 treating the first
+sync's refused config as one that does not load (S8, S55), the guide's old attempt split (S54), and ship-land.sh reading
+a gh failure as a CI result (S63). The lead's pandoc CI flake passed 3 of 3 at load about 650.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68 over rounds 2 and 4 to 15; turns 3, 0, 0,
+1, 5, 2, 4, 1, 1, 3, 1, 0, 0; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10. The lowest total and the fewest
+wrongs of any round, and the first with no wrong on a rehearsed path.
+
+Lanes (`--account auto`, CONTRACTS §16.116 to §16.121, brief `lanes/COMMON14.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r15-land.lock`): RA 10 (setup_report.py), RB 18
+(install.sh), P 5 (prompt v24), B 16 (loop, cli, arm_local, cycle, doctor), E 10 (pandoc route, ship-land.sh's CI reads,
+landed last), D 8 (docs/deploy, CONTRACTS). Lead: S71 (one operator cleanup, `b13-r14`, replacing the `b13-r13` one).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

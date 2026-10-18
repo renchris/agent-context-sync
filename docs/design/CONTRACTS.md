@@ -21411,3 +21411,27 @@ current. Test: the dated-line scan.
 §16.95 M42, §16.45 R102 and §16.22). §16.107 O49 has its dated line at §16.101 N12 alone; the round 12 lines at
 §16.22's nothing-stored bullet, §16.45 R102 and §16.95 M47/M42 still said `or a missing sentinel` while one is set.
 Tests: the dated-line scan, and the §16.22 pin in `test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`.
+
+### 16.116 Round 15: setup report (2026-10-18, wave B13 round 15 lane RA)
+
+Reserved for round 15 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 15").
+
+### 16.117 Round 15: installer, the no-[FAIL] status NEXT and the unread patch (2026-10-18, wave B13 round 15 lane RB)
+
+Reserved for round 15 lane RB of B13.
+
+### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
+
+Reserved for round 15 lane P of B13.
+
+### 16.119 Round 15: missing roots, the heartbeat note and the waits (2026-10-18, wave B13 round 15 lane B)
+
+Reserved for round 15 lane B of B13.
+
+### 16.120 Round 15: the pandoc fix texts and ship-land's CI reads (2026-10-18, wave B13 round 15 lane E)
+
+Reserved for round 15 lane E of B13.
+
+### 16.121 Round 15: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 15 lane D)
+
+Reserved for round 15 lane D of B13.
