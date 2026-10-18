@@ -4329,7 +4329,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them
+	local sn them ungone first one mirror pages
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -4418,7 +4418,24 @@ list_folders() {
 		if [ "$unlisted" -eq 0 ] || [ ! -s "$tmp/shown" ]; then
 			say "already synced on this Mac: $sn (marked $SYNCED_MARK below)"
 		else
-			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first the $unlisted outside the list, then the list)"
+			# a synced folder gone from disk is never listed, so it is first too, but not "outside the list": it is
+			# counted apart, with the same guard as the gone check below, which reads no provider folder while one
+			# was denied or is still asking (B13 round 15 S10)
+			ungone=0
+			if [ -z "$denied$asking" ]; then
+				while IFS= read -r line; do
+					line="${line#"$SYNCED_MARK "}"
+					[ -e "$line" ] || ungone=$((ungone + 1))
+				done < <(sed -n "3,$((2 + unlisted))p" "$tmp/marked")
+			fi
+			if [ "$ungone" -eq 0 ]; then
+				first="the $unlisted outside the list"
+			elif [ "$ungone" -eq "$unlisted" ]; then
+				first="the $unlisted not on disk"
+			else
+				first="the $((unlisted - ungone)) outside the list and the $ungone not on disk"
+			fi
+			say "already synced on this Mac: $sn (marked $SYNCED_MARK below: first $first, then the list)"
 		fi
 		tail -n +3 "$tmp/marked"
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
@@ -4530,22 +4547,26 @@ list_folders() {
 		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause
 		# says so, so the keep is not read as a sync (B13 round 12 N41, N61). Only step 2's first sync waits: a sync
 		# still mirrors every other source, and deletes nothing of the gone one (B13 round 13 O6).
+		# With one synced folder the one gone is the folder itself: "it", and no other folder for a sync to
+		# mirror (B13 round 15 S36); the words the prompt keys on, "is (no longer|not) on disk", stay
+		one="1 of them" mirror="; a sync still mirrors the folders that are there" pages=", and that folder's pages"
+		[ "$synced" != 1 ] || { one=it mirror="" pages="; its pages"; }
 		if [ "$gone" -eq 1 ]; then
-			NEXT_MSG="$NEXT_MSG; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on it and names the fix, so step 2 runs no first sync until the folder is back under that name or its [[source]] path in $CONFIG is fixed; a sync still mirrors the folders that are there, and that folder's pages are kept"
+			NEXT_MSG="$NEXT_MSG; $one is no longer on disk although its app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on it and names the fix, so step 2 runs no first sync until the folder is back under that name or its [[source]] path in $CONFIG is fixed$mirror$pages are kept"
 		elif [ "$gone" -gt 1 ]; then
 			NEXT_MSG="$NEXT_MSG; $gone of them are no longer on disk although their app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on each and names the fix, so step 2 runs no first sync until each folder is back under its name or its [[source]] path in $CONFIG is fixed; a sync still mirrors the folders that are there, and those folders' pages are kept"
 		fi
 		# its provider folder gone while another folder of the app is there: not "signed in", as doctor's fix
 		# names the sign-in with the account it belongs to, or the path
 		if [ "$others" -eq 1 ]; then
-			NEXT_MSG="$NEXT_MSG; 1 of them is not on disk because its provider folder is missing while another folder of that app is there: $other. Step 2's status fails on it and names the fix (sign in to that app with the account it belongs to, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then; a sync still mirrors the folders that are there"
+			NEXT_MSG="$NEXT_MSG; $one is not on disk because its provider folder is missing while another folder of that app is there: $other. Step 2's status fails on it and names the fix (sign in to that app with the account it belongs to, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then$mirror"
 		elif [ "$others" -gt 1 ]; then
 			NEXT_MSG="$NEXT_MSG; $others of them are not on disk because their provider folders are missing while another folder of each app is there: $other. Step 2's status fails on each and names the fix (sign in to that app with the account each belongs to, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then; a sync still mirrors the folders that are there"
 		fi
 		# a SharePoint library not synced beside its organization's OneDrive folder: doctor names the library's
 		# Sync, never a sign-in (B13 round 13 O41, O48, O57; O52 for an empty library folder)
 		if [ "$libs" -eq 1 ]; then
-			NEXT_MSG="$NEXT_MSG; 1 of them is not on disk because its SharePoint library is not synced on this Mac (its organization's OneDrive folder is there): $libpaths. Step 2's status fails on it and names the fix (sync the SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then; a sync still mirrors the folders that are there"
+			NEXT_MSG="$NEXT_MSG; $one is not on disk because its SharePoint library is not synced on this Mac (its organization's OneDrive folder is there): $libpaths. Step 2's status fails on it and names the fix (sync the SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then$mirror"
 		elif [ "$libs" -gt 1 ]; then
 			NEXT_MSG="$NEXT_MSG; $libs of them are not on disk because their SharePoint libraries are not synced on this Mac (each organization's OneDrive folder is there): $libpaths. Step 2's status fails on each and names the fix (sync each SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then; a sync still mirrors the folders that are there"
 		fi

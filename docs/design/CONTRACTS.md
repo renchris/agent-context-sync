@@ -8630,6 +8630,8 @@ NEXT: this Mac already syncs 2 folder(s), and a re-run keeps them: run install.s
   folder was `~/Documents/notes` got that line over a list with no mark.
   Amended 2026-10-15, §16.93 M9: when the list shows no folder (signed out, an empty provider folder, the only
   provider denied) the first line is the plain `(marked [synced] below)`, since no list follows.
+  Amended 2026-10-18, §16.117 S10: a fourth case, a synced folder not on disk, is counted apart: `first the N not on
+  disk, then the list`, or `first the A outside the list and the B not on disk, then the list`.
 - The `NEXT:` line names the command that keeps them, since nothing has to be chosen: `install.sh` alone, with
   `--source-local` only for a folder to add. With no synced folder it is the line it was.
 - **Without a config the output is byte for byte what it was**, and the installed agentsync is not asked. The
@@ -19904,6 +19906,8 @@ pages are kept"): a sync skips only the gone source.
 Amended 2026-10-17, §16.105 O41, O48, O57: those were two of doctor's three fixes; a SharePoint library folder gone
 (or there and showing nothing) beside its organization's `OneDrive-<org>` has a clause of its own, which names the
 library's Sync and no sign-in.
+Amended 2026-10-18, §16.117 S36: with one synced folder each clause opens `; it is` for `; 1 of them is` and drops
+`; a sync still mirrors the folders that are there`, and the gone one ends `; its pages are kept`.
 
 Amended 2026-10-17, §16.109 O63: a later commit of the lane (42de9ecc) changed README.md's intro, docs/deploy/README.md and
 setup-feedback.md to match: the list's sign-in names the app, and exit 3 is only for a folder whose app is signed out.
@@ -21691,6 +21695,27 @@ tested "no end line for it" rule and how parse_friction reads the attempt. A pat
 `test_a_report_of_an_attempt_with_no_header_is_counted_as_carrying_its_patches` (with no earlier attempt, and after a
 finished one), `test_a_patch_unreadable_after_a_report_with_no_header_embedded_it_is_not_listed`,
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+**The list counts a synced folder gone from disk apart from one outside it** (S10; amends §16.29). Every synced
+folder no list line matches came first under `first the N outside the list`, the group §16.29 defines as deeper than
+the list goes, outside `~/Library/CloudStorage` or past the cap. A folder gone from disk is never listed, so probe RN's
+`Project Beta - General`, one level inside the listed `OneDrive-Contoso` beside listed siblings, was called outside
+the list while the NEXT said it was no longer on disk. Lines 3 to 2+N of the marked list (the unlisted ones) are now
+checked with `[ -e ]` and the header reads `first the N outside the list`, `first the N not on disk`, or `first the A
+outside the list and the B not on disk`, then `, then the list)`. The check runs only when no provider was denied or
+is still asking, the guard of the gone check below it (a read of a provider folder that is asking could wait on the
+same prompt); then every one counts as outside, as before. The prefix up to the colon is unchanged. Tests:
+`test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2` (all three layouts),
+`test_list_folders_names_a_synced_folder_when_the_list_reaches_none` (one outside and one gone).
+
+**With one synced folder the list's NEXT clause is that folder's** (S36; amends §16.99 N41). The head of the line
+said `this Mac already syncs 1 folder, and a re-run keeps it` since round 14 Q44, then `; 1 of them is no longer on
+disk ...`, and every clause ended `; a sync still mirrors the folders that are there`, though the gone, other-account
+and library folders are all synced ones, so with one synced folder there is no other. With one, each clause opens `;
+it is`, the mirror claim goes, and the gone one ends `; its pages are kept`. The words README's step 1 exception keys
+on, `is no longer on disk` and `is not on disk`, stay, as do the line's prefix, the exit and the note. Tests:
+`test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2` (each layout with one and two synced folders),
+`test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does` (the library alone).
 
 **The pandoc first-start test's failure carries the run** (S70). CI run 39081380800 failed it with only `ValueError:
 not enough values to unpack (expected 1, got 0)` at the `[started] = [...]` unpack: install.sh's output was captured

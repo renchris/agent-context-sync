@@ -4750,6 +4750,19 @@ def test_list_folders_names_a_synced_folder_when_the_list_reaches_none(env: dict
         f"{cs}/OneDrive-Contoso/FY26 Projects",
     ]
     assert last_line(cp).startswith("NEXT: this Mac already syncs 1 folder, and a re-run keeps it: ")
+    # B13 round 15 S10: one outside the list and one gone from disk inside the listed OneDrive folder are
+    # counted apart: a folder that is gone is not "outside the list"
+    gone = cs / "OneDrive-Contoso" / "Project Beta - General"
+    _write_config(env, local_source_table("notes", notes), local_source_table("beta", gone), _inbox(env))
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[:3] == [
+        "already synced on this Mac: 2 folders (marked [synced] below: first the 1 outside the list and the "
+        "1 not on disk, then the list)",
+        f"[synced] {notes}",
+        f"[synced] {gone}",
+    ]
+    assert "1 of them is no longer on disk although its app is signed in" in last_line(cp)
 
 
 def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_form(
@@ -4922,11 +4935,12 @@ def test_list_folders_asks_for_the_sign_in_when_synced_folders_are_missing(
     assert "a re-run keeps them" in last_line(cp)
 
 
+@pytest.mark.parametrize("synced", [2, 1])
 @pytest.mark.parametrize(
     "layout", ["renamed in a signed-in provider", "a symlinked provider folder", "another account of the app"]
 )
 def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
-    env: dict[str, str], tmp_path: Path, layout: str
+    env: dict[str, str], tmp_path: Path, layout: str, synced: int
 ) -> None:
     """B13 round 12 N41, N61: M4's sign-in exit fired on a signed-in Mac whose synced folder was renamed or
     deleted in OneDrive, and every re-run of the list stopped the same way. The provider folder decides, by
@@ -4935,7 +4949,8 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
     and step 2's doctor names its fix. Only a folder whose provider folder is there is said to have a
     signed-in app. B13 round 13 O6: the clause said "nothing syncs until" then, but a sync still mirrors every
     other folder (test_e2e.py::test_a_sync_with_one_source_root_gone_still_mirrors_the_others): only step 2's
-    first sync waits."""
+    first sync waits. B13 round 15 S36: with one synced folder the clause is the folder's own ("it", no other
+    folder to mirror). S10: the header counts it as not on disk, not outside the list."""
     cs = _cloud(env)
     lib = cs / "OneDrive-Contoso"
     cfg = Path(env["HOME"]) / "agent-context" / "sources.toml"
@@ -4948,6 +4963,9 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
             f"that app is there: {gone}. Step 2's status fails on it and names the fix (sign in to that app "
             f"with the account it belongs to, or fix its [[source]] path in {cfg}), so step 2 runs no first "
             "sync until then; a sync still mirrors the folders that are there"
+        )
+        alone = clause.replace("; 1 of them is", "; it is").removesuffix(
+            "; a sync still mirrors the folders that are there"
         )
     else:
         real = tmp_path / "real-provider" if layout == "a symlinked provider folder" else lib
@@ -4964,18 +4982,27 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
             f"in {cfg} is fixed; a sync still mirrors the folders that are there, and that folder's pages "
             "are kept"
         )
-    _write_config(
-        env, local_source_table("project-alpha", kept), local_source_table("project-beta", gone), _inbox(env)
-    )
+        alone = clause.replace("; 1 of them is", "; it is").replace(
+            "; a sync still mirrors the folders that are there, and that folder's pages", "; its pages"
+        )
+    tables = [local_source_table("project-beta", gone), _inbox(env)]
+    if synced == 2:
+        tables.insert(0, local_source_table("project-alpha", kept))
+    _write_config(env, *tables)
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
     assert f"[synced] {gone}" in cp.stdout.splitlines()
-    assert last_line(cp).startswith("NEXT: this Mac already syncs 2 folders, and a re-run keeps them: ")
-    assert last_line(cp).endswith(clause), last_line(cp)
-    assert "nothing syncs" not in last_line(cp)
+    sn = "2 folders" if synced == 2 else "1 folder"
+    # a symlinked provider folder lists nothing, so the line promises no list (B13 round 11 M9)
+    first = "" if layout == "a symlinked provider folder" else ": first the 1 not on disk, then the list"
+    assert cp.stdout.splitlines()[0] == f"already synced on this Mac: {sn} (marked [synced] below{first})"
+    head = f"NEXT: this Mac already syncs {sn}, and a re-run keeps {'them' if synced == 2 else 'it'}: "
+    assert last_line(cp).startswith(head)
+    assert last_line(cp).endswith(clause if synced == 2 else alone), last_line(cp)
+    assert ("1 of them" in last_line(cp)) == (synced == 2) and "nothing syncs" not in last_line(cp)
     assert steps(install_log(env))[-1][:3] == ("list-folders", "done", "0")
-    assert install_log(env)[-2].endswith(" synced=2 gone=1")
+    assert install_log(env)[-2].endswith(f" synced={synced} gone=1")
     cp = install_sh(env, "--list-folders")  # no loop: a re-run gives the same exit 0
     assert cp.returncode == 0, cp.stdout + cp.stderr
 
@@ -5067,9 +5094,9 @@ def test_signed_out_reads_a_sharepoint_library_as_doctor_does(
     assert (cp.returncode, cp.stderr) == (want, ""), (library, beside, there)
 
 
-@pytest.mark.parametrize("libraries", [1, 2])
+@pytest.mark.parametrize(("libraries", "alone"), [(1, False), (2, False), (1, True)])
 def test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does(
-    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, libraries: int
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, libraries: int, alone: bool
 ) -> None:
     """B13 round 13 O41, O48, O57: with OneDrive-Contoso there and the source under
     OneDrive-SharedLibraries-Contoso gone, the list's exit-0 NEXT said "sign in to that app with the account
@@ -5084,7 +5111,9 @@ def test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does(
         gone.append(cs / "OneDrive-SharedLibraries-Fabrikam" / "Finance - Documents" / "Budget")
         (cs / "OneDrive-Fabrikam").mkdir()
     tables = [local_source_table(f"lib-{n}", g) for n, g in enumerate(gone)]
-    _write_config(env, local_source_table("project-alpha", kept), *tables, _inbox(env))
+    if not alone:  # B13 round 15 S36: alone, the library is the one synced folder
+        tables.insert(0, local_source_table("project-alpha", kept))
+    _write_config(env, *tables, _inbox(env))
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
@@ -5103,12 +5132,17 @@ def test_list_folders_names_a_sharepoint_library_not_synced_as_doctor_does(
         "the fix (sync each SharePoint library to this Mac with Sync on its SharePoint page, or fix its "
         "[[source]] "
     ) + tail
+    if alone:
+        clause = clause.replace("; 1 of them is", "; it is").removesuffix(
+            "; a sync still mirrors the folders that are there"
+        )
     assert last_line(cp).endswith(clause), last_line(cp)
     assert "sign in" not in last_line(cp).lower()
-    assert install_log(env)[-2].endswith(f" synced={1 + libraries} gone={libraries}")
+    assert install_log(env)[-2].endswith(f" synced={libraries + (not alone)} gone={libraries}")
     monkeypatch.setenv("HOME", env["HOME"])
     config = load_config(cfg)
-    for source in config.sources[1 : 1 + libraries]:
+    first = 0 if alone else 1
+    for source in config.sources[first : first + libraries]:
         fix = doctor._missing_source_fix(source, source.path)
         assert "Sync on its SharePoint page" in fix and "sign in" not in fix, fix
 

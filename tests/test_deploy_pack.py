@@ -2940,11 +2940,13 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     assert step1.index(SIGNED_OUT) < step1.index("If you cannot ask me then, add none")
     # B13 round 13 O30: the list's words the first exception's gone-folder sentence answers, both counts
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    assert "1 of them is no longer on disk although its app is signed in" in script
+    # B13 round 15 S36: "1 of them", or "it" when it is the one synced folder, by one variable
+    assert 'one="1 of them"' in script and "one=it " in script
+    assert "$one is no longer on disk although its app is signed in" in script
     assert "of them are no longer on disk although their app is signed in" in script
     # B13 round 14 Q15, Q73: and the other two tails, the other account's folder and the library not synced,
     # each with the fix the sentence relays from its parentheses; "on disk" is in no other line of the list
-    for tail in ("of them is not on disk because", "of them are not on disk because"):
+    for tail in ("$one is not on disk because", "of them are not on disk because"):
         assert script.count(tail) == 2, tail
     assert "names the fix (sign in to that app with the account" in script
     assert "names the fix (sync the SharePoint library to this Mac with Sync on its SharePoint page" in script
@@ -5390,6 +5392,7 @@ _ROUND_15_PARAGRAPH_AMENDS = (
     ),
     ("16.14", "**Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install", "§16.121 S67 (by §16.110 Q25)"),
     ("16.32", "- **What it prints.** Nothing when the start is quick.", "§16.117 S17"),
+    ("16.29", "- **Every synced folder is printed, with its mark**", "§16.117 S10"),
 )
 """Round 15's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
@@ -5423,7 +5426,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
-    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 11
+    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 12
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
