@@ -5203,6 +5203,19 @@ def test_list_folders_names_a_synced_folder_when_the_list_reaches_none(env: dict
         f"[synced] {gone}",
     ]
     assert "1 of them is no longer on disk although its app is signed in" in last_line(cp)
+    # B13 round 16 T46: a folder missing outside ~/Library/CloudStorage is no "not on disk" folder: no NEXT
+    # clause or gone= names it (the gone check decides only CloudStorage ones), so it stays outside the list
+    shutil.rmtree(notes)
+    _write_config(env, local_source_table("notes", notes), _inbox(env))
+    cp = install_sh(env, "--list-folders")
+    assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    assert cp.stdout.splitlines()[0] == (
+        "already synced on this Mac: 1 folder (marked [synced] below: first the 1 outside the list, then "
+        "the list)"
+    ), cp.stdout
+    assert "not on disk" not in cp.stdout
+    listed = [ln for ln in install_log(env) if "step=list-folders" in ln]
+    assert listed and "gone=" not in listed[-1] and "gone=1" in listed[-2], listed
 
 
 def test_list_folders_marks_a_synced_folder_written_in_another_case_or_unicode_form(

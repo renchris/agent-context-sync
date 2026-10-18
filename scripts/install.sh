@@ -4688,11 +4688,13 @@ list_folders() {
 		else
 			# a synced folder gone from disk is never listed, so it is first too, but not "outside the list": it is
 			# counted apart, with the same guard as the gone check below, which reads no provider folder while one
-			# was denied or is still asking (B13 round 15 S10)
+			# was denied or is still asking (B13 round 15 S10). Only a folder under $cs: the ones the gone check
+			# decides, with a NEXT clause and gone=; one missing elsewhere stays outside the list (B13 round 16 T46)
 			ungone=0
 			if [ -z "$denied$asking" ]; then
 				while IFS= read -r line; do
 					line="${line#"$SYNCED_MARK "}"
+					case "$line" in "$cs/"*) ;; *) continue ;; esac
 					[ -e "$line" ] || ungone=$((ungone + 1))
 				done < <(sed -n "3,$((2 + unlisted))p" "$tmp/marked")
 			fi
