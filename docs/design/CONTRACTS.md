@@ -21712,6 +21712,16 @@ gets wrong. The guide's triage line says the same. Test:
 `test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_checks` (a re-run whose install stamp is
 current, step 2 skipped, with a slow start).
 
+**FRICTION_AWK keeps one flag for stated words, not a version and an agent** (S38). Since round 14 Q28 dropped the
+version and agent comparisons (Python's `_agent_key` went in the same commit), track() read `PV` and `AG` only for
+being empty, and `agent_key()` fed only them. They are one flag, `W` (stated words seen in this header-less
+attempt), and `agent_key()` and `SA` are gone; `SV` and `SR`, which `friction_step1_stated` and the other readers
+print, stay. A deletion with no behavior to test: measured equivalent by a fuzz of 1,500 random friction logs
+(headers, stated and plain step 1 errors, end lines, a `Prompt V0` line, an agent that normalizes to nothing) whose
+per-line `q HD PS NH SEEN SV SR` matched the old awk on every line (0 differences, 2,107 attempt splits). The attempt
+tests hold it: `test_two_sessions_that_each_stop_at_step_1_within_the_gap_are_two_attempts`,
+`test_the_installer_and_the_report_split_the_same_attempts_after_any_header`.
+
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 
 The B13 round 15 items of lane P (specs `round15/items/S<n>.md`, the verifier's corrected fix built unless a

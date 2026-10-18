@@ -694,7 +694,8 @@ friction_cmd() { # OPTION ARGS...: the friction-log options; their exit status
 NEW_SESSION_GAP=600 # setup_report._NEW_SESSION_GAP, in seconds
 # awk: secs(T), "2026-10-06T16:42:00Z" as seconds on a day count (to subtract two of them), and the start of
 # a step 1 error line, which after an end line may open a header-less attempt (parse_friction). track(LINE),
-# called on every line first, keeps the open attempt's prompt number PV and agent AG, and is 1 for a step 1
+# called on every line first, keeps whether the open attempt has a header (HD) or stated words (W; only that
+# they were seen, since B13 round 14 Q28 compares no version or agent: round 15 S38), and is 1 for a step 1
 # error that states "prompt vN, <agent>:" words another session's: after any header line parse_friction keeps
 # (Prompt, Agent, Outcome, Run: HD, which an Attempt: line clears), and after a header-less attempt that
 # already has stated words, always, at any gap: a session writes the prefix once, only before --log-start (so
@@ -712,12 +713,7 @@ FRICTION_AWK='
 			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
 				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
 		}
-		function agent_key(a) { # ASCII lower case, quotes dropped (curly ones too), blanks collapsed: AG and SA mark words seen
-			gsub("\342\200[\230\231\234\235]", " ", a)
-			a = tolower(a); gsub("[\"\047*]", " ", a); gsub("[ \t]+", " ", a); sub("^ ", "", a); sub(" $", "", a)
-			return a
-		}
-		function stated(line,    w, a, c) { # sets SV, SA and SR (the agent as written) from "prompt vN, <agent>:" at the start of the what-text
+		function stated(line,    w, a, c) { # sets SV and SR (the agent as written) from "prompt vN, <agent>:" at the start of the what-text
 			w = line; sub("^[^|]*[|][^|]*[|][^|]*[|][ \t]*", "", w)
 			while (match(w, "^([\"\047 \t]|\342\200[\230\231])")) w = substr(w, RLENGTH + 1)
 			if (tolower(substr(w, 1, 8)) != "prompt v" || !match(substr(w, 9), "^[0-9][0-9]?[0-9]?")) return 0
@@ -729,26 +725,22 @@ FRICTION_AWK='
 			# _STEP1_STATED_RE reads at most 100 characters of agent: UTF-8 ones, so continuation bytes do not count
 			c = a; gsub("[\200-\277]", "", c)
 			if (length(c) > 100) return 0
-			SR = a; gsub("[ \t]+", " ", SR); SA = agent_key(a); return 1
+			SR = a; gsub("[ \t]+", " ", SR); return 1
 		}
-		function restate(line) { HD = 0; PS = 0; PV = ""; AG = ""; if (stated(line)) { PV = SV; AG = SA } }
-		function track(line,    a, new) {
-			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PS = 0; PV = ""; AG = ""; return 0 }
+		function restate(line) { HD = 0; PS = 0; W = stated(line) }
+		function track(line,    new) {
+			if (line ~ /^Attempt:/) { SEEN = 1; HD = 0; PS = 0; W = 0; return 0 }
 			if (line ~ /^[-* ]*Prompt:/) {
-				if (PS) { NH = 1; PV = ""; AG = "" }
-				SEEN = 1; HD = 1; PS = 1; if (PV == "" && match(line, "[0-9]+")) PV = substr(line, RSTART, RLENGTH) + 0; return 0
+				if (PS) { NH = 1; W = 0 }
+				SEEN = 1; HD = 1; PS = 1; return 0
 			}
-			if (line ~ /^[-* ]*(Outcome|Run):/) { SEEN = 1; HD = 1; return 0 }
-			if (line ~ /^[-* ]*Agent:/) { # a no-break space around it goes, as parse_friction strips the value
-				SEEN = 1; HD = 1; a = line; sub("^[-* ]*Agent:", "", a); gsub("^([ \t]|\302\240)+|([ \t]|\302\240)+$", "", a)
-				if (AG == "") AG = agent_key(a); return 0
-			}
+			if (line ~ /^[-* ]*(Outcome|Run|Agent):/) { SEEN = 1; HD = 1; return 0 }
 			if (line !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/) return 0
 			new = 0
 			if (!SEEN) { SEEN = 1; if (line ~ s1) restate(line) }
-			else if (line ~ s1 && (HD || PV != "" || AG != "") && stated(line)) new = 1
-			else if (line ~ s1 && stated(line)) { PV = SV; AG = SA } # no header and no words yet: the error states them (L26)
-			if (new) { HD = 0; PS = 0; PV = SV; AG = SA }
+			else if (line ~ s1 && (HD || W) && stated(line)) new = 1
+			else if (line ~ s1 && stated(line)) W = 1 # no header and no words yet: the error states them (L26)
+			if (new) { HD = 0; PS = 0; W = 1 }
 			return new
 		}
 '
