@@ -534,9 +534,11 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
     r = by_name(results)["pandoc"]
     assert (r.ok, r.severity, r.note) == (False, Severity.ERROR, None)
     assert r.detail == (
-        f"{pandoc} --version did not answer within 60s: {OUT_OF_TIME} (the first start of a newly installed "
-        "pandoc can take a minute, and later ones take under a second)"
+        f"{pandoc} --version did not answer within 60s: {OUT_OF_TIME} (a new copy's first start can take a "
+        "minute, and any start can on a busy Mac)"
     )
+    # B13 round 16 T17, T77: a re-run that installed nothing met it too (110 s at load 600, round 15 S17)
+    assert "newly installed" not in r.detail and "under a second" not in r.detail
     assert "crashed" not in r.detail and "TimeoutExpired" not in r.detail
     assert r.fix == RUN_AGAIN + COMES_BACK + PANDOC_FIX
     assert_fix_parses(r.fix)
@@ -548,8 +550,18 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
     r = by_name(run_checks(sample_config))["pandoc"]
     assert r.fix == RUN_AGAIN_INSTALL + COMES_BACK + PANDOC_FIX
     assert format_results([r]).endswith(
-        f"later ones take under a second) (fix: {RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_FIX})"
+        f"and any start can on a busy Mac) (fix: {RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_FIX})"
     )
+
+
+def test_the_pandoc_slow_start_reason_is_the_installers_wait_line() -> None:
+    """B13 round 16 T17, T77: round 15 S17 gave install.sh's ticker words true of every run (a re-run that
+    installed nothing took 110 s at load 600), and doctor's time-out line kept "the first start of a newly
+    installed pandoc ..., and later ones take under a second". The two now give one reason, read here from
+    install.sh's own line."""
+    installer = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [line] = [ln for ln in installer.splitlines() if 'say "pandoc: still running, ' in ln]
+    assert line.rstrip().endswith(f's ({doctor._PANDOC_SLOW_START})"'), line
 
 
 def test_a_program_that_never_answers_is_told_what_to_do_when_the_line_comes_back(

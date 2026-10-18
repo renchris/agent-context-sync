@@ -125,13 +125,13 @@ LISTING_YOURS_REPORT_NOTE = (
 # native arm64 copy of the same version, when the operator installed one, is what the converters and this
 # check run instead, and it needs no Rosetta (convert.pandoc.resolved_pandoc, B13 round 14 Q60).
 # `uv tool install --force` writes a new copy at every update. Measured 2026-10-07 on a 119 MB pandoc 3.9:
-# 10 to 67 s for the first `--version` of a fresh copy (the longer times on a loaded Mac), under 1 s after.
-# scripts/install.sh therefore starts it once before it runs status (its "pandoc: ..." lines), outside this
-# limit; a status run by hand right after an update can still meet a cold one.
+# 10 to 67 s for the first `--version` of a fresh copy (the longer times on a loaded Mac), under 1 s after on
+# that Mac; but a later start took 110 s at a load of about 600 (B13 round 15 S17), so a busy Mac slows any
+# start. scripts/install.sh therefore starts it once before it runs status (its "pandoc: ..." lines), outside
+# this limit; a status run by hand right after an update, or on a busy Mac, can still meet a slow one. The
+# reason is install.sh's ticker's, word for word (B13 round 16 T17, T77).
 _PANDOC_TIMEOUT_S = 60.0
-_PANDOC_SLOW_START = (
-    "the first start of a newly installed pandoc can take a minute, and later ones take under a second"
-)
+_PANDOC_SLOW_START = "a new copy's first start can take a minute, and any start can on a busy Mac"
 # The first words of the native copy's fix, which PERSONS_FIX_RE reads as the person's (B13 round 15 S47).
 _NATIVE_COPY_FIX = "the native pandoc copy at"
 # A Python older than 3.11 is a tool environment install.sh did not make (it asks uv for 3.11); its step 2
