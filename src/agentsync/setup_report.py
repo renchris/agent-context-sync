@@ -4056,9 +4056,9 @@ of these is shown as it is; install.log keeps its tokens."""
 
 _STATUS_NOTE_WORDS = {
     "fail-lines": "agentsync status reported [FAIL] lines",
-    "tcc-pending": (
-        "its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for"
-    ),
+    # the wait asks for the Allow only with --confirm-install-agent; an earlier install's LaunchAgents bring
+    # the same lines to a run that asks for none (B13 round 15 S35)
+    "tcc-pending": "its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)",
     "status-error": "agentsync status exited with no [FAIL] line",
 }
 """install.log's status-step notes -> the Installer table's words (B13 round 14 Q4, Q50)."""

@@ -161,8 +161,8 @@
 #      then "pandoc: started after <N>s"; a quick one prints nothing; one with no answer in 300 s is stopped
 #      and left to status. Then agentsync status (its TCC probe may raise the one-time "wants to access
 #      files managed by" prompt). Any [FAIL] line stops steps 6-8 and the run exits 1, except the launcher's
-#      own TCC_PENDING (a "tcc.<source>" line, only with --confirm-install-agent), which the wait (step 8)
-#      asks the Allow for. A listing macOS holds for an Allow click in this terminal is a
+#      own TCC_PENDING (a "tcc.<source>" line, with --confirm-install-agent or LaunchAgents an earlier run
+#      installed), which the wait (step 8) asks the Allow for when this run installs them. A listing macOS holds for an Allow click in this terminal is a
 #      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
 #      [FAIL] that stops them is the person's (a [[source]] path or sentinel, a folder to put back or sync, a
@@ -3668,10 +3668,10 @@ wait agent-failed the agent step failed
 report agentsync agentsync's report
 report fallback the installer's fallback report
 status fail-lines agentsync status reported [FAIL] lines
-status tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for
+status tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)
 status status-error agentsync status exited with no [FAIL] line
 doctor fail-lines agentsync status reported [FAIL] lines
-doctor tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked, which the wait step asks for
+doctor tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)
 doctor status-error agentsync status exited with no [FAIL] line" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
 STOPPED_HELD_OLD="(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
 STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
@@ -5233,7 +5233,7 @@ start_pandoc_once() {
 status_run() { "$AGENTSYNC" status --config "$CONFIG" | tee "$DOCTOR_LOG"; } # the pipeline's status is status's
 step_start status
 DOCTOR_RC=0
-DOCTOR_TCC_ONLY=0 # every [FAIL] line is the launcher's TCC_PENDING: the wait (step 8) asks for the Allow instead
+DOCTOR_TCC_ONLY=0 # every [FAIL] line is the launcher's TCC_PENDING: not a stop; the wait (step 8) asks for the Allow when GO=1
 if [ "$DRY_RUN" -eq 1 ]; then
 	run "$AGENTSYNC" status --config "$CONFIG"
 	step_end "done"

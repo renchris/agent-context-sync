@@ -20933,6 +20933,9 @@ that exits non-zero with no `[FAIL]` line in its output (a traceback, a config o
 `test_the_installer_table_puts_the_status_steps_note_in_words`, `test_sections_carry_the_facts`,
 `test_the_outcome_of_a_status_fail_stop_names_the_status_step`, `test_a_status_that_fails_with_no_fail_line_logs_status_error`.
 
+Amended 2026-10-18, §16.116 S35: the tcc-pending words read `its only [FAIL] lines were a macOS Allow still to be
+clicked (the [FAIL] line names it)`, in both twins.
+
 **The Summary's folders line** (Q17, Q78; amends §16.104 O9). The Installer row read `2 already synced, 1 of them
 not on disk` while the Summary read `kept the 2 already synced (none added)`. `_folders_line` adds `step 1's list
 found 1 synced folder not on disk: see Doctor`, in every branch (`(none added; ...)`, `1 added to the 2 already
@@ -21470,6 +21473,19 @@ person's fix beside a `chmod 700` [FAIL]) keeps both as `fix:`, since its NEXT s
 a fix on a [warn], [ok] or TCC_PENDING line stays `fix:`, and a NEXT holding `fix:` is still a `NEXT:`. Not per
 line: a per-line split would call a mixed run's person's fix "not a hint" under a NEXT that asks the agent to act.
 The Installer sentence says so. Test: `test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent`.
+
+**The status step's tcc-pending words promise no wait** (S35; amends §16.110 Q4). Doctor gives a `tcc.<id>`
+TCC_PENDING [FAIL] whenever LaunchAgents are installed (`doctor.agents_wanted`), so a run with no
+`--confirm-install-agent` (prompt v23's step 2) on a Mac an earlier run set up logs `status done rc 1
+note=tcc-pending` above `wait skipped not-requested`, and the Installer table read `its only [FAIL] lines were a
+macOS Allow still to be clicked, which the wait step asks for` over a wait that never ran. The words are true in
+both cases: `... still to be clicked (the [FAIL] line names it)`, in `_STATUS_NOTE_WORDS` and both
+`STOPPED_STEP_WORDS` lines (status, doctor), which a test keeps equal; install.sh's comments at the step 5 header and
+`DOCTOR_TCC_ONLY` say the wait asks for the Allow only when this run installs the LaunchAgents. Not a new note token:
+an older installed renderer, used for a stopped copy, would print it raw; install.log's tokens are unchanged. Not
+built: the optional extra line telling the person to click Allow when no wait runs; the status [FAIL] line already
+names the Allow, and a new person-owned line in step 2 would need its own v24 prompt words. Test:
+`test_install_oneshot.py::test_doctor_tcc_pending_with_no_agent_asked_promises_no_wait`.
 
 **The not-on-disk doctor bucket counts checks** (S12, S27: one defect from two finders, built once; amends §16.110
 Q3, §16.39 N16). The bucket was the one whose number counted folders, so `found not on disk 1:` was

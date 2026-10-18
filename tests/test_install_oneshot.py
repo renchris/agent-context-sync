@@ -541,6 +541,32 @@ def test_doctor_tcc_pending_alone_does_not_stop_the_run(
     assert ("first-sync", "done", "0", "") in steps(install_log(env))
 
 
+def test_doctor_tcc_pending_with_no_agent_asked_promises_no_wait(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 15 S35: an earlier install's LaunchAgents bring status a TCC_PENDING [FAIL] to a run with no
+    --confirm-install-agent (prompt v23's step 2), whose wait is skipped, yet the Installer table said the
+    Allow was one "which the wait step asks for". Its words promise no wait."""
+    doctor_out = f"[ok  ] config — ok\n{TCC_PENDING_FAIL}"
+    e = {**env, "STUB_DOCTOR_OUT": doctor_out, "STUB_DOCTOR_RC": "1"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not [ln for ln in cp.stdout.splitlines() if ln.startswith("ACTION:")]
+    logged = steps(install_log(env))
+    assert ("status", "done", "1", "tcc-pending") in logged and (
+        "wait",
+        "skipped",
+        "0",
+        "not-requested",
+    ) in logged
+    rows = [(step, {"result": res, "rc": rc, "note": note, "seconds": "0"}) for step, res, rc, note in logged]
+    table = "\n".join(setup_report._step_table(rows))
+    assert (
+        "| done, rc 1 (its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line" in table
+    )
+    assert "wait step asks" not in table and "wait step asks" not in INSTALL_SH.read_text(encoding="utf-8")
+
+
 def test_doctor_failure_skips_first_sync_and_agent(env: dict[str, str], folder: Path, wheel: Path) -> None:
     fail = "[FAIL] docs_repo.git — /x/docs does not exist and /x is not writable (fix: mkdir -p /x/docs)"
     e = {**env, "STUB_DOCTOR_OUT": fail, "STUB_DOCTOR_RC": "1"}
