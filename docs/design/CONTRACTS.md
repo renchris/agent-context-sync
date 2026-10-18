@@ -14333,6 +14333,10 @@ format`. install.sh's `friction_attempt_stopped` and `friction_earlier_end` foll
 Amended 2026-10-14, §16.86 L32: the labels read `no Attempt: line, since its session stopped before `install.sh
 --log-start``, `no Attempt: line, since another session logged it after the previous attempt, which has no end
 line` and `no Attempt: line, since it is in the v4 format`.
+Amended 2026-10-18, §16.121 S54 (by §16.110 Q28): a step 1 error with those words starts its own attempt at any
+gap and even in the same words after a header, or after a header-less attempt with stated words when the line is in
+install.sh's strict `<stamp> | step 1 | error |` form; the version, agent and latest-time comparisons are gone. The
+gap rule left reads the end line: any step 1 error more than `_NEW_SESSION_GAP` after it starts its own attempt.
 
 **Q31: Configuration says whether a label rule is on.** A line after `[network] proxy`: `- [policy] label rule:
 off`, or `on (I excluded id(s), N name(s), refuse_unlabelled=true|false)`, with `; policy.toml beside
@@ -21658,6 +21662,33 @@ gets a dated line with the current form; a converter's line says that a page con
 it is converted again, since no emitter version moved. The finder's fix dated them `§16.111 Q39`: that credits round
 14 with round 15's edit, and no claim of §16.111 or §16.113 names these paragraphs, so the dated-line test fails on
 every one (the verifier measured it). Tests: the dated-line scan, and `_ROUND_15_PARAGRAPH_AMENDS`'s pins.
+
+**The guide's attempt split is Q28's** (S54; dated line at §16.52 Q21). Since §16.110 Q28 a stated step 1 error
+after a header-less attempt with stated words starts its own attempt at any gap, even in the same words, when the
+line is in install.sh's strict `<stamp> | step 1 | error |` form, and round 4 Q21's version, agent and gap
+comparisons are gone. setup-feedback.md's friction.md row and its attempt rule still gave round 4's comparisons, the
+pin in `test_setup_feedback_states_the_report_rules_of_round_4` held the stale sentence, and §16.52 Q21 had no
+dated line. Both passages give Q28's rule. The finder's sentence, "a strict-form error splits at any gap", was not
+written: after a header any stated error splits, strict or not (round 5 F23), and a header-less attempt with no words
+yet takes them in (round 10 L26). The pin asserts the new sentences, refuses the old ones, and measures both splits
+with `parse_friction` (same words 4m36s apart: two attempts in the strict form, one in a loose one). Tests: that
+test, and the dated-line scan.
+
+**The guide gives a native arm64 pandoc copy its own fix** (S50). Since §16.114 Q60 doctor's `pandoc` line names
+the operator's copy `(native arm64 copy)`; its fix is to replace or remove that copy, its time-out gives no
+slow-first-start reason, and its `Bad CPU type` has no Rosetta words. setup-feedback.md gave every pandoc FAIL the
+bundled pandoc's fix and read any `Bad CPU type` as a Mac without Rosetta. Its time-out and triage bullets now give
+the native copy's fix, quoted as doctor prints it, and its Rosetta bullet is the bundled or configured pandoc's line,
+with the native copy's error said apart; the K27 history is unchanged. The bundled and configured pandoc's fix words are lane
+E's this round (§16.120). Test: `test_the_guide_gives_a_native_pandoc_copy_its_own_fix`, which builds the fix with
+`_check_pandoc`.
+
+**The deploy guide names `local-work/.not-sent`** (S61). Since §16.111 Q29 install.sh keeps
+`setup/local-work/.not-sent` (0600) once a report found a kept patch it could not read: each such patch's device,
+inode, time and size and that report's time. docs/deploy/README.md's `setup/` row named every file there but that
+one; it names it now, and says it is never copied into `bring-back.md`. Test:
+`test_the_deploy_guide_names_every_file_install_sh_keeps_in_local_work`, which reads the names install.sh writes
+beside the patches.
 
 **v7's step 2 is `install and start` at every older line** (S67; dated lines at §16.14, §16.69 H11, §16.73 H43,
 §16.79 J60 and §16.110 Q25). §16.110 Q25 made the layout's step 2 `install and start` and said the older quotes of

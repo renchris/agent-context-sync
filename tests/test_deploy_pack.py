@@ -4443,7 +4443,24 @@ def test_setup_feedback_states_the_report_rules_of_round_4() -> None:
     assert "a header (a Prompt:, Agent:, Outcome: or Run: line)" in contracts  # §16.64 G51
     assert "header or an `Attempt:` line" not in flat, "an Attempt: line alone splits nothing (orphan())"
     assert "after a headed attempt, at any gap (2 minutes after the end line is enough)" in flat
-    assert "After a header-less attempt with stated words (round 4), it does so only when" in flat
+    # B13 round 15 S54: since round 14 Q28 (orphan()) a strict-form stated error after a header-less attempt
+    # with stated words splits at any gap, even in the same words; the page and its friction.md row kept
+    # round 4's version, agent and 10-minute comparisons, and this pin held the stale sentence
+    assert "only when its version or agent differs from them" not in flat
+    assert "with a version or agent that differs from them" not in flat
+    assert (
+        "Since round 14 (Q28) it also does so after a header-less attempt that already has stated words, at"
+        " any gap and even in the same words, when the line is in install.sh's strict"
+        " `<time> | step 1 | error |` form"
+    ) in flat
+    assert (
+        "or the attempt has no header but stated words of its own and the line is in the strict"
+        " `<time> \\| step 1 \\| error \\|` form, at any gap (since round 14, Q28)"
+    ) in flat
+    stated = "2026-10-13T10:00:00Z | step 1 | error | prompt v15, Tool-A: x\n"
+    again = "2026-10-13T10:04:36Z | step 1 | error | prompt v15, Tool-A: y\n"
+    assert len(setup_report.parse_friction(stated + again).attempts) == 2
+    assert len(setup_report.parse_friction(stated + again.replace("| step 1", "|  step 1")).attempts) == 1
     assert (
         "with a version or agent that differs from that attempt's or more than 10 minutes after" not in flat
     )
@@ -5483,6 +5500,56 @@ def test_the_q66_lines_onedrive_tokens_are_the_sign_in_maps() -> None:
     )
     said = setup_report._signed_out({"apps": "sharedlibraries", "synced": "2"})[0]
     assert f"`apps=sharedlibraries` with `synced=2` reads `{said}`" in line
+
+
+def test_the_guide_gives_a_native_pandoc_copy_its_own_fix(
+    sample_config: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 15 S50: since round 14 Q60 doctor's line for the operator's native arm64 pandoc says
+    `(native arm64 copy)`, and its fix is to replace or remove that copy, with no slow-start reason and no
+    Rosetta words. setup-feedback.md gave every pandoc FAIL the bundled pandoc's fix and read any `Bad CPU
+    type` as a Mac without Rosetta. The guide quotes the native fix as `_check_pandoc` builds it."""
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    copy = Path.home() / ".local/share/agentsync/pandoc/<version>-arm64/bin/pandoc"
+    monkeypatch.setattr(doctor, "_pandoc_route", lambda config: (copy, "native"))
+    [result] = doctor._check_pandoc(sample_config)
+    assert not result.ok and result.fix is not None and "Rosetta" not in result.fix
+    page = _page("docs/deploy/setup-feedback.md")
+    assert (
+        f"Its fix is `{result.fix}`, because reinstalling the bundled pandoc does not touch that copy" in page
+    )
+    assert "its time-out line gives no slow-first-start reason" in page
+    assert "For a `(native arm64 copy)` line, replace or remove that copy instead of reinstalling" in page
+    code = Path(doctor.__file__).read_text(encoding="utf-8")
+    intel = "(it is an Intel program, which an Apple silicon Mac runs only with Rosetta)"
+    assert intel in code and '"native": " (native arm64 copy)"' in code
+    assert (
+        f"could not be started: Bad CPU type in executable {intel}`, the bundled or configured pandoc's line,"
+        " is" in page
+    )
+    assert (
+        "- `pandoc ... could not be started: Bad CPU type in executable` is an Apple silicon Mac" not in page
+    )
+    assert "The same error on a `(native arm64 copy)` line is not about Rosetta" in page
+
+
+def test_the_deploy_guide_names_every_file_install_sh_keeps_in_local_work() -> None:
+    """B13 round 15 S61: since round 14 Q29 install.sh writes `setup/local-work/.not-sent` beside the kept
+    patches, and docs/deploy/README.md's `setup/` row, which names that folder's files one by one, did not
+    name it. Every dot-file install.sh writes in `$kept` (local-work) is named in the row."""
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'kept="$SETUP_DIR/local-work"' in script
+    names = set(re.findall(r'>\s*"\$kept/(\.[A-Za-z][\w.-]*)"', script))
+    assert ".not-sent" in names
+    [row] = [
+        line
+        for line in (ROOT / "docs/deploy/README.md").read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `~/agent-context/setup/`")
+    ]
+    for name in sorted(names):
+        assert f"`local-work/{name}`" in row, name
+    assert "it is not copied into `bring-back.md`), `proxy-hosts`" in row
 
 
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:

@@ -13,7 +13,7 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 |---|---|---|
 | `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config, or, when a config is there and could not be read (since 2026-10-13), `synced=unreadable marks=<why>`, the why one fixed word (`no-tool`, `timeout`, `older:<name>`, `failed` or `failed:<ErrorClass>`); `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether git's config sets a proxy and how many URL rewrites it has (a count, never a host), whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log entries (repeats in a row shown once), read from the last 64 KiB of each log file |
-| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v24, <agent>'` (`Attempt: <UTC time>`, `Prompt: v24`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log), at any gap (the prefix is written only before `--log-start`), or the attempt has no header but stated words of its own, with a version or agent that differs from them or more than 10 minutes after its latest time, end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
+| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v24, <agent>'` (`Attempt: <UTC time>`, `Prompt: v24`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log), at any gap (the prefix is written only before `--log-start`), or the attempt has no header but stated words of its own and the line is in the strict `<time> \| step 1 \| error \|` form, at any gap (since round 14, Q28), end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
 
 `--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one host a line, in lower case and, where
 it differs, as written: the proxy, git proxy and URL rewrite hosts in force at that call). It is never embedded; both reports use it only to redact.
@@ -340,9 +340,9 @@ the rest of the line. Without those words, as in a v11 log, they say `not stated
 attempt that has no end line. Since round 5 (F23) a step 1 `error` that states them always starts its own attempt
 when the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in
 a v4 log), whatever the gap and even in the same words, because a session that wrote a header never writes the
-prefix. After a header-less attempt with stated words (round 4), it
-does so only when its version or agent differs from them, or it comes more than 10 minutes after that attempt's
-latest time. Such an attempt is listed as "no Attempt: line, since another session logged it after the previous
+prefix. Since round 14 (Q28) it also does so after a header-less attempt that already has stated words, at any gap
+and even in the same words, when the line is in install.sh's strict `<time> | step 1 | error |` form: the prefix is
+written once per session, so a second stated line is another session's. Such an attempt is listed as "no Attempt: line, since another session logged it after the previous
 attempt, which has no end line". When such an error is the log's first line its words are read too, and the attempt
 is "no Attempt: line, since its session stopped before `install.sh --log-start`". Since round 10 (L26) an attempt
 with no header and no words yet reads them from its first step 1 error that states them, wherever it sits: a
@@ -678,7 +678,12 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   `uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc`. For any other
   check it says `report it (the program does not answer on this Mac, and no setup step clears that)`.
   Neither is a command the prompt lets an agent run, so an agent that meets the line twice logs it and goes
-  to the report.
+  to the report. A `pandoc` line whose path is followed by `(native arm64 copy)` is the operator's own copy under
+  `~/.local/share/agentsync/pandoc/<version>-arm64`, which the converters run instead of the bundled pandoc. Its
+  fix is `replace or remove ~/'.local/share/agentsync/pandoc/<version>-arm64' (the converters run it instead of
+  the bundled pandoc), or set [convert] pandoc_path to an absolute pandoc`, because reinstalling the bundled
+  pandoc does not touch that copy, and its time-out line gives no slow-first-start reason: the 10 to 67 s were
+  macOS translating the Intel program (CONTRACTS §16.114, Q60).
 - Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
   `~/.local/bin/agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
   report it.
@@ -705,13 +710,17 @@ Triage:
 - The same `ran out of time` line in two install runs in a row, both exited 1, is a program that does not
   answer at all, not a slow start. For `pandoc`, a `pandoc: no answer after 300s` line in the installer
   output's tail says the same, and the way out is the second half of the fix: reinstall the bundled pandoc
-  or set `[convert] pandoc_path`.
-- `pandoc ... could not be started: Bad CPU type in executable` is an Apple silicon Mac without Rosetta. Its
+  or set `[convert] pandoc_path`. For a `(native arm64 copy)` line, replace or remove that copy instead of
+  reinstalling the bundled pandoc, as its fix says.
+- `pandoc ... could not be started: Bad CPU type in executable (it is an Intel program, which an Apple silicon
+  Mac runs only with Rosetta)`, the bundled or configured pandoc's line, is an Apple silicon Mac without Rosetta. Its
   fix line names both ways out. Installing Rosetta is the person's step, IT's on a managed Mac, and never
   the setup agent's: the line says `Rosetta is yours to install, not a setup step` and gives the command
   whole, `softwareupdate --install-rosetta --agree-to-license` (without the last option it stops at a
   license question). An agent that ran it went outside the prompt, which lets it follow a failed step 2's
-  `NEXT:` only into an `install.sh` or `agentsync` command or a click for the person.
+  `NEXT:` only into an `install.sh` or `agentsync` command or a click for the person. The same error on a
+  `(native arm64 copy)` line is not about Rosetta: that copy is not a program this Mac can run, and its fix
+  line says to replace or remove it, with no Rosetta words.
 - A `check crashed` line is an agentsync code fix, with the traceback the fix request should carry.
 - A `could not read <path>` line is the Mac's state first: a path that is not what the config says it is, a
   disk or a sync app that stopped answering. The same line in a second run is a check with a rule missing:
