@@ -2037,9 +2037,9 @@ def test_setup_feedback_reads_the_purge_preview_last_line_as_the_cli_prints_it()
     them, and says the preview's queued count is the whole queue (a preview leaves it as it is)."""
     page = " ".join((Path(__file__).parents[1] / "docs/deploy/setup-feedback.md").read_text("utf-8").split())
     assert "the last line counts what stays queued" not in page
-    assert "`N queued purge(s) previewed (dry run, nothing written); M queued`" in page
+    assert "`N queued purges previewed (dry run, nothing written); M queued`" in page
     assert "M is every queued entry" in page
-    assert "`N queued purge(s) run; M still queued`" in page
+    assert "`N queued purges run; M still queued`" in page
 
 
 def test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing(

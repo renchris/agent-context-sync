@@ -4417,12 +4417,13 @@ def test_setup_feedback_states_the_report_rules_of_round_3() -> None:
     page = _page("docs/deploy/setup-feedback.md")
     cli = (ROOT / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
     forms = {
-        "`N queued purge(s) run; M still queued`": "queued purge(s) run; {len(left)} still queued{also}",
-        "`N queued purge(s) run; M still queued (K of them while their file is listed)`": (
-            " ({len(kept)} of them while their file is listed)"
+        # B13 round 16 T32: the counts by number, "1 stays queued while its file is listed" for one
+        "`N queued purges run; M still queued`": "queued purge')} run; {len(left)} still queued{also}",
+        "`N queued purges run; M still queued (K of them while their file is listed)`": (
+            " ({len(kept)} of them while {'its' if len(kept) == 1 else 'their'} file is listed)"
         ),
-        "`N queued purge(s) run; K stay queued while their file is listed`": (
-            "queued purge(s) run; {len(kept)} stay queued while their file is listed"
+        "`N queued purges run; K stay queued while their file is listed`": (
+            'else "stay queued while their file is listed"'
         ),
     }
     for quoted, printed in forms.items():
@@ -5673,7 +5674,8 @@ def test_the_guide_quotes_the_counted_re_read_clause() -> None:
         "A last clause `since this install run began, N reads again by K other runs` "
         "(`1 read`, `1 other run` for one) sums what the other runs read again"
     ) in page
-    assert "`tightened N path(s) inside the docs repo" in page  # cli.py still prints that one
+    # B13 round 16 T32: cli.py counts that one by number now, as the guide quotes it
+    assert "`tightened N paths inside the docs repo" in page and "tightened N path(s)" not in page
     contracts = " ".join(CONTRACTS.read_text(encoding="utf-8").split("\n### 16.127 ")[0].split())
     quotes = contracts.split("N read(s) again by K other run(s)")[1:]
     assert len(quotes) == 2  # §16.14's amended line and §16.40 N32
