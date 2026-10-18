@@ -5310,16 +5310,17 @@ blocking_fails() {
 # path or sentinel, a folder renamed back or synced in its app, or a sign-in (ops/doctor.py's source checks and
 # _missing_source_fix, read by the first words of their fix). A provider folder's fix starts with its path: one
 # missing, or a SharePoint library there but empty beside its organization's OneDrive folder (B13 round 13 O52;
-# round 14 Q45, Q54, Q63). A re-run fails the same way and an edit would
+# round 14 Q45, Q54, Q63); Rosetta to install, or the native pandoc copy the operator installed (the pandoc
+# check's fixes, B13 round 15 S47, S53). A re-run fails the same way and an edit would
 # choose a folder for them, so the NEXT names the owner, as the config error's does (B13 round 13 O11, O30). Any
 # other [FAIL] keeps "fix the [FAIL] lines": a check that ran out of time is fixed by the re-run its fix names,
 # and a listing held for an Allow click by that click.
 persons_fails() {
 	local b
 	b="$(blocking_fails "$1")"
-	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back )' >/dev/null
+	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |Rosetta is yours to install|the native pandoc copy at )' >/dev/null
 }
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path or a sign-in), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

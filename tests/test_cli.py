@@ -2445,7 +2445,7 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
-    "path or a sign-in), not a step for the agent: show it to them"
+    "path, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent: show it to them"
 )
 
 
@@ -2571,6 +2571,48 @@ def test_status_puts_the_agents_own_fail_fix_before_a_persons(
         doctor, "run_checks", lambda config, *, tcc_canary=True, loop_checks=None, loop_waits=None: [person]
     )
     assert _status(cfg, capsys)[1][0] == f"NEXT: the source.x.listable check failed: {PERSONS_STEP}"
+
+
+@pytest.mark.parametrize("case", ["rosetta", "native", "native-bad-cpu", "native-timeout"])
+def test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs(
+    case: str, initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 15 S53, S47: the bundled pandoc on a Mac without Rosetta failed with "Rosetta is yours to
+    install, not a setup step ...", and the operator's native copy with "replace or remove <that copy> ...",
+    yet status's NEXT said "do what the fix on its [FAIL] line below says": an install the setup prompt does
+    not let the agent make, and a delete of a program the operator installed. Both are the person's now. A
+    native copy that ran out of time keeps the agent's re-run first, and its line names the copy as theirs
+    only once the same line comes back."""
+    cfg = _synced(initialised)
+    copy = Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc"
+    copy.parent.mkdir(parents=True)
+    copy.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    copy.chmod(0o755)
+    kind = "wheel" if case == "rosetta" else "native"
+    monkeypatch.setattr(doctor, "_pandoc_route", lambda config: (copy, kind))
+    real_run = doctor._run
+
+    def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        if argv[0] != str(copy):
+            return real_run(argv, timeout)
+        if case == "native-timeout":
+            raise subprocess.TimeoutExpired(list(argv), timeout)
+        if case == "native":
+            return subprocess.CompletedProcess(list(argv), 3, "", "broken")
+        raise OSError(doctor._EBADARCH, "Bad CPU type in executable")
+
+    monkeypatch.setattr(doctor, "_run", run)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    [line] = [ln for ln in out if ln.startswith("[FAIL] pandoc")]
+    assert rc == cli.EXIT_FAILED
+    if case == "native-timeout":
+        assert out[0] == "NEXT: the pandoc check failed: do what the fix on its [FAIL] line below says", line
+        assert "if this line comes back: show the person this line: the native pandoc copy at " in line
+        assert "is theirs to replace or remove" in line
+    else:
+        assert out[0] == f"NEXT: the pandoc check failed: {PERSONS_STEP}", (out[0], line)
+        assert not any("do what the fix" in ln for ln in out)
 
 
 @pytest.mark.parametrize("breakage", ["governance", "schema"])

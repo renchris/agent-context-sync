@@ -1191,13 +1191,13 @@ def _fail_step(result: doctor.CheckResult) -> str:
     """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
     keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it. A
     fix that is the person's (``doctor.is_persons_fix``: a [[source]] path, a folder to put back or sync, a
-    sign-in) is named as theirs, as install.sh's NEXT names it, not as a step for the agent (B13 round 14 Q1,
-    Q9, Q33)."""
+    sign-in, Rosetta or the native pandoc copy) is named as theirs, as install.sh's NEXT names it, not as a
+    step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S47, S53)."""
     if doctor.is_persons_fix(result.fix):
         return (
             f"the {result.name} check failed: its fix on the [FAIL] line below is the person's (a folder "
-            "or file to put back or sync, a [[source]] path or a sign-in), not a step for the agent: show it "
-            "to them"
+            "or file to put back or sync, a [[source]] path, a sign-in, Rosetta to install or a native "
+            "pandoc copy), not a step for the agent: show it to them"
         )
     if result.fix:
         return f"the {result.name} check failed: do what the fix on its [FAIL] line below says"

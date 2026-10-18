@@ -50,6 +50,7 @@ REAL_OCR_STATUS = doctor._ocr_status
 REAL_MEDIA_STATUS = doctor._media_status
 REAL_SPEECH_STATUS = doctor._speech_status
 REAL_DEVTOOLS_MISSING = doctor._devtools_missing
+REAL_UV_WORD = doctor._uv_word
 OCR_READY = "paper-vision revision 2, helper 0.3.0"
 MEDIA_READY = "paper-media, helper 0.1.0"
 SPEECH_READY = "paper-speech, helper 0.1.0, FluidAudio 04e363c"
@@ -72,6 +73,7 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(doctor, "_in_launchd_job", lambda cfg: False)
     monkeypatch.delenv(launchd.LAUNCHER_ENV, raising=False)
     monkeypatch.setattr(doctor, "_find_launcher", lambda: None)
+    monkeypatch.setattr(doctor, "_uv_word", lambda: "~/.local/bin/uv")  # where install.sh puts it
 
     def no_codesign(path: Path) -> doctor._CodeSignature:
         raise AssertionError(f"reached real codesign: {path}")
@@ -207,6 +209,9 @@ def test_old_python_fails(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(doctor, "_python_version", lambda: (3, 10, 9))
     r = by_name(run_checks(sample_config))["python"]
     assert not r.ok and r.severity is Severity.ERROR and "3.10.9" in r.detail
+    # B13 round 15 S29: `uv sync` syncs the project in the folder it runs in, never the tool environment
+    # install.sh made, and install.sh leaves uv off PATH; its step 2 makes that environment with Python 3.11.
+    assert r.fix == "run scripts/install.sh again (it installs agentsync with uv's Python 3.11)"
 
 
 def test_git_broken_shim(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -230,7 +235,7 @@ def test_a_probe_a_signal_stopped_is_worded_as_the_converters_word_it(
     """subprocess gives a signal's stop as a negative code: git and pandoc read "stopped by SIGKILL (signal
     9)", the phrase of ``ocr._ended``, not "exit -9"; a plain exit keeps its words (B13 round 2 R81)."""
     real_run = doctor._run
-    pandoc = str(doctor._pandoc_path(sample_config))
+    pandoc = str(doctor._pandoc_route(sample_config)[0])
     codes = {GIT: -9, pandoc: -9}
 
     def fake_run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
@@ -291,7 +296,7 @@ def test_pandoc_configured_but_missing(sample_config: Config, tmp_path: Path) ->
 
 
 def test_pandoc_bundled_path_is_absolute(sample_config: Config) -> None:
-    p = doctor._pandoc_path(sample_config)
+    p = doctor._pandoc_route(sample_config)[0]
     assert p.is_absolute() and p.name == "pandoc"
 
 
@@ -314,8 +319,13 @@ def _native_copy(monkeypatch: pytest.MonkeyPatch, body: str = "echo 'pandoc 3.9'
 
 
 NATIVE_FIX = (
-    "replace or remove ~/'.local/share/agentsync/pandoc/3.9-arm64' (the converters run it instead of the "
-    "bundled pandoc), or set [convert] pandoc_path to an absolute pandoc"
+    "the native pandoc copy at ~/'.local/share/agentsync/pandoc/3.9-arm64' is yours to replace or remove "
+    "(the converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an absolute "
+    "pandoc"
+)
+NATIVE_COMES_BACK = (
+    "show the person this line: the native pandoc copy at ~/'.local/share/agentsync/pandoc/3.9-arm64' is "
+    "theirs to replace or remove (the converters run it instead of the bundled pandoc)"
 )
 
 
@@ -329,7 +339,8 @@ def test_the_pandoc_check_runs_the_native_copy_the_converters_run(
     assert doctor._check_pandoc(sample_config)[0].detail.endswith(" (bundled with pypandoc_binary)")
     copy = _native_copy(monkeypatch)
     try:
-        assert doctor._pandoc_path(sample_config).resolve() == pandoc_mod._bundled_pandoc().resolve() == copy
+        route = doctor._pandoc_route(sample_config)[0]
+        assert route.resolve() == pandoc_mod.resolved_pandoc(None)[0].resolve() == copy
         [r] = doctor._check_pandoc(sample_config)
         assert (r.ok, r.detail) == (True, f"pandoc 3.9 at {copy} (native arm64 copy)")
     finally:
@@ -363,7 +374,7 @@ def test_a_native_pandoc_that_fails_names_that_copy_and_not_rosetta(
         monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(copy)))
         [r] = doctor._check_pandoc(sample_config)
         assert r.detail == f"{copy} (native arm64 copy) --version did not answer within 60s: {OUT_OF_TIME}"
-        assert r.fix == f"{RUN_AGAIN}{COMES_BACK}{NATIVE_FIX}"
+        assert r.fix == f"{RUN_AGAIN}{COMES_BACK}{NATIVE_COMES_BACK}"
     finally:
         pandoc_mod._wheel_pandoc_version.cache_clear()
 
@@ -379,6 +390,105 @@ def test_a_missing_bundled_pandoc_is_the_checks_fail_and_no_crash(
     assert (r.ok, r.detail, r.fix) == (False, f"{gone} is missing or not executable", PANDOC_FIX)
 
 
+def _configured(sample_config: Config, pandoc: Path) -> Config:
+    return dataclasses.replace(
+        sample_config, convert=dataclasses.replace(sample_config.convert, pandoc_path=pandoc)
+    )
+
+
+def test_a_configured_pandoc_that_fails_names_that_pandoc_and_not_the_bundled_one(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 15 S29 (rehearsal probe 60): a [convert] pandoc_path that hangs, exits non-zero or is gone
+    got the bundled pandoc's fix ("uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an
+    absolute pandoc"), with pandoc_path already that absolute pandoc, and on a time-out the bundled one's
+    slow-first-start reason. Its fix is now that path's own, and the time-out's names it once the line comes
+    back; only a path that is not absolute keeps "set ... to an absolute pandoc"."""
+    pandoc = tmp_path / "fakebin" / "pandoc"
+    pandoc.parent.mkdir()
+    pandoc.write_text("#!/bin/sh\necho broken >&2\nexit 3\n", encoding="utf-8")
+    pandoc.chmod(0o755)
+    cfg = _configured(sample_config, pandoc)
+    own = (
+        f"check or replace the pandoc at [convert] pandoc_path ('{pandoc}'), or remove that line to use the "
+        "bundled pandoc or its native arm64 copy"
+    )
+    [r] = doctor._check_pandoc(cfg)
+    assert (r.ok, r.detail, r.fix) == (False, f"{pandoc} --version failed (exit 3): broken", own)
+
+    monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(pandoc)))
+    first, second = (by_name(run_checks(cfg))["pandoc"] for _ in range(2))
+    assert first == second
+    assert first.detail == f"{pandoc} --version did not answer within 60s: {OUT_OF_TIME}"
+    assert first.fix == f"{RUN_AGAIN}{COMES_BACK}{own}"
+    for line in (first.detail, first.fix):
+        assert "pypandoc_binary" not in line and "first start" not in line, line
+
+    pandoc.unlink()
+    [r] = doctor._check_pandoc(cfg)
+    assert (r.detail, r.fix) == (f"{pandoc} is missing or not executable", own)
+    [r] = doctor._check_pandoc(_configured(sample_config, Path("fakebin/pandoc")))
+    assert r.fix == "set [convert] pandoc_path to an absolute pandoc"
+
+
+def test_no_pandoc_fix_names_a_bare_uv_sync(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 15 S29: `uv sync` reaches only the project in the folder it runs in, not the uv tool
+    environment install.sh made, and install.sh's reinstall is skipped when this commit is already
+    installed. The bundled pandoc's fix reinstalls pypandoc_binary inside that environment, measured
+    (2026-10-18, uv 0.12) to put a deleted file of a dependency back in place, the environment kept. Every
+    pandoc FAIL, of every kind, names no `uv sync`."""
+    stand_in = tmp_path / "fakebin" / "pandoc"
+    stand_in.parent.mkdir()
+    stand_in.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    stand_in.chmod(0o755)
+    failures: tuple[OSError | subprocess.TimeoutExpired | None, ...] = (
+        None,
+        OSError(errno.ENOEXEC, "Exec format error"),
+        subprocess.TimeoutExpired(["pandoc", "--version"], 60),
+    )
+    fixes: list[str] = []
+    copy = _native_copy(monkeypatch, "exit 3")
+    try:
+        for route in ("native", "wheel", "configured"):
+            if route == "wheel":
+                copy.unlink()
+            cfg = _configured(sample_config, stand_in) if route == "configured" else sample_config
+            for failure in failures:
+
+                def run(
+                    argv: Sequence[str],
+                    timeout: float = 30.0,
+                    failure: OSError | subprocess.TimeoutExpired | None = failure,
+                ) -> subprocess.CompletedProcess[str]:
+                    if failure is not None:
+                        raise failure
+                    return subprocess.CompletedProcess(list(argv), 3, "", "")
+
+                monkeypatch.setattr(doctor, "_run", run)
+                fixes += [r.fix or "" for r in doctor._check_pandoc(cfg)]
+        stand_in.unlink()
+        fixes += [r.fix or "" for r in doctor._check_pandoc(_configured(sample_config, stand_in))]
+        monkeypatch.setattr(pandoc_mod, "_wheel_pandoc", lambda: tmp_path / "gone")
+        fixes += [r.fix or "" for r in doctor._check_pandoc(sample_config)]
+    finally:
+        pandoc_mod._wheel_pandoc_version.cache_clear()
+    assert len(fixes) == 11 and all(fixes), fixes
+    assert [f for f in fixes if re.search(r"(?<![\w/~.-])uv sync\b", f)] == []
+    assert PANDOC_FIX in fixes and NATIVE_FIX in fixes
+
+
+def test_the_uv_a_fix_names_is_the_one_install_sh_finds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 15 S29: uv as install.sh's find_uv finds it, by a path that runs with uv off PATH."""
+    monkeypatch.setattr(doctor.shutil, "which", lambda name, *a, **k: None)
+    assert REAL_UV_WORD() == "~/.local/bin/uv"
+    monkeypatch.setattr(doctor.shutil, "which", lambda name, *a, **k: str(Path.home() / ".local/bin/uv"))
+    assert REAL_UV_WORD() == "~/.local/bin/uv"
+    monkeypatch.setattr(doctor.shutil, "which", lambda name, *a, **k: "/opt/homebrew/bin/uv")
+    assert REAL_UV_WORD() == "'/opt/homebrew/bin/uv'"
+
+
 # --------------------------------------------------------------------- a check that does not finish
 
 RUN_AGAIN = "~/.local/bin/agentsync status (run it again as it is)"
@@ -386,7 +496,10 @@ RUN_AGAIN_INSTALL = "run the same scripts/install.sh command again as it is (its
 COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
 AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its own for a broken program
-PANDOC_FIX = "uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc"
+PANDOC_FIX = (
+    "reinstall pypandoc_binary in agentsync's tool environment: ~/.local/bin/uv tool upgrade "
+    "--reinstall-package pypandoc_binary agentsync, or set [convert] pandoc_path to an absolute pandoc"
+)
 OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
 CRASH_FIX = (
     "~/.local/bin/agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to "
@@ -415,7 +528,7 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
     seconds`` with no fix, under an install.sh NEXT that said each FAIL names one. A check that runs out of
     time now says so, says what is known about the wait, and names the first thing to do: run again. Under
     install.sh that is its own command, which the setup prompt lets an agent run."""
-    pandoc = doctor._pandoc_path(sample_config)
+    pandoc = doctor._pandoc_route(sample_config)[0]
     monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(pandoc)))
     results = run_checks(sample_config)
     r = by_name(results)["pandoc"]
@@ -463,7 +576,7 @@ def test_a_program_that_never_answers_is_told_what_to_do_when_the_line_comes_bac
 def test_the_pandoc_check_waits_60_seconds(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
     """The limit scripts/install.sh's own first start of pandoc stays outside of (it waits 300 s)."""
     seen: list[float] = []
-    pandoc = doctor._pandoc_path(sample_config)
+    pandoc = doctor._pandoc_route(sample_config)[0]
 
     def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
         if argv[0] == str(pandoc):
@@ -629,7 +742,7 @@ def test_a_git_or_pandoc_that_cannot_be_started_keeps_its_own_fix(
     """A program macOS will not start raised out of the check too. The line now says which one and keeps
     the check's fix. The bundled pandoc is an Intel program, so on an Apple silicon Mac without Rosetta the
     error is "Bad CPU type in executable": the line says what that means and names both ways out."""
-    pandoc = doctor._pandoc_path(sample_config)
+    pandoc = doctor._pandoc_route(sample_config)[0]
     real_run = doctor._run
     error = OSError(errno.ENOEXEC, "Exec format error")
 

@@ -131,6 +131,11 @@ _PANDOC_TIMEOUT_S = 60.0
 _PANDOC_SLOW_START = (
     "the first start of a newly installed pandoc can take a minute, and later ones take under a second"
 )
+# The first words of the native copy's fix, which PERSONS_FIX_RE reads as the person's (B13 round 15 S47).
+_NATIVE_COPY_FIX = "the native pandoc copy at"
+# A Python older than 3.11 is a tool environment install.sh did not make (it asks uv for 3.11); its step 2
+# makes a new one (B13 round 15 S29: `uv sync` syncs only the folder it runs in).
+_PYTHON_FIX = "run scripts/install.sh again (it installs agentsync with uv's Python 3.11)"
 _EBADARCH = getattr(errno, "EBADARCH", 86)  # "Bad CPU type in executable": an Intel program and no Rosetta
 
 # A check that ran out of time has no answer: a slow program and one that never answers read the same from
@@ -238,9 +243,14 @@ def _pandoc_route(config: Config) -> tuple[Path, str]:
         return pandoc._wheel_pandoc(), "wheel"
 
 
-def _pandoc_path(config: Config) -> Path:
-    """The pandoc the converters will run (:func:`_pandoc_route`)."""
-    return _pandoc_route(config)[0]
+def _uv_word() -> str:
+    """uv as one shell word for a fix, found as scripts/install.sh's ``find_uv`` finds it: on PATH, else
+    ``~/.local/bin/uv``, where install.sh puts it (with ``UV_NO_MODIFY_PATH``, so often not on PATH)."""
+    found = shutil.which("uv")
+    own = Path.home() / ".local" / "bin" / "uv"
+    if found is None or Path(found) == own:
+        return "~/.local/bin/uv"
+    return _shell_path(found)
 
 
 def _ocr_status(config: Config) -> tuple[str, str]:
@@ -594,7 +604,7 @@ def _check_python(config: Config) -> list[CheckResult]:
     text = f"Python {v[0]}.{v[1]}.{v[2]} at {sys.executable}"
     if v[:2] >= _MIN_PYTHON:
         return [_ok("python", text)]
-    return [_bad("python", f"{text}; agentsync needs >= 3.11", fix="uv python install 3.11 && uv sync")]
+    return [_bad("python", f"{text}; agentsync needs >= 3.11", fix=_PYTHON_FIX)]
 
 
 def _check_git(config: Config) -> list[CheckResult]:
@@ -639,9 +649,18 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     ``_PANDOC_TIMEOUT_S`` is most often starting for the first time (see that constant): the line says so
     and its fix is to run again, then this check's own fix if the line comes back (a pandoc that never
     answers reads the same, and running again does not clear that one).  One macOS will not start is a
-    FAIL with this check's fix, and says when the reason is an Intel program on a Mac without Rosetta."""
+    FAIL with this check's fix, and says when the reason is an Intel program on a Mac without Rosetta.
+
+    The fix is by which pandoc it is (B13 round 15 S29, S47): a configured one is that path's, and the
+    bundled one's reinstall reaches the tool environment scripts/install.sh made (`uv sync` syncs only the
+    folder it runs in, and install.sh skips its reinstall when this commit is already installed). The
+    operator's native copy is the person's to replace or remove (they installed it), so status and
+    install.sh name it as theirs (``PERSONS_FIX_RE``); after a time-out the agent's re-run comes first."""
     own = "set [convert] pandoc_path to an absolute pandoc"
-    fix = f"uv sync (reinstalls pypandoc_binary) or {own}"
+    fix = (
+        f"reinstall pypandoc_binary in agentsync's tool environment: {_uv_word()} tool upgrade "
+        f"--reinstall-package pypandoc_binary agentsync, or {own}"
+    )
     try:
         pandoc, kind = _pandoc_route(config)
     except ImportError as exc:
@@ -649,22 +668,30 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     # The OK line says which copy ran; a FAIL line says so for the native copy, the one its fix is about.
     which = {"native": " (native arm64 copy)", "wheel": " (bundled with pypandoc_binary)"}.get(kind, "")
     failed = which if kind == "native" else ""
-    if kind == "native":  # the operator's copy: uv sync does not touch it, and Rosetta is not what it needs
-        fix = (
-            f"replace or remove {_shell_path(pandoc.parent.parent)} (the converters run it instead of the "
-            f"bundled pandoc), or {own}"
+    again = fix  # what a time-out's fix names once the re-run gives the same line
+    if kind == "configured":  # the operator's path: the wheel's reinstall does not touch it
+        fix = again = (
+            f"check or replace the pandoc at [convert] pandoc_path ({_shell_path(pandoc)}), or remove that "
+            "line to use the bundled pandoc or its native arm64 copy"
         )
+    elif kind == "native":  # the operator's copy: uv does not touch it, and Rosetta is not what it needs
+        copy = _shell_path(pandoc.parent.parent)
+        runs = "the converters run it instead of the bundled pandoc"
+        fix = f"{_NATIVE_COPY_FIX} {copy} is yours to replace or remove ({runs}), or {own}"
+        again = f"show the person this line: {_NATIVE_COPY_FIX} {copy} is theirs to replace or remove"
+        again += f" ({runs})"
     if not pandoc.is_absolute():
         return [
-            _bad("pandoc", f"pandoc path {pandoc} is not absolute (launchd has no Homebrew PATH)", fix=fix)
+            _bad("pandoc", f"pandoc path {pandoc} is not absolute (launchd has no Homebrew PATH)", fix=own)
         ]
     if not os.access(pandoc, os.X_OK):
         return [_bad("pandoc", f"{pandoc} is missing or not executable", fix=fix)]
     try:
         cp = _run([str(pandoc), "--version"], timeout=_PANDOC_TIMEOUT_S)
     except subprocess.TimeoutExpired as exc:
-        why = _PANDOC_SLOW_START if kind != "native" else None  # the 10 to 67 s were Rosetta's translation
-        return [_timed_out("pandoc", exc, what=f"{pandoc}{failed} --version", why=why, fallback=fix)]
+        # the 10 to 67 s were Rosetta's translation of the bundled Intel binary, which no other pandoc has
+        why = _PANDOC_SLOW_START if kind == "wheel" else None
+        return [_timed_out("pandoc", exc, what=f"{pandoc}{failed} --version", why=why, fallback=again)]
     except OSError as exc:
         detail = f"{pandoc}{failed} could not be started: {exc.strerror or exc}"
         if exc.errno == _EBADARCH and kind != "native":
@@ -930,13 +957,15 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
 
 
 # The first words of a [FAIL] fix that is the person's: a [[source]] path or sentinel, a folder or file to
-# put back, a sign-in, or a folder to sync in its app (the source checks and _missing_source_fix write them).
+# put back, a sign-in, or a folder to sync in its app (the source checks and _missing_source_fix write them);
+# Rosetta to install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53).
 # A re-run fails the same way and an edit would choose a folder for them. install.sh's persons_fails reads
 # the same words from the [FAIL] lines with its own copy, since the installer runs the older installed build;
 # a test pins the two equal (B13 round 14 Q1, Q9, Q33).
 PERSONS_FIX_RE = re.compile(
     r"(fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to "
-    r"|/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back )"
+    r"|/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back "
+    r"|Rosetta is yours to install|the native pandoc copy at )"
 )
 
 

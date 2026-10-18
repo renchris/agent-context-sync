@@ -5520,11 +5520,13 @@ def test_the_guide_gives_a_native_pandoc_copy_its_own_fix(
     [result] = doctor._check_pandoc(sample_config)
     assert not result.ok and result.fix is not None and "Rosetta" not in result.fix
     page = _page("docs/deploy/setup-feedback.md")
+    # B13 round 15 S47: that fix is the person's, and the guide says so
     assert (
-        f"Its fix is `{result.fix}`, because reinstalling the bundled pandoc does not touch that copy" in page
+        f"Its fix is the person's: `{result.fix}`, because reinstalling the bundled pandoc does not touch"
+        " that copy" in page
     )
     assert "its time-out line gives no slow-first-start reason" in page
-    assert "For a `(native arm64 copy)` line, replace or remove that copy instead of reinstalling" in page
+    assert "For a `(native arm64 copy)` line, the person replaces or removes that copy instead of" in page
     code = Path(doctor.__file__).read_text(encoding="utf-8")
     intel = "(it is an Intel program, which an Apple silicon Mac runs only with Rosetta)"
     assert intel in code and '"native": " (native arm64 copy)"' in code

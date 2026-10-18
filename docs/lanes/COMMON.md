@@ -20,7 +20,7 @@ stopped copy); S21, S22 and S34 (.not-sent and the unreadable patch); S37 and S5
 lines); S8 and S55 (the first sync's refused config in v23's finish; S55 is the prompt half); S29, S50 and S53 (the
 pandoc [FAIL] fix wording: S50 is the guide's half, lane D). Earlier rounds are in COMMON5.md to COMMON13.md.
 Some sit in two lanes: the lane that owns the primary file builds it, and the other cites the sha. In
-`ops/doctor.py`, lane E owns the pandoc functions (`_pandoc_path`, `_check_pandoc`, their fix texts and warm-up) and
+`ops/doctor.py`, lane E owns the pandoc functions (`_pandoc_route`, `_check_pandoc`, their fix texts and warm-up) and
 lane B the rest. `scripts/ship-land.sh` (S59, S63) is lane E's; it changes the tool every lane lands with, so lane E
 lands it last, after the other five have landed, and says so in its note.
 

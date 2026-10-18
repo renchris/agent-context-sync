@@ -682,10 +682,49 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
     return cases
 
 
+def _pandoc_fail_lines(cfg: Config) -> dict[str, str]:
+    """The pandoc check's [FAIL] lines, from doctor itself (B13 round 15 S47, S53): the bundled pandoc on an
+    Apple silicon Mac without Rosetta, the operator's native copy that exits non-zero or that macOS will not
+    start (the person's fixes), and the native copy and the bundled pandoc that ran out of time (the agent's
+    re-run first)."""
+    copy = Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc"
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    copy.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
+    copy.chmod(0o755)
+
+    def bad_cpu(argv: list[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        raise OSError(doctor._EBADARCH, "Bad CPU type in executable")
+
+    def silent(argv: list[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(list(argv), timeout)
+
+    def exits(argv: list[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 3, "", "broken")
+
+    lines: dict[str, str] = {}
+    for case, kind, run in (
+        ("rosetta", "wheel", bad_cpu),
+        ("native", "native", exits),
+        ("native-bad-cpu", "native", bad_cpu),
+        ("native-timeout", "native", silent),
+        ("wheel-timeout", "wheel", silent),
+    ):
+        with (
+            patch.object(doctor, "_pandoc_route", lambda config, k=kind: (copy, k)),
+            patch.object(doctor, "_run", run),
+        ):
+            lines[case] = doctor.format_results(doctor._check_pandoc(cfg)).strip()
+        assert lines[case].startswith("[FAIL] pandoc") and " (fix: " in lines[case], lines[case]
+    return lines
+
+
+PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu")
+
+
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
-    "or sync, a [[source]] path or a sign-in), not a step for the agent, so show them those lines and go on "
-    "to the report; once fixed, "
+    "or sync, a [[source]] path, a sign-in, Rosetta to install or a native pandoc copy), not a step for the "
+    "agent, so show them those lines and go on to the report; once fixed, "
 )
 
 
@@ -710,6 +749,17 @@ def test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report(
         )
         assert "fix the [FAIL] lines" not in last_line(cp) and one_next(cp)
         assert ("first-sync", "skipped", "0", "status-failed") in steps(install_log(env))
+        Path(env["STUB_LOG"]).unlink(missing_ok=True)
+    # B13 round 15 S53, S47: the pandoc check's person's fixes, alone and beside a source's
+    pandoc = _pandoc_fail_lines(sample_config)
+    for fails in ([pandoc["rosetta"]], [pandoc["native"]], [*cases["renamed"], pandoc["native-bad-cpu"]]):
+        e = {**env, "STUB_DOCTOR_OUT": "\n".join(fails), "STUB_DOCTOR_RC": "1"}
+        cp = install_sh(e, str(wheel), "--source-local", str(folder))
+        assert cp.returncode == 1, cp.stdout + cp.stderr
+        assert last_line(cp).startswith(f"{PERSONS_NEXT}the next run is: {INSTALL_SH} "), (
+            fails,
+            last_line(cp),
+        )
         Path(env["STUB_LOG"]).unlink(missing_ok=True)
     out = "NEXT: the source check failed: do what the fix on its [FAIL] line below says\n" + "\n".join(
         cases["renamed"]
@@ -739,6 +789,10 @@ def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> Non
     timeout = subprocess.TimeoutExpired(["/x/pandoc", "--version"], 60)
     for result in (doctor._timed_out("pandoc", timeout),):
         assert result.fix and not doctor.is_persons_fix(result.fix)
+    # B13 round 15 S53, S47: Rosetta to install and the operator's native pandoc copy are the person's; a
+    # pandoc that ran out of time keeps the agent's re-run first, the native copy's too.
+    for case, line in _pandoc_fail_lines(sample_config).items():
+        assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1]) is (case in PANDOC_PERSONS), (case, line)
     assert not doctor.is_persons_fix(LISTING_HELD_FAIL.split(" (fix: ", 1)[1])
     assert not doctor.is_persons_fix(None) and not doctor.is_persons_fix("")
 
@@ -755,7 +809,15 @@ def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
     again = doctor.format_results([doctor._timed_out("pandoc", timeout)])
     assert again.startswith("[FAIL] pandoc") and "run the same scripts/install.sh command again" in again
     renamed = _persons_fail_lines(sample_config)["renamed"]
-    for fails in ([again], [*renamed, again], [LISTING_HELD_FAIL], [*renamed, LISTING_HELD_FAIL]):
+    native = _pandoc_fail_lines(sample_config)["native-timeout"]  # B13 round 15 S47: the re-run first
+    for fails in (
+        [again],
+        [*renamed, again],
+        [LISTING_HELD_FAIL],
+        [*renamed, LISTING_HELD_FAIL],
+        [native],
+        [*renamed, native],
+    ):
         e = {**env, "STUB_DOCTOR_OUT": "\n".join(fails), "STUB_DOCTOR_RC": "1"}
         cp = install_sh(e, str(wheel), "--source-local", str(folder))
         assert cp.returncode == 1, cp.stdout + cp.stderr

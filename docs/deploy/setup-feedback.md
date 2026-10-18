@@ -679,15 +679,22 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   status (run it again as it is)`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
-  `uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an absolute pandoc`. For any other
-  check it says `report it (the program does not answer on this Mac, and no setup step clears that)`.
+  which is the fix of the pandoc the line names (CONTRACTS §16.120, S29): for the bundled one `reinstall
+  pypandoc_binary in agentsync's tool environment: ~/.local/bin/uv tool upgrade --reinstall-package
+  pypandoc_binary agentsync, or set [convert] pandoc_path to an absolute pandoc` (uv by the path that finds
+  it; `uv sync` never reached the tool environment), and for a `[convert] pandoc_path` `check or replace the
+  pandoc at [convert] pandoc_path ('<path>'), or remove that line to use the bundled pandoc or its native
+  arm64 copy`. For any other check it says `report it (the program does not answer on this Mac, and no
+  setup step clears that)`.
   Neither is a command the prompt lets an agent run, so an agent that meets the line twice logs it and goes
   to the report. A `pandoc` line whose path is followed by `(native arm64 copy)` is the operator's own copy under
   `~/.local/share/agentsync/pandoc/<version>-arm64`, which the converters run instead of the bundled pandoc. Its
-  fix is `replace or remove ~/'.local/share/agentsync/pandoc/<version>-arm64' (the converters run it instead of
-  the bundled pandoc), or set [convert] pandoc_path to an absolute pandoc`, because reinstalling the bundled
-  pandoc does not touch that copy, and its time-out line gives no slow-first-start reason: the 10 to 67 s were
-  macOS translating the Intel program (CONTRACTS §16.114, Q60).
+  fix is the person's: `the native pandoc copy at ~/'.local/share/agentsync/pandoc/<version>-arm64' is yours to
+  replace or remove (the converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an
+  absolute pandoc`, because reinstalling the bundled pandoc does not touch that copy, and the operator installed
+  it, so status's and the installer's `NEXT:` name it as theirs (CONTRACTS §16.120, S47). After a time-out the
+  agent's re-run comes first, then `show the person this line: ...`, and its time-out line gives no
+  slow-first-start reason: the 10 to 67 s were macOS translating the Intel program (CONTRACTS §16.114, Q60).
 - Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
   `~/.local/bin/agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
   report it.
@@ -714,16 +721,18 @@ Triage:
   to ask about.
 - The same `ran out of time` line in two install runs in a row, both exited 1, is a program that does not
   answer at all, not a slow start. For `pandoc`, a `pandoc: no answer after 300s` line in the installer
-  output's tail says the same, and the way out is the second half of the fix: reinstall the bundled pandoc
-  or set `[convert] pandoc_path`. For a `(native arm64 copy)` line, replace or remove that copy instead of
-  reinstalling the bundled pandoc, as its fix says.
+  output's tail says the same, and the way out is the second half of the fix: reinstall pypandoc_binary in
+  the tool environment (the `uv tool upgrade` command it names) or set `[convert] pandoc_path`; for a
+  configured pandoc, check or replace that pandoc, or remove the line. For a `(native arm64 copy)` line, the
+  person replaces or removes that copy instead of reinstalling the bundled pandoc, as its fix says.
 - `pandoc ... could not be started: Bad CPU type in executable (it is an Intel program, which an Apple silicon
   Mac runs only with Rosetta)`, the bundled or configured pandoc's line, is an Apple silicon Mac without Rosetta. Its
   fix line names both ways out. Installing Rosetta is the person's step, IT's on a managed Mac, and never
   the setup agent's: the line says `Rosetta is yours to install, not a setup step` and gives the command
   whole, `softwareupdate --install-rosetta --agree-to-license` (without the last option it stops at a
   license question). An agent that ran it went outside the prompt, which lets it follow a failed step 2's
-  `NEXT:` only into an `install.sh` or `agentsync` command or a click for the person. The same error on a
+  `NEXT:` only into an `install.sh` or `agentsync` command or a click for the person. Since CONTRACTS
+  §16.120 (S53) status's and the installer's `NEXT:` name that fix as the person's too. The same error on a
   `(native arm64 copy)` line is not about Rosetta: that copy is not a program this Mac can run, and its fix
   line says to replace or remove it, with no Rosetta words.
 - A `check crashed` line is an agentsync code fix, with the traceback the fix request should carry.
