@@ -7704,12 +7704,13 @@ def _gone_folder_fails(r: _Run, runs: Sequence[InstallRun]) -> set[str]:
     unexpected): ``source.<id>.listable`` and ``.volume`` of a configured source under ~/Library/CloudStorage
     whose own path is not on disk now. By check name and path, never doctor's fix text. The provider folder
     may be gone too: install.sh's ``gone=`` also counts one missing beside another folder of its app and a
-    SharePoint library not synced. Empty when the attempt's last list logged no ``gone=``, or stopped on a
-    sign-in (:func:`_sign_in_stop_fails` has those), or when more such sources are missing than it counted:
-    some went missing after step 1, and which cannot be told apart, so all stay unexpected."""
+    SharePoint library not synced. Empty when the attempt's last list logged no ``gone=`` (a sign-in stop
+    logs none: :func:`_sign_in_stop_fails` has its FAILs, B13 round 15 S39), or when more such sources are
+    missing than it counted: some went missing after step 1, and which cannot be told apart, so all stay
+    unexpected."""
     listed = _stopping_list(runs)
     counted = _count(listed, "gone")
-    if not counted or listed.get("note") == "not-signed-in" or r.config is None:
+    if not counted or r.config is None:
         return set()
     missing = [
         src.id
@@ -7993,7 +7994,9 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         folders = len({name.rsplit(".", 1)[0] for name in from_gone})
         step = fr.latest.layout.folder_question_step if fr is not None and fr.latest is not None else 1
         parts.append(
-            f"from the {'folder' if folders == 1 else 'folders'} step {step} found not on disk {folders}: "
+            # the number counts checks, as every other bucket's does; the folder count is in the words, as the
+            # folders line says it (B13 round 15 S12, S27)
+            f"from the {_plural(folders, 'synced folder')} step {step} found not on disk {len(from_gone)}: "
             + ", ".join(f"{n} FAIL" for n in from_gone)
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
@@ -8510,12 +8513,12 @@ bracket after it or not."""
 
 def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
     """``step 1's list found 1 synced folder not on disk: see Doctor``, when the list run right before the
-    last install run (no install run between) finished with ``gone=G`` (G at least 1, not a sign-in exit)
-    and this report's doctor FAILs a source's listable check because its folder does not exist, outside the
-    sign-in stop's bucket (B13 round 14 Q17, Q78: the Summary said only "kept the 2 already synced" while
-    the Installer row said one was not on disk). The list's own count, never the install run's ``kept``;
-    "not on disk", never "renamed" or "gone". Empty otherwise: a folder fixed before the report has no
-    FAIL."""
+    last install run (no install run between) finished ``done`` with ``gone=G`` (G at least 1; a sign-in
+    exit is ``failed`` and logs no ``gone=``, B13 round 15 S39) and this report's doctor FAILs a source's
+    listable check because its folder does not exist, outside the sign-in stop's bucket (B13 round 14 Q17,
+    Q78: the Summary said only "kept the 2 already synced" while the Installer row said one was not on
+    disk). The list's own count, never the install run's ``kept``; "not on disk", never "renamed" or
+    "gone". Empty otherwise: a folder fixed before the report has no FAIL."""
     installs = install_runs_only(runs)
     if not installs:
         return ""
@@ -8523,7 +8526,7 @@ def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
     listed = runs[at - 1] if at > 0 and runs[at - 1].list_only else None
     step = (listed.step("list-folders") or {}) if listed is not None else {}
     gone = _count(step, "gone")
-    if step.get("result") != "done" or step.get("note") == "not-signed-in" or not gone:
+    if step.get("result") != "done" or not gone:
         return ""
     fr = r.friction
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)

@@ -11399,7 +11399,9 @@ def test_the_folders_line_says_step_1_found_a_synced_folder_not_on_disk(
     assert clause not in folders(kept, kept)
     assert clause not in folders(kept, listed=" synced=2 gone=Contoso")
     assert clause not in folders(kept, listed=" synced=2")
-    assert clause not in folders(kept, step="done note=not-signed-in")
+    # B13 round 15 S39: the sign-in exit install.sh writes (failed, no gone=), not a done row it never writes
+    signed_out = "failed note=not-signed-in apps=onedrive missing=1"
+    assert clause not in folders(kept, listed=" synced=2", step=signed_out)
 
 
 def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
@@ -11507,6 +11509,12 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     write_friction(fake_mac, V11_HAPPY.replace("Prompt: v11", "Prompt: v21"))
     install = ("--confirm-install-agent", "done note=exists kept=2 added=0")
 
+    def assert_buckets_add_up(line: str) -> None:
+        # B13 round 15 S12, S27: every bucket counts checks, so the buckets add up to the FAILs and warns
+        fails, warns = (int(n) for n in re.search(r"- doctor: (\d+) FAIL, (\d+) warn", line).groups())
+        counted = re.findall(r"(?:expected|yours|stop|not on disk|unexpected) (\d+)\b", line)
+        assert sum(map(int, counted)) == fails + warns, line
+
     def summary(listed: str) -> str:
         set_up_log(fake_mac, install, listed=listed, list_step="done note=listed-6")
         _rc, text, _ = report(tmp_path, fake_mac["config"])
@@ -11518,16 +11526,18 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     assert "not on disk" not in line and "listable FAIL" in line.split(" · unexpected ", 1)[1], line
     got = summary(" synced=2 gone=1")
     line = _line(got, "- doctor: ")
-    bucket, unexpected = line.split(" · from the folder step 1 found not on disk 1: ", 1)[1].split(
+    bucket, unexpected = line.split(" · from the 1 synced folder step 1 found not on disk 2: ", 1)[1].split(
         " · unexpected ", 1
     )
     assert bucket.count(" FAIL") == 2 and "listable FAIL" in bucket and "volume FAIL" in bucket, line
     assert "FAIL" not in unexpected, line
+    assert_buckets_add_up(line)
     assert _line(got, "- **outcome") == _line(baseline, "- **outcome"), got  # the outcome is unchanged
     # a SharePoint library not synced beside its OneDrive-<org> is in install.sh's gone= count too
     shutil.rmtree(fake_mac["two"].parents[1])
     line = _line(summary(" synced=2 gone=2"), "- doctor: ")
-    assert " · from the folders step 1 found not on disk 2: " in line, line
+    assert " · from the 2 synced folders step 1 found not on disk 4: " in line, line
+    assert_buckets_add_up(line)
     assert "FAIL" not in line.split(" · unexpected ", 1)[1], line
     # two folders missing where step 1 counted one: which one went later cannot be told, so both unexpected
     line = _line(summary(" synced=2 gone=1"), "- doctor: ")

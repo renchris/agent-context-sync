@@ -11419,6 +11419,9 @@ Amended 2026-10-17, §16.110 Q3, Q18, Q36: two FAIL groups leave `unexpected` wi
 sign-in stop's (§16.104 O13) and the folders step 1's list found not on disk (`from the folder step 1 found not on
 disk N`, by check name and path).
 
+Amended 2026-10-18, §16.116 S12, S27: that bucket reads `from the 1 synced folder step 1 found not on disk 2`, its
+number the checks it lists.
+
 Why: the report said "yours" in its Doctor section and "unexpected" in its Summary for a wait its own Loop line
 listed two lines above, on every round, which trains a reader to skip the word meant to catch a stopped
 background sync. Amends §16.14 (dated lines there, in K16b and in the `ReportHooks` and `NextStep` blocks) and
@@ -20880,6 +20883,9 @@ the step is the layout's folder-question step), before `unexpected`, and never h
 `_doctor_fails` and the outcome are unchanged; its docstring no longer says every FAIL is unexpected (Q52). Test:
 `test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket`.
 
+Amended 2026-10-18, §16.116 S12, S27: the number counts checks, like the other buckets; the label names the folder
+count: `from the 1 synced folder step 1 found not on disk 2: source.<id>.listable FAIL, source.<id>.volume FAIL`.
+
 **The sign-in stop's bucket is install.sh's signed-out rule** (Q46, Q55; amends §16.104 O13). The bucket took a
 source when its provider folder was not on disk. A stale provider folder holding only hidden entries is signed out
 to install.sh's `signed_out` (rc 0), and its FAILs read as unexpected; a SharePoint library gone or empty beside its
@@ -21430,6 +21436,20 @@ an error line longer than 220 characters starts the error where `_FAILED_EXIT_RE
 `exited`, `returned` or `(exit` first; the shapes `<cmd> exit 1: <error>`, `exit code 1:`, `exit status 128:`, `rc=1:`
 and `rc 1:` were cut inside the command, with no word of git's error. A second arm matches them; the leftmost match
 is unchanged for the old shapes. Test: `test_a_logged_command_keeps_its_bars_and_its_error`.
+
+**The not-on-disk doctor bucket counts checks** (S12, S27: one defect from two finders, built once; amends §16.110
+Q3, §16.39 N16). The bucket was the one whose number counted folders, so `found not on disk 1:` was
+followed by two FAILs and the buckets added up to less than the FAILs and warns. The number counts the checks it
+lists; the folder count moves into the words, in the folders line's phrase: `from the 1 synced folder step 1 found
+not on disk 2: source.<id>.listable FAIL, source.<id>.volume FAIL` (`2 synced folders ... 4`). Not `from the folder
+step 1 found not on disk 2`, which reads as two folders beside the folders line's `found 1 synced folder not on
+disk`. Test: `test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket` (the buckets add up).
+
+**The folders clause's sign-in case is the row install.sh writes** (S39). A sign-in exit is `failed ...
+note=not-signed-in` and logs no `gone=`, so the `note == "not-signed-in"` checks in `_gone_clause` and
+`_gone_folder_fails` were unreachable; both are dropped, and the test's sign-in row, a `done` row install.sh never
+writes, is the real one. The removed checks were dead, so no test can fail without the change: the row now pins the
+case install.sh produces. Test: `test_the_folders_line_says_step_1_found_a_synced_folder_not_on_disk`.
 
 ### 16.117 Round 15: installer, the no-[FAIL] status NEXT and the unread patch (2026-10-18, wave B13 round 15 lane RB)
 
