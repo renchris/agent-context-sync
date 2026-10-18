@@ -690,15 +690,19 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   status (run it again as it is)`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
-  which is the fix of the pandoc the line names (CONTRACTS §16.120, S29): for the bundled one `reinstall
-  pypandoc_binary in agentsync's tool environment: ~/.local/bin/uv tool upgrade --reinstall-package
-  pypandoc_binary agentsync, or set [convert] pandoc_path to an absolute pandoc` (uv by the path that finds
-  it; `uv sync` never reached the tool environment), and for a `[convert] pandoc_path` `check or replace the
-  pandoc at [convert] pandoc_path ('<path>'), or remove that line to use the bundled pandoc or its native
-  arm64 copy`. For any other check it says `report it (the program does not answer on this Mac, and no
-  setup step clears that)`.
-  Neither is a command the prompt lets an agent run, so an agent that meets the line twice logs it and goes
-  to the report. A `pandoc` line whose path is followed by `(native arm64 copy)` is the operator's own copy under
+  which is the fix of the pandoc the line names (CONTRACTS §16.120, S29; §16.126, T54): for the bundled one
+  `run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the file
+  pypandoc_binary installed), or set [convert] pandoc_path to an absolute pandoc`, and for a `[convert]
+  pandoc_path` `check or replace the pandoc at [convert] pandoc_path ('<path>'), or remove that line to use the
+  bundled pandoc or its native arm64 copy`. For any other check it says `report it (the program does not answer
+  on this Mac, and no setup step clears that)`.
+  The bundled pandoc's re-run is a step the prompt lets the agent take: install.sh's step 2 reinstalls when that
+  pandoc is not the file pypandoc_binary's RECORD lists, under the background sync's lock, with
+  `UV_SYSTEM_CERTS=1` and at uv.lock's versions. Before, the fix was a bare `uv tool upgrade --reinstall-package
+  pypandoc_binary agentsync`, which had none of those and moved every dependency to its newest allowed version.
+  A pandoc whose file is whole and still gives the line is not something a reinstall changes, so an agent that
+  meets the line again after that re-run, or meets the configured pandoc's or another check's line twice, logs
+  it and goes to the report. A `pandoc` line whose path is followed by `(native arm64 copy)` is the operator's own copy under
   `~/.local/share/agentsync/pandoc/<version>-arm64`, which the converters run instead of the bundled pandoc. Its
   fix is the person's: `the native pandoc copy at ~/'.local/share/agentsync/pandoc/<version>-arm64' is yours to
   replace or remove (the converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an
@@ -732,9 +736,9 @@ Triage:
   to ask about.
 - The same `ran out of time` line in two install runs in a row, both exited 1, is a program that does not
   answer at all, not a slow start. For `pandoc`, a `pandoc: no answer after 300s` line in the installer
-  output's tail says the same, and the way out is the second half of the fix: reinstall pypandoc_binary in
-  the tool environment (the `uv tool upgrade` command it names) or set `[convert] pandoc_path`; for a
-  configured pandoc, check or replace that pandoc, or remove the line. For a `(native arm64 copy)` line, the
+  output's tail says the same, and the way out is the second half of the fix: the install.sh re-run, which
+  reinstalls a bundled pandoc that is not the file pypandoc_binary installed, or set `[convert] pandoc_path`;
+  for a configured pandoc, check or replace that pandoc, or remove the line. For a `(native arm64 copy)` line, the
   person replaces or removes that copy instead of reinstalling the bundled pandoc, as its fix says.
 - `pandoc ... could not be started: Bad CPU type in executable (it is an Intel program, which an Apple silicon
   Mac runs only with Rosetta)`, the bundled or configured pandoc's line, is an Apple silicon Mac without Rosetta. Its

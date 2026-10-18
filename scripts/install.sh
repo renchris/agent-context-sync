@@ -106,8 +106,10 @@
 # Steps, each skipped when already done:
 #   1. uv in ~/.local/bin (the official installer, without touching shell profiles) unless one is on PATH
 #   2. uv tool install agentsync from the checkout holding this script (a uv-managed Python 3.11; the system
-#      trust store for TLS; UV_TOOL_BIN_DIR pinned to ~/.local/bin, so the binary sits where the guides say);
-#      skipped when the last install came from this same clean checkout commit. With --force, uv rebuilds the
+#      trust store for TLS; UV_TOOL_BIN_DIR pinned to ~/.local/bin, so the binary sits where the guides say;
+#      the dependencies at the versions of the checkout's uv.lock when uv can export it); skipped when the last
+#      install came from this same clean checkout commit and the tool environment's bundled pandoc is the file
+#      pypandoc_binary installed (doctor's fix for that pandoc is this re-run). With --force, uv rebuilds the
 #      tool environment the background sync runs from: the package, its interpreter and the bundled pandoc
 #      are missing for a moment, and a cycle already running meets a new build. So the reinstall holds that
 #      sync's single-writer lock: <state_dir>/agentsync.lock of the config, read by the tool being replaced,
@@ -4453,6 +4455,7 @@ on_exit() {
 	[ -z "$TICKER" ] || kill "$TICKER" 2>/dev/null
 	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
 	[ -z "$WAIT_WATCHDOG" ] || kill "$WAIT_WATCHDOG" 2>/dev/null
+	[ -z "${AGENTSYNC_PINS:-}" ] || rm -f "$AGENTSYNC_PINS" # a run stopped during step 2's reinstall
 	step_end failed "$rc"
 	if [ "$STARTED" -eq 1 ]; then
 		END_AT="$(utc_now)"
@@ -4646,12 +4649,41 @@ tool_python() {
 	[ -z "$uv" ] || dir="$("$uv" tool dir 2>/dev/null || printf '%s' "$dir")"
 	[ ! -x "$dir/agentsync/bin/python" ] || printf '%s' "$dir/agentsync/bin/python"
 }
-# Whether step 2 skips the reinstall: the last install's stamp names this clean checkout at the same commit.
-# One test for step 2 and for step 1's word on what step 2 will do, so the two cannot disagree (B13 round 11
-# M37). A commit of "-" (unread) or one ending in -dirty never matches.
-install_is_current() { # STAMP AGENTSYNC SOURCE COMMIT
+# Whether the last install's stamp names this clean checkout at the same commit. A commit of "-" (unread) or
+# one ending in -dirty never matches.
+stamp_is_current() { # STAMP AGENTSYNC SOURCE COMMIT
 	case "$4" in "" | - | *-dirty) return 1 ;; esac
 	[ -x "$2" ] && [ -f "$1" ] && [ "$(cat "$1" 2>/dev/null)" = "commit=$4 source=$3" ]
+}
+# Whether the tool environment ENV holds pypandoc_binary's pypandoc as pip installed it: every file its RECORD
+# lists under pypandoc/ with a hash (the pandoc binary and the Python that finds it) is there, of the size and
+# sha256 RECORD gives (urlsafe base64, unpadded), and the pandoc is executable. Nothing is run: a fresh copy's
+# first start can take a minute (B13 round 16 T54).
+bundled_pandoc_intact() { # ENV
+	local r rec="" site path want size f got
+	for r in "$1"/lib/python3*/site-packages/pypandoc_binary-*.dist-info/RECORD; do
+		[ ! -f "$r" ] || rec="$r"
+	done
+	[ -n "$rec" ] && LC_ALL=C grep -q '^pypandoc/files/pandoc,sha256=' "$rec" || return 1
+	site="${rec%/*/RECORD}"
+	[ -x "$site/pypandoc/files/pandoc" ] || return 1
+	while IFS=, read -r path want size; do
+		f="$site/$path"
+		if [ ! -f "$f" ] || [ "$(LC_ALL=C wc -c <"$f" | LC_ALL=C tr -d ' ')" != "$size" ]; then
+			return 1
+		fi
+		got="$(LC_ALL=C /usr/bin/openssl dgst -sha256 -binary "$f" | LC_ALL=C /usr/bin/openssl base64 -A |
+			LC_ALL=C tr '+/' '-_' | LC_ALL=C tr -d '=')" || return 1
+		[ "sha256=$got" = "$want" ] || return 1
+	done < <(LC_ALL=C grep '^pypandoc/[^,]*,sha256=' "$rec")
+}
+# Whether step 2 skips the reinstall: the stamp is current and the bundled pandoc is whole. Doctor's fix for a
+# bundled pandoc that is missing or changed is a re-run of install.sh, which reinstalls under the sync locks
+# and the TLS setting below, and at uv.lock's versions (B13 round 16 T54, T59, T60, T65); a bare `uv tool
+# upgrade` had none of those and moved every dependency. One test for step 2 and for step 1's word on what step
+# 2 will do, so the two cannot disagree (B13 round 11 M37).
+install_is_current() { # STAMP AGENTSYNC SOURCE COMMIT
+	stamp_is_current "$@" && bundled_pandoc_intact "${1%/*}"
 }
 # The same, for a step 2 run from this checkout with uv's tool folders as step 2 reads them (step 1 runs
 # before step 2 sets UV, TOOL_DIR and COMMIT); prints the commit when it holds.
@@ -5393,9 +5425,37 @@ holder_words() { # LOCK
 	case "$pass" in poll | reconcile | dry_run) who="$who, its pass: $pass" ;; esac
 	printf '%s' "$who"
 }
+# uv.lock's versions of agentsync's dependencies as a constraints file for `uv tool install` (its path, none
+# when the source has no uv.lock or this uv cannot export it, which installs as before). Without them
+# `uv tool install --force` resolves every dependency afresh, to the newest version pyproject.toml allows:
+# converter libraries no test ran, a pypandoc_binary whose pandoc convert.pandoc does not know, and a re-read of
+# the files a converter failed on (B13 round 16 T60, T65; measured with uv 0.12.17). uv keeps them in the
+# tool's receipt.
+locked_pins() {
+	local f
+	[ -f "$SOURCE/uv.lock" ] || return 0
+	f="$(mktemp)" || return 0
+	if "$UV" export --project "$SOURCE" --locked --no-hashes --no-emit-project --no-default-groups --quiet \
+		-o "$f" </dev/null >/dev/null 2>&1 && [ -s "$f" ]; then
+		printf '%s' "$f"
+	else
+		rm -f "$f"
+	fi
+}
+AGENTSYNC_PINS=""
 uv_tool_install() {
-	local args=(tool install --force --reinstall-package agentsync --python 3.11 "$SOURCE") locks l
+	local rc=0
+	[ "$DRY_RUN" -eq 1 ] || AGENTSYNC_PINS="$(locked_pins)"
+	uv_tool_install_pinned || rc=$?
+	[ -z "$AGENTSYNC_PINS" ] || rm -f "$AGENTSYNC_PINS"
+	AGENTSYNC_PINS=""
+	return "$rc"
+}
+uv_tool_install_pinned() {
+	local args=(tool install --force --reinstall-package agentsync --python 3.11) locks l
 	local held=() busy=0 rc=0 busy_lock=""
+	[ -z "$AGENTSYNC_PINS" ] || args+=(-c "$AGENTSYNC_PINS")
+	args+=("$SOURCE")
 	AGENTSYNC_NOTE=""
 	if [ "$DRY_RUN" -eq 1 ]; then
 		run "$UV" "${args[@]}"
@@ -5459,6 +5519,9 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$SOURCE_KIND" = "checkout" ] && install_is_current
 	say "agentsync: $AGENTSYNC (current: installed from commit $COMMIT)"
 	step_end skipped 0 current
 else
+	if [ "$DRY_RUN" -eq 0 ] && [ "$SOURCE_KIND" = "checkout" ] && stamp_is_current "$STAMP" "$AGENTSYNC" "$SOURCE" "$COMMIT"; then
+		say "agentsync: the bundled pandoc in $TOOL_DIR/agentsync is missing or not the file pypandoc_binary installed; reinstalling"
+	fi
 	uv_tool_install || {
 		UV_RC=$? # fail reads the failed command's status from $?: each call below restores it
 		if [ ! -x "$TOOL_DIR/agentsync/bin/python" ] && [ -d "$TOOL_DIR/agentsync" ]; then

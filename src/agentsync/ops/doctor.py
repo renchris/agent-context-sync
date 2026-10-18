@@ -137,6 +137,14 @@ _NATIVE_COPY_FIX = "the native pandoc copy at"
 # A Python older than 3.11 is a tool environment install.sh did not make (it asks uv for 3.11); its step 2
 # makes a new one (B13 round 15 S29: `uv sync` syncs only the folder it runs in).
 _PYTHON_FIX = "run scripts/install.sh again (it installs agentsync with uv's Python 3.11)"
+# The bundled pandoc's: install.sh's step 2 reinstalls when that pandoc is not the file pypandoc_binary's
+# RECORD lists (its install_is_current), under the sync locks and the TLS setting, at uv.lock's versions; the
+# bare `uv tool upgrade` it replaces had none of those and moved every dependency (B13 round 16 T54, T59, T60,
+# T65).
+_BUNDLED_PANDOC_FIX = (
+    "run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the "
+    "file pypandoc_binary installed)"
+)
 _EBADARCH = getattr(errno, "EBADARCH", 86)  # "Bad CPU type in executable": an Intel program and no Rosetta
 
 # A check that ran out of time has no answer: a slow program and one that never answers read the same from
@@ -242,16 +250,6 @@ def _pandoc_route(config: Config) -> tuple[Path, str]:
         return pandoc.resolved_pandoc(None)
     except ConversionError:  # the wheel's binary is not there: "missing or not executable"
         return pandoc._wheel_pandoc(), "wheel"
-
-
-def _uv_word() -> str:
-    """uv as one shell word for a fix, found as scripts/install.sh's ``find_uv`` finds it: on PATH, else
-    ``~/.local/bin/uv``, where install.sh puts it (with ``UV_NO_MODIFY_PATH``, so often not on PATH)."""
-    found = shutil.which("uv")
-    own = Path.home() / ".local" / "bin" / "uv"
-    if found is None or Path(found) == own:
-        return "~/.local/bin/uv"
-    return _shell_path(found)
 
 
 def _ocr_status(config: Config) -> tuple[str, str]:
@@ -653,15 +651,13 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     FAIL with this check's fix, and says when the reason is an Intel program on a Mac without Rosetta.
 
     The fix is by which pandoc it is (B13 round 15 S29, S47): a configured one is that path's, and the
-    bundled one's reinstall reaches the tool environment scripts/install.sh made (`uv sync` syncs only the
-    folder it runs in, and install.sh skips its reinstall when this commit is already installed). The
-    operator's native copy is the person's to replace or remove (they installed it), so status and
+    bundled one's is a re-run of scripts/install.sh, whose step 2 reinstalls the tool environment it made
+    when that pandoc is not the file pypandoc_binary installed, with its sync locks, TLS setting and uv.lock's
+    versions (B13 round 16 T54, T59, T60, T65; `uv sync` syncs only the folder it runs in). The operator's
+    native copy is the person's to replace or remove (they installed it), so status and
     install.sh name it as theirs (``PERSONS_FIX_RE``); after a time-out the agent's re-run comes first."""
     own = "set [convert] pandoc_path to an absolute pandoc"
-    fix = (
-        f"reinstall pypandoc_binary in agentsync's tool environment: {_uv_word()} tool upgrade "
-        f"--reinstall-package pypandoc_binary agentsync, or {own}"
-    )
+    fix = f"{_BUNDLED_PANDOC_FIX}, or {own}"
     try:
         pandoc, kind = _pandoc_route(config)
     except ImportError as exc:

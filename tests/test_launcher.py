@@ -669,8 +669,10 @@ def test_install_sh_full_run_is_idempotent(stubs: dict[str, str], launcher_app: 
     assert cfg.is_file()
     log1 = calls(stubs)
     assert log1[:2] == ["uv tool dir --bin", "uv tool dir"], "read before the install (is it current?)"
-    assert log1[2].startswith("uv tool install --force --reinstall-package agentsync --python 3.11 ")
-    assert log1[2].endswith(str(REPO))
+    # B13 round 16 T60: uv.lock's versions are asked for first; this stub exports none, so no -c follows
+    assert log1[2].startswith(f"uv export --project {REPO} --locked "), "the checkout's pins are read"
+    assert log1[3].startswith("uv tool install --force --reinstall-package agentsync --python 3.11 ")
+    assert log1[3].endswith(str(REPO))
     assert f"agentsync init --config {cfg}" in log1 and f"agentsync status --config {cfg}" in log1
     assert not any("install-agent" in c for c in log1), "no LaunchAgent without --confirm-install-agent"
     assert not any(c.startswith("launchctl") for c in log1), "no launchctl call without the flag"

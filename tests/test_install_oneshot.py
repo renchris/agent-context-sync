@@ -18,6 +18,7 @@ and ``kickstart`` logs the launcher's canary lines as STUB_LC_CANARY_LOG says (`
 from __future__ import annotations
 
 import ast
+import base64
 import contextlib
 import dataclasses
 import fcntl
@@ -92,6 +93,23 @@ TCC_PENDING_FAIL = (
 """The launcher's own pending click, as status prints it (the stub's lines carry a fix, as every real FAIL
 does)."""
 
+FAKE_WHEEL_PANDOC = b"#!/bin/sh\necho 'pandoc 9.9'\n"
+STUB_PYPANDOC = (
+    'sp="$HOME/.local/share/uv/tools/agentsync/lib/python3.11/site-packages"\n'
+    'mkdir -p "$sp/pypandoc/files" "$sp/pypandoc_binary-1.17.dist-info"\n'
+    "printf '%s\\n' '#!/bin/sh' \"echo 'pandoc 9.9'\" > \"$sp/pypandoc/files/pandoc\"\n"
+    'chmod 755 "$sp/pypandoc/files/pandoc"\n'
+    "printf '' > \"$sp/pypandoc/__init__.py\"\n"
+    "printf 'pypandoc/__init__.py,sha256=%s,0\\npypandoc/files/pandoc,sha256=%s,%s\\n' "
+    + base64.urlsafe_b64encode(hashlib.sha256(b"").digest()).decode().rstrip("=")
+    + " "
+    + base64.urlsafe_b64encode(hashlib.sha256(FAKE_WHEEL_PANDOC).digest()).decode().rstrip("=")
+    + f" {len(FAKE_WHEEL_PANDOC)}"
+    + ' > "$sp/pypandoc_binary-1.17.dist-info/RECORD"\n'
+)
+"""A tool environment's pypandoc_binary as pip installs it, for install.sh's step 2 to find whole
+(``bundled_pandoc_intact``): its pandoc, and the RECORD line with that file's sha256 and size."""
+
 STUB_UV = """#!/bin/bash
 echo "uv $*" >> "$STUB_LOG"
 echo "UV_TOOL_BIN_DIR=${UV_TOOL_BIN_DIR:-}" >> "$STUB_LOG.uv"
@@ -105,6 +123,10 @@ print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_
   if [ -n "${STUB_UV_INSTALL_RC:-}" ]; then
     echo "error: Failed to download (stub)" >&2; exit "$STUB_UV_INSTALL_RC"
   fi
+  while [ $# -gt 0 ]; do  # the constraints file, as the install read it
+    [ "$1" != -c ] || cat "$2" >> "$STUB_LOG.pins"
+    shift
+  done
   half="${STUB_UV_HALF_REMOVE:-}"  # a tick started the tool's Python while uv removed the environment
   if [ -n "$half" ] && { [ ! -e "$STUB_LOG.half" ] || [ "$half" = always ]; }; then
     touch "$STUB_LOG.half"
@@ -114,7 +136,7 @@ print("held=%s" % S.is_held(Path(sys.argv[1])))' "$STUB_SYNC_LOCK"; } >> "$STUB_
   mkdir -p "$HOME/.local/bin" "$HOME/.local/share/uv/tools/agentsync/bin"
   cp "$STUB_AGENTSYNC" "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/bin/agentsync"
-  echo "Installed 1 executable: agentsync" >&2
+@PYPANDOC@  echo "Installed 1 executable: agentsync" >&2
   b="$HOME/.local/bin"
   printf 'warning: `%s` is not on your PATH. To use installed tools, run ' "$b" >&2
   printf '`export PATH="%s:$PATH"` or `uv tool update-shell`.\n' "$b" >&2
@@ -122,8 +144,14 @@ elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
   echo "$HOME/.local/bin"
 elif [ "$1 $2" = "tool dir" ]; then
   echo "$HOME/.local/share/uv/tools"
+elif [ "$1" = export ]; then  # uv.lock's pins, when the test gives some
+  [ -n "${STUB_UV_PINS:-}" ] || exit "${STUB_UV_EXPORT_RC:-0}"
+  while [ $# -gt 0 ]; do
+    [ "$1" != -o ] || printf '%s\n' "$STUB_UV_PINS" > "$2"
+    shift
+  done
 fi
-"""
+""".replace("@PYPANDOC@", STUB_PYPANDOC)
 
 STUB_AGENTSYNC = """#!/bin/bash
 echo "agentsync $*" >> "$STUB_LOG"
@@ -4641,6 +4669,89 @@ def test_rerun_skips_reinstalling_the_same_clean_commit(env: dict[str, str], tmp
     assert third.returncode == 0 and sum(c.startswith("uv tool install") for c in calls(env)) == 2
 
 
+@pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
+@pytest.mark.parametrize(
+    "damage", ["whole", "missing", "changed", "not executable", "no RECORD", "its Python changed"]
+)
+def test_a_rerun_reinstalls_a_bundled_pandoc_that_is_not_the_one_pip_installed(
+    env: dict[str, str], tmp_path: Path, damage: str
+) -> None:
+    """B13 round 16 T54, T59, T60, T65: doctor's fix for the bundled pandoc was a bare `uv tool upgrade`,
+    with none of the sync locks, TLS setting or stamp install.sh's reinstall has, because a re-run skipped
+    step 2 whenever the stamp named this commit. Step 2 now skips only while the tool environment's pandoc is
+    the file pypandoc_binary's RECORD lists (executable, its size and sha256), so the re-run doctor names
+    reinstalls one that is missing or changed, and says why. Step 1's word on it:
+    test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load."""
+    checkout, head = _committed_checkout(tmp_path)
+    script = checkout / "scripts" / "install.sh"
+    assert install_sh(env, script=script).returncode == 2  # it created the config and has no folder to sync
+    site = Path(env["HOME"]) / ".local/share/uv/tools/agentsync/lib/python3.11/site-packages"
+    pandoc, record = site / "pypandoc/files/pandoc", site / "pypandoc_binary-1.17.dist-info/RECORD"
+    assert pandoc.read_bytes() == FAKE_WHEEL_PANDOC and record.is_file(), "the stub installed it whole"
+    if damage == "missing":
+        pandoc.unlink()
+    elif damage == "changed":  # the same size, other bytes
+        pandoc.write_bytes(FAKE_WHEEL_PANDOC.replace(b"9.9", b"0.0"))
+    elif damage == "not executable":
+        pandoc.chmod(0o644)
+    elif damage == "no RECORD":
+        record.unlink()
+    elif damage == "its Python changed":  # doctor's "pypandoc_binary is not importable" case
+        (site / "pypandoc" / "__init__.py").write_text("raise ImportError\n")
+    again = install_sh(env, script=script)
+    assert again.returncode == 0, again.stdout + again.stderr
+    installs = sum(c.startswith("uv tool install") for c in calls(env))
+    said = "agentsync: the bundled pandoc in "
+    if damage == "whole":
+        assert installs == 1 and ("agentsync", "skipped", "0", "current") in steps(install_log(env))
+        assert f"(current: installed from commit {head})" in again.stdout and said not in again.stdout
+    else:
+        assert installs == 2, calls(env)
+        assert any(
+            ln.startswith(said)
+            and ln.endswith(" is missing or not the file pypandoc_binary installed; reinstalling")
+            for ln in again.stdout.splitlines()
+        ), again.stdout
+        assert pandoc.read_bytes() == FAKE_WHEEL_PANDOC and os.access(pandoc, os.X_OK), "reinstalled whole"
+
+
+@pytest.mark.parametrize("lock", ["exports", "export fails", "no uv.lock"])
+def test_the_reinstall_keeps_uv_locks_versions(env: dict[str, str], tmp_path: Path, lock: str) -> None:
+    """B13 round 16 T60, T65: `uv tool install --force` resolves every dependency afresh, to the newest
+    version pyproject.toml allows (measured with uv 0.12.17: a tool's two dependencies moved from 1.0 to
+    1.1 at a reinstall), so a reinstall, the one doctor's pandoc fix names included, could bring converter
+    libraries no test ran and a pypandoc_binary whose pandoc convert.pandoc does not know. Step 2 passes the
+    versions of the checkout's uv.lock as constraints when uv exports them, and installs as before when it
+    cannot; the file is removed after."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text('[project]\nname = "agentsync"\n')
+    if lock != "no uv.lock":
+        (checkout / "uv.lock").write_text("version = 1\n")
+    e = {**env, "STUB_UV_PINS": "contoso-dep==1.0\npypandoc-binary==1.17"}
+    if lock == "export fails":
+        e = {**env, "STUB_UV_EXPORT_RC": "2"}
+    cp = install_sh(e, str(checkout))
+    assert cp.returncode == 2, cp.stdout + cp.stderr
+    [install] = [c for c in calls(e) if c.startswith("uv tool install ")]
+    exported = [c for c in calls(e) if c.startswith("uv export ")]
+    pins = Path(f"{e['STUB_LOG']}.pins")
+    if lock == "exports":
+        assert exported == [
+            f"uv export --project {checkout} --locked --no-hashes --no-emit-project --no-default-groups "
+            f"--quiet -o {install.split(' -c ')[1].split(' ')[0]}"
+        ]
+        assert install.startswith("uv tool install --force --reinstall-package agentsync --python 3.11 -c ")
+        assert (
+            install.endswith(f" {checkout}")
+            and pins.read_text() == "contoso-dep==1.0\npypandoc-binary==1.17\n"
+        )
+        assert not Path(install.split(" -c ")[1].split(" ")[0]).exists(), "the constraints file is removed"
+    else:
+        assert install == f"uv tool install --force --reinstall-package agentsync --python 3.11 {checkout}"
+        assert not pins.exists() and len(exported) == (lock == "export fails")
+
+
 # ---- --version names local changes (J20) -------------------------------------------------------------------
 
 
@@ -5734,7 +5845,9 @@ def _committed_checkout(tmp_path: Path) -> tuple[Path, str]:
 
 
 @pytest.mark.skipif(not _have_git(), reason="needs developer tools (git)")
-@pytest.mark.parametrize("stamp", ["this checkout's", "an older commit's", "a changed tree"])
+@pytest.mark.parametrize(
+    "stamp", ["this checkout's", "an older commit's", "a changed tree", "this checkout's, a changed pandoc"]
+)
 def test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load(
     env: dict[str, str], tmp_path: Path, stamp: str
 ) -> None:
@@ -5754,6 +5867,10 @@ def test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load(
     shutil.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
     commit = head if stamp != "an older commit's" else "0123456789ab"
     (py.parent.parent / ".agentsync-install-source").write_text(f"commit={commit} source={checkout}")
+    subprocess.run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
+    if stamp == "this checkout's, a changed pandoc":  # B13 round 16 T54: step 2 reinstalls it, and says so
+        site = py.parent.parent / "lib" / "python3.11" / "site-packages"
+        (site / "pypandoc" / "files" / "pandoc").write_bytes(FAKE_WHEEL_PANDOC.replace(b"9.9", b"0.0"))
     if stamp == "a changed tree":
         (checkout / "pyproject.toml").write_text('[project]\nname = "agentsync"\nversion = "0"\n')
     cp = install_sh(env, "--list-folders", script=script)
@@ -6328,12 +6445,12 @@ if [ "$1 $2" = "tool install" ]; then
   printf '#!/bin/sh\\nexec "%s" "$@"\\n' "$REAL_PYTHON" > "$HOME/.local/share/uv/tools/agentsync/bin/python"
   printf '#!/bin/sh\\nexec "%s" -m agentsync "$@"\\n' "$REAL_PYTHON" > "$HOME/.local/bin/agentsync"
   chmod 755 "$HOME/.local/share/uv/tools/agentsync/bin/python" "$HOME/.local/bin/agentsync"
-elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
+@PYPANDOC@elif [ "$1 $2 ${3:-}" = "tool dir --bin" ]; then
   echo "$HOME/.local/bin"
 elif [ "$1 $2" = "tool dir" ]; then
   echo "$HOME/.local/share/uv/tools"
 fi
-"""
+""".replace("@PYPANDOC@", STUB_PYPANDOC)
 """uv for a run with the real agentsync: its ``tool install`` puts, where uv would, launchers for the Python
 running these tests (which has agentsync) as the tool's interpreter and as ``agentsync``."""
 

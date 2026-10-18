@@ -50,7 +50,6 @@ REAL_OCR_STATUS = doctor._ocr_status
 REAL_MEDIA_STATUS = doctor._media_status
 REAL_SPEECH_STATUS = doctor._speech_status
 REAL_DEVTOOLS_MISSING = doctor._devtools_missing
-REAL_UV_WORD = doctor._uv_word
 OCR_READY = "paper-vision revision 2, helper 0.3.0"
 MEDIA_READY = "paper-media, helper 0.1.0"
 SPEECH_READY = "paper-speech, helper 0.1.0, FluidAudio 04e363c"
@@ -73,7 +72,6 @@ def fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(doctor, "_in_launchd_job", lambda cfg: False)
     monkeypatch.delenv(launchd.LAUNCHER_ENV, raising=False)
     monkeypatch.setattr(doctor, "_find_launcher", lambda: None)
-    monkeypatch.setattr(doctor, "_uv_word", lambda: "~/.local/bin/uv")  # where install.sh puts it
 
     def no_codesign(path: Path) -> doctor._CodeSignature:
         raise AssertionError(f"reached real codesign: {path}")
@@ -479,14 +477,27 @@ def test_no_pandoc_fix_names_a_bare_uv_sync(
     assert PANDOC_FIX in fixes and NATIVE_FIX in fixes
 
 
-def test_the_uv_a_fix_names_is_the_one_install_sh_finds(monkeypatch: pytest.MonkeyPatch) -> None:
-    """B13 round 15 S29: uv as install.sh's find_uv finds it, by a path that runs with uv off PATH."""
-    monkeypatch.setattr(doctor.shutil, "which", lambda name, *a, **k: None)
-    assert REAL_UV_WORD() == "~/.local/bin/uv"
-    monkeypatch.setattr(doctor.shutil, "which", lambda name, *a, **k: str(Path.home() / ".local/bin/uv"))
-    assert REAL_UV_WORD() == "~/.local/bin/uv"
-    monkeypatch.setattr(doctor.shutil, "which", lambda name, *a, **k: "/opt/homebrew/bin/uv")
-    assert REAL_UV_WORD() == "'/opt/homebrew/bin/uv'"
+def test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 16 T54, T59, T60, T65: the bundled pandoc's fix was `<uv> tool upgrade --reinstall-package
+    pypandoc_binary agentsync`, which took none of the sync locks install.sh holds around a reinstall, ran
+    without the UV_SYSTEM_CERTS=1 it sets for networks that inspect TLS, rebuilt agentsync from the checkout
+    as it stood, and moved every dependency, pypandoc_binary too, to its newest allowed version (measured
+    with uv 0.12.17). The fix is now a re-run of install.sh, whose step 2 no longer skips while that pandoc is
+    not the file pypandoc_binary installed (``bundled_pandoc_intact``, read here from the script)."""
+    monkeypatch.setattr(pandoc_mod, "_wheel_pandoc", lambda: tmp_path / "gone")
+    [r] = doctor._check_pandoc(sample_config)
+    assert (r.ok, r.fix) == (False, PANDOC_FIX)
+    assert "uv " not in r.fix and "tool upgrade" not in r.fix and "--reinstall" not in r.fix
+    assert r.fix.startswith(doctor._PYTHON_FIX.split(" (", 1)[0] + " ("), "the re-run the python fix names"
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    current = re.search(r"(?ms)^install_is_current\(\) \{.*?^\}$", script)
+    assert current is not None and 'bundled_pandoc_intact "${1%/*}"' in current.group(0)
+    assert "UV_SYSTEM_CERTS=1" in script and "tool install --force --reinstall-package agentsync" in script
+    guide = " ".join((Path(__file__).parents[1] / "docs/deploy/setup-feedback.md").read_text().split())
+    assert f"for the bundled one `{PANDOC_FIX}`" in guide, "the guide quotes the fix doctor prints"
+    assert "the `uv tool upgrade` command it names" not in guide
 
 
 # --------------------------------------------------------------------- a check that does not finish
@@ -497,8 +508,8 @@ COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
 AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its own for a broken program
 PANDOC_FIX = (
-    "reinstall pypandoc_binary in agentsync's tool environment: ~/.local/bin/uv tool upgrade "
-    "--reinstall-package pypandoc_binary agentsync, or set [convert] pandoc_path to an absolute pandoc"
+    "run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the "
+    "file pypandoc_binary installed), or set [convert] pandoc_path to an absolute pandoc"
 )
 OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
 CRASH_FIX = (

@@ -227,8 +227,9 @@ record only: no file on this Mac was left to read again, so no cycle looks until
 _REREAD_BATCH = 20  # files asked for at a time, and read between two lock beats
 _CONVERTER_DISTS = ("olefile", "openpyxl", "pdfminer.six", "pypandoc_binary", "pypdfium2", "python-pptx")
 """The distributions the converters read files with (pyproject.toml's dependencies), whose installed
-versions are in ``_Cycle._capabilities``: a library upgrade (``uv sync`` with no agentsync change) may read a
-file the old one failed on, so it opens the re-read as a new build does.  Distribution versions only: a
+versions are in ``_Cycle._capabilities``: a library upgrade (a reinstall of the uv tool environment with no
+agentsync change; ``uv sync`` never reaches that environment) may read a file the old one failed on, so it
+opens the re-read as a new build does.  Distribution versions only: a
 converter's ``version()`` also carries the OCR identity and an import failure's word, which change from
 run to run."""
 _REREAD_ATTEMPTS = 2
