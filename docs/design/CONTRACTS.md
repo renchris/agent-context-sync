@@ -11475,6 +11475,14 @@ disk N`, by check name and path).
 Amended 2026-10-18, §16.116 S12, S27: that bucket reads `from the 1 synced folder step 1 found not on disk 2`, its
 number the checks it lists.
 
+Amended 2026-10-18, §16.122 T20, T34: the number is in a bracket with its unit, `from the 1 synced folder step 1 found not on disk (2
+checks)`, and so is the sign-in stop's, `from the sign-in stop (2 checks)`.
+
+Amended 2026-10-18, §16.122 T4, T14: a third FAIL group leaves `unexpected` without changing the outcome, the FAIL of a configuration a
+sync refuses (`from the configuration a sync refuses (1 check): <check> FAIL (see Configuration)`): a `policy`,
+`governance.config` or `config.vanished_sources` FAIL whose refusal the report itself reads, so those `config.*`
+FAILs no longer stay unexpected; any other FAIL still does.
+
 Why: the report said "yours" in its Doctor section and "unexpected" in its Summary for a wait its own Loop line
 listed two lines above, on every round, which trains a reader to skip the word meant to catch a stopped
 background sync. Amends §16.14 (dated lines there, in K16b and in the `ReportHooks` and `NextStep` blocks) and
@@ -14384,6 +14392,8 @@ other entry(ies)`. Test: `test_environment_says_whether_each_provider_folder_is_
 **Amended 2026-10-13, §16.63 G40:** a symlinked provider entry is read as the provider folder its target sits
 in, never by its own or its target's attributes: `a symlink: read as the provider folder it points into, <that
 folder's reading>`, and `a symlink that does not resolve` or `a symlink into no provider folder` read as a domain.
+Amended 2026-10-18, §16.122 T40: the folder it points into is named, by its own placeholder, and the link's name is
+a `<link-N>`: `<link-1> (a symlink into OneDrive-<org-1>: read as that folder, <that folder's reading>)`.
 
 **Q41: the module docstring's redaction paragraph** names the LaunchAgent's proxy, the generic dotless host replaced
 only inside a URL, the unaccented spellings, the joined-word rule (Q72), the held placeholders and the kept
@@ -20994,6 +21004,8 @@ the step is the layout's folder-question step), before `unexpected`, and never h
 
 Amended 2026-10-18, §16.116 S12, S27: the number counts checks, like the other buckets; the label names the folder
 count: `from the 1 synced folder step 1 found not on disk 2: source.<id>.listable FAIL, source.<id>.volume FAIL`.
+Amended 2026-10-18, §16.122 T20, T34: the count is in a bracket with its unit, after the words: `from the 1 synced folder step 1
+found not on disk (2 checks): ...`.
 
 **The sign-in stop's bucket is install.sh's signed-out rule** (Q46, Q55; amends §16.104 O13). The bucket took a
 source when its provider folder was not on disk. A stale provider folder holding only hidden entries is signed out
@@ -21069,6 +21081,10 @@ run=<id>` header to the next): `exited 1 at its status step ([FAIL] pandoc, time
 at most three and `+N more`, each redacted, `timed out` only on doctor's own words (`ran out of time`, `did not
 answer within`); `(its [FAIL] lines are not in the install.out lines read)` when the header is not among them; no
 install.out, or another failing step, is unchanged. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+Amended 2026-10-18, §16.122 T21: when one of the two runs named no `--source-local` folder, the words are `with no --source-local` (the
+run that ended 0 named none) or `with --source-local folders added` (the failed run named none); `other folders` is
+for folders on both runs.
 
 **Residue: an app's own provider folder** (Q14, Q37). `~/Library/CloudStorage/Dropbox/<folder-3>` flagged
 `Dropbox`: only a provider folder naming an organisation was skipped (`provider_heads`). `residue()` skips an app
@@ -21617,6 +21633,9 @@ not-on-disk clause (`_gone_clause`) keeps the list run right before the last ins
 `test_the_folders_line_counts_what_was_kept_added_and_named` (RT's two runs, a same-options retry, a run after the
 end line, counts that do not chain).
 
+Amended 2026-10-18, §16.122 T44: only for an attempt with a begin time, as the install line scopes; with no friction log, or an attempt
+with no begin time, the runs are the whole install.log, and the line is the last run's.
+
 **A [FAIL] fix that is the person's is no hint for the agent** (S5). `instruction_counts` counted every `fix:` as an
 instruction-like line, which the Installer section calls a hint the agent may act on, so a run whose six [FAIL]
 fixes were the person's read `6 other instruction-like line(s) (6 fix:)` while that run's NEXT (`PERSONS_FAILS`)
@@ -21632,6 +21651,11 @@ The Installer sentence says so. Test: `test_a_persons_fail_fix_is_not_counted_as
 Amended 2026-10-18, §16.127 T75 (by §16.116 S26): the count takes its noun, so the line reads `... and 0 other
 instruction-like lines and 6 fix: on [FAIL] lines that are the person's ...`; the `6 other instruction-like
 line(s) (6 fix:)` above is what the line read before S5.
+
+Amended 2026-10-18, §16.122 T8, T47, T49: the clauses are an Oxford-comma list and the person's clause names what the rule reads, its noun
+by the count: `..., 0 other instruction-like lines, and 6 [FAIL] lines whose fix: is the person's (a sign-in, a
+folder, a [[source]] path or block, Rosetta or a native pandoc copy; not hints for the agent) in the last ...`. A run
+whose `NEXT:` line does not say the [FAIL] lines are the person's counts none of them.
 
 **A known count takes its noun from the count, everywhere in the report** (S26, S30, S31: one defect from three
 finders, built once; amends §16.111 Q39). Q39 moved a few lines to `plural`; the report still wrote `(s)` after
@@ -21692,6 +21716,8 @@ lists; the folder count moves into the words, in the folders line's phrase: `fro
 not on disk 2: source.<id>.listable FAIL, source.<id>.volume FAIL` (`2 synced folders ... 4`). Not `from the folder
 step 1 found not on disk 2`, which reads as two folders beside the folders line's `found 1 synced folder not on
 disk`. Test: `test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket` (the buckets add up).
+
+Amended 2026-10-18, §16.122 T20, T34: `found not on disk 2:` read as a disk's number; the count is now `(2 checks)`, after the words.
 
 **The folders clause's sign-in case is the row install.sh writes** (S39). A sign-in exit is `failed ...
 note=not-signed-in` and logs no `gone=`, so the `note == "not-signed-in"` checks in `_gone_clause` and
@@ -21926,6 +21952,11 @@ install.out line's quoted source ids are named as `_Labels` names them. Step 2's
 `test_a_config_the_sync_refuses_loads_but_says_so`, `test_a_first_sync_refusal_is_no_config_that_does_not_load`,
 `test_readme_step3_runs_the_loop_then_the_report` (`UNLOADED_CONFIG`, `REFUSED_CONFIG`),
 `test_readme_prompt_carries_the_field_lines` (`INBOX_WHEN`).
+
+Amended 2026-10-18, §16.122 T7, T15: a vanished source's count sits inside its label's bracket, `a source (not in the config, 1; 4
+files) is mirrored ...`, on the live line and on step 2's install.out line; a table's refusal no longer names the
+exception's class: `[policy] exclude_label_ids in policy.toml is not valid (the error's words are not shown here,
+...)`.
 
 **Step 1 logs a failed command's error as printed, host names included** (S6; amends §16.112 Q31). Step 1's "log the
 command that failed ... and its error" met the friction rule's "name ... my organization ... by its role, never by
@@ -22262,7 +22293,95 @@ pin in `_ROUND_15_PARAGRAPH_AMENDS`.
 
 ### 16.122 Round 16: setup report (2026-10-18, wave B13 round 16 lane RA)
 
-Reserved for round 16 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 16").
+The setup report's findings of the v24 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 16"; specs `round16/items/T<n>.md`, the verifier's corrected fix built unless said). Lane RA's items: T3,
+T4, T7, T8, T14, T15, T20, T21, T34, T40, T42, T44, T47, T48, T49, T52, T53, T63, T66 and T87. One defect from
+several finders is built once: T4 and T14, T7 and T15, T20 and T34, T42, T53 and T66, T52 and T87, and the cache line
+of T49 with T63. Each has a test that fails without it. Where an item changes what an older section states, that
+section has a dated line (`Amended 2026-10-18, §16.122 T<n>`). No item needs prompt words, so none went to lane P.
+
+**A policy or governance error's quoted value is a placeholder everywhere** (T3). The Configuration line held a
+policy error's words back, as they can name a label or a host, while Doctor's [FAIL] line and the install.out tail
+showed them. The Redactor matches the value by pattern, the key kept: the quoted value after `exclude_label_ids: `
+or `exclude_label_names: ` is `<label>`, and after `remote_url_prefixes: ` (`... is not a remote URL`, `...
+carries a password`) `<remote>`, two unnumbered kinds in the legend that never make the report private. Not by
+registering policy.toml's strings as values: a label name is often a word the report prints, which would cut its
+prose. `agentsync sync` still prints the value. Test: `test_a_policy_or_governance_errors_value_is_never_in_the_report`.
+
+**A vanished source's id is a placeholder in every section** (T42, T53, T66). doctor's `config.vanished_sources`
+[FAIL] and the sync's refusal quote the id of a source whose [[source]] block is gone, and `_build_redactor`
+registered only configured ids, so Doctor and the install.out tail showed it in clear. `_unconfigured_ids` reads
+every id the manifest's rows (any state) and the purge queue hold that sources.toml lacks, read-only and bounded,
+and each is a `<source-N>` after the configured ones, agentsync's own words left out as for configured ids. The
+evidence parts keep `(not in the config, N)`. The shell fallback report registers the ids those two lines quote
+(`redaction_pairs`, numbered after the tables). ops/doctor.py is unchanged. Tests:
+`test_a_vanished_sources_id_is_a_placeholder_in_every_section`,
+`test_install_oneshot.py::test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone`.
+
+**The report's vanished-source check is the cycle's** (T52, T87). `_live_refusal` held its own copy of
+`Manifest.present_counts`' query, `vanished_sources`' rule and the refusal's words. `manifest.present_counts_on`,
+`cycle.vanished_from`, `cycle.VANISHED_WORDS` and `cycle.VANISHED_ADVICE` are the one copy; the report runs them on
+its own read-only connection, since a `Manifest` opens read-write and may migrate. Test:
+`test_the_reports_vanished_source_check_is_the_cycles`.
+
+**A vanished source's count is inside its label's bracket** (T7, T15; amends §16.118 S8). `a source (not in the
+config, 1) (4 files)` put two brackets side by side; it reads `(not in the config, 1; 4 files)`, the label kept
+because the evidence tables name the source by it. T15's label-free wording is not built: with two sources the
+entries could not be told apart. A table's refusal drops the exception's class name. Tests:
+`test_a_vanished_sources_count_is_inside_its_labels_bracket`, `test_a_config_the_sync_refuses_loads_but_says_so`.
+
+**The doctor line's refused-configuration bucket** (T4, T14: one defect from two finders, built once; amends §16.39
+N16). A vanished source, a policy.toml that does not pass and a bad `[governance]` key each read `unexpected 1:
+<check> FAIL` beside a Configuration line naming that refusal. `_refusing_checks` reads the three refusals as
+`_live_refusal` does, each on its own, and their FAILs go to `from the configuration a sync refuses (N checks): ...
+(see Configuration)`; `_doctor_fails` and the outcome still count them. T4's bucket keyed on doctor's fix text
+(`is_persons_fix`) is not built: measured, it moved sign-in and missing-folder FAILs that no step announced out of
+`unexpected`, which three tests pin on purpose (§16.104 O13, §16.110 Q36). Test:
+`test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket` (CF, PT and GV; a `policy` FAIL
+whose policy loads and an unrelated FAIL stay unexpected).
+
+**A "from" bucket's count is in a bracket** (T20, T34: one defect from two finders, built once; amends §16.116
+S12, §16.110 Q3, §16.39 N16). `found not on disk 2:` read as a disk's number, and `from the sign-in stop 2:` the
+same: both read `(N checks)` after their words, T20's wording. T34's `missing 2 (the 1 synced folder ...)` would
+give one bucket a new label of its own and leave the sign-in stop as it was. Test:
+`test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket` (the buckets add up; no digit follows
+"not on disk").
+
+**A re-run that named no folder** (T21; amends §16.110 Q12). `with other folders` was said of a re-run with no
+arguments; the dated line gives the words. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+**The folders line sums only a scoped attempt's runs** (T44; amends §16.116 S9). With no friction log the runs
+were the whole install.log, so a re-run a month later read `2 added (none was synced before)`. Test:
+`test_the_folders_line_counts_what_was_kept_added_and_named`.
+
+**The installer-output line's person's clause** (T8, T47, T49; amends §16.116 S5). Two chained `and`s, `1 ...
+lines that are` at a count of 1, and `their run's NEXT says so` of a first run with no folder, whose NEXT says
+`no folder to sync yet`. `_persons_run` is false for a run whose `NEXT:` line lacks "the [FAIL] lines above are the
+person's" (the loop's `background sync: ...;` form holds it); a run with no NEXT yet, the one writing the report,
+keeps the [FAIL]-only rule, since a NEXT required there would undo §16.116 S5 for the commonest report. Tests:
+`test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next`,
+`test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent`.
+
+**The report's TCC_PENDING pattern is install.sh's** (T48). `_TCC_PENDING_FAIL_RE` and `blocking_fails`' grep
+were tied by a docstring only. Test:
+`test_install_oneshot.py::test_the_reports_tcc_pending_pattern_is_install_shs_blocking_fails` (the two patterns
+equal, and the line `doctor.format_results` writes for the check matched).
+
+**Each count of 1 takes its own words** (T49, T63). `1 read again (it was converted)`, `the checked folder is
+excluded in sources.toml now`, `the mirror still holds 1 file below the checked folder`, `1 conversion was used
+again by a later run than the one that made it (...); it was used last by the newest run (N)`, `...; check it.`
+and `the last line of` in the Installer embed. install.sh's stopped-copy reader matches `the last ([0-9]+ )?line`,
+so its left-out note keeps applying. Tests: `test_one_repeat_conversion_is_it_never_them`,
+`test_an_install_out_of_one_line_is_the_last_line_never_the_last_1_line`,
+`test_empty_cloud_folders_part_says_its_zeros_in_words`,
+`test_install_oneshot.py::test_a_stopped_copys_embed_counts_the_lines_it_leaves_out`.
+
+**A provider symlink is a `<link-N>`** (T40; amends §16.52 Q33). A CloudStorage symlink's name was an organization, so the
+Environment line read as two and a link sorting first took `<org-1>`. Organizations come from real folders only; a
+symlink's whole name, an entry or a configured source's provider part, is a `<link-N>` after them, unless it names
+a registered organization, and the line reads `a symlink into OneDrive-<org-1>: read as that folder, ...`. Printing
+the link's own name would leak it (round 5 F42's test). Tests: `test_a_provider_symlink_is_no_second_organization`,
+`test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words`.
 
 ### 16.123 Round 16: installer, bring-back.md's patches and the stopped copy (2026-10-18, wave B13 round 16 lane RB)
 
