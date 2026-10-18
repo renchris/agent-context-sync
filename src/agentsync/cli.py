@@ -38,7 +38,7 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -56,7 +56,7 @@ from agentsync import (
     skill,
 )
 from agentsync import policy as content_policy
-from agentsync.arm_local import exclude_advice, exclude_globs
+from agentsync.arm_local import ECHOED_ALARM, exclude_advice, exclude_globs
 from agentsync.config import (
     Config,
     SourceConfig,
@@ -574,8 +574,51 @@ def _print_checkpoint(report: CycleReport) -> None:
         )
 
 
+class _HeldAlarms(logging.Filter):
+    """Holds back the records :data:`ECHOED_ALARM` marks, which the run's report prints as alarm lines."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.held: list[logging.LogRecord] = []
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(record, ECHOED_ALARM, False):
+            self.held.append(record)
+            return False
+        return True
+
+
+@contextlib.contextmanager
+def _alarms_in_the_report(config: Config) -> Iterator[None]:
+    """A run that prints its own report drops the WARNING its alarms were logged with from agentsync's stderr
+    handler, since each one prints as that source's alarm line (B13 round 15 S2, S13). The LaunchAgent's job
+    keeps them: its stderr is the err.log the setup report's Recent errors reads, which no alarm line on its
+    out.log matches. A cycle that raises prints no report, so the held records are logged then."""
+    handlers = [h for h in logging.getLogger().handlers if getattr(h, "_agentsync", False)]
+    if not handlers or launchd.started_by_our_job(config):
+        yield
+        return
+    held = _HeldAlarms()
+    for h in handlers:
+        h.addFilter(held)
+    try:
+        yield
+    except BaseException:
+        for h in handlers:
+            h.removeFilter(held)
+        for record in held.held:
+            for h in handlers:
+                if record.levelno >= h.level:
+                    h.handle(record)
+        raise
+    finally:
+        for h in handlers:
+            h.removeFilter(held)
+
+
 def _run(config: Config, **kwargs: object) -> int:
-    report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
+    with _alarms_in_the_report(config):
+        report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
     budget = kwargs.get("budget_bytes")
     _print_report(report, run_budget=budget if isinstance(budget, int) else None)
     if kwargs.get("mode") is not CycleMode.DRY_RUN and report.exit_code in (EXIT_OK, EXIT_FAILED):

@@ -64,6 +64,12 @@ from agentsync.skill import AGENTSYNC_BIN
 
 log = logging.getLogger(__name__)
 
+ECHOED_ALARM = "agentsync_echoed_alarm"
+"""The ``extra`` key on the WARNING an incomplete walk logs with its alarm: the sync's own report prints that
+alarm under its source, so a run that prints the report drops the record from its stderr, and the
+LaunchAgent's job keeps it in its err.log, where the setup report's Recent errors reads it (B13 round 15 S2,
+S13: an interactive sync printed it twice, the WARNING above the run line)."""
+
 _T = TypeVar("_T")
 
 # How long one directory listing may take before agentsync stops waiting for it. A listing that never returns
@@ -1063,7 +1069,7 @@ class LocalArm:
         return self._volume
 
     def _incomplete(self, alarm: str) -> ScanResult:
-        log.warning("%s: %s", self.source_id, alarm)
+        log.warning("%s: %s", self.source_id, alarm, extra={ECHOED_ALARM: True})
         return ScanResult(
             source_id=self.source_id,
             pass_kind=PassKind.FULL,

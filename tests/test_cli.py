@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -24,6 +25,7 @@ import yaml
 
 from agentsync import (
     __version__,
+    arm_local,
     cli,
     curate,
     gitops,
@@ -50,6 +52,7 @@ from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
 from agentsync.model import CycleMode, CycleReport, PassKind, RowState, SourceKind, SourceReport, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock
+from agentsync.paths import expand
 from conftest import zone
 
 
@@ -2375,6 +2378,67 @@ def test_status_under_install_says_a_fail_stops_the_sync_a_held_listing_waits_fo
     # the report's own path, with the [FAIL] beside it (B13 round 15 S43: no faked _status_checks)
     [line] = [ln for ln in cli._report_hooks().doctor(initialised) if ln.startswith("[warn] heartbeat.x")]
     assert line.endswith(f"({doctor.LISTING_YOURS_REPORT_NOTE})"), line
+
+
+@pytest.mark.parametrize("kind", ["missing", "file"])
+@pytest.mark.parametrize("job", [False, True])
+def test_a_sync_logs_an_alarm_its_report_prints_only_in_the_background_job(
+    initialised: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kind: str,
+    job: bool,
+) -> None:
+    """B13 round 15 S2, S13: a sync over a missing source root printed a timestamped "WARNING
+    agentsync.arm_local: <id>: source root missing: ..." above its run line, the same text as that source's
+    alarm line, which the prompt does not describe. A run that prints its report drops it from stderr; the
+    LaunchAgent's job keeps it, since its stderr is the err.log whose WARNING lines the setup report's
+    Recent errors lists and no out.log alarm line matches."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    moved = local_source_dir.with_name("moved")
+    local_source_dir.rename(moved)
+    if kind == "file":  # another of _incomplete's alarms
+        local_source_dir.write_text("not a folder\n", encoding="utf-8")
+    alarm = "source root missing: " if kind == "missing" else "source root is not a directory: "
+    if job:
+        monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.sync")
+    cli.main(["sync", "--config", cfg] + (["--mode", "poll"] if job else []))
+    out, err = capsys.readouterr()
+    assert any(ln.startswith(f"    alarm: {alarm}") for ln in out.splitlines()), out
+    warned = [ln for ln in err.splitlines() if " WARNING agentsync.arm_local: " in ln and alarm in ln]
+    assert len(warned) == int(job), err
+    if job:
+        logs = expand(initialised.log_dir)
+        logs.mkdir(parents=True, exist_ok=True)
+        (logs / f"{initialised.launchd_label_prefix}.sync.err.log").write_text(err, encoding="utf-8")
+        run = setup_report._Run(initialised.config_path, setup_report.ReportHooks(), 30.0)
+        assert any(alarm in ln for ln in setup_report._recent_errors(run)), "Recent errors lists it"
+
+
+def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
+    initialised: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 15 S2, S13: the held WARNING is dropped only because the report prints its alarm; a cycle
+    that raises prints no report, so the record is logged after all."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    shutil.rmtree(local_source_dir)
+
+    def boom(config: Config, **kwargs: object) -> CycleReport:
+        logging.getLogger("agentsync.arm_local").warning(
+            "x: source root missing: gone", extra={arm_local.ECHOED_ALARM: True}
+        )
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "run_cycle", boom)
+    with pytest.raises(RuntimeError):
+        cli.main(["sync", "--config", cfg])
+    assert "WARNING agentsync.arm_local: x: source root missing: gone" in capsys.readouterr().err
 
 
 PERSONS_STEP = (
