@@ -201,6 +201,18 @@ def test_rule_3_never_synced(tmp_path: Path, folder: Path) -> None:
     ]
 
 
+def test_rule_3_two_sources_never_synced(tmp_path: Path, folder: Path) -> None:
+    """B13 round 16 T86: rule 3's count, pinned at 2 (round 15 S65 pinned only 1)."""
+    other = tmp_path / "Other"
+    other.mkdir()
+    (other / NOTE_NAME).write_text("The plan.\n", encoding="utf-8")
+    config = _setup(tmp_path, local_source_table("work", folder), local_source_table("other", other))
+    skill.write_skill(config.docs_repo)
+    assert _lines(config) == [
+        f"NEXT: 2 sources not fully listed or converted yet (other, work): run `{BIN} sync` again"
+    ]
+
+
 def test_rule_3_a_local_file_not_converted_yet(tmp_path: Path, folder: Path) -> None:
     config = _synced(tmp_path, folder)
     with Manifest(config.state_paths.db) as manifest:
@@ -285,6 +297,43 @@ def test_an_os_refused_download_is_a_wait_until_a_later_sync_reads_it(
     assert run_cycle(config, mode=None).exit_code == 0
     assert _lines(config) == [
         f"NEXT: draft the baseline questions: follow step 1 (Draft) of {BASELINE}, then run `{BIN} sync`"
+    ]
+
+
+def test_the_online_only_waits_agree_with_a_count_of_two(
+    tmp_path: Path, folder: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 16 T86: round 15 S65's over-budget and refused waits choose their noun, verb and pronoun by
+    the count, and every pin used a count of 1: two files read "are", "their size" and "their folder"."""
+    for name in ("big-1.bin.txt", "big-2.bin.txt"):
+        (folder / name).write_text("x" * 4000, encoding="utf-8")
+    online = {(folder / n).stat().st_ino for n in ("big-1.bin.txt", "big-2.bin.txt")}
+    real_dataless, real_materialise = materialise.is_dataless, arm_local.materialise
+
+    def fake(st: os.stat_result) -> bool:  # mocked SF_DATALESS: no File Provider in a test
+        return st.st_ino in online or real_dataless(st)
+
+    monkeypatch.setattr(materialise, "is_dataless", fake)
+    monkeypatch.setattr(arm_local, "is_dataless", fake)
+    config = _setup(tmp_path, local_source_table("work", folder) + "max_materialise_bytes = 1000\n")
+    assert run_cycle(config, mode=None, budget_bytes=0).exit_code == 0
+    assert _lines(config)[1:] == [
+        "WAITING ON YOU: 2 online-only files in work are larger than the per-run download budget: run "
+        f"`{BIN} materialise --budget BYTES` with BYTES above their size, or raise that source's "
+        "max_materialise_bytes",
+    ]
+
+    def refuse(src: Path, dest: Path, budget: materialise.ByteBudget) -> materialise.MaterialiseResult:
+        if src.name.startswith("big-"):
+            raise DatalessRefusedError(str(src), EDEADLK, "materialisation refused (EDEADLK)")
+        return real_materialise(src, dest, budget)
+
+    monkeypatch.setattr(arm_local, "materialise", refuse)
+    config = _setup(tmp_path / "again", local_source_table("work", folder))
+    run_cycle(config, mode=None)
+    assert _lines(config)[1:] == [
+        "WAITING ON YOU: 2 online-only files in work could not be downloaded (macOS refused): in Finder, "
+        f"choose Download Now (or Always Keep on This Device) on their folder, then run `{BIN} sync`",
     ]
 
 
@@ -1864,6 +1913,20 @@ def test_rule_7_checkpoint_blockers_uncommitted_then_held(tmp_path: Path, folder
     assert _lines(config) == want, "committed by the sync, the held checkpoint still names it"
 
 
+def test_rule_7_two_curation_errors(tmp_path: Path, folder: Path) -> None:
+    """B13 round 16 T86: rule 7's verb follows a count of 2 ("hold", not "holds")."""
+    config = _synced(tmp_path, folder)
+    for name in ("orders", "invoices"):
+        _write(
+            config.docs_repo / "topics" / "area" / f"{name}.md",
+            f"---\nentity: {name}\npurpose: who approves {name}\nsources: []\n---\nbody\n",  # UNLISTED
+        )
+    assert _lines(config) == [
+        f"NEXT: 2 curation errors hold the checkpoint: run `{BIN} curate`, fix every ERROR it lists, then "
+        f"run `{BIN} sync`"
+    ]
+
+
 def test_rule_8_run_the_after_baseline(tmp_path: Path, folder: Path) -> None:
     config = _synced(tmp_path, folder)
     _eval(config, "confirmed", "confirmed", "before")
@@ -1881,6 +1944,17 @@ def test_rule_9_the_queue_is_bounded_per_session(tmp_path: Path, folder: Path) -
     _hand_written(config, 1)  # a page exists, no _eval: the baseline rules no longer apply
     assert _lines(config) == [
         f"NEXT: 1 curation row queued: run `{BIN} curate`, curate it, then run `{BIN} sync`; session done"
+    ]
+
+
+def test_rule_9_two_rows_are_curated_up_to_the_bound(tmp_path: Path, folder: Path) -> None:
+    """B13 round 16 T86: rule 9 at a count of 2 says "curate up to 10 of them", not "curate it"."""
+    (folder / "Second Note.txt").write_text("The invoice is paid.\n", encoding="utf-8")
+    config = _synced(tmp_path, folder)
+    _hand_written(config, 1)
+    assert _lines(config) == [
+        f"NEXT: 2 curation rows queued: run `{BIN} curate`, curate up to {loop.ROWS_PER_SESSION} of them, "
+        f"then run `{BIN} sync`; session done"
     ]
 
 
