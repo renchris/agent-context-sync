@@ -6620,6 +6620,10 @@ page whose comments could not be read (Failure, below).
   Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): each count takes its noun from the count, `; 1 comment
   on 1 page`, `; N comments on M pages` and `; comments not read on 1 page`; a page converted before keeps its
   `(s)` until it is converted again (no emitter version moved).
+  Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+  summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+  file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+  cache GC drops it.
 - **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
   …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
 - **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
@@ -7086,6 +7090,10 @@ past the OCR picture limit not read` (`_PICTURES_CUT`), for a PDF too.
 Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the first clause is `text of 1 picture read by on-device
 OCR` or `text of N pictures read by on-device OCR`, from the function `_pictures_read(n)`, which replaced the
 constant `_PICTURES_READ`; a page converted before keeps its `(s)` until it is converted again.
+Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+cache GC drops it.
 
 **Shared options.** `_OCR_OPTIONS` (`ocr_languages`, `ocr_max_pages`, `ocr_max_pictures`,
 `ocr_max_picture_bytes`) is the one set for every converter that has an engine: the limits here that can
@@ -7268,6 +7276,10 @@ Signed in Rotterdam
   Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the example reads `PDF: 3 pages, 1 read by on-device
   OCR, 1 without a text layer (OCR found no text); text of 1 picture read by on-device OCR; 1 comment on 1 page`;
   a page converted before keeps its `(s)` until it is converted again.
+  Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+  summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+  file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+  cache GC drops it.
 - **A PDF of page images** is a page as soon as OCR reads a line on any page. When OCR reads every page it
   may and finds nothing, and no comment is listed, it is refused with a reason of its own, `no text layer
   (scanned or image-only PDF; on-device OCR found no text)` (`_NO_TEXT_FOUND`): a settled UNREADABLE result,
@@ -7375,6 +7387,10 @@ North | 12
   Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the example reads `Presentation: 3 slides; text of 2
   pictures read by on-device OCR; titles: …` (`1 slide`, `text of 1 picture read` for one); a page converted
   before keeps its `(s)` until it is converted again.
+  Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+  summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+  file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+  cache GC drops it.
 - **Failure** (plan D10). Any failure of the pass is one `OcrError("on-device OCR failed")`, raised before
   a slide is written: `_read_pictures` left a picture unread (the helper may not be run, exits non-zero,
   runs out of time, answers something else, or Vision gave up), a copy cannot be written, memory runs out,
@@ -7515,6 +7531,10 @@ Approved \| 12 May
   Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the example reads `Word document; text of 2 pictures
   read by on-device OCR; headings: …` (`text of 1 picture read` for one); a page converted before keeps its
   `(s)` until it is converted again.
+  Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+  summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+  file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+  cache GC drops it.
 - **Failure** (plan D10). One `OcrError("on-device OCR failed")`, raised before anything is returned:
   `_read_pictures` left a picture unread (the helper may not be run, exits non-zero, runs out of time,
   answers something else, or Vision gave up), a copy cannot be written, memory runs out, the pass raises;
@@ -9902,6 +9922,12 @@ pandoc_path to an absolute pandoc` (uv where install.sh's `find_uv` finds it; `u
 environment), for `[convert] pandoc_path` `check or replace the pandoc at [convert] pandoc_path ('<path>'), or
 remove that line to use the bundled pandoc or its native arm64 copy`, and for the native copy `show the person
 this line: the native pandoc copy at <copy> is theirs to replace or remove (...)`.
+Amended 2026-10-18, §16.126 T17, T77: the bundled pandoc's bracket is install.sh's ticker's, `(a new copy's first
+start can take a minute, and any start can on a busy Mac)`: a later start took 110 s at load 600 (§16.117 S17).
+Amended 2026-10-18, §16.126 T54, T59, T60, T65: the bundled pandoc's `<then>` is `run scripts/install.sh again (it
+reinstalls agentsync when the bundled pandoc is missing or not the file pypandoc_binary installed), or set
+[convert] pandoc_path to an absolute pandoc`: step 2 no longer skips while that pandoc is not the file its
+RECORD lists.
 
 | Where | `<run again>` |
 |---|---|
@@ -11323,6 +11349,8 @@ be removed` on a dry run and `removed` on a real run; it never reads `entr(ies)`
 Amended 2026-10-18, §16.120 S52: so do the image summary's `OCR: 1 line`, a text file's `1 line`, a workbook's `1
 sheet` and `1 worksheet`, a mail's `1 attachment`, a transcript's `1 turn, 1 named speaker` and a Teams month's `1
 message in 1 thread`: no converter summary keeps `(s)`.
+Amended 2026-10-18, §16.126 T61: nor do a table's rows and columns or a recording's windows and the counts beside
+them, which had kept fixed plurals (`1 rows x 1 columns`, `1 windows`).
 
 #### N3: a failed re-read under a new version is still left (`agentsync.cycle`)
 
@@ -14651,6 +14679,10 @@ the first fixed line that can be a title (never a table row), else the first lay
 `PptxConverter.outdated` is unchanged and reads no deck again by itself.
 Amended 2026-10-18, §16.121 S48, S57 (by §16.111 Q39): the summary adds `1 layout` or `N layouts`; a page converted
 before keeps its `(s)` until it is converted again.
+Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+cache GC drops it.
 
 **Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and §16.47 R33).**
 `policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
@@ -21206,6 +21238,10 @@ Amended 2026-10-18, §16.120 S52: the other converters' counts too (`OCR: 1 line
 1 sheet`, `1 attachment`, `1 turn, 1 named speaker`, `1 message in 1 thread`); still no emitter version moved.
 Amended 2026-10-18, §16.127 T89 (by §16.121 S48, S57): the older lines at §16.22, §16.24, §16.26, §16.37, §16.39
 N27, §16.54 Q77, §16.80 K23 and §16.98 N4 carry each count's noun too (dated there by §16.121 S48, S57).
+Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+cache GC drops it.
 
 Amended 2026-10-18, §16.116 S26, S30, S31: every count the setup report knows takes its noun from the count, not
 only the lines listed here; install.sh's report readers accept both forms.
@@ -21926,6 +21962,8 @@ busy Mac)`, one text for every run rather than a branch on whether step 2 reinst
 gets wrong. The guide's triage line says the same. Test:
 `test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_checks` (a re-run whose install stamp is
 current, step 2 skipped, with a slow start).
+Amended 2026-10-18, §16.126 T17, T77: doctor's pandoc time-out line, which still said `(the first start of a newly
+installed pandoc can take a minute, and later ones take under a second)`, now gives the same words.
 
 **FRICTION_AWK keeps one flag for stated words, not a version and an agent** (S38). Since round 14 Q28 dropped the
 version and agent comparisons (Python's `_agent_key` went in the same commit), track() read `PV` and `AG` only for
@@ -22184,6 +22222,12 @@ install.sh did not make, so its stamp does not match and step 2 reinstalls. Test
 time-out twice, missing, not absolute), `test_ops_doctor.py::test_no_pandoc_fix_names_a_bare_uv_sync` (three kinds
 by three failures, and missing), `test_ops_doctor.py::test_the_uv_a_fix_names_is_the_one_install_sh_finds`,
 `test_ops_doctor.py::test_old_python_fails`.
+Amended 2026-10-18, §16.126 T54, T59, T60, T65: CORRECTED: the measured upgrade puts the deleted file back but also
+moves every dependency, the named one included, to its newest allowed version and rebuilds agentsync from the
+checkout as it stands, with no sync lock and no `UV_SYSTEM_CERTS=1`. The bundled pandoc's fix is now `run
+scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the file pypandoc_binary
+installed), or set [convert] pandoc_path to an absolute pandoc`, since step 2 no longer skips while that pandoc is not
+the file its RECORD lists; `doctor._uv_word` and `test_the_uv_a_fix_names_is_the_one_install_sh_finds` are gone.
 
 **The native copy and Rosetta are the person's (S47, S53; `agentsync.ops.doctor`, `agentsync.cli`,
 `scripts/install.sh`; dated lines at §16.32, §16.106 O11, §16.113 Q1 and §16.114 Q60).** The native copy's fix was `replace or
@@ -22214,6 +22258,9 @@ imported `_bundled_pandoc`. The tests call `doctor._pandoc_route(config)[0]` and
 docs/lanes/COMMON.md names `_pandoc_route`. §16.114's history keeps both names. Test:
 `test_contracts.py::test_no_private_function_in_src_is_left_for_the_tests_alone` (every module-level private
 function in src is named in src outside its `def`; on 61474fdf it names exactly these two).
+Amended 2026-10-18, §16.126 T64: the scan reads the syntax tree: a function is reached by its name in its own module
+outside its own body, an import of it, or an attribute of a name bound to its module; a comment, a docstring, a
+string, `self._x` or another module's function of the same name no longer counts.
 
 **The `convert.pandoc` section names the route (S49; `agentsync.convert.pandoc`; dated lines at §15).** The module
 section still said only the bundled pandoc runs, and its API block had no `resolved_pandoc`, which status_pandoc
@@ -22231,6 +22278,14 @@ month's messages and threads (body and summary) now take `plural`. Log lines kee
 moved: a page converted before keeps its `(s)` until it is converted again. No reader parses these strings. Tests:
 `test_convert_formats.py::test_a_known_count_has_no_s_at_one_or_at_many` (each at 1, the workbook and mail at 2),
 and the many-count pins in each converter's own test.
+Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-once cache serves a
+summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
+file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
+cache GC drops it.
+Amended 2026-10-18, §16.126 T61: so do a table's and a sheet's rows and columns (`CSV table: 1 row x 1 column`,
+`1 non-empty row x 1 column`) and a recording's windows, screen states, keyframes, on-screen lines, speech lines
+and voices (`· 1 window`, `1 five-minute window`); the carry-over NOTE keeps `N on-screen lines`, whose wording is
+in the index's pinned digest.
 
 **The count-1 pins Q39 asked for (S51; tests only).** The .potx summary was `startswith("Presentation: 1 slide")`,
 which the old `1 slide(s)` also passes; it is an equality now. A one-page diagram (written inline, since
@@ -22739,7 +22794,105 @@ first fails reading a recording's frames. The checkpoint line counts `1 curation
 
 ### 16.126 Round 16: the pandoc fix and wait, the CI flakes, converter counts (2026-10-18, wave B13 round 16 lane E)
 
-Reserved for round 16 lane E of B13.
+Round 16's lane E items: doctor's pandoc time-out reason (T17, T77), the bundled pandoc's fix (T54, T59, T60, T65),
+install.sh's traps and watchdogs, the causes of the Q40 pandoc and `--list-folders` CI flakes (T41, T79, T80), the
+converters' last fixed plurals (T61) and the cache caveat about them (T62), the dead-function scan (T64) and the gate
+journal (T90), landed after the other five lanes since every lane's gate loads that journal.
+
+**Doctor's pandoc time-out gives the installer's reason (T17, T77; `agentsync.ops.doctor`; dated lines at §16.32 and
+§16.117 S17).** The bundled pandoc's time-out line said `(the first start of a newly installed pandoc can take a
+minute, and later ones take under a second)` on runs that installed nothing, the case §16.117 S17 measured at 110 s
+on a busy Mac; S17 changed only install.sh's ticker. `_PANDOC_SLOW_START` is now the ticker's words, `a new copy's
+first start can take a minute, and any start can on a busy Mac`, still for the bundled pandoc only. Tests:
+`test_ops_doctor.py::test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash`,
+`test_ops_doctor.py::test_the_pandoc_slow_start_reason_is_the_installers_wait_line` (reads install.sh's line).
+
+**The bundled pandoc's fix is install.sh's reinstall (T54, T59, T60, T65; `agentsync.ops.doctor`,
+`scripts/install.sh`; dated lines at §16.32 and §16.120 S29).** The fix was `<uv> tool upgrade --reinstall-package
+pypandoc_binary agentsync`. Measured with uv 0.12.17 in throwaway homes: it took none of the sync locks install.sh
+holds around a reinstall, ran without the `UV_SYSTEM_CERTS=1` install.sh exports for networks that inspect TLS (uv
+keeps no such setting in the receipt, and the command always reaches the index), rebuilt agentsync from the checkout
+as it stood, and moved every dependency, the named one included, to its newest allowed version. Re-running install.sh
+did not help, because step 2 skipped whenever the stamp named this commit. Now:
+- `install_is_current` is `stamp_is_current` (the old test) and `bundled_pandoc_intact` of the tool environment:
+  every file pypandoc_binary's RECORD lists under `pypandoc/` with a hash (the pandoc binary and the Python whose
+  import doctor's `not importable` line reports) is there with RECORD's size and sha256 (urlsafe base64, unpadded;
+  `openssl dgst`, about 0.1 s for the 119 MB binary), and the pandoc is executable. Nothing is run: a fresh copy's first start can take a minute, and step
+  1's word on what step 2 will do reads the same test. A stamp that is current over a pandoc that is not whole
+  prints `agentsync: the bundled pandoc in <tool dir> is missing or not the file pypandoc_binary installed;
+  reinstalling`.
+- A run stopped during the reinstall removes the constraints file in `on_exit`.
+- Every reinstall passes the checkout's uv.lock versions as constraints when uv can export them (`uv export --project
+  <checkout> --locked --no-hashes --no-emit-project --no-default-groups --quiet -o <tmp>`, then `uv tool install ... -c
+  <tmp>`; uv keeps them in the receipt). Without them `uv tool install --force` resolves afresh, the same drift as
+  the upgrade (this Mac's tool environment held charset-normalizer 3.5.2 and cryptography 50.0.2 against the lock's
+  3.5.1 and 50.0.1). A checkout with no uv.lock, a wheel, a dry run, or a uv that cannot export installs as before.
+- Doctor's bundled fix is `run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or
+  not the file pypandoc_binary installed), or set [convert] pandoc_path to an absolute pandoc`, the agent's step, as
+  `_PYTHON_FIX` is; `_uv_word` has no caller left and is gone.
+Not built: T65's `uv pip install --python <tool python> --reinstall --no-deps pypandoc_binary==<version>`, which
+holds no sync lock (T54's verifier: the person's at best), and T60's `AGENTSYNC_FORCE_REINSTALL=1`, a new setting
+the RECORD test makes unneeded. Tests: `test_install_oneshot.py::test_a_rerun_reinstalls_a_bundled_pandoc_that_is_not_the_one_pip_installed`
+(whole, missing, changed, not executable, no RECORD, its Python changed),
+`test_install_oneshot.py::test_the_reinstall_keeps_uv_locks_versions`,
+`test_install_oneshot.py::test_step_1_says_whether_step_2_reinstalls_before_a_config_it_cannot_load` (a changed
+pandoc), `test_ops_doctor.py::test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv` (and the guide's
+quote).
+
+**A lost or late TERM drops no line and holds no wait (T41, T79, T80; `scripts/install.sh`).** Under `set -e` the
+pandoc ticker's trap `kill "$s" 2>/dev/null; exit $((said ? 3 : 0))` exited 1 when its sleep was already reaped, so
+`pandoc: started after Ns` was not printed (the Q40 CI flake, ci 39132985876 attempt 1; 2 of 70 runs under load).
+And `with_timeout`'s watchdog and the pandoc limit slept their whole limit in one sleep: bash 3.2 holds a TERM that
+lands just before `wait` until the sleep ends, and drops one that lands in the child before its trap is set, so the
+caller waited out the limit with nothing printed (21 of 16000 calls at a 5 s limit under load; the likely cause of
+the `--list-folders` time-out in ci 39105995103). Every such trap reads `kill "$s" 2>/dev/null || :`, and each loop
+clears `s` once its sleep is reaped, so a trap never kills a pid the system reused. One `watchdog LIMIT PID` serves
+both limits: LIMIT 1 s slices, counted (a deadline on the whole-second `$SECONDS` could kill up to a second early),
+while PID runs, ending once PID has. The pandoc ticker loops while pandoc runs and exits with
+the status that says whether it printed. Not built: a 1 s cap on `with_progress`'s ticker sleep (optional; it already
+ends with its command, and the cap would add a fork a second for every wait). Tests:
+`test_install_oneshot.py::test_a_ticker_trap_whose_kill_fails_still_says_whether_it_printed` (each trap as written,
+under set -euo pipefail), `test_install_oneshot.py::test_a_watchdog_whose_term_is_lost_ends_with_its_command`,
+`test_install_oneshot.py::test_a_pandoc_ticker_whose_term_is_lost_ends_with_pandoc` (the callers' kills dropped),
+`test_install_oneshot.py::test_the_wait_for_pandoc_forks_a_few_sleeps_not_five_a_second` (slices counted).
+
+**Rows, columns and windows count at one (T61; `agentsync.convert`; dated lines at §16.39 N36 and §16.120 S52).**
+S52 left fixed plurals in the same converters: a one-cell workbook's sheet page read `1 rows x 1 columns` beside its
+index's `1 sheet`, a one-row CSV `1 data rows x 1 columns`, a recording under five minutes `1 windows` and `1
+five-minute windows`. Rows, columns, non-empty and data rows, windows, screen states, keyframes, on-screen lines,
+speech lines and voices take `plural` (xlsx, text and recording_page, the row-cap notes included), and a sheet's
+`[no cached values: 1 of 1 formula cell carries ...]` its noun and verb from its counts; the recording
+grammar's title rule takes `window` exactly at 1, and docs/design/meeting-video-spec.md says so. No emitter version
+moved (Q39's rule). Not built: the carry-over NOTE's `N on-screen lines of sNNN left the screen`, whose wording is in
+the index's fixed-wording digest: changing it raises `_INDEX_REVISION`, and a copy of every recording already read
+is then read again in full for a count's noun (round 11 M64, M85; measured: the digest test fails). Tests:
+`test_convert_formats.py::test_a_table_and_a_sheet_count_their_rows_and_columns_at_one`,
+`test_convert_recording.py::test_a_recording_under_five_minutes_counts_one_window_as_one`.
+
+**A cached summary keeps its (s) for its bytes, not its page (T62; docs; dated lines at §16.24, §16.26, §16.54 Q77,
+§16.111 Q39 and §16.120 S52).** The caveat "a page converted before keeps its `(s)` until it is converted again" was
+wrong twice: `cache.action_key` holds no path, so a new page with the same bytes (a copy, a second synced folder, a
+restored file before a reconcile's GC) gets the old summary from the cache, and converting the old page again changes
+nothing while its key stays. Each site has a dated line with the right rule; no code changes, since an emitter bump
+would read every cached file again, OCR and speech included. Test: the dated-line pins.
+
+**The dead-function scan reads code (T64; tests; dated line at §16.120 S46).** The scan counted every textual match
+of a private name across src, so a comment, a docstring, `self._x` or another module's same-named function hid a
+dead one (67 private names are defined in more than one module). It now resolves each module-level private function
+by (module, name): its name in its own module outside its own body, a from-import of it (relative ones resolved), or
+an attribute of a name bound to its module, lazy imports included. Tests:
+`test_contracts.py::test_no_private_function_in_src_is_left_for_the_tests_alone`,
+`test_contracts.py::test_the_dead_function_scan_reads_code_not_text`.
+
+**The gate journal keeps what a failure said (T90; `tests/_gate_journal.py`).** Round 15's pre-gate flake was an
+xdist worker crash (`when: "???"`), and the journal kept only outcomes while the gate's output was overwritten. A
+failed phase's record now keeps the last 20 lines of its report (`tail`) and the last 2000 characters of its
+captured stderr (`stderr`), and
+the controller appends `{"node_down": "gwN", "error": ...}` from xdist's `pytest_testnodedown` (an optional hook): a
+crashed test's own report says only `worker 'gwN' crashed while running ...`, so the tail alone would not have
+diagnosed it. Neither changes what a resume reads (`_last`). Not built: teeing the lane-mode pytest output to a file
+(optional; scripts/gate.sh is every lane's). Tests: `test_gate_journal.py::test_the_journal_keeps_a_failures_text_and_a_lost_workers_error`
+(a real worker crash), `test_gate_journal.py::test_the_journal_loads_without_xdist`.
 
 ### 16.127 Round 16: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 16 lane D)
 
