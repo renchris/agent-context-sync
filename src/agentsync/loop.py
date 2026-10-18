@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shlex
 from collections.abc import Callable, Mapping, Sequence
@@ -69,6 +70,7 @@ from agentsync.cycle import (
     _PRESENT,
     _REREAD_BUDGET_S,
     _REREAD_META,
+    _ROOT_MISSING_STATE_META,
     _ROOT_UNLISTED_META,
     _SCOPE_ROOT_META,
     _SEED_PAGE_NAMES,
@@ -554,25 +556,43 @@ def _unlisted_kinds(manifest: Manifest, src: SourceConfig, names: Sequence[str])
     return frozenset(str(stored[n]) for n in names)
 
 
-def _missing_root_wait(config: Config, sid: str, pause: str) -> str:
+def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "") -> str:
     """The wait for a source whose last walk found no root folder (``UNKNOWN_MISSING``; B13 round 14 Q6, Q11,
-    Q34): it was renamed, moved or deleted, or what holds it is not there. Worded from the configured path
-    alone, never a read (a hidden Allow prompt can hold one, and status reads this: B13 round 13 O47): under
-    ~/Library/CloudStorage its app is signed out, still setting up, or (a SharePoint library) not synced on
-    this Mac; under /Volumes the volume is not mounted. No Files and Folders grant, which cannot bring back a
-    folder that does not exist; no path, which the sync's alarm names."""
+    Q34): it was renamed, moved or deleted, or what holds it is not there. Status reads no folder for it (a
+    hidden Allow prompt can hold one, and status reads this: B13 round 13 O47): under ~/Library/CloudStorage
+    the cause follows ``state``, what the provider folder said of its app's sign-in at that walk
+    (``cycle._ROOT_MISSING_STATE_META``, doctor's ``provider_state``, so the wait and doctor's fix agree: B13
+    round 15 S3): signed in, the folder was renamed, moved or deleted there or is not synced; another
+    account's folder there, the one it belongs to is signed out; a SharePoint library not synced on this Mac;
+    else the app is signed out or still setting up. With no state stored (a walk from before S3) it is worded
+    from the configured path and one lstat of the organization's ``OneDrive-<org>`` folder, as
+    ``provider_state`` does, never a listing: a library folder is a library not synced only beside it, else
+    OneDrive is signed out (B13 round 15 S41). Under /Volumes the volume is not mounted. No Files and Folders
+    grant, which cannot bring back a folder that does not exist; no path, which the sync's alarm names."""
     src = next((s for s in config.sources if s.id == sid), None)
     fix_path = f'fix path in [[source]] id = "{sid}" in {_shown(config.config_path)}'
     root = expand(src.path) if src is not None and src.path is not None else None
     provider = cloud_provider_root(root) if root is not None else None
-    if provider is not None and provider.name.startswith("OneDrive-SharedLibraries-"):
+    if provider is not None and not state and provider.name.startswith("OneDrive-SharedLibraries-"):
+        org = it_request.org_of(provider.name)
+        state = "library" if org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}") else ""
+    app = (provider.name.split("-", 1)[0] or "its sync app") if provider is not None else ""
+    if provider is not None and state == "library":
         cause = "renamed, moved or deleted, or its SharePoint library is not synced on this Mac"
         fix = (
             "sync the SharePoint library to this Mac with Sync on its SharePoint page, put the folder back "
             f"under that name, or {fix_path}"
         )
+    elif provider is not None and state == "signed-in":
+        cause = f"renamed, moved or deleted in {app}, or not synced on this Mac"
+        fix = f"put it back under that name, sync that folder in {app}, or {fix_path}"
+    elif provider is not None and state == "other-account":
+        cause = (
+            f"renamed, moved or deleted, or the {app} account it belongs to is not signed in on this Mac, "
+            f"while another {app} folder is there"
+        )
+        fix = f"sign in to {app} with the account it belongs to, put it back under that name, or {fix_path}"
     elif provider is not None:
-        app = provider.name.split("-", 1)[0] or "its sync app"
         cause = f"renamed, moved or deleted in {app}, or {app} is not signed in on this Mac"
         fix = f"put it back under that name, sign in to {app} or let it finish setting up, or {fix_path}"
     elif root is not None and root.parts[:2] == ("/", "Volumes"):
@@ -812,6 +832,7 @@ def next_step(
     # N54)
     held_elsewhere: dict[str, int] = {}
     root_kinds: dict[str, frozenset[str] | None] = {}  # the kind of each root it could not list
+    root_states: dict[str, str] = {}  # ... and, for a missing one, its provider's state at the walk (S3)
     # ... whose missed count also holds files under gone empty folders (B13 round 11 M57), with how many of
     # those folders hold files, which the words follow (B13 round 14 Q57)
     in_all: dict[str, int] = {}
@@ -887,6 +908,7 @@ def next_step(
                             # 14 Q34; an inbox's "a later sync lists it" note promised one)
                             root_unlisted.append(src.id)
                             root_kinds[src.id] = frozenset({UNKNOWN_MISSING})
+                            root_states[src.id] = manifest.get_meta(_ROOT_MISSING_STATE_META + src.id) or ""
                         elif src.kind is SourceKind.INBOX:
                             inbox_partial.append(src.id)
                         elif stored and (other := _unlisted_dirs(manifest, src)):
@@ -1154,7 +1176,7 @@ def next_step(
     for sid in sorted(root_unlisted):  # a root cannot be excluded: never offer it
         pause = f'set state = "paused" in [[source]] id = "{sid}" in {_shown(config.config_path)}'
         if root_kinds.get(sid) == frozenset({UNKNOWN_MISSING}):
-            waits.append(_missing_root_wait(config, sid, pause))
+            waits.append(_missing_root_wait(config, sid, pause, state=root_states.get(sid, "")))
         elif root_kinds.get(sid) == frozenset({UNKNOWN_MODE}):
             # B13 round 11 M42: a root refused with EACCES is no unmounted volume, and no grant overrides it
             waits.append(

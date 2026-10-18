@@ -1444,45 +1444,100 @@ def test_a_gone_line_names_the_folders_the_alarm_lists_after_an_exclude_since(
     assert not any(_S_BESIDE_A_COUNT.search(ln) for ln in [*_lines(config), *_kept_alarms(config)])
 
 
+_KEPT = "; nothing is deleted, and another sync does not clear it): "
+_FIX_GAMMA = 'or fix path in [[source]] id = "gamma"'
+
+
+def _signed_out(app: str) -> str:
+    return (
+        f"(renamed, moved or deleted in {app}, or {app} is not signed in on this Mac{_KEPT}put it back under "
+        f"that name, sign in to {app} or let it finish setting up, {_FIX_GAMMA}"
+    )
+
+
+_LIBRARY = (
+    f"(renamed, moved or deleted, or its SharePoint library is not synced on this Mac{_KEPT}sync the "
+    f"SharePoint library to this Mac with Sync on its SharePoint page, put the folder back under that name, "
+    f"{_FIX_GAMMA}"
+)
+
+
 @pytest.mark.parametrize(
-    ("provider", "words"),
+    ("provider", "beside", "state", "words", "unstored"),
     [
-        (
-            "Dropbox-Contoso",
-            "(renamed, moved or deleted in Dropbox, or Dropbox is not signed in on this Mac; nothing is "
-            "deleted, and another sync does not clear it): put it back under that name, sign in to Dropbox "
-            'or let it finish setting up, or fix path in [[source]] id = "gamma"',
-        ),
+        ("Dropbox-Contoso", None, "signed-out", _signed_out("Dropbox"), _signed_out("Dropbox")),
+        ("OneDrive-SharedLibraries-Contoso", "OneDrive-Contoso", "library", _LIBRARY, _LIBRARY),
+        # B13 round 15 S41: with no OneDrive-Contoso beside it OneDrive is signed out, as doctor's [FAIL] says
         (
             "OneDrive-SharedLibraries-Contoso",
-            "(renamed, moved or deleted, or its SharePoint library is not synced on this Mac; nothing is "
-            "deleted, and another sync does not clear it): sync the SharePoint library to this Mac with Sync "
-            "on its SharePoint page, put the folder back under that name, or fix path in [[source]] "
-            'id = "gamma"',
+            None,
+            "signed-out",
+            _signed_out("OneDrive"),
+            _signed_out("OneDrive"),
+        ),
+        # B13 round 15 S3: a folder renamed in a signed-in OneDrive, and another account's folder
+        (
+            "OneDrive-Contoso",
+            "OneDrive-Contoso",
+            "signed-in",
+            f"(renamed, moved or deleted in OneDrive, or not synced on this Mac{_KEPT}put it back under that "
+            f"name, sync that folder in OneDrive, {_FIX_GAMMA}",
+            _signed_out("OneDrive"),
+        ),
+        (
+            "OneDrive-Fabrikam",
+            "OneDrive-Contoso",
+            "other-account",
+            "(renamed, moved or deleted, or the OneDrive account it belongs to is not signed in on this Mac, "
+            f"while another OneDrive folder is there{_KEPT}sign in to OneDrive with the account it belongs "
+            f"to, put it back under that name, {_FIX_GAMMA}",
+            _signed_out("OneDrive"),
         ),
     ],
+    ids=["dropbox", "library", "library-signed-out", "renamed", "other-account"],
 )
 def test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant(
-    tmp_path: Path, provider: str, words: str
+    tmp_path: Path, provider: str, beside: str | None, state: str, words: str, unstored: str
 ) -> None:
     """B13 round 14 Q6, Q11, Q34: a source whose app folder is gone (Dropbox signed out) or whose SharePoint
     library is not synced read "could not be listed or is empty ...: mount it or let the sync client fill
     it, or grant Files and Folders access", while step 1 and doctor named the sign-in. The walk stores the
-    root as missing and the wait names the app's fixes from the configured path, reading nothing."""
+    root as missing and the wait names the app's fixes, reading nothing at status. Round 15 S3: the walk also
+    stores what the provider folder said of the sign-in (doctor's provider_state), so a folder renamed in a
+    signed-in OneDrive, or another account's, is not said to be signed out; S41: a library folder is a
+    library not synced only beside its organization's OneDrive folder (the fixture pinned the library words
+    for a signed-out OneDrive). A walk from before S3 stored no state: the words follow the path and that one
+    lstat."""
+    from agentsync.ops import doctor  # noqa: PLC0415
+
     cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage"
     root = cloud / provider / "Shared Gamma"
     _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    if beside is not None:
+        _write(cloud / beside / "General" / "a.txt", "The plan.\n")
     config = _setup(tmp_path, local_source_table("gamma", root))
     assert run_cycle(config, mode=None).exit_code == 0
-    (root / NOTE_NAME).unlink()
-    root.rmdir()
-    (cloud / provider).rmdir()
+    shutil.rmtree(root)
+    if provider != beside:
+        (cloud / provider).rmdir()
+    assert doctor.provider_state(cloud / provider) == state  # the state doctor's [FAIL] fix follows
     run_cycle(config, mode=None)
+    key = cycle_module._ROOT_MISSING_STATE_META + "gamma"
     with Manifest(config.state_paths.db) as manifest:
         assert manifest.get_meta(cycle_module._UNLISTED_KINDS_META + "gamma") == '{".": "missing"}'
+        assert manifest.get_meta(key) == state
     (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
     assert wait.startswith(f"WAITING ON YOU: the folder of gamma does not exist {words} in "), wait
     assert "Files and Folders" not in wait and "unmounted" not in wait and "Shared Gamma" not in wait
+    assert "Fabrikam" not in wait  # no path, the provider's name neither: the sync's alarm names it
+    with Manifest(config.state_paths.db) as manifest:
+        manifest.set_meta(key, "")
+    (wait,) = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU")]
+    assert wait.startswith(f"WAITING ON YOU: the folder of gamma does not exist {unstored} in "), wait
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    run_cycle(config, mode=None)
+    with Manifest(config.state_paths.db) as manifest:
+        assert manifest.get_meta(key) == ""  # cleared once the root is back
 
 
 def test_an_inbox_folder_that_does_not_exist_is_a_wait_not_a_later_sync_note(

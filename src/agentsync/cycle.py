@@ -291,6 +291,13 @@ EPERM, ``UNKNOWN_MODE`` for EACCES, ``UNKNOWN_OTHER``; ``UNKNOWN_MISSING`` for a
 B13 round 14 Q34), a JSON object ("" when there were none). ``loop.next_step`` words the fix of a
 could-not-be-listed wait by it; a folder it does not hold (state from before B13 round 11 M42) keeps the
 generic words."""
+_ROOT_MISSING_STATE_META = "root_missing_state:"
+"""Manifest meta ``root_missing_state:<source id>``: for a root the source's last walk found missing under
+~/Library/CloudStorage, what its provider folder said of the app's sign-in then (``doctor.provider_state``:
+``signed-in``, ``other-account``, ``library`` or ``signed-out``), read during the walk within the listing's
+time bound; "" otherwise. ``loop._missing_root_wait`` words the wait's cause from it, so status reads no
+folder (round 13 O47). Its own key, never a suffix on ``unlisted_kinds``' "missing", which every reader, an
+older installed build's too, compares whole (B13 round 15 S3)."""
 _SENTINEL_MISSING_META = "sentinel_missing:"
 """Manifest meta ``sentinel_missing:<source id>``: the sentinel the source's last walk looked for and did not
 find, as sources.toml set it then ("" when it found it, or none was set). ``loop.next_step`` gives the source
@@ -3054,19 +3061,27 @@ class _Cycle:
         sentinel: str | None = None,
         *,
         root_missing: bool = False,
+        root_path: Path | None = None,
     ) -> None:
         """Store this walk's zero-child cloud folders (:data:`_EMPTY_DIRS_META`), whether its root was
         unlisted (:data:`_ROOT_UNLISTED_META`), the other folders it could not list
         (:data:`_UNLISTED_DIRS_META`), the kind of each (:data:`_UNLISTED_KINDS_META`; ``root_missing``, a
-        root that does not exist, is ``UNKNOWN_MISSING`` for "." (B13 round 14 Q34)) and the ``sentinel`` it
-        did not find (:data:`_SENTINEL_MISSING_META`), each written only on a change."""
+        root that does not exist, is ``UNKNOWN_MISSING`` for "." (B13 round 14 Q34)), what the provider folder
+        of such a ``root_path`` says of its app's sign-in (:data:`_ROOT_MISSING_STATE_META`) and the
+        ``sentinel`` it did not find (:data:`_SENTINEL_MISSING_META`), each written only on a change."""
         found = stats.empty_cloud_dirs if stats is not None else ()
         root = stats is None or stats.unknown_dirs == (".",)
         other = sorted(set(stats.unknown_dirs) - set(found) - {"."}) if stats is not None else []
         why = stats.unknown_why if stats is not None else ()
         kinds = {u.name: u.kind for u in why if u.kind != UNKNOWN_EMPTY}
+        missing_state = ""
         if stats is None and root_missing:
             kinds = {".": UNKNOWN_MISSING}
+            provider = cloud_provider_root(root_path) if root_path is not None else None
+            if provider is not None:
+                from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
+
+                missing_state = doctor.provider_state(provider)
         for key, value in (
             (_EMPTY_DIRS_META + source_id, json.dumps(list(found), ensure_ascii=False) if found else ""),
             (_ROOT_UNLISTED_META + source_id, "1" if root else ""),
@@ -3075,6 +3090,7 @@ class _Cycle:
                 _UNLISTED_KINDS_META + source_id,
                 json.dumps(kinds, ensure_ascii=False, sort_keys=True) if kinds else "",
             ),
+            (_ROOT_MISSING_STATE_META + source_id, missing_state),
             (
                 _SENTINEL_MISSING_META + source_id,
                 (sentinel or "") if stats is not None and stats.sentinel_present is False else "",
@@ -3142,7 +3158,13 @@ class _Cycle:
                 if scan.pass_kind is PassKind.FULL:
                     self.manifest.set_enumeration_complete(src.id, scan.enumeration_complete, self.run_id)
                 if isinstance(arm, LocalArm):
-                    self._note_empty_dirs(src.id, arm.last_stats, src.sentinel, root_missing=arm.root_missing)
+                    self._note_empty_dirs(
+                        src.id,
+                        arm.last_stats,
+                        src.sentinel,
+                        root_missing=arm.root_missing,
+                        root_path=arm.root,
+                    )
                 self.manifest.record_source_pass(
                     self.run_id,
                     src.id,
