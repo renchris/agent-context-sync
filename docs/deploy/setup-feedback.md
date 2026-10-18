@@ -180,9 +180,11 @@ words) is yours to remove. The CLI always redacts.
   reflog names, is not counted unless a patch is named for it), read from the checkout's common dir, so a checkout
   whose `.git` is a file (a clone whose git dir is kept apart, a linked worktree) is counted too; with branches
   and no patch it reads `- local-work branch(es) in the checkout: M with commits of their own, no patch file in the
-  setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)`, and
-  section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M local-work branch(es) in
-  ~/src/agent-context-sync hold commits this file does not carry` (B13 round 13 O23). Those commits exist only on
+  setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says how to send them)`
+  (the pointer since B13 round 16 T82: the issue path sends this report alone), and
+  section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M local-work branches in
+  ~/src/agent-context-sync hold commits this file does not carry` (`1 local-work branch ... holds` for one; B13
+  round 13 O23, round 16 T27). Those commits exist only on
   the branch. Since B13 round 14 Q30 that line goes on with the remedy, naming no branch (`; to send them, for each
   branch ... run git -C ~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q
   --suffix=".<branch>.patch" origin/main..<branch> -o ~/agent-context/setup/local-work (a branch that writes

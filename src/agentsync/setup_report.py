@@ -9857,11 +9857,12 @@ def _local_work_line() -> str | None:
         )
     if branches:
         # the counted branches hold commits of their own, so "a keep with nothing to keep writes none" was
-        # false of them since round 11's filter (B13 round 13 O23): their commits are on the branch only
+        # false of them since round 11's filter (B13 round 13 O23): their commits are on the branch only, and
+        # section 3 says how to send them, a pointer the issue path (this report alone) needs (round 16 T82)
         return (
             f"- local-work branch(es) in the checkout: {len(branches)} with commits of their own, no patch "
             "file in the setup folder's local-work (moved, deleted or never written; those commits are not "
-            "in bring-back.md)"
+            "in bring-back.md, whose section 3 says how to send them)"
         )
     return None
 

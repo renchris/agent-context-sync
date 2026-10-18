@@ -10822,7 +10822,11 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     patch.rename(nested)
     neutral = "- local-work branch(es) in the checkout: {} with commits of their own, no patch file in the "
     neutral += "setup folder's local-work "
-    neutral += "(moved, deleted or never written; those commits are not in bring-back.md)\n"
+    # B13 round 16 T82: it points to section 3's remedy, which the issue path (this report alone) never shows
+    neutral += (
+        "(moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says "
+    )
+    neutral += "how to send them)\n"
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
     assert neutral.format(2) in text and "local work kept" not in text, text
@@ -10832,9 +10836,10 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
         return back.split("\n## 3. Local work kept by setup prompt step 1 (", 1)[1].split(")\n\n", 1)[1]
 
     # B13 round 13 O23: section 3 says the branches hold commits it does not carry, not a bare "none"; round
-    # 14 Q30: with a remedy that names no branch, and the header says so
+    # 14 Q30: with a remedy that names no branch, and the header says so; round 16 T27, T50, T83: the known
+    # count takes its noun and verb
     assert section3() == (
-        "none: no patch file is in ~/agent-context/setup/local-work, but 2 local-work branch(es) in "
+        "none: no patch file is in ~/agent-context/setup/local-work, but 2 local-work branches in "
         "~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch "
         '`git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C '
         '~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q --suffix=".<branch>.patch" '
@@ -10843,7 +10848,7 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     ), section3()
     head = (report_path(env).parent / "bring-back.md").read_text().split("\n## 1. Setup report", 1)[0]
     assert (
-        "Section 3 sends no patch: 2 local-work branch(es) hold commits this file does not carry; its line "
+        "Section 3 sends no patch: 2 local-work branches hold commits this file does not carry; its line "
         "says how to add them." in " ".join(head.split())
     ), head
     assert "20261014" not in section3() + head, "no branch is named"
@@ -10857,6 +10862,15 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n")  # a loose main overrides its packed line
     assert install_sh(env, "--report-only").returncode == 0
     assert neutral.format(1) in report_path(env).read_text()
+    head = (report_path(env).parent / "bring-back.md").read_text().split("\n## 1. Setup report", 1)[0]
+    assert section3().startswith(
+        "none: no patch file is in ~/agent-context/setup/local-work, but 1 local-work branch in "
+        "~/src/agent-context-sync holds commits this file does not carry; to send them, "
+    ), section3()
+    assert (
+        "Section 3 sends no patch: 1 local-work branch holds commits this file does not carry;"
+        in " ".join(head.split())
+    ), head
 
 
 def test_section_3s_branch_remedy_names_a_commit_as_the_keep_does(tmp_path: Path) -> None:

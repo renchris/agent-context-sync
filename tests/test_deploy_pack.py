@@ -6001,8 +6001,8 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     )
     assert (  # B13 round 13 O23
         "`- local-work branch(es) in the checkout: M with commits of their own, no patch file in the setup "
-        "folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)`"
-        in page
+        "folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose "
+        "section 3 says how to send them)`" in page  # B13 round 16 T82
     )
     assert "which is no kept work" not in page
     # B13 round 14 Q30: section 3's own line carries the remedy now, with the keep's --suffix; round 15 S25

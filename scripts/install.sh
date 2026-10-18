@@ -2634,8 +2634,9 @@ fallback_local_work_line() {
 		[ "$b" != 1 ] || lb="local-work branch"
 		say "- local work kept by setup prompt step 1: $n $pf in the setup folder's local-work$unread${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b $lb in the checkout"
 	elif [ "$b" -gt 0 ]; then
-		# the counted branches hold commits of their own: those commits are on the branch only (B13 round 13 O23)
-		say "- local-work branch(es) in the checkout: $b with commits of their own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md)"
+		# the counted branches hold commits of their own: those commits are on the branch only (B13 round 13 O23);
+		# section 3 has the remedy, which the issue path, sending only this report, never shows (B13 round 16 T82)
+		say "- local-work branch(es) in the checkout: $b with commits of their own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says how to send them)"
 	fi
 	return 0
 }
@@ -3531,7 +3532,7 @@ write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
 	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem sentat begin force
-	local wassent="" sentlist="" carried held nohash=0
+	local wassent="" sentlist="" carried held nohash=0 lbr lhold
 	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
@@ -3632,9 +3633,12 @@ write_bring_back() {
 			# round 15 S25); it names the report command, not "this command" (S23).
 			branches="$(local_work_counts)"
 			branches="${branches##*|}"
+			# a known count takes its noun and verb from the count (B13 round 16 T27, T50, T83)
+			lbr="${branches:-0} local-work branches" lhold=hold
+			[ "${branches:-0}" != 1 ] || lbr="1 local-work branch" lhold=holds
 			if [ "${branches:-0}" -gt 0 ]; then
 				# shellcheck disable=SC2016 # the backticks are text
-				printf 'none: no patch file is in %s/local-work, but %s local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch `git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C ~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o %s/local-work` (a branch that writes nothing holds no new commit), then run %s again\n' "$shown" "$branches" "$shown" "$LOCAL_WORK_AGAIN"
+				printf 'none: no patch file is in %s/local-work, but %s in ~/src/agent-context-sync %s commits this file does not carry; to send them, for each branch `git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C ~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o %s/local-work` (a branch that writes nothing holds no new commit), then run %s again\n' "$shown" "$lbr" "$lhold" "$shown" "$LOCAL_WORK_AGAIN"
 			else
 				printf 'none\n'
 			fi
@@ -3679,7 +3683,7 @@ write_bring_back() {
 			elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
 				printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
 			elif [ "${branches:-0}" -gt 0 ]; then # B13 round 14 Q30: it said nothing of section 3
-				printf '%s\n' "Section 3 sends no patch: $branches local-work branch(es) hold commits this file does not carry; its line says how to add them."
+				printf '%s\n' "Section 3 sends no patch: $lbr $lhold commits this file does not carry; its line says how to add them."
 			fi
 			# the patches listed by their hash are a sentence of their own, counted by nskip, beside a patch sent or
 			# one that could not be read: with neither, the sentences above say it (B13 round 15 S24, round 16 T25)
