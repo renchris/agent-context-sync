@@ -73,6 +73,7 @@ from agentsync.config import (
     set_source_exclude,
 )
 from agentsync.cycle import (
+    ECHOED_WHEN,
     INTERACTIVE_LOCK_WAIT_S,
     _acquire_waiting,
     _holds_home,
@@ -580,41 +581,63 @@ def _print_checkpoint(report: CycleReport) -> None:
 
 
 class _HeldAlarms(logging.Filter):
-    """Holds back the records :data:`ECHOED_ALARM` marks, which the run's report prints as alarm lines."""
+    """Holds back the records :data:`ECHOED_ALARM` or :data:`ECHOED_WHEN` marks, whose words the run's
+    report prints; :meth:`log` logs the ones it did not print, once the filter is off."""
 
-    def __init__(self) -> None:
+    def __init__(self, handlers: Sequence[logging.Handler]) -> None:
         super().__init__()
+        self.handlers = list(handlers)
         self.held: list[logging.LogRecord] = []
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if getattr(record, ECHOED_ALARM, False):
+        if getattr(record, ECHOED_ALARM, False) or getattr(record, ECHOED_WHEN, None):
             self.held.append(record)
             return False
         return True
 
+    def log(self, records: Sequence[logging.LogRecord]) -> None:
+        for record in records:
+            for h in self.handlers:
+                if record.levelno >= h.level:
+                    h.handle(record)
+
+
+def _printed(record: logging.LogRecord, report: CycleReport) -> bool:
+    """Whether ``report`` prints what a held ``record`` says: an arm_local alarm always does; a
+    :data:`ECHOED_WHEN` record only when its alarm line, its held checkpoint or its re-screen count is
+    in this report (B13 round 16 T33, T56: never hidden when the report leaves it out)."""
+    when = getattr(record, ECHOED_WHEN, None)
+    if when == "alarm":
+        return any(record.getMessage() in s.alarms for s in report.sources)
+    if when == "checkpoint":
+        return report.checkpoint == "held"
+    if when == "rescreen":  # re-screened this run, none of the [policy] change's files still waiting
+        return report.rescreened > 0 and report.rescreen_left == 0
+    return bool(getattr(record, ECHOED_ALARM, False))
+
 
 @contextlib.contextmanager
-def _alarms_in_the_report(config: Config) -> Iterator[None]:
+def _alarms_in_the_report(config: Config) -> Iterator[_HeldAlarms | None]:
     """A run that prints its own report drops the WARNING its alarms were logged with from agentsync's stderr
-    handler, since each one prints as that source's alarm line (B13 round 15 S2, S13). The LaunchAgent's job
-    keeps them: its stderr is the err.log the setup report's Recent errors reads, which no alarm line on its
-    out.log matches. A cycle that raises prints no report, so the held records are logged then."""
+    handler, since each one prints as that source's alarm line (B13 round 15 S2, S13), and holds back the
+    cycle's WARNINGs whose words the report may print (OCR or media helper down, a held checkpoint, a
+    [policy] re-screen; round 16 T33, T56), which the caller logs with :func:`_printed` once it has the
+    report. The LaunchAgent's job keeps them all: its stderr is the err.log the setup report's Recent errors
+    reads, which no alarm line on its out.log matches (None is yielded). A cycle that raises prints no
+    report, so the held records are logged then."""
     handlers = [h for h in logging.getLogger().handlers if getattr(h, "_agentsync", False)]
     if not handlers or launchd.started_by_our_job(config):
-        yield
+        yield None
         return
-    held = _HeldAlarms()
+    held = _HeldAlarms(handlers)
     for h in handlers:
         h.addFilter(held)
     try:
-        yield
+        yield held
     except BaseException:
         for h in handlers:
             h.removeFilter(held)
-        for record in held.held:
-            for h in handlers:
-                if record.levelno >= h.level:
-                    h.handle(record)
+        held.log(held.held)
         raise
     finally:
         for h in handlers:

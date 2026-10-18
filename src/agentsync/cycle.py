@@ -1459,7 +1459,7 @@ class _CycleOcr(OcrEngine):
         except OcrError:
             self.down = not self._reads_a_blank_image(work_dir)
             if self.down:
-                log.warning("%s", _OCR_DOWN)
+                log.warning("%s", _OCR_DOWN, extra={ECHOED_WHEN: "alarm"})
             raise
         finally:
             self.spent_s += _ocr_clock() - start
@@ -1891,7 +1891,11 @@ class _Cycle:
             blockers = curate.checkpoint_blockers(self.repo, since=base)
             if blockers:
                 self.checkpoint, self.checkpoint_blockers = "held", tuple(blockers)
-                log.warning("checkpoint held: %d curation error(s)", len(blockers))
+                log.warning(
+                    "checkpoint held: %s",
+                    plural(len(blockers), "curation error"),
+                    extra={ECHOED_WHEN: "checkpoint"},
+                )
                 self._set_pending_checkpoint(base)
                 return
             gitops.tag_curated(self.repo, target)
@@ -2007,6 +2011,7 @@ class _Cycle:
                     "[policy] changed: %d label-capable %s queued for a re-screen",
                     marked,
                     "file" if marked == 1 else "files",
+                    extra={ECHOED_WHEN: "rescreen"},
                 )
         self.manifest.set_meta(_POLICY_META, current)
 
@@ -2629,7 +2634,18 @@ class _Cycle:
             read_first=self._reread_first,
             rescreened=self._tally["rescreened"],
             rescreened_unchanged=self._tally["rescreened_unchanged"],
+            rescreen_left=self._rescreen_left(),
         )
+
+    def _rescreen_left(self) -> int:
+        """The [policy] re-screen's backlog after this run, as STATE.md's line counts it; 0 when none is
+        pending or the manifest cannot say (B13 round 16 T33)."""
+        try:
+            return (
+                self.manifest.pending_named(_LABEL_CAPABLE) if self.manifest.get_meta(_RESCREEN_META) else 0
+            )
+        except sqlite3.Error:
+            return 0
 
     def _after(self, report: CycleReport, status: str, *, ok_cycle: bool) -> None:
         """Step 12-13: last-success, heartbeats, finish_run, STATE.md (every cycle, failures included)."""
@@ -3753,7 +3769,7 @@ class _Cycle:
             return False
         if not self._recordings_down() and self.media is not None and not self.media.alive():
             self._media_down = True
-            log.warning("%s", _MEDIA_DOWN)
+            log.warning("%s", _MEDIA_DOWN, extra={ECHOED_WHEN: "alarm"})
         return self._recordings_down()
 
     def _recording_pass(self) -> None:
@@ -3967,6 +3983,10 @@ class _Cycle:
             except _HelperDown:  # no file's failure: the recording waits as it was, its read not counted
                 if self._media_down and _MEDIA_DOWN not in acc.alarms:
                     acc.alarms.append(_MEDIA_DOWN)
+                # the OCR helper that went down reading this recording's frames: its alarm, which no later
+                # file of this pass adds (B13 round 16 T56)
+                if self.ocr is not None and self.ocr.down and _OCR_DOWN not in acc.alarms:
+                    acc.alarms.append(_OCR_DOWN)
                 if self.pieces.progress(h1.sha256) is None:
                     record.staged.pop(stable, None)  # nothing was stored under it
             except Exception as exc:  # its pages may be half written: as pending work they are checked again
@@ -5284,9 +5304,17 @@ def _carried_entry(entry: object) -> CarriedLines | None:
 
 QUIET_LOCK_WAIT_ENV = "AGENTSYNC_QUIET_LOCK_WAIT"
 """Set to 1 by scripts/install.sh for its first sync only, which prints its own wait line and a ticker: the
-lock wait then logs its first WARNING and sends the 30 s beats to DEBUG, and the CLI drops its skip WARNING,
-which the stderr line beside it already carries (B13 round 7 H31). Every other run keeps the beats: with no
-ticker of its own, they are its only sign of life while it waits."""
+lock wait then sends every beat to DEBUG, the first too, since install.sh's line already says it waits (B13
+round 16 T33; round 7 H31 kept the first at WARNING), and the CLI drops its skip WARNING, which the stderr
+line beside it already carries (H31). Every other run keeps the beats: with no ticker of its own, they are
+its only sign of life while it waits."""
+
+ECHOED_WHEN = "agentsync_echoed_when"
+"""The ``extra`` key on a WARNING whose words the sync's own report may print: ``"alarm"`` (the message is one
+of a source's alarm lines), ``"checkpoint"`` (the held-checkpoint line) or ``"rescreen"`` (the run line's
+re-screen count). A run that prints its report holds such a record back from its stderr and logs it after
+the cycle only when the report did not print it; the LaunchAgent's job keeps it in its err.log, as
+``arm_local.ECHOED_ALARM`` (B13 round 16 T33, T56; round 15 S2, S13)."""
 
 
 def quiet_lock_wait() -> bool:
@@ -5325,13 +5353,13 @@ def _interactive_mode(config: Config, now: datetime) -> CycleMode:
 
 
 def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
-    """Take the lock, retrying while another cycle holds it; progress is logged every 30 s, after the first
-    line at DEBUG under :func:`quiet_lock_wait`.  After ``wait_s`` the last LockHeldError is raised (naming
-    how long this run waited)."""
+    """Take the lock, retrying while another cycle holds it; progress is logged every 30 s, at DEBUG under
+    :func:`quiet_lock_wait`.  After ``wait_s`` the last LockHeldError is raised (naming how long this run
+    waited)."""
     start = time.monotonic()
     noted = -_LOCK_PROGRESS_S
     later = logging.DEBUG if quiet_lock_wait() else logging.WARNING
-    level = logging.WARNING
+    level = later  # under the quiet wait install.sh's own line announces it (B13 round 16 T33)
     while True:
         try:
             return lock.acquire()

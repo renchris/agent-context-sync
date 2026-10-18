@@ -486,6 +486,9 @@ class CycleReport:
     # came out the same
     rescreened: int = 0
     rescreened_unchanged: int = 0
+    # label-capable files a [policy] change queued that are still to be re-screened after this run: the CLI
+    # holds the run's "[policy] changed" WARNING back only when none is (B13 round 16 T33)
+    rescreen_left: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

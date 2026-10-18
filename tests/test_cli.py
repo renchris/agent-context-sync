@@ -918,8 +918,10 @@ def test_sync_records_the_checkpoint_once_the_session_pages_are_clean(
 
     _topic(initialised, "topics/c.md", "mirror/source/projects/new.txt.md", pin="ab" * 32)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # a held checkpoint never fails the sync
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
     assert "checkpoint held: 1 curation error; fix it" in out and "(every sync retries it)" in out
+    # B13 round 16 T56: its WARNING is not said again on stderr beside that line (the job's err.log keeps it)
+    assert "WARNING agentsync.cycle: checkpoint held" not in err, err
     assert "ERROR STALE topics/c.md" in out and "topics/a.md" not in out
     assert _curated(repo) == banner_head
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # c.md is committed now; still retried
@@ -1132,8 +1134,9 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
 ) -> None:
     """B13 round 7 H31: install.sh's first sync prints its own wait line and a ticker, and agentsync's lock
     wait added a WARNING every 30 s and two skip lines more. Under AGENTSYNC_QUIET_LOCK_WAIT=1 (install.sh's
-    first sync only) the wait logs its first line and sends the beats to DEBUG, and the skip is said once, on
-    the stderr line that names the holder. A run without it keeps a beat every interval: it has no ticker."""
+    first sync only) the wait sends every beat to DEBUG (round 16 T33: the first too, a timestamped WARNING
+    under install.sh's own wait line), and the skip is said once, on the stderr line that names the holder. A
+    run without it keeps a beat every interval: it has no ticker."""
     monkeypatch.setattr(cycle_mod, "_LOCK_PROGRESS_S", 0.2)
     lock = SingleWriterLock(initialised.state_paths.lock, "poll")
     lock.acquire()
@@ -1149,7 +1152,8 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
         assert len(default) >= 3 and set(default) == {logging.WARNING}, default
         monkeypatch.setenv(cycle_mod.QUIET_LOCK_WAIT_ENV, "1")
         quiet = beats()
-        assert len(quiet) >= 3 and quiet[0] == logging.WARNING and set(quiet[1:]) == {logging.DEBUG}, quiet
+        # B13 round 16 T33: the first beat too, since install.sh's own line already says it waits
+        assert len(quiet) >= 3 and set(quiet) == {logging.DEBUG}, quiet
         capsys.readouterr()
         assert cli.main(["sync", "--mode", "poll", "--config", str(initialised.config_path)]) == 75
         err = capsys.readouterr().err.splitlines()
@@ -2417,6 +2421,98 @@ def test_a_sync_logs_an_alarm_its_report_prints_only_in_the_background_job(
         (logs / f"{initialised.launchd_label_prefix}.sync.err.log").write_text(err, encoding="utf-8")
         run = setup_report._Run(initialised.config_path, setup_report.ReportHooks(), 30.0)
         assert any(alarm in ln for ln in setup_report._recent_errors(run)), "Recent errors lists it"
+
+
+@pytest.mark.parametrize("job", [False, True])
+def test_a_folder_a_sync_cannot_list_is_warned_only_in_the_background_job(
+    initialised: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    job: bool,
+) -> None:
+    """B13 round 16 T37: a foreground sync over a folder it cannot list (chmod 000) printed a timestamped
+    "WARNING agentsync.arm_local: <id>: 1 folder could not be listed: ..." on stderr beside the alarm line
+    naming the same folder with the same reason. The report's alarm carries it, so a run that prints the
+    report holds the WARNING back; the LaunchAgent's job keeps it in its err.log."""
+    locked = local_source_dir / "Locked"
+    locked.mkdir()
+    (locked / "inner.txt").write_text("x\n", encoding="utf-8")
+    cfg = str(initialised.config_path)
+    capsys.readouterr()
+    if job:
+        monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.sync")
+    locked.chmod(0)
+    try:
+        cli.main(["sync", "--config", cfg] + (["--mode", "poll"] if job else []))
+    finally:
+        locked.chmod(0o755)
+    out, err = capsys.readouterr()
+    assert any("could not be read: 'Locked' (EACCES" in ln for ln in out.splitlines()), out
+    warned = [
+        ln for ln in err.splitlines() if "WARNING agentsync.arm_local" in ln and "could not be listed" in ln
+    ]
+    assert len(warned) == int(job), err
+
+
+@pytest.mark.parametrize(("printed", "job"), [(True, False), (False, False), (True, True)])
+def test_a_cycle_warning_the_report_prints_is_held_back_only_when_it_prints_it(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    printed: bool,
+    job: bool,
+) -> None:
+    """B13 round 16 T33, T56: a foreground sync printed raw "<time> WARNING agentsync.cycle: ..." lines for
+    the OCR or media helper going down, a held checkpoint and a [policy] re-screen, beside the alarm, the
+    "checkpoint held" line and the run line's re-screen count saying the same. Each is held back when the
+    report prints its words, and logged when it does not (an OCR helper whose alarm no source got, a
+    re-screen still waiting); the LaunchAgent's job keeps them all in its err.log."""
+    cfg = str(initialised.config_path)
+    marked = {
+        cycle_mod._OCR_DOWN: "alarm",
+        cycle_mod._MEDIA_DOWN: "alarm",
+        "checkpoint held: 2 curation errors": "checkpoint",
+        "[policy] changed: 3 label-capable files queued for a re-screen": "rescreen",
+    }
+
+    def fake(config: Config, **_: object) -> CycleReport:
+        for message, when in marked.items():
+            logging.getLogger(cycle_mod.__name__).warning("%s", message, extra={cycle_mod.ECHOED_WHEN: when})
+        alarms = (cycle_mod._OCR_DOWN, cycle_mod._MEDIA_DOWN) if printed else ()
+        src = SourceReport("x", SourceKind.LOCAL, PassKind.FULL, True, alarms=alarms)
+        return CycleReport(
+            1,
+            CycleMode.POLL,
+            (src,),
+            (),
+            None,
+            checkpoint="held" if printed else None,
+            rescreened=3 * printed,
+        )
+
+    monkeypatch.setattr(cli, "run_cycle", fake)
+    if job:
+        monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.sync")
+    capsys.readouterr()
+    cli.main(["sync", "--config", cfg] + (["--mode", "poll"] if job else []))
+    out, err = capsys.readouterr()
+    warned = [ln for ln in err.splitlines() if " WARNING agentsync.cycle: " in ln]
+    if printed:
+        assert f"    alarm: {cycle_mod._OCR_DOWN}" in out.splitlines(), out
+        assert (
+            "checkpoint held: 0 curation errors; fix them" in out
+            and "; re-screened 3 for a rule change" in out
+        )
+    assert len(warned) == (4 if job or not printed else 0), err
+    assert all(any(ln.endswith(m) for ln in warned) for m in marked) is (job or not printed), err
+    # a re-screen count that is other files' (a secret-rule re-screen) while the [policy] change's files still
+    # wait says nothing of them: the [policy] line is logged (review)
+    record = logging.LogRecord(cycle_mod.__name__, logging.WARNING, "", 0, "x", None, None)
+    setattr(record, cycle_mod.ECHOED_WHEN, "rescreen")
+    report = CycleReport(1, CycleMode.POLL, (), (), None, rescreened=2, rescreen_left=40)
+    assert not cli._printed(record, report)
+    assert cli._printed(record, dataclasses.replace(report, rescreen_left=0))
 
 
 def test_a_cycle_that_raises_still_logs_the_alarms_it_held(

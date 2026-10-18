@@ -19,6 +19,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -5306,6 +5307,9 @@ class StubRecording(RecordingConverter):
                 self.rec.stop(RecordingNotFinished(done_ms=n * PIECE_MS, total_ms=total, timed_out=True))
             if self.rec.media_fails:
                 raise MediaError("the media helper exited 3")
+            if spec.get("ocr_frames") and self._ocr is not None:  # its frames read through the cycle's OCR
+                with tempfile.TemporaryDirectory() as work:
+                    self._ocr.read([src], work_dir=Path(work), budget_s=5.0)
             self.rec.worked.append((name, n))
             worked = True
             if isinstance(self._ocr, cycle_mod._CycleOcr):
@@ -5656,6 +5660,27 @@ def test_a_recording_given_up_under_either_stub_text_keeps_its_pieces_at_the_pru
     )
     cycle_mod._Cycle._prune_pieces(pass_)  # type: ignore[arg-type]
     assert kept == {sha}
+
+
+def test_an_ocr_helper_that_first_fails_in_the_recording_pass_has_its_alarm(
+    tmp_path: Path,
+    meetings: Path,
+    rec: Rec,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """B13 round 16 T56: an OCR helper that first failed while a recording's frames were read logged its
+    WARNING, but the recording pass raised _HelperDown before any alarm was added, so the report said nothing
+    and the WARNING was the only line telling the person to run scripts/install.sh. The pass now adds the
+    alarm, and the WARNING is marked as one the report prints (the CLI holds it back only when it does)."""
+    _use_ocr(monkeypatch, tmp_path, fail=True)
+    config = config_with(tmp_path, meetings)
+    stub_recording(meetings / "meetings/a.mp4", 10, piece_s=10.0, ocr_frames=True)
+    with caplog.at_level(logging.WARNING, logger=cycle_mod.__name__):
+        report = run(config)
+    assert source_report(report).alarms.count(cycle_mod._OCR_DOWN) == 1, source_report(report).alarms
+    [down] = [r for r in caplog.records if r.getMessage() == cycle_mod._OCR_DOWN]
+    assert getattr(down, cycle_mod.ECHOED_WHEN) == "alarm"
 
 
 def test_a_cycle_killed_in_a_recording_loses_no_other_row(tmp_path: Path, meetings: Path, rec: Rec) -> None:

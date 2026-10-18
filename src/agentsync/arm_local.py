@@ -600,10 +600,14 @@ def in_scope(cfg: SourceConfig, rel_path: str) -> bool:
     return _scope_matcher(cfg)(rel_path)
 
 
-def _warn_unlisted(state: _WalkState, source_id: str) -> None:
+def _warn_unlisted(state: _WalkState, source_id: str, *, echoed: bool) -> None:
     """One warning a walk for the folders whose listing failed, each with its reason (N28). The per-folder
     line is info, and the scan's alarm is not logged, so in a background job (which logs at warning) this is
-    the line that brings the reason (privacy grant, file provider, gone) to its log and the setup report."""
+    the line that brings the reason (privacy grant, file provider, gone) to its log and the setup report.
+    ``echoed``: at the end of a walk the scan's unknown-folder alarm names every one of them with its reason,
+    so a run that prints its report holds this back (:data:`ECHOED_ALARM`) while the job's err.log keeps it
+    (B13 round 16 T37); a walk stopped by a listing time-out holds an alarm that names only the folder that
+    stalled, so there it is not."""
     if not state.unlisted:
         return
     unlisted = sorted(state.unlisted)
@@ -614,6 +618,7 @@ def _warn_unlisted(state: _WalkState, source_id: str) -> None:
         "folder" if len(unlisted) == 1 else "folders",  # B13 round 13 O35: "1 folder(s)"
         ", ".join(f"{d!r} ({state.unknown[d]})" for d in unlisted[:5]),
         f" (+{len(unlisted) - 5} more)" if len(unlisted) > 5 else "",
+        extra={ECHOED_ALARM: True} if echoed else None,
     )
 
 
@@ -690,7 +695,7 @@ def walk(
                 name="agentsync-listing",
             )
         except CallTimedOutError:
-            _warn_unlisted(state, source_id)
+            _warn_unlisted(state, source_id, echoed=False)
             raise CallTimedOutError(
                 f"listing {shown!r} did not return within {listing_timeout_s:.0f}s"
             ) from None
@@ -794,7 +799,7 @@ def walk(
                 with_gen_count=with_gen_count,
             )
 
-    _warn_unlisted(state, source_id)
+    _warn_unlisted(state, source_id, echoed=True)
     items = _dedupe_hard_links(state, source_id)
     stats = WalkStats(
         files=len(items),

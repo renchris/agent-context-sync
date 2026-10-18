@@ -905,9 +905,18 @@ def test_a_held_listing_still_warns_about_the_folders_it_could_not_list(
             _walk(root, listing_timeout_s=0.2)
     finally:
         release.set()
-    warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    warned = [r for r in caplog.records if r.levelno >= logging.WARNING]
     edeadlk = f"EDEADLK: {os.strerror(errno.EDEADLK)}"
-    assert warned == [f"s: 1 folder could not be listed: {failed[0]!r} ({edeadlk})"]
+    assert [r.getMessage() for r in warned] == [f"s: 1 folder could not be listed: {failed[0]!r} ({edeadlk})"]
+    # B13 round 16 T37: the held listing's alarm names only the folder that stalled, so this record is the
+    # only line naming the one refused before it: never held back from a foreground run's stderr
+    assert not getattr(warned[0], al.ECHOED_ALARM, False)
+    caplog.clear()
+    monkeypatch.setattr(al, "_list_dir", real)
+    with _chmod(root / "two", 0), caplog.at_level(logging.WARNING, logger=al.__name__):
+        _walk(root)
+    [end] = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert "1 folder could not be listed: 'two'" in end.getMessage() and getattr(end, al.ECHOED_ALARM), end
 
 
 def test_the_walk_records_its_zero_child_cloud_folders(tmp_path: Path) -> None:
