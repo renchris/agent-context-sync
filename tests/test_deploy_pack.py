@@ -5627,6 +5627,9 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         "`, U of them unreadable and not in bring-back.md (chmod u+r, then run "
         f"{setup_report.LOCAL_WORK_AGAIN} again)`" in page
     )
+    # B13 round 14 Q65: every keep commit has one subject, so a format-patch without the keep's --suffix
+    # wrote each branch's 0001-local-changes-kept-before-update.patch over the one before
+    assert "format-patch origin/main..<branch> -o" not in page
     assert "Documents" in setup_report._GENERIC_FOLDERS
     assert (
         "each folder the agentsync report's CloudStorage listing showed, and each folder step 1's "
