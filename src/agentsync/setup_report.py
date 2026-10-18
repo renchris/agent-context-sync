@@ -8773,7 +8773,9 @@ def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
     )
 
 
-def _folders_line(r: _Run, runs: Sequence[InstallRun], end: datetime | None = None) -> str | None:
+def _folders_line(
+    r: _Run, runs: Sequence[InstallRun], end: datetime | None = None, *, scoped: bool = False
+) -> str | None:
     """``- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)``:
     what the attempt's install runs did with the folder choice, in counts and no names. The counts are the
     config steps' ``kept`` and ``added`` fields (the folders synced before the step and the ones it added,
@@ -8787,7 +8789,9 @@ def _folders_line(r: _Run, runs: Sequence[InstallRun], end: datetime | None = No
     named``): kept is the first such run's ``kept``, what was synced before the attempt, never a sum; added
     is the sum of the ``done`` config steps' ``added``, the run that added named when it is not the last;
     named counts distinct folders, so a retry with the same options names one. When the counts do not
-    chain (a source changed by hand between runs), the last run's alone, said so."""
+    chain (a source changed by hand between runs), the last run's alone, said so. Only ``scoped``, an
+    attempt with a begin time, as the install line: else ``runs`` is the whole install.log, and a re-run a
+    month later read "2 added (none was synced before)" (B13 round 16 T44), so the last run's alone."""
     installs = install_runs_only(runs)
     if not installs:
         return None
@@ -8801,7 +8805,7 @@ def _folders_line(r: _Run, runs: Sequence[InstallRun], end: datetime | None = No
         and _count(run.step("config"), "added") is not None
     ]
     last = installs[-1]
-    if len(counted) < 2 or counted[-1] is not last:
+    if not scoped or len(counted) < 2 or counted[-1] is not last:
         return _folders_said(*_kept_added(last), gone, len(_NAMED_FOLDER_RE.findall(last.args)))
     kept0 = _kept_added(counted[0])[0] or 0
     adds = [(run, n) for run in counted if (n := _kept_added(run)[1] or 0) and _done(run)]
@@ -9249,7 +9253,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     out.append(
         _install_line(r, runs, scoped=att is not None and att.begin is not None, end=_attempt_end(att))
     )
-    folders = _folders_line(r, runs, _attempt_end(att))
+    folders = _folders_line(r, runs, _attempt_end(att), scoped=att is not None and att.begin is not None)
     if folders is not None:
         out.append(folders)
     if r.facts.instructions is not None:

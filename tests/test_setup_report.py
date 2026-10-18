@@ -4949,6 +4949,29 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         line = _line(section(text, "Summary"), "- folders: ")
         assert line.startswith(f"- folders: {folders}"), (installs, line)
+    # B13 round 16 T44: with no friction log, or an attempt with no begin time, the runs are the whole
+    # install.log, so the sum read a re-run a month later as "2 added (none was synced before)": only an
+    # attempt with a begin time sums its runs; otherwise the last run's alone, as the install line scopes
+    for friction in (None, "Prompt: v11\nAgent: Contoso Bot\n"):
+        log = set_up_log(
+            fake_mac,
+            (f"--source-local {one} --source-local {two}", "done note=created kept=0 added=2"),
+            ("", "skipped note=exists kept=2 added=0"),
+            listed="",
+            list_step=None,
+        )
+        log.write_text(
+            log.read_text(encoding="utf-8").replace("2026-09-29T10:01", "2026-10-29T10:01"), "utf-8"
+        )
+        found = fake_mac["setup"] / "friction.md"
+        if friction is None:
+            found.unlink(missing_ok=True)
+        else:
+            write_friction(fake_mac, friction)
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        assert _line(section(text, "Summary"), "- folders: ") == (
+            "- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)"
+        ), friction
     runs = setup_report.read_install_runs(set_up_log(fake_mac, ("--source-local x", "done note=created")))
     assert [run.args for run in runs] == ["--list-folders", "--source-local x"]
     assert setup_report.synced_before(runs) == 2 and setup_report.synced_before(runs[1:]) is None
