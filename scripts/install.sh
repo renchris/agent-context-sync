@@ -3906,6 +3906,10 @@ stopped_report_note() { # KEPT-REPORT-PATH
 						if (i == 2) continue
 						if (split(substr(tb[i], 3, length(tb[i]) - 4), c, " \\| ") != 3) { ch = 0; break }
 						S[i] = trim(c[1]); N[i] = trim(c[2]); R[i] = trim(c[3])
+						if (i > 2 && match(R[i], /\(listed [0-9]+ folder\(s\)/)) { # renderer only: B13 round 14 Q39 (S20)
+							tok = substr(R[i], RSTART + 8) + 0
+							R[i] = substr(R[i], 1, RSTART - 1) "(listed " pl(tok, "folder") substr(R[i], RSTART + RLENGTH); ch = 2
+						}
 						if (i > 2 && match(R[i], / \([^()]*\)$/)) {
 							tok = substr(R[i], RSTART + 2, RLENGTH - 3)
 							if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
@@ -3954,6 +3958,53 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					return line
 				}
 				function ends(line, tail) { return length(line) >= length(tail) && substr(line, length(line) - length(tail) + 1) == tail }
+				# An older renderer writes "(s)" beside a known count in the lines the current one words by the count (B13
+				# round 14 Q39, Q42, Q43, Q81 and Q41, renderer only; round 15 S20): each keyed on the number in its
+				# own line, and never inside a <details> block, which holds history (the install.out tail).
+				function pl(n, w, many) { return n " " (n == 1 ? w : (many == "" ? w "s" : many)) }
+				function fix(line, pat, at, n, to,    i) { # swap the first match of pat, from its at-th character
+					if (!match(line, pat)) return line
+					return substr(line, 1, RSTART - 1) to substr(line, RSTART + RLENGTH)
+				}
+				function counted(line,    a, b, m, k, seg, out, rest, n, x) {
+					# "N of M source(s) with a complete baseline" (the sync line of the Summary)
+					if (match(line, /[0-9]+ of [0-9]+ source\(s\) with a complete baseline/)) {
+						x = substr(line, RSTART, RLENGTH); split(x, a, " ")
+						line = substr(line, 1, RSTART - 1) a[1] " of " pl(a[3] + 0, "source") " with a complete baseline" substr(line, RSTART + RLENGTH)
+					}
+					# "label rule: on (N excluded id(s), K name(s)," (the policy line)
+					if (match(line, /\([0-9]+ excluded id\(s\), [0-9]+ name\(s\),/)) {
+						x = substr(line, RSTART + 1, RLENGTH - 2); split(x, a, " ")
+						line = substr(line, 1, RSTART) pl(a[1] + 0, "excluded id") ", " pl(a[4] + 0, "name") "," substr(line, RSTART + RLENGTH)
+					}
+					# the exclude-empty waits, each up to the next one, by the count that opens it
+					out = ""
+					while (match(line, /[0-9]+ empty cloud folder/)) {
+						out = out substr(line, 1, RSTART - 1); line = substr(line, RSTART)
+						n = substr(line, 1, index(line, " ") - 1) + 0
+						rest = substr(line, 2)
+						k = match(rest, /[0-9]+ empty cloud folder/) ? RSTART : length(rest) + 1
+						seg = substr(line, 1, k); line = substr(line, k + 1)
+						seg = fix(seg, "empty cloud folder\\(s\\) keep the listing", 0, n, n == 1 ? "empty cloud folder keeps the listing" : "empty cloud folders keep the listing")
+						seg = fix(seg, "if the folder\\(s\\) are meant", 0, n, n == 1 ? "if the folder is meant" : "if the folders are meant")
+						if (n == 1) seg = fix(seg, "\\(it adds (them|it) to that source", 0, n, "(it adds the folder to that source")
+						if (match(seg, /which names the folder(\(s\)|s)?, up to five, and past five how to list the rest/))
+							seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") (n > 5 ? ", up to five, and past five how to list the rest" : "") substr(seg, RSTART + RLENGTH)
+						else if (match(seg, /which names the folder\(s\)/))
+							seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") substr(seg, RSTART + RLENGTH)
+						out = out seg
+					}
+					return out line
+				}
+				function status_one(line) { # a Status unknown line of one folder: its own pronouns
+					if (index(line, " 1 materialised-and-empty (1 of them still empty on this Mac, by their link count of 2)"))
+						line = fix(line, "\\(1 of them still empty on this Mac, by their link count of 2\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
+					if (match(line, /; 1 of [0-9]+ checked; /)) {
+						line = fix(line, "; none of them excluded in sources\\.toml now;", 0, 1, "; it is not excluded in sources.toml now;")
+						line = fix(line, "; the mirror holds no file below them;", 0, 1, "; the mirror holds no file below it;")
+					}
+					return line
+				}
 				function prompt_line(line,    i, j, r, q) { # the copy note gains the stop line\047s second reason
 					if (index(line, "- prompt: ") != 1 || index(line, changed)) return line
 					if (!(i = index(line, " (older than the installer\047s v"))) i = index(line, " (newer than the installer\047s v")
@@ -3983,7 +4034,11 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					if (k > 0 && $0 ~ /^<details><summary>the last [0-9]+ line(s|\(s\))? of .* \(.*\)<\/summary>$/)
 						$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
 				}
-				index($0, "## ") == 1 { sec = $0 }
+				index($0, "## ") == 1 { sec = $0; det = 0 }
+				index($0, "<details>") == 1 { det = 1 }
+				!det && (sec == "## Summary" || index($0, "- [policy] label rule: on (") == 1) { $0 = counted($0) }
+				!det && sec == "## Status" && index($0, "- ") == 1 { $0 = status_one($0) }
+				$0 == "</details>" { det = 0 }
 				sec == "## Summary" { $0 = prompt_line($0) }
 				sec == "## Summary" && quiet($0) { next }
 				# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13

@@ -7711,6 +7711,135 @@ def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listi
     assert new_held.replace("fy26-projects", "q3-launch") in lines
 
 
+_OLD_WAIT = (
+    "WAITING ON YOU: {n} empty cloud folder(s) keep the listing of <folder-{k}> incomplete: an empty "
+    "folder in a "
+    "cloud folder is expected and loses nothing, but while the listing is incomplete, deletions in "
+    "<folder-{k}> "
+    "are held, not applied, and another sync does not complete it; if the folder(s) are meant to be empty, "
+    "run "
+    "`~/.local/bin/agentsync exclude-empty <folder-{k}>` (it adds them to that source's exclude in the "
+    "config "
+    "file sources.toml; an excluded folder is not mirrored if it later gains files); the docs repo's "
+    "_sync/STATE.md keeps the alarm line for <folder-{k}>, which names the folder(s), up to five, and past "
+    "five "
+    "how to list the rest (a plain `~/.local/bin/agentsync sync` prints it too)"
+)
+"""An exclude-empty wait as an e2a8e8df renderer (the v21 field build) wrote it in the Summary's Loop line."""
+
+
+@pytest.mark.parametrize("renderer", ["e2a8e8df", "c57cfa7c"])
+def test_a_stopped_copy_by_an_older_agentsync_counts_its_nouns(
+    env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, renderer: str
+) -> None:
+    """B13 round 15 S20 (rehearsal C3 to C6): round 14's renderer-only count words (Q39's "2 of 3 sources" and
+    "listed 6 folders", the policy line's nouns, Q42/Q43's exclude-empty clauses, Q41's "up to five" clause
+    only past five, O38's Status pronouns) did not reach a stopped copy, which the older installed agentsync
+    renders (c57cfa7c, v22; e2a8e8df, v21). The shim rewrites each by the number in its own line, outside
+    every <details> block, and leaves a line already in the new words as it is."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    step = [("list-folders", {"result": "done", "note": "listed-6", "synced": "2", "seconds": "1"})]
+    new_table = setup_report._step_table(step)
+    monkeypatch.setattr(setup_report, "_list_folders_note", lambda note: "listed 6 folder(s)")
+    old_table = setup_report._step_table(step)
+    monkeypatch.undo()
+    assert old_table != new_table and "(listed 6 folder(s): 2 already synced)" in old_table[2]
+    one, seven = _OLD_WAIT.format(n=1, k=1), _OLD_WAIT.format(n=7, k=2)
+    if renderer == "c57cfa7c":  # Q43 and O35 were in it, Q41 and Q42 were not
+        one = one.replace("folder(s) keep the", "folder keeps the").replace(
+            "the folder(s) are", "the folder is"
+        )
+        one = one.replace("adds them to", "adds it to").replace("names the folder(s),", "names the folder,")
+        seven = seven.replace("folder(s) keep", "folders keep").replace(
+            "the folder(s) are", "the folders are"
+        )
+        seven = seven.replace("names the folder(s),", "names the folders,")
+    want_one = (
+        _OLD_WAIT.format(n=1, k=1)
+        .replace("folder(s) keep the", "folder keeps the")
+        .replace("the folder(s) are", "the folder is")
+        .replace("adds them to", "adds the folder to")
+        .replace("names the folder(s), up to five, and past five how to list the rest", "names the folder")
+    )
+    want_seven = (
+        _OLD_WAIT.format(n=7, k=2)
+        .replace("folder(s) keep", "folders keep")
+        .replace("the folder(s) are", "the folders are")
+        .replace("names the folder(s),", "names the folders,")
+    )
+    loop = (
+        "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions; also waiting: "
+    )
+    sync = (
+        "- first sync: done in 20s (install.log: the install run of 2026-10-18T05:13:49Z, before this "
+        "attempt; "
+        "this attempt ran none) · converted 8 · {} with a complete baseline (status, read when this report "
+        "was "
+        "written)"
+    )
+    policy = "- [policy] label rule: on ({}, {}, refuse_unlabelled=false)"
+    status = (
+        "- <folder-1>: 1 unknown: 0 dataless, 1 materialised-and-empty ({}); 1 of 1 checked; {} in "
+        "sources.toml "
+        "now; the mirror holds no file below {}; its last walk listed all 4 files the mirror holds for it"
+    )
+    old_status = status.format(
+        "1 of them still empty on this Mac, by their link count of 2", "none of them excluded", "them"
+    )
+    new_status = status.format("still empty on this Mac, by its link count of 2", "it is not excluded", "it")
+    report = "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            loop + one + "; " + seven,
+            sync.format("2 of 3 source(s)"),
+            "",
+            "## Configuration",
+            "",
+            policy.format("1 excluded id(s)", "2 name(s)"),
+            "",
+            "## Installer",
+            "",
+            *old_table,
+            "",
+            "<details><summary>the last 2 line(s) of ~/agent-context/setup/install.out (what the agent "
+            "saw)</summary>",
+            "",
+            "~~~text",
+            _OLD_WAIT.format(n=1, k=1),
+            "listed 6 folder(s), 2 of 3 source(s) with a complete baseline",
+            "~~~",
+            "",
+            "</details>",
+            "",
+            "## Status",
+            "",
+            old_status,
+            new_status.replace("<folder-1>", "<folder-2>"),
+            "",
+        ]
+    )
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    stub = tmp_path / "old-report.md"
+    stub.write_text(report, encoding="utf-8")
+    assert install_sh({**env, "STUB_REPORT_FILE": str(stub)}, "--report-only").returncode == 0
+    text = (report_path(env).parent / "setup" / "stopped-copy-report.md").read_text()
+    lines = text.splitlines()
+    assert loop + want_one + "; " + want_seven in lines, [ln for ln in lines if ln.startswith("- Loop")]
+    assert sync.format(f"2 of {setup_report._plural(3, 'source')}") in lines
+    assert policy.format(setup_report._plural(1, "excluded id"), setup_report._plural(2, "name")) in lines
+    assert [ln for ln in lines if ln.startswith("|")] == new_table
+    assert new_status in lines and old_status not in lines
+    assert new_status.replace("<folder-1>", "<folder-2>") in lines, "already in the new words: as it is"
+    held = text.split("<details><summary>the last 2 line", 1)[1].split("</details>", 1)[0]
+    assert _OLD_WAIT.format(n=1, k=1) in held and "listed 6 folder(s), 2 of 3 source(s)" in held, "history"
+
+
 def test_the_shell_stopped_copy_words_are_the_reports() -> None:
     """B13 round 14 Q27: the shim's step words are setup_report._STEP_NOTE_WORDS (less the helpers step,
     which the stopped copy's renderer already words), and its held-listing bracket is doctor's report note."""
@@ -9247,7 +9376,8 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     setup.mkdir(parents=True)
     (setup / "friction.md").write_text(
         "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n"
-        "2026-10-10T00:00:01Z | step 1 | error | git clone https://mirror.northwind.invalid:8443/northwind-team/"
+        "2026-10-10T00:00:01Z | step 1 | error | git clone "
+        "https://mirror.northwind.invalid:8443/northwind-team/"
         "someone/agent-context-sync.git/: Could not resolve host: mirror.northwind.invalid | -\n"
         "2026-10-10T00:00:02Z | step 1 | error | git pull git@scp.northwind-two.invalid:northwind-scp/x.git: "
         "Could not resolve hostname scp.northwind-two.invalid | -\n"

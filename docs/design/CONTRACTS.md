@@ -21163,6 +21163,9 @@ only. `stopped_report_note` maps a launcher, agent, wait or report row's bracket
 with doctor's `LISTING_YOURS_REPORT_NOTE`. Not the finder's run of the checkout's renderer: its doctor would mix two
 builds. Tests: `test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listing`,
 `test_the_shell_stopped_copy_words_are_the_reports`.
+Amended 2026-10-18, §16.117 S20: it also words round 14's renderer-only counts (`2 of 3 sources`, `listed 6 folders`,
+the policy line's nouns, the exclude-empty clauses, the Status pronouns of one folder), each by the number in its own
+line and never inside a `<details>` block.
 
 **The pandoc first-start wait forks no poll** (Q40). It polled with an external `sleep 0.2`, five forks a second for
 up to 300 s. The shell waits on pandoc; a ticker child prints the lines (exit 3 when it printed one) and a watchdog
@@ -21737,6 +21740,25 @@ sync: ` lines still go through `named()`, which skips a time already followed by
 shared stamp. On the rehearsal's real e2a8e8df render one line changes, the sync line, and `.2` goes from 14 to 15.
 Test: `test_a_stopped_copy_by_an_older_agentsync_names_the_install_run_of_its_sync_line` (already numbered: the sync
 line gains `, run <st>.2,` and every other line is byte-identical; already named: byte-identical).
+
+**A stopped copy by an older renderer takes round 14's counted words** (S20; amends §16.111 Q27). Rehearsal C3 to C6:
+the likeliest field path renders a stopped copy with c57cfa7c (v22) or e2a8e8df (v21), and round 14's renderer-only
+count words never reached it: `2 of 3 source(s) with a complete baseline`, `done (listed 6 folder(s): 2 already
+synced)`, `(1 excluded id(s), 2 name(s),`, the Loop line's exclude-empty wait (`1 empty cloud folder(s) keep`, `if the
+folder(s) are meant`, `(it adds them to` or `(it adds it to`, `which names the folder(s), up to five, and past five how
+to list the rest`) and the Status line of one unknown folder (`1 of them still empty ..., by their link count`, `none
+of them excluded`, `below them`). `stopped_report_note` rewrites each by the number in its own line: the baseline by
+M, the listed folders by N (in `table()`, before the re-pad, since `STOPPED_STEP_WORDS` is an exact-token map), the
+policy nouns each by its own count, each exclude-empty wait by the count that opens it up to the next one (the `up to
+five` clause dropped at five or fewer, Q41's rule, kept above five), and the Status pronouns only for one folder
+(`1 materialised-and-empty`, `1 of N checked`). Only in the Summary, the policy line and the Status section, and
+never inside a `<details>` block: the install.out tail is history. A line already in the new words matches no
+pattern and is left as it is. The wait's own count stands in for the alarm's stored count, which the report does not
+carry: they differ only when folders were excluded since the walk. Not the finder's run of an older renderer in a
+test: CI's shallow checkout has neither commit; the test builds the old lines from the current renderer with
+`_list_folders_note` patched to the old words, and from the real renders' lines with made-up names. Test:
+`test_a_stopped_copy_by_an_older_agentsync_counts_its_nouns` (e2a8e8df and c57cfa7c shapes; one folder and seven;
+the same lines inside the install.out details block, unchanged; a line in the new words, unchanged).
 
 **The two twins join the signed-out apps alike, and an unlogged step 2 stop is an item** (S40; amends §16.99 N41,
 §16.104 O13 and §16.112 Q7). (a) Round 14 Q48 made the report say `OneDrive, Dropbox and Box are not signed in` and
