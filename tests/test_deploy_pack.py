@@ -5402,6 +5402,15 @@ _ROUND_15_PARAGRAPH_AMENDS = (
 )
 """Round 15's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
+_ROUND_16_PARAGRAPH_AMENDS = (
+    (
+        "16.14",
+        '§16.40 "The first-sync line counts what other runs read again"):**',
+        "§16.127 T51, T69 (by §16.116 S26)",
+    ),
+)
+"""Round 16's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5428,12 +5437,14 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     nothing-stored bullet and Q67's at §16.109's opening paragraph. Round 15's §16.116 (lane RA) one, S9's at
     §16.29's folders-line bullet, §16.121 (lane D) nine: S48 and S57's count lines at §16.22, §16.24,
     §16.26 (five) and §16.37, and S67's at §16.14's "Prompt v7." paragraph, and §16.120 (lane E) six: S49's
-    two in §15's `convert.pandoc` section, S29's and S53's in §16.32, and S52's at §16.26 and §16.42."""
+    two in §15's `convert.pandoc` section, S29's and S53's in §16.32, and S52's at §16.26 and §16.42. Round
+    16's §16.127 (lane D) one: T51 and T69's at §16.14's amended re-read clause."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
+    assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5449,6 +5460,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_13_PARAGRAPH_AMENDS,
         *_ROUND_14_PARAGRAPH_AMENDS,
         *_ROUND_15_PARAGRAPH_AMENDS,
+        *_ROUND_16_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -5563,6 +5575,148 @@ def test_the_deploy_guide_names_every_file_install_sh_keeps_in_local_work() -> N
     for name in sorted(names):
         assert f"`local-work/{name}`" in row, name
     assert "it is not copied into `bring-back.md`), `proxy-hosts`" in row
+
+
+def test_the_deploy_guide_gives_not_sents_third_field() -> None:
+    """B13 round 16 T73: since round 15 S34 a `.not-sent` record whose patch a report sent has a third field,
+    when that report's attempt began, and goes once a later attempt reports. The guide's `setup/` row gave
+    two fields and never said when a record goes."""
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert 'notsent+="$id $nsat $begin"' in script  # sent now: the third field is the attempt's start
+    assert 'if [ -n "$sentat" ] && [ "$sentat" != "$begin" ]; then' in script  # another attempt's: it goes
+    [row] = [
+        line
+        for line in (ROOT / "docs/deploy/README.md").read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `~/agent-context/setup/`")
+    ]
+    [not_sent] = re.findall(r"`local-work/\.not-sent` \(([^()]*(?:\([^()]*\)[^()]*)*)\)", row)
+    assert "and that report's time, and, once a report sends it, when that report's attempt began" in not_sent
+    assert "in each report of that attempt, and leaves the list once a later attempt reports" in not_sent
+
+
+def test_the_guide_asks_for_a_not_repeated_patch_by_its_hash() -> None:
+    """B13 round 16 T28: the guide told the reader to ask for "the file the line names", but install.sh's two
+    `not repeated:` lines name a folder and a hash prefix, and on purpose no file (a patch's name carries its
+    commit's subject). The guide asks for the patch in that folder whose SHA-256 starts with the line's 12
+    digits, the prefix install.sh cuts from `shasum -a 256` of the file."""
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    lines = [ln for ln in script.splitlines() if 'skipped="${skipped}not repeated: ' in ln]
+    assert len(lines) == 2
+    for line in lines:
+        assert line.endswith("sha256 $sha; still in $shown/local-work\"$'\\n'")
+        assert not re.search(r"\$\{?p\b|basename", line.replace('<"$p"', "")), line  # wc reads it; no name
+    assert 'sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"' in script
+    page = " ".join(_feedback_page().split())
+    assert "ask for the file the line names" not in page
+    assert (
+        "the Mac cannot know what was copied back. The line names no file (a patch's file name carries its "
+        "commit's subject), so ask the person to run "
+        "`shasum -a 256 ~/agent-context/setup/local-work/*.patch` on that Mac (the folder the line's "
+        "`still in` names, if it is another) and to send privately the patch "
+        "whose hash starts with the line's 12 digits."
+    ) in page
+
+
+def test_the_guide_quotes_the_counted_re_read_clause() -> None:
+    """B13 round 16 T51, T69 (one defect): since round 15 S26 the Summary's re-read clause takes its nouns
+    from the counts (`N reads again by K other runs`), and the guide's `first sync:` row still quoted
+    `N read(s) again by K other run(s)`. The CONTRACTS quotes have dated lines (the dated-line scan, and
+    :data:`_ROUND_16_PARAGRAPH_AMENDS`)."""
+    from agentsync import setup_report, text  # noqa: PLC0415
+
+    code = " ".join(inspect.getsource(setup_report._reread_since).split())
+    assert "'read')} again by \" f\"{_plural(len(others), 'other run')}" in code
+    assert (text.plural(1, "read"), text.plural(1, "other run")) == ("1 read", "1 other run")
+    page = " ".join(_feedback_page().split())
+    assert "read(s) again by" not in page
+    assert (
+        "A last clause `since this install run began, N reads again by K other runs` "
+        "(`1 read`, `1 other run` for one) sums what the other runs read again"
+    ) in page
+    assert "`tightened N path(s) inside the docs repo" in page  # cli.py still prints that one
+    contracts = " ".join(CONTRACTS.read_text(encoding="utf-8").split("\n### 16.127 ")[0].split())
+    quotes = contracts.split("N read(s) again by K other run(s)")[1:]
+    assert len(quotes) == 2  # §16.14's amended line and §16.40 N32
+    for quote in quotes:
+        assert "§16.127 T51, T69 (by §16.116 S26): " in quote[:400]
+
+
+def test_the_guide_places_a_vanished_sources_label_in_the_loads_line() -> None:
+    """B13 round 16 T68: since round 15 S8 the Configuration section's `loads: yes, but a sync refuses it`
+    line, and its step-2 form, names a source still in the manifest and gone from sources.toml as `(not in the
+    config, N)`; the guide's placeholder row said that form was in the evidence parts only. Its scope clause
+    stays as round 5 pinned it, and the excludes line, which reads only the configured sources, never shows
+    the form."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    assert 'return f"- loads: yes, but a sync refuses it: {live}"' in source
+    assert 'return f"- loads: yes, but step 2\'s sync refused it (run {run.display_id}): "' in source
+    assert "(not in the config, " in inspect.getsource(setup_report._Labels)
+    assert "for src in c.sources" in inspect.getsource(setup_report._excludes_line)
+    [row] = [
+        ln
+        for ln in _feedback_page().splitlines()
+        if ln.startswith("| `(source N)`, `(not in the config, N)`")
+    ]
+    assert "(evidence parts only)" not in row
+    assert row.endswith(
+        "no longer in sources.toml (the evidence parts, and the Configuration section's "
+        "`loads: yes, but a sync refuses it` line, or `... step 2's sync refused it` line, which names such "
+        "a source the same way) |"
+    )
+    assert (
+        "in the evidence parts and the Configuration section's `source excludes beyond agentsync's own` "
+        in row
+    )
+
+
+def test_contracts_quote_the_counted_unread_patch_lines() -> None:
+    """B13 round 16 T74, T75, T76: round 15 S14 and S26 gave install.sh's unread-patch lines and the report's
+    Installer line their count's noun, but §16.105 O25's S24 line, §16.116 S5's quote and §16.116 S26's line
+    numbers did not follow. Each has a dated line: O25's quotes what install.sh prints for one patch, S5's the
+    `_plural` form, and S26's names each line by words install.sh holds."""
+    from agentsync import setup_report, text  # noqa: PLC0415
+
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [again] = re.findall(r'^LOCAL_WORK_AGAIN="([^"]+)"$', script, re.M)
+    assert '[ "$unread" != 1 ] || { up="1 patch file" uthem=it; }' in script
+    [not_sent] = re.findall(r"printf 'not sent: %s in %s/local-work ([^']+)\\n'", script)
+    [header] = re.findall(r'printf \'%s\\n\' "Section 3 sends no patch: \$up ([^"]+)"', script)
+    o25 = " ".join(
+        _contracts_section("**A patch this account cannot read is counted, not sent** (O25)", "\n\n").split()
+    )
+    [t74] = re.findall(r"Amended 2026-10-18, §16\.127 T74 \(by §16\.117 S14, S23\): .*", o25)
+    assert (
+        "`not sent: 1 patch file in ~/agent-context/setup/local-work "
+        + not_sent.replace("%s readable", "it readable").replace("run %s again", f"run {again} again")
+        + "`"
+    ) in t74
+    assert f"`Section 3 sends no patch: 1 patch file {header.replace('$uthem', 'it')}`" in t74
+    assert "(`N patch files ... make them readable` in both for more than one)" in t74
+    s5 = " ".join(
+        _contracts_section(
+            "**A [FAIL] fix that is the person's is no hint for the agent** (S5)", "\n\n"
+        ).split()
+    )
+    assert "_plural(other_total, 'other instruction-like line')" in inspect.getsource(setup_report)
+    lines = text.plural(0, "other instruction-like line")
+    assert (
+        "Amended 2026-10-18, §16.127 T75 (by §16.116 S26): the count takes its noun, so the line reads "
+        f"`... and {lines} and 6 fix: on [FAIL]" in s5
+    )
+    s26 = " ".join(
+        _contracts_section(
+            "**A known count takes its noun from the count, everywhere in the report**", "\n\n"
+        ).split()
+    )
+    [t76] = re.findall(r"Amended 2026-10-18, §16\.127 T76: .*", s26)
+    named = re.findall(r"`([^`]+)`", t76)
+    assert len(named) == 9, named
+    for words in named[:-2]:
+        for part in words.split(" ... "):
+            assert part.rstrip(":") in script, part
+    assert named[-2:] == ["1 patch file", "N patch files"]
 
 
 def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:

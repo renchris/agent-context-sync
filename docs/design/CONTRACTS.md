@@ -5279,7 +5279,9 @@ incomplete listing does not clear it). **Amended (2026-10-11, §16.40 "The first
 counts"):** the clause now reads "N of M source(s) with a complete baseline (status, read when this report was
 written)"; the count is unchanged. **Amended (2026-10-11, §16.40 "The first-sync line counts what other runs read
 again"):** when runs other than the installer's sync read files again since that install run began, the line ends
-`· since this install run began, [at least ]N read(s) again by K other run(s) (...)`. The generated-at, agentsync, install source and took bullets end the Summary under
+`· since this install run began, [at least ]N read(s) again by K other run(s) (...)`.
+Amended 2026-10-18, §16.127 T51, T69 (by §16.116 S26): the clause reads `[at least ]N reads again by K other runs`
+(`1 read`, `1 other run` for one). The generated-at, agentsync, install source and took bullets end the Summary under
 `RUN_METADATA_HEADING` ("### Run metadata", a sub-heading: the `## ` headings stay `SECTION_TITLES`). **Install
 source (L10).** For the installed checkout: `@ <sha>[ (uncommitted changes, tree=<fp>)] · origin: <origin_label>
 · on origin/main: yes|no|unknown (as of the checkout's last fetch)`, every git call read-only
@@ -11919,6 +11921,8 @@ first-sync line and §16.37's "The first sync's read-again count reaches the rep
 installer's sync read files again since that install run began, the Summary's first-sync line ends `· since this
 install run began, [at least ]N read(s) again by K other run(s) (the newest is run <id>; the background job's runs
 and syncs typed in a terminal are recorded alike: see the OCR part)`.
+Amended 2026-10-18, §16.127 T51, T69 (by §16.116 S26): the counts take their noun, `[at least ]N reads again by K
+other runs` (`1 read`, `1 other run` for one).
 - N is the sum of the run records' `reread` over those runs, the OCR part's unit: a file read in two runs counts
   twice. `_ocr_time` keeps each run it read in `_Facts.runs_read`; no new query.
 - The installer's sync is a run that started inside its first-sync step (the step line's stamp, its seconds and
@@ -20581,6 +20585,12 @@ Amended 2026-10-18, §16.117 S24: with nothing sent the header reads `Section 3 
 file(s) could not be read; make them readable (chmod u+r) and run the report again (install.sh --report-only), as its
 last line says.`, then, for patches listed by their hash, `The one other patch was ...` or `The other N patches were
 ... listed by their hash.`
+Amended 2026-10-18, §16.127 T74 (by §16.117 S14, S23): the counts above take their noun, and section 3's line
+names the report command: it reads `not sent: 1 patch file in ~/agent-context/setup/local-work this account cannot
+read; make it readable (chmod u+r) and run ~/src/agent-context-sync/scripts/install.sh --report-only again`, and with
+nothing sent the header reads `Section 3 sends no patch: 1 patch file could not be read; make it readable (chmod
+u+r) and run the report again (install.sh --report-only), as its last line says.` (`N patch files ... make them
+readable` in both for more than one).
 
 **A stopped copy's left-out marker is number-neutral** (O70; amends §16.99 N22). One marker stands for the lines of
 every earlier run in the tail, yet read "an earlier run's". Test:
@@ -21163,6 +21173,8 @@ its `(s)` until it is converted again for another reason. Tests: `test_deploy_pa
 (one folder), `test_list_folders_marks_the_folders_this_mac_already_syncs` (two), `tests/test_text.py`.
 Amended 2026-10-18, §16.120 S52: the other converters' counts too (`OCR: 1 line`, `Text (txt): 1 line`, `Workbook:
 1 sheet`, `1 attachment`, `1 turn, 1 named speaker`, `1 message in 1 thread`); still no emitter version moved.
+Amended 2026-10-18, §16.127 T89 (by §16.121 S48, S57): the older lines at §16.22, §16.24, §16.26, §16.37, §16.39
+N27, §16.54 Q77, §16.80 K23 and §16.98 N4 carry each count's noun too (dated there by §16.121 S48, S57).
 
 Amended 2026-10-18, §16.116 S26, S30, S31: every count the setup report knows takes its noun from the count, not
 only the lines listed here; install.sh's report readers accept both forms.
@@ -21607,6 +21619,9 @@ person's fix beside a `chmod 700` [FAIL]) keeps both as `fix:`, since its NEXT s
 a fix on a [warn], [ok] or TCC_PENDING line stays `fix:`, and a NEXT holding `fix:` is still a `NEXT:`. Not per
 line: a per-line split would call a mixed run's person's fix "not a hint" under a NEXT that asks the agent to act.
 The Installer sentence says so. Test: `test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent`.
+Amended 2026-10-18, §16.127 T75 (by §16.116 S26): the count takes its noun, so the line reads `... and 0 other
+instruction-like lines and 6 fix: on [FAIL] lines that are the person's ...`; the `6 other instruction-like
+line(s) (6 fix:)` above is what the line read before S5.
 
 **A known count takes its noun from the count, everywhere in the report** (S26, S30, S31: one defect from three
 finders, built once; amends §16.111 Q39). Q39 moved a few lines to `plural`; the report still wrote `(s)` after
@@ -21625,6 +21640,11 @@ governance's `no commit older than N days` (doctor's governance line, which the 
 counts take theirs (`N patch files` / `1 patch file` and `M local-work branches` in the fallback local-work line,
 the providers line's `1 symlink` / `1 other entry`, `All N lines of install.log` or `The one line of ...`, the
 shell report's `folder glob` and `source`); lane RB's S14 owns the unread-patch lines (3491, 3535, 3537, 3576, 4015).
+Amended 2026-10-18, §16.127 T76: those numbers have moved with later scripts/install.sh changes. The unread-patch
+lines are `write_bring_back`'s section 3 `not sent: ... this account cannot read` line, the header's `Section 3 does
+not hold ... this account cannot read` and `Section 3 sends no patch: ... could not be read` sentences, the `could not
+be read, so ... does not hold` warning and the `--report-only` NEXT's `kept patch file` sentence; since S14 each
+takes its noun from the count (`1 patch file` / `N patch files`).
 
 install.sh rewrites a stopped copy that any installed renderer may have written, so its readers accept both forms
 (an older agentsync still writes `(s)`): the install.out details summary (` line(s) of ` or ` lines of `, for the
@@ -22220,6 +22240,8 @@ inode, time and size and that report's time. docs/deploy/README.md's `setup/` ro
 one; it names it now, and says it is never copied into `bring-back.md`. Test:
 `test_the_deploy_guide_names_every_file_install_sh_keeps_in_local_work`, which reads the names install.sh writes
 beside the patches.
+Amended 2026-10-18, §16.127 T73 (by §16.117 S34): a record a report sent its patch by has a third field, when that
+report's attempt began, and goes once a later attempt reports; the guide's row says so.
 
 **v7's step 2 is `install and start` at every older line** (S67; dated lines at §16.14, §16.69 H11, §16.73 H43,
 §16.79 J60 and §16.110 Q25). §16.110 Q25 made the layout's step 2 `install and start` and said the older quotes of
@@ -22250,4 +22272,61 @@ Reserved for round 16 lane E of B13.
 
 ### 16.127 Round 16: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 16 lane D)
 
-Reserved for round 16 lane D of B13.
+Docs and dated lines that lagged round 15's code (`docs/plans/bring-back-ocr.md`, "B13 round 16"; specs
+`round16/items/T<n>.md`, the verifier's corrected fix built). Lane D's round 16 items: T28, T51, T68, T69, T73, T74,
+T75, T76 and T89. T51 and T69 are one defect, built once. All are built; none was recorded as making things worse.
+Every edit is outside the prompt block and no item needs prompt words, so none went to lane P. A dated line this
+round writes reads `Amended 2026-10-18, §16.127 T<n>`, with `(by §16.NN S<n>)` when it records round 15's change.
+Round 15's paragraphs keep their words as the record; each stale quote gets a dated line beside it.
+
+**The guide's `not repeated:` line names a folder, not a file** (T28). setup-feedback.md told the reader to ask for
+"the file the line names", but install.sh's two `not repeated:` lines give a time, a line count, the first 12 hex
+digits of the patch's SHA-256 and `still in <setup>/local-work`, and on purpose no file name (a patch's name carries
+its commit's subject). The guide now asks the person to run `shasum -a 256 ~/agent-context/setup/local-work/*.patch`
+on that Mac (the folder the line names, if another) and to send privately the patch whose hash starts with the line's
+12 digits. Test: `test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`, which reads both lines install.sh writes.
+
+**The re-read clause's counts take their noun** (T51, T69: one defect from two finders, built once; dated lines at
+§16.40 N32 and §16.14). Since §16.116 S26 the Summary's clause reads `since this install run began, [at least ]N
+reads again by K other runs` (`1 read`, `1 other run` for one); setup-feedback.md's `first sync:` row, §16.14's
+amended line and §16.40 N32 still quoted `N read(s) again by K other run(s)`. The guide's row quotes the counted form,
+and each CONTRACTS quote has a dated line. The guide's `tightened N path(s)` quote stays: cli.py still prints it.
+Tests: `test_the_guide_quotes_the_counted_re_read_clause`, the dated-line scan, and the §16.14 pin in
+`_ROUND_16_PARAGRAPH_AMENDS`.
+
+**`(not in the config, N)` is in the Configuration section's loads line too** (T68). Since §16.118 S8 the
+Configuration section's `- loads: yes, but a sync refuses it: ...` line (and its `... step 2's sync refused it`
+form) names a source still in the manifest and gone from sources.toml as `(not in the config, N)`, and the guide's
+placeholder row said that form was in the evidence parts only. The row's scope clause, which
+`test_the_docs_state_what_round_5_changed` pins, stays; its last bracket names both loads lines. The excludes line
+never prints the form (it reads only the configured sources), so the row keeps it apart from that line. Test:
+`test_the_guide_places_a_vanished_sources_label_in_the_loads_line`, which reads both loads lines in
+`setup_report.py`.
+
+**The deploy guide gives `.not-sent`'s third field** (T73; dated line at §16.121 S61). Since §16.117 S34 a
+`.not-sent` record whose patch a report sent has a third field, when that report's attempt began, and goes once a
+later attempt reports. docs/deploy/README.md's `setup/` row gave two fields and never said when a record goes; it
+gives all three now. S61's paragraph gets a dated line; §16.117 S34 and Q29's amend line already state the field.
+Test: `test_the_deploy_guide_gives_not_sents_third_field`, which reads the record install.sh writes.
+
+**O25's quotes take the count's noun** (T74; dated line at §16.105 O25). §16.117 S24's dated line in O25's
+paragraph quoted `N patch file(s) could not be read; make them readable`, a form install.sh never printed: since
+§16.117 S14 it prints `1 patch file ... make it readable` or `N patch files ... make them readable`, and since S23
+section 3's line names the report command, not `this command`. One dated line after S24's gives the counted forms
+of both. Tests: the dated-line scan, and `test_contracts_quote_the_counted_unread_patch_lines`.
+
+**S5's Installer quote says `lines`** (T75; dated line at §16.116 S5). §16.116 S5 quoted the new Installer line as
+`... and 0 other instruction-like line(s) and 6 fix: ...`; S26, in the same lane, made it `_plural`, which prints `0
+other instruction-like lines`. The quote of what it read before S5 stays. Tests: the dated-line scan, and
+`test_contracts_quote_the_counted_unread_patch_lines`.
+
+**§16.116's unread-patch lines are named by their words** (T76; dated line at §16.116 S26). S26's paragraph named
+lane RB's lines by number (3491, 3535, 3537, 3576, 4015); after later install.sh commits four of them are a comment,
+a `fi` and an awk line. The dated line names them by their words, in scripts/install.sh, and says they take their
+noun from the count since S14. Tests: the dated-line scan, and `test_contracts_quote_the_counted_unread_patch_lines`,
+which finds each named line in install.sh.
+
+**Q39 names the sections §16.121 S48 and S57 dated** (T89; dated line at §16.111 Q39). §16.121 S48 and S57 dated
+the older count lines at eight sections, but Q39's paragraph still named only §16.39 N36, so the amendment could be
+traced from one side. A dated line after Q39's names them. Written under §16.121's own marker, the line was held by
+no claim (the verifier measured it); under T89's, this claim holds it. Test: the dated-line scan.
