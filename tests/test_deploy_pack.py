@@ -5796,11 +5796,13 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         in page
     )
     assert "which is no kept work" not in page
-    # B13 round 14 Q30: section 3's own line carries the remedy now, with the keep's --suffix
+    # B13 round 14 Q30: section 3's own line carries the remedy now, with the keep's --suffix; round 15 S25
+    # with its -c format.filenameMaxLength=128 too, and S23 names the report command
     assert (
-        'git -C ~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o '
-        "~/agent-context/setup/local-work" in page
+        "git -C ~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q "
+        '--suffix=".<branch>.patch" origin/main..<branch> -o ~/agent-context/setup/local-work' in page
     )
+    assert f"then run {setup_report.LOCAL_WORK_AGAIN} again" in page and "run this command again`" not in page
     # B13 round 14 Q29: the clause for patches this account cannot read
     assert (
         "`, U of them unreadable and not in bring-back.md (chmod u+r, then run "

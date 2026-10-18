@@ -3499,17 +3499,20 @@ write_bring_back() {
 		up="$unread patch files" uthem=them
 		[ "$unread" != 1 ] || { up="1 patch file" uthem=it; }
 		# no file name: a patch's name carries its commit's subject
-		[ "$unread" -eq 0 ] || printf 'not sent: %s in %s/local-work this account cannot read; make %s readable (chmod u+r) and run this command again\n' "$up" "$shown" "$uthem"
+		# the command by name: this line is in a file the person reads, where "this command" is none (B13 round 15
+		# S23)
+		[ "$unread" -eq 0 ] || printf 'not sent: %s in %s/local-work this account cannot read; make %s readable (chmod u+r) and run %s again\n' "$up" "$shown" "$uthem" "$LOCAL_WORK_AGAIN"
 		if [ "$sent" -eq 0 ] && [ -z "$skipped" ] && [ "$unread" -eq 0 ]; then
 			# local-work branches with commits of their own and no patch: those commits are not here (B13 round 13
 			# O23: a bare "none" read as no kept work). Its remedy names no branch, with the keep's own --suffix,
 			# so the patch pairs with its branch; a branch at an older commit of origin/main writes nothing (B13
-			# round 14 Q30).
+			# round 14 Q30), and the keep's -c format.filenameMaxLength=128, so one commit has one file name (B13
+			# round 15 S25); it names the report command, not "this command" (S23).
 			branches="$(local_work_counts)"
 			branches="${branches##*|}"
 			if [ "${branches:-0}" -gt 0 ]; then
 				# shellcheck disable=SC2016 # the backticks are text
-				printf 'none: no patch file is in %s/local-work, but %s local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch `git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C ~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o %s/local-work` (a branch that writes nothing holds no new commit), then run this command again\n' "$shown" "$branches" "$shown"
+				printf 'none: no patch file is in %s/local-work, but %s local-work branch(es) in ~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch `git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C ~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o %s/local-work` (a branch that writes nothing holds no new commit), then run %s again\n' "$shown" "$branches" "$shown" "$LOCAL_WORK_AGAIN"
 			else
 				printf 'none\n'
 			fi

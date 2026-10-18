@@ -20446,6 +20446,10 @@ Amended 2026-10-17, §16.111 Q30: section 3's branches-only line goes on
 origin/main..<branch> -o ~/agent-context/setup/local-work (a branch that writes nothing holds no new commit), then run
 this command again`, and the header says `Section 3 sends no patch: M local-work branch(es) hold commits this file
 does not carry; its line says how to add them.`
+Amended 2026-10-18, §16.117 S23, S25: that remedy runs `git -C ~/src/agent-context-sync -c
+format.filenameMaxLength=128 format-patch ...` and ends `then run ~/src/agent-context-sync/scripts/install.sh
+--report-only again`, and the unreadable patch's `not sent:` line ends `and run
+~/src/agent-context-sync/scripts/install.sh --report-only again`.
 
 **Redaction and pronouns** (O10, O38, O54, O68; dated lines at §16.98 N57, §16.52 Q17 and §16.58 F48). O10: the
 folder legend's list-only clause is not printed for the agent's own name: both readers take every whole-word copy
@@ -21613,6 +21617,20 @@ or `sources 'x' (1 file), 'y' (3 files) are mirrored`. The Summary's `N patch fi
 local-work` line is left for a change of its own (setup_report, the guide's quote and its pin move together). Tests:
 `test_a_patch_this_account_cannot_read_is_counted_not_sent`, `test_ops_doctor.py::test_heartbeat_states`,
 `test_review_fixes.py::test_two_vanished_sources_are_named_with_counted_nouns`.
+
+**Section 3's remedies name the command, and the branch remedy keeps the keep's file names** (S23, S25; amends
+§16.104 O23). Section 3 is in a file the person reads, not command output, so `then run this command again` named
+nothing, or read as the format-patch just before it; both section 3 lines (the unreadable patch's `not sent:` and the
+branches-only remedy) now end `run ~/src/agent-context-sync/scripts/install.sh --report-only again`, the
+`LOCAL_WORK_AGAIN` the Summary's local-work line already uses. The branches remedy had dropped the keep commands'
+`-c format.filenameMaxLength=128`, so git's 64-character default (with the 33-character branch suffix) cut the
+subject and one commit got a second file name (`0002-local-changes-kept-before.local-work-<stamp>.patch` beside the
+keep's `...-before-update...`), sent twice if the original came back; the `-c` goes after `-C <path>`, as in the
+README's keeps. The terminal NEXT lines, which are the command's own output, keep `run this command again`. Tests:
+`test_a_patch_this_account_cannot_read_is_counted_not_sent`, the section 3 pin in
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
+`test_section_3s_branch_remedy_names_a_commit_as_the_keep_does` (the remedy install.sh prints, run on a real branch),
+`test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 

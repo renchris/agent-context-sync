@@ -2537,7 +2537,7 @@ def test_a_patch_this_account_cannot_read_is_counted_not_sent(
     head, section3 = text.split("\n## 1. Setup report", 1)[0], text.split("## 3. Local work", 1)[1]
     assert section3.rstrip("\n").endswith(
         f"not sent: {files} in {shown} this account cannot read; make {them} readable (chmod u+r) and "
-        "run this command again"
+        "run ~/src/agent-context-sync/scripts/install.sh --report-only again"
     ), section3
     assert "contoso" not in section3 and "0002-x" not in section3 and "(s)" not in text.split("## 1.")[0]
     kept = "1 kept patch file" if locked_n == 1 else f"{locked_n} kept patch files"
@@ -9609,9 +9609,9 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
         "none: no patch file is in ~/agent-context/setup/local-work, but 2 local-work branch(es) in "
         "~/src/agent-context-sync hold commits this file does not carry; to send them, for each branch "
         '`git -C ~/src/agent-context-sync branch --list "local-work-*"` lists, run `git -C '
-        '~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch> -o '
-        "~/agent-context/setup/local-work` (a branch that writes nothing holds no new commit), then run this "
-        "command again\n"
+        '~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q --suffix=".<branch>.patch" '
+        "origin/main..<branch> -o ~/agent-context/setup/local-work` (a branch that writes nothing holds no "
+        "new commit), then run ~/src/agent-context-sync/scripts/install.sh --report-only again\n"
     ), section3()
     head = (report_path(env).parent / "bring-back.md").read_text().split("\n## 1. Setup report", 1)[0]
     assert (
@@ -9629,6 +9629,40 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n")  # a loose main overrides its packed line
     assert install_sh(env, "--report-only").returncode == 0
     assert neutral.format(1) in report_path(env).read_text()
+
+
+def test_section_3s_branch_remedy_names_a_commit_as_the_keep_does(tmp_path: Path) -> None:
+    """B13 round 15 S25: the branches-only remedy ran format-patch without the keep's
+    ``-c format.filenameMaxLength=128``, so git's 64-character default (with the 33-character branch suffix)
+    gave the keep's commit a second, shorter file name: sent twice if the original came back. The remedy
+    install.sh prints, run on a real branch, writes the file name the README keep writes."""
+    [remedy] = re.findall(
+        r"run `(git -C ~/src/agent-context-sync [^`]*format-patch[^`]*)`", INSTALL_SH.read_text()
+    )
+    repo, branch = tmp_path / "checkout", "local-work-20261018-001303"
+    git = ["git", "-C", str(repo), "-c", "user.name=x", "-c", "user.email=x@example.com"]
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "base"], check=True)
+    subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+    subprocess.run([*git, "switch", "-q", "-c", branch], check=True)
+    (repo / "note.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "local changes kept before update"], check=True)
+    keep, again = tmp_path / "keep", tmp_path / "again"
+    keep_cmd = (
+        f"git -C {shlex.quote(str(repo))} -c format.filenameMaxLength=128 format-patch -q "
+        f'--suffix=".{branch}.patch" origin/main.. -o {shlex.quote(str(keep))}'
+    )
+    run = (
+        remedy.replace("~/src/agent-context-sync", shlex.quote(str(repo)))
+        .replace("<branch>", branch)
+        .replace("%s/local-work", shlex.quote(str(again)))
+    )
+    for cmd in (keep_cmd, run):
+        subprocess.run(["/bin/bash", "-c", cmd], check=True)
+    names = sorted(p.name for p in keep.iterdir())
+    assert names == [f"0001-local-changes-kept-before-update.{branch}.patch"], names
+    assert sorted(p.name for p in again.iterdir()) == names
 
 
 def test_the_shell_report_registers_the_folders_step_1s_list_printed(env: dict[str, str]) -> None:

@@ -180,9 +180,9 @@ words) is yours to remove. The CLI always redacts.
   section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M local-work branch(es) in
   ~/src/agent-context-sync hold commits this file does not carry` (B13 round 13 O23). Those commits exist only on
   the branch. Since B13 round 14 Q30 that line goes on with the remedy, naming no branch (`; to send them, for each
-  branch ... run git -C ~/src/agent-context-sync format-patch -q --suffix=".<branch>.patch" origin/main..<branch>
-  -o ~/agent-context/setup/local-work (a branch that writes nothing holds no new commit), then run this command
-  again`), and the file's header says section 3 sends no patch and that its line says how to add them; ask the
+  branch ... run git -C ~/src/agent-context-sync -c format.filenameMaxLength=128 format-patch -q
+  --suffix=".<branch>.patch" origin/main..<branch> -o ~/agent-context/setup/local-work (a branch that writes
+  nothing holds no new commit), then run ~/src/agent-context-sync/scripts/install.sh --report-only again`), and the file's header says section 3 sends no patch and that its line says how to add them; ask the
   person for that only if the file came back without it. A public report shows that the work exists, never the
   patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
