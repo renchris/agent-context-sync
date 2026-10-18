@@ -22,6 +22,7 @@ import contextlib
 import dataclasses
 import fcntl
 import hashlib
+import itertools
 import json
 import os
 import plistlib
@@ -8134,9 +8135,9 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_says_whose_install_out_it
     cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
     assert cp.returncode == 0 and "(agentsync setup-report)" in cp.stdout, cp.stdout
     head, fenced = _embed(side)
+    # B13 round 16 T23: the summary is the renderer's words, so its "(s)" goes by its count
     assert (
-        head
-        == f"<details><summary>the last 3 line(s) of ~/agent-context/setup/install.out ({label})</summary>"
+        head == f"<details><summary>the last 3 lines of ~/agent-context/setup/install.out ({label})</summary>"
     )
     assert len(fenced) == 3
     _sends_nothing(side)
@@ -8171,8 +8172,14 @@ def test_a_stopped_copy_rendered_by_an_older_agentsync_drops_its_quiet_friction_
     assert install_sh(env, "--log-start", "x").returncode == 2
     assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
     lines = side.read_text().splitlines()
-    assert [ln for ln in lines if ln.startswith("- friction (attempt ")] == kept
-    assert log_line in lines and "- outcome: failed at step 1" in lines
+    # B13 round 16 T23: what stays takes the noun of its count, after quiet() read the old "(s)" form
+    assert [ln for ln in lines if ln.startswith("- friction (attempt ")] == [
+        "- friction (attempt 4): 2 event lines: 1 question, 1 finished",
+        "- friction (attempt 5): 2 event lines: 1 error, 1 finished; 1 legacy v4 line",
+    ]
+    assert (
+        log_line.replace("event line(s)", "event lines") in lines and "- outcome: failed at step 1" in lines
+    )
     _sends_nothing(side)
 
 
@@ -8617,6 +8624,285 @@ def test_a_stopped_copy_by_an_older_agentsync_counts_its_nouns(
     assert _OLD_WAIT.format(n=1, k=1) in held and "listed 6 folder(s), 2 of 3 source(s)" in held, "history"
 
 
+def _old_wait_now(n: int, k: int) -> str:
+    """:data:`_OLD_WAIT` in the current renderer's words for ``n`` folders."""
+    one = n == 1
+    clause = ", up to five, and past five how to list the rest" if n > 5 else ""
+    return (
+        _OLD_WAIT.format(n=n, k=k)
+        .replace("folder(s) keep the", "folder keeps the" if one else "folders keep the")
+        .replace("the folder(s) are", "the folder is" if one else "the folders are")
+        .replace("adds them to", "adds the folder to" if one else "adds them to")
+        .replace(
+            "names the folder(s), up to five, and past five how to list the rest",
+            ("names the folder" if one else "names the folders") + clause,
+        )
+    )
+
+
+def _stopped_copy_of(env: dict[str, str], tmp_path: Path, report: str) -> str:
+    """The stopped copy install.sh writes of ``report``, rendered by the installed (stub) agentsync."""
+    (Path(env["HOME"]) / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+    shutil.copy(env["STUB_AGENTSYNC"], Path(env["HOME"]) / ".local" / "bin" / "agentsync")
+    assert install_sh(env, "--log-start", "x").returncode == 2
+    stub = tmp_path / "old-report.md"
+    stub.write_text(report, encoding="utf-8")
+    assert install_sh({**env, "STUB_REPORT_FILE": str(stub)}, "--report-only").returncode == 0
+    return (report_path(env).parent / "setup" / "stopped-copy-report.md").read_text()
+
+
+def test_a_stopped_copys_waits_of_ten_or_more_folders_keep_their_count(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 16 T43: the wait fix-up looked for the next wait from the count's second character, so "12
+    empty cloud folder(s)" was cut at its "2", read as 2 folders, and lost its "up to five" clause, even in
+    text that was already right. Counts of 10, 12 and 21, in old and current words, and one line of
+    several."""
+    loop = (
+        "- Loop: baseline drafted; NEXT: stop: the operator confirms the baseline questions; also waiting: "
+    )
+    old = [loop + _OLD_WAIT.format(n=n, k=1) for n in (10, 12, 21)]
+    now = [loop + _old_wait_now(n, 1) for n in (10, 12, 21)]
+    several = loop + "; ".join(_OLD_WAIT.format(n=n, k=k) for k, n in enumerate((1, 12, 3), 1))
+    report = "\n".join(["# agentsync setup report", "", "## Summary", "", *old, *now, several, ""])
+    lines = _stopped_copy_of(env, tmp_path, report).splitlines()
+    assert [ln for ln in lines if ln.startswith("- Loop")] == [
+        *now,
+        *now,
+        loop + "; ".join(_old_wait_now(n, k) for k, n in enumerate((1, 12, 3), 1)),
+    ]
+
+
+def test_a_stopped_copy_by_the_v10_agentsync_takes_its_one_folder_words(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 16 T18: v10's loop.py wrote "if they are meant to be empty", which the S20 clause rule did
+    not
+    read, so one folder read "1 empty cloud folder keeps ...: if they are meant"; and v10's Status wrote "(1
+    of
+    them with a link count of 2: ...)" of one folder."""
+    loop = "- Loop: baseline drafted; NEXT: stop: the operator confirms; also waiting: "
+    v10 = [
+        loop + _OLD_WAIT.format(n=n, k=1).replace("if the folder(s) are meant", "if they are meant")
+        for n in (1, 2)
+    ]
+    status = (
+        "- <folder-1>: 1 unknown: 0 dataless, 1 materialised-and-empty (1 of them with a link count of 2: no "
+        "entry by the folder's own metadata); 0 gone; 1 of 1 checked; none of them excluded in sources.toml "
+        "now; the mirror still holds 0 file(s) below 1 of the checked folder(s)"
+    )
+    report = "\n".join(
+        ["# agentsync setup report", "", "## Summary", "", *v10, "", "## Status", "", status, ""]
+    )
+    lines = _stopped_copy_of(env, tmp_path, report).splitlines()
+    assert [ln for ln in lines if ln.startswith("- Loop")] == [loop + _old_wait_now(n, 1) for n in (1, 2)]
+    assert (
+        "- <folder-1>: 1 unknown: 0 dataless, 1 materialised-and-empty (still empty on this Mac, by its "
+        "link count "
+        "of 2); 0 gone; 1 of 1 checked; it is not excluded in sources.toml now; the mirror still holds 0 "
+        "files "
+        "below 1 of the checked folder"
+    ) in lines, [ln for ln in lines if ln.startswith("- <folder-1>")]
+
+
+_OLD_RENDER_FIXTURE = [
+    "# agentsync setup report",
+    "",
+    "## Summary",
+    "",
+    "- outcome: failed at step 1 (computed: no install run: only install.sh --list-folders ran (step 1))",
+    "- installer output: no run of this attempt in the last 146 line(s) of install.out (the 2 earlier "
+    "run(s) of Contoso's setup)",
+    "- redaction: 87 replacement(s) of 7 value(s) (legend under Redaction)",
+    "- friction (attempt 2): 1 event line(s): 1 finished",
+    "- friction (attempt 3): 2 event line(s): 1 question, 1 finished",
+    "- first sync: done in 20s · converted 8 · 5 of 6 source(s) with a complete baseline",
+    "- [policy] label rule: on (0 excluded id(s), 2 name(s), refuse_unlabelled=false)",
+    "",
+    "## Agent friction log",
+    "",
+    "9 line(s) in 2 attempt(s):",
+    "",
+    "~~~text",
+    "2026-10-18T10:00:01Z | step 1 | question | saw 2 file(s) in Contoso Docs | -",
+    "~~~",
+    "",
+    "## Environment",
+    "",
+    "- provider folders: 1 provider folder(s) under ~/Library/CloudStorage",
+    "",
+    "## Installer",
+    "",
+    "2 install.sh run(s) in this attempt.",
+    "",
+    "| step | seconds | result |",
+    "|------|--------:|--------|",
+    "| list-folders | 1 | done (listed 6 folder(s): 2 already synced) |",
+    "| report | 0 | done (agentsync) |",
+    "",
+    "Installer output: 2 NEXT: line(s) in 2 run(s), 0 other instruction-like line(s). An instruction-like "
+    "line "
+    "other than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
+    "WARNING "
+    "and ERROR log lines, and a sync's alarm and error lines, show item paths and document names as "
+    "<path>, as "
+    "in Recent errors, and a log line's local time is shown in UTC.",
+    "",
+    "<details><summary>the last 2 line(s) of ~/agent-context/setup/install.out (what the agent "
+    "saw)</summary>",
+    "",
+    "~~~text",
+    "done: 3 file(s) for Contoso",
+    "listed 6 folder(s)",
+    "~~~",
+    "",
+    "</details>",
+    "",
+    "## Doctor",
+    "",
+    "42 check(s): 39 ok, 0 info, 3 warn, 0 FAIL. Only the lines that are not ok: 1 expected warn(s) end in "
+    "(expected: <why>) instead of their fix: nothing for this setup to do.",
+    "",
+    "~~~text",
+    "[warn] launcher.signature — ad hoc (expected: ad hoc launcher); 2 file(s)",
+    "~~~",
+    "",
+    "## Status",
+    "",
+    "- images: 1 file(s) (6 page(s)), 0 wait(s), 0 conversion(s), 1 other entry(ies)",
+    "- conversions: 1 conversion(s) were used again; 2 queued id(s) have no file; 1 queued purge(s) name a "
+    "gone file",
+    "- <folder-1>: 0 unknown; its last walk listed all 4 file(s) the mirror holds for it",
+    "- <folder-2>: 0 unknown; its last walk listed all 1 file(s) the mirror holds for it",
+    "- sources: 3 local or inbox source(s) (3 source(s) with a folder) of the last 4 run(s), 37 day(s)",
+    "- images: 2 files (6 pages), already in the current words",
+    "- a label rule names no count: id(s) and name(s)",
+    "",
+    "## Redaction",
+    "",
+    "- 87 replacement(s) of 7 value(s)",
+    "",
+    "Read the report before sending it: anything else confidential is yours to remove.",
+    "",
+]
+"""A stopped copy as an agentsync from before B13 round 15 S26 (61474fdf, v23) words it, with made-up names:
+"(s)" beside every known count, counts of 0, 1 and 2, a plural verb after a count of 1, and the same forms in
+the install.out <details> block and the friction log's fence, which hold history."""
+
+
+def test_a_stopped_copy_by_an_older_agentsync_words_every_count(env: dict[str, str], tmp_path: Path) -> None:
+    """B13 round 16 T23, T84, T18 (one defect, built once; rehearsal C3 to C8, SC): a stopped copy rendered by
+    an older installed agentsync kept 24 to 28 "(s)" beside a known count, outside Summary lines S20 named:
+    the friction log's header, Environment, Installer (its table too), Doctor, Status and Redaction. Every
+    "word(s)" outside <details> and fences takes its count's noun, a plural verb after a count of 1 agrees,
+    and the Installer paragraph gains ba5e253f's sentence; the history blocks stay as written, quiet() still
+    drops a quiet-only friction line, and the table is padded again."""
+    text = _stopped_copy_of(env, tmp_path, "\n".join(_OLD_RENDER_FIXTURE))
+    lines = text.splitlines()
+    outside, det, fence = [], False, False
+    for ln in lines:
+        if ln.startswith("<details>"):
+            det = True
+        if not det and ln.startswith("~~~"):
+            fence = not fence
+        elif not det and not fence:
+            outside.append(ln)
+        if ln == "</details>":
+            det = False
+    counted = re.compile(r"(?:^|[^A-Za-z0-9.])[0-9]+ (?:\S+ ){0,3}[A-Za-z]+\((?:s|ies)\)")
+    assert [ln for ln in outside if counted.search(ln)] == [], "no (s) beside a count outside history"
+    for want in (
+        "- installer output: no run of this attempt in the last 146 lines of install.out (the 2 earlier "
+        "runs of "
+        "Contoso's setup)",
+        "- redaction: 87 replacements of 7 values (legend under Redaction)",
+        "- friction (attempt 3): 2 event lines: 1 question, 1 finished",
+        "- first sync: done in 20s · converted 8 · 5 of 6 sources with a complete baseline",
+        "- [policy] label rule: on (0 excluded ids, 2 names, refuse_unlabelled=false)",
+        "9 lines in 2 attempts:",
+        "- provider folders: 1 provider folder under ~/Library/CloudStorage",
+        "2 install.sh runs in this attempt.",
+        "<details><summary>the last 2 lines of ~/agent-context/setup/install.out (earlier attempts' "
+        "install.sh "
+        "output: none of this attempt's runs is in it)</summary>",
+        "- images: 1 file (6 pages), 0 waits, 0 conversions, 1 other entry",
+        "- conversions: 1 conversion was used again; 2 queued ids have no file; 1 queued purge names a "
+        "gone file",
+        "- <folder-1>: 0 unknown; its last walk listed every one of the 4 files the mirror holds for it",
+        "- <folder-2>: 0 unknown; its last walk listed the one file the mirror holds for it",
+        "- sources: 3 local or inbox sources (3 sources with a folder) of the last 4 runs, 37 days",
+        "- images: 2 files (6 pages), already in the current words",
+        "- a label rule names no count: id(s) and name(s)",
+        "- 87 replacements of 7 values",
+    ):
+        assert want in lines, (want, [ln for ln in lines if ln[:12] == want[:12]])
+    assert "- friction (attempt 2):" not in text, "quiet() read the old form first"
+    doctor = lines[lines.index("## Doctor") + 2]
+    assert doctor.startswith(
+        "42 checks: 39 ok, 0 info, 3 warn, 0 FAIL. Only the lines that are not ok: 1 "
+        "expected warn ends in (expected: <why>)"
+    ), doctor
+    [installer] = [ln for ln in lines if ln.startswith("Installer output: ")]
+    assert installer.startswith(
+        "Installer output: 2 NEXT: lines in 2 runs, 0 other instruction-like lines. An instruction-like line "
+        "other than NEXT: is a hint the agent may act on before install.sh's own next step; "
+        f"{_stopped_fix_line()} agentsync's own WARNING"
+    ), installer
+    table = [ln for ln in lines if ln.startswith("|")]
+    assert "| list-folders | 1 | done (listed 6 folders: 2 already synced) |" in [
+        " ".join(ln.split()) for ln in table
+    ], table
+    assert len({len(ln) for ln in table}) == 1, table
+    history = text.split("runs is in it)</summary>", 1)[1].split("</details>", 1)[0]
+    assert "done: 3 file(s) for Contoso\nlisted 6 folder(s)" in history
+    assert "saw 2 file(s) in Contoso Docs" in text and "ad hoc launcher); 2 file(s)" in text, (
+        "fences as written"
+    )
+
+
+def _stopped_fix_line() -> str:
+    [line] = re.findall(r'(?m)^STOPPED_FIX_LINE="(.*)" #', INSTALL_SH.read_text())
+    return line
+
+
+def test_the_shell_stopped_copy_fix_line_is_the_reports() -> None:
+    """B13 round 16 T23: the sentence the shim adds to an older Installer paragraph is the renderer's own
+    (ba5e253f), after the same "next step" words."""
+    source = (Path(__file__).parents[1] / "src" / "agentsync" / "setup_report.py").read_text(encoding="utf-8")
+    texts = [
+        part.value
+        for node in ast.walk(ast.parse(source))
+        for part in (node.values if isinstance(node, ast.JoinedStr) else [node])
+        if isinstance(part, ast.Constant) and isinstance(part.value, str)
+    ]
+    [nxt] = re.findall(r'(?m)^STOPPED_NEXT_STEP="(.*)"$', INSTALL_SH.read_text())
+    want = nxt.removesuffix(". ") + "; " + _stopped_fix_line() + " "
+    assert any(want in t for t in texts), want
+
+
+def test_no_renderer_line_writes_s_beside_a_count() -> None:
+    """B13 round 16 T23 (S20's guard): since round 15 S26 every renderer line takes its noun from a known
+    count, which is what lets the stopped copy's rewrite (install.sh plural_all) put every "(s)" an older
+    renderer wrote into the current words. An f-string of the renderer that writes "(s)" or "(ies)" right
+    after a value, at most three words on, would bring the form back unrewritten. Other modules' lines reach
+    the report only inside a fence (the Doctor and install.out blocks), which the rewrite leaves as
+    written."""
+    found = []
+    for path in [Path(__file__).parents[1] / "src" / "agentsync" / "setup_report.py"]:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.JoinedStr):
+                continue
+            for before, part in itertools.pairwise(node.values):
+                if (
+                    isinstance(before, ast.FormattedValue)
+                    and isinstance(part, ast.Constant)
+                    and isinstance(part.value, str)
+                    and re.match(r"\s?(?:\S+\s){0,3}\S*\((?:s|ies)\)", part.value)
+                ):
+                    found.append(f"{path.name}:{part.lineno}: {part.value[:60]}")
+    assert found == []
+
+
 def test_the_shell_stopped_copy_words_are_the_reports() -> None:
     """B13 round 14 Q27: the shim's step words are setup_report._STEP_NOTE_WORDS (less the helpers step,
     which the stopped copy's renderer already words), and its held-listing bracket is doctor's report note."""
@@ -8812,7 +9098,13 @@ def test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected(
     doctor = lines[lines.index("## Doctor") :]
     got_fenced = doctor[doctor.index("~~~text") + 1 : doctor.index("~~~")]
     assert [ln for ln in lines if ln.startswith("- doctor: ")] == [want_summary or summary]
-    assert doctor[2] == (want_head or head)
+    # B13 round 16 T23: the header's counts take their noun and verb, after the merge read the old forms
+    want = re.sub(
+        r"(\d+) expected warn\(s\) end in",
+        lambda m: f"{m[1]} expected warn{' ends' if m[1] == '1' else 's end'} in",
+        (want_head or head).replace("42 check(s):", "42 checks:"),
+    )
+    assert doctor[2] == want
     assert got_fenced == (want_fenced or fenced)
 
 
@@ -8921,7 +9213,7 @@ def test_a_stopped_copys_embed_counts_the_lines_it_leaves_out(env: dict[str, str
         assert install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only").returncode == 0
         head, fenced = _embed(side)
         found = re.fullmatch(
-            r"<details><summary>the last (\d+) line\(s\) of \S+ \(.*; (\d+) of them left out: the bring-back "
+            r"<details><summary>the last (\d+) lines of \S+ \(.*; (\d+) of them left out: the bring-back "
             r"and issue link lines\)</summary>",
             head,
         )

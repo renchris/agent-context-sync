@@ -3870,6 +3870,10 @@ status status-error agentsync status exited with no [FAIL] line
 doctor fail-lines agentsync status reported [FAIL] lines
 doctor tcc-pending its only [FAIL] lines were a macOS Allow still to be clicked (the [FAIL] line names it)
 doctor status-error agentsync status exited with no [FAIL] line" # setup_report._STEP_NOTE_WORDS less helpers (a test keeps them equal)
+# The Installer output paragraph's sentence on a person's fix: line, which a renderer before ba5e253f lacks (B13
+# round 16 T23): it goes after STOPPED_NEXT_STEP, whose full stop becomes a semicolon.
+STOPPED_NEXT_STEP=" before install.sh's own next step. "
+STOPPED_FIX_LINE="a fix: on a [FAIL] line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so)." # setup_report._installer_section (a test keeps them equal)
 STOPPED_HELD_OLD="(held at its last walk: the Summary's Loop line says whether a WAITING ON YOU line still holds it)"
 STOPPED_HELD_NOW="(as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)" # doctor.LISTING_YOURS_REPORT_NOTE (a test keeps them equal)
 # An older renderer gives two runs started in one second one id, where a renderer from 3b47e3e7 on (and the shell's
@@ -4017,7 +4021,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
 				-v w="$STOPPED_COPY_WARN" -v b="$STOPPED_COPY_BEYOND" -v compat="$SETUP_PROMPT_COMPAT" \
 				-v changed=", or the --log-start value was changed" -v quietkinds=" $STOPPED_COPY_QUIET_KINDS " \
-				-v heldold="$STOPPED_HELD_OLD" -v heldnow="$STOPPED_HELD_NOW" '
+				-v heldold="$STOPPED_HELD_OLD" -v heldnow="$STOPPED_HELD_NOW" -v nextstep="$STOPPED_NEXT_STEP" -v fixline="$STOPPED_FIX_LINE" '
 				function load(    m, i, ws, p, q, rest) { # words[step, token]: one "<step> <token> <words>" a line (not -v: a newline)
 					m = split(ENVIRON["STEPWORDS"], ws, "\n")
 					for (i = 1; i <= m; i++) {
@@ -4025,27 +4029,31 @@ stopped_report_note() { # KEPT-REPORT-PATH
 						words[substr(ws[i], 1, p - 1), substr(rest, 1, q - 1)] = substr(rest, q + 1)
 					}
 				}
-				BEGIN { load() }
+				BEGIN {
+					load()
+					one["were"] = "was"; one["are"] = "is"; one["have"] = "has"; one["end"] = "ends"
+					one["keep"] = "keeps"; one["hold"] = "holds"; one["name"] = "names"
+				}
 				function trim(x) { sub(/^ +/, "", x); sub(/ +$/, "", x); return x }
 				function ulen(x) { gsub(/[\200-\277]/, "", x); return length(x) } # characters, as Python counts them
 				function fill(x, w,    i) { for (i = ulen(x); i < w; i++) x = x " "; return x }
 				function lfill(x, w,    i, p) { p = ""; for (i = ulen(x); i < w; i++) p = p " "; return p x }
 				function dashes(w,    x) { x = ""; while (w-- > 0) x = x "-"; return x }
-				function table(    i, k, c, ch, w1, w2, w3, tok) { # the Installer table buffered in tb[1..tn]
+				function table(    i, k, c, ch, w1, w2, w3, tok, x) { # the Installer table buffered in tb[1..tn]
 					for (; blank > 0; blank--) print ""
 					ch = tn >= 3 && tb[2] ~ /^\|-+\|-+:\|-+\|$/
 					for (i = 1; ch && i <= tn; i++) {
 						if (i == 2) continue
 						if (split(substr(tb[i], 3, length(tb[i]) - 4), c, " \\| ") != 3) { ch = 0; break }
 						S[i] = trim(c[1]); N[i] = trim(c[2]); R[i] = trim(c[3])
-						if (i > 2 && match(R[i], /\(listed [0-9]+ folder\(s\)/)) { # renderer only: B13 round 14 Q39 (S20)
-							tok = substr(R[i], RSTART + 8) + 0
-							R[i] = substr(R[i], 1, RSTART - 1) "(listed " pl(tok, "folder") substr(R[i], RSTART + RLENGTH); ch = 2
-						}
 						if (i > 2 && match(R[i], / \([^()]*\)$/)) {
 							tok = substr(R[i], RSTART + 2, RLENGTH - 3)
 							if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
 						}
+						# each cell: its "(s)" by its count, after the token lookup, which reads the token as written; the
+						# table is padded again (B13 round 14 Q39 "listed N folders", round 16 T23)
+						if (i > 2 && (x = plural_all(R[i])) != R[i]) { R[i] = x; ch = 2 }
+						if (i > 2 && (x = plural_all(S[i])) != S[i]) { S[i] = x; ch = 2 }
 					}
 					if (ch == 2) {
 						w1 = w2 = w3 = 0
@@ -4094,31 +4102,50 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				# round 14 Q39, Q42, Q43, Q81 and Q41, renderer only; round 15 S20): each keyed on the number in its
 				# own line, and never inside a <details> block, which holds history (the install.out tail).
 				function pl(n, w, many) { return n " " (n == 1 ? w : (many == "" ? w "s" : many)) }
+				# Every "word(s)" or "word(ies)" outside <details> and ~~~ fences, by its count, as the current renderer
+				# words them all (B13 round 15 S26; round 16 T23, T84, T18): the count is the nearest whole number
+				# before it in its clause (back to a ";", "," or "("), at most three words before it, so "5 of 6
+				# source(s)" goes by 6 and "2 legacy v4 line(s)" by 2 ("v4" is no number). A plural verb right after
+				# it agrees with a count of 1 ("1 conversion was"). An "(s)" with no count in its clause stays. Run
+				# at the print and on the Installer table cells, so quiet() and the Doctor header, which read the
+				# old "(s)" forms, see them first.
+				function plural_all(line,    out, pre, noun, ies, base, cl, i, c, m, ws, j, n, gap, w) {
+					out = ""
+					while (match(line, /[A-Za-z]+\((s|ies)\)/)) {
+						pre = substr(line, 1, RSTART - 1); noun = substr(line, RSTART, RLENGTH); line = substr(line, RSTART + RLENGTH)
+						ies = substr(noun, length(noun) - 4) == "(ies)"
+						base = substr(noun, 1, length(noun) - (ies ? 5 : 3))
+						cl = out pre
+						for (i = length(cl); i > 0; i--) { c = substr(cl, i, 1); if (c == ";" || c == "," || c == "(") break }
+						m = split(substr(cl, i + 1), ws, " "); n = -1; gap = 0
+						for (j = m; j >= 1 && gap <= 3; j--) { if (ws[j] ~ /^[0-9]+$/) { n = ws[j] + 0; break }; gap++ }
+						if (n < 0) { out = out pre noun; continue }
+						# "entry(ies)" (61474fdf) or "entr(ies)"
+						if (ies && base ~ /y$/) base = substr(base, 1, length(base) - 1)
+						out = out pre base (n == 1 ? (ies ? "y" : "") : (ies ? "ies" : "s"))
+						if (n == 1 && match(line, /^ [a-z]+/) && (w = substr(line, 2, RLENGTH - 1)) in one)
+							line = " " one[w] substr(line, RLENGTH + 1)
+					}
+					return out line
+				}
 				function fix(line, pat, at, n, to,    i) { # swap the first match of pat, from its at-th character
 					if (!match(line, pat)) return line
 					return substr(line, 1, RSTART - 1) to substr(line, RSTART + RLENGTH)
 				}
-				function counted(line,    a, b, m, k, seg, out, rest, n, x) {
-					# "N of M source(s) with a complete baseline" (the sync line of the Summary)
-					if (match(line, /[0-9]+ of [0-9]+ source\(s\) with a complete baseline/)) {
-						x = substr(line, RSTART, RLENGTH); split(x, a, " ")
-						line = substr(line, 1, RSTART - 1) a[1] " of " pl(a[3] + 0, "source") " with a complete baseline" substr(line, RSTART + RLENGTH)
-					}
-					# "label rule: on (N excluded id(s), K name(s)," (the policy line)
-					if (match(line, /\([0-9]+ excluded id\(s\), [0-9]+ name\(s\),/)) {
-						x = substr(line, RSTART + 1, RLENGTH - 2); split(x, a, " ")
-						line = substr(line, 1, RSTART) pl(a[1] + 0, "excluded id") ", " pl(a[4] + 0, "name") "," substr(line, RSTART + RLENGTH)
-					}
-					# the exclude-empty waits, each up to the next one, by the count that opens it
+				# The exclude-empty waits of the Summary, each up to the next one, by the count that opens it: the clauses
+				# that are not "N word(s)" (a count in another clause, a pronoun); plural_all does the rest. The next
+				# wait is looked for after the whole count, so "12 empty" is not read as a wait at its "2" (B13 round 16
+				# T43), and v10\047s loop.py wrote "if they are meant" (T18).
+				function counted(line,    k, seg, out, rest, n) {
 					out = ""
 					while (match(line, /[0-9]+ empty cloud folder/)) {
 						out = out substr(line, 1, RSTART - 1); line = substr(line, RSTART)
 						n = substr(line, 1, index(line, " ") - 1) + 0
-						rest = substr(line, 2)
-						k = match(rest, /[0-9]+ empty cloud folder/) ? RSTART : length(rest) + 1
+						rest = index(line, " ")
+						k = match(substr(line, rest), /[0-9]+ empty cloud folder/) ? rest + RSTART - 2 : length(line)
 						seg = substr(line, 1, k); line = substr(line, k + 1)
 						seg = fix(seg, "empty cloud folder\\(s\\) keep the listing", 0, n, n == 1 ? "empty cloud folder keeps the listing" : "empty cloud folders keep the listing")
-						seg = fix(seg, "if the folder\\(s\\) are meant", 0, n, n == 1 ? "if the folder is meant" : "if the folders are meant")
+						seg = fix(seg, "if (they|the folder\\(s\\)) are meant", 0, n, n == 1 ? "if the folder is meant" : "if the folders are meant")
 						if (n == 1) seg = fix(seg, "\\(it adds (them|it) to that source", 0, n, "(it adds the folder to that source")
 						if (match(seg, /which names the folder(\(s\)|s)?, up to five, and past five how to list the rest/))
 							seg = substr(seg, 1, RSTART - 1) "which names the folder" (n == 1 ? "" : "s") (n > 5 ? ", up to five, and past five how to list the rest" : "") substr(seg, RSTART + RLENGTH)
@@ -4128,9 +4155,17 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					}
 					return out line
 				}
-				function status_one(line) { # a Status unknown line of one folder: its own pronouns
+				function status_one(line,    n) { # a Status unknown line of one folder: its own pronouns
 					if (index(line, " 1 materialised-and-empty (1 of them still empty on this Mac, by their link count of 2)"))
 						line = fix(line, "\\(1 of them still empty on this Mac, by their link count of 2\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
+					# v10 (4a42af9) wrote "(1 of them with a link count of 2: no entry by the folder\047s own metadata)" (B13 round 16 T18)
+					if (index(line, " 1 materialised-and-empty (1 of them with a link count of 2: "))
+						line = fix(line, "\\(1 of them with a link count of 2: [^)]*\\)", 0, 1, "(still empty on this Mac, by its link count of 2)")
+					# "its last walk listed all N file(s)": the current words (B13 round 15 S30, round 16 T23)
+					if (match(line, /its last walk listed all [0-9]+ file\(s\)/)) {
+						n = substr(line, RSTART + 25) + 0
+						line = substr(line, 1, RSTART - 1) "its last walk listed " (n == 1 ? "the one file" : "every one of the " n " files") substr(line, RSTART + RLENGTH)
+					}
 					if (match(line, /; 1 of [0-9]+ checked; /)) {
 						line = fix(line, "; none of them excluded in sources\\.toml now;", 0, 1, "; it is not excluded in sources.toml now;")
 						line = fix(line, "; the mirror holds no file below them;", 0, 1, "; the mirror holds no file below it;")
@@ -4166,11 +4201,18 @@ stopped_report_note() { # KEPT-REPORT-PATH
 					if (k > 0 && $0 ~ /^<details><summary>the last ([0-9]+ )?line(s|\(s\))? of .* \(.*\)<\/summary>$/)
 						$0 = substr($0, 1, length($0) - 11) "; " k " of them left out: the bring-back and issue link lines)</summary>"
 				}
-				index($0, "## ") == 1 { sec = $0; det = 0 }
+				index($0, "## ") == 1 { sec = $0; det = 0; fence = 0 }
+				index($0, "<details><summary>") == 1 { $0 = plural_all($0) } # its summary is the renderer\047s words
 				index($0, "<details>") == 1 { det = 1 }
 				!det && (sec == "## Summary" || index($0, "- [policy] label rule: on (") == 1) { $0 = counted($0) }
 				!det && sec == "## Status" && index($0, "- ") == 1 { $0 = status_one($0) }
 				$0 == "</details>" { det = 0 }
+				!det && index($0, "~~~") == 1 { fence = !fence }
+				# the Installer output paragraph of a renderer from before ba5e253f lacks its sentence on a fix: line
+				# (B13 round 16 T23)
+				!det && sec == "## Installer" && index($0, "Installer output: ") == 1 && (j = index($0, nextstep)) && !index($0, "whose stopping [FAIL] lines") {
+					$0 = substr($0, 1, j + length(nextstep) - 3) "; " fixline " " substr($0, j + length(nextstep))
+				}
 				sec == "## Summary" { $0 = prompt_line($0) }
 				sec == "## Summary" && quiet($0) { next }
 				# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13
@@ -4203,7 +4245,7 @@ stopped_report_note() { # KEPT-REPORT-PATH
 				sec == "## Installer" && index($0, "|") == 1 { tb[++tn] = $0; next }
 				tn { table() }
 				$0 == "" { blank++; next }
-				{ for (; blank > 0; blank--) print ""; print }
+				{ for (; blank > 0; blank--) print ""; print (det || fence ? $0 : plural_all($0)) }
 				END { if (tn) table(); print ""; print "Not for sending: see the note at the top of this report." }' "$REPORT_PATH" "$REPORT_PATH" |
 			stopped_run_labels
 	} >"$tmp"; then
