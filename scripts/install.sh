@@ -2595,15 +2595,15 @@ LOCAL_WORK_AGAIN="~/src/agent-context-sync/scripts/install.sh --report-only"
 # branch at the main or origin/main commit or at any commit the origin/main reflog names, which holds no commit
 # of its own, unless a patch is named for it (*.<branch>.patch; round 11 M54, M71). The patches are counted
 # whatever the checkout is. With branches but no patch the line does not say kept. Patches this account cannot
-# read are counted apart: bring-back.md does not hold them (B13 round 14 Q29).
+# read are counted apart: bring-back.md does not hold them (B13 round 14 Q29), less one an earlier attempt's
+# report carried, which section 3 does not send again (unread_patch_count, B13 round 16 T24).
 fallback_local_work_line() {
-	local n newest b counts u=0 p unread=""
+	local n newest b counts u=0 unread=""
 	counts="$(local_work_counts)"
 	IFS='|' read -r n newest b <<<"$counts"
 	if [ "$n" -gt 0 ]; then
-		while IFS= read -r p; do
-			[ -z "$p" ] || [ -r "$p" ] || u=$((u + 1))
-		done < <(find "$SETUP_DIR/local-work" -maxdepth 1 -type f -name '*.patch' ! -name '.*' 2>/dev/null || true)
+		u="$(unread_patch_count)"
+		u="${u:-0}"
 		[ "$u" -eq 0 ] || unread=", $u of them unreadable and not in bring-back.md (chmod u+r, then run $LOCAL_WORK_AGAIN again)"
 		# a known count takes its noun from the count, as the report's line does (B13 round 15 S31)
 		local pf="patch files" lb="local-work branches"
@@ -3442,11 +3442,73 @@ source_excludes_line() { # CONFIG
 				" (globs not shown; an excluded folder is not mirrored if it later gains files)"
 		}' "$1" 2>/dev/null || true
 }
+# What section 3's send rule reads, set in the caller (its locals): prev, the earlier attempt's end; begin, when
+# this attempt began ("-" when that cannot be told: .not-sent marks the attempt whose report sent a patch by it,
+# B13 round 15 S34); and the .not-sent and .sent ledgers. A link at either, or at local-work, is never read.
+patch_ledgers() {
+	local kept="$SETUP_DIR/local-work"
+	prev="$(utc_stamp "$(friction_earlier_end)")"
+	begin="$(utc_stamp "$(friction_attempt_begin)")"
+	begin="${begin:--}"
+	wasnot="" wassent=""
+	[ ! -f "$kept/.not-sent" ] || [ -L "$kept/.not-sent" ] || [ -L "$kept" ] || wasnot="$(cat "$kept/.not-sent" 2>/dev/null || true)"
+	[ ! -f "$kept/.sent" ] || [ -L "$kept/.sent" ] || [ -L "$kept" ] || wassent="$(cat "$kept/.sent" 2>/dev/null || true)"
+}
+# Section 3's send rule for one kept patch, from patch_ledgers' values, in the caller's locals: id (its
+# identity), nsat and sentat (its .not-sent record), force (sent whatever its time), at (its time, when at or
+# before the earlier end), held (.sent's report that first embedded it) and carried (held, when that report was
+# an earlier attempt's). A patch is not sent again when at or carried is set. One function, so section 1 counts an unread patch by the rule section 3 sends it by (B13
+# round 16 T24).
+patch_rule() {
+	local p="$1" rec=""
+	id="$(/usr/bin/stat -f %d:%i:%m:%z "$p" 2>/dev/null || true)"
+	[ -z "$id" ] || rec="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 " " $3 } END { print s }' <<<"$wasnot" 2>/dev/null || true)"
+	nsat="" sentat=""
+	read -r nsat sentat _ <<<"$rec" || true
+	# a record a report already sent the patch by, in an attempt that has ended since, goes: that report
+	# carried it, so the time rule below decides (B13 round 15 S34); a two-field record is not sent yet
+	if [ -n "$sentat" ] && [ "$sentat" != "$begin" ]; then
+		nsat="" sentat=""
+	fi
+	# one the earlier attempt could not read at its end is sent: its report did not carry it (B13 round 14
+	# Q29), in each report of this attempt
+	force=0
+	[ -z "$nsat" ] || { [ -n "$prev" ] && [ "${nsat//[!0-9]/}" -lt "${prev//[!0-9]/}" ]; } || force=1
+	at=""
+	[ -z "$prev" ] || [ "$force" -eq 1 ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
+	[ -z "$at" ] || [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ] || at=""
+	# the report that first embedded it (.sent), when that was before this attempt began: an attempt with
+	# no header writes no end line, so the time rule above cannot see its report (B13 round 15 S21)
+	held=""
+	[ -z "$id" ] || held="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 } END { print s }' <<<"$wassent" 2>/dev/null || true)"
+	held="$(utc_stamp "$held")"
+	carried="$held"
+	# .not-sent's rule, no attempt to tell, or this attempt's own report: sent again, in each report of the
+	# attempt. The time rule no longer clears it: .sent names a report that embedded the patch, where the earlier
+	# end's report may be one that could not read it, or one before a later attempt sent it (B13 round 16 T16,
+	# T26)
+	if [ -n "$carried" ] && { [ "$force" -eq 1 ] || [ "$begin" = "-" ] || [ "${carried//[!0-9]/}" -ge "${begin//[!0-9]/}" ]; }; then
+		carried=""
+	fi
+}
+# The kept patches this account cannot read that section 3 would send, by its rule (patch_rule): section 1's
+# count of them, so a patch an earlier attempt's report carried is not called missing (B13 round 16 T24)
+unread_patch_count() {
+	local p prev begin wasnot wassent id nsat sentat force at held carried u=0
+	patch_ledgers
+	for p in "$SETUP_DIR"/local-work/*.patch; do
+		[ -e "$p" ] && [ ! -L "$p" ] && [ -f "$p" ] && [ ! -L "$SETUP_DIR/local-work" ] || continue
+		[ ! -r "$p" ] || continue
+		patch_rule "$p"
+		[ -n "$at$carried" ] || u=$((u + 1))
+	done
+	printf '%s\n' "$u"
+}
 write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
-	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem rec sentat begin force
-	local wassent="" sentlist="" carried
+	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem sentat begin force
+	local wassent="" sentlist="" carried held nohash=0
 	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
@@ -3459,11 +3521,7 @@ write_bring_back() {
 		BACK_WHY="a folder, or a link to a folder, is at that path; move it away"
 		return 1
 	}
-	prev="$(utc_stamp "$(friction_earlier_end)")"
-	# the attempt this report is part of, by when it began ("-" when that cannot be told): .not-sent marks the
-	# attempt whose report sent a patch by it (B13 round 15 S34)
-	begin="$(utc_stamp "$(friction_attempt_begin)")"
-	begin="${begin:--}"
+	patch_ledgers
 	BACK_WHY="could not make a temporary file in ${REPORT_PATH%/*}"
 	tmp="$(mktemp "${REPORT_PATH%/*}/.bring-back.XXXXXX" 2>/dev/null)" || return 1
 	local_work="$(mktemp "${REPORT_PATH%/*}/.bring-back-local-work.XXXXXX" 2>/dev/null)" || {
@@ -3472,8 +3530,6 @@ write_bring_back() {
 	}
 	BACK_WHY="could not write a temporary file in ${REPORT_PATH%/*}"
 	now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-	[ ! -f "$kept/.not-sent" ] || [ -L "$kept/.not-sent" ] || [ -L "$kept" ] || wasnot="$(cat "$kept/.not-sent" 2>/dev/null || true)"
-	[ ! -f "$kept/.sent" ] || [ -L "$kept/.sent" ] || [ -L "$kept" ] || wassent="$(cat "$kept/.sent" 2>/dev/null || true)"
 	# Section 3 first, so the header names only what the file holds: the review sentence only the sections that
 	# hold something, and the author lines only when a patch is embedded (a patch not repeated has none; B13
 	# round 10 L4)
@@ -3487,38 +3543,26 @@ write_bring_back() {
 		for p in "$SETUP_DIR"/local-work/*.patch; do
 			# a symlink, or a symlinked local-work, is no patch the report counts, so none is sent (B13 round 10 L8)
 			[ -e "$p" ] && [ ! -L "$p" ] && [ -f "$p" ] && [ ! -L "$SETUP_DIR/local-work" ] || continue
+			patch_rule "$p"
+			[ -z "$held" ] || sentlist+="$id $held"$'\n'
 			# a patch this account cannot read is counted, not sent: its cat failed unseen, under a fence
 			# already opened, and the header said section 3 held it (B13 round 13 O25)
-			id="$(/usr/bin/stat -f %d:%i:%m:%z "$p" 2>/dev/null || true)" rec=""
-			[ -z "$id" ] || rec="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 " " $3 } END { print s }' <<<"$wasnot" 2>/dev/null || true)"
-			nsat="" sentat=""
-			read -r nsat sentat _ <<<"$rec" || true
-			# a record a report already sent the patch by, in an attempt that has ended since, goes: that report
-			# carried it, so the time rule below decides (B13 round 15 S34); a two-field record is not sent yet
-			if [ -n "$sentat" ] && [ "$sentat" != "$begin" ]; then
-				nsat="" sentat=""
-			fi
-			# one the earlier attempt could not read at its end is sent: its report did not carry it (B13 round 14
-			# Q29), in each report of this attempt
-			force=0
-			[ -z "$nsat" ] || { [ -n "$prev" ] && [ "${nsat//[!0-9]/}" -lt "${prev//[!0-9]/}" ]; } || force=1
-			at=""
-			[ -z "$prev" ] || [ "$force" -eq 1 ] || at="$(utc_stamp "$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$p" 2>/dev/null || true)")"
-			[ -z "$at" ] || [ "${at//[!0-9]/}" -le "${prev//[!0-9]/}" ] || at=""
-			# the report that first embedded it (.sent), when that was before this attempt began: an attempt with
-			# no header writes no end line, so the time rule above cannot see its report (B13 round 15 S21)
-			carried=""
-			[ -z "$id" ] || carried="$(ID="$id" LC_ALL=C awk '$1 == ENVIRON["ID"] { s = $2 } END { print s }' <<<"$wassent" 2>/dev/null || true)"
-			carried="$(utc_stamp "$carried")"
-			[ -z "$carried" ] || sentlist+="$id $carried"$'\n'
-			if [ -n "$carried" ] && { [ "$force" -eq 1 ] || [ -n "$at" ] || [ "$begin" = "-" ] || [ "${carried//[!0-9]/}" -ge "${begin//[!0-9]/}" ]; }; then
-				carried="" # .not-sent's rule, the time rule, no attempt to tell, or this attempt's own report
-			fi
 			[ -r "$p" ] || {
+				# one an earlier attempt's report carried is no unread patch: that report sent it, and a rerun once it
+				# is readable sends nothing (B13 round 16 T24); its line has no hash, as it cannot be read
+				if [ -n "$at$carried" ]; then
+					if [ -n "$carried" ]; then
+						skipped+="not repeated: a patch file an earlier attempt's report held ($carried); this account cannot read it now, so no line count or hash; still in $shown/local-work"$'\n'
+					else
+						skipped+="not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev); this account cannot read it now, so no line count or hash; still in $shown/local-work"$'\n'
+					fi
+					nskip=$((nskip + 1)) nohash=$((nohash + 1))
+					continue
+				fi
 				unread=$((unread + 1))
 				# listed only when this report would have sent it: a patch an earlier attempt's report carried is
 				# not, or the next readable report would send it again (B13 round 15 S22)
-				[ -z "$id" ] || [ -n "$at$carried" ] || notsent+="$id $now"$'\n'
+				[ -z "$id" ] || notsent+="$id $now"$'\n'
 				continue
 			}
 			if [ "$force" -eq 1 ]; then # sent now: the record says by which attempt (B13 round 15 S34)
@@ -3530,10 +3574,12 @@ write_bring_back() {
 				sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"
 				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
 				[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
-					if [ -n "$at" ]; then
-						skipped="${skipped}not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
-					else
+					# .sent first: it names a report that embedded the patch, where the time rule's report may be one
+					# that could not read it (B13 round 16 T16)
+					if [ -n "$carried" ]; then
 						skipped="${skipped}not repeated: a patch file an earlier attempt's report held ($carried): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
+					else
+						skipped="${skipped}not repeated: a patch file last written $at, at or before an earlier attempt's report ($prev): $(wc -l <"$p" | tr -d ' ') lines, sha256 $sha; still in $shown/local-work"$'\n'
 					fi
 					nskip=$((nskip + 1))
 					continue
@@ -3581,6 +3627,9 @@ write_bring_back() {
 		return 1
 	}
 	[ ! -s "$SETUP_DIR/fix-request.md" ] || fix=1
+	# a patch this account cannot read has no hash on its line (B13 round 16 T24)
+	lone="listed by its hash" lmany="listed by their hash"
+	[ "$nohash" -eq 0 ] || lone="listed there" lmany="listed there"
 	{
 		printf '# agentsync: the one file to bring back\n\n'
 		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
@@ -3592,30 +3641,35 @@ write_bring_back() {
 		else
 			printf '\n'
 		fi
-		# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
-		# tell it from the agentsync commit of the keep (B13 round 8 J65)
-		if [ "$sent" -gt 0 ]; then
-			printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
-				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
-				"set, a name and address git filled in from this Mac's account), so check those lines too."
-			# the remedy here too, in the file the person reviews (B13 round 14 Q29)
-			[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $up this account cannot read; make $uthem readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says."
-		elif [ "$unread" -gt 0 ]; then # before the hash sentences, which would call every patch an earlier one
-			# the patches listed by their hash are a sentence of their own, counted by nskip: with nothing sent,
-			# the others are exactly those (B13 round 15 S24)
-			printf '%s\n' "Section 3 sends no patch: $up could not be read; make $uthem readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says."
-			if [ "$nskip" -eq 1 ]; then
-				printf '%s\n' "The one other patch was in an earlier report and is listed by its hash."
-			elif [ "$nskip" -gt 1 ]; then
-				printf '%s\n' "The other $nskip patches were in an earlier report and are listed by their hash."
+		# a line with no hash (a patch this account cannot read now) is listed there (B13 round 16 T24)
+		{
+			# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
+			# tell it from the agentsync commit of the keep (B13 round 8 J65)
+			if [ "$sent" -gt 0 ]; then
+				printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
+					"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
+					"set, a name and address git filled in from this Mac's account), so check those lines too."
+				# the remedy here too, in the file the person reviews (B13 round 14 Q29)
+				[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $up this account cannot read; make $uthem readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says."
+			elif [ "$unread" -gt 0 ]; then # before the hash sentences, which would call every patch an earlier one
+				printf '%s\n' "Section 3 sends no patch: $up could not be read; make $uthem readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says."
+			elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
+				printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
+			elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
+				printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
+			elif [ "${branches:-0}" -gt 0 ]; then # B13 round 14 Q30: it said nothing of section 3
+				printf '%s\n' "Section 3 sends no patch: $branches local-work branch(es) hold commits this file does not carry; its line says how to add them."
 			fi
-		elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
-			printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
-		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
-			printf '%s\n' "Section 3 sends no patch this time: each was in an earlier report and is listed by its hash."
-		elif [ "${branches:-0}" -gt 0 ]; then # B13 round 14 Q30: it said nothing of section 3
-			printf '%s\n' "Section 3 sends no patch: $branches local-work branch(es) hold commits this file does not carry; its line says how to add them."
-		fi
+			# the patches listed by their hash are a sentence of their own, counted by nskip, beside a patch sent or
+			# one that could not be read: with neither, the sentences above say it (B13 round 15 S24, round 16 T25)
+			if [ "$sent" -gt 0 ] || [ "$unread" -gt 0 ]; then
+				if [ "$nskip" -eq 1 ]; then
+					printf '%s\n' "The one other patch was in an earlier report and is listed by its hash."
+				elif [ "$nskip" -gt 1 ]; then
+					printf '%s\n' "The other $nskip patches were in an earlier report and are listed by their hash."
+				fi
+			fi
+		} | if [ "$nohash" -eq 0 ]; then cat; else LC_ALL=C sed -E 's/listed by (its|their) hash/listed there/'; fi
 		printf '\n## 1. Setup report\n\n'
 		embed "$REPORT_PATH" markdown
 		printf '\n## 2. Fix request (%s)\n\n' "$shown/fix-request.md"
@@ -3667,7 +3721,8 @@ write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2
 	step_start report
 	bin="$(report_agentsync || true)"
 	if [ -n "$bin" ]; then
-		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
+		# section 1's unread count by section 3's rule (B13 round 16 T24); an older agentsync counts by mode
+		out="$(AGENTSYNC_REPORT_RUN="$RUN_ID" AGENTSYNC_REPORT_UNREAD_PATCHES="$(unread_patch_count)" with_timeout 120 "$bin" setup-report --out "$REPORT_PATH" --config "$CONFIG" </dev/null 2>&1)" || src=$?
 		if [ "$src" -eq 0 ] && [ -s "$REPORT_PATH" ]; then
 			say "report: $REPORT_PATH (agentsync setup-report)"
 			step_end "done" 0 agentsync

@@ -12518,20 +12518,28 @@ def _shell_local_work_line(home: Path, setup: Path) -> str | None:
     script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
     [where] = re.findall(r'(?m)^LOCAL_WORK_WHERE=".*"$', script)
     [again] = re.findall(r'(?m)^LOCAL_WORK_AGAIN=".*"$', script)
-    functions = [
-        re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}$", script)
-        for name in ("checkout_ref_sha", "checkout_git_dirs", "local_work_counts", "fallback_local_work_line")
-    ]
+    names = (
+        "checkout_ref_sha",
+        "checkout_git_dirs",
+        "local_work_counts",
+        "utc_stamp",
+        "patch_rule",
+        "unread_patch_count",
+        "fallback_local_work_line",
+    )
+    functions = [re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}$", script) for name in names]
     body = "\n".join(
         [
             "set -euo pipefail",
             "say() { printf '%s\\n' \"$*\"; }",
+            # no friction log and no ledger: section 3's rule (B13 round 16 T24) counts every unreadable patch
+            "patch_ledgers() { prev='' begin=- wasnot='' wassent=''; }",
             where,
             again,
             *(f.group(0) for f in functions if f),
         ]
     )
-    assert len([f for f in functions if f]) == 4
+    assert len([f for f in functions if f]) == len(names)
     cp = subprocess.run(
         ["/bin/bash", "-c", f"{body}\nfallback_local_work_line"],
         capture_output=True,
@@ -12570,6 +12578,31 @@ def test_both_readers_count_a_patch_this_account_cannot_read_apart(fake_mac: dic
     )
     assert shell == python == line.format(unread), (shell, python)
     assert _shell_local_work_line(home, setup) == setup_report._local_work_line() == line.format("")
+
+
+def test_the_local_work_line_counts_unread_patches_by_section_3s_rule(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 16 T24 (probe bw5): a patch an earlier attempt's report carried, unreadable now, was called
+    "unreadable and not in bring-back.md", though section 3 does not send it again. install.sh gives the
+    count by section 3's rule (``UNREAD_PATCHES_ENV``); without it, or with no number, each unreadable patch
+    counts."""
+    setup = fake_mac["setup"]
+    patches = setup / "local-work"
+    patches.mkdir(parents=True, exist_ok=True)
+    for name in ("0001-a.patch", "0002-b.patch"):
+        (patches / name).write_text("Subject: [PATCH] x\n", encoding="utf-8")
+        (patches / name).chmod(0)
+    clause = ", {} of them unreadable and not in bring-back.md (chmod u+r, then run "
+    try:
+        assert clause.format(2) in (setup_report._local_work_line() or "")
+        for told, n in (("1", 1), ("0", 0), ("x", 2), ("", 2), ("5", 2)):
+            monkeypatch.setenv(setup_report.UNREAD_PATCHES_ENV, told)
+            line = setup_report._local_work_line() or ""
+            assert clause.format(n) in line if n else "unreadable" not in line, (told, line)
+    finally:
+        for name in ("0001-a.patch", "0002-b.patch"):
+            (patches / name).chmod(0o600)
 
 
 def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_mac: dict[str, Path]) -> None:

@@ -172,7 +172,9 @@ words) is yours to remove. The CLI always redacts.
   an earlier report already carried is listed there by its hash); M local-work branches in the checkout` (`1 patch file`, `1 local-work branch` for one). Patches
   this account cannot read are not in bring-back.md, so after `local-work` the line then adds `, U of them unreadable
   and not in bring-back.md (chmod u+r, then run ~/src/agent-context-sync/scripts/install.sh --report-only again)`
-  (B13 round 14 Q29); a later report sends such a patch once it is readable. It counts
+  (B13 round 14 Q29); a later report sends such a patch once it is readable. A patch an earlier attempt's report
+  carried is not counted there: section 3 lists it as not repeated, with no hash while it cannot be read, and a
+  rerun would send nothing (B13 round 16 T24). It counts
   the patches at the top of `local-work` (the files section 3 reads), whatever the checkout is, and the local-work
   branches that hold a commit of their own (one at main's or origin/main's commit, or at any commit origin/main's
   reflog names, is not counted unless a patch is named for it), read from the checkout's common dir, so a checkout

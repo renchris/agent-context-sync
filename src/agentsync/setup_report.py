@@ -329,6 +329,11 @@ SETUP_LOG_ENV = "AGENTSYNC_SETUP_LOG"
 REPORT_RUN_ENV = "AGENTSYNC_REPORT_RUN"
 """The run id of the ``scripts/install.sh`` run writing this report at its exit: that run's ``NEXT:`` line is
 printed after the report."""
+UNREAD_PATCHES_ENV = "AGENTSYNC_REPORT_UNREAD_PATCHES"
+"""How many kept patches this account cannot read bring-back.md's section 3 would send, by its rule
+(``scripts/install.sh`` ``unread_patch_count``): one an earlier attempt's report carried is not counted, as
+section 3 does not send it again (B13 round 16 T24). Unset (a report not run by install.sh), each unreadable
+patch is counted."""
 INSTALL_OUT_NAME = "install.out"
 """scripts/install.sh's copy of what each run printed (what the agent saw), next to install.log."""
 INSTALL_OUT_TAIL = 60
@@ -9794,7 +9799,9 @@ def _local_work_line() -> str | None:
     M54, M71). With branches but no patch the line says so without "kept" (L40). The patches are counted
     whatever the checkout is; the branches are read from its common dir, so a ``.git`` file (a
     ``--separate-git-dir`` clone, a linked worktree) has its count too (round 11 M49, M70). No name,
-    subject, author or content is shown. None when there are no patches and no counted branches.
+    subject, author or content is shown. None when there are no patches and no counted branches. The
+    unreadable count is install.sh's (``UNREAD_PATCHES_ENV``) when it gives one: a patch an earlier attempt's
+    report carried is not missing from bring-back.md (B13 round 16 T24).
     install.sh's fallback writes the same line (``fallback_local_work_line``)."""
     kept = default_setup_log().parent / "local-work"
     patches = (
@@ -9808,6 +9815,9 @@ def _local_work_line() -> str | None:
     )
     times = [path.stat().st_mtime for path in patches]
     unread = sum(1 for path in patches if not os.access(path, os.R_OK))
+    told = os.environ.get(UNREAD_PATCHES_ENV, "").strip()
+    if told.isdigit() and told.isascii():  # section 3's rule, which knows what an earlier report carried
+        unread = min(int(told), unread)
     dirs = _checkout_git_dirs(expand(INSTALL_SH).parents[1])
     branches: list[str] = []
     if dirs is not None:

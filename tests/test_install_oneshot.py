@@ -2957,7 +2957,7 @@ def test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent(env: dict[s
     """B13 round 15 S22 (probe bw3): a patch an earlier attempt's report carried, unreadable at a later
     report, went into .not-sent, so once readable again it was sent a second time. It is listed only when that
     report would have sent it; a new patch unreadable at its report is still sent in each report once
-    readable."""
+    readable. B13 round 16 T24: the carried one is not counted as not sent either; its line has no hash."""
     _new_attempt(env, "2026-10-06T10:00:00Z")
     old = _keep_patch(env, "2026-10-06T09:59:00Z", "+old = 1\n", "0001-old.patch")
     assert _local_work(env) == "~~~~~~~~~~diff\n+old = 1\n~~~~~~~~~~\n", "attempt 1 sends it"
@@ -2970,10 +2970,17 @@ def test_a_patch_an_earlier_report_carried_is_not_listed_as_not_sent(env: dict[s
     for path in (old, new):
         path.chmod(0)
     try:
-        assert _local_work(env).startswith("not sent: 2 patch files in ")
+        section = _local_work(env)
     finally:
         for path in (old, new):
             path.chmod(0o600)
+    carried, rest = section.split("\n", 1)
+    assert carried == (
+        "not repeated: a patch file last written 2026-10-06T09:59:00Z, at or before an earlier attempt's "
+        "report (2026-10-07T10:05:00Z); this account cannot read it now, so no line count or hash; still in "
+        "~/agent-context/setup/local-work"
+    ), section
+    assert rest.startswith("not sent: 1 patch file in "), section
     _end_at(env, "2026-10-08T10:05:00Z")
     _new_attempt(env, "2026-10-09T10:00:00Z")
     expected = "~~~~~~~~~~diff\n+new = 2\n~~~~~~~~~~\n" + _not_repeated(
@@ -3070,12 +3077,182 @@ def test_a_patch_unreadable_after_a_report_with_no_header_embedded_it_is_not_lis
     ledger.write_text(re.sub(r" \S+$", " 2026-10-07T10:01:00Z", ledger.read_text(), flags=re.MULTILINE))
     _stated_stop(env, "2026-10-07T10:13:00Z")
     patch.chmod(0)
-    try:
-        assert _local_work(env).startswith("not sent: 1 patch file in ")
+    try:  # B13 round 16 T24: not "not sent" either, as the rerun once readable sends nothing
+        assert _local_work(env) == (
+            "not repeated: a patch file an earlier attempt's report held (2026-10-07T10:01:00Z); this "
+            "account cannot read it now, so no line count or hash; still in "
+            "~/agent-context/setup/local-work\n"
+        )
     finally:
         patch.chmod(0o600)
     assert not (ledger.parent / ".not-sent").exists()
     assert _local_work(env) == _carried_not_repeated(patch, "2026-10-07T10:01:00Z")
+
+
+def _ledger_time(env: dict[str, str], stamp: str) -> None:
+    """Set every ``.sent`` entry's report time to ``stamp``: every run here is in one second."""
+    ledger = Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / ".sent"
+    ledger.write_text(re.sub(r"(?m)^(\S+) \S+", rf"\1 {stamp}", ledger.read_text()))
+
+
+SENT = "~~~~~~~~~~diff\n+def ocr(): ...\n~~~~~~~~~~\n"
+"""Section 3 of these tests when it sends the one patch."""
+
+
+def test_a_patch_made_readable_in_its_attempt_names_the_report_that_carried_it(env: dict[str, str]) -> None:
+    """B13 round 16 T16 (O25's three reports): a patch the first report of an attempt could not read, sent by
+    a second report once readable, was later listed as "at or before an earlier attempt's report (<the first
+    report's end>)", the report that could not read it. .sent holds the report that carried it, and its words
+    come first."""
+    _two_attempts(env)
+    patch = _keep_patch(env, "2026-10-07T15:58:27Z")
+    notsent = Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / ".not-sent"
+    patch.chmod(0)
+    try:
+        assert _local_work(env).startswith("not sent: 1 patch file in "), "report 1"
+    finally:
+        patch.chmod(0o600)
+    _end_at(env, "2026-10-07T16:00:00Z")
+    [record] = notsent.read_text().splitlines()
+    notsent.write_text(record.split(" ")[0] + " 2026-10-07T16:00:00Z\n")
+    assert _local_work(env) == SENT, "report 2, made readable"
+    _ledger_time(env, "2026-10-07T16:00:22Z")
+    _new_attempt(env, "2026-10-09T09:00:00Z")
+    assert _local_work(env) == _carried_not_repeated(patch, "2026-10-07T16:00:22Z"), "report 3"
+
+
+def test_a_patch_an_earlier_attempt_sent_names_the_report_that_held_it(env: dict[str, str]) -> None:
+    """B13 round 16 T16: where the time rule and .sent agree (a patch sent in attempt 1, reported in attempt
+    2), .sent's words are the ones written: both are true, and .sent's names a report that held it."""
+    _new_attempt(env, "2026-10-06T10:00:00Z")
+    patch = _keep_patch(env, "2026-10-06T09:59:00Z")
+    assert _local_work(env) == SENT
+    _end_at(env, "2026-10-06T10:05:00Z")
+    _ledger_time(env, "2026-10-06T10:01:00Z")
+    _new_attempt(env, "2026-10-07T10:00:00Z")
+    assert _local_work(env) == _carried_not_repeated(patch, "2026-10-06T10:01:00Z")
+
+
+def test_a_patch_sent_late_is_not_listed_against_a_report_that_did_not_hold_it(env: dict[str, str]) -> None:
+    """B13 round 16 T26 (probe bw3): a headed attempt could not read a patch; the next attempt, which step 1
+    stopped (no header, so no end line), sent it. The attempts after it listed the patch "at or before an
+    earlier attempt's report (<the headed attempt's end>)", a report that did not hold it. They name the
+    report that sent it (.sent), as T16 does."""
+    _new_attempt(env, "2026-10-07T10:00:00Z")
+    patch = _keep_patch(env, "2026-10-07T09:59:00Z")
+    patch.chmod(0)
+    try:
+        assert _local_work(env).startswith("not sent: 1 patch file in "), "A3, headed"
+    finally:
+        patch.chmod(0o600)
+    _end_at(env, "2026-10-07T10:05:00Z")
+    _stated_stop(env, "2026-10-08T10:00:00Z")
+    assert _local_work(env) == SENT, "A4, no header: sent"
+    _ledger_time(env, "2026-10-08T10:01:00Z")
+    held = _carried_not_repeated(patch, "2026-10-08T10:01:00Z")
+    for n, stamp in enumerate(("2026-10-08T10:13:00Z", "2026-10-08T10:26:00Z"), 5):
+        _stated_stop(env, stamp)
+        assert _local_work(env) == held, f"A{n}"
+
+
+def test_a_patch_an_earlier_report_carried_is_not_called_missing_when_unreadable(env: dict[str, str]) -> None:
+    """B13 round 16 T24 (probe bw5): a patch an earlier attempt's report carried, unreadable at a later
+    report, was counted unread: the warning, the NEXT's chmod remedy, the header, section 3's "not sent:" and
+    section 1's "unreadable and not in bring-back.md", though the rerun once readable sends nothing. It is a
+    not-repeated line with no hash; a never-carried unreadable patch beside it keeps the full remedy."""
+    _new_attempt(env, "2026-10-06T10:00:00Z")
+    old = _keep_patch(env, "2026-10-06T09:59:00Z", "+old = 1\n", "0001-old.patch")
+    assert _local_work(env) == "~~~~~~~~~~diff\n+old = 1\n~~~~~~~~~~\n", "attempt 1 sends it"
+    _end_at(env, "2026-10-06T10:05:00Z")
+    _ledger_time(env, "2026-10-06T10:01:00Z")
+    _new_attempt(env, "2026-10-07T10:00:00Z")
+    where = "still in ~/agent-context/setup/local-work"
+    nohash = (
+        "not repeated: a patch file an earlier attempt's report held (2026-10-06T10:01:00Z); this account "
+        f"cannot read it now, so no line count or hash; {where}\n"
+    )
+    back = report_path(env).parent / "bring-back.md"
+    old.chmod(0)
+    try:
+        cp = install_sh(env, "--report-only")
+        text = back.read_text(encoding="utf-8")
+        shell = report_path(env).read_text(encoding="utf-8")  # the shell fallback: no agentsync here
+    finally:
+        old.chmod(0o600)
+    assert cp.returncode == 0, cp.stderr
+    head = " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+    assert text.split("(~/agent-context/setup/local-work)\n\n", 1)[1] == nohash
+    assert "could not be read" not in cp.stderr and "chmod" not in last_line(cp), cp.stderr + last_line(cp)
+    assert head.endswith(
+        "Section 3 sends no patch this time: its one patch was in an earlier report and is listed there."
+    ), head
+    assert "unreadable" not in text, "section 1 (test_setup_report.py has the agentsync reader's)"
+    assert (
+        "- local work kept by setup prompt step 1: 1 patch file in the setup folder's local-work, newest"
+        in shell
+    )
+    assert _local_work(env) == _carried_not_repeated(old, "2026-10-06T10:01:00Z"), "readable: its hash"
+    new = _keep_patch(env, "2026-10-07T10:01:00Z", "+new = 2\n", "0002-new.patch")
+    for path in (old, new):
+        path.chmod(0)
+    try:
+        cp = install_sh(env, "--report-only")
+        text = back.read_text(encoding="utf-8")
+    finally:
+        for path in (old, new):
+            path.chmod(0o600)
+    head = " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+    assert text.split("(~/agent-context/setup/local-work)\n\n", 1)[1] == nohash + (
+        "not sent: 1 patch file in ~/agent-context/setup/local-work this account cannot read; make it "
+        "readable (chmod u+r) and run ~/src/agent-context-sync/scripts/install.sh --report-only again\n"
+    )
+    assert "warning: 1 patch file in " in cp.stderr and "1 kept patch file this account cannot" in last_line(
+        cp
+    )
+    assert head.endswith(
+        "Section 3 sends no patch: 1 patch file could not be read; make it readable (chmod u+r) and run the "
+        "report again (install.sh --report-only), as its last line says. The one other patch was in an "
+        "earlier report and is listed there."
+    ), head
+    assert "1 of them unreadable and not in bring-back.md" in text.split("## 1. Setup report", 1)[1]
+
+
+@pytest.mark.parametrize("unread", [0, 1])
+@pytest.mark.parametrize("skipped", [1, 2])
+def test_a_report_that_sends_a_patch_counts_the_ones_listed_by_their_hash(
+    env: dict[str, str], skipped: int, unread: int
+) -> None:
+    """B13 round 16 T25: with one patch sent and others listed by their hash, the header said only "Section 3
+    holds one patch per kept commit". It adds the sentence the unread arm has (S24), counted, after the
+    remedy line when a patch could not be read."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    _two_attempts(env)
+    for n in range(skipped):
+        _keep_patch(env, "2026-10-06T16:00:00Z", f"+old = {n}\n", f"000{n}-old.patch")
+    _keep_patch(env, "2026-10-07T16:00:00Z", name="0008-new.patch")
+    locked = [_keep_patch(env, "2026-10-07T16:00:00Z", "+x\n", "0009-x.patch")] if unread else []
+    for path in locked:
+        path.chmod(0)
+    try:
+        _local_work(env)
+        text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    finally:
+        for path in locked:
+            path.chmod(0o600)
+    head = " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+    others = (
+        "The one other patch was in an earlier report and is listed by its hash."
+        if skipped == 1
+        else "The other 2 patches were in an earlier report and are listed by their hash."
+    )
+    remedy = (
+        "Section 3 does not hold 1 patch file this account cannot read; make it readable (chmod u+r) and run "
+        "the report again (install.sh --report-only), as its last line says. "
+    )
+    assert "Section 3 holds one patch per kept commit" in head
+    assert head.endswith("so check those lines too. " + remedy * unread + others), head
 
 
 def test_bring_back_does_not_repeat_local_work_an_earlier_attempt_reported(env: dict[str, str]) -> None:
@@ -3359,7 +3536,20 @@ def test_bring_back_names_local_work_whose_first_report_nobody_copied(env: dict[
     ended = next(
         ln[:20] for ln in friction_path(env).read_text().splitlines() if ln.endswith(" | end | finished")
     )
-    assert _local_work(env) == _not_repeated(patch, "2026-10-06T10:00:00Z", ended)
+    # B13 round 16 T16: .sent's words when the report that sent it came before the second attempt began (a
+    # loaded machine puts seconds between them), the time rule's when both fell in one second
+    held = (Path(env["HOME"]) / "agent-context" / "setup" / "local-work" / ".sent").read_text().split()[1]
+    begin = [
+        ln.split(": ", 1)[1]
+        for ln in friction_path(env).read_text().splitlines()
+        if ln.startswith("Attempt: ")
+    ]
+    want = (
+        _carried_not_repeated(patch, held)
+        if held < begin[-1]
+        else _not_repeated(patch, "2026-10-06T10:00:00Z", ended)
+    )
+    assert _local_work(env) == want
     assert patch.read_text(encoding="utf-8") == "+def ocr(): ...\n", "still on this Mac"
 
 
