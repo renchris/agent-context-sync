@@ -48,7 +48,7 @@ sessions. agentsync tells the agent which pages are new or out of date but does 
 | When | What you get | Who runs it | Commands | Where the result lands |
 |---|---|---|---|---|
 | **Set up** | The tool, the knowledge folder and the inbox, installed in one command with no admin rights, which also runs the first sync | You, once, or a coding agent with the [one prompt](#set-up-on-a-new-mac-one-prompt) | `scripts/install.sh --source-local "<folder>"` ([Install](#install)) | `~/agent-context/sources.toml` (the source list), `~/agent-context/docs` (a git repo) and the inbox |
-| **Every session** | Every change upstream as a markdown page, with the record of what changed; pages by client, project or decision, each tied to the exact version of the sources it cites and flagged when those sources change | Your coding agent, at the start of each work session | `~/.local/bin/agentsync sync`, then whatever its `NEXT:` line says, usually `~/.local/bin/agentsync curate` and pages to write, then `sync` again; `~/.local/bin/agentsync status` prints the same `NEXT:` line without syncing, unless one of its checks FAILs: then it exits 1, its `NEXT:` names that `[FAIL]` line, and a `[FAIL]` fix that is the person's stays the person's | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md`; `INDEX.md`; `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
+| **Every session** | Every change upstream as a markdown page, with the record of what changed; pages by client, project or decision, each tied to the exact version of the sources it cites and flagged when those sources change | Your coding agent, at the start of each work session | `~/.local/bin/agentsync sync`, then whatever its `NEXT:` line says, usually `~/.local/bin/agentsync curate` and pages to write, then `sync` again; `~/.local/bin/agentsync status` prints the same `NEXT:` line without syncing, unless one of its checks FAILs: then it exits 1, its `NEXT:` names that `[FAIL]` line, unless a missing or out-of-date skill copy or a sign-in comes first, as in a sync's `NEXT:`, and a `[FAIL]` fix that is the person's stays the person's | `docs/mirror/<source>/…`, one page per source file; one git commit per run that found changes; `CHANGELOG/<yyyy-mm>.md`; `INDEX.md`; `docs/topics/`; the citation map `DEPENDS.tsv`; a `> ⚠ STALE` line at the top of an out-of-date page |
 | **Operator** | A say over what feeds the knowledge folder and how it is kept: more folders, a guard against mass deletion, erasure, legal hold, leaving; optionally a point-in-time archive and background sync | You, by hand | `agentsync add-source FOLDER` (`install.sh --list-folders` lists the folders this Mac syncs), `agentsync accept-deletions SOURCE`, `agentsync adopt DIR` (import pages you already have), `agentsync purge`, `agentsync hold`, `agentsync offboard`; `archive = true` under `[governance]` in `sources.toml` ([Point-in-time archive](#point-in-time-archive-off-by-default)); background sync with `install.sh --confirm-install-agent` ([Install](#install)). Teams channels and chats, Outlook folders, and SharePoint libraries not synced to the Mac need IT approval first ([`docs/deploy/it-request.md`](docs/deploy/it-request.md)) | `sources.toml`; `docs/_sync/STATE.md` (is every source complete?); `~/Library/Logs/agentsync`; with the archive on, `docs/archive/` and one `snapshot/<date>` tag per build session |
 
 **The inbox always exists.** `install.sh` keeps a drop folder for files you save by hand: the `inbox` folder beside
@@ -318,13 +318,13 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v23). agentsync keeps a local, agent-readable git repo (~/agent-context/docs)
-in sync with the OneDrive and SharePoint folders this Mac syncs. Source: https://github.com/renchris/agent-context-sync
-(docs/deploy/README.md there explains every step). Run each command yourself and show me its output.
-Rules: no sudo; never push, upload or email anything; do not edit my shell profile; do not change Keychain, MDM,
-System Settings or privacy (TCC) settings; do not delete, reset or stash anything (keeping local changes on a
-branch, moving main to the update and removing a local-work branch that kept nothing, as step 1 says, is none of
-these); do not open or read the files
+Set up agentsync on this Mac (setup prompt v24). agentsync keeps a local, agent-readable git repo
+(~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
+https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
+yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
+do not change Keychain, MDM, System Settings or privacy (TCC) settings; do not delete, reset or stash anything
+(keeping local changes on a branch, moving main to the update and removing a local-work branch that kept nothing, as
+step 1 says, is none of these); do not open or read the files
 inside my OneDrive folders. Do not edit any file in ~/src/agent-context-sync: if agentsync needs a change, write
 what and why to ~/agent-context/setup/fix-request.md, and it is built at the source and arrives with the next
 pull. That file is kept from session to session: leave an earlier session's text as it is, write yours after it
@@ -356,7 +356,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v23, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v24, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -415,9 +415,11 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 23", log the command that failed (git's pull or clone, or
-   xcode-select -p; not step 1's whole command) and its error as a step 1 error, starting its what-text with prompt
-   v23, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
+   it exists and its output ends with "setup-prompt-compat 24", log the command that failed (git's pull or clone, or
+   xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
+   report replaces the host of a proxy, of a URL rewrite and of a "Could not resolve" or "Failed to connect to"
+   message; the role rule is for your own words), as a step 1 error, starting its what-text with prompt
+   v24, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
    report. If it exists and its output does not end so (or the command fails), that stop has no report either: tell
    me that the code on this Mac is not this prompt's version and that setup stopped before it could be updated, and
    that this asks nothing more of me: once the cause of this stop is fixed, the next paste of this prompt tries to
@@ -426,9 +428,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 23", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v23, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v23, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 24", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v24, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v24, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -493,23 +495,25 @@ the name in fix-request.md.
    commands nor its sources.toml edits. A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or
    sync a folder is mine too: show it to me and do not make that edit. Re-running the command its fix names is yours.
    If your tool cannot wait that long in the foreground, run it in the background and read its output until the NEXT:
-   line appears; that is expected, not a deviation. When it ends, whether or not it exited non-zero, unless it
-   printed a configuration error, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my
-   inbox: it is the folder named inbox beside the docs repo, one of the kind = "inbox" sources in
+   line appears; that is expected, not a deviation. When it ends, whether or not it exited non-zero, unless its
+   NEXT: line says the config does not load, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me
+   about my inbox: it is the folder named inbox beside the docs repo, one of the kind = "inbox" sources in
    ~/agent-context/sources.toml; any other kind = "inbox" source there is a folder I added myself, not my inbox. I
    drop files there by hand: Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt. Only .eml, .pdf
    and Office files such as .docx carry a sensitivity label, so .eml and .docx are better than .vtt or pasted text.
    Files stay in the inbox: never empty it by hand, because removing a file turns its page into a deletion notice and
-   queues a purge. If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines or the
-   configuration error are mine to fix), log it as a step 2 error, show me those lines and go to step 3's report; do
-   not run the re-run it names. Otherwise, if it exits non-zero, do what NEXT: says only if it is an install.sh or
-   agentsync command or a click for me (but after "no folder is synced yet", do as step 1's last sentences say, not
-   its add-source); otherwise log it and go to step 3's report.
+   queues a purge. If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the
+   configuration error or a status error with no [FAIL] line are mine to fix), log it as a step 2 error, show me
+   those lines and go to step 3's report; do not run the re-run it names. Otherwise, if it exits non-zero, do what
+   NEXT: says only if it is an install.sh or agentsync command or a click for me (but after "no folder is synced
+   yet", do as step 1's last sentences say, not its add-source); otherwise log it and go to step 3's report. A failed
+   run whose NEXT: you follow this way is not logged (the report names it once a later run ends 0).
 3. Sync loop and report. Run `~/.local/bin/agentsync sync` and do what its NEXT: line says (it comes before any
    WAITING ON YOU: and note: lines): another command, such as `~/.local/bin/agentsync curate`, or pages or
    questions to write, usually followed by `~/.local/bin/agentsync sync` again. `~/.local/bin/agentsync status`
    prints the same NEXT: line without syncing, unless one of its checks FAILs: then it exits 1, its NEXT: names
-   that [FAIL] line, and a [FAIL] fix that is mine (step 2) stays mine. The steps a NEXT: line refers to (the
+   that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in comes first, as in a sync's NEXT, and a
+   [FAIL] fix that is mine (step 2) stays mine. The steps a NEXT: line refers to (the
    agentsync-docs skill, its "Baseline questions" section and the page rules) are written out in
    ~/agent-context/docs/AGENTS.md (CLAUDE.md for Claude Code): read it, and write every page and question file
    under ~/agent-context/docs.
@@ -557,14 +561,15 @@ the name in fix-request.md.
    the report's Configuration section says "loads: not checked" (the shell report, when agentsync could not run),
    then whatever the file holds, list no folders and do not parse it yourself: say "unknown:
    ~/agent-context/sources.toml was not checked", followed by the reason the report gives; or, if that file exists
-   but does not load (the report's Configuration section says "loads: no:", with the colon, or step 2 printed a
-   "configuration error" for it), list no folders and do not parse it yourself: say "unknown:
-   ~/agent-context/sources.toml does not load", followed by the reason the report gives (these two unknown cases come
-   before the others); the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder
-   answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the folders to choose is
-   not a step for me), and under it each WAITING ON YOU: line the same command printed; and
-   ~/agent-context/bring-back.md, the one file I review and copy back (the redacted report, then your fix request and
-   the patches of any work step 1 kept; a patch an
+   but does not load (the report's Configuration section says "loads: no:", with the colon), list no folders and do
+   not parse it yourself: say "unknown: ~/agent-context/sources.toml does not load", followed by the reason the
+   report gives (these two unknown cases come before the others); and, outside those two cases, if the report's
+   Configuration section says "loads: yes, but" (the file loads, but a sync refused it: fixing that is mine), say
+   so after the folders or the "none", followed by the error that line gives; the last NEXT: line printed before the
+   report, or "none" (also "none: waiting for your folder answer" while you wait for my folder answer in step 1:
+   there, the NEXT: line that leaves the folders to choose is not a step for me), and under it each WAITING ON YOU:
+   line the same command printed; and ~/agent-context/bring-back.md, the one file I review and copy back (the
+   redacted report, then your fix request and the patches of any work step 1 kept; a patch an
    earlier report carried is not repeated, only listed by its hash); if the report's run printed that bring-back.md
    could not be written, say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT: line says to
    copy back instead; if no report ran this session, or you are waiting for my folder answer, say "none" for that

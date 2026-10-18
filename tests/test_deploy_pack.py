@@ -544,7 +544,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (23, "838479d011bf071be23910073e02fd2168302837dbb38b9ced7be46123ec3c30")
+PROMPT = (24, "a5fc7e4893c8e779d7db7c45fbe699efba69016968d2f494b45bd0ecaa10bacd")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -734,13 +734,26 @@ stop's own cause, never both."""
 
 UNLOADED_CONFIG = (
     'or, if that file exists but does not load (the report\'s Configuration section says "loads: no:", with'
-    ' the colon, or step 2 printed a "configuration error" for it), list no folders and do not parse it'
-    ' yourself: say "unknown: ~/agent-context/sources.toml does not load", followed by the reason the report'
-    " gives"
+    ' the colon), list no folders and do not parse it yourself: say "unknown: ~/agent-context/sources.toml'
+    ' does not load", followed by the reason the report gives'
 )
 """The finish's case for a sources.toml that exists but does not load, since v20 (B13 round 11 M28). Since
 v22 it keys on setup_report's own ``- loads: no: <error>``, colon included (B13 round 13 O44): v21's
-"loads: no" is also the start of the shell report's ``- loads: not checked``, and came first."""
+"loads: no" is also the start of the shell report's ``- loads: not checked``, and came first. Since v24 on
+that line alone (B13 round 15 S55): v23's "or step 2 printed a "configuration error" for it" also matched
+the first sync's refusal of a config that loads (install.sh's exit-78 branch), which the report says
+``- loads: yes, but`` for (:data:`REFUSED_CONFIG`)."""
+
+REFUSED_CONFIG = (
+    '; and, outside those two cases, if the report\'s Configuration section says "loads: yes, but" (the file'
+    ' loads, but a sync refused it: fixing that is mine), say so after the folders or the "none", followed by'
+    " the error that line gives;"
+)
+"""What the finish adds after :data:`UNKNOWN_FIRST` since v24 (B13 round 15 S8, S55): a config that loads
+but that a sync refuses (a mirrored source deleted from it, a policy.toml that does not pass) is listed like
+any other, or as "none" when its last local folder is the one deleted, and setup_report's ``- loads: yes,
+but ...`` line gives the reason (``_sync_refusal``). "A sync refused it", not "every sync refuses it": the
+line from step 2's install.out names a cause the report cannot check again (the lane's review)."""
 
 UNCHECKED_CONFIG = (
     'or, if the report\'s Configuration section says "loads: not checked" (the shell report, when agentsync'
@@ -756,10 +769,14 @@ never checked."""
 
 STATUS_NEXT = (
     f"`{AGENTSYNC} status` prints the same NEXT: line without syncing, unless one of its checks FAILs: then"
-    " it exits 1, its NEXT: names that [FAIL] line, and a [FAIL] fix that is mine (step 2) stays mine."
+    " it exits 1, its NEXT: names that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in"
+    " comes first, as in a sync's NEXT, and a [FAIL] fix that is mine (step 2) stays mine."
 )
 """Step 3's sentence on status, since v23 (B13 round 14 Q2; lane B's words for its Q1, Q9, Q33): a sync's NEXT
-does not stop at a failing check, status's does, and a person's fix stays the person's, as step 2 says."""
+does not stop at a failing check, status's does, and a person's fix stays the person's, as step 2 says.
+Since v24 it names the steps rule 1 gives first, a FAIL or not (B13 round 15 S60): with the skill copy
+missing or out of date, or a Graph source signed out, status's NEXT is that step, as a sync's is
+(``loop.next_step``; :func:`test_status_next_names_rule_1s_own_steps_before_a_fail`)."""
 
 UNKNOWN_FIRST = "(these two unknown cases come before the others)"
 """What closes :data:`UNLOADED_CONFIG` since v22 (B13 round 13 O28): the finish joins its folder cases with
@@ -1017,7 +1034,10 @@ def test_readme_step1_is_one_command() -> None:
         f"`{INSTALL_SH} --version`: step 1 did not update that copy (its pull did not run, or failed), so "
         "it may be older than this prompt. If it exists and its output "
         f'ends with "setup-prompt-compat {PROMPT[0]}", log the command that failed (git\'s pull or clone, or '
-        "xcode-select -p; not step 1's whole command) and its error as a step 1 error, starting its "
+        "xcode-select -p; not step 1's whole command) and its error as the command printed it, host names "
+        "included (the report replaces the host of a proxy, of a URL rewrite and of a "
+        '"Could not resolve" or "Failed to connect to" message; the role rule is for your own words), as a '
+        "step 1 error, starting its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
         "inside <agent>), and go to the report. If it exists and its output does not end so (or the command "
         "fails), that stop has no report either: tell me that the "
@@ -2467,7 +2487,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
         ' ~/agent-context/sources.toml does not exist yet or has no such kind = "local" source, "none: this'
         ' Mac syncs no folder" (if setup stopped before step 2, say'
         " at which step);"
-        f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST};"
+        f" {UNCHECKED_CONFIG}; {UNLOADED_CONFIG} {UNKNOWN_FIRST}{REFUSED_CONFIG}"
         ' the last NEXT: line printed before the report, or "none" (also "none: waiting for your folder'
         ' answer" while you wait for my folder answer in step 1: there, the NEXT: line that leaves the'
         " folders to choose is not a step for me), and under it each WAITING ON YOU: line the same command"
@@ -2783,13 +2803,16 @@ INBOX_SENTENCE = (
 """What setup prompt v10's step 2 tells the agent to say the inbox is."""
 
 INBOX_WHEN = (
-    "When it ends, whether or not it exited non-zero, unless it printed a configuration error, if"
+    "When it ends, whether or not it exited non-zero, unless its NEXT: line says the config does not load, if"
     ' ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox:'
 )
 """When step 2 tells the agent to explain the inbox, since v23 (B13 round 14 Q8): before the non-zero clause,
 whose "go to step 3's report" v22's "Then tell me about my inbox" came after, and only once the install wrote
 sources.toml (an install that failed before it has no inbox to describe), and not after a configuration
-error, whose file the finish says not to parse (B13 round 14 Q8 review)."""
+error, whose file the finish says not to parse (B13 round 14 Q8 review). Since v24 that is install.sh's
+config_failed NEXT, "does not load", not every "configuration error" (B13 round 15 S55): the first sync's
+refusal prints one for a config that loads and whose inbox is real
+(:func:`test_a_first_sync_refusal_is_no_config_that_does_not_load`)."""
 
 
 def test_the_inbox_the_prompt_names_is_the_one_agentsync_keeps(sample_config: Any, tmp_path: Path) -> None:
@@ -2865,16 +2888,18 @@ account, or a SharePoint library not synced here), and gives each tail's own fix
 name" is wrong for a library that was never synced (B13 round 14 Q15, Q73: one defect)."""
 
 PERSONS_NEXT = (
-    "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines or the"
-    " configuration error are mine to fix), log it as a step 2 error, show me those lines and go to step 3's"
-    " report; do not run the re-run it names. Otherwise, if it exits non-zero, do what NEXT: says only if"
+    "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the"
+    " configuration error or a status error with no [FAIL] line are mine to fix), log it as a step 2 error,"
+    " show me those lines and go to step 3's report; do not run the re-run it names. Otherwise, if it exits"
+    " non-zero, do what NEXT: says only if"
 )
 """Step 2's rule, since v23, for the NEXT: lines install.sh ends a person's stop with (B13 round 14 Q7): the
 [FAIL] lines that are all the person's (``PERSONS_FAILS``) and a config that does not load. Each says "not a
 step for the agent" and ends with the re-run once fixed, so v22's "do what NEXT: says only if it is an
 install.sh ... command; otherwise log it" read both ways, and with no line logged the report's Items read
 "none" beside "failed at step 2". Not every non-zero exit: a held listing's Allow click and the folder stop's
-exit 2 are no errors."""
+exit 2 are no errors. Since v24 the bracket also names a status that exits non-zero with no [FAIL] line (B13
+round 15 lane RB's words for its S33, S58, S62), whose NEXT says the same "not a step for the agent"."""
 
 FAIL_IS_MINE = (
     "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder is mine too:"
@@ -6219,3 +6244,98 @@ def test_status_next_differs_from_a_syncs_only_on_a_failing_check(
     first = capsys.readouterr().out.splitlines()[0]
     assert first.startswith("NEXT: the fake.check check failed: "), first
     assert [ln for ln in loop.next_lines(config) if ln.startswith("NEXT: ")] == [synced], "a sync's goes on"
+
+
+def test_status_next_names_rule_1s_own_steps_before_a_fail(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 15 S60: v23's :data:`STATUS_NEXT` said a failing status's NEXT names the [FAIL] line, but
+    rule 1 gives its own skill and sign-in steps first (``loop.next_step``: the fixes come after them). With
+    a skill copy missing and an ERROR [FAIL], status exits 1, prints the [FAIL] line, and its NEXT is the
+    skill step, a sync's NEXT. v24 says so ("unless a missing or out-of-date skill copy or a sign-in comes
+    first, as in a sync's NEXT"), keeping "it exits 1", so a non-zero status is not logged as a failed
+    command."""
+    from agentsync import cli, skill  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    cfg = tmp_path / "ctx" / "sources.toml"
+    assert cli.main(["add-source", str(local_source_dir), "--config", str(cfg)]) == cli.EXIT_OK
+    assert cli.main(["sync", "--config", str(cfg)]) == cli.EXIT_OK
+    capsys.readouterr()
+    failing = [doctor.CheckResult("fake.check", False, "broken", doctor.Severity.ERROR, fix="do the thing")]
+    monkeypatch.setattr(doctor, "run_checks", lambda *_a, **_k: failing)
+    monkeypatch.setattr(cli, "_extra_checks", lambda *_a, **_k: [])
+    assert cli.main(["status", "--config", str(cfg)]) == cli.EXIT_FAILED
+    assert capsys.readouterr().out.splitlines()[0].startswith("NEXT: the fake.check check failed: ")
+    skill.skill_paths()[0].unlink()  # a skill copy gone: rule 1's skill step comes before the fixes
+    assert cli.main(["status", "--config", str(cfg)]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out
+    assert out.splitlines()[0].startswith("NEXT: the agentsync-docs skill is missing or out of date: "), out
+    assert "[FAIL]" in out and "fake.check" in out, "the [FAIL] line still prints"
+    flat = " ".join(_prompt_steps()[3].split())
+    assert STATUS_NEXT in flat and "its NEXT: names that [FAIL] line, and" not in flat
+    row = next(
+        ln
+        for ln in (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+        if ln.startswith("| **Every session**")
+    )
+    assert (
+        "unless a missing or out-of-date skill copy or a sign-in comes first, as in a sync's `NEXT:`" in row
+    )
+
+
+def test_a_first_sync_refusal_is_no_config_that_does_not_load() -> None:
+    """B13 round 15 S55 (S8's prompt half): round 14 Q22 made the first sync's exit 78 a stop the person
+    owns, and the sync prints "configuration error: ..." for it, yet that config loads: setup-report says
+    ``- loads: yes, but a sync refuses it`` (tests/test_setup_report.py). v23 keyed step 2's inbox skip and
+    the finish's does-not-load case on "configuration error", so the agent skipped a real inbox and told the
+    person the file did not load. v24 keys the inbox skip on config_failed's NEXT ("does not load"), which
+    the exit-78 NEXT does not say, and the does-not-load case on the report's "loads: no:" alone; the refused
+    config's folders are listed, with the report's reason (:data:`REFUSED_CONFIG`)."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    code = [ln for ln in script.splitlines() if not ln.lstrip().startswith("#")]
+    [refused] = [ln for ln in code if "NEXT_MSG=" in ln and "the first sync refused the config" in ln]
+    [unloaded] = [ln for ln in code if "FAIL_NEXT=" in ln and "the config $CONFIG does not load" in ln]
+    assert "configuration error" in refused and "does not load" not in refused, refused
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert INBOX_WHEN in step2 and "unless it printed a configuration error" not in step2
+    assert "unless its NEXT: line says the config does not load" in step2 and "does not load" in unloaded
+    # the person-owned stop clause still routes both exit-78 stops (log, show, report, no re-run)
+    assert (
+        PERSONS_NEXT in step2
+        and "not a step for the agent" in refused
+        and "not a step for the agent" in unloaded
+    )
+    finish = " ".join(_prompt_steps()[3].split("Finish with:", 1)[1].split())
+    assert 'step 2 printed a "configuration error"' not in finish and UNLOADED_CONFIG in finish
+    assert REFUSED_CONFIG in finish
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = Path(setup_report.__file__).read_text(encoding="utf-8")
+    assert '"- loads: yes, but a sync refuses it: ' in source and "- loads: yes, but step 2's sync" in source
+
+
+def test_readme_step2_does_not_log_a_failed_run_whose_next_it_follows() -> None:
+    """B13 round 15 S18: v23 step 2's middle branch (do what a non-zero run's NEXT: says when it is an
+    install.sh or agentsync command or a click) said nothing on logging, while the friction rule's "error (a
+    command failed ...)" has no exception, so agents logged the retried run or did not. The report already
+    names it (``_retry_line``: "exited 1 at its status step ...; the same command was run again and ended 0"),
+    and a logged line adds a second item and a friction count for the same failure. v24 says it is not
+    logged, and when the report names it: ``retried_runs`` pairs a failed run only with a later one that
+    ended 0 (the lane's review). Not the finder's "log it as a step 2 error, then run it", which the
+    verifier showed doubles the item on every retried install."""
+    step2 = " ".join(_prompt_steps()[2].split())
+    said = (
+        "otherwise log it and go to step 3's report. A failed run whose NEXT: you follow this way is not "
+        "logged (the report names it once a later run ends 0)."
+    )
+    assert said in step2 and "log it as a step 2 error, then run it" not in step2
+    assert "error (a command failed; include its exit code)" in " ".join(_preamble().split())
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert "the same command was run again and ended 0" in Path(setup_report.__file__).read_text(
+        encoding="utf-8"
+    )

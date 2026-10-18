@@ -19399,6 +19399,8 @@ Amended 2026-10-17, §16.106 O44, O28: since v22 this case keys on "loads: no:",
 form: the shell report's `- loads: not checked` starts with "loads: no". The not-checked case now comes first and
 ends "list no folders and do not parse it yourself" too, and this one ends "(these two unknown cases come before the
 others)".
+Amended 2026-10-18, §16.118 S8, S55: since v24 this case keys on the report's "loads: no:" alone, not on "or step 2 printed a "configuration error" for it": the first sync's exit 78 (§16.111 Q22) prints one for a config that loads, which the report now gives as `- loads: yes, but ...` and the finish lists like any other, giving that line's reason
+after the folders or the "none".
 
 **bring-back.md's patches** (M35). The finish said the file holds "the patches of any work step 1 kept", false on a
 re-run after an earlier report, whose section 3 holds only "not repeated:" lines. It now adds "a patch an earlier
@@ -21100,6 +21102,7 @@ as a failed command. Status's FAIL NEXT is not made a sync's (the finder's secon
 makes things worse: it hides the check from the one read-only command meant to show it, and the setup report's Loop
 line uses the same rule 1). Tests: `test_readme_step3_runs_the_loop_then_the_report` (`STATUS_NEXT`),
 `test_status_next_differs_from_a_syncs_only_on_a_failing_check`.
+Amended 2026-10-18, §16.118 S60: since v24 the sentence reads "its NEXT: names that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in comes first, as in a sync's NEXT", rule 1's order (`loop.next_step`).
 
 **A person's step 2 stop is logged, shown and not re-run** (Q7; amends §16.106 O11). install.sh's two NEXTs for a
 stop the person owns, the [FAIL] lines that are all the person's (`PERSONS_FAILS`) and a config that does not load,
@@ -21113,6 +21116,7 @@ showed makes things worse: a held listing's Allow click and the exit-2 folder st
 install.sh's person-owned NEXT lines by their shape, so round 14 lane RB's third (the first sync's refused config)
 is held too. Tests: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`PERSONS_NEXT`),
 `test_a_persons_step_2_stop_the_agent_logged_is_the_one_item`.
+Amended 2026-10-18, §16.118 S33, S58, S62: since v24 the bracket reads "(the [FAIL] lines, the configuration error or a status error with no [FAIL] line are mine to fix)", lane RB's words for its status NEXT with no [FAIL] line.
 
 **The inbox is explained whether or not step 2 exited non-zero** (Q8). v22's "Then tell me about my inbox" came after
 the non-zero clause's "go to step 3's report", which never comes back, so a failed step 2 never explained it. It now
@@ -21120,6 +21124,7 @@ comes first and depends on the inbox existing: "When it ends, whether or not it 
 configuration error, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox: ..." (an
 install that failed before writing sources.toml has none to describe, and a file that does not load is one the finish
 says not to parse, though it can still hold the words kind = "inbox"). Test: `test_readme_prompt_carries_the_field_lines` (`INBOX_WHEN`).
+Amended 2026-10-18, §16.118 S55: since v24 the skip reads "unless its NEXT: line says the config does not load", config_failed's words: the first sync's refusal (§16.111 Q22) is a "configuration error" of a config that loads, whose inbox is real.
 
 **The first exception covers every "on disk" tail and relays each one's fix** (Q15, Q73: one defect from two
 finders, built once; amends §16.106 O30 and §16.93 M4). v22 keyed on "no longer on disk", the renamed-folder tail only; the list's
@@ -21148,6 +21153,7 @@ install.sh's awk reads; an error line too long for the cut whose command ends at
 "returned exit code N:", "(exit N):") keeps the start of the command and all it can of the error (`_item_what`). v23's step 1: "log the command that
 failed (git's pull or clone, or xcode-select -p; not step 1's whole command) and its error as a step 1 error".
 Tests: `test_a_logged_command_keeps_its_bars_and_its_error`, `test_readme_step1_is_one_command`.
+Amended 2026-10-18, §16.118 S6: since v24 step 1 logs that error "as the command printed it, host names included", and says which hosts the report replaces.
 
 **The Xcode and git stops name only their own cause** (Q32; amends §16.94 M16 and §16.106 O27). Both no-report
 branches of the version check said "once the Command Line Tools are installed (or git can reach GitHub)", so at the
@@ -21422,7 +21428,77 @@ Reserved for round 15 lane RB of B13.
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 
-Reserved for round 15 lane P of B13.
+The B13 round 15 items of lane P (specs `round15/items/S<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): round 15 S6, S8, S18, S55, S60. S8 and S55 are one defect from two finders (the
+first sync's refused config), built once: S8's report half and S55's prompt half. All but S8's report half need
+prompt text, so the prompt is **setup prompt v24**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v24`
+and `setup-prompt-compat 24`, the issue form's placeholder and the block's digest move together, and a saved v23
+copy is stopped at step 1 like every older copy. v24 moves no step, so it has no `PROMPT_LAYOUTS` entry. None adds
+an agentsync command, an installer flag, a config key or a friction kind. Lanes that sent words: lane RB (step 2's
+bracket, for its S33, S58, S62).
+
+**A config the sync refuses is listed, with the report's reason** (S8, S55; amends §16.94 M28 and §16.112 Q8).
+Round 14's Q22 (§16.111) made the first sync's exit 78 a stop the person owns; the sync prints `configuration error:
+...` for a config that loads (a source deleted from sources.toml while its pages are mirrored, a policy.toml that
+does not pass), and setup-report said `- loads: yes` with no reason. v23 keyed step 2's inbox skip and the finish's
+does-not-load case on "configuration error", so the agent skipped a real inbox and said a file that loads "does not
+load". `setup_report._configuration` now runs the sync's read-only refusal checks (`_live_refusal`: the manifest's
+present rows against the configured ids, as `cycle._refuse_vanished_sources` reads them, then `policy.load_policy`
+and `governance.load_governance`) and prints `- loads: yes, but a sync refuses it: <why>`: a source the config lacks
+by place (`(not in the config, N)`, as `_Labels` names one), a table's error by its table, key and file only (its
+words can quote a label or a host). A cause none of them reads comes from the latest attempt's last install run whose
+first sync exited 78, its `configuration error:` line in install.out: `- loads: yes, but step 2's sync refused it
+(run <id>): ...`; one they read and no longer find was fixed, and drops the line. Neither begins "loads: no" or
+"loads: not". v24: step 2's inbox skip reads "unless its NEXT: line says the config does not load" (config_failed's
+NEXT); the does-not-load case keys on "loads: no:" alone; and after the two unknown cases the finish adds "and,
+outside those two cases, if the report's Configuration section says "loads: yes, but" (the file loads, but a sync
+refused it: fixing that is mine), say so after the folders or the "none", followed by the error that line gives".
+The two verifiers differed: S8's said "unknown: the sync refuses ...", listing no folders; S55's said the refused
+config falls through to the folder list. The file loads and its folders are the ones the person chose, so they are
+listed (or "none", when the deleted block was its last local folder), and S8's reason is given beside them. "A sync
+refused it", since the install.out line names a cause the report cannot check again. The live check runs in the
+sync's order (policy, `[governance]`, then the vanished sources), so it names the refusal `agentsync sync` prints;
+policy.toml's own "cannot read the policy table" counts as a cause it reads; and with the manifest unreadable, the
+install.out line's quoted source ids are named as `_Labels` names them. Step 2's person-owned clause is unchanged and routes both exit-78 stops. Tests:
+`test_a_config_the_sync_refuses_loads_but_says_so`, `test_a_first_sync_refusal_is_no_config_that_does_not_load`,
+`test_readme_step3_runs_the_loop_then_the_report` (`UNLOADED_CONFIG`, `REFUSED_CONFIG`),
+`test_readme_prompt_carries_the_field_lines` (`INBOX_WHEN`).
+
+**Step 1 logs a failed command's error as printed, host names included** (S6; amends §16.112 Q31). Step 1's "log the
+command that failed ... and its error" met the friction rule's "name ... my organization ... by its role, never by
+its real name", and git's error can name a host that carries it; the rehearsal's agent logged it verbatim, and the
+report showed `<proxy-1>`. v24: "and its error as the command printed it, host names included (the report replaces
+the host of a proxy, of a URL rewrite and of a "Could not resolve" or "Failed to connect to" message; the role rule
+is for your own words)". "As the command printed it", not the verifier's "as git printed it": the same sentence
+logs xcode-select's error. Not the finder's "the report replaces host names", which claims more than the code does
+(a host only in a 403 or TLS error is not replaced). Test: `test_readme_step1_is_one_command`.
+
+**A failed step 2 run whose NEXT the agent follows is not logged** (S18). Step 2's middle branch (do what a non-zero
+run's NEXT: says when it is an install.sh or agentsync command or a click) said nothing on logging, against the
+friction rule's "error (a command failed ...)". The report already names a retried run (`_retry_line`), and a logged
+line adds a second item and a friction count. v24 adds "A failed run whose NEXT: you follow this way is not logged
+(the report names it once a later run ends 0)": `retried_runs` pairs a failed run only with a later one that ended
+0 (the lane's review). Not the finder's alternative, "log it as a step 2 error, then run
+it", which doubles the item on every retried install. Not the verifier's optional step 3 clause ("do not log that
+exit"): a sync's non-zero exit has no installer-side item, so its friction line is the only record of it. Test:
+`test_readme_step2_does_not_log_a_failed_run_whose_next_it_follows`.
+
+**Status's NEXT names a [FAIL] line after rule 1's own steps** (S60; amends §16.112 Q2). With a FAIL, `loop.next_step`
+still returns the skill step first (a skill copy missing or out of date, which is no [FAIL]: `_skill_check`'s INFO
+line) and then a Graph sign-in, as a sync's NEXT does. v24 step 3 and the README's "Every session" row: "its NEXT:
+names that [FAIL] line, unless a missing or out-of-date skill copy or a sign-in comes first, as in a sync's NEXT".
+"Missing or out-of-date", not the verifier's "missing": the step fires for both (`loop.skill_state`). "It exits 1"
+stays. The code's order stays (pinned by `test_status_next_never_copies_a_fail_fix`). Tests:
+`test_status_next_names_rule_1s_own_steps_before_a_fail`, `test_readme_step3_runs_the_loop_then_the_report`
+(`STATUS_NEXT`).
+
+**Step 2's bracket names a status error with no [FAIL] line** (S33, S58, S62, the prompt half; amends §16.112 Q7;
+lane RB's words). Lane RB's install.sh ends a run whose status exits non-zero with no [FAIL] line with a NEXT that
+says "not a step for the agent" (§16.117). It already reaches the person-owned clause; its bracket now reads "(the
+[FAIL] lines, the configuration error or a status error with no [FAIL] line are mine to fix)". Test:
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`PERSONS_NEXT`).
+
+Register: `docs/deploy/setup-feedback.md` K48.
 
 ### 16.119 Round 15: missing roots, the heartbeat note and the waits (2026-10-18, wave B13 round 15 lane B)
 
