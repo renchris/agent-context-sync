@@ -1883,8 +1883,9 @@ def test_the_pre_sync_listing_note_promises_no_waiting_line(
     assert "agentsync" not in r.note and "run " not in r.note.replace("this run", "")
     # no line type promised either (G33): a FAIL, a privacy-held listing or a cleared one print different ones
     assert "WAITING ON YOU" not in r.note and "whether it cleared it" in r.note
-    # B13 round 14 Q35: the sync it names may not run (a [FAIL] or a busy lock skips it), so no promise
-    assert "if this run's sync runs" in r.note
+    # B13 round 14 Q35: the sync it names may not run (a [FAIL] or a busy lock skips it), so no promise;
+    # round 15 S11: nor end in an error, which ends install.sh before the answer
+    assert "if this run's sync succeeds" in r.note
     assert "(" not in r.note, "the report's fix parser strips one level"
 
 
@@ -1932,7 +1933,9 @@ def test_heartbeat_incomplete_follows_the_loop_checks(
     assert r.note is None and (r.fix or "").startswith("~/.local/bin/agentsync sync -v; "), r
 
 
-@pytest.mark.parametrize("note", [doctor._LISTING_YOURS_NOTE, doctor.LISTING_YOURS_REPORT_NOTE])
+@pytest.mark.parametrize(
+    "note", [doctor._LISTING_YOURS_NOTE, doctor._LISTING_SKIPPED_NOTE, doctor.LISTING_YOURS_REPORT_NOTE]
+)
 def test_a_held_listing_line_says_held_once(note: str) -> None:
     """B13 round 13 O36: "deletions held (held at its last walk: ...)" used "held" for the deletions and for
     the listing's state, and the report's note a third time ("still holds it"). The note dates the state

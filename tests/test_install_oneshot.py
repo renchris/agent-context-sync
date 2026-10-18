@@ -1011,6 +1011,66 @@ def test_a_listing_the_first_sync_cleared_is_said_and_never_inferred(
         assert [ln.count("held") for ln in lines if ln.startswith("[warn] heartbeat.fy26-projects")] == [1]
 
 
+_UNANSWERED = (
+    "heartbeat.fy26-projects: this run ended before its closing status, so it does not say whether its sync "
+    "cleared it: "
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "sync 1",
+        "sync 80",
+        "sync 78",
+        "wait timeout",
+        "lock busy, wait fails",
+        "dry run",
+        "fail skips",
+        "early",
+    ],
+)
+def test_a_run_that_ends_before_its_closing_status_says_a_held_listing_has_no_answer(
+    env: dict[str, str], folder: Path, wheel: Path, case: str
+) -> None:
+    """B13 round 15 S64, S11: step 5's held-listing note says the end of this run answers a sync that
+    succeeds, but a first sync that exits 1, 80 or 78, or a background wait that fails after a sync that
+    exited 0, ends the run before its closing status, and nothing at the end named the listing. Such a run
+    says so per listing, before the issue link and NEXT, and in install.out; a run whose sync listed nothing
+    (a busy lock, a dry run, a [FAIL] that skips it) or that ended before step 6 prints no such line."""
+    wait_env = {"STUB_LC_RUNNING": "1", "AGENTSYNC_WAIT_SECONDS": "1", "AGENTSYNC_WAIT_POLL_SECONDS": "0.5"}
+    e = {**env, "STUB_DOCTOR_OUT": _HELD_WARN}
+    args = [str(wheel), "--source-local", str(folder)]
+    if case.startswith("sync "):
+        e["STUB_SYNC_RC"] = case.removeprefix("sync ")
+    elif case == "wait timeout":
+        e |= wait_env
+        args.append("--confirm-install-agent")
+    elif case == "lock busy, wait fails":
+        e |= {**wait_env, "STUB_SYNC_RC": "75"}
+        args.append("--confirm-install-agent")
+    elif case == "dry run":
+        e["AGENTSYNC_INSTALL_DRY_RUN"] = "1"
+    elif case == "fail skips":
+        fail = "[FAIL] docs_repo.git — /x/docs does not exist and /x is not writable (fix: mkdir -p /x/docs)"
+        e |= {"STUB_DOCTOR_OUT": f"{_HELD_WARN}\n{fail}", "STUB_DOCTOR_RC": "1"}
+    else:
+        e["STUB_UV_INSTALL_RC"] = "2"
+    cp = install_sh(e, *args)
+    lines = cp.stdout.splitlines()
+    said = [i for i, ln in enumerate(lines) if ln.startswith(_UNANSWERED)]
+    assert one_next(cp) and last_line(cp).startswith("NEXT: "), cp.stdout + cp.stderr
+    assert not any(ln.startswith("heartbeat.fy26-projects: this run's sync listed it") for ln in lines)
+    if case in ("lock busy, wait fails", "dry run", "fail skips", "early"):
+        assert not said, cp.stdout
+        assert "unbound variable" not in cp.stderr and "command not found" not in cp.stderr, cp.stderr
+        return
+    assert cp.returncode != 0 and len(said) == 1, cp.stdout + cp.stderr
+    assert lines[said[0]].endswith("/.local/bin/agentsync status does"), lines[said[0]]  # the full path
+    assert said[0] < len(lines) - 2, "before the issue link and NEXT"
+    assert _UNANSWERED in install_out(env).read_text(), "install.out holds it, so the report does"
+
+
 def test_a_held_listing_beside_the_launchers_tcc_pending_still_exits_1(
     env: dict[str, str], folder: Path, wheel: Path
 ) -> None:

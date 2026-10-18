@@ -4085,6 +4085,23 @@ stopped_report_note() { # KEPT-REPORT-PATH
 	fi
 }
 
+# A listing the step-5 status warned was held gets no answer from a run that ends before its closing status after
+# its sync ran: step 6's exit 78, 80 or another code, or a --confirm-install-agent wait that failed after a sync that
+# exited 0. Its note says the end of this run answers a sync that succeeds (B13 round 15 S11); this end says, per
+# listing, that it does not and which command does (B13 round 15 S64). Nothing more runs. A dry run, a skipped sync
+# and a busy lock's (75) listed nothing for this run, and a closing status (LOOP_OUT) answers through
+# cleared_listings. Called from on_exit, before the report and the issue-link line, so install.out holds it and that
+# link stays the last line before NEXT; defined before on_exit can run, and SYNC_GO and SYNC_RC are unset before
+# step 6 (set -u).
+unanswered_listings() {
+	[ "${SYNC_GO:-0}" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && [ "$REPORT_ONLY" -eq 0 ] || return 0
+	[ -n "${SYNC_RC:-}" ] && [ "$SYNC_RC" != 75 ] && [ -z "$LOOP_OUT" ] || return 0
+	[ -n "$DOCTOR_LOG" ] && [ -s "$DOCTOR_LOG" ] || return 0
+	LC_ALL=C awk '/^\[warn\] heartbeat\./ && index($0, "deletions held") { print substr($2, 11) }' "$DOCTOR_LOG" |
+		LC_ALL=C sort -u | while IFS= read -r id; do
+		say "heartbeat.$id: this run ended before its closing status, so it does not say whether its sync cleared it: $AGENTSYNC status does"
+	done
+}
 on_exit() {
 	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held wrote up uthem
 	trap - EXIT
@@ -4100,6 +4117,7 @@ on_exit() {
 		log_at "$END_AT" "end rc=$rc seconds=$secs" # provisional: the report reads a finished run
 		END_LINE="$END_AT run=$RUN_ID end rc=$rc seconds=$secs"
 	fi
+	unanswered_listings
 	if [ "$REPORT" -eq 1 ]; then
 		# A copy of the prompt that is not this installer's started the attempt (--log-start said so and
 		# stopped it). Its own text may still end at this report: the NEXT says what to do instead, and

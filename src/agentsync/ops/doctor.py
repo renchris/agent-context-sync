@@ -93,15 +93,24 @@ _AGENT_YOURS_NOTE = "background sync is yours to refresh, not a setup step"
 # missing line (B13 round 6 G33). No parentheses: the report's fix parser strips one level. "as of", not "held
 # at", since the detail before it says "deletions held" (B13 round 13 O36: one word in two senses). It
 # names that sync as one that may not run (B13 round 14 Q35: "the end of this run says whether this run's
-# sync cleared it" stood in runs whose sync a FAIL or a busy lock skipped, and whose end said nothing).
+# sync cleared it" stood in runs whose sync a FAIL or a busy lock skipped, and whose end said nothing). It
+# names the condition install.sh's answer follows, a sync that exits 0 (``cleared_listings``, through
+# ``loop_next``): a first sync that exits 78, 80 or another code ends the run with ``exit 1`` before that, and
+# "if this run's sync runs" promised an answer those runs never gave (B13 round 15 S11). A run that ends
+# before its closing status after its sync ran (those exits, or a failed --confirm-install-agent wait) says
+# so per held listing instead, and names status (install.sh's ``unanswered_listings``, round 15 S64).
 _LISTING_YOURS_NOTE = (
-    "as of its last walk: if this run's sync runs, the end of this run says whether it cleared it"
+    "as of its last walk: if this run's sync succeeds, the end of this run says whether it cleared it"
 )
 # The note when status itself has a [FAIL] that stops install.sh's sync (any but the launcher's TCC_PENDING,
 # install.sh's DOCTOR_BLOCKS rule): status swaps it in, since only it knows every check's result (B13 round 14
-# Q10). No command and no line type promised, no parentheses (the report's fix parser strips one level).
+# Q10). No line type promised, no parentheses (the report's fix parser strips one level), and no claim of what
+# releases the listing: "it stays held until a sync after that fix" tied it to a [FAIL] about another folder
+# or pandoc, while an empty cloud folder held it, and said "held" a second time beside "deletions held"
+# (B13 round 15 S28; round 13 O36). Status run on its own names what keeps it incomplete, by the full path.
 _LISTING_SKIPPED_NOTE = (
-    "as of its last walk: a [FAIL] line stops this run's sync, so it stays held until a sync after that fix"
+    "as of its last walk: a [FAIL] line stops this run's sync, so this run does not say what keeps it "
+    f"incomplete; {BIN} status names it"
 )
 # The same note in the setup report, whose run prints no WAITING ON YOU line at its end (``--report-only``
 # prints none at all): the waits are on its Summary's Loop line. It promises no line, since the report's

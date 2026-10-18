@@ -10113,6 +10113,10 @@ def _yours_step() -> loop.NextStep:
         f" ({doctor._LISTING_YOURS_NOTE})",
         f" ({doctor._LISTING_SKIPPED_NOTE})",
         " (as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it)",
+        # an installed agentsync from before B13 round 15 S11, S28
+        " (as of its last walk: if this run's sync runs, the end of this run says whether it cleared it)",
+        " (as of its last walk: a [FAIL] line stops this run's sync, so it stays held until a sync after "
+        "that fix)",
         # an installed agentsync from before B13 round 14 Q35
         " (as of its last walk: the end of this run says whether this run's sync cleared it)",
         # an installed agentsync from before B13 round 13 O36
@@ -10124,6 +10128,8 @@ def _yours_step() -> loop.NextStep:
         "install.sh",
         "install.sh-fail",
         "report",
+        "install.sh-before-S11",
+        "install.sh-fail-before-S28",
         "install.sh-before-Q35",
         "install.sh-before-O36",
         "report-before-O36",
