@@ -6099,9 +6099,16 @@ def test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_
     assert cp.returncode == 0, cp.stdout + cp.stderr
     out = cp.stdout.splitlines()
     waits = [i for i, ln in enumerate(out) if re.fullmatch(PANDOC_PROGRESS, ln)]
-    [started] = [i for i, ln in enumerate(out) if re.fullmatch(r"pandoc: started after \d+s", ln)]
-    [checked] = [i for i, ln in enumerate(out) if ln.startswith("[ok  ] pandoc ")]
-    assert waits and waits[-1] < started < checked, cp.stdout
+    # B13 round 15 S70: a bare unpack failed on CI (run 39081380800) with no output to tell why; the run's
+    # lines and the pandoc start log go with every assert, so the next failure shows who started pandoc
+    started_at = [i for i, ln in enumerate(out) if re.fullmatch(r"pandoc: started after \d+s", ln)]
+    checked_at = [i for i, ln in enumerate(out) if ln.startswith("[ok  ] pandoc ")]
+    pandoc_log = Path(f"{pandoc}.log")
+    starts_seen = pandoc_log.read_text(encoding="utf-8") if pandoc_log.exists() else "(no pandoc log)"
+    why = f"{cp.stdout}\n--- stderr ---\n{cp.stderr}\n--- pandoc starts ---\n{starts_seen}"
+    assert len(started_at) == 1 and len(checked_at) == 1, why
+    started, checked = started_at[0], checked_at[0]
+    assert waits and waits[-1] < started < checked, why
     assert out[checked].endswith(f"— pandoc 9.9 at {pandoc}"), "the check ran this pandoc, and it answered"
     assert not [ln for ln in out if ln.startswith("[FAIL]")], cp.stdout
     assert "sync: converted 1, deferred 0 online-only" in out
@@ -6111,9 +6118,13 @@ def test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_
         ("first-sync", "done", "0", "converted-1-deferred-0"),
     ]
     starts = Path(f"{pandoc}.log").read_text(encoding="utf-8").splitlines()
-    assert starts[0].startswith("slow ") and str(INSTALL_SH) in starts[0], "install.sh made the slow start"
+    assert starts[0].startswith("slow ") and str(INSTALL_SH) in starts[0], (
+        f"install.sh made the slow start: {starts}"
+    )
     assert all(ln.startswith("quick ") for ln in starts[1:]), starts
-    assert any(" -m agentsync status " in ln for ln in starts[1:]), "status's check then met a quick one"
+    assert any(" -m agentsync status " in ln for ln in starts[1:]), (
+        f"status's check then met a quick one: {starts}"
+    )
 
     # At the default interval (at the 1 s one above a line is printed whenever the clock's second turns):
     again = install_sh(real_env, *command)

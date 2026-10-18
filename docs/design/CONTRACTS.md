@@ -21691,6 +21691,16 @@ tested "no end line for it" rule and how parse_friction reads the attempt. A pat
 finished one), `test_a_patch_unreadable_after_a_report_with_no_header_embedded_it_is_not_listed`,
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 
+**The pandoc first-start test's failure carries the run** (S70). CI run 39081380800 failed it with only `ValueError:
+not enough values to unpack (expected 1, got 0)` at the `[started] = [...]` unpack: install.sh's output was captured
+and dropped, so whether `start_pandoc_once` returned silently (a `status_pandoc` read that printed nothing) or the
+ticker never fired cannot be told. The `started` and `checked` lines are now counted in an assert whose message is
+the run's stdout, its stderr and the pandoc stub's start log (which process made the slow start), then indexed, so
+the rest of the test is unchanged; the start-log asserts carry that log too. Not the finder's lists left as lists,
+which fail every run at `waits[-1] < started`. Measured: with install.sh's `started after` line renamed, the test
+fails with an `AssertionError` holding the output and `--- pandoc starts ---`, not the bare `ValueError`. Test:
+`test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_checks`.
+
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 
 The B13 round 15 items of lane P (specs `round15/items/S<n>.md`, the verifier's corrected fix built unless a
