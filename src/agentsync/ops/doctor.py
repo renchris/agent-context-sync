@@ -1058,9 +1058,9 @@ def _missing_source_fix(src: SourceConfig, root: Path) -> str:
             f"sign in to {app} on this Mac or let it finish setting up, since {provider} is empty, "
             f"then run {BIN} status again"
         )
-    if (
-        state == "signed-in"
-    ):  # renamed, moved or deleted there: the put-back first, as the wait (B13 round 15 S4)
+    # Renamed, moved or deleted there: names the put-back, as the wait does, after the path PERSONS_FIX_RE
+    # keys on, so the fix stays the person's (B13 round 15 S4; round 16 T58)
+    if state == "signed-in":
         return f"{fix_path}, or put the folder back under that name in {app}, or sync that folder in {app}"
     if state == "other-account":
         return (
