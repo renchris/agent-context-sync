@@ -20543,6 +20543,10 @@ Amended 2026-10-17, §16.111 Q20, Q29: the
 `--report-only` NEXT gives the remedy before `copy that one file back`, the header gives it too, both readers'
 local-work line count such a patch apart, and a later report sends it once it is readable
 (`local-work/.not-sent`), where it was `not repeated` before.
+Amended 2026-10-18, §16.117 S24: with nothing sent the header reads `Section 3 sends no patch: N patch
+file(s) could not be read; make them readable (chmod u+r) and run the report again (install.sh --report-only), as its
+last line says.`, then, for patches listed by their hash, `The one other patch was ...` or `The other N patches were
+... listed by their hash.`
 
 **A stopped copy's left-out marker is number-neutral** (O70; amends §16.99 N22). One marker stands for the lines of
 every earlier run in the tail, yet read "an earlier run's". Test:
@@ -21631,6 +21635,17 @@ README's keeps. The terminal NEXT lines, which are the command's own output, kee
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_section_3s_branch_remedy_names_a_commit_as_the_keep_does` (the remedy install.sh prints, run on a real branch),
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+**The header's unread-patch sentence is two sentences, the second counted** (S24; amends §16.105 O25). With a patch
+unread and the others listed by their hash it read `... could not be read: make them readable (chmod u+r) and run the
+report again (install.sh --report-only); see its last line, and the others were in an earlier report and are listed
+by their hash.`: two colons, and "the others ... their hash" of a single patch, since it keyed on there being any
+skipped line and never read their count. It reads `Section 3 sends no patch: N patch file(s) could not be read; make
+them readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says.`, then `The one
+other patch was in an earlier report and is listed by its hash.` or `The other N patches were in an earlier report and
+are listed by their hash.`; with nothing sent, the others are exactly the patches listed by their hash. The arm beside
+a patch that was sent drops its second colon the same way. (The counts above take S14's nouns.) Test:
+`test_an_unreadable_patch_leaves_the_rest_of_section_3_right` (one and two listed by their hash).
 
 ### 16.118 Round 15: setup prompt v24 (2026-10-18, wave B13 round 15 lane P)
 

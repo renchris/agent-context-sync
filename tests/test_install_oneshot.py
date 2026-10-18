@@ -2550,16 +2550,16 @@ def test_a_patch_this_account_cannot_read_is_counted_not_sent(
         assert "Section 3 holds one patch per kept commit" in " ".join(head.split())
         # B13 round 14 Q29: the remedy is in the header beside a patch that was sent, too
         assert (
-            f"Section 3 does not hold {files} this account cannot read: make {them} readable "
-            "(chmod u+r) and run the report again (install.sh --report-only); see its last line."
+            f"Section 3 does not hold {files} this account cannot read; make {them} readable "
+            "(chmod u+r) and run the report again (install.sh --report-only), as its last line says."
             in " ".join(head.split())
         ), head
     else:
         assert "diff" not in section3 and "\nnone\n" not in section3
         assert "holds one patch per kept commit" not in " ".join(head.split())
         assert (
-            f"Section 3 sends no patch: {files} could not be read: make {them} readable (chmod u+r) "
-            "and run the report again (install.sh --report-only); see its last line."
+            f"Section 3 sends no patch: {files} could not be read; make {them} readable (chmod u+r) "
+            "and run the report again (install.sh --report-only), as its last line says."
             in " ".join(head.split())
         ), head
         assert "Section 3 is not redacted" not in " ".join(head.split())
@@ -2576,17 +2576,21 @@ def _keep_patch(
     return patch
 
 
-@pytest.mark.parametrize("beside", ["one sent before", "a long tilde line"])
+@pytest.mark.parametrize("beside", ["one sent before", "two sent before", "a long tilde line"])
 def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, str], beside: str) -> None:
     """Review of B13 round 13 O25: beside a patch skipped by its hash, the header still said section 3's
     patch was in an earlier report, though one was unread; and the unreadable file stopped fence_for's awk,
-    so the fence fell back to 40 tildes, which a readable patch's own 40-tilde line closed early."""
+    so the fence fell back to 40 tildes, which a readable patch's own 40-tilde line closed early.
+    B13 round 15 S24: the remedy and the patches listed by their hash were one sentence of two colons, which
+    said "the others ... their hash" of one patch; the hash sentence is its own now, counted."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
-    if beside == "one sent before":
+    if beside.endswith("sent before"):
         _two_attempts(env)
         _keep_patch(env, "2026-10-06T16:00:00Z")
+        if beside == "two sent before":
+            _keep_patch(env, "2026-10-06T16:00:00Z", name="0001-older.patch")
     else:
         _keep_patch(env, "2026-10-07T16:00:00Z", body="+" + "~" * 39 + "\n" + "~" * 40 + "\n")
     locked = _keep_patch(env, "2026-10-07T16:00:00Z", name="0002-x.patch")
@@ -2597,12 +2601,16 @@ def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, s
     finally:
         locked.chmod(0o600)
     head = " ".join(whole.split("\n## 1. Setup report", 1)[0].split())
-    if beside == "one sent before":
-        assert "earlier report and is listed by its hash" not in head, head
-        assert (
-            "Section 3 sends no patch: 1 patch file could not be read: make it readable (chmod u+r) "
-            "and run the report again (install.sh --report-only); see its last line, and the others were in "
-            "an earlier report and are listed by their hash." in head
+    if beside.endswith("sent before"):
+        assert "Section 3 sends no patch this time" not in head, head
+        others = (
+            "The one other patch was in an earlier report and is listed by its hash."
+            if beside == "one sent before"
+            else "The other 2 patches were in an earlier report and are listed by their hash."
+        )
+        assert head.endswith(
+            "Section 3 sends no patch: 1 patch file could not be read; make it readable (chmod u+r) "
+            "and run the report again (install.sh --report-only), as its last line says. " + others
         ), head
         assert "not repeated: " in text and "not sent: 1 patch file in" in text
     else:

@@ -3546,9 +3546,16 @@ write_bring_back() {
 				"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
 				"set, a name and address git filled in from this Mac's account), so check those lines too."
 			# the remedy here too, in the file the person reviews (B13 round 14 Q29)
-			[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $up this account cannot read: make $uthem readable (chmod u+r) and run the report again (install.sh --report-only); see its last line."
+			[ "$unread" -eq 0 ] || printf '%s\n' "Section 3 does not hold $up this account cannot read; make $uthem readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says."
 		elif [ "$unread" -gt 0 ]; then # before the hash sentences, which would call every patch an earlier one
-			printf '%s\n' "Section 3 sends no patch: $up could not be read: make $uthem readable (chmod u+r) and run the report again (install.sh --report-only); see its last line${skipped:+, and the others were in an earlier report and are listed by their hash}."
+			# the patches listed by their hash are a sentence of their own, counted by nskip: with nothing sent,
+			# the others are exactly those (B13 round 15 S24)
+			printf '%s\n' "Section 3 sends no patch: $up could not be read; make $uthem readable (chmod u+r) and run the report again (install.sh --report-only), as its last line says."
+			if [ "$nskip" -eq 1 ]; then
+				printf '%s\n' "The one other patch was in an earlier report and is listed by its hash."
+			elif [ "$nskip" -gt 1 ]; then
+				printf '%s\n' "The other $nskip patches were in an earlier report and are listed by their hash."
+			fi
 		elif [ "$nskip" -eq 1 ]; then # one patch is no "each" (B13 round 11 M18)
 			printf '%s\n' "Section 3 sends no patch this time: its one patch was in an earlier report and is listed by its hash."
 		elif [ -n "$skipped" ]; then # B13 round 10 L25 (lane RA), beside L4
