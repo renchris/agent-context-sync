@@ -324,8 +324,10 @@ def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
     translation of every fresh copy at its first start (10 to 67 s).  Same version, same flags, so the same
     bytes out; only the CPU architecture changes.  The version is the one the wheel's RECORD hash maps to,
     so an unknown wheel, a missing copy or any error means the wheel's binary, as before
-    (load root cause 2026-10-17 X26).  Nothing is run: the converters, doctor's pandoc check, the setup
-    report and scripts/install.sh's first start of pandoc all resolve through here (B13 round 14 Q60).
+    (load root cause 2026-10-17 X26).  Nothing is run.  The converters resolve every case through here; when
+    ``pandoc_path`` is unset, doctor's pandoc check, the setup report and scripts/install.sh's first start of
+    pandoc do too, and each of those three keeps a configured path as written (B13 round 14 Q60, §16.114;
+    round 15 S49).
     Raises ConversionError for a configured path that is not an absolute file, and when the wheel's binary
     is missing."""
     if pandoc_path is not None:

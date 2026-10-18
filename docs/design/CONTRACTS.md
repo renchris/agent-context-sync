@@ -2457,6 +2457,8 @@ def differing_parts(old: tuple[tuple[str, str], ...], new: tuple[tuple[str, str]
 
 Converter: docx/odt/rtf/html via the pypandoc_binary-bundled pandoc, invoked by ABSOLUTE path (owner:
 convert).
+Amended 2026-10-18, §16.120 S49 (by §16.114 Q62): with `[convert] pandoc_path` unset, the pandoc run on macOS is a
+native arm64 copy of the wheel's pandoc version when the operator installed one; `resolved_pandoc` picks it.
 
 ```python
 class PandocConverter:
@@ -2483,6 +2485,12 @@ class PandocConverter:
 
     def convert(self, src: Path, *, name: str) -> tuple[RenderedUnit, ...]:
         """Convert one staged file; see the Converter protocol for pre/postconditions and errors."""
+
+# Amended 2026-10-18, §16.120 S49 (by §16.114 Q62): the one rule for which pandoc runs. Doctor, the setup
+# report and scripts/install.sh's status_pandoc call it when pandoc_path is unset; status_pandoc imports it by
+# name from the installed tool, so a rename changes install.sh and its older-tool fallback in the same commit.
+def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
+    """The pandoc the converters run and its kind: configured, native or wheel. Runs nothing."""
 ```
 
 ### `agentsync.convert.xlsx` — `src/agentsync/convert/xlsx.py` — owner: **convert**
@@ -6969,7 +6977,7 @@ Phase one | discovery | May
   page: a name in it would be the first file's. `publish` shows the item's own name when a unit has no title.
   `convert`'s `name` argument labels a log line and nothing else.
 - **Summary.** `Image 1440x900 px; OCR: 2 line(s)`. Never the text: a summary sits in front matter, above
-  the banner.
+  the banner. Amended 2026-10-18, §16.120 S52: `OCR: 1 line` or `OCR: N lines` (`agentsync.text.plural`).
 - **Pages.** A TIFF is read page by page, at most `ocr.MAX_PAGES`. With more than one page, each page read
   gets a `<!-- page: N -->` anchor, the header says `· 3 pages` (`· 250 pages, first 40 read`) and the summary
   `, 3 pages (3 read)`. A page with no text is `[no text on this page]`. A page the helper could not read is
@@ -9884,6 +9892,13 @@ per-job guards inside it and `cli._extra_checks` all build their line with it.
 wrong`, and for pandoc it adds `(the first start of a newly installed pandoc can take a minute, and later
 ones take under a second)`. It is never "check crashed". Its fix has two parts, `<run again>; if this line
 comes back: <then>`:
+Amended 2026-10-18, §16.120 S29: the first-start sentence is the bundled pandoc's alone, and pandoc's `<then>` is
+the fix of the pandoc the line names: for the bundled one `reinstall pypandoc_binary in agentsync's tool
+environment: ~/.local/bin/uv tool upgrade --reinstall-package pypandoc_binary agentsync, or set [convert]
+pandoc_path to an absolute pandoc` (uv where install.sh's `find_uv` finds it; `uv sync` never reached the tool
+environment), for `[convert] pandoc_path` `check or replace the pandoc at [convert] pandoc_path ('<path>'), or
+remove that line to use the bundled pandoc or its native arm64 copy`, and for the native copy `show the person
+this line: the native pandoc copy at <copy> is theirs to replace or remove (...)`.
 
 | Where | `<run again>` |
 |---|---|
@@ -9929,6 +9944,8 @@ Mac runs only with Rosetta, and the fix is `Rosetta is yours to install, not a s
 Mac): softwareupdate --install-rosetta --agree-to-license; or set [convert] pandoc_path to an absolute
 pandoc built for this Mac`. That case is read from the errno and has not been seen on a Mac without
 Rosetta.
+Amended 2026-10-18, §16.120 S53: status's and install.sh's `NEXT:` name that fix as the person's
+(`doctor.PERSONS_FIX_RE` and `persons_fails`); before, both sent the agent to it.
 
 The fix first read `softwareupdate --install-rosetta (IT's step on a managed Mac), or ...`. Two things were
 wrong with it under an install.sh `NEXT:` that says to fix the `[FAIL]` lines and re-run. It read as a
@@ -11300,6 +11317,9 @@ The cache count in the purge headline reads `1 cache entry` or `N cache entries`
 be removed` on a dry run and `removed` on a real run; it never reads `entr(ies)`. The other counts keep `(s)`
 (`item(s)`, `docs path(s)`, `commit(s)`, `blob(s)`), as every other CLI line does. Why: the v10 rehearsal read
 `entr(ies)` as a typo. Amends §16.37 "Purge dry run" (dated line there). Tests: `tests/test_cli.py`.
+Amended 2026-10-18, §16.120 S52: so do the image summary's `OCR: 1 line`, a text file's `1 line`, a workbook's `1
+sheet` and `1 worksheet`, a mail's `1 attachment`, a transcript's `1 turn, 1 named speaker` and a Teams month's `1
+message in 1 thread`: no converter summary keeps `(s)`.
 
 #### N3: a failed re-read under a new version is still left (`agentsync.cycle`)
 
@@ -12366,6 +12386,7 @@ subject>.msg`, else `attached-message-N.msg`, as `application/vnd.ms-outlook`, s
 never opened further; any other
 object storage (an embedded OLE object, method 6) is listed under its own name and type with size and
 sha256 `-`. The summary is `Email from <From>, <Date>: <subject>; N attachment(s)`.
+Amended 2026-10-18, §16.120 S52: `1 attachment` or `N attachments`, as the .eml summary reads.
 
 UNREADABLE, cached and settled: a message class starting `IPM.Note.SMIME` other than
 `IPM.Note.SMIME.MultipartSigned`, or (outside that signed class) an attachment typed
@@ -20653,6 +20674,9 @@ renamed folder), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`.
 Amended 2026-10-17, §16.111 Q45, Q54,
 Q63: `persons_fails` also reads `<provider> is empty while OneDrive-<org> ...` (round 13 O52's fix for a SharePoint
 library there but empty) as the person's; the test's cases include it.
+Amended 2026-10-18, §16.120 S47, S53: it also reads `Rosetta is yours to install` and `the native pandoc copy at `
+(the pandoc check's person's fixes), and the NEXT's list reads `(each names its fix: a folder or file to put back or
+sync, a [[source]] path, a sign-in, Rosetta to install or a native pandoc copy)`.
 Amended 2026-10-17, §16.112 Q15, Q73: since v23 the first exception keys on "on disk" and covers the list's other
 two tails ("is not on disk because" a provider folder of another account, or a SharePoint library not synced here),
 and gives each tail's own fix: putting the folder back for a renamed one, the fix the line names in parentheses for
@@ -21137,6 +21161,8 @@ page`, and the report's `listed 1 folder`, `1 of 2 sources` and `(1 excluded id,
 `plural` in `agentsync.text` (setup_report's `_plural` before it). No emitter version moved: a page converted before keeps
 its `(s)` until it is converted again for another reason. Tests: `test_deploy_pack.py::test_readme_step1_command_marks_the_folders_a_set_up_mac_syncs`
 (one folder), `test_list_folders_marks_the_folders_this_mac_already_syncs` (two), `tests/test_text.py`.
+Amended 2026-10-18, §16.120 S52: the other converters' counts too (`OCR: 1 line`, `Text (txt): 1 line`, `Workbook:
+1 sheet`, `1 attachment`, `1 turn, 1 named speaker`, `1 message in 1 thread`); still no emitter version moved.
 
 Amended 2026-10-18, §16.116 S26, S30, S31: every count the setup report knows takes its noun from the count, not
 only the lines listed here; install.sh's report readers accept both forms.
@@ -21293,6 +21319,9 @@ test_status_names_a_persons_fail_fix_as_theirs_and_sync_keeps_its_next`, `test_c
 test_status_puts_the_agents_own_fail_fix_before_a_persons`, `test_cli.py::test_status_next_never_copies_a_fail_fix`
 (the sign-in now first), `test_setup_report.py::
 test_a_doctor_fail_is_the_loop_lines_next_and_no_friction_log_hides_the_it_draft` (both kinds of fix).
+Amended 2026-10-18, §16.120 S47, S53: `PERSONS_FIX_RE` also holds `Rosetta is yours to install` and `the native
+pandoc copy at `, and `_fail_step`'s list reads `(a folder or file to put back or sync, a [[source]] path, a sign-in,
+Rosetta to install or a native pandoc copy)`.
 
 **Q6, Q11, Q34: a source root that does not exist is named gone (`agentsync.arm_local`, `agentsync.cycle`,
 `agentsync.loop`; amends §16.45 R102).** A renamed, deleted or signed-out root stored `root_unlisted:<id>` like an
@@ -21424,6 +21453,9 @@ one named, and a ConversionError names none. Tests: `test_ops_doctor.py::test_th
 `test_setup_report.py::test_the_pandoc_line_is_the_pandoc_the_converters_run`,
 `test_install_oneshot.py::test_the_pandoc_the_installer_starts_is_the_one_the_converters_run` (the current tool,
 an older one and a missing wheel binary, run by bash 3.2).
+Amended 2026-10-18, §16.120 S47: the native copy's fix is the person's, `the native pandoc copy at <copy> is yours
+to replace or remove (the converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an
+absolute pandoc`; after a time-out the agent's re-run comes first, then `show the person this line: ...`.
 
 **The operator's native pandoc reaches the test gate (Q61; tests only).** X26 was aimed at the gate's load (51
 sandbox denies per 10 s on a worktree venv's pandoc), but `_native_pandoc` reads `Path.home()`, and every test's
@@ -21444,6 +21476,8 @@ paragraph above; §7's routing, §15's `ConvertConfig.pandoc_path` and §16.32's
 and `config.py`'s `pandoc_path` comment, the doctor's Rosetta comment and `convert.pandoc`'s module and
 `PandocConverter` docstrings name the copy. `_bundled_pandoc` keeps its name (18 test references; the rename buys
 only naming) and now returns `resolved_pandoc(None)`'s path. Test: the dated-line pins in `test_deploy_pack.py`.
+Amended 2026-10-18, §16.120 S69: `_bundled_pandoc` is gone, with no production caller since 1dcab9a2; the tests call
+`resolved_pandoc(None)[0]`.
 
 **The late-start case pins O73's hold (Q83; tests only; amends §16.108 O73).** Round 13 lane E recorded O73's
 measurement and wrote no test, calling one load-sensitive; putting back the stub's old body left every test green.
@@ -22029,7 +22063,107 @@ test_two_unreadable_patches_are_counted_by_their_number` (RB's words, two patche
 
 ### 16.120 Round 15: the pandoc fix texts and ship-land's CI reads (2026-10-18, wave B13 round 15 lane E)
 
-Reserved for round 15 lane E of B13.
+Round 15's lane E items: the pandoc check's fix texts by the pandoc they are about (S29, S47, S53), two wrappers
+only tests called (S46, S69), the `convert.pandoc` module section (S49), the converters' last `(s)` counts (S52) and
+their missing count-1 pins (S51), and `scripts/ship-land.sh`'s CI reads (S59, S63), landed after the other five
+lanes since every lane lands with it.
+
+**Each pandoc gets its own fix, and `uv sync` is gone (S29; `agentsync.ops.doctor`; dated lines at §16.32).** Every
+pandoc FAIL but the native copy's named `uv sync (reinstalls pypandoc_binary) or set [convert] pandoc_path to an
+absolute pandoc`, also for a `[convert] pandoc_path` that hangs or exits non-zero (rehearsal probe 60), where
+pandoc_path already was an absolute pandoc, and a configured pandoc that ran out of time got the bundled one's
+first-start sentence. `uv sync` syncs the project in the folder it runs in, never the uv tool environment install.sh
+made, and install.sh sets `UV_NO_MODIFY_PATH`, so uv is often not on PATH. Re-running install.sh does not help
+either: step 2 skips its reinstall when the stamp names this commit (`install_is_current`). Measured 2026-10-18 with
+uv 0.12 on a tool environment of its own: `uv tool upgrade --reinstall-package <dep> <tool>` puts a deleted file of
+the dependency back with the environment kept, and `uv tool install --force` makes a new environment. So the
+bundled pandoc's fix is `reinstall pypandoc_binary in agentsync's tool environment: <uv> tool upgrade
+--reinstall-package pypandoc_binary agentsync, or set [convert] pandoc_path to an absolute pandoc`, `<uv>` found as
+install.sh's `find_uv` finds it (`doctor._uv_word`: on PATH, else `~/.local/bin/uv`); a configured pandoc's is
+`check or replace the pandoc at [convert] pandoc_path ('<path>'), or remove that line to use the bundled pandoc or
+its native arm64 copy`, its time-out line has no first-start sentence, and only a path that is not absolute keeps
+`set [convert] pandoc_path to an absolute pandoc`. The python check's `uv python install 3.11 && uv sync` reads `run
+scripts/install.sh again (it installs agentsync with uv's Python 3.11)`: a Python older than 3.11 is an environment
+install.sh did not make, so its stamp does not match and step 2 reinstalls. Tests:
+`test_ops_doctor.py::test_a_configured_pandoc_that_fails_names_that_pandoc_and_not_the_bundled_one` (exit 3, a
+time-out twice, missing, not absolute), `test_ops_doctor.py::test_no_pandoc_fix_names_a_bare_uv_sync` (three kinds
+by three failures, and missing), `test_ops_doctor.py::test_the_uv_a_fix_names_is_the_one_install_sh_finds`,
+`test_ops_doctor.py::test_old_python_fails`.
+
+**The native copy and Rosetta are the person's (S47, S53; `agentsync.ops.doctor`, `agentsync.cli`,
+`scripts/install.sh`; dated lines at §16.32, §16.106 O11, §16.113 Q1 and §16.114 Q60).** The native copy's fix was `replace or
+remove <copy> ...`, a delete of a program the operator installed, which the setup prompt forbids, and the wheel
+pandoc's EBADARCH fix `Rosetta is yours to install, not a setup step ...` said so in words; neither matched
+`PERSONS_FIX_RE`, so status's NEXT said `do what the fix on its [FAIL] line below says` and install.sh `fix the
+[FAIL] lines above`. The native fix now reads `the native pandoc copy at <copy> is yours to replace or remove (the
+converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an absolute pandoc`, for an exit,
+an EBADARCH and a missing copy alike, and `PERSONS_FIX_RE` and install.sh's `persons_fails` both gain `Rosetta is
+yours to install` and `the native pandoc copy at ` (the bare words "replace" and "remove" are not matched: `remove
+the remote` is the agent's governance fix). The lists that say what a person's fix is, `_fail_step`'s and
+`PERSONS_FAILS`, add `Rosetta to install or a native pandoc copy`. A native copy that ran out of time keeps the
+agent's re-run first (`_again_fix`), and its `if this line comes back:` part reads `show the person this line: the
+native pandoc copy at <copy> is theirs to replace or remove (...)`, so the agent runs again but never deletes. S53's
+verifier left the native copy's EBADARCH fix the agent's; S47's, the later review of that same fix, gives it to the
+person, and that is what is built. `_fail_steps` still sorts the person's fixes last, and `persons_fails` needs every
+blocking [FAIL] to be the person's, so a Rosetta or native-copy FAIL beside an agent-fixable one still sends the
+agent to its own step first. Tests: `test_install_oneshot.py::test_doctors_persons_fix_words_are_install_shs`
+(doctor's own Rosetta and native lines are the person's, the time-outs are not),
+`test_install_oneshot.py::test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report` (each alone and
+beside a source's), `test_install_oneshot.py::test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next` (the
+native copy's time-out), `test_cli.py::test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs`.
+
+**Two wrappers left for the tests are gone (S46, S69; `agentsync.ops.doctor`, `agentsync.convert.pandoc`; dated
+line at §16.114 Q62).** `doctor._pandoc_path` returned `_pandoc_route(config)[0]` and `convert.pandoc._bundled_pandoc`
+`resolved_pandoc(None)[0]`; since 1dcab9a2 no code in src, scripts or launcher called either, and no installer ever
+imported `_bundled_pandoc`. The tests call `doctor._pandoc_route(config)[0]` and `resolved_pandoc(None)[0]`, and
+docs/lanes/COMMON.md names `_pandoc_route`. §16.114's history keeps both names. Test:
+`test_contracts.py::test_no_private_function_in_src_is_left_for_the_tests_alone` (every module-level private
+function in src is named in src outside its `def`; on 61474fdf it names exactly these two).
+
+**The `convert.pandoc` section names the route (S49; `agentsync.convert.pandoc`; dated lines at §15).** The module
+section still said only the bundled pandoc runs, and its API block had no `resolved_pandoc`, which status_pandoc
+imports by name. §15 has a dated line after the prose and the signature with an amendment comment, and the
+resolver's docstring no longer says doctor, the report and install.sh resolve every case through it: they keep a
+configured path as written (doctor at `_pandoc_route`). A rename is already caught by
+`test_install_oneshot.py::test_the_pandoc_the_installer_starts_is_the_one_the_converters_run`. Test: the dated-line
+pins in `test_deploy_pack.py`.
+
+**No converter count keeps `(s)` (S52; `agentsync.convert`; dated lines at §16.26, §16.42, §16.39 N36 and §16.111
+Q39).** Q39 moved the pdf, deck and diagram counts to `agentsync.text.plural`, and one image summary read `4 pages (1
+read); OCR: 1 line(s)`. The image summary's OCR lines, a text file's lines, a workbook's sheets (summary) and
+worksheets (index body), a mail's attachments (.eml and .msg), a transcript's turns and named speakers, and a Teams
+month's messages and threads (body and summary) now take `plural`. Log lines keep `(s)`, and no emitter version
+moved: a page converted before keeps its `(s)` until it is converted again. No reader parses these strings. Tests:
+`test_convert_formats.py::test_a_known_count_has_no_s_at_one_or_at_many` (each at 1, the workbook and mail at 2),
+and the many-count pins in each converter's own test.
+
+**The count-1 pins Q39 asked for (S51; tests only).** The .potx summary was `startswith("Presentation: 1 slide")`,
+which the old `1 slide(s)` also passes; it is an equality now. A one-page diagram (written inline, since
+`build_drawio` always adds a Notes page) and a one-layout template are pinned. Tests:
+`test_convert_formats.py::test_a_potx_template_is_read_as_a_deck`,
+`test_convert_formats.py::test_a_one_page_diagram_says_1_page`,
+`test_convert_formats.py::test_a_template_with_one_layout_says_1_layout`.
+
+**ship-land reads a gh failure as not read, never as green or red (S59, S63: one defect from two finders, built
+once; `scripts/ship-land.sh`, CLAUDE.md, docs/lanes/COMMON.md).** `watch_runs` took a failed `gh run list` for "no
+runs yet" and no runs after 60 s for green, so with every gh call failing the trunk check passed and the read-back
+printed `LANDED <sha>, CI green` with no run read; and it took any conclusion but `cancelled` after a broken watch
+for red, `success` and an empty one from a failed `gh run view` included (exit 6 before the push, 8 after). It now
+has three outcomes: 0 green, 1 red (the id), 2 not read (a reason). gh's own exit status tells an error from an
+answer; `gh run watch --exit-status` fails on red and on a network error alike, so the state is read with `gh run
+view --json status,conclusion`, three tries; `success`, `skipped` and `neutral` are green, `failure`, `timed_out`
+and `startup_failure` red, `cancelled` keeps the superseded-run rule (its own gh and fetch failures are not read),
+a run not yet completed is watched again, and any other conclusion is not read. Every wait is bounded:
+`SHIP_LAND_RUN_POLLS` (24) polls and re-watches, `SHIP_LAND_RUN_SLEEP` (5 s) apart, two minutes for runs to appear;
+the two are for tests. Not read is exit 9: before the push `could not read trunk CI (<reason>); nothing pushed;
+retry, or pass --no-ci to land without it` (`--allow-red-trunk` does not cover it, since not read is not red), after
+it `LANDED <sha>, CI NOT READ: <reason>; read it back with the gh run watch loop in CLAUDE.md`. ci.yml runs on every
+push to main, so no run for a pushed sha is never a green. Tests: `test_ship_land.py::
+test_a_gh_that_answers_nothing_is_ci_not_read_and_pushes_nothing`,
+`test_ship_land.py::test_a_run_whose_watch_and_view_fail_is_not_read_not_red`,
+`test_ship_land.py::test_a_watch_that_breaks_off_reads_the_runs_state`,
+`test_ship_land.py::test_a_pushed_sha_with_no_run_says_landed_and_ci_not_read`, and
+`test_ship_land.py::test_a_red_trunk_stops_the_push_unless_allowed` (still 6, and 8 with `--allow-red-trunk`).
 
 ### 16.121 Round 15: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 15 lane D)
 

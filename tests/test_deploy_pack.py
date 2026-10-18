@@ -5393,6 +5393,12 @@ _ROUND_15_PARAGRAPH_AMENDS = (
     ("16.14", "**Prompt v7.** `PROMPT_LAYOUTS[7]`: 1 preflight, 2 install", "§16.121 S67 (by §16.110 Q25)"),
     ("16.32", "- **What it prints.** Nothing when the start is quick.", "§16.117 S17"),
     ("16.29", "- **Every synced folder is printed, with its mark**", "§16.117 S10"),
+    ("15", "Converter: docx/odt/rtf/html via the pypandoc_binary-bundled", "§16.120 S49 (by §16.114 Q62)"),
+    ("15", "def resolved_pandoc(pandoc_path: Path | None) -> tuple", "§16.120 S49 (by §16.114 Q62)"),
+    ("16.32", "**Out of time** (`subprocess.TimeoutExpired`).", "§16.120 S29"),
+    ("16.32", "**A program macOS will not start**", "§16.120 S53"),
+    ("16.26", "- **Summary.** `Image 1440x900 px; OCR: 2 line(s)`.", "§16.120 S52"),
+    ("16.42", "The summary is `Email from <From>, <Date>: <subject>; N attachment(s)`.", "§16.120 S52"),
 )
 """Round 15's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
@@ -5420,13 +5426,14 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.101 (lane B) four, §16.99 (lane RB) two, §16.102 (lane E) one: N73's at §16.12's STATE.md
     paragraph. Round 14's §16.114 (lane E) three, Q62's, and §16.115 (lane D) two: Q80's at §16.22's
     nothing-stored bullet and Q67's at §16.109's opening paragraph. Round 15's §16.116 (lane RA) one, S9's at
-    §16.29's folders-line bullet, and §16.121 (lane D) nine: S48 and S57's count lines at §16.22, §16.24,
-    §16.26 (five) and §16.37, and S67's at §16.14's "Prompt v7." paragraph."""
+    §16.29's folders-line bullet, §16.121 (lane D) nine: S48 and S57's count lines at §16.22, §16.24,
+    §16.26 (five) and §16.37, and S67's at §16.14's "Prompt v7." paragraph, and §16.120 (lane E) six: S49's
+    two in §15's `convert.pandoc` section, S29's and S53's in §16.32, and S52's at §16.26 and §16.42."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
-    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 12
+    assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
