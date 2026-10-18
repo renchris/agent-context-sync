@@ -2836,6 +2836,50 @@ def test_installer_output_is_embedded_and_its_hints_counted(
     }
 
 
+def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 15 S5: the Summary called six [FAIL] fixes doctor gives the person "other
+    instruction-like line(s)", which the Installer section calls a hint the agent may act on, while their
+    run's NEXT (install.sh's ``persons_fails``) told the agent they are not its step. By run, as install.sh
+    decides: a run whose stopping [FAIL] lines are all the person's counts their fixes apart; a mixed run's
+    stay hints."""
+    persons = [
+        "[FAIL] source.contoso-plans.listable — /x/Plans does not exist (fix: fix path in [[source]] id = "
+        '"contoso-plans" in sources.toml, or sync that folder in OneDrive)',
+        "[FAIL] source.contoso-plans.volume — not mounted (fix: /Users/jdoe/Library/CloudStorage/"
+        "OneDrive-Contoso is missing while OneDrive-Fabrikam is there: sign in to OneDrive as Contoso)",
+        "[FAIL] tcc.contoso-plans — TCC_PENDING: the launcher waits for Allow (fix: click Allow)",
+    ]
+    chmod = "[FAIL] state_dir — mode 755 (fix: chmod 700 ~/.local/state/agentsync)"
+    next_line = "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: ...), not a step"
+    run_one = ["# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh", *persons, next_line]
+    run_two = ["# run=20260929T100100Z-4242 2026-09-29T10:01:00Z install.sh", persons[0], chmod, "NEXT: fix"]
+    counts = setup_report.instruction_counts(run_one)
+    # the TCC_PENDING line stops nothing, so its fix stays a hint; the NEXT that holds "fix:" is a NEXT:
+    assert counts == {"NEXT:": 1, setup_report.PERSONS_FIX: 2, "fix:": 1}, counts
+    assert setup_report.instruction_counts(run_two) == {"NEXT:": 1, "fix:": 2}, "a mixed run: both hints"
+    both = setup_report.instruction_counts(run_one + run_two)
+    assert both == {"NEXT:": 2, setup_report.PERSONS_FIX: 2, "fix:": 3}, both
+    text = setup_report._instruction_text(setup_report.instruction_counts([*run_one[:3], next_line]), 4, 1)
+    assert (
+        " and 0 other instruction-like line(s) and 2 fix: on [FAIL] lines that are the person's (their "
+        in (text)
+    ), text
+    write_install_log(fake_mac)
+    write_friction(fake_mac)
+    (fake_mac["setup"] / "install.out").write_text(
+        "\n".join([*run_one[:3], next_line]) + "\n", encoding="utf-8"
+    )
+    _rc, report_text, _ = report(tmp_path, fake_mac["config"])
+    inst = section(report_text, "Installer")
+    assert (
+        "2 fix: on [FAIL] lines that are the person's (their run's NEXT says so; not hints for the agent)"
+        in (inst)
+    ), inst
+    assert "a fix: on a [FAIL] line of a run whose stopping [FAIL] lines are all the person's is not" in inst
+
+
 def out_run(number: int, filler: int) -> list[str]:
     """One run in install.out as install.sh writes it: its header, what it printed, one doctor fix and its
     one NEXT: line, last."""

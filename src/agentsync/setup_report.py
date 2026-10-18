@@ -4158,16 +4158,59 @@ def _installer(r: _Run) -> list[str]:
     return [*_installer_runs(r), "", *_installer_output(r)]
 
 
+PERSONS_FIX = "persons-fix"
+"""The :func:`instruction_counts` kind of a ``fix:`` on a [FAIL] line of a run whose blocking [FAIL]s are all
+the person's: install.sh's NEXT for that run says they are not a step for the agent (B13 round 15 S5)."""
+
+_TCC_PENDING_FAIL_RE = re.compile(r"^\[FAIL\] tcc\.[^ ]+ +— TCC_PENDING: ")
+"""A [FAIL] install.sh's ``blocking_fails`` leaves out: a macOS Allow the wait asks for."""
+
+
 def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     """Instruction-like lines per :data:`INSTRUCTION_KINDS` kind, each line counted once (by its first kind):
     ``NEXT:`` and ``next:`` at the start of a line, ``fix:`` anywhere (doctor's ``(fix: ...)``), ``run:`` at
-    the start of a line or after ``(``."""
+    the start of a line or after ``(``. A run (from one ``# run=`` header to the next) whose blocking [FAIL]
+    lines all end in a fix that is the person's (``doctor.is_persons_fix``, install.sh's ``persons_fails``)
+    counts those lines' ``fix:`` as :data:`PERSONS_FIX`: that run's NEXT tells the agent they are not its
+    step. A mixed run's fixes, and a fix: on any other line, stay ``fix:`` (B13 round 15 S5)."""
     counts: Counter[str] = Counter()
+    run: list[str] = []
+
+    def count(run: list[str]) -> None:
+        persons = _persons_run(run)
+        for line in run:
+            kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
+            if (
+                kind == "fix:"
+                and persons
+                and line.startswith("[FAIL")
+                and not _TCC_PENDING_FAIL_RE.match(line)
+            ):
+                kind = PERSONS_FIX
+            if kind is not None:
+                counts[kind] += 1
+
     for line in lines:
-        kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
-        if kind is not None:
-            counts[kind] += 1
+        if _OUT_RUN_RE.match(line) and run:
+            count(run)
+            run = []
+        run.append(line)
+    count(run)
     return counts
+
+
+def _persons_run(run: Sequence[str]) -> bool:
+    """Whether a run's [FAIL] lines that stop it (a TCC_PENDING Allow left out) are there and every one ends
+    in `` (fix: X)`` with X the person's, by install.sh's ``persons_fails`` rule."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    blocking = [ln for ln in run if ln.startswith("[FAIL") and not _TCC_PENDING_FAIL_RE.match(ln)]
+
+    def fix(line: str) -> str | None:
+        at = line.rfind(" (fix: ")
+        return line[at + 7 :].rstrip().removesuffix(")") if at >= 0 else None
+
+    return bool(blocking) and all(doctor.is_persons_fix(fix(ln)) for ln in blocking)
 
 
 def install_out_path(log: Path | None = None) -> Path:
@@ -4182,6 +4225,11 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
     after the report, so one fewer is expected."""
     others = [f"{counts[k]} {k}" for k in INSTRUCTION_KINDS[1:] if counts[k]]
     other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
+    persons = counts[PERSONS_FIX]
+    theirs = (
+        f" and {persons} fix: on [FAIL] lines that are the person's (their run's NEXT says so; not hints for "
+        "the agent)"
+    )
     in_runs = f" in {runs} run(s)" if runs else ""
     whole = f" (whole runs only: the {cut} line(s) read before the first run header are not counted)"
     due = f"; the run writing this report prints its NEXT: after the report, so {runs - 1} expected here"
@@ -4191,6 +4239,7 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
         + ") and "
         f"{other_total} other instruction-like line(s)"
         + (f" ({', '.join(others)})" if others else "")
+        + (theirs if persons else "")
         + f" in the last {read} line(s) of install.out"
         + (whole if cut else "")
     )
@@ -4306,7 +4355,9 @@ def _installer_output(r: _Run) -> list[str]:
         )
     return [
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
-        "than NEXT: is a hint the agent may act on before install.sh's own next step. agentsync's own "
+        "than NEXT: is a hint the agent may act on before install.sh's own next step; a fix: on a [FAIL] "
+        "line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so). "
+        "agentsync's own "
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
         "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",

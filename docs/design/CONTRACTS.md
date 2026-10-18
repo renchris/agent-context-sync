@@ -21458,6 +21458,19 @@ not-on-disk clause (`_gone_clause`) keeps the list run right before the last ins
 `test_the_folders_line_counts_what_was_kept_added_and_named` (RT's two runs, a same-options retry, a run after the
 end line, counts that do not chain).
 
+**A [FAIL] fix that is the person's is no hint for the agent** (S5). `instruction_counts` counted every `fix:` as an
+instruction-like line, which the Installer section calls a hint the agent may act on, so a run whose six [FAIL]
+fixes were the person's read `6 other instruction-like line(s) (6 fix:)` while that run's NEXT (`PERSONS_FAILS`)
+said they are not a step for the agent. The lines are split at each `# run=` header and judged by run, as
+install.sh's `persons_fails` does: a run whose stopping [FAIL] lines (TCC_PENDING ones left out, as `blocking_fails`
+does) are there and all end in ` (fix: X)` with `doctor.is_persons_fix(X)` counts those lines' fixes as
+`persons-fix` (`PERSONS_FIX`), outside `other_total`: `... and 0 other instruction-like line(s) and 6 fix: on [FAIL]
+lines that are the person's (their run's NEXT says so; not hints for the agent) in the last ...`. A mixed run (a
+person's fix beside a `chmod 700` [FAIL]) keeps both as `fix:`, since its NEXT says `fix the [FAIL] lines above`;
+a fix on a [warn], [ok] or TCC_PENDING line stays `fix:`, and a NEXT holding `fix:` is still a `NEXT:`. Not per
+line: a per-line split would call a mixed run's person's fix "not a hint" under a NEXT that asks the agent to act.
+The Installer sentence says so. Test: `test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent`.
+
 **The not-on-disk doctor bucket counts checks** (S12, S27: one defect from two finders, built once; amends §16.110
 Q3, §16.39 N16). The bucket was the one whose number counted folders, so `found not on disk 1:` was
 followed by two FAILs and the buckets added up to less than the FAILs and warns. The number counts the checks it
