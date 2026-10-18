@@ -479,7 +479,8 @@ def test_a_potx_template_is_read_as_a_deck(tmp_path: Path) -> None:
     for name in ("Contoso Quarterly.potx", "Contoso Quarterly.POTX"):
         u = _one(PptxConverter(CFG).convert(template, name=name))
         assert u.title == "Contoso Quarterly Template" and "## Contoso Quarterly Template" in u.body
-        assert u.summary.startswith("Presentation: 1 slide")
+        # B13 round 15 S51: an equality, which the old "Presentation: 1 slide(s); ..." does not pass
+        assert u.summary == "Presentation: 1 slide; titles: Contoso Quarterly Template"
     assert template.read_bytes() == before, "the rewrite is in memory; the staged file is not touched"
     with pytest.raises(ConversionError, match="is not a PowerPoint file"):
         PptxConverter(CFG).convert(template, name="Contoso Quarterly.pptx")
@@ -536,6 +537,26 @@ def test_a_template_with_no_slides_says_what_its_layouts_and_master_hold(tmp_pat
     assert "Click to edit" not in u.body
     assert u.title == "Contoso Ltd. Confidential" and "empty presentation" not in u.title
     assert u.summary == "Presentation: 0 slides; 11 layouts"
+
+
+def test_a_template_with_one_layout_says_1_layout(tmp_path: Path) -> None:
+    """B13 round 15 S51: Q39 moved the layouts count to ``plural``, pinned only at "11 layouts" above; the
+    count-1 case is a template whose master keeps one layout."""
+    prs = Presentation()
+    layouts = prs.slide_master.slide_layouts
+    for layout in list(layouts)[1:]:
+        layouts.remove(layout)
+    deck = io.BytesIO()
+    prs.save(deck)
+    template = tmp_path / "Contoso One Layout.potx"
+    with zipfile.ZipFile(deck) as zin, zipfile.ZipFile(template, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "[Content_Types].xml":
+                data = data.replace(PPTX_MAIN.encode(), POTX_MAIN.encode())
+            zout.writestr(info, data)
+    u = _one(PptxConverter(CFG).convert(template, name=template.name))
+    assert u.summary == "Presentation: 0 slides; 1 layout"
 
 
 def build_table_template(path: Path, *, boxes: bool) -> Path:
@@ -4371,6 +4392,21 @@ def test_a_drawio_diagram_is_its_shape_text_and_connections_per_page(
     u = _one(DiagramConverter(CFG).convert(src, name="Contoso Architecture.drawio"))
     assert u.body == DRAWIO_BODY
     assert (u.title, u.summary) == ("", "draw.io diagram: 2 pages; pages: Overview; Notes")
+
+
+def test_a_one_page_diagram_says_1_page(tmp_path: Path) -> None:
+    """B13 round 15 S51: the diagram summary's ``plural`` (Q39) was pinned only at "2 pages", since
+    ``build_drawio`` always adds a Notes page; this file has the Overview page alone."""
+    src = _write(
+        tmp_path,
+        "Contoso One Page.drawio",
+        '<mxfile host="app.diagrams.net"><diagram name="Overview" id="a1"><mxGraphModel><root>'
+        '<mxCell id="0"/><mxCell id="1" parent="0"/>'
+        '<mxCell id="2" value="Contoso API" vertex="1" parent="1"/>'
+        "</root></mxGraphModel></diagram></mxfile>",
+    )
+    u = _one(DiagramConverter(CFG).convert(src, name=src.name))
+    assert (u.title, u.summary) == ("", "draw.io diagram: 1 page; pages: Overview")
 
 
 @pytest.mark.parametrize(
