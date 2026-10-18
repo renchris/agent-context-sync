@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import unicodedata
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -3039,9 +3040,13 @@ def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
     both = setup_report.instruction_counts(run_one + run_two)
     assert both == {"NEXT:": 2, setup_report.PERSONS_FIX: 2, "fix:": 3}, both
     text = setup_report._instruction_text(setup_report.instruction_counts([*run_one[:3], next_line]), 4, 1)
-    assert " and 0 other instruction-like lines and 2 fix: on [FAIL] lines that are the person's (their " in (
-        text
-    ), text
+    theirs = (
+        "[FAIL] lines whose fix: is the person's (a sign-in, a folder, a [[source]] path or block, Rosetta "
+        "or a native pandoc copy; not hints for the agent)"
+    )
+    # B13 round 16 T8: an Oxford-comma list, not two "and"s; T47: what the rule reads, not what a NEXT says
+    assert ", 0 other instruction-like lines, and 2 " + theirs + " in the last 4 lines" in text, text
+    assert "NEXT says so" not in text, text
     write_install_log(fake_mac)
     write_friction(fake_mac)
     (fake_mac["setup"] / "install.out").write_text(
@@ -3049,11 +3054,45 @@ def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
     )
     _rc, report_text, _ = report(tmp_path, fake_mac["config"])
     inst = section(report_text, "Installer")
-    assert (
-        "2 fix: on [FAIL] lines that are the person's (their run's NEXT says so; not hints for the agent)"
-        in (inst)
-    ), inst
+    assert "2 " + theirs in inst, inst
     assert "a fix: on a [FAIL] line of a run whose stopping [FAIL] lines are all the person's is not" in inst
+
+
+def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next() -> None:
+    """B13 round 16 T8, T49: the person's clause was "and 1 fix: on [FAIL] lines that are the person's" at
+    a count of 1, after a second "and"; it is the last item of an Oxford-comma list, its noun by the count.
+    With no person's fix the two-part form is as it was. T47: a run whose NEXT says something else (a first
+    run with no folder ends on the no-folder NEXT) has no person's fixes; a run with no NEXT yet (the one
+    writing the report) keeps the [FAIL]-only rule."""
+    one = setup_report._instruction_text(Counter({"NEXT:": 1, "fix:": 1, setup_report.PERSONS_FIX: 1}), 5, 1)
+    assert (
+        "(exactly one per install.sh run is expected), 1 other instruction-like line (1 fix:), and 1 [FAIL] "
+        in (one)
+    ), one
+    assert "1 [FAIL] line whose fix: is the person's (" in one and "not a hint for the agent)" in one, one
+    six = setup_report._instruction_text(Counter({"NEXT:": 2, setup_report.PERSONS_FIX: 6}), 81, 2)
+    assert six.startswith(
+        "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected), 0 other instruction-like "
+        "lines, and 6 [FAIL] lines whose fix: is the person's ("
+    ), six
+    assert six.endswith("not hints for the agent) in the last 81 lines of install.out"), six
+    none = setup_report._instruction_text(Counter({"NEXT:": 1}), 5, 1)
+    assert none == (
+        "1 NEXT: line in 1 run (exactly one per install.sh run is expected) and 0 other instruction-like "
+        "lines in the last 5 lines of install.out"
+    ), none
+    rosetta = (
+        "[FAIL] pandoc — not runnable (fix: Rosetta is yours to install: softwareupdate --install-rosetta)"
+    )
+    head = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh"
+    no_folder = setup_report.instruction_counts([head, rosetta, "NEXT: no folder to sync yet: ..."])
+    assert no_folder == {"NEXT:": 1, "fix:": 1}, no_folder
+    pending = setup_report.instruction_counts([head, rosetta])
+    assert pending == {setup_report.PERSONS_FIX: 1}, pending
+    loop = setup_report.instruction_counts(
+        [head, rosetta, "NEXT: background sync: done; the [FAIL] lines above are the person's to fix (...)"]
+    )
+    assert loop == {"NEXT:": 1, setup_report.PERSONS_FIX: 1}, loop
 
 
 _COUNTED_S_RE = re.compile(r"\b\d+ [A-Za-z:. -]{0,30}\((?:s|es|ies)\)")

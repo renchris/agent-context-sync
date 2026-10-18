@@ -4217,7 +4217,9 @@ def _installer(r: _Run) -> list[str]:
 
 PERSONS_FIX = "persons-fix"
 """The :func:`instruction_counts` kind of a ``fix:`` on a [FAIL] line of a run whose blocking [FAIL]s are all
-the person's: install.sh's NEXT for that run says they are not a step for the agent (B13 round 15 S5)."""
+the person's: install.sh's NEXT for that run says they are not a step for the agent (B13 round 15 S5), or
+will, after the report, for the run writing it; a run whose NEXT says something else has none (round 16
+T47)."""
 
 _TCC_PENDING_FAIL_RE = re.compile(r"^\[FAIL\] tcc\.[^ ]+ +— TCC_PENDING: ")
 """A [FAIL] install.sh's ``blocking_fails`` leaves out: a macOS Allow the wait asks for."""
@@ -4229,7 +4231,8 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     the start of a line or after ``(``. A run (from one ``# run=`` header to the next) whose blocking [FAIL]
     lines all end in a fix that is the person's (``doctor.is_persons_fix``, install.sh's ``persons_fails``)
     counts those lines' ``fix:`` as :data:`PERSONS_FIX`: that run's NEXT tells the agent they are not its
-    step. A mixed run's fixes, and a fix: on any other line, stay ``fix:`` (B13 round 15 S5)."""
+    step. A mixed run's fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a
+    fix: on any other line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
     counts: Counter[str] = Counter()
     run: list[str] = []
 
@@ -4256,11 +4259,23 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     return counts
 
 
+_PERSONS_NEXT = "the [FAIL] lines above are the person's"
+"""The words install.sh's NEXT gives a run whose stopping [FAIL] lines are all the person's
+(``PERSONS_FAILS``, after ``NEXT: `` or the loop's ``background sync: <result>; ``)."""
+
+
 def _persons_run(run: Sequence[str]) -> bool:
     """Whether a run's [FAIL] lines that stop it (a TCC_PENDING Allow left out) are there and every one ends
-    in `` (fix: X)`` with X the person's, by install.sh's ``persons_fails`` rule."""
+    in `` (fix: X)`` with X the person's, by install.sh's ``persons_fails`` rule (the text after the last
+    `` (fix: ``; install.sh's grep takes any, and no line doctor writes holds two). A run whose ``NEXT:``
+    line says something else is not (B13 round 16 T47: a first run with no folder ends on the no-folder
+    NEXT); one with none is the run writing this report, whose NEXT comes after it, and keeps the
+    [FAIL]-only rule."""
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
+    nexts = [ln for ln in run if ln.lstrip().startswith("NEXT:")]
+    if nexts and not any(_PERSONS_NEXT in ln for ln in nexts):
+        return False
     blocking = [ln for ln in run if ln.startswith("[FAIL") and not _TCC_PENDING_FAIL_RE.match(ln)]
 
     def fix(line: str) -> str | None:
@@ -4283,8 +4298,11 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
     others = [f"{counts[k]} {k}" for k in INSTRUCTION_KINDS[1:] if counts[k]]
     other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
     persons = counts[PERSONS_FIX]
+    # What the classification reads (PERSONS_FIX_RE), not what a NEXT says: the run writing this report prints
+    # its NEXT after it (B13 round 16 T47); its noun by the count (T49), and an Oxford-comma list (T8)
     theirs = (
-        f" and {persons} fix: on [FAIL] lines that are the person's (their run's NEXT says so; not hints for "
+        f"{_plural(persons, '[FAIL] line')} whose fix: is the person's (a sign-in, a folder, a [[source]] "
+        f"path or block, Rosetta or a native pandoc copy; not {'a hint' if persons == 1 else 'hints'} for "
         "the agent)"
     )
     in_runs = f" in {_plural(runs, 'run')}" if runs else ""
@@ -4293,16 +4311,17 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
         f"{'is' if cut == 1 else 'are'} not counted)"
     )
     due = f"; the run writing this report prints its NEXT: after the report, so {runs - 1} expected here"
-    return (
+    clauses = [
         f"{_plural(counts['NEXT:'], 'NEXT: line')}{in_runs} (exactly one per install.sh run is expected"
         + (due if pending else "")
-        + ") and "
+        + ")",
         f"{_plural(other_total, 'other instruction-like line')}"
-        + (f" ({', '.join(others)})" if others else "")
-        + (theirs if persons else "")
-        + f" in {_the_last(read, 'line')} of install.out"
-        + (whole if cut else "")
-    )
+        + (f" ({', '.join(others)})" if others else ""),
+    ]
+    if persons:
+        clauses.append(theirs)
+    listed = " and ".join(clauses) if len(clauses) == 2 else ", ".join(clauses[:-1]) + ", and " + clauses[-1]
+    return listed + f" in {_the_last(read, 'line')} of install.out" + (whole if cut else "")
 
 
 def _attempt_out_start(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> int | Literal["unknown"] | None:
