@@ -6,6 +6,11 @@ line one ``os.write`` on an O_APPEND descriptor, no fsync. A SIGKILLed run so le
 torn last one, where pytest's ``--lf`` cache, written at session end, keeps nothing. The session end appends
 ``{"summary": <exitstatus>}``. GATE_DESELECT=<file> deselects the exact nodeids it lists: ``--deselect``
 matches by prefix, so ``test_a`` would also drop ``test_ab``, and ``test_a[1]`` would drop ``test_a[10]``.
+A failed phase's line also keeps the last ``_TAIL_LINES`` lines of its report and the last ``_TAIL_CHARS``
+characters of its captured stderr, and an xdist worker that goes down with an error appends
+``{"node_down": <gwN>, "error": <its text>}``: the only text a worker crash leaves, since the crashed test's
+own report says no more than "worker crashed while running" and the gate's terminal output is not kept (B13
+round 16 T90). Its line has no nodeid, so a resume never reads it.
 
 CLI: ``passed <journal>`` prints the nodeids that passed, ``skipped-timing <journal>`` counts the tests the
 load skip of ``conftest.pytest_runtest_setup`` decided, ``finished <journal>`` exits 0 when the journal
@@ -27,6 +32,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 _TIMING_SKIP = re.compile(r"load \d+ per core: a time bound cannot be judged")
+_TAIL_LINES = 20
+_TAIL_CHARS = 2000
 
 
 class _Journal:
@@ -43,14 +50,22 @@ class _Journal:
         if report.when == "call" or report.failed or report.skipped:
             longrepr = report.longrepr
             reason = longrepr[2] if report.skipped and isinstance(longrepr, tuple) else None
-            self.append(
-                {
-                    "nodeid": report.nodeid,
-                    "when": report.when,
-                    "outcome": report.outcome,
-                    "skip_reason": reason,
-                }
-            )
+            record: dict[str, Any] = {
+                "nodeid": report.nodeid,
+                "when": report.when,
+                "outcome": report.outcome,
+                "skip_reason": reason,
+            }
+            if report.failed:
+                record["tail"] = "\n".join(str(longrepr).splitlines()[-_TAIL_LINES:])[-_TAIL_CHARS:]
+                if report.capstderr:
+                    record["stderr"] = report.capstderr[-_TAIL_CHARS:]
+            self.append(record)
+
+    @pytest.hookimpl(optionalhook=True)  # xdist's hook: without xdist there is no worker to lose
+    def pytest_testnodedown(self, node: Any, error: object | None) -> None:
+        if error:
+            self.append({"node_down": str(node.gateway.id), "error": str(error)[-_TAIL_CHARS:]})
 
     def pytest_sessionfinish(self, exitstatus: int) -> None:
         self.append({"summary": int(exitstatus)})
