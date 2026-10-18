@@ -8770,7 +8770,7 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
     assert (
         f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror holds no file below" in part
     )
-    assert '- evidence: 1 line at the end of Status say "not measured"' in section(text, "Summary")
+    assert '- evidence: 1 line at the end of Status says "not measured"' in section(text, "Summary")
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
 
