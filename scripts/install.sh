@@ -787,15 +787,31 @@ case "${1:-}" in
 	;;
 esac
 
-ORIG_ARGS="" # every flag given, for a re-run after a failure
-BASE_ARGS="" # the same without --source-local FOLDER, for a re-run once the folders are in the config
-ALL_ARGS=""  # every argument as given, for install.out
+# A --source-local folder as a NEXT shows it: in double quotes, with \ " $ and ` escaped, as a person types a
+# spaced name (B13 round 16 T35). A name %q writes as $'..' (a byte it cannot show) or one with a "!", which
+# an interactive zsh expands inside double quotes, keeps the %q form. install.log's args= keeps %q.
+shown_arg() {
+	local q v="$1"
+	q="$(printf '%q' "$1")"
+	case "$q$1" in
+	\$\'* | *!*) printf '%s' "$q" ;;
+	*)
+		v="${v//\\/\\\\}" v="${v//\"/\\\"}" v="${v//\$/\\\$}" v="${v//\`/\\\`}"
+		printf '"%s"' "$v"
+		;;
+	esac
+}
+ORIG_ARGS=""  # every flag given, for a re-run after a failure (install.log's args=)
+ORIG_SHOWN="" # the same as a NEXT shows it (shown_arg)
+BASE_ARGS=""  # the same without --source-local FOLDER, for a re-run once the folders are in the config
+ALL_ARGS=""   # every argument as given, for install.out
 skip_next=0
 for a in "$@"; do
 	ALL_ARGS="$ALL_ARGS $(printf '%q' "$a")"
 	if [ "$skip_next" -eq 1 ]; then
 		skip_next=0
 		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
+		ORIG_SHOWN="$ORIG_SHOWN $(shown_arg "$a")"
 		continue
 	fi
 	case "$a" in
@@ -803,13 +819,18 @@ for a in "$@"; do
 	--source-local)
 		skip_next=1
 		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
+		ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$a")"
 		;;
 	*)
 		ORIG_ARGS="$ORIG_ARGS $(printf '%q' "$a")"
+		ORIG_SHOWN="$ORIG_SHOWN $(printf '%q' "$a")"
 		BASE_ARGS="$BASE_ARGS $(printf '%q' "$a")"
 		;;
 	esac
 done
+# The arguments a NEXT's re-run names: every one until the config step has added the folders, then none of
+# them, as step 2 says to name only folders to add (B13 round 16 T22)
+RERUN_ARGS="$ORIG_SHOWN"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
@@ -892,7 +913,7 @@ fail() {
 	step_end failed "$rc"
 	printf 'error: %s\n' "$*" >&2
 	LAST_ERROR="$*"
-	NEXT_MSG="${FAIL_NEXT:-fix the error above, then re-run: $SELF$ORIG_ARGS}"
+	NEXT_MSG="${FAIL_NEXT:-fix the error above, then re-run: $SELF$RERUN_ARGS}"
 	exit 1
 }
 usage_error() {
@@ -1563,6 +1584,8 @@ redaction_pairs() {
 		v="$(printf '%q' "$w")"
 		printf '%s\t%s\t\n' "--source-local $v" "--source-local <path>"
 		u="$(LC_ALL=en_US.UTF-8 && printf '%q' "$w")" # as a UTF-8 run logged it (emit_pair, B13 R111)
+		[ "$u" = "$v" ] || printf '%s\t%s\t\n' "--source-local $u" "--source-local <path>"
+		u="$(shown_arg "$w")" # as a NEXT's re-run shows it (B13 round 16 T35)
 		[ "$u" = "$v" ] || printf '%s\t%s\t\n' "--source-local $u" "--source-local <path>"
 	done
 	if [ -d "$cs" ]; then
@@ -3628,8 +3651,6 @@ write_bring_back() {
 	}
 	[ ! -s "$SETUP_DIR/fix-request.md" ] || fix=1
 	# a patch this account cannot read has no hash on its line (B13 round 16 T24)
-	lone="listed by its hash" lmany="listed by their hash"
-	[ "$nohash" -eq 0 ] || lone="listed there" lmany="listed there"
 	{
 		printf '# agentsync: the one file to bring back\n\n'
 		printf 'Private: copy this file back as it is, and never paste it into the public issue form.\n'
@@ -4299,7 +4320,7 @@ report_issue_link() {
 on_signal() {
 	LAST_ERROR="install.sh was stopped by a signal ($(rc_meaning "$1")) before it finished"
 	printf 'error: %s\n' "$LAST_ERROR" >&2
-	NEXT_MSG="this run was stopped before it finished ($(rc_meaning "$1")); it is safe to re-run: ${RERUN:-$SELF$ORIG_ARGS}"
+	NEXT_MSG="this run was stopped before it finished ($(rc_meaning "$1")); it is safe to re-run: ${RERUN:-$SELF$RERUN_ARGS}"
 	exit "$1"
 }
 # What macOS calls the app behind a ~/Library/CloudStorage entry ("OneDrive-Contoso" -> OneDrive).
@@ -5361,9 +5382,9 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	local rc=$?
 	if [ "$rc" -eq 78 ]; then
 		if [ -n "$(synced_count)" ]; then
-			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses it (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$ORIG_ARGS"
+			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses it (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		elif [ "$CONFIG_STATE" != "created" ]; then
-			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$ORIG_ARGS"
+			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$RERUN_ARGS"
 		fi
 	fi
 	[ "$rc" -ne 65 ] ||
@@ -5413,6 +5434,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		}
 	done
 	[ -z "$HELD" ] || rm -f "$HELD"
+	RERUN_ARGS="$BASE_ARGS" # every add-source that failed stopped the run: each folder is in the config now
 else
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || config_failed "agentsync init failed (see the error above)"
 	[ "$CONFIG_STATE" = "created" ] || say "config: $CONFIG exists (inbox ensured)"
@@ -5744,7 +5766,7 @@ else
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		term="$(terminal_app)"
 		term="this terminal app${term:+ ($term)}"
-		NEXT_MSG="$term was denied access to files managed by $(provider_name): allow it in System Settings > Privacy & Security > Files and Folders (turn on $(provider_name) under $term; a click, not a command), then re-run: $SELF$ORIG_ARGS"
+		NEXT_MSG="$term was denied access to files managed by $(provider_name): allow it in System Settings > Privacy & Security > Files and Folders (turn on $(provider_name) under $term; a click, not a command), then re-run: $SELF$RERUN_ARGS"
 		exit 1
 	elif [ "$SYNC_RC" -eq 75 ]; then
 		# agentsync's own "skipped: lock held by ..." line above names the holder; this one only closes the step
@@ -5760,13 +5782,13 @@ else
 		step_end failed 78
 		LAST_ERROR="the first sync (agentsync sync --once) exited 78 ($(rc_meaning 78))"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
-		NEXT_MSG="the first sync refused the config $CONFIG (the configuration error above; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$ORIG_ARGS"
+		NEXT_MSG="the first sync refused the config $CONFIG (the configuration error above; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		exit 1
 	else
 		step_end failed "$SYNC_RC"
 		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC ($(rc_meaning "$SYNC_RC"))"
 		printf 'error: %s\n' "$LAST_ERROR" >&2
-		NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC")), then re-run: $SELF$ORIG_ARGS"
+		NEXT_MSG="fix what the first sync printed above ($(rc_meaning "$SYNC_RC")), then re-run: $SELF$RERUN_ARGS"
 		exit 1
 	fi
 fi
@@ -6012,31 +6034,31 @@ elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 	next="no folder to sync yet: list them with $SELF --list-folders, choose the folders to sync, then run: $SELF$BASE_ARGS --source-local \"<folder>\" (one --source-local per folder)"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
 	EXIT_RC=1
-	next="$PERSONS_FAILS, the next run is: $SELF$ORIG_ARGS"
+	next="$PERSONS_FAILS, the next run is: $SELF$RERUN_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null; then
 	# status exited non-zero with no [FAIL] line (note=status-error, B13 round 14 Q50): a re-run fails the same
 	# way, and a signal or a timeout prints no error, so the NEXT promises none (B13 round 15 S33, S58, S62)
 	EXIT_RC=1
-	next="agentsync status exited $DOCTOR_RC ($(rc_meaning "$DOCTOR_RC")) with no [FAIL] line: what it printed above (its error, if it printed one; $AGENTSYNC status prints it again) is the person's to fix, not a step for the agent, so show them those lines and go on to the report; once fixed, the next run is: $SELF$ORIG_ARGS"
+	next="agentsync status exited $DOCTOR_RC ($(rc_meaning "$DOCTOR_RC")) with no [FAIL] line: what it printed above (its error, if it printed one; $AGENTSYNC status prints it again) is the person's to fix, not a step for the agent, so show them those lines and go on to the report; once fixed, the next run is: $SELF$RERUN_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ]; then
 	EXIT_RC=1
-	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$ORIG_ARGS"
+	next="fix the [FAIL] lines above (each names its fix), then re-run: $SELF$RERUN_ARGS"
 elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT" != "running" ]; then
 	EXIT_RC=1 # --confirm-install-agent asked for background sync: anything short of it is a failure
 	if [ "$HAVE_SOURCES" -eq 0 ]; then
 		next="choose a folder to sync, then re-run: $SELF$BASE_ARGS --source-local \"<folder>\""
 	elif [ "$AGENT_RC" -ne 0 ]; then
-		next="read the install-agent error above, then re-run: $SELF$ORIG_ARGS"
+		next="read the install-agent error above, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_RESULT" = "tcc" ]; then
 		EXIT_RC=3
-		next="macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is showing, or $TCC_CLICK, then re-run: $SELF$ORIG_ARGS"
+		next="macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is showing, or $TCC_CLICK, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_CODE" = "80" ]; then
-		next="macOS denied agentsync-launcher access to files managed by $(provider_name) (an earlier \"Don't Allow\"): $TCC_CLICK, then re-run: $SELF$ORIG_ARGS"
+		next="macOS denied agentsync-launcher access to files managed by $(provider_name) (an earlier \"Don't Allow\"): $TCC_CLICK, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_RESULT" = "timeout" ]; then
 		EXIT_RC=3
-		next="the first background run did not exit 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}); check $AGENTSYNC status, then re-run: $SELF$ORIG_ARGS"
+		next="the first background run did not exit 0 within ${WAIT_SECONDS}s (last exit: ${WAIT_CODE:-none}); check $AGENTSYNC status, then re-run: $SELF$RERUN_ARGS"
 	else
-		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$ORIG_ARGS"
+		next="the first background run exited $WAIT_CODE ($(rc_meaning "$WAIT_CODE")); fix what $AGENTSYNC status and $WAIT_ERRLOG show, then re-run: $SELF$RERUN_ARGS"
 	fi
 else # the loop's NEXT, after the background-sync result when it was asked for
 	loop_next

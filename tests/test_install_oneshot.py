@@ -372,10 +372,11 @@ def steps(lines: list[str]) -> list[tuple[str, str, str, str]]:
     return out
 
 
-def rerun(wheel: Path, folder: Path) -> str:
-    """The re-run command a NEXT line names (absolute script path, the same flags, shell-quoted)."""
-    quoted = str(folder).replace(" ", "\\ ")
-    return f"{INSTALL_SH} {wheel} --source-local {quoted} --confirm-install-agent"
+def rerun(wheel: Path, folder: Path | None = None) -> str:
+    """The re-run command a NEXT line names (absolute script path, the same flags, a folder in double
+    quotes: B13 round 16 T35). After the config step it names no folder: each is in the config (T22)."""
+    named = "" if folder is None else f' --source-local "{folder}"'
+    return f"{INSTALL_SH} {wheel}{named} --confirm-install-agent"
 
 
 # ---- --version and the README prompt -----------------------------------------------------------------------
@@ -489,7 +490,7 @@ def test_tcc_still_pending_at_the_timeout_exits_3(env: dict[str, str], folder: P
     assert "no background run exited 0 within 1s (last exit: 79, TCC pending" in cp.stderr
     assert last_line(cp) == (
         "NEXT: macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is "
-        f"showing, or {TCC_CLICK}, then re-run: {rerun(wheel, folder)} [setup report: {report_path(env)}]"
+        f"showing, or {TCC_CLICK}, then re-run: {rerun(wheel)} [setup report: {report_path(env)}]"
     )
     assert ("wait", "failed", "79", "tcc") in steps(install_log(env))
     assert re.search(r" end rc=3 seconds=\d+$", install_log(env)[-1])
@@ -506,7 +507,7 @@ def test_a_run_still_going_at_the_timeout_exits_3(env: dict[str, str], folder: P
     assert cp.returncode == 3, cp.stdout + cp.stderr
     assert "ACTION:" not in cp.stdout
     assert last_line(cp).startswith("NEXT: the first background run did not exit 0 within 1s")
-    assert rerun(wheel, folder) in last_line(cp)
+    assert rerun(wheel) in last_line(cp)
 
 
 def test_a_failed_background_run_is_decoded_and_exits_1(
@@ -626,6 +627,59 @@ def test_a_status_that_fails_with_no_fail_line_logs_status_error(
     assert "not a step for the agent, so show them those lines and go on to the report" in nxt, nxt
     assert "/agentsync status prints it again; " not in nxt and "/agentsync status prints it again)" in nxt
     assert "fix the [FAIL] lines" not in cp.stdout
+
+
+def test_a_failed_step_2_names_no_folder_the_config_step_added(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 16 T22 (RT): after "added source ..." and "folders: 1 added to the 2 already synced", a
+    status that stopped the run named the folder again in its re-run, where v24's step 2 says to name only
+    folders to add. Every add-source failure stops the run, so once the config step ends each folder is in
+    the config and the re-run names none; a failure before it still names the folder."""
+    cp = install_sh({**env, "STUB_DOCTOR_RC": "1"}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert last_line(cp).endswith(
+        f"once fixed, the next run is: {INSTALL_SH} {wheel} [setup report: {report_path(env)}]"
+    ), last_line(cp)
+    logged = f"--source-local {str(folder).replace(' ', chr(92) + ' ')}"
+    assert any(ln.endswith(f"args={wheel} {logged}") for ln in install_log(env)), "args= as logged"
+    cp = install_sh({**env, "STUB_UV_INSTALL_RC": "2"}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 1
+    assert last_line(cp).startswith(
+        f'NEXT: fix the error above, then re-run: {INSTALL_SH} {wheel} --source-local "{folder}" ['
+    ), last_line(cp)
+
+
+@pytest.mark.parametrize(
+    "name", ["Project Gamma - Shared", 'Notes "Q3" $HOME `x` \\ end', "Café Notes", "Tab\tName", "Wow! Notes"]
+)
+def test_a_re_run_names_a_folder_in_double_quotes(env: dict[str, str], name: str) -> None:
+    """B13 round 16 T35 (Q22's residue): a re-run escaped a spaced folder with backslashes (printf %q), not
+    the double quotes a person types. The NEXT shows the folder in double quotes, with \\ " $ and ` escaped,
+    so it reads back as the same name; one %q writes as $'..' (a byte it cannot show: an accent under
+    LC_ALL=C, a tab) or one with "!" (an interactive zsh expands it in double quotes) keeps the %q form.
+    install.log's args=, which both reports parse, keeps %q."""
+    named = Path(env["HOME"]) / "Documents" / name
+    named.mkdir(parents=True)
+    e = {**env, "STUB_UV_INSTALL_RC": "2", "LC_ALL": "C"}
+    cp = install_sh(e, "--source-local", str(named))
+    assert cp.returncode == 1
+    shown = last_line(cp).split(f"then re-run: {INSTALL_SH} ", 1)[1].rsplit(" [setup report: ", 1)[0]
+    assert shown.startswith("--source-local "), shown
+    word = shown.removeprefix("--source-local ")
+    plain = name.isascii() and "\t" not in name and "!" not in name
+    assert word.startswith('"') == plain, word
+    back = subprocess.run(
+        [BASH32, "-c", f"printf %s {word}"], capture_output=True, check=True, env={"LC_ALL": "C"}
+    ).stdout
+    assert back == str(named).encode(), (word, back)
+    logged = subprocess.run(
+        [BASH32, "-c", 'printf %q "$1"', "-", str(named)],
+        capture_output=True,
+        check=True,
+        env={"LC_ALL": "C"},
+    ).stdout.decode()
+    assert any(ln.endswith(f"args=--source-local {logged}") for ln in install_log(env)), "args= keeps %q"
 
 
 def _source_fails(cfg: Config, src: SourceConfig) -> list[str]:
@@ -885,13 +939,13 @@ def test_first_sync_failure_fails_the_run_before_the_agent(
             f"NEXT: the first sync refused the config {cfg} (the configuration error above; "
             "~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the "
             "agent, so show them the error and go on to the report; once it is fixed, the next run is: "
-            f"{rerun(wheel, folder)} [setup report: {report_path(env)}]"
+            f"{rerun(wheel)} [setup report: {report_path(env)}]"
         ), last_line(cp)
         assert "fix what the first sync printed above" not in cp.stdout
     else:
         assert last_line(cp) == (
             f"NEXT: fix what the first sync printed above ({meaning}), then re-run: "
-            f"{rerun(wheel, folder)} [setup report: {report_path(env)}]"
+            f"{rerun(wheel)} [setup report: {report_path(env)}]"
         )
     assert got[-1].startswith("agentsync setup-report --out"), "the report is still written"
     assert steps(install_log(env))[-2:] == [
@@ -7109,7 +7163,7 @@ def test_background_exit_80_names_the_files_and_folders_click(
     assert "the first background run exited 80 (TCC denied" in cp.stderr
     assert last_line(cp) == (
         "NEXT: macOS denied agentsync-launcher access to files managed by OneDrive "
-        f"""(an earlier "Don't Allow"): {TCC_CLICK}, then re-run: {rerun(wheel, folder)} """
+        f"""(an earlier "Don't Allow"): {TCC_CLICK}, then re-run: {rerun(wheel)} """
         f"[setup report: {report_path(env)}]"
     )
     assert ("wait", "failed", "80", "") in steps(install_log(env))
@@ -7209,7 +7263,7 @@ def test_a_stopped_run_logs_its_end_and_names_the_rerun(
     assert rc == 143, stdout + stderr
     assert stdout.rstrip("\n").splitlines()[-1] == (
         "NEXT: this run was stopped before it finished (stopped by SIGTERM (a tool timeout?)); it is safe to "
-        f"re-run: {rerun(wheel, folder)} [setup report: {report_path(env)}]"
+        f"re-run: {rerun(wheel)} [setup report: {report_path(env)}]"
     )
     log = install_log(env)
     assert ("first-sync", "failed", "143", "") in steps(log)
