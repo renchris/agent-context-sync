@@ -527,7 +527,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   then lists the folders again, before the folder question above. Since v21 (B13 round 12 N32, N6), an agent that
   cannot ask does not wait and logs nothing for that sign-in: it goes to step 3's report, whose expected-turns line
   is the set-up Mac sign-in row below (K45). A folder missing while its app is signed in
-  (renamed, moved or deleted there) keeps exit 0, logged `gone=N`; the `NEXT:` names it and step 2's doctor names
+  (renamed, moved or deleted there, or not synced on this Mac) keeps exit 0, logged `gone=N`; the `NEXT:` names it and step 2's doctor names
   its fix. So does a folder in a SharePoint library not synced on this Mac (`OneDrive-SharedLibraries-Contoso` gone,
   or there and empty, beside `OneDrive-Contoso`); its `NEXT:` says to sync the library on its SharePoint page.
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`

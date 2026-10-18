@@ -2944,6 +2944,12 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     assert 'one="1 of them"' in script and "one=it " in script
     assert "$one is no longer on disk although its app is signed in" in script
     assert "of them are no longer on disk although their app is signed in" in script
+    # B13 round 16 T72: both counts name the wait's cause too, inside the parenthesis the sentence reads, and
+    # doctor's fix for it, so step 1 no longer leaves out a folder unticked in its app
+    for count in ("$one is no longer on disk", "of them are no longer on disk"):
+        [line] = [ln for ln in script.splitlines() if count in ln and "NEXT_MSG=" in ln]
+        assert "(renamed, moved or deleted there, or not synced on this Mac)" in line, line
+        assert "synced to this Mac again in its app" in line, line
     # B13 round 14 Q15, Q73: and the other two tails, the other account's folder and the library not synced,
     # each with the fix the sentence relays from its parentheses; "on disk" is in no other line of the list
     for tail in ("$one is not on disk because", "of them are not on disk because"):
@@ -6186,9 +6192,11 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
         "is there and empty), it gets the line, the `[synced]` lines and exit 3, logged `note=not-signed-in "
         "apps=<app> missing=M synced=N`."
     ) in deploy
-    # B13 round 12 N41, N61: a folder gone while its app is signed in keeps exit 0
+    # B13 round 12 N41, N61: a folder gone while its app is signed in keeps exit 0 (B13 round 16 T72: or not
+    # synced on this Mac, the wait's cause and doctor's fix)
     assert (
-        "(renamed, moved or deleted there, or under another account's provider folder) keeps exit 0" in deploy
+        "(renamed, moved or deleted there, not synced on this Mac, or under another account's provider "
+        "folder) keeps exit 0" in deploy
     )
     assert "Since v20, step 1 of the one-prompt setup waits for that sign-in" in deploy
     assert "even when the list ends on a click (exit 4), which comes before the missing check." in deploy
@@ -6200,7 +6208,10 @@ def test_the_deploy_guides_say_a_set_up_mac_with_a_missing_folder_exits_3() -> N
         "apps=<app> missing=M synced=N` (B13 round 11 M4, narrowed by round 12 N41, N61; the app and the "
         "missing count since round 13 O5)."
     ) in feedback
-    assert "(renamed, moved or deleted there) keeps exit 0, logged `gone=N`" in feedback
+    assert (
+        "(renamed, moved or deleted there, or not synced on this Mac) keeps exit 0, logged `gone=N`"
+        in feedback
+    )
     assert "Since v20, step 1 waits for that sign-in as for a click, then lists the folders again" in feedback
     # B13 round 13 O62, O71 (one defect with O12): since v21 an agent that cannot ask goes to the report
     assert (

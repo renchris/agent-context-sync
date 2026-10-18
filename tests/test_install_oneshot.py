@@ -5141,10 +5141,10 @@ def test_list_folders_leaves_a_folder_gone_from_a_signed_in_app_to_step_2(
         kept = lib / "Project Alpha"
         clause = (
             "; 1 of them is no longer on disk although its app is signed in (renamed, moved or deleted "
-            f"there): {gone}. Step 2's status fails on it and names the fix, so step 2 runs no first sync "
-            "until the folder is back under that name or its [[source]] path "
-            f"in {cfg} is fixed; a sync still mirrors the folders that are there, and that folder's pages "
-            "are kept"
+            f"there, or not synced on this Mac): {gone}. Step 2's status fails on it and names the fix, so "
+            "step 2 runs no first sync until the folder is back under that name, synced to this Mac again in "
+            f"its app, or its [[source]] path in {cfg} is fixed; a sync still mirrors the folders that are "
+            "there, and that folder's pages are kept"
         )
         alone = clause.replace("; 1 of them is", "; it is").replace(
             "; a sync still mirrors the folders that are there, and that folder's pages", "; its pages"

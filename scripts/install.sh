@@ -44,7 +44,7 @@
 #                           long as no synced folder's app is signed out: then the list still prints the
 #                           [synced] lines but exits 3, and its NEXT: asks for that app's sign-in, listed or
 #                           not. A synced folder gone while its app is signed in (renamed, moved or deleted
-#                           there), or in a SharePoint library not synced on this Mac beside its
+#                           there, or not synced on this Mac), or in a SharePoint library not synced on this Mac beside its
 #                           organization's OneDrive folder, keeps exit 0, and the NEXT: names it: step 2's
 #                           status names its fix
 #   --log-start AGENT       the setup prompt's friction log (see "Friction log" below): start an attempt;
@@ -4611,8 +4611,10 @@ list_folders() {
 		# A synced folder under CloudStorage that is not on disk, decided by its provider folder as doctor decides
 		# it: that folder gone with no other folder of its app beside it, or there and listing nothing, means the
 		# app is signed out (or not set up yet), so this list asks for the sign-in (B13 round 11 M4). A provider
-		# folder that lists other folders is signed in: the folder was renamed, moved or deleted there, and a
-		# sign-in would never bring it back, so step 2's doctor names it (B13 round 12 N41, N61).
+		# folder that lists other folders is signed in: the folder was renamed, moved or deleted there, or is not
+		# synced on this Mac, and a sign-in would never bring it back, so step 2's doctor names it (B13 round 12
+		# N41, N61). The causes are the wait's and the fixes doctor's: put it back, sync it in its app, or fix the
+		# path (B13 round 16 T72); only causes go in the parenthesis, which the prompt's step 1 reads.
 		# Not read while a provider was denied or is still asking: its exit 4 comes first, and a read of the
 		# provider folder that the list just timed out on could wait on the same prompt, past LIST_TOTAL.
 		[ -n "$denied$asking" ] || while IFS= read -r line; do
@@ -4740,9 +4742,9 @@ list_folders() {
 		one="1 of them" mirror="; a sync still mirrors the folders that are there" pages=", and that folder's pages"
 		[ "$synced" != 1 ] || { one=it mirror="" pages="; its pages"; }
 		if [ "$gone" -eq 1 ]; then
-			NEXT_MSG="$NEXT_MSG; $one is no longer on disk although its app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on it and names the fix, so step 2 runs no first sync until the folder is back under that name or its [[source]] path in $CONFIG is fixed$mirror$pages are kept"
+			NEXT_MSG="$NEXT_MSG; $one is no longer on disk although its app is signed in (renamed, moved or deleted there, or not synced on this Mac): $gonepaths. Step 2's status fails on it and names the fix, so step 2 runs no first sync until the folder is back under that name, synced to this Mac again in its app, or its [[source]] path in $CONFIG is fixed$mirror$pages are kept"
 		elif [ "$gone" -gt 1 ]; then
-			NEXT_MSG="$NEXT_MSG; $gone of them are no longer on disk although their app is signed in (renamed, moved or deleted there): $gonepaths. Step 2's status fails on each and names the fix, so step 2 runs no first sync until each folder is back under its name or its [[source]] path in $CONFIG is fixed; a sync still mirrors the folders that are there, and those folders' pages are kept"
+			NEXT_MSG="$NEXT_MSG; $gone of them are no longer on disk although their app is signed in (renamed, moved or deleted there, or not synced on this Mac): $gonepaths. Step 2's status fails on each and names the fix, so step 2 runs no first sync until each folder is back under its name, synced to this Mac again in its app, or its [[source]] path in $CONFIG is fixed; a sync still mirrors the folders that are there, and those folders' pages are kept"
 		fi
 		# its provider folder gone while another folder of the app is there: not "signed in", as doctor's fix
 		# names the sign-in with the account it belongs to, or the path

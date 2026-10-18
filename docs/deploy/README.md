@@ -69,7 +69,7 @@ of that app beside it, or is there and empty), it gets the line, the `[synced]` 
 folders are kept. Since v20, step 1 of the one-prompt setup waits for that sign-in instead of going on to a step 2
 that would fail. Since v21, an agent that cannot ask (an unattended tool, or a question that comes back
 unanswered) does not wait there and logs nothing for it: it goes to step 3's report. A folder missing while its app is
-signed in (renamed, moved or deleted there, or under another
+signed in (renamed, moved or deleted there, not synced on this Mac, or under another
 account's provider folder) keeps exit 0: the `NEXT:` names it, and step 2's status names its fix. So does a folder
 in a SharePoint library that is not synced on this Mac (`OneDrive-SharedLibraries-Contoso` gone, or there and empty,
 beside `OneDrive-Contoso`): its `NEXT:` says to sync the library with Sync on its SharePoint page, never to sign in.
