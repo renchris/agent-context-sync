@@ -931,6 +931,9 @@ def next_step(
     # ... whose missed count also holds files under gone empty folders (B13 round 11 M57), with how many of
     # them do and how many of those folders hold one, which the words follow (B13 round 14 Q57, round 15 S44)
     in_all: dict[str, tuple[int, int]] = {}
+    # ... and, for the gone line of a source with no such folder, the same split of its missed count, so a
+    # count that is all the gone folders' own files is not said twice (B13 round 16 T39)
+    gone_missed: dict[str, tuple[int, int]] = {}
     sentinel_missing: list[
         str
     ] = []  # a local walk incomplete only for its missing sentinel (B13 round 11 M59)
@@ -990,6 +993,10 @@ def next_step(
                             also = bool(other) and src.kind is SourceKind.LOCAL
                             held_below = also and _mirrored_below(manifest, src, other)
                             empty.append((src, below, clear, collides, 0 if held_below else missed, stored))
+                            if missed and not held_below and any(below.values()):
+                                gone_missed[src.id] = _missed_below(
+                                    manifest, src.id, [d for d, n in below.items() if n]
+                                )
                             if also:
                                 cannot_list(manifest, src, other, missed if held_below else 0)
                                 if held_below and any(below.values()):
@@ -1087,6 +1094,26 @@ def next_step(
         )
         checks.extend(f"heartbeat.{s}" for s in sorted(held))
         names_source(*held)
+
+    def gone_tail(sid: str, missed: int, size: str) -> str:
+        """The gone line's missed count (B13 round 16 T39): nothing when every missed file lies under the
+        gone folders, whose own words already say later syncs take those pages out; else "in all", with
+        how many of them lie there, as the could-not-be-listed line says it (:func:`_under_gone`); with
+        none there, the count alone."""
+        if not size:
+            return ""
+        k, holders = gone_missed.get(sid, (0, 0))
+        if k == missed:
+            return ""
+        if not k:
+            return f"; {size}"
+        return (
+            f"; in all, the last walk of {sid} did not list {_files(missed)} the mirror still has, "
+            + _under_gone(missed, k, holders)
+            + ": once the listing is complete, later syncs take out the pages of those still absent, with "
+            "the usual deletion check"
+        )
+
     for src, below, clear, collides, missed, n_stored in empty:
         checks.append(f"heartbeat.{src.id}")  # below is never empty: one wait or more follow
         # An empty cloud folder is unknown, never empty, on every pass. The line naming exclude-empty counts
@@ -1097,9 +1124,10 @@ def next_step(
         gone = [files for files in below.values() if files]
         # What completing the listing will check (N26): the mirrored files the last walk did not list, a
         # count and never a path, once per source, on its last line: the gone line when there is one (its
-        # step is what completes the listing, and "in all" says its own count is among them), else the
-        # paste line. A cleared folder holds none of them, so the paste retires none: each takes the
-        # two-pass deletion check and the breaker (and a queued purge, under the purge setting).
+        # step is what completes the listing, and "in all" says its own count is among them, unless the
+        # count is only its own: gone_tail), else the paste line. A cleared folder holds none of them, so the
+        # paste retires none: each takes the two-pass deletion check and the breaker (and a queued purge,
+        # under the purge setting).
         size = (
             f"the last walk of {src.id} did not list {_files(missed)} the mirror still has: once the listing "
             "is complete, later syncs take out "
@@ -1175,7 +1203,7 @@ def next_step(
                 f"{'folder' if one else 'folders'} from the cloud drive too, and later syncs take "
                 f"{'its page' if one_file else 'the pages'} out with the usual deletion check; "
                 "excluding such a folder instead retires its pages at once, with no deletion check and no "
-                "purge queued; " + points + (f"; in all, {size}" if size else "")
+                "purge queued; " + points + gone_tail(src.id, missed, size)
             )
             names_source(src.id)
 

@@ -666,12 +666,11 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         "stays incomplete, so their deletion is held; another sync does not clear it): if the files were "
         "removed on purpose, remove the empty folder from the cloud drive too, and later syncs take the "
         "pages out with the usual deletion check; excluding such a folder instead retires its pages at "
-        "once, with no deletion check and no purge queued; "
-        + _named(config, "work", "the folders")
-        + "; in all, the "
-        "last walk of work did not list 2 files the mirror still has: once the listing is complete, later "
-        "syncs take out the pages of those still absent, with the usual deletion check",
+        "once, with no deletion check and no purge queued; " + _named(config, "work", "the folders"),
     ]
+    # B13 round 16 T39: the walk missed only the folder's own two files, which its line already counts and
+    # says later syncs take out: no "in all" saying them again
+    assert sum(w.count("did not list") for w in waits) == 0, waits
     assert not any("Reports" in ln or "2026" in ln for ln in _lines(config))
     # Removed upstream too, the folder no longer stops the listing once the other one is excluded, and the
     # deletions take the usual path: absent from two complete passes, then gone.
@@ -686,6 +685,28 @@ def test_an_empty_cloud_folder_that_held_mirrored_files_gets_no_exclude_line(tmp
         f"WAITING ON YOU: 2 queued purges: preview with `{BIN} purge --queue --dry-run` (writes nothing) "
         f"before you run `{BIN} purge --queue` (rewrites history)"
     ], "deleted upstream, not retired: each deletion queued its purge"
+
+
+def test_a_gone_folder_line_says_in_all_only_for_files_missed_beside_its_own(tmp_path: Path) -> None:
+    """B13 round 16 T39: the gone line's "in all" said its one missed file twice when the walk missed no
+    other. With a file also gone elsewhere, the count is more than the folder's own: "in all" stays, and says
+    which of them lie under the folder, as the could-not-be-listed line does."""
+    root = Path(os.environ["HOME"]) / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Work"
+    _write(root / NOTE_NAME, "The purchase order is approved.\n")
+    _write(root / "Gone" / "old.txt", "An old memo.\n")
+    _write(root / "Other" / "kept.txt", "The plan.\n")
+    _write(root / "Other" / "dropped.txt", "A draft.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    (root / "Gone" / "old.txt").unlink()
+    (root / "Other" / "dropped.txt").unlink()
+    run_cycle(config, mode=None)
+    [gone] = [ln for ln in _lines(config) if "empty cloud folder in work held 1 file" in ln]
+    assert gone.endswith(
+        "; in all, the last walk of work did not list 2 files the mirror still has, the one under the empty "
+        "folder above among them: once the listing is complete, later syncs take out the pages of those "
+        "still absent, with the usual deletion check"
+    ), gone
 
 
 def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_path: Path) -> None:
@@ -719,11 +740,9 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
             "file was removed on purpose, remove the empty folder from the cloud drive too, and later "
             "syncs take its page out with the usual deletion check; excluding such a folder instead retires "
             "its pages at once, with no deletion check and no purge queued; "
-            + _named(config, "drop", "the folders")
-            + "; in all, the last walk of drop did not list 1 file the "
-            "mirror still has: once the listing is complete, later syncs take out its page if it is still "
-            "absent, with the usual deletion check",
-        ]
+            + _named(config, "drop", "the folders"),
+        ]  # B13 round 16 T39: its one missed file is the folder's own, said once
+        assert not any("did not list" in ln for ln in lines), lines
         assert not any(ln.startswith("note: ") for ln in lines)
     (box / "Empty").rmdir()
     (box / "Kept").rmdir()
@@ -2554,9 +2573,9 @@ def test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs
         (root / "Zz Locked").chmod(0o755)
     assert len(waits) == 2, waits
     assert waits[0].startswith("WAITING ON YOU: 1 empty cloud folder in work held 1 file"), waits
-    assert "; in all, the last walk of work did not list 1 file" in waits[0], waits
     assert "add it to that source's exclude" in waits[1] and "did not list" not in waits[1], waits
-    assert sum(w.count("did not list 1 file") for w in waits) == 1, waits
+    # B13 round 16 T39: the one missed file is the gone folder's own, which its line counts: no "in all"
+    assert sum(w.count("did not list") for w in waits) == 0, waits
     # the locked folder now holds a mirrored file: the safe words, the count in all
     run_cycle(config, mode=None)
     _write(root / "Was Full" / "old.txt", "An old memo.\n")
