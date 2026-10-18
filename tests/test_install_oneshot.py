@@ -6966,7 +6966,7 @@ def test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_
 
 def _shell_function(name: str) -> str:
     """install.sh's function ``name`` as the script has it: from ``name() {`` to the brace that closes it."""
-    found = re.search(rf"(?ms)^{name}\(\) \{{$.*?^\}}$", INSTALL_SH.read_text(encoding="utf-8"))
+    found = re.search(rf"(?ms)^{name}\(\) \{{(?: #[^\n]*)?$.*?^\}}$", INSTALL_SH.read_text(encoding="utf-8"))
     assert found is not None, name
     return found.group(0)
 
@@ -6986,6 +6986,7 @@ def test_a_pandoc_that_does_not_answer_is_stopped_at_the_installers_own_limit(tm
         f"status_pandoc() {{ printf '%s' {shlex.quote(str(hung))}; }}",
         "PROGRESS_EVERY=1",
         "PANDOC_START_SECONDS=2",
+        _shell_function("watchdog"),
         _shell_function("start_pandoc_once"),
         "start_pandoc_once",
         "echo the run goes on",
@@ -7025,6 +7026,7 @@ def test_the_wait_for_pandoc_forks_a_few_sleeps_not_five_a_second(tmp_path: Path
         f"status_pandoc() {{ printf '%s' {shlex.quote(str(slow))}; }}",
         "PROGRESS_EVERY=5",
         "PANDOC_START_SECONDS=300",
+        _shell_function("watchdog"),
         _shell_function("start_pandoc_once"),
         "start_pandoc_once",
         "echo the run goes on",
@@ -7038,7 +7040,119 @@ def test_the_wait_for_pandoc_forks_a_few_sleeps_not_five_a_second(tmp_path: Path
     assert re.fullmatch(PANDOC_PROGRESS, out[0]) and re.fullmatch(r"pandoc: started after [67]s", out[-2])
     assert out[-1] == "the run goes on", cp.stdout
     sleeps = count.read_text().split()
-    assert "300" in sleeps and len(sleeps) <= 15, sleeps
+    # B13 round 16 T80: the limit sleeps in 1 s slices while pandoc runs, about 6 for a 6 s start
+    assert "300" not in sleeps and sleeps.count("1") <= 8 and len(sleeps) <= 22, sleeps
+
+
+def _trap_line(function: str) -> str:
+    """The TERM trap of install.sh's ``function`` (for start_pandoc_once, its ticker's), as written."""
+    [line] = [ln.strip() for ln in _shell_function(function).splitlines() if ln.strip().startswith("trap ")]
+    return line
+
+
+def test_a_ticker_trap_whose_kill_fails_still_says_whether_it_printed() -> None:
+    """B13 round 16 T41, T79, the Q40 CI flake: the pandoc ticker's trap was `kill "$s" 2>/dev/null; exit
+    $((said ? 3 : 0))` under install.sh's set -e. A TERM that landed after the ticker's sleep was reaped
+    made the kill fail, errexit ended the ticker with 1 before `exit 3`, and "pandoc: started after Ns" was
+    not printed (2 of 70 runs under load; ci 39132985876 attempt 1). Each trap of that shape is run here as
+    the script has it, with a kill that fails (no sleep to kill), under set -euo pipefail."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    traps = re.findall(r"(?m)^\s*trap '([^']*)' TERM$", script)
+    killers = [t for t in traps if t.startswith('kill "$s" ')]
+    assert len(killers) == 4 and all(t.startswith('kill "$s" 2>/dev/null || :; exit ') for t in killers), (
+        traps
+    )
+    for function, said, want in (
+        ("start_pandoc_once", 1, 3),
+        ("start_pandoc_once", 0, 0),
+        ("watchdog", 1, 0),
+    ):
+        harness = "\n".join(
+            [
+                "set -euo pipefail",
+                "ready=$(mktemp)",
+                'rm -f "$ready"',
+                f'( s="" said={said}',
+                f"  {_trap_line(function)}",
+                '  : > "$ready"',
+                "  while :; do :; done ) &",
+                "p=$!",
+                'while [ ! -e "$ready" ]; do /bin/sleep 0.05; done',
+                'rm -f "$ready"',
+                'kill -TERM "$p"',
+                'rc=0; wait "$p" || rc=$?',
+                'echo "rc=$rc"',
+            ]
+        )
+        cp = subprocess.run([BASH32, "-c", harness], capture_output=True, text=True, check=False, timeout=60)
+        assert cp.stdout.split() == [f"rc={want}"], (function, said, cp.stdout + cp.stderr)
+
+
+# A kill that never reaches the watchdog or the ticker: what bash 3.2 does to a TERM that lands in the child
+# before its trap is set (B13 round 16 T80: 1 in 16000 calls under load). The callers' own kills of WD and
+# WAIT_TICKER are dropped; every other kill is the builtin's.
+_LOST_TERM = (
+    "kill() {\n"
+    '\tcase " $* " in *" ${wd:-none} "* | *" ${WAIT_TICKER:-none} "*) return 0 ;; esac\n'
+    '\tbuiltin kill "$@"\n'
+    "}"
+)
+
+
+def test_a_watchdog_whose_term_is_lost_ends_with_its_command() -> None:
+    """B13 round 16 T80, the CI timeout of `install.sh --list-folders` (ci 39105995103): with_timeout's
+    watchdog slept the whole limit in one sleep, and bash 3.2 holds a TERM that lands just before `wait`
+    until that sleep ends, or drops one that lands before the child's trap is set; the caller's `wait` on
+    the watchdog then waited out the limit with nothing printed (21 of 16000 calls at a 5 s limit under
+    load). The watchdog now sleeps in 1 s slices and stops once its command has ended, so even a lost TERM
+    costs at most a slice. Run here with the caller's kill of the watchdog dropped."""
+    harness = "\n".join(
+        [
+            "set -euo pipefail",
+            _LOST_TERM,
+            _shell_function("watchdog"),
+            _shell_function("with_timeout"),
+            "t0=$SECONDS",
+            "with_timeout 8 true",
+            'echo "took=$((SECONDS - t0))"',
+            "rc=0; t0=$SECONDS; with_timeout 2 /bin/sleep 30 || rc=$?",
+            'echo "killed=$rc took=$((SECONDS - t0))"',
+        ]
+    )
+    cp = subprocess.run([BASH32, "-c", harness], capture_output=True, text=True, check=False, timeout=60)
+    took, killed = cp.stdout.splitlines()
+    assert int(took.removeprefix("took=")) <= 3, cp.stdout + cp.stderr
+    rc, total = killed.removeprefix("killed=").split(" took=")
+    # whole 1 s slices, counted: never before the limit, as a deadline on the whole-second clock could be
+    assert rc == "143" and 2 <= int(total) <= 4, "the limit still stops a command that runs on, not early"
+
+
+def test_a_pandoc_ticker_whose_term_is_lost_ends_with_pandoc(tmp_path: Path) -> None:
+    """B13 round 16 T80: start_pandoc_once's ticker looped `while :` with no other way out than its TERM, so
+    one bash 3.2 dropped left it printing and the run waiting on it for ever (10 of 18000 such loops). It
+    now ends when pandoc does, with the status that says whether it printed a line, and the limit ends with
+    pandoc too: "pandoc: started after Ns" still follows a slow start. Run here with the caller's kills of
+    both dropped."""
+    slow = _write_exe(tmp_path / "pandoc", "#!/bin/bash\n/bin/sleep 2.5\n")
+    harness = "\n".join(
+        [
+            "set -euo pipefail",
+            "say() { printf '%s\\n' \"$*\"; }",
+            f"status_pandoc() {{ printf '%s' {shlex.quote(str(slow))}; }}",
+            "PROGRESS_EVERY=1",
+            "PANDOC_START_SECONDS=300",
+            _LOST_TERM,
+            _shell_function("watchdog"),
+            _shell_function("start_pandoc_once"),
+            "t0=$SECONDS",
+            "start_pandoc_once",
+            'echo "took=$((SECONDS - t0))"',
+        ]
+    )
+    cp = subprocess.run([BASH32, "-c", harness], capture_output=True, text=True, check=False, timeout=60)
+    out = cp.stdout.splitlines()
+    assert cp.returncode == 0 and out and re.fullmatch(r"pandoc: started after [234]s", out[-2]), cp.stdout
+    assert int(out[-1].removeprefix("took=")) <= 5, cp.stdout
 
 
 _STATUS_PANDOC_SHIM = """import importlib.metadata
@@ -7091,6 +7205,7 @@ def test_the_pandoc_the_installer_starts_is_the_one_the_converters_run(
             "set -euo pipefail",
             f"TOOL_PY={shlex.quote(str(tool))}",
             f"CONFIG={shlex.quote(str(sample_config.config_path))}",
+            _shell_function("watchdog"),
             _shell_function("with_timeout"),
             _shell_function("status_pandoc"),
             'printf "<%s>" "$(status_pandoc)"',
@@ -7119,6 +7234,7 @@ def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_pa
         "PROGRESS_EVERY=5",
         "PANDOC_START_SECONDS=300",
         _shell_function("with_progress"),
+        _shell_function("watchdog"),
         _shell_function("start_pandoc_once"),
         "start_pandoc_once",
         "with_progress status sleep 4",

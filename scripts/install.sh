@@ -1078,20 +1078,31 @@ rc_meaning() {
 		;;
 	esac
 }
+# with_timeout's watchdog, and start_pandoc_once's limit: kills PID once LIMIT seconds have passed. It waits
+# on its sleep and ends it when killed itself: no sleep left to launchd (load root cause 2026-10-17 X11). It
+# sleeps in 1 s slices while PID runs, because bash 3.2 holds a TERM that lands just before `wait` until the
+# sleep ends, and drops one that lands in the child before its trap is set: one sleep of the whole limit then
+# kept the caller silent for all of it (B13 round 16 T80, the CI timeout of --list-folders). A failed kill of a
+# sleep already reaped is no error under set -e (T41, T79).
+watchdog() { # LIMIT PID
+	local s="" n="$1" # slices, not a deadline on $SECONDS, which turns at whole seconds: never early
+	trap 'kill "$s" 2>/dev/null || :; exit 0' TERM
+	while [ "$n" -gt 0 ] && kill -0 "$2" 2>/dev/null; do
+		sleep 1 &
+		s=$!
+		wait "$s"
+		s="" # reaped: the trap must not kill a pid the system may have given another process
+		n=$((n - 1))
+	done
+	! kill -0 "$2" 2>/dev/null || kill "$2"
+}
 # Run a command for at most $1 seconds (bash 3.2 and macOS have no timeout(1)); its status, 143 if killed.
 with_timeout() {
 	local t="$1" pid wd rc=0
 	shift
 	"$@" &
 	pid=$!
-	( # waits on its sleep and ends it when killed itself: no sleep left to launchd (load root cause 2026-10-17 X11)
-		s=""
-		trap 'kill "$s" 2>/dev/null; exit 0' TERM
-		sleep "$t" &
-		s=$!
-		wait "$s"
-		kill "$pid"
-	) >/dev/null 2>&1 &
+	watchdog "$t" "$pid" >/dev/null 2>&1 &
 	wd=$!
 	wait "$pid" || rc=$?
 	kill "$wd" 2>/dev/null || true
@@ -1118,7 +1129,7 @@ with_progress() {
 	pid=$!
 	(
 		s="" turned=0
-		trap 'kill "$s" 2>/dev/null; exit 0' TERM
+		trap 'kill "$s" 2>/dev/null || :; exit 0' TERM
 		while kill -0 "$pid" 2>/dev/null; do
 			if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
 				last=$SECONDS
@@ -1130,6 +1141,7 @@ with_progress() {
 			sleep "$w" >/dev/null 2>&1 &
 			s=$!
 			wait "$s"
+			s="" # reaped: the trap must not kill a pid the system may have given another process
 			[ "$SECONDS" -eq "$n" ] || turned=1
 		done
 	) &
@@ -1151,11 +1163,12 @@ with_progress() {
 TICKER=""
 ticker() { # LINE
 	local t0=$SECONDS s=""
-	trap 'kill "$s" 2>/dev/null; exit 0' TERM
+	trap 'kill "$s" 2>/dev/null || :; exit 0' TERM
 	while :; do
 		sleep "$PROGRESS_EVERY" >/dev/null 2>&1 &
 		s=$!
 		wait "$s" || break
+		s="" # reaped: the trap must not kill a pid the system may have given another process
 		kill -0 "$$" 2>/dev/null || break
 		say "$1, still running, $((SECONDS - t0))s"
 	done
@@ -5826,10 +5839,13 @@ start_pandoc_once() {
 	# sleeps (an external sleep a poll was five forks a second for up to 300 s; B13 round 14 Q40, as with_progress
 	# and with_timeout since load root cause 2026-10-17 X11). The lines are with_progress's ticker; it exits 3
 	# when it printed one. The limit is with_timeout's watchdog. on_exit ends both (WAIT_TICKER, WAIT_WATCHDOG).
+	# A failed kill in the ticker's trap (its sleep already reaped) is no error under set -e, which exited 1
+	# and lost "pandoc: started after" (B13 round 16 T41, T79, the Q40 CI flake); and the ticker ends when
+	# pandoc does, so a TERM bash 3.2 dropped leaves no ticker printing for ever (T80).
 	(
 		s="" turned=0 last=$since said=0
-		trap 'kill "$s" 2>/dev/null; exit $((said ? 3 : 0))' TERM
-		while :; do
+		trap 'kill "$s" 2>/dev/null || :; exit $((said ? 3 : 0))' TERM
+		while kill -0 "$pid" 2>/dev/null; do
 			if [ $((SECONDS - last)) -ge "$PROGRESS_EVERY" ]; then
 				last=$SECONDS said=1
 				# one text true of every run: a run stopped in this wait meets the same cold copy unreinstalled, and a
@@ -5842,18 +5858,13 @@ start_pandoc_once() {
 			sleep "$w" >/dev/null 2>&1 &
 			s=$!
 			wait "$s"
+			s="" # reaped: the trap must not kill a pid the system may have given another process
 			[ "$SECONDS" -eq "$n" ] || turned=1
 		done
+		exit $((said ? 3 : 0))
 	) &
 	WAIT_TICKER=$!
-	(
-		s=""
-		trap 'kill "$s" 2>/dev/null; exit 0' TERM
-		sleep "$PANDOC_START_SECONDS" &
-		s=$!
-		wait "$s"
-		kill "$pid"
-	) >/dev/null 2>&1 &
+	watchdog "$PANDOC_START_SECONDS" "$pid" >/dev/null 2>&1 &
 	wd=$!
 	WAIT_WATCHDOG=$wd
 	wait "$pid" 2>/dev/null || rc=$?
