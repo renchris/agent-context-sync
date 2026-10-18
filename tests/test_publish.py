@@ -1829,7 +1829,7 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     want = loop.next_step(
         env.config,
         fixes=[
-            "1 blocking finding(s) held this run's commit (## Lint findings below): fix every ERROR, then "
+            "1 blocking finding held this run's commit (## Lint findings below): fix every ERROR, then "
             "run `~/.local/bin/agentsync sync`"
         ],
     )

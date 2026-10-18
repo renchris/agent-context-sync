@@ -6580,7 +6580,7 @@ def test_a_rerun_clears_the_permissions_agentsync_owns_before_status_can_stop_on
     assert any(ln.startswith("[ok  ] docs_repo.permissions ") for ln in out), "the status step saw it clean"
     assert "sync: converted 0, deferred 0 online-only" in out
     assert f"tightened {log_dir} to 0700 (was 0755): it holds tenant data" in out
-    assert "tightened 7 path(s) inside the docs repo, the cache or the logs: they hold tenant data" in out
+    assert "tightened 7 paths inside the docs repo, the cache or the logs: they hold tenant data" in out
     assert last_line(again).startswith("NEXT: ") and one_next(again)
     assert {_mode(f) for f in files} == {0o600} and {_mode(d) for d in dirs} == {0o700}
     assert git_config("core.sharedRepository") == "0600"

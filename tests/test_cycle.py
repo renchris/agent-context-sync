@@ -82,6 +82,7 @@ from agentsync.ops.lock import SingleWriterLock, read_heartbeat
 from agentsync.paths import DocsLayout
 from agentsync.policy import UNTRUSTED_BANNER
 from agentsync.publish import Publisher, sidecar_rel
+from agentsync.text import plural
 from conftest import config_text
 from test_convert_builders import (
     build_annotated_pdf,
@@ -272,7 +273,7 @@ def test_archive_on_upstream_delete_survives_a_head_moved_by_hand(
     assert report.exit_code == 0 and kept in git(repo, "ls-files")
     # archive queues no purge, so the alarm does not claim one
     assert (
-        "1 file(s) still absent from this complete pass: their page(s) are now deletion notice(s) "
+        "1 file still absent from this complete pass: its page(s) are now deletion notice(s) "
         "(deleted upstream)"
     ) in source_report(report).alarms
     assert "\nstatus: archived\n" in (repo / kept).read_text(encoding="utf-8")
@@ -1837,7 +1838,7 @@ def test_a_queued_row_excluded_later_is_retired_unread_when_the_walk_is_incomple
     assert second.exit_code == 0 and not rep.enumeration_complete and not rep.breaker_tripped
     assert fetched == [kept] and (rep.converted, rep.deferred) == (1, 0)
     assert rep.materialised_bytes == (local_source_dir / kept).stat().st_size
-    assert any("1 file(s) now outside it retired" in a for a in rep.alarms), rep.alarms
+    assert any("1 file now outside it retired" in a for a in rep.alarms), rep.alarms
     rows = _file_rows(config)
     assert (rows[queued].state, rows[queued].state_reason) == (RowState.TOMBSTONE, "retired:scope-change")
     assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == [queued]
@@ -1979,7 +1980,7 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
     report = run(excluded)
     rep = source_report(report)
     assert report.exit_code == 0 and rep.enumeration_complete
-    assert any("1 file(s) now outside it retired" in a for a in rep.alarms), rep.alarms
+    assert any("1 file now outside it retired" in a for a in rep.alarms), rep.alarms
     rows = _file_rows(excluded)
     assert (rows[KICKOFF].state, rows[KICKOFF].state_reason) == (RowState.TOMBSTONE, "retired:scope-change")
     assert [rel for rel, r in rows.items() if r.state is RowState.TOMBSTONE] == [KICKOFF]
@@ -1988,21 +1989,23 @@ def test_an_exclude_added_while_files_are_absent_retires_only_what_it_excludes(
     rows = _file_rows(excluded)
     if gone == 1:
         assert not rep.breaker_tripped
-        assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
+        assert any("1 file absent from this complete pass" in a for a in rep.alarms), rep.alarms
         # two candidates, the retired file and the absent one: the retired file counts in neither part
         assert rep.counts[Verdict.DELETION_CANDIDATE] == 2
         assert (rep.absent_marked, rep.absent_removed) == (1, 0)
         assert (source_report(second).absent_marked, source_report(second).absent_removed) == (0, 1)
         assert not any("are now deletion notice" in a for a in rep.alarms), "the marking pass removes nothing"
         assert (
-            "1 file(s) still absent from this complete pass: their page(s) are now deletion notice(s) "
+            "1 file still absent from this complete pass: its page(s) are now deletion notice(s) "
             "(deleted upstream; purge queued)"
         ) in source_report(second).alarms
         assert [rows[rel].state_reason for rel in victims] == ["deleted-upstream"]
         assert len(governance.pending_purges(excluded.state_paths.root)) == 1
     else:
         assert rep.breaker_tripped
-        assert any(f"breaker TRIPPED: {gone} absent file(s) held" in a for a in rep.alarms), rep.alarms
+        assert any(f"breaker TRIPPED: {plural(gone, 'absent file')} held" in a for a in rep.alarms), (
+            rep.alarms
+        )
         assert (rep.absent_marked, rep.absent_removed) == (0, 0)
         assert source_report(second).breaker_tripped and second.changes == ()
         assert all(rows[rel].state is RowState.LIVE for rel in victims)
@@ -2032,7 +2035,7 @@ def test_files_new_in_the_pass_of_a_scope_change_do_not_raise_the_breaker_limit(
     excluded = _excluding(config, SID, "acme")
     rep = source_report(run(excluded))
     assert rep.enumeration_complete and rep.breaker_tripped
-    assert any("breaker TRIPPED: 6 absent file(s) held" in a for a in rep.alarms), rep.alarms
+    assert any("breaker TRIPPED: 6 absent files held" in a for a in rep.alarms), rep.alarms
     assert source_report(run(excluded)).breaker_tripped
     rows = _file_rows(excluded)
     assert all(rows[rel].state is RowState.LIVE for rel in victims)
@@ -2079,7 +2082,9 @@ def test_an_exclude_that_covers_no_mirrored_file_retires_nothing(
         assert len(governance.pending_purges(excluded.state_paths.root)) == 1
     else:
         assert rep.breaker_tripped
-        assert any(f"breaker TRIPPED: {gone} absent file(s) held" in a for a in rep.alarms), rep.alarms
+        assert any(f"breaker TRIPPED: {plural(gone, 'absent file')} held" in a for a in rep.alarms), (
+            rep.alarms
+        )
         assert source_report(second).breaker_tripped and second.changes == ()
         assert all(rows[rel].state is RowState.LIVE for rel in victims)
         assert governance.pending_purges(excluded.state_paths.root) == []
@@ -2100,7 +2105,7 @@ def test_an_exclude_with_no_other_absence_retires_its_files_past_the_breaker(
     rep = source_report(report)
     assert report.exit_code == 0 and rep.enumeration_complete and not rep.breaker_tripped
     assert [a for a in rep.alarms if "retired" in a or "absent" in a] == [
-        f"scope changed in sources.toml: {len(left)} file(s) now outside it retired "
+        f"scope changed in sources.toml: {plural(len(left), 'file')} now outside it retired "
         "(not deleted upstream; no purge queued)"
     ]
     rows = _file_rows(excluded)
@@ -4208,7 +4213,7 @@ def test_an_image_that_cannot_be_read_at_its_re_read_keeps_the_stub_it_has(
     report = run(sample_config)
     [rep] = report.sources
     assert (report.exit_code, report.commit_sha, rep.errors, rep.converted) == (0, None, (), 0)
-    kept = "1 file(s) read again for what their converter has gained could not be converted; their page(s)"
+    kept = "1 file read again for what its converter has gained could not be converted; its page(s)"
     assert [a for a in rep.alarms if a.startswith(kept)] == ([] if fault.startswith("the helper") else [ANY])
     assert _mirror_bytes(sample_config, SITE_PLAN) == before
     assert git(repo, "rev-parse", "HEAD") == head and porcelain(repo) == ""
@@ -4279,7 +4284,7 @@ def test_a_re_read_that_fails_keeps_the_page_and_a_file_is_given_up_after_two_cy
     [rep] = report.sources
     assert (report.exit_code, report.commit_sha, rep.errors) == (0, None, ())
     assert rep.alarms == (
-        "3 file(s) read again for what their converter has gained could not be converted; their page(s) are "
+        "3 files read again for what their converter has gained could not be converted; their page(s) are "
         "kept as they were",
     )
     assert _mirror_bytes(sample_config, *pages) == pages
@@ -4437,7 +4442,7 @@ def test_three_failed_re_reads_in_a_row_end_the_re_reads_of_that_cycle(
     with monkeypatch.context() as fault:
         fault.setattr(pdf_mod.PdfConverter, "convert", broken)
         [rep] = run(sample_config).sources
-    kept = "3 file(s) read again for what their converter has gained could not be converted; their page(s)"
+    kept = "3 files read again for what their converter has gained could not be converted; their page(s)"
     assert len(fetched) == 3 and rep.errors == () and rep.alarms == (f"{kept} are kept as they were",)
     assert _reread_record(sample_config) == (False, []) and len(_reread_failed(sample_config)) == 3
     assert run(sample_config).commit_sha is not None and len(fetched) == 9, "the fault passed: all six"
@@ -4595,7 +4600,7 @@ def test_an_error_while_a_file_is_read_again_does_not_fail_the_source(
     first = run(sample_config)
     [rep] = first.sources
     assert first.exit_code == 0 and rep.errors == ("reading files again stopped: OSError",)
-    assert any("1 file(s) absent from this complete pass" in a for a in rep.alarms), rep.alarms
+    assert any("1 file absent from this complete pass" in a for a in rep.alarms), rep.alarms
     (stopped,) = read
     row = _file_rows(sample_config)[stopped]
     assert row.last_verdict is Verdict.MAYBE_CHANGED and _reread_record(sample_config) == (False, [])
@@ -4633,7 +4638,7 @@ def test_a_re_read_leaves_the_deletion_breaker_and_its_held_files_as_they_were(
     fetched = _fetches(monkeypatch)
     report = run(config)
     rep = source_report(report)
-    assert rep.breaker_tripped and any("breaker TRIPPED: 6 absent file(s) held" in a for a in rep.alarms)
+    assert rep.breaker_tripped and any("breaker TRIPPED: 6 absent files held" in a for a in rep.alarms)
     assert sorted(fetched) == [REVIEW, PLAIN_PDF]
     assert [c.path for c in report.changes] == [slug.mirror_rel_path(SID, REVIEW)]
     rows = _file_rows(config)

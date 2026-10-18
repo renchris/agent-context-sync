@@ -413,7 +413,7 @@ def test_f_accept_deletions_on_an_incomplete_pass_keeps_the_breaker(
     rep = source_report(accepted)
     assert accepted.changes == () and rep.breaker_tripped
     held = [a for a in rep.alarms if a.startswith(_HELD_ALARM)]
-    assert len(held) == 1 and "still holds 5 file(s)" in held[0], rep.alarms
+    assert len(held) == 1 and "still holds 5 files" in held[0], rep.alarms
     with Manifest(config.state_paths.db) as m:
         assert m.breaker_active(SID, "2026-09-29T12:00:00Z")
     assert page(config.docs_repo, mirror("projects/sample.csv.md"))[0]["status"] == "current"
@@ -1034,7 +1034,7 @@ def test_confirmed_deletion_queues_a_purge_that_removes_the_tombstone(
     state = (repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert "## Queued purges" in state
     assert (
-        "- 1 purge request(s) waiting; preview with `~/.local/bin/agentsync purge --queue --dry-run`, then "
+        "- 1 purge request waiting; preview with `~/.local/bin/agentsync purge --queue --dry-run`, then "
         "run `~/.local/bin/agentsync purge --queue` (rewrites history)"
     ) in state
     (rep,) = governance.run_purge_queue(synced, now=NOW)

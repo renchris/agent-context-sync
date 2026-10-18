@@ -53,6 +53,7 @@ from agentsync.model import CycleMode, CycleReport, PassKind, RowState, SourceKi
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock
 from agentsync.paths import expand
+from agentsync.text import plural
 from conftest import zone
 
 
@@ -60,7 +61,7 @@ def test_a_new_file_is_counted_once_under_its_final_verdict(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """B13 round 11 M48: phase 1 counted a new file as created and phase 2 as changed, so one new file read
-    ``changed=1, created=1`` beside ``1 change(s)``. A file a later phase settles counts once, under its
+    ``changed=1, created=1`` beside ``1 change``. A file a later phase settles counts once, under its
     final verdict; one phase 1 settles (unchanged) keeps its count."""
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -70,7 +71,7 @@ def test_a_new_file_is_counted_once_under_its_final_verdict(
     out = capsys.readouterr().out.splitlines()
     (line,) = [x for x in out if x.startswith("  source: ")]
     assert "changed=1 (1 new)" in line and "created=" not in line and "unchanged=" in line, line
-    assert any(" · 1 change(s)" in x for x in out), out
+    assert any(" · 1 change" in x for x in out), out
     # B13 round 12 N39: the count says the file is new; an edited file is changed and not new
     (local_source_dir / "projects" / "New Memo.txt").write_text("An edited memo for Project Alpha.\n")
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -82,7 +83,7 @@ def test_a_new_file_publish_quarantines_reads_quarantined_and_not_changed(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """B13 round 12 N30, N50: a new file settled CHANGED and then quarantined by ``_publish`` (here a
-    credential re-stub) read ``changed=1, quarantined=1`` beside ``1 change(s)``: one file counted twice."""
+    credential re-stub) read ``changed=1, quarantined=1`` beside ``1 change``: one file counted twice."""
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     first = [x for x in capsys.readouterr().out.splitlines() if x.startswith("  source: ")]
@@ -286,7 +287,7 @@ def test_setup_makes_what_is_inside_its_folders_owner_only_before_status_looks(
     assert cli.main([*argv, "--config", str(initialised.config_path)]) == cli.EXIT_OK
     out = capsys.readouterr().out.splitlines()
     assert f"tightened {log_dir} to 0700 (was 0755): it holds tenant data" in out
-    assert "tightened 4 path(s) inside the docs repo, the cache or the logs: they hold tenant data" in out
+    assert "tightened 4 paths inside the docs repo, the cache or the logs: they hold tenant data" in out
     assert {f.stat().st_mode & 0o777 for f in files} == {0o600}
     assert {d.stat().st_mode & 0o777 for d in (eval_dir, old_build, log_dir)} == {0o700}
     assert doctor._check_permissions(initialised)[0].ok
@@ -350,13 +351,13 @@ def test_a_commit_with_no_mirror_change_says_what_its_zero_counts(capsys: pytest
     )
     cli._print_report(committed)
     assert capsys.readouterr().out.splitlines()[0] == (
-        "run 6 · mode poll · commit 0efe0129bbe4 · 0 change(s) (no source changed a mirror page; the commit "
+        "run 6 · mode poll · commit 0efe0129bbe4 · 0 changes (no source changed a mirror page; the commit "
         "holds other docs-repo files)"
     )
     cli._print_report(dataclasses.replace(committed, commit_sha=None))
     assert (
         capsys.readouterr().out.splitlines()[0]
-        == "run 6 · mode poll · commit none (no content change) · 0 change(s)"
+        == "run 6 · mode poll · commit none (no content change) · 0 changes"
     )
 
 
@@ -519,8 +520,7 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     # B13 round 4 Q16: words that hold for any count, one file included
     # B13 round 5 F64: N counts files, and a file of several pages becomes several notices
     held = (
-        " · absent 1 file(s) (their page(s) become deletion notice(s) on a later complete pass if still "
-        "missing)"
+        " · absent 1 file (its page(s) become deletion notice(s) on a later complete pass if still missing)"
     )
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     (local_source_dir / "projects" / "acme" / "Kickoff Notes.docx").unlink()
@@ -532,7 +532,7 @@ def test_status_counts_the_files_held_between_the_marking_pass_and_the_removing_
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert (
-        "    alarm: 1 file(s) still absent from this complete pass: their page(s) are now deletion notice(s) "
+        "    alarm: 1 file still absent from this complete pass: its page(s) are now deletion notice(s) "
         "(deleted upstream; purge queued)\n"
     ) in out
     assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
@@ -557,8 +557,8 @@ def test_the_sync_line_tells_the_marking_pass_from_the_removing_pass(
         lines.append(line)
     marking, removing, after = lines
     assert "deletion_candidate=1" in marking and "deletion_candidate=1" in removing
-    assert " · 1 file(s) marked absent · " in marking and "deletion notice" not in marking, marking
-    removed = " · 1 file(s) removed upstream (their page(s) are now deletion notice(s)) · "
+    assert " · 1 file marked absent · " in marking and "deletion notice" not in marking, marking
+    removed = " · 1 file removed upstream (its page(s) are now deletion notice(s)) · "
     assert removed in removing and "marked absent" not in removing, removing
     assert "absent" not in after and "removed" not in after, after
 
@@ -567,7 +567,7 @@ def test_the_sync_line_counts_a_removed_file_of_several_pages_as_one_file(
     initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """F64 (B13 round 5): the removing pass's count is of files (stable ids), but the line called it
-    "page(s) turned into deletion notice(s)": a workbook of three pages read "1 page(s)" beside "3 change(s)".
+    "page(s) turned into deletion notice(s)": a workbook of three pages read "1 page(s)" beside "3 changes".
     The line names files, so a removed file of several pages reads one file."""
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
@@ -576,10 +576,10 @@ def test_the_sync_line_counts_a_removed_file_of_several_pages_as_one_file(
     capsys.readouterr()
     assert cli.main(["sync", "--once", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out.splitlines()
-    changes = int(re.search(r" · (\d+) change\(s\)", out[0]).group(1))  # type: ignore[union-attr]
+    changes = int(re.search(r" · (\d+) changes?\b", out[0]).group(1))  # type: ignore[union-attr]
     (line,) = [x for x in out if x.startswith("  source: ")]
     assert changes > 1, out[0]
-    assert " · 1 file(s) removed upstream (their page(s) are now deletion notice(s)) · " in line, line
+    assert " · 1 file removed upstream (its page(s) are now deletion notice(s)) · " in line, line
     assert "page(s) turned into" not in line, line
 
 
@@ -599,13 +599,13 @@ def test_the_sync_line_prints_marked_absent_and_removed_only_when_there_are_any(
     report = CycleReport(run_id=4, mode=CycleMode.POLL, sources=(src,), changes=(), commit_sha=None)
     cli._print_report(report)
     assert capsys.readouterr().out.splitlines()[1] == (
-        "  src: full_enumeration · complete · 2 file(s) marked absent · cursor held · "
+        "  src: full_enumeration · complete · 2 files marked absent · cursor held · "
         "deletion_candidate=2, unchanged=1"
     )
     both = dataclasses.replace(src, absent_marked=1, absent_removed=3)
     cli._print_report(dataclasses.replace(report, sources=(both,)))
     assert capsys.readouterr().out.splitlines()[1] == (
-        "  src: full_enumeration · complete · 1 file(s) marked absent · 3 file(s) removed upstream (their "
+        "  src: full_enumeration · complete · 1 file marked absent · 3 files removed upstream (their "
         "page(s) are now deletion notice(s)) · cursor held · deletion_candidate=2, unchanged=1"
     )
     neither = dataclasses.replace(src, absent_marked=0)
@@ -649,8 +649,7 @@ def test_lint_fails_on_a_hand_edited_mirror_page(
     assert "FRONTMATTER" in out
     # The land gate is invisible to the loop's rules: NEXT names the ERROR, not the baseline step.
     assert (
-        out.splitlines()[-1]
-        == f"NEXT: 1 blocking finding(s) above: fix every ERROR, then run `{loop.BIN} sync`"
+        out.splitlines()[-1] == f"NEXT: 1 blocking finding above: fix every ERROR, then run `{loop.BIN} sync`"
     )
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED  # the land gate blocks the commit
 
@@ -717,7 +716,7 @@ def test_curate_rows_exit_0_and_carry_a_ready_sources_entry(
     entry = _row_entry(out, "UNCOVERED", sample)
     pin = _mirror_sha(initialised, sample)
     assert entry == {"path": sample, "at_rendered_sha256": pin, "role": "primary"}
-    assert "0 finding(s), 0 blocking" in out
+    assert "0 findings, 0 blocking" in out
     assert out.splitlines()[-1] == loop.next_step(initialised).lines()[0]
 
     line = next(ln for ln in out.splitlines() if ln.startswith(f"UNCOVERED\t{sample}\t"))
@@ -764,7 +763,7 @@ def test_curate_runs_every_whole_repo_lint_and_exits_1_only_on_a_blocking_findin
     assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     assert "ERROR UNLISTED topics/orders.md" in out and "1 blocking" in out
-    fix = f"NEXT: 1 blocking finding(s) above: fix every ERROR, then run `{loop.BIN} sync`"
+    fix = f"NEXT: 1 blocking finding above: fix every ERROR, then run `{loop.BIN} sync`"
     assert out.splitlines()[-1] == fix
     # Committed by hand, nothing is pending or dirty, so rule 7 counts 0: NEXT still names the ERROR, never
     # the queued rows or "session done".
@@ -801,7 +800,7 @@ def test_a_cite_finding_is_a_warn_line_and_never_holds_the_checkpoint(
     assert cli.main(["curate", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "warn  CITE-UNRESOLVED topics/meetings/m.md: `heard 00:01:10`" in out
-    assert "1 finding(s), 0 blocking" in out and "ERROR" not in out
+    assert "1 finding, 0 blocking" in out and "ERROR" not in out
     assert curate.checkpoint_blockers(initialised.docs_repo) == []
 
 
@@ -1368,7 +1367,7 @@ def test_accept_deletions_clears_a_tripped_breaker(
         assert m.breaker_active("source", datetime.now(UTC).isoformat())
     assert cli.main(["accept-deletions", "source", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "mode reconcile" in out and f"{len(victims)} change(s)" in out and "BREAKER" not in out
+    assert "mode reconcile" in out and plural(len(victims), "change") in out and "BREAKER" not in out
     with Manifest(initialised.state_paths.db) as m:
         assert not m.breaker_active("source", datetime.now(UTC).isoformat())
         row = m.get_source("source")
@@ -1714,7 +1713,7 @@ def test_purge_headline_spells_the_cache_count(
     )
     cli._print_purge(rep)
     (head,) = [line for line in capsys.readouterr().out.splitlines() if line.startswith("purge ")]
-    assert head.endswith(f"2 blob(s) targeted · {tail}"), head
+    assert head.endswith(f"2 blobs targeted · {tail}"), head
     assert "entr(ies)" not in head
     assert ("rewritten" in head) is not dry_run
 
@@ -1782,7 +1781,7 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     out = capsys.readouterr().out
     assert rc == cli.EXIT_OK, out
     assert "VERIFIED" in out and page in out
-    assert " commit(s) rewritten · " in out and re.search(r" · 1 cache entry removed$", out, re.M)
+    assert " 1 commit rewritten · " in out and re.search(r" · 1 cache entry removed$", out, re.M)
     gone = subprocess.run(["git", "-C", str(repo), "cat-file", "-e", blob], capture_output=True, check=False)
     assert gone.returncode != 0  # the blob is unreadable afterwards
     audit = governance.read_audit(initialised.state_paths.root)
@@ -1809,7 +1808,7 @@ def test_purge_queue_dry_run_previews_and_writes_nothing(
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert "dry run" in out and "1 queued purge(s) previewed" in out and "; 1 queued" in out
+    assert "dry run" in out and "1 queued purge previewed" in out and "; 1 queued" in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert len(governance.pending_purges(initialised.state_paths.root)) == 1
 
@@ -1854,14 +1853,14 @@ def test_purge_queue_skips_a_held_source_and_keeps_it_queued(
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
-    assert out.splitlines()[-1] == "0 queued purge(s) run; 1 still queued"
+    assert out.splitlines()[-1] == "0 queued purges run; 1 still queued"
     # R96: the held entry has a report line with its reason, as a kept one does; Q47: "not run", which is
     # what happened, not NOT VERIFIED and run counts of zero
     assert (
         "purge stable-id (operator): not run\n  note: stays queued: purge suspended by legal/records hold: "
         in out
     )
-    assert "NOT VERIFIED" not in out and "0 item(s)" not in out and "remote:" not in out
+    assert "NOT VERIFIED" not in out and "0 items" not in out and "remote:" not in out
     assert sid not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
@@ -1894,15 +1893,15 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_live_file_and_does_not_coun
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert out.splitlines()[-1] == "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+    assert out.splitlines()[-1] == "0 queued purges previewed (dry run, nothing written); 1 queued"
     # Q47: a preview of a kept entry says it is skipped, not "dry run · ... would be removed"
     assert "purge stable-id (upstream-deleted): not run\n  note: stays queued: " in out
     assert "dry run ·" not in out and "would be removed" not in out
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "purge stable-id (upstream-deleted): not run\n  note: stays queued: " in out
-    assert "NOT VERIFIED" not in out and "0 item(s)" not in out
-    assert out.splitlines()[-1] == "0 queued purge(s) run; 1 stay queued while their file is listed"
+    assert "NOT VERIFIED" not in out and "0 items" not in out
+    assert out.splitlines()[-1] == "0 queued purges run; 1 stays queued while its file is listed"
     assert sid not in out and "sample" not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
@@ -1931,16 +1930,12 @@ def test_a_kept_upstream_deletion_beside_a_runnable_purge_leaves_a_wait_for_the_
     )
     (check,) = [c for c in cli._governance_checks(initialised) if c.name == "governance.purge_queue"]
     assert not check.ok and check.severity is doctor.Severity.WARN
-    assert check.detail.startswith("1 purge request(s) queued") and check.detail.endswith(
-        governance.KEPT_PURGES
-    )
+    assert check.detail.startswith("1 purge request queued") and check.detail.endswith(governance.KEPT_PURGES)
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out
     assert "  note: stays queued: purge suspended by legal/records hold: " in out
-    assert (
-        out.splitlines()[-1] == "0 queued purge(s) run; 2 still queued (1 of them while their file is listed)"
-    )
+    assert out.splitlines()[-1] == "0 queued purges run; 2 still queued (1 of them while its file is listed)"
 
 
 def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits_ok(
@@ -1959,7 +1954,7 @@ def test_purge_queue_runs_an_entry_a_purge_of_the_run_already_did_once_and_exits
     out = capsys.readouterr().out
     assert out.count(": VERIFIED") == 1
     assert "  note: also did the queued erasure-request purge of the same item: taken off the queue" in out
-    assert out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
+    assert out.splitlines()[-1] == "1 queued purge run; 0 still queued"
     assert governance.pending_purges(initialised.state_paths.root) == []
 
 
@@ -1980,7 +1975,7 @@ def test_purge_queue_preview_counts_a_covered_entry_as_the_run_does(
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert out.splitlines()[-1] == "1 queued purge(s) previewed (dry run, nothing written); 2 queued"
+    assert out.splitlines()[-1] == "1 queued purge previewed (dry run, nothing written); 2 queued"
     (line,) = [x for x in out.splitlines() if x.startswith("purge ")]
     assert line.startswith("purge stable-id (operator): dry run · ")
     note = "would also do the queued erasure-request purge of the same item: the run takes it off the queue"
@@ -1989,7 +1984,7 @@ def test_purge_queue_preview_counts_a_covered_entry_as_the_run_does(
     assert git(initialised.docs_repo, "rev-parse", "HEAD").strip() == head
     assert not any(a["action"] == "purge-covered" for a in governance.read_audit(root))
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
-    assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
+    assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge run; 0 still queued"
 
 
 def test_purge_queue_preview_does_not_keep_a_covered_upstream_deletion(
@@ -2013,9 +2008,9 @@ def test_purge_queue_preview_does_not_keep_a_covered_upstream_deletion(
     assert f"  note: {note}" in out
     assert "not run" not in out
     assert "stays queued" not in out
-    assert out.splitlines()[-1] == "1 queued purge(s) previewed (dry run, nothing written); 2 queued"
+    assert out.splitlines()[-1] == "1 queued purge previewed (dry run, nothing written); 2 queued"
     assert cli.main(["purge", "--queue", "--config", cfg]) == cli.EXIT_OK
-    assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge(s) run; 0 still queued"
+    assert capsys.readouterr().out.splitlines()[-1] == "1 queued purge run; 0 still queued"
     assert governance.pending_purges(root) == []
 
 
@@ -2034,7 +2029,7 @@ def test_purge_queue_preview_does_not_count_a_kept_upstream_deletion_as_previewe
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
     assert "  note: stays queued: " in out
-    assert out.splitlines()[-1] == "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+    assert out.splitlines()[-1] == "0 queued purges previewed (dry run, nothing written); 1 queued"
 
 
 def test_setup_feedback_reads_the_purge_preview_last_line_as_the_cli_prints_it() -> None:
@@ -2062,7 +2057,7 @@ def test_purge_queue_dry_run_previews_a_held_source_and_writes_nothing(
     capsys.readouterr()
     assert cli.main(["purge", "--queue", "--dry-run", "--config", cfg]) == cli.EXIT_OK
     out = capsys.readouterr().out
-    assert out.splitlines()[-1] == "0 queued purge(s) previewed (dry run, nothing written); 1 queued"
+    assert out.splitlines()[-1] == "0 queued purges previewed (dry run, nothing written); 1 queued"
     assert "  note: stays queued: purge suspended by legal/records hold: " in out and sid not in out
     assert git(repo, "rev-parse", "HEAD").strip() == head and (repo / page).is_file()
     assert [q.selector for q in governance.pending_purges(initialised.state_paths.root)] == [selector]
@@ -2155,7 +2150,7 @@ def test_hold_suspends_purge_and_compaction_and_shows_in_status(
     state_md = (initialised.docs_repo / "_sync" / "STATE.md").read_text(encoding="utf-8")
     assert "HOLD `all`: litigation 42" in state_md  # C15 req 40: shown until released
     assert cli.main(["hold", "--list", "--config", cfg]) == cli.EXIT_OK
-    assert "1 active hold(s)" in capsys.readouterr().out
+    assert "1 active hold" in capsys.readouterr().out
     assert cli.main(["hold", "all", "--release", "--owner", "legal", "--config", cfg]) == cli.EXIT_OK
     assert cli.main(["compact-history", "--dry-run", "--config", cfg]) == cli.EXIT_OK
 

@@ -609,7 +609,8 @@ other. Step 2's `install.sh` ran status before its sync, stopped on `[FAIL] docs
 - The installer's config step (`agentsync add-source`, or `agentsync init` with no folder) now makes
   agentsync's own paths owner-only before status looks, as every sync does: the docs repo's top level, its
   `_eval/` and `topics/` folders, the cache and the logs. It prints
-  `tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`, a count and no path.
+  `tightened N paths inside the docs repo, the cache or the logs: they hold tenant data` (`1 path ...: it
+  holds` for one), a count and no path.
 - The check's fix names a command the agent may run when one clears it:
   `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`. Since 2026-10-12 (Q49, 9ac4273f), every
   runnable fix doctor prints names agentsync by its full path, `~/.local/bin/agentsync`, because install.sh leaves

@@ -456,7 +456,7 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     per-file "exceeds the per-cycle budget" alarms are
     one count per source: at 0 every changed online-only file would otherwise get one."""
     commit = report.commit_sha[:12] if report.commit_sha else "none (no content change)"
-    counted = f"{len(report.changes)} change(s)"
+    counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
     if report.commit_sha and not report.changes:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
@@ -475,10 +475,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
             bits.append("BREAKER TRIPPED")
         # the counts line's deletion_candidate=N is the same on the marking and the removing pass: say which
         if s.absent_marked:
-            bits.append(f"{s.absent_marked} file(s) marked absent")
+            bits.append(f"{plural(s.absent_marked, 'file')} marked absent")
         if s.absent_removed:
+            # its pages are counted nowhere here (a workbook's sheets are pages of one file): "(s)" stays
             bits.append(
-                f"{s.absent_removed} file(s) removed upstream (their page(s) are now deletion notice(s))"
+                f"{plural(s.absent_removed, 'file')} removed upstream "
+                f"({'its' if s.absent_removed == 1 else 'their'} page(s) are now deletion notice(s))"
             )
         if s.pass_kind is not None:
             bits.append("cursor advanced" if s.cursor_advanced else "cursor held")
@@ -736,7 +738,10 @@ def _ensure_setup(config: Config) -> int:
     # stops on a docs_repo.permissions FAIL, so the paths a sync would clear are cleared here first.
     inside = _tighten_own_paths(config)
     if inside:
-        _out(f"tightened {inside} path(s) inside the docs repo, the cache or the logs: they hold tenant data")
+        _out(
+            f"tightened {plural(inside, 'path')} inside the docs repo, the cache or the logs: "
+            f"{'it holds' if inside == 1 else 'they hold'} tenant data"
+        )
     with _state_readable(config), Manifest(config.state_paths.db) as manifest:
         written = Publisher(config, manifest).ensure_scaffold()
     # The count carries its verb: install.sh calls add-source once per folder, and a bare "0 scaffold
@@ -1199,8 +1204,8 @@ def _status_lines(config: Config) -> list[str]:
             f"breaker {st.breaker} · auth {st.auth} · "
             f"last success {hb.get('last_success_at', 'never')}"
             + (
-                f" · absent {waiting} file(s) (their page(s) become deletion notice(s) on a later complete "
-                "pass if still missing)"
+                f" · absent {plural(waiting, 'file')} ({'its' if waiting == 1 else 'their'} page(s) become "
+                "deletion notice(s) on a later complete pass if still missing)"
                 if waiting
                 else ""
             )
@@ -1668,7 +1673,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(_check("governance.purge_queue", True, kept_text, doctor.Severity.INFO))
     if queued:
         detail = (
-            f"{len(queued)} purge request(s) queued (confirmed upstream deletions / label escalations){also}"
+            f"{plural(len(queued), 'purge request')} queued (confirmed upstream deletions / label "
+            f"escalations){also}"
         )
         if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
             # install.sh prints the loop's WAITING ON YOU line for the queue: no second instruction here.
@@ -1702,7 +1708,8 @@ def _policy_check(config: Config) -> list[doctor.CheckResult]:
         detail = "no label rules (encrypted Office/PDF files are still stubbed, never converted)"
     else:
         detail = (
-            f"{len(pol.exclude_label_ids)} excluded label id(s), {len(pol.exclude_label_names)} name(s), "
+            f"{plural(len(pol.exclude_label_ids), 'excluded label id')}, "
+            f"{plural(len(pol.exclude_label_names), 'name')}, "
             f"refuse_unlabelled={'true' if pol.refuse_unlabelled else 'false'} ({pol.fingerprint()[:19]})"
         )
     return [_check("policy", True, detail, doctor.Severity.INFO)]
@@ -1912,7 +1919,7 @@ def _cmd_setup_report(args: argparse.Namespace) -> int:
         if link:
             _out(link)
         return EXIT_FAILED
-    what = f"{red.total} replacement(s) of {red.values} value(s)"
+    what = f"{plural(red.total, 'replacement')} of {plural(red.values, 'value')}"
     embedded = "friction log embedded" if friction.is_file() else f"no friction log found at {friction}"
     _out(f"wrote {out} ({what}; {embedded})")
     if link:
@@ -2043,7 +2050,7 @@ def _cmd_curate(args: argparse.Namespace) -> int:
     for f in findings:
         _out(f"{'ERROR' if f.blocking else 'warn '} {f.code} {f.path}: {f.message}")
     blocking = sum(1 for f in findings if f.blocking)
-    _out(f"{len(findings)} finding(s), {blocking} blocking")
+    _out(f"{plural(len(findings), 'finding')}, {blocking} blocking")
     if loop.curation_held(config):
         _out("no curation rows yet: curation starts once the 'before' baseline results exist (see NEXT)")
     else:
@@ -2058,11 +2065,13 @@ def _cmd_curate(args: argparse.Namespace) -> int:
         for rel in uncovered:
             entry = curate.source_entry(layout, rel)
             _out(f"UNCOVERED\t{rel}" + (f"\t{entry}" if entry else ""))
-        _out(f"{len(verdicts)} refresh-queue row(s), {len(uncovered)} uncovered mirror page(s)")
+        _out(
+            f"{plural(len(verdicts), 'refresh-queue row')}, {plural(len(uncovered), 'uncovered mirror page')}"
+        )
     # A blocking finding is rule 1 here: the loop's own rules never see the land-gate lints, and rule 7 counts
     # checkpoint blockers only while something is pending or dirty, so NEXT must not send the agent past it.
     fixes = (
-        [f"{blocking} blocking finding(s) above: fix every ERROR, then run `{loop.BIN} sync`"]
+        [f"{plural(blocking, 'blocking finding')} above: fix every ERROR, then run `{loop.BIN} sync`"]
         if blocking
         else []
     )
@@ -2095,7 +2104,10 @@ def _cmd_adopt(args: argparse.Namespace) -> int:
     created = curate.adopt_pages(expand(args.src_dir), config.layout, datetime.now(UTC).date().isoformat())
     for rel in created:
         _out(f"adopted {rel}")
-    _out(f"{len(created)} page(s) adopted; the next `{loop.BIN} sync` commits them")
+    _out(
+        f"{plural(len(created), 'page')} adopted; the next `{loop.BIN} sync` commits "
+        + ("it" if len(created) == 1 else "them")
+    )
     return EXIT_OK
 
 
@@ -2230,13 +2242,14 @@ def _print_purge(rep: governance.PurgeReport) -> None:
         return
     state = "dry run" if rep.dry_run else ("VERIFIED" if rep.verified else "NOT VERIFIED")
     # a dry run changed nothing: its commit count is in the note, its cache count is what would go
-    rewritten = "" if rep.dry_run else f"{rep.commits_rewritten} commit(s) rewritten · "
+    rewritten = "" if rep.dry_run else f"{plural(rep.commits_rewritten, 'commit')} rewritten · "
     removed = "would be removed" if rep.dry_run else "removed"
     # "entr(ies)" read as a typo (rehearsal v10): this count's word is spelled out, singular for 1
     entries = "cache entry" if rep.cache_entries_removed == 1 else "cache entries"
     _out(
-        f"purge {rep.selector} ({rep.reason.value}): {state} · {len(rep.items)} item(s) · "
-        f"{len(rep.docs_paths)} docs path(s) · {rewritten}{rep.blobs_targeted} blob(s) targeted · "
+        f"purge {rep.selector} ({rep.reason.value}): {state} · {plural(len(rep.items), 'item')} · "
+        f"{plural(len(rep.docs_paths), 'docs path')} · {rewritten}"
+        f"{plural(rep.blobs_targeted, 'blob')} targeted · "
         f"{rep.cache_entries_removed} {entries} {removed}"
     )
     for p in rep.docs_paths:
@@ -2267,16 +2280,27 @@ def _cmd_purge(args: argparse.Namespace) -> int:
         left = governance.pending_purges(config.state_paths.root)
         ran = sum(1 for r in reports if not r.not_run)  # an entry the queue did not run stays queued
         if dry_run:
-            _out(f"{ran} queued purge(s) previewed (dry run, nothing written); {len(left)} queued")
+            _out(f"{plural(ran, 'queued purge')} previewed (dry run, nothing written); {len(left)} queued")
             return EXIT_OK
         # a kept upstream deletion is no failure: no run clears it while its file is listed; once the file is
         # gone it is a queued purge again, and the wait returns
         stuck, kept = governance.partition_purges(config.state_paths, left)
         if left and not stuck:
-            _out(f"{ran} queued purge(s) run; {len(kept)} stay queued while their file is listed")
+            _out(
+                f"{plural(ran, 'queued purge')} run; {len(kept)} "
+                + (
+                    "stays queued while its file is listed"
+                    if len(kept) == 1
+                    else "stay queued while their file is listed"
+                )
+            )
         else:
-            also = f" ({len(kept)} of them while their file is listed)" if kept else ""
-            _out(f"{ran} queued purge(s) run; {len(left)} still queued{also}")
+            also = (
+                f" ({len(kept)} of them while {'its' if len(kept) == 1 else 'their'} file is listed)"
+                if kept
+                else ""
+            )
+            _out(f"{plural(ran, 'queued purge')} run; {len(left)} still queued{also}")
         return EXIT_OK if all(r.verified or r.not_run for r in reports) and not stuck else EXIT_FAILED
     if not args.selector:
         _err("purge: SELECTOR (id=<stable_id> | path=<glob> | docs=<glob>) or --queue is required")
@@ -2298,13 +2322,17 @@ def _cmd_compact(args: argparse.Namespace) -> int:
     rep = governance.compact_history(config, args.keep_days, dry_run=bool(args.dry_run))
     state = "dry run" if rep.dry_run else ("VERIFIED" if rep.verified else "NOT VERIFIED")
     _out(
-        f"compact-history before {rep.cutoff}: {state} · {rep.squashed} commit(s) squashed · {rep.kept} kept"
-        + (f" · new root {rep.new_root[:12]}" if rep.new_root else "")
+        f"compact-history before {rep.cutoff}: {state} · {plural(rep.squashed, 'commit')} squashed · "
+        f"{rep.kept} kept" + (f" · new root {rep.new_root[:12]}" if rep.new_root else "")
     )
     for s in rep.survivors:
         _out(f"  SURVIVOR: {s}")
     if rep.dangling_recovery_hints:
-        _out(f"  {rep.dangling_recovery_hints} tombstone recovery hint(s) now point into squashed history")
+        n = rep.dangling_recovery_hints
+        _out(
+            f"  {plural(n, 'tombstone recovery hint')} now {'points' if n == 1 else 'point'} into squashed "
+            "history"
+        )
     if rep.note:
         _out(f"  note: {rep.note}")
     return EXIT_OK if rep.dry_run or rep.verified or rep.squashed == 0 else EXIT_FAILED
@@ -2317,7 +2345,7 @@ def _cmd_hold(args: argparse.Namespace) -> int:
         holds = governance.active_holds(root, governance.load_governance(config.config_path))
         for h in holds:
             _out(h.describe())
-        _out(f"{len(holds)} active hold(s)")
+        _out(plural(len(holds), "active hold"))
         return EXIT_OK
     if args.scope is None:
         _err("hold: SCOPE ('all' or a source id) is required")

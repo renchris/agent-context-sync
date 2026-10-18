@@ -63,6 +63,7 @@ from agentsync.model import (
     UnitKind,
 )
 from agentsync.paths import expand
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -2119,8 +2120,8 @@ class Publisher:
         blocking = sum(1 for f in report.lint_findings if f.blocking)
         fixes = (
             [
-                f"{blocking} blocking finding(s) held this run's commit (## Lint findings below): fix every "
-                f"ERROR, then run `{skill.AGENTSYNC_BIN} sync`"
+                f"{plural(blocking, 'blocking finding')} held this run's commit (## Lint findings below): "
+                f"fix every ERROR, then run `{skill.AGENTSYNC_BIN} sync`"
             ]
             if blocking
             else []

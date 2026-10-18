@@ -477,7 +477,7 @@ def _one_line(text: str, limit: int = 300) -> str:
 
 def _scope_change_alarm(count: int) -> str:
     return (
-        f"scope changed in sources.toml: {count} file(s) now outside it retired "
+        f"scope changed in sources.toml: {plural(count, 'file')} now outside it retired "
         "(not deleted upstream; no purge queued)"
     )
 
@@ -491,7 +491,8 @@ def _accept_incomplete_alarm(source_id: str, held: int | None) -> str:
     if held is None:
         return text
     return (
-        f"{text}; the deletion breaker still holds {held} file(s): once a sync lists {source_id} in full, "
+        f"{text}; the deletion breaker still holds {plural(held, 'file')}: once a sync lists {source_id} in "
+        "full, "
         f"run `{skill.AGENTSYNC_BIN} accept-deletions {source_id}` again"
     )
 
@@ -1979,12 +1980,12 @@ class _Cycle:
             return commit_sha
         if not rep.verified:
             self.retention_lines.append(
-                f"- compaction NOT verified: {len(rep.survivors)} object(s) of the squashed history can "
-                "still be read from the docs repo"
+                f"- compaction NOT verified: {plural(len(rep.survivors), 'object')} of the squashed history "
+                "can still be read from the docs repo"
             )
         elif rep.squashed:
             self.retention_lines.append(
-                f"- compacted {rep.squashed} commit(s) older than {rep.cutoff} (history_days "
+                f"- compacted {plural(rep.squashed, 'commit')} older than {rep.cutoff} (history_days "
                 f"{self.gov.history_days})"
             )
             log.warning("retention: %d commit(s) squashed (cutoff %s)", rep.squashed, rep.cutoff)
@@ -2501,8 +2502,9 @@ class _Cycle:
         )
         with contextlib.suppress(ConfigError):  # an archive copy can outlive its source's block
             self._acc(self.config.source(sid)).alarms.append(
-                f"a published page matches the secret scan's new rules: {now_is}; {removed} cached "
-                f"conversion(s) deleted{', purge queued' if queued else ''} {_PURGE_QUEUE_STEPS}"
+                f"a published page matches the secret scan's new rules: {now_is}; "
+                f"{plural(removed, 'cached conversion')} deleted{', purge queued' if queued else ''} "
+                f"{_PURGE_QUEUE_STEPS}"
             )
         log.warning(
             "%s: a published page of %s matches the secret scan's new rules; purge queued", sid, stable
@@ -2867,7 +2869,7 @@ class _Cycle:
             lines += ["## Queued purges", ""]
         if queued:
             lines.append(
-                f"- {len(queued)} purge request(s) waiting; preview with "
+                f"- {plural(len(queued), 'purge request')} waiting; preview with "
                 f"`{skill.AGENTSYNC_BIN} purge --queue --dry-run`, then run "
                 f"`{skill.AGENTSYNC_BIN} purge --queue` (rewrites history)"
             )
@@ -3558,8 +3560,13 @@ class _Cycle:
             more = self._reread_batch(src, arm, batch, acc)
         if self._reread_kept > kept:
             acc.alarms.append(
-                f"{self._reread_kept - kept} file(s) read again for what their converter has gained could "
-                "not be converted; their page(s) are kept as they were"
+                f"{plural(self._reread_kept - kept, 'file')} read again for what "
+                + (
+                    "its converter has gained could not be converted; its page(s) are"
+                    if self._reread_kept - kept == 1
+                    else "their converter has gained could not be converted; their page(s) are"
+                )
+                + " kept as they were"
             )
         # Done when no file on this Mac is left to read again: none the cycle's time ran out before, none
         # that is pending, none this pass did not list and none whose read failed fewer times than it may.
@@ -4217,7 +4224,7 @@ class _Cycle:
                     )
                 acc.breaker_tripped = True
                 acc.alarms.append(
-                    f"deletion breaker TRIPPED: {len(absent)} absent file(s) held, nothing "
+                    f"deletion breaker TRIPPED: {plural(len(absent), 'absent file')} held, nothing "
                     f"removed; if the deletion is real run `{skill.AGENTSYNC_BIN} accept-deletions {src.id}` "
                     "or retire the source"
                 )
@@ -4302,15 +4309,17 @@ class _Cycle:
             self.manifest.mark_absent(src.id, first, self.run_id)
             acc.absent_marked += len(first)
             acc.alarms.append(
-                f"{len(first)} file(s) absent from this complete pass: their page(s) become deletion "
-                "notice(s) only if still absent next pass"
+                f"{plural(len(first), 'file')} absent from this complete pass: "
+                f"{'its' if len(first) == 1 else 'their'} page(s) become deletion notice(s) only if still "
+                "absent next pass"
             )
         if confirmed:
             acc.absent_removed += len(confirmed)
             purge = "; purge queued" if self.gov.purge_on_upstream_delete else ""  # off under archive
             acc.alarms.append(
-                f"{len(confirmed)} file(s) still absent from this complete pass: their page(s) are now "
-                f"deletion notice(s) (deleted upstream{purge})"
+                f"{plural(len(confirmed), 'file')} still absent from this complete pass: "
+                f"{'its' if len(confirmed) == 1 else 'their'} page(s) are now deletion notice(s) (deleted "
+                f"upstream{purge})"
             )
         return confirmed
 
@@ -4998,12 +5007,13 @@ class _Cycle:
         tally.update(files=1, removed=removed, queued=int(queued))
         files = tally["files"]
         purges = [
-            *([f"{tally['queued']} purge(s) queued"] if tally["queued"] else []),
+            *([f"{plural(tally['queued'], 'purge')} queued"] if tally["queued"] else []),
             *([f"{files - tally['queued']} already queued"] if files > tally["queued"] else []),
         ]
         alarm = (
-            f"label escalation: {files} published file(s) now refused by the label policy; "
-            f"{tally['removed']} cached conversion(s) deleted; {', '.join(purges)} {_PURGE_QUEUE_STEPS}"
+            f"label escalation: {plural(files, 'published file')} now refused by the label policy; "
+            f"{plural(tally['removed'], 'cached conversion')} deleted; {', '.join(purges)} "
+            f"{_PURGE_QUEUE_STEPS}"
         )
         acc.alarms[:] = [a for a in acc.alarms if not a.startswith("label escalation:")] + [alarm]
         log.info(

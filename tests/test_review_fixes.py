@@ -541,7 +541,7 @@ def test_sg04_label_escalation_queues_a_purge_and_drops_the_cached_plaintext(
     assert (item_id(config, "plan.docx"), "label-escalation") in queued(config)
     (alarm,) = [a for s in report.sources for a in s.alarms if a.startswith("label escalation:")]
     assert alarm.endswith(
-        "1 purge(s) queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
+        "1 purge queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
         "`~/.local/bin/agentsync purge --queue`)"
     )
     cached = [p for p in config.cache_dir.rglob("*") if p.is_file()]
@@ -604,8 +604,8 @@ def test_a_relabelled_folder_raises_one_label_escalation_alarm_that_counts_its_f
     assert report.exit_code == 0
     alarms = [a for s in report.sources for a in s.alarms if a.startswith("label escalation:")]
     assert alarms == [
-        "label escalation: 2 published file(s) now refused by the label policy; 2 cached conversion(s) "
-        "deleted; 2 purge(s) queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
+        "label escalation: 2 published files now refused by the label policy; 2 cached conversions "
+        "deleted; 2 purges queued (preview with `~/.local/bin/agentsync purge --queue --dry-run` before "
         "`~/.local/bin/agentsync purge --queue`)"
     ], alarms
     warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
