@@ -8125,6 +8125,38 @@ def _yours_warn(name: str, detail: str, checks: Collection[str]) -> bool:
     return name in checks and (not name.startswith("heartbeat.") or detail.startswith(_LISTING_INCOMPLETE))
 
 
+def _refusing_checks(c: Config) -> frozenset[str]:
+    """The doctor checks whose [FAIL] is a refusal every sync makes of ``c`` now, each read on its own, as
+    :func:`_live_refusal` reads the first: ``policy`` when the policy does not load, ``governance.config``
+    when the ``[governance]`` table does not, ``config.vanished_sources`` when the manifest mirrors a source
+    sources.toml lacks (B13 round 16 T14). Keyed on the report's own reading, never on doctor's words: a
+    ``policy`` FAIL whose policy loads stays unexpected."""
+    from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
+    from agentsync.cycle import vanished_from  # noqa: PLC0415
+    from agentsync.manifest import present_counts_on  # noqa: PLC0415
+
+    found: set[str] = set()
+    try:
+        policy.load_policy(c)
+    except Exception:
+        found.add("policy")
+    try:
+        governance.load_governance(c.config_path)
+    except Exception:
+        found.add("governance.config")
+    db = expand(c.state_paths.db)
+    with contextlib.suppress(OSError, sqlite3.Error):
+        if db.is_file():
+            conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+            try:
+                counts = present_counts_on(conn)
+            finally:
+                conn.close()
+            if vanished_from((s.id for s in c.sources), counts):
+                found.add("config.vanished_sources")
+    return frozenset(found)
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None:
@@ -8136,14 +8168,22 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     fr = r.friction
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
     not_on_disk = _gone_folder_fails(r, runs) - signed_out
+    refusing = _refusing_checks(r.config) if r.config is not None else frozenset()
     from_stop: list[str] = []
     from_gone: list[str] = []
+    from_config: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
             continue
         if tag == "FAIL" and name in not_on_disk:  # B13 round 14 Q3, Q18, Q36: step 1 announced them
             from_gone.append(name)
+            continue
+        # B13 round 16 T4, T14: the Configuration line names its cause. Keyed on the report's own reading,
+        # never on the fix text: a sign-in or folder FAIL whose fix is the person's that no step announced
+        # stays unexpected (O13, Q36)
+        if tag == "FAIL" and name in refusing:
+            from_config.append(name)
             continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
@@ -8164,16 +8204,27 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         )
     if yours:
         parts.append(f"yours {len(yours)}: {', '.join(yours)} (see WAITING ON YOU)")
+    # A "from" bucket's check count is in a bracket with its unit: after "stop" or "disk" a bare number read
+    # as a name ("not on disk 2"; B13 round 16 T20, T34)
     if from_stop:
-        parts.append(f"from the sign-in stop {len(from_stop)}: {', '.join(f'{n} FAIL' for n in from_stop)}")
+        parts.append(
+            f"from the sign-in stop ({_plural(len(from_stop), 'check')}): "
+            + ", ".join(f"{n} FAIL" for n in from_stop)
+        )
     if from_gone:
         folders = len({name.rsplit(".", 1)[0] for name in from_gone})
         step = fr.latest.layout.folder_question_step if fr is not None and fr.latest is not None else 1
         parts.append(
             # the number counts checks, as every other bucket's does; the folder count is in the words, as the
             # folders line says it (B13 round 15 S12, S27)
-            f"from the {_plural(folders, 'synced folder')} step {step} found not on disk {len(from_gone)}: "
-            + ", ".join(f"{n} FAIL" for n in from_gone)
+            f"from the {_plural(folders, 'synced folder')} step {step} found not on disk "
+            f"({_plural(len(from_gone), 'check')}): " + ", ".join(f"{n} FAIL" for n in from_gone)
+        )
+    if from_config:
+        parts.append(
+            f"from the configuration a sync refuses ({_plural(len(from_config), 'check')}): "
+            + ", ".join(f"{n} FAIL" for n in from_config)
+            + " (see Configuration)"
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)

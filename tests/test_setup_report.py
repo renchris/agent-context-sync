@@ -11816,7 +11816,10 @@ def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
     assert doctor.provider_state(provider) == "signed-out"
     read.clear()
     stop, unexpected = bucket(doctor_line())
-    assert stop.startswith("2: ") and "listable FAIL" in stop and "FAIL" not in unexpected, (stop, unexpected)
+    assert stop.startswith("(2 checks): ") and "listable FAIL" in stop and "FAIL" not in unexpected, (
+        stop,
+        unexpected,
+    )
     # doctor's own status check passes its 120 s; the report's read is bounded and done once for 2 calls
     reports = [t for folder, t in read if folder == provider and t <= setup_report._LISTING_S]
     assert len(reports) == 1, read
@@ -11848,7 +11851,7 @@ def test_the_sign_in_stop_bucket_takes_the_folders_install_sh_calls_signed_out(
     shutil.rmtree(provider)
     assert doctor.provider_state(provider) == doctor.provider_state(library) == "signed-out"
     stop, unexpected = bucket(doctor_line())
-    assert stop.startswith("4: ") and "FAIL" not in unexpected, (stop, unexpected)
+    assert stop.startswith("(4 checks): ") and "FAIL" not in unexpected, (stop, unexpected)
 
 
 def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
@@ -11874,8 +11877,12 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     def assert_buckets_add_up(line: str) -> None:
         # B13 round 15 S12, S27: every bucket counts checks, so the buckets add up to the FAILs and warns
         fails, warns = (int(n) for n in re.search(r"- doctor: (\d+) FAIL, (\d+) warn", line).groups())
-        counted = re.findall(r"(?:expected|yours|stop|not on disk|unexpected) (\d+)\b", line)
-        assert sum(map(int, counted)) == fails + warns, line
+        # B13 round 16 T20, T34: a "from" bucket's count is in a bracket with its unit, no digit after "disk"
+        counted = re.findall(
+            r"(?:expected|yours|unexpected) (\d+)\b|(?:stop|disk|refuses) \((\d+) checks?\)", line
+        )
+        assert sum(int(a or b) for a, b in counted) == fails + warns, line
+        assert re.search(r"not on disk \d", line) is None, line
 
     def summary(listed: str) -> str:
         set_up_log(fake_mac, install, listed=listed, list_step="done note=listed-6")
@@ -11888,9 +11895,9 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     assert "not on disk" not in line and "listable FAIL" in line.split(" · unexpected ", 1)[1], line
     got = summary(" synced=2 gone=1")
     line = _line(got, "- doctor: ")
-    bucket, unexpected = line.split(" · from the 1 synced folder step 1 found not on disk 2: ", 1)[1].split(
-        " · unexpected ", 1
-    )
+    bucket, unexpected = line.split(" · from the 1 synced folder step 1 found not on disk (2 checks): ", 1)[
+        1
+    ].split(" · unexpected ", 1)
     assert bucket.count(" FAIL") == 2 and "listable FAIL" in bucket and "volume FAIL" in bucket, line
     assert "FAIL" not in unexpected, line
     assert_buckets_add_up(line)
@@ -11898,12 +11905,75 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     # a SharePoint library not synced beside its OneDrive-<org> is in install.sh's gone= count too
     shutil.rmtree(fake_mac["two"].parents[1])
     line = _line(summary(" synced=2 gone=2"), "- doctor: ")
-    assert " · from the 2 synced folders step 1 found not on disk 4: " in line, line
+    assert " · from the 2 synced folders step 1 found not on disk (4 checks): " in line, line
     assert_buckets_add_up(line)
     assert "FAIL" not in line.split(" · unexpected ", 1)[1], line
     # two folders missing where step 1 counted one: which one went later cannot be told, so both unexpected
     line = _line(summary(" synced=2 gone=1"), "- doctor: ")
     assert "not on disk" not in line and line.split(" · unexpected ", 1)[1].count(" FAIL") == 4, line
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 16 T4, T14: a vanished source (CF), a policy.toml that does not pass (PT) and a bad
+    ``[governance]`` key (GV) each made the Summary's doctor line say ``unexpected 1: <check> FAIL`` beside a
+    Configuration line naming that very refusal. The FAIL of a configuration the report itself reads as
+    refused now has its own bucket; the outcome still counts it. Keyed on that reading, not on doctor's
+    fix text: a ``policy`` FAIL whose policy loads, and an unrelated FAIL beside a refused one, stay
+    unexpected."""
+    real = cli._status_checks
+    extra: list[doctor.CheckResult] = []
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        refused = ("policy", "governance.config", "config.vanished_sources")
+        kept = [c for c in real(config, offline=offline) if c.ok or c.severity is not doctor.Severity.ERROR]
+        kept += [c for c in real(config, offline=offline) if not c.ok and c.name in refused]
+        return kept + extra
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    whole = cfg.read_text(encoding="utf-8")
+
+    def doctor_line() -> str:
+        _rc, text, _ = report(tmp_path, cfg)
+        return _line(section(text, "Summary"), "- doctor: ")
+
+    def bucket(check: str) -> str:
+        return f" · from the configuration a sync refuses (1 check): {check} FAIL (see Configuration) · "
+
+    def unexpected(line: str) -> str:  # fake_mac's own warns are unexpected too: the FAILs are the point
+        return line.split(" · unexpected ", 1)[1]
+
+    # CF: a source's block deleted while its pages are mirrored
+    (fake_mac["two"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    gone = next(src.id for src in load_config(cfg).sources if src.path == fake_mac["two"])
+    head, *blocks = whole.split("[[source]]")
+    cfg.write_text("[[source]]".join([head, *(b for b in blocks if f'id = "{gone}"' not in b)]), "utf-8")
+    line = doctor_line()
+    assert bucket("config.vanished_sources") in line and "FAIL" not in unexpected(line), line
+    # beside an unrelated FAIL, that one is still unexpected
+    extra.append(doctor.CheckResult("launchd.agent", False, "not loaded", fix="install.sh"))
+    line = doctor_line()
+    assert bucket("config.vanished_sources") in line and "launchd.agent FAIL" in unexpected(line), line
+    extra.clear()
+    cfg.write_text(whole, encoding="utf-8")
+    # PT: a policy.toml that does not pass
+    (cfg.parent / "policy.toml").write_text('[policy]\nexclude_label_ids = ["Contoso Zebra"]\n', "utf-8")
+    line = doctor_line()
+    assert bucket("policy") in line and "FAIL" not in unexpected(line) and "Zebra" not in line, line
+    (cfg.parent / "policy.toml").unlink()
+    # GV: a [governance] key that does not pass
+    cfg.write_text('[governance]\nremote_url_prefixes = ["zeta-git.example"]\n\n' + whole, encoding="utf-8")
+    line = doctor_line()
+    assert bucket("governance.config") in line and "FAIL" not in unexpected(line), line
+    cfg.write_text(whole, encoding="utf-8")
+    # a policy FAIL the report does not read as a refusal (its policy loads): unexpected, as before
+    extra.append(doctor.CheckResult("policy", False, "something else", fix="fix [policy] / policy.toml"))
+    line = doctor_line()
+    assert "a sync refuses" not in line and "policy FAIL" in unexpected(line), line
 
 
 @pytest.mark.usefixtures("clean_doctor")
