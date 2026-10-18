@@ -1867,20 +1867,26 @@ class Manifest:
         0 when no FULL pass is recorded, and when the newest one recorded an error: a pass that failed
         after its walk but before its transaction committed has a ``run_sources`` row and stamped no row,
         so every file would count as not listed."""
+        return len(self.unlisted_paths(source_id, since=since))
+
+    def unlisted_paths(self, source_id: str, *, since: int = 0) -> list[str]:
+        """The relative paths of the rows :meth:`unlisted_count` counts, by the same rule, for a caller that
+        says where they are (the loop's "in all" clause: which of them lie under the gone empty folders, B13
+        round 15 S44). Read only for a wait that names them, never shown."""
         walk = self._db.execute(
             "SELECT run_id, error FROM run_sources WHERE source_id = ? AND pass_kind = ? "
             "ORDER BY run_id DESC LIMIT 1",
             (source_id, PassKind.FULL.value),
         ).fetchone()
         if walk is None or walk[1] is not None:
-            return 0
+            return []
         states = [s.value for s in _PRESENT_STATES]
-        row = self._db.execute(
-            "SELECT COUNT(*) FROM items WHERE source_id = ? AND is_dir = 0 "
+        rows = self._db.execute(
+            "SELECT rel_path FROM items WHERE source_id = ? AND is_dir = 0 "
             f"AND state IN ({', '.join('?' for _ in states)}) AND last_seen_run >= ? AND last_seen_run < ?",
             (source_id, *states, since, int(walk[0])),
-        ).fetchone()
-        return int(row[0])
+        ).fetchall()
+        return [str(r[0]) for r in rows]
 
     def rekey(self, source_id: str, old_id: str, new_id: str) -> None:
         """Safe-save continuity: move the old row's content hashes and outputs to the new stable id, drop

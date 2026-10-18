@@ -2540,10 +2540,63 @@ def test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs
     assert len(waits) == 2, waits
     assert "did not list" not in waits[0], waits
     assert (
-        # B13 round 14 Q57: one gone folder holds files: "the empty folder above"
-        "(the safe fix); in all, the last walk of work did not list 2 files the mirror still has, the ones "
+        # B13 round 14 Q57: one gone folder holds files: "the empty folder above"; round 15 S44: one file
+        # under it, "the one"
+        "(the safe fix); in all, the last walk of work did not list 2 files the mirror still has, the one "
         "under the empty folder above among them, and adding such a folder"
     ) in waits[1], waits
+
+
+@pytest.mark.parametrize("state", ["both missed", "scope root", "partly listed"])
+def test_the_in_all_clause_follows_the_files_under_the_gone_folder(tmp_path: Path, state: str) -> None:
+    """B13 round 15 S44: the "in all" clause chose "the one under the empty folder above" by the missed count
+    alone. A row last listed under an earlier root is not counted (scope root): the one file counted was the
+    locked folder's, and the line put it under the gone folder. A folder the walk listed part of (an lstat
+    failure on one entry) holds files it did list (partly listed): the one missed is the gone folder's. The
+    words follow how many missed files lie under the gone folders."""
+    root = _mixed_root(0)
+    _write(root / "Was Full" / "old.txt", "An old memo.\n")
+    config = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(config, mode=None)
+    (root / "Was Full" / "old.txt").unlink()
+    (root / "Zz Locked").chmod(0)
+    try:
+        run_cycle(config, mode=None)
+    finally:
+        (root / "Zz Locked").chmod(0o755)
+    db = sqlite3.connect(config.state_paths.db)
+    try:
+        rows = dict(
+            db.execute("SELECT rel_path, last_seen_run FROM items WHERE source_id='work' AND is_dir=0")
+        )
+        walk = db.execute("SELECT max(run_id) FROM run_sources WHERE source_id='work'").fetchone()[0]
+        if state == "scope root":
+            db.execute(
+                "UPDATE items SET last_seen_run=0 WHERE source_id='work' AND rel_path='Was Full/old.txt'"
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('scope_root:work', ?)",
+                (f"{rows['Zz Locked/memo.txt']}:{root}",),
+            )
+        elif state == "partly listed":
+            db.execute(
+                "UPDATE items SET last_seen_run=? WHERE source_id='work' AND rel_path='Zz Locked/memo.txt'",
+                (walk,),
+            )
+        db.commit()
+    finally:
+        db.close()
+    [wait] = [ln for ln in _lines(config) if ln.startswith("WAITING ON YOU") and "could not be listed" in ln]
+    listed = "the last walk of work did not list"
+    tail = {
+        "both missed": f"in all, {listed} 2 files the mirror still has, the one under the empty folder above "
+        "among them, and ",
+        "scope root": f"(the safe fix); {listed} 1 file the mirror still has, and ",
+        "partly listed": f"in all, {listed} 1 file the mirror still has, the one under the empty folder "
+        "above, and ",
+    }[state]
+    assert tail in wait, wait
+    assert (state == "scope root") is ("in all" not in wait), wait
 
 
 def test_state_md_points_its_waits_at_its_own_sections(tmp_path: Path) -> None:

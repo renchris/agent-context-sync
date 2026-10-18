@@ -698,8 +698,33 @@ def _missed(manifest: Manifest, source_id: str) -> int:
     """The mirrored files the source's last walk did not list, of those last listed under the root it has
     now (manifest meta ``scope_root:<id>``, ``<run>:<path>``): a complete pass retires a row last listed under
     an earlier root as a scope change instead of checking it (``cycle._Cycle._root_since``)."""
+    return manifest.unlisted_count(source_id, since=_root_since(manifest, source_id))
+
+
+def _root_since(manifest: Manifest, source_id: str) -> int:
+    """The run the source's current root was first walked in (manifest meta ``scope_root:<id>``), else 0."""
     since = (manifest.get_meta(_SCOPE_ROOT_META + source_id) or "").partition(":")[0]
-    return manifest.unlisted_count(source_id, since=int(since) if since.isdigit() else 0)
+    return int(since) if since.isdigit() else 0
+
+
+def _missed_below(manifest: Manifest, source_id: str, gone: Sequence[str]) -> tuple[int, int]:
+    """Of the files :func:`_missed` counts, how many lie under the gone empty folders ``gone``, and how many
+    of those folders hold one: the "in all" clause's words follow them, not the missed count, which a row
+    last listed under an earlier root leaves out and a folder the walk listed part of holds (B13 round 15
+    S44)."""
+    paths = manifest.unlisted_paths(source_id, since=_root_since(manifest, source_id))
+    below, _holding = files_below(gone, paths)
+    return sum(below.values()), sum(1 for n in below.values() if n)
+
+
+def _under_gone(missed: int, k: int, holders: int) -> str:
+    """Where the ``k`` of ``missed`` files under ``holders`` gone empty folders sit, for the "in all" clause
+    (B13 round 15 S44): by ``k``, the files that are there, never by ``missed`` alone, which put "the one
+    under the empty folder above" on a file under the folder that could not be listed."""
+    folders = "the empty folder above" if holders == 1 else "the empty folders above"
+    if k == missed:
+        return f"the one under {folders}" if k == 1 else f"all under {folders}"
+    return f"{'the one' if k == 1 else 'the ones'} under {folders} among them"
 
 
 def _checkpoint_base(docs: Path, head: str, pending: str | None) -> str:
@@ -856,8 +881,8 @@ def next_step(
     root_kinds: dict[str, frozenset[str] | None] = {}  # the kind of each root it could not list
     root_states: dict[str, str] = {}  # ... and, for a missing one, its provider's state at the walk (S3)
     # ... whose missed count also holds files under gone empty folders (B13 round 11 M57), with how many of
-    # those folders hold files, which the words follow (B13 round 14 Q57)
-    in_all: dict[str, int] = {}
+    # them do and how many of those folders hold one, which the words follow (B13 round 14 Q57, round 15 S44)
+    in_all: dict[str, tuple[int, int]] = {}
     sentinel_missing: list[
         str
     ] = []  # a local walk incomplete only for its missing sentinel (B13 round 11 M59)
@@ -920,7 +945,9 @@ def next_step(
                             if also:
                                 cannot_list(manifest, src, other, missed if held_below else 0)
                                 if held_below and any(below.values()):
-                                    in_all[src.id] = sum(1 for n in below.values() if n)
+                                    in_all[src.id] = _missed_below(
+                                        manifest, src.id, [d for d, n in below.items() if n]
+                                    )
                             elif other:
                                 inbox_partial.append(src.id)
                         elif manifest.get_meta(_ROOT_UNLISTED_META + src.id) and _unlisted_kinds(
@@ -1181,15 +1208,9 @@ def next_step(
             )
             + (
                 f"in all, the last walk of {sid} did not list {_files(missed)} the mirror still has, "
-                + (
-                    "the one under the empty folder above"
-                    if missed == 1
-                    else "the ones under the empty "
-                    + ("folder" if in_all[sid] == 1 else "folders")
-                    + " above among them"
-                )
+                + _under_gone(missed, *in_all[sid])
                 + ", and "
-                if sid in in_all
+                if in_all.get(sid, (0, 0))[0]
                 else f"the last walk of {sid} did not list {_files(missed)} the mirror still has, and "
             )
             + "adding such a folder to that source's exclude retires the pages under it at once, with no "
