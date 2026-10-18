@@ -611,7 +611,10 @@ def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "")
     (``cycle._ROOT_MISSING_STATE_META``, doctor's ``provider_state``, so the wait and doctor's fix agree: B13
     round 15 S3): signed in, the folder was renamed, moved or deleted there or is not synced; another
     account's folder there, the one it belongs to is signed out; a SharePoint library not synced on this Mac;
-    else the app is signed out or still setting up. With no state stored (a walk from before S3) it is worded
+    signed out, the sign-in first, and with the app's own folder gone (one lstat) no put-back, which cannot
+    be done there (B13 round 16 T19); else the app is signed out or still setting up, or the folder was
+    renamed. With no state stored (a walk from before S3), an app folder that is gone reads as signed out,
+    as ``provider_state`` says of it; otherwise it is worded
     from the configured path and one lstat of the organization's ``OneDrive-<org>`` folder, as
     ``provider_state`` does, never a listing: a library folder is a library not synced only beside it, else
     OneDrive is signed out (B13 round 15 S41). Under /Volumes the volume is not mounted. No Files and Folders
@@ -623,6 +626,11 @@ def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "")
     if provider is not None and not state and provider.name.startswith("OneDrive-SharedLibraries-"):
         org = it_request.org_of(provider.name)
         state = "library" if org is not None and os.path.lexists(provider.parent / f"OneDrive-{org}") else ""
+    # One lstat of the provider folder: gone, the app is signed out or the folder was never there, so the
+    # put-back cannot be the fix (B13 round 16 T19)
+    gone = provider is not None and not os.path.lexists(provider)
+    if gone and not state:
+        state = "signed-out"
     app = (provider.name.split("-", 1)[0] or "its sync app") if provider is not None else ""
     if provider is not None and state == "library":
         cause = "renamed, moved or deleted, or its SharePoint library is not synced on this Mac"
@@ -639,6 +647,18 @@ def _missing_root_wait(config: Config, sid: str, pause: str, *, state: str = "")
             f"while another {app} folder is there"
         )
         fix = f"sign in to {app} with the account it belongs to, put it back under that name, or {fix_path}"
+    elif provider is not None and state == "signed-out" and gone:
+        cause = (
+            f"{app} is not signed in on this Mac, since its own folder is gone too, or it was renamed, moved "
+            "or deleted"
+        )
+        fix = f"sign in to {app} or let it finish setting up, or {fix_path}"
+    elif provider is not None and state == "signed-out":
+        cause = (
+            f"{app} is not signed in on this Mac or is still setting up, or it was renamed, moved or deleted "
+            f"in {app}"
+        )
+        fix = f"sign in to {app} or let it finish setting up, put it back under that name, or {fix_path}"
     elif provider is not None:
         cause = f"renamed, moved or deleted in {app}, or {app} is not signed in on this Mac"
         fix = f"put it back under that name, sign in to {app} or let it finish setting up, or {fix_path}"

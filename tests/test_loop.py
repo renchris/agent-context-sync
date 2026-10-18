@@ -1489,6 +1489,14 @@ def _signed_out(app: str) -> str:
     )
 
 
+def _app_gone(app: str) -> str:
+    """B13 round 16 T19: the app's own folder is gone, so the sign-in comes first and no put-back."""
+    return (
+        f"({app} is not signed in on this Mac, since its own folder is gone too, or it was renamed, moved or "
+        f"deleted{_KEPT}sign in to {app} or let it finish setting up, {_FIX_GAMMA}"
+    )
+
+
 _LIBRARY = (
     f"(renamed, moved or deleted, or its SharePoint library is not synced on this Mac{_KEPT}sync the "
     f"SharePoint library to this Mac with Sync on its SharePoint page, put the folder back under that name, "
@@ -1499,15 +1507,15 @@ _LIBRARY = (
 @pytest.mark.parametrize(
     ("provider", "beside", "state", "words", "unstored"),
     [
-        ("Dropbox-Contoso", None, "signed-out", _signed_out("Dropbox"), _signed_out("Dropbox")),
+        ("Dropbox-Contoso", None, "signed-out", _app_gone("Dropbox"), _app_gone("Dropbox")),
         ("OneDrive-SharedLibraries-Contoso", "OneDrive-Contoso", "library", _LIBRARY, _LIBRARY),
         # B13 round 15 S41: with no OneDrive-Contoso beside it OneDrive is signed out, as doctor's [FAIL] says
         (
             "OneDrive-SharedLibraries-Contoso",
             None,
             "signed-out",
-            _signed_out("OneDrive"),
-            _signed_out("OneDrive"),
+            _app_gone("OneDrive"),
+            _app_gone("OneDrive"),
         ),
         # B13 round 15 S3: a folder renamed in a signed-in OneDrive, and another account's folder
         (
@@ -1525,7 +1533,7 @@ _LIBRARY = (
             "(renamed, moved or deleted, or the OneDrive account it belongs to is not signed in on this Mac, "
             f"while another OneDrive folder is there{_KEPT}sign in to OneDrive with the account it belongs "
             f"to, put it back under that name, {_FIX_GAMMA}",
-            _signed_out("OneDrive"),
+            _app_gone("OneDrive"),  # with no state stored, the gone app folder is all one lstat says
         ),
     ],
     ids=["dropbox", "library", "library-signed-out", "renamed", "other-account"],
@@ -1572,6 +1580,26 @@ def test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant(
     run_cycle(config, mode=None)
     with Manifest(config.state_paths.db) as manifest:
         assert manifest.get_meta(key) == ""  # cleared once the root is back
+
+
+def test_a_signed_out_app_whose_folder_is_there_keeps_the_put_back(tmp_path: Path) -> None:
+    """B13 round 16 T19, the other side: an app folder that is there but empty (signed out or still setting
+    up) reads as signed out too, and there the folder may also have been renamed in the app, so the
+    sign-in comes first and the put-back stays."""
+    cloud = Path(os.environ["HOME"]) / "Library" / "CloudStorage"
+    root = cloud / "Dropbox-Contoso" / "Shared Gamma"
+    root.parent.mkdir(parents=True)
+    config = _setup(tmp_path, local_source_table("gamma", root))
+    wait = loop._missing_root_wait(config, "gamma", "pause", state="signed-out")
+    assert wait.startswith(
+        "the folder of gamma does not exist (Dropbox is not signed in on this Mac or is still setting up, or "
+        f"it was renamed, moved or deleted in Dropbox{_KEPT}sign in to Dropbox or let it finish setting up, "
+        f"put it back under that name, {_FIX_GAMMA}"
+    ), wait
+    assert "Shared Gamma" not in wait and "Contoso" not in wait
+    assert loop._missing_root_wait(config, "gamma", "pause").startswith(
+        f"the folder of gamma does not exist {_signed_out('Dropbox')}"
+    ), "no state stored and the app folder there: the words of a walk from before round 15 S3"
 
 
 def test_an_inbox_folder_that_does_not_exist_is_a_wait_not_a_later_sync_note(
