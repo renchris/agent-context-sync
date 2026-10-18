@@ -1030,6 +1030,7 @@ class CycleReport:
     read_first: int = 0  # 2026-10-12 (§16.56 F86)
     rescreened: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
     rescreened_unchanged: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
+    rescreen_left: int = 0  # 2026-10-18 (§16.125 T33; round 16 lane B)
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -16336,6 +16337,7 @@ Amended 2026-10-14, §16.85 K53 (by §16.77 J11): the stderr line H31 leans on n
 <full holder>` (from `LockHeldError.holder`), no longer `skipped: lock held (...)`; the holder is
 `_describe_holder`'s, not the WARNING's `another sync (its pass: <label>)` (since §16.83 K37 it reads `pid N (a
 sync, its pass: poll) since ...`).
+Amended 2026-10-18, §16.125 T33: under the quiet wait the first beat is DEBUG too; install.sh's line announces it.
 
 **H33: a terminal's sync is not called the background one (`scripts/install.sh`, `agentsync.cli`).** A sync typed
 in a terminal holds the lock as `poll` or `reconcile`, as the job does, and the installer reads only the lock.
@@ -22017,6 +22019,8 @@ the finder's fix, was not built: no log keeps INFO at default verbosity, so the 
 Tests: `test_cli.py::test_a_sync_logs_an_alarm_its_report_prints_only_in_the_background_job` (a missing root and
 a file where the root belongs, foreground and job), `test_cli.py::
 test_a_cycle_that_raises_still_logs_the_alarms_it_held`.
+Amended 2026-10-18, §16.125 T37, T56: the end-of-walk listing warning and the cycle's helper-down and
+checkpoint-held lines are held back as well, the cycle's only when the report printed their words.
 
 **S3, S41: the missing-root wait words its cause as doctor does (`agentsync.cycle`, `agentsync.loop`; amends
 §16.113 Q34).** The wait offered `OneDrive is not signed in` for a folder renamed in a signed-in OneDrive and for
@@ -22033,6 +22037,8 @@ when `OneDrive-<org>` is there, one lstat as `provider_state` does, never a list
 otherwise. Test: `test_loop.py::test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant` (Dropbox signed
 out, a library beside its OneDrive and one without, a folder renamed in a signed-in OneDrive, another account's
 folder; each with the state and then without it).
+Amended 2026-10-18, §16.125 T19: `signed-out` with the app's own folder gone (one lstat) reads the sign-in first and
+offers no put-back; with it there, the sign-in first, then the put-back.
 
 **S4: doctor's fix for a folder renamed in a signed-in app names putting it back (`agentsync.ops.doctor`).** The
 `signed-in` fix read `fix path in [[source]] id = "<id>", or sync that folder in <App>`, while step 1 and the wait
@@ -22058,6 +22064,8 @@ the manifest cannot be read. install.sh's exit-78 branch stays, for an older ins
 doctor, sync; retired: no [FAIL], the sync tombstones), `test_cli.py::
 test_the_vanished_source_check_says_nothing_before_the_first_sync`, the `vanished` case of
 `test_install_oneshot.py::_persons_fail_lines`.
+Amended 2026-10-18, §16.125 T5, T13, T31, T57, T71, T85: the person's-fix lists name the block (`a [[source]]
+block to put back`); the widening this round left unbuilt is built.
 
 **S11, S28, S64: the held-listing note promises only what the run's end says (`agentsync.ops.doctor`,
 `scripts/install.sh`; amends §16.113 Q10).** The note said `if this run's sync runs, the end of this run says
@@ -22107,6 +22115,8 @@ one under ...` or `all under the empty folder(s) above`, some `the one` or `the 
 `test_loop.py::test_the_in_all_clause_follows_the_files_under_the_gone_folder` (both missed, a scope root, a
 folder listed in part), and the pin in `test_loop.py::
 test_a_gone_folder_beside_one_it_cannot_list_puts_the_count_where_it_belongs`.
+Amended 2026-10-18, §16.125 T39: the gone line's own tail follows `_missed_below` too: no `in all` when every
+missed file lies under the gone folders.
 
 **S65: relayed lines count by number (`agentsync.loop`, `agentsync.cli`, `scripts/install.sh`; amends §16.39
 N36).** The NEXT, WAITING ON YOU and note lines beside a known count still read `(s)`: `1 recording(s) ... they do
@@ -22121,6 +22131,8 @@ The purge command's own lines, the report's Summary lines and the lines older re
 two quotes read `N files`. Tests: the pins in `test_loop.py`, `test_cycle.py`, `test_cli.py`,
 `test_setup_report.py`, count 1 and count 2, and `test_install_oneshot.py::
 test_two_unreadable_patches_are_counted_by_their_number` (RB's words, two patches).
+Amended 2026-10-18, §16.125 T32: the purge command's own lines and the CLI's other count lines drop `(s)` too; log
+lines keep it.
 
 ### 16.120 Round 15: the pandoc fix texts and ship-land's CI reads (2026-10-18, wave B13 round 15 lane E)
 
@@ -22501,7 +22513,121 @@ Register: `docs/deploy/setup-feedback.md` K49.
 
 ### 16.125 Round 16: the person's fixes, the CLI's counts and WARNING lines (2026-10-18, wave B13 round 16 lane B)
 
-Reserved for round 16 lane B of B13.
+Lane B's round 16 items: T2, T5, T9, T12, T13, T19, T31, T32, T33, T36, T37, T38, T39, T55, T56, T57, T58, T71,
+T85, T86, all built. T5, T13, T31, T57, T71 and T85 are one defect from six finders (the person's-fix list leaves
+out the [[source]] block to put back), built once, with T2 and T9 (the policy and governance fixes) in the same
+commit; T32, T36 and T55 are one sweep of the CLI's `(s)` counts. T58 changes a comment only and T86 adds tests
+only, so no test fails without them.
+
+**T2, T5, T9, T13, T31, T57, T71, T85: the person's-fix list names every fix the classifier routes
+(`agentsync.cli`, `agentsync.ops.doctor`, `scripts/install.sh`; amends §16.119 S7).** Round 15 S7 made `put the
+[[source]] block back ` a person's fix in `doctor.PERSONS_FIX_RE` and install.sh's `persons_fails`, but both
+NEXT lists of the kinds of fix (install.sh's `PERSONS_FAILS`, status's `_fail_step`) still read `a folder or file
+to put back or sync, a [[source]] path, a sign-in, Rosetta to install or a native pandoc copy`. The policy check's
+fix, `fix [policy] / policy.toml`, and governance.config's, `fix [governance]`, matched neither pattern, so
+status's NEXT sent the agent to edit the compliance-owned policy.toml while step 2's NEXT for the same config error
+called it the person's. The fixes now read `the person fixes [policy] in policy.toml, which their compliance team
+owns: what the error names` (`cli.POLICY_FIX`) and `the person fixes [governance] in sources.toml: what the error
+names` (`cli.GOVERNANCE_FIX`); `the person ` joins both patterns as one alternative (also T12's fix below), and
+both lists read `(a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a
+[policy] or [governance] value, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc
+copy)`, status's from `cli.PERSONS_KINDS`, which a test finds word for word in `PERSONS_FAILS`. Measured against
+the verifiers' wording: a bad `[policy]` table in sources.toml never reaches the policy check (the config does not
+load, exit 78), so the fix names policy.toml only; a bad `[governance]` value does reach it. Lane P has the words
+for v25's step 2. Tests: `test_cli.py::test_a_policy_or_governance_value_that_does_not_load_is_the_persons_in_status`,
+the `policy` and `governance` cases of `test_install_oneshot.py::_persons_fail_lines` (through
+`test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report` and
+`test_doctors_persons_fix_words_are_install_shs`), and the list pins in `test_cli.py`, `test_install_oneshot.py`
+and `test_setup_report.py`.
+
+**T12: a manifest that is no database fails status and stops setup on one line (`agentsync.ops.doctor`,
+`agentsync.cli`, `scripts/install.sh`).** With manifest.sqlite overwritten by bytes that are no database, status
+and doctor exited 0 with every check `[ok]` and `NEXT: cannot read the state: DatabaseError: ...`, and init,
+add-source and sync ended on a traceback (exit 1), which install.sh turned into `fix the error above, then re-run`,
+a re-run that fails the same way. Doctor's `state_dir.manifest` check opens the manifest read-only
+(`doctor.manifest_unreadable`, `file:...?mode=ro`, reading `sqlite_master` as every open does, since a header can
+be intact over a damaged schema page) and fails only on SQLITE_NOTADB (26) or SQLITE_CORRUPT (11)
+(`doctor.MANIFEST_UNREADABLE_CODES`), extended codes included (`doctor.unreadable_code`); a locked, busy or unopenable manifest, an empty file and a healthy one print
+nothing, and status scans no table (damage there shows when a command reads it). Its fix,
+`doctor.MANIFEST_FIX`, is the person's (`the person decides, with a copy of it kept: restore it from a copy they
+trust, or move it aside so the next sync starts a new one, which converts every file again ... and forgets the
+deletions, holds and archive it recorded`), never a command for the agent. When the loop's state cannot be read
+and a check failed, status's NEXT is rule 1's from the first fix (`cli._next_or_fix`), never `cannot read the
+state`. `cli._state_readable` turns a NOTADB or CORRUPT error in init, add-source and sync (the manifest is the one
+database they open) into
+`state: <path> cannot be read: <error> (fix: <MANIFEST_FIX>)` (`cli.StateUnreadableError`) and exit 65 (EX_DATAERR, `cli.EXIT_STATE`, in the
+help's exit codes); any other database error prints one `error:` line (the traceback at `-v`) and exits 1 as before.
+install.sh's `config_failed` gives exit 65 the person's NEXT, `agentsync's state file cannot be read (the error
+above, with its fix; ...): fixing it is the person's, not a step for the agent, so show them the error and go on to
+the report; once it is fixed, the next run is: <install.sh command>`, whether or not this run wrote the config; any
+other exit keeps fail's line. setup-report still writes its report over such a manifest (measured). Tests:
+`test_cli.py::test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line`,
+`test_cli.py::test_a_manifest_a_sync_holds_is_no_fail`,
+`test_install_oneshot.py::test_a_state_file_that_cannot_be_read_is_the_persons_to_fix`.
+
+**T19: a missing root whose app folder is gone names the sign-in first (`agentsync.loop`; amends §16.119 S3).**
+With the provider folder itself gone (signed out, `provider_state` `signed-out`), the wait read `renamed, moved or
+deleted in <App>, or <App> is not signed in on this Mac` and offered `put it back under that name` first, which
+cannot be done there, while doctor named only the sign-in. One lstat of the provider folder decides: gone, the
+cause reads `<App> is not signed in on this Mac, since its own folder is gone too, or it was renamed, moved or
+deleted` and the fix `sign in to <App> or let it finish setting up, or fix path ...`; there but empty, `<App> is
+not signed in on this Mac or is still setting up, or it was renamed, moved or deleted in <App>` with the sign-in,
+the put-back and the path. With no state stored, a gone app folder reads as signed out; corrected from the
+verifier: the other-account row's app folder is gone too, so its unstored wording changes with the others. No
+path, no provider folder name, no listing. Tests: `test_loop.py::
+test_a_cloud_source_root_that_is_gone_names_its_app_not_a_grant`, `test_loop.py::
+test_a_signed_out_app_whose_folder_is_there_keeps_the_put_back`.
+
+**T58: the signed-in fix's comment says why the path leads (`agentsync.ops.doctor`).** The comment said the
+put-back comes first, while the fix names the path first, which `PERSONS_FIX_RE` (anchored) needs; it now says so,
+on its own line. No output changes.
+
+**T38: exclude-empty names each folder it leaves by its own cause (`agentsync.cli`).** One clause, `held file(s)
+the mirror still has, or its exclude would also match a folder that does`, stood for both causes, though the
+command knows both. A folder that held files reads `it held 1 file the mirror still has` (`they held N files`,
+summed over the folders) with the retire warning; one whose glob collides gets the loop's words, `has a [ in its
+name, so an exclude of it would also match a folder whose files are mirrored: rename or remove the empty folder
+in the cloud drive`; a mixed run prints both, then the one pointer. Tests: `test_exclude_empty.py::
+test_folders_left_for_two_causes_are_said_apart` and the pins in `test_exclude_empty.py` and `test_loop.py`.
+
+**T39: the gone line says its missed files once (`agentsync.loop`; amends §16.119 S44).** `held 1 file ...; in
+all, the last walk of X did not list 1 file ...` said one file twice. The gone line's tail follows
+`_missed_below`: none when every missed file lies under the gone folders, `in all, ... N files ..., the one(s)
+under the empty folder(s) above among them` when some lie elsewhere, the count alone when none lies there. Tests:
+`test_loop.py::test_a_gone_folder_line_says_in_all_only_for_files_missed_beside_its_own` and the three pins it
+changed.
+
+**T32, T36, T55, T86: the CLI's own counts drop `(s)` (`agentsync.cli`, `agentsync.cycle`, `agentsync.publish`;
+amends §16.119 S65).** The sync run line (`1 change`, `0 changes`), its absent-file bits, add-source's `tightened
+N paths ...` (`1 path ...: it holds`), status's absent count, the purge-queue check, the policy summary, setup-report's
+`N replacements of M values`, curate's headline and its blocking-finding NEXT, STATE.md's blocking-finding NEXT,
+adopt, purge, compact-history and hold lines, and cycle.py's user-facing alarms and STATE.md lines take
+`text.plural`, with verbs and pronouns by the count; a page count no line knows (a workbook's sheets) keeps
+`page(s)`, and log lines keep `(s)`. T55's verifier kept curate's headline; T32's, later, lists it, and T32 is
+built. T86 adds the count-2 pins S65 claimed: the over-budget and refused waits, rule 3, rule 7 and rule 9. Tests:
+`test_loop.py::test_the_online_only_waits_agree_with_a_count_of_two`, `test_rule_3_two_sources_never_synced`,
+`test_rule_7_two_curation_errors`, `test_rule_9_two_rows_are_curated_up_to_the_bound`, the count-2 case of
+`test_publish.py::test_state_md_next_is_the_blocking_finding_that_held_the_commit`, and the pins in
+`test_cli.py`, `test_cycle.py`, `test_publish.py`.
+
+**T37, T56, T33: a WARNING the report prints is held back from a foreground sync (`agentsync.arm_local`,
+`agentsync.cycle`, `agentsync.cli`; amends §16.119 S2, §16.68 H31).** A foreground sync still printed raw
+`<time> WARNING ...` lines beside report lines saying the same: arm_local's `N folders could not be listed` (T37),
+the OCR and media helper's down lines and `checkpoint held` (T56), the `[policy] changed` re-screen line and the
+quiet lock wait's first beat under install.sh's own wait line (T33). The end-of-walk `_warn_unlisted` carries
+`ECHOED_ALARM` (the unknown-folder alarm names each folder and its reason); the one before a listing time-out
+does not, since that alarm names only the folder that stalled. The cycle's lines carry `cycle.ECHOED_WHEN`
+(`alarm`, `checkpoint`, `rescreen`), and `cli._run` logs a held one after the cycle unless the report printed its
+words (`cli._printed`: its alarm line, a held checkpoint, a re-screen count with none of the [policy] change's
+files left, `CycleReport.rescreen_left`), so an OCR helper that went down with no alarm, or a re-screen still
+waiting, is still said. The recording pass now adds the OCR alarm when the helper
+first fails reading a recording's frames. The checkpoint line counts `1 curation error`. Under
+`AGENTSYNC_QUIET_LOCK_WAIT=1` every beat is DEBUG, the first too. The LaunchAgent's job keeps every line. Tests:
+`test_cli.py::test_a_folder_a_sync_cannot_list_is_warned_only_in_the_background_job`,
+`test_cli.py::test_a_cycle_warning_the_report_prints_is_held_back_only_when_it_prints_it`,
+`test_cycle.py::test_an_ocr_helper_that_first_fails_in_the_recording_pass_has_its_alarm`, the time-out case in
+`test_arm_local.py::test_a_held_listing_still_warns_about_the_folders_it_could_not_list`, and
+`test_cli.py::test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`.
 
 ### 16.126 Round 16: the pandoc fix and wait, the CI flakes, converter counts (2026-10-18, wave B13 round 16 lane E)
 
