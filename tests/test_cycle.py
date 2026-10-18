@@ -2291,7 +2291,7 @@ def test_an_image_on_this_mac_is_read_once_in_the_staging_folder(
     fm, body = _image_page(sample_config, SITE_PLAN)
     assert fm["status"] == "current" and fm["converter"].startswith("image-ocr@2.0.0+ocr-paper-vision-")
     assert fm["source_title"] == "Contoso Site Plan.png", "the unit has no title: the shown name stands in"
-    assert fm["summary"] == "Image 800x600 px; OCR: 2 line(s)"
+    assert fm["summary"] == "Image 800x600 px; OCR: 2 lines"
     assert body.startswith("> [UNTRUSTED CONTENT]") and body.rstrip().endswith(
         "[image · 800x600 px · text read by on-device OCR (Apple Vision)]\n\nLoading dock\nNorth gate: closed"
     )

@@ -18,6 +18,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError
 from agentsync.model import TEAMS_MONTH_SCHEMA, RenderedUnit, UnitKind
+from agentsync.text import plural
 
 _EMITTER_VERSION = "1.0.0"
 _MARK = "AGENTSYNCMSGSPLIT"
@@ -212,7 +213,8 @@ class TeamsMonthConverter:
         rendered = dict(zip((m.id for m in live), self._bodies([m.body_html for m in live]), strict=True))
         title = f"{team} / {channel} — {month}"
         out = [f"# {title}", ""]
-        out += [f"{len(msgs)} message(s) in {len(tops)} thread(s) · channel `{channel}` in team `{team}`", ""]
+        counts = f"{plural(len(msgs), 'message')} in {plural(len(tops), 'thread')}"
+        out += [f"{counts} · channel `{channel}` in team `{team}`", ""]
         if not msgs:
             out += ["[no messages this month]", ""]
         for top in tops:
@@ -220,7 +222,7 @@ class TeamsMonthConverter:
             for reply in replies.get(top.id, []):
                 out += self._message(reply, rendered, quoted=True)
         body = "\n".join(out)
-        summary = f"Teams {team} / {channel}, {month}: {len(msgs)} message(s) in {len(tops)} thread(s)"
+        summary = f"Teams {team} / {channel}, {month}: {counts}"
         subjects = [m.subject for m in tops if m.subject]
         if subjects:
             summary += "; subjects: " + "; ".join(subjects)

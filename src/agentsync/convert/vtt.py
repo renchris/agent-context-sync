@@ -20,6 +20,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 _EMITTER_VERSION = "1.0.0"
 _TURN_PAUSE_MS = 1000  # a pause of this much or more between two cues of one speaker starts a new turn
@@ -224,7 +225,8 @@ class VttConverter:
                 file_stem="",
                 title="Meeting transcript",
                 summary=(
-                    f"Meeting transcript (WebVTT): {len(turns)} turn(s), {speakers} named speaker(s), "
+                    f"Meeting transcript (WebVTT): {plural(len(turns), 'turn')}, "
+                    f"{plural(speakers, 'named speaker')}, "
                     f"{_clock(max(t.end_ms for t in turns))} long"
                 ),
                 body=body,

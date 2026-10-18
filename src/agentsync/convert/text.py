@@ -23,6 +23,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 _EMITTER_VERSION = "1.0.0"
 _TABLE_SIDECAR = "full-table.csv"
@@ -123,7 +124,7 @@ class PlainTextConverter:
                 body, sidecars = self._capped(text, lang)
             first = next((ln.strip() for ln in lines if ln.strip()), "")
             title = first[:120] if first else "Empty text file"
-            summary = f"Text ({suffix[1:] or 'no extension'}): {len(lines)} line(s)"
+            summary = f"Text ({suffix[1:] or 'no extension'}): {plural(len(lines), 'line')}"
             if suffix == ".url":
                 target = _shortcut_target(lines)
                 title = ""

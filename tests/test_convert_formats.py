@@ -27,6 +27,7 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
+import openpyxl
 import pytest
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
@@ -3414,7 +3415,44 @@ def test_the_document_time_limit_is_the_one_a_word_document_gives_the_helper(tmp
 def test_text_fixture_is_fenced(fixture_files: dict[str, Path]) -> None:
     u = _one(PlainTextConverter(CFG).convert(fixture_files["sample.txt"], name="sample.txt"))
     assert u.body == "```text\nPlain text notes.\nSecond line with purchase order.\n```\n"
-    assert u.title == "Plain text notes." and u.summary == "Text (txt): 2 line(s)"
+    assert u.title == "Plain text notes." and u.summary == "Text (txt): 2 lines"
+
+
+def test_a_known_count_has_no_s_at_one_or_at_many(tmp_path: Path) -> None:
+    """B13 round 15 S52: Q39 moved the pdf, deck and diagram counts to ``plural``, and the other converters
+    still wrote "1 line(s)", "1 sheet(s)", "1 attachment(s)", "1 turn(s)" and "1 message(s) in 1 thread(s)",
+    so one mirror mixed both styles. Each count reads as ``plural`` gives it, at 1 here and at many in each
+    converter's own test above or below."""
+    text = _write(tmp_path, "one.txt", "Contoso notes.\n")
+    assert _one(PlainTextConverter(CFG).convert(text, name=text.name)).summary == "Text (txt): 1 line"
+    vtt = _write(tmp_path, "one.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<v Alex Doe>Good morning.\n")
+    assert _one(VttConverter(CFG).convert(vtt, name=vtt.name)).summary == (
+        "Meeting transcript (WebVTT): 1 turn, 1 named speaker, 00:00:03 long"
+    )
+    book = openpyxl.Workbook()
+    book.active.title = "Contoso"
+    book.active["A1"] = "region"
+    book.save(tmp_path / "one.xlsx")
+    index, _sheet = XlsxConverter(CFG).convert(tmp_path / "one.xlsx", name="one.xlsx")
+    assert index.summary == "Workbook: 1 sheet: Contoso (A1:A1)", index.summary
+    assert "Workbook with 1 worksheet; each sheet is its own page" in index.body
+    book.create_sheet("Fabrikam")["B2"] = "spend"
+    book.save(tmp_path / "two.xlsx")
+    index = XlsxConverter(CFG).convert(tmp_path / "two.xlsx", name="two.xlsx")[0]
+    assert index.summary.startswith("Workbook: 2 sheets: Contoso (A1:A1)"), index.summary
+    assert "Workbook with 2 worksheets; each sheet is its own page" in index.body
+    csv = ("a.csv", b"x\n", "text/csv")
+    one, two = (eml_bytes(subject="Contoso", attachments=(csv,) * n) for n in (1, 2))
+    for data, many in ((one, "1 attachment"), (two, "2 attachments")):
+        u = _one(EmlConverter(CFG).convert(_write(tmp_path, "m.eml", data), name="m.eml"))
+        assert u.summary.endswith(f": Contoso; {many}"), u.summary
+    data = msg_bytes(subject="Contoso", attachments=(("a.csv", b"x\n", "text/csv"),))
+    u = _one(MsgConverter(CFG).convert(_write(tmp_path, "m.msg", data), name="m.msg"))
+    assert u.summary.endswith(": Contoso; 1 attachment"), u.summary
+    doc = teams_doc([teams_msg("1", "2026-09-01T10:00:00Z", "<p>only</p>")])
+    u = _one(TeamsMonthConverter(CFG).convert(_write(tmp_path, "m.teams.json", doc), name="m.teams.json"))
+    assert "1 message in 1 thread · channel" in u.body
+    assert u.summary.startswith("Teams Acme / ") and u.summary.endswith(": 1 message in 1 thread"), u.summary
 
 
 def test_csv_fixture_is_a_table(fixture_files: dict[str, Path]) -> None:
@@ -3495,7 +3533,7 @@ def test_vtt_fixture_is_timed_turns(fixture_files: dict[str, Path]) -> None:
         "[00:00:12] SAID Sam Roe: One more thing.\n"
     )
     assert u.title == "Meeting transcript"
-    assert u.summary == "Meeting transcript (WebVTT): 4 turn(s), 2 named speaker(s), 00:00:13 long"
+    assert u.summary == "Meeting transcript (WebVTT): 4 turns, 2 named speakers, 00:00:13 long"
 
 
 def test_vtt_turns_close_at_a_new_speaker_or_a_pause_of_a_second(tmp_path: Path) -> None:
@@ -3631,7 +3669,7 @@ def test_eml_fixture_headers_body_attachments_no_base64(fixture_files: dict[str,
     assert "second phase" not in u.body
     for leak in ("Content-Transfer-Encoding", "MIME-Version", "cmVnaW9u", "boundary="):
         assert leak not in u.body
-    assert u.title == "Acme kickoff recap" and "1 attachment(s)" in u.summary
+    assert u.title == "Acme kickoff recap" and u.summary.endswith("; 1 attachment")
 
 
 def test_eml_encoded_subject_html_only_and_alternatives(tmp_path: Path) -> None:
@@ -3803,7 +3841,7 @@ def test_msg_headers_body_attachments_like_an_eml(tmp_path: Path) -> None:
     assert "region,spend" not in u.body and "\r" not in u.body, "attachments are listed, not converted"
     assert u.summary == (
         "Email from Jane Doe <jane.doe@example.com>, Mon, 14 Sep 2026 09:12:00 +0000: "
-        "Contoso kickoff recap; 4 attachment(s)"
+        "Contoso kickoff recap; 4 attachments"
     )
 
 
@@ -4211,7 +4249,8 @@ def test_teams_order_deleted_orphans_emoji_edits_attachments(tmp_path: Path) -> 
     assert "> **Bob** — 2026-09-01T10:05:00Z\n>\n> [deleted]" in body and "gone" not in body
     assert "(reply to message 999, which is not in this month)" in body
     assert "- plan.docx — <https://contoso.sharepoint.com/plan.docx>" in body
-    assert "4 message(s) in 3 thread(s)" in body
+    assert "4 messages in 3 threads · channel" in body
+    assert u.summary.startswith("Teams Acme / ") and ": 4 messages in 3 threads" in u.summary
 
 
 def test_teams_batch_equals_per_message_conversion(tmp_path: Path) -> None:

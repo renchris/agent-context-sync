@@ -27,6 +27,7 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 _EMITTER_VERSION = "1.0.0"
 _INDEX_TERM_LIMIT = 400  # distinct terms kept on 00-index (most frequent first, then listed sorted)
@@ -367,7 +368,8 @@ def _index_body(
         else ""
     )
     out += [
-        f"Workbook with {len(sheets)} worksheet(s); each sheet is its own page next to this index.{mode}",
+        f"Workbook with {plural(len(sheets), 'worksheet')}; each sheet is its own page next to this index."
+        f"{mode}",
         "",
     ]
     rows = []
@@ -415,7 +417,7 @@ def _index_body(
 def _index_summary(sheets: list[_Sheet]) -> str:
     """Converter-derived summary of the workbook."""
     parts = [f"{s.title} ({s.used_range})" for s in sheets]
-    return f"Workbook: {len(sheets)} sheet(s): " + _join_limited(parts, limit=170)
+    return f"Workbook: {plural(len(sheets), 'sheet')}: " + _join_limited(parts, limit=170)
 
 
 def _index_title(sheets: list[_Sheet]) -> str:

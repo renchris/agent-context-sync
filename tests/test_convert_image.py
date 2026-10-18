@@ -212,7 +212,7 @@ def test_an_image_page_is_a_header_with_the_size_then_the_text(tmp_path: Path, e
     conv = ImageConverter(CFG, engine)
     (unit,) = conv.convert(src, name=src.name)
     assert unit.body == f"{HEAD}\n\nLoading dock\nNorth gate: closed\n"
-    assert unit.summary == "Image 800x600 px; OCR: 2 line(s)"
+    assert unit.summary == "Image 800x600 px; OCR: 2 lines"
     assert (unit.title, unit.name, unit.file_stem) == ("", "", ""), "publish falls back to the shown name"
     assert (unit.unit_id, unit.kind, unit.index, unit.of, unit.sidecars) == (
         "whole",
@@ -405,7 +405,7 @@ def test_a_multi_page_tiff_gets_one_anchor_per_page(tmp_path: Path, engine: ocr.
         "<!-- page: 2 -->\n\n[no text on this page]\n\n"
         "<!-- page: 3 -->\n\n&lt;!-- page: 7 -->\nSigned\n"
     )
-    assert unit.summary == "Image 800x600 px, 3 pages (3 read); OCR: 4 line(s)"
+    assert unit.summary == "Image 800x600 px, 3 pages (3 read); OCR: 4 lines"
     assert calls(engine.helper)[-1]["args"][5] == str(ocr.MAX_PAGES)
 
 
@@ -420,7 +420,7 @@ def test_a_tiff_of_one_page_has_no_anchor_and_pages_past_the_limit_are_counted(
         "[image · 800x600 px · 3 pages, first 2 read · text read by on-device OCR (Apple Vision)]\n\n"
         "<!-- page: 1 -->\n\nfirst\n\n<!-- page: 2 -->\n\nsecond\n"
     )
-    assert unit.summary == "Image 800x600 px, 3 pages (2 read); OCR: 2 line(s)"
+    assert unit.summary == "Image 800x600 px, 3 pages (2 read); OCR: 2 lines"
 
 
 def test_a_page_the_helper_could_not_read_is_marked_and_the_rest_is_kept(tmp_path: Path) -> None:
@@ -440,7 +440,7 @@ def test_a_page_the_helper_could_not_read_is_marked_and_the_rest_is_kept(tmp_pat
         "<!-- page: 3 -->\n\n[page not read: too small to hold text]\n\n"
         "<!-- page: 4 -->\n\n[page not read: recognition failed]\n"
     )
-    assert unit.summary == "Image 800x600 px, 4 pages (1 read); OCR: 1 line(s)"
+    assert unit.summary == "Image 800x600 px, 4 pages (1 read); OCR: 1 line"
     # No page gave a line: a page Vision gave up on makes it a failure, anything else a cached stub.
     with pytest.raises(ocr.OcrError, match=r"^on-device OCR failed$"):
         one(answering(tmp_path / "retry", frame(0, 2), frame(1, 2, error="recognition failed")), src)
@@ -459,7 +459,7 @@ def test_pages_are_a_matter_of_the_bytes_not_the_name(tmp_path: Path, engine: oc
     assert unit.body == (
         "[image · 800x600 px · 2 frames, first 1 read · text read by on-device OCR (Apple Vision)]\n\nfirst\n"
     )
-    assert unit.summary == "Image 800x600 px, 2 frames (1 read); OCR: 1 line(s)"
+    assert unit.summary == "Image 800x600 px, 2 frames (1 read); OCR: 1 line"
     assert [c["args"][5] for c in calls(engine.helper)] == [str(ocr.MAX_PAGES), "1"]
 
 

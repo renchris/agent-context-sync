@@ -506,7 +506,7 @@ class ImageConverter:
             head += f" · {total} {unit}" + (f", first {len(frames)} read" if len(frames) < total else "")
             summary += f", {total} {unit} ({len(frames) - unread} read)"
         head += f" · text read by on-device OCR ({_ENGINE_LABEL})]"
-        summary += f"; OCR: {count} line(s)"
+        summary += f"; OCR: {plural(count, 'line')}"
         body = "\n".join([head, "", *out]).rstrip("\n")
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
         return (

@@ -25,6 +25,7 @@ from agentsync.convert.base import OptionValue, make_unit
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 _EMITTER_VERSION = "1.1.0"
 _HEADERS: tuple[str, ...] = ("From", "To", "Cc", "Date", "Subject", "Message-ID", "In-Reply-To", "References")
@@ -212,7 +213,7 @@ class EmlConverter:
         date = _header(msg, "Date")
         summary = f"Email from {sender}" + (f", {date}" if date else "") + f": {subject or '(no subject)'}"
         if attachments:
-            summary += f"; {len(attachments)} attachment(s)"
+            summary += f"; {plural(len(attachments), 'attachment')}"
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
         return (
             make_unit(

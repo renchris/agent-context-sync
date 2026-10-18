@@ -48,6 +48,7 @@ from agentsync.convert.eml import EmlConverter
 from agentsync.convert.pandoc import _pandoc_options, _PandocRunner
 from agentsync.errors import ConversionError, NotConvertibleError, UnreadableSourceError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -307,7 +308,7 @@ class MsgConverter:
         date = dict(present).get("Date", "")
         summary = f"Email from {sender}" + (f", {date}" if date else "") + f": {subject or '(no subject)'}"
         if rows:
-            summary += f"; {len(rows)} attachment(s)"
+            summary += f"; {plural(len(rows), 'attachment')}"
         body, sidecars = _cap_body(body, self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR)
         return (
             make_unit(
