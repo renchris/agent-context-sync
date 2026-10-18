@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import dataclasses
 import importlib
 import inspect
 import pkgutil
 import re
-from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -456,12 +456,136 @@ def test_dataclass_stubs_list_the_code_fields() -> None:
     assert len(checked) >= 65
 
 
+def _module_bindings(tree: ast.Module, module: str) -> tuple[dict[str, str], set[tuple[str, str]]]:
+    """What the imports anywhere in ``module`` bind (a lazy import inside a function too): each local name
+    bound to a module (``import agentsync.x as y``, ``from agentsync import x``), and each (module, name)
+    pair imported by ``from <module> import <name>``, relative imports resolved."""
+    package = module.split(".")[:-1]  # a package's own __init__ module included
+    modules: dict[str, str] = {}
+    names: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                head = alias.name.split(".")[0]
+                modules[alias.asname or head] = alias.name if alias.asname else head
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                up = package[: len(package) - node.level + 1]
+                base = ".".join([*up, *([base] if base else [])])
+            for alias in node.names:
+                names.add((base, alias.name))
+                modules[alias.asname or alias.name] = f"{base}.{alias.name}"
+    return modules, names
+
+
+def _dotted(node: ast.expr, modules: dict[str, str]) -> str | None:
+    """The module an attribute's value names (``pandoc`` bound to agentsync.convert.pandoc, or
+    ``agentsync.convert.pandoc`` spelled out), else None."""
+    if isinstance(node, ast.Name):
+        return modules.get(node.id)
+    if isinstance(node, ast.Attribute):
+        head = _dotted(node.value, modules)
+        return None if head is None else f"{head}.{node.attr}"
+    return None
+
+
+def _dead_private_functions(sources: dict[str, str]) -> tuple[list[str], int]:
+    """The module-level private functions of ``sources`` (module name -> code) that no code reaches, as
+    ``module.name``, and how many there are in all. A function is reached by its name in its own module
+    outside its own body, by a ``from <its module> import`` of it in any module, or as an attribute of a
+    name bound to its module. Strings, comments, docstrings, ``self._x`` and another module's function of
+    the same name never count (B13 round 16 T64)."""
+    reached: set[tuple[str, str]] = set()
+    defs: list[tuple[str, str]] = []
+    for module, code in sources.items():
+        tree = ast.parse(code)
+        canonical = module.removesuffix(".__init__")
+        modules, imported = _module_bindings(tree, module)
+        reached |= {(m.removesuffix(".__init__"), n) for m, n in imported}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and (owner := _dotted(node.value, modules)) is not None:
+                reached.add((owner.removesuffix(".__init__"), node.attr))
+        own = [d for d in tree.body if isinstance(d, ast.FunctionDef | ast.AsyncFunctionDef)]
+        defs += [(canonical, d.name) for d in own if d.name.startswith("_") and not d.name.startswith("__")]
+        inside = {id(n): d.name for d in own for n in ast.walk(d) if n is not d}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and inside.get(id(node)) != node.id:
+                reached.add((canonical, node.id))
+    dead = sorted(f"{module}.{name}" for module, name in defs if (module, name) not in reached)
+    return dead, len(defs)
+
+
 def test_no_private_function_in_src_is_left_for_the_tests_alone() -> None:
     """B13 round 15 S46, S69: doctor's ``_pandoc_path`` and convert.pandoc's ``_bundled_pandoc`` stayed in
     src as one-line wrappers after their last caller moved to the function they wrap, called by tests only.
-    Every module-level private function in src is named in src outside its own ``def``."""
-    texts = [p.read_text(encoding="utf-8") for p in sorted(Path(agentsync.__file__).parent.rglob("*.py"))]
-    named = Counter(n for t in texts for n in re.findall(r"\b_[A-Za-z]\w*", t))
-    defs = [d for t in texts for d in re.findall(r"^(?:async )?def (_[A-Za-z]\w*)\(", t, re.M)]
-    assert len(defs) > 500, "the scan is broken"
-    assert sorted(d for d in defs if named[d] == 1) == []
+    Every module-level private function in src is reached by code in src. Round 16 T64: the scan counted
+    every textual mention, so a comment, a docstring, ``self._x`` or another module's function of the same
+    name hid a dead one; it now reads the syntax tree (:func:`_dead_private_functions`)."""
+    root = Path(agentsync.__file__).parent
+    sources = {
+        ".".join(("agentsync", *p.relative_to(root).with_suffix("").parts)): p.read_text(encoding="utf-8")
+        for p in sorted(root.rglob("*.py"))
+    }
+    dead, defs = _dead_private_functions(sources)
+    assert defs > 500, "the scan is broken"
+    assert dead == []
+
+
+_SCAN_SAMPLE_A = '''
+def _dead_in_prose():
+    """_dead_in_prose is named here only."""
+
+
+def _recursive(n):
+    return _recursive(n - 1) if n else 0
+
+
+def _now():
+    return 1
+
+
+def _used():
+    return 2
+
+
+def _via_import():
+    return 3
+
+
+def _via_relative():
+    return 4
+
+
+def _via_alias():
+    return 5
+
+
+VALUE = _used()
+'''
+_SCAN_SAMPLE_B = """
+# _dead_in_prose, in a comment of another module
+from agentsync.a import _via_import
+from .a import _via_relative
+
+
+def _now():
+    return 0
+
+
+def run(obj):
+    from agentsync import a as mod
+
+    obj._recursive
+    return _now(), _via_import(), _via_relative(), mod._via_alias(), "_dead_in_prose"
+"""
+
+
+def test_the_dead_function_scan_reads_code_not_text() -> None:
+    """B13 round 16 T64: each way the text scan was fooled is caught (a docstring, a comment and a string
+    in another module, ``obj._x``, recursion, another module's function of the same name), and each real
+    way to reach a private function still counts (its own module, an import, absolute or relative, and a
+    lazy module alias)."""
+    dead, defs = _dead_private_functions({"agentsync.a": _SCAN_SAMPLE_A, "agentsync.b": _SCAN_SAMPLE_B})
+    assert defs == 8
+    assert dead == ["agentsync.a._dead_in_prose", "agentsync.a._now", "agentsync.a._recursive"]
