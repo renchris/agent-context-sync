@@ -9,7 +9,8 @@
 # Bash(scripts/ship-land.sh:*) is what lets it run without a prompt, and the push it makes is a subprocess the
 # Bash(git push:*) ask rule never sees. It never forces: a rejected push is fetched, rebased and gated again.
 # Exit: 0 landed (or nothing to land) and CI green, 2 usage, 3 dirty tree, 4 rebase conflict (aborted), 5 gate red,
-# 6 trunk CI red, 7 push refused, 8 CI red on the pushed sha.
+# 6 trunk CI red, 7 push refused, 8 CI red on the pushed sha, 9 CI not read (gh failed, or no run appeared): before
+# the push nothing is pushed, after it the line says LANDED and the runs are read back by hand.
 set -euo pipefail
 
 usage() {
@@ -46,33 +47,82 @@ fi
 
 # Waits for every run on a full sha. A cancelled run was superseded by a later push to main (ci cancels in-progress
 # runs there): the newest run of that workflow on main stands in for it once it contains the sha.
-# Prints the id of a red run and returns 1; returns 0 when all are green; waits up to 60 s for runs to appear.
+# Three outcomes, never one read as another (B13 round 15 S59, S63): 0 every run green; 1 a run red, its id printed;
+# 2 not read, the reason printed: gh failed (a TLS timeout under load), no run appeared, or a run ended neither way.
+# A gh error is told from an answer by gh's exit status. `gh run watch --exit-status` fails both on a red run and on
+# a network error, so the run's state is read with `gh run view`, retried; a watch that broke off before the run
+# completed is watched again. Every wait is bounded: SHIP_LAND_RUN_POLLS polls (24) and re-reads, each
+# SHIP_LAND_RUN_SLEEP s apart (5), so runs get 2 minutes to appear; the two are for tests.
+polls=${SHIP_LAND_RUN_POLLS:-24} pause=${SHIP_LAND_RUN_SLEEP:-5}
 watch_runs() {
-  local sha=$1 ids='' id tries=0 conclusion workflow newest
-  while [ -z "$ids" ] && [ "$tries" -lt 12 ]; do
-    ids=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId')
-    [ -n "$ids" ] || { tries=$((tries + 1)); /bin/sleep 5; }
+  local sha=$1 ids='' id tries=0 answered=0 state passes reads workflow newest
+  while [ -z "$ids" ] && [ "$tries" -lt "$polls" ]; do
+    if ids=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId' 2>/dev/null); then
+      answered=1
+    else
+      ids=''
+    fi
+    [ -n "$ids" ] || { tries=$((tries + 1)); /bin/sleep "$pause"; }
   done
-  [ -n "$ids" ] || echo "== no CI runs for ${sha:0:8} after 60 s" >&2
+  if [ -z "$ids" ]; then
+    if [ "$answered" = 1 ]; then
+      echo "no CI run for ${sha:0:8} after $((polls * pause)) s"
+    else
+      echo "gh run list failed $polls times for ${sha:0:8}"
+    fi
+    return 2
+  fi
   for id in $ids; do
+    passes=0
     while :; do
       echo "== CI: waiting for run $id" >&2
       gh run watch "$id" --exit-status >/dev/null 2>&1 && break
-      conclusion=$(gh run view "$id" --json conclusion --jq .conclusion)
-      if [ "$conclusion" != cancelled ]; then
-        echo "$id"
-        return 1
+      state='' reads=0
+      until state=$(gh run view "$id" --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>/dev/null); do
+        reads=$((reads + 1))
+        if [ "$reads" -ge 3 ]; then
+          echo "gh run view $id failed 3 times"
+          return 2
+        fi
+        /bin/sleep "$pause"
+      done
+      case $state in
+        "completed success" | "completed skipped" | "completed neutral") break ;;
+        "completed failure" | "completed timed_out" | "completed startup_failure")
+          echo "$id"
+          return 1
+          ;;
+        "completed cancelled") ;;
+        completed*)
+          echo "run $id ended ${state#completed }"
+          return 2
+          ;;
+        *)
+          passes=$((passes + 1))
+          if [ "$passes" -ge "$polls" ]; then
+            echo "run $id is still ${state%% *} after $polls watches"
+            return 2
+          fi
+          /bin/sleep "$pause"
+          continue # the watch broke off before the run completed
+          ;;
+      esac
+      if ! workflow=$(gh run view "$id" --json workflowName --jq .workflowName 2>/dev/null) ||
+        ! newest=$(gh run list --branch main --workflow "$workflow" --limit 1 --json databaseId,headSha \
+          --jq '.[0] | "\(.databaseId) \(.headSha)"' 2>/dev/null); then
+        echo "gh failed reading which run superseded the cancelled run $id"
+        return 2
       fi
-      workflow=$(gh run view "$id" --json workflowName --jq .workflowName)
-      newest=$(gh run list --branch main --workflow "$workflow" --limit 1 --json databaseId,headSha \
-        --jq '.[0] | "\(.databaseId) \(.headSha)"')
-      git fetch -q origin main
+      git fetch -q origin main || {
+        echo "git fetch failed reading which run superseded the cancelled run $id"
+        return 2
+      }
       if [ "${newest%% *}" = "$id" ] || ! git merge-base --is-ancestor "$sha" "${newest#* }" 2>/dev/null; then
         echo "$id"
         return 1
       fi
       echo "== run $id was cancelled by a later push; ${newest#* } contains ${sha:0:8}" >&2
-      id=${newest%% *}
+      id=${newest%% *} passes=0
     done
   done
 }
@@ -88,11 +138,19 @@ if [ "$locked" = 0 ]; then
   [ "$rc" = 0 ] || exit "$rc"
   [ "$ci" = 1 ] || exit 0
   sha=$(git rev-parse HEAD)
-  if ! red=$(watch_runs "$sha"); then
-    echo "ship-land: CI RED on ${sha:0:8}: run $red (gh run view $red --log-failed)" >&2
-    exit 8
-  fi
-  echo "LANDED ${sha:0:8}, CI green"
+  rc=0
+  out=$(watch_runs "$sha") || rc=$?
+  case $rc in
+    0) echo "LANDED ${sha:0:8}, CI green" ;;
+    1)
+      echo "ship-land: CI RED on ${sha:0:8}: run $out (gh run view $out --log-failed)" >&2
+      exit 8
+      ;;
+    *)
+      echo "LANDED ${sha:0:8}, CI NOT READ: $out; read it back with the gh run watch loop in CLAUDE.md"
+      exit 9
+      ;;
+  esac
   exit 0
 fi
 
@@ -113,13 +171,19 @@ while :; do
     echo "ship-land: the land gate is red; nothing pushed" >&2
     exit 5
   fi
-  if [ "$ci" = 1 ] && ! red=$(watch_runs "$(git rev-parse origin/main)"); then
+  rc=0
+  [ "$ci" = 0 ] || out=$(watch_runs "$(git rev-parse origin/main)") || rc=$?
+  if [ "$rc" = 1 ]; then
     if [ "$allow_red" = 0 ]; then
-      echo "ship-land: trunk is red: run $red (gh run view $red --log-failed); nothing pushed." >&2
+      echo "ship-land: trunk is red: run $out (gh run view $out --log-failed); nothing pushed." >&2
       echo "  Land on top only when this diff does not touch those tests: rerun with --allow-red-trunk" >&2
       exit 6
     fi
-    echo "== trunk is red (run $red); landing on top as --allow-red-trunk asks"
+    echo "== trunk is red (run $out); landing on top as --allow-red-trunk asks"
+  elif [ "$rc" != 0 ]; then
+    # Not read is not red: --allow-red-trunk does not cover it, and --no-ci lands without either CI read.
+    echo "ship-land: could not read trunk CI ($out); nothing pushed; retry, or pass --no-ci to land without it" >&2
+    exit 9
   fi
   git fetch -q origin main
   if ! git merge-base --is-ancestor origin/main HEAD; then

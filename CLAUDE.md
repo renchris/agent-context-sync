@@ -48,7 +48,9 @@ Land with `scripts/ship-land.sh`, typed exactly so (no env prefix, no `bash` in 
 every worktree, fetches, rebases onto `origin/main`, runs `scripts/gate.sh`, waits out and checks trunk's CI, pushes
 `HEAD:main` (never forced; a refused push is rebased and gated again), then reads the push's CI back as below. The
 user-level allow rule `Bash(scripts/ship-land.sh:*)` runs it with no prompt; a bare `git push` still stops at the
-operator's `Bash(git push:*)` ask. Exit codes are in its header.
+operator's `Bash(git push:*)` ask. Exit codes are in its header. Exit 9 is CI it could not read (gh failed, or no
+run appeared): before the push it says `nothing pushed`; after it the line says `LANDED`, and the runs are read back
+by hand with the loop below.
 
 ### CI is part of the gate
 

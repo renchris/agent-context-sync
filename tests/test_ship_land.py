@@ -18,9 +18,11 @@ STUB_GH = """#!/bin/bash
 case "$1 $2" in
   "run list") echo 101 ;;
   "run watch") exit 1 ;;
-  "run view") echo failure ;;
+  "run view") echo completed failure ;;
 esac
 """
+# The read-backs' waits, cut for a test: 3 polls, no sleep (B13 round 15 S59, S63)
+QUICK = {"SHIP_LAND_RUN_POLLS": "3", "SHIP_LAND_RUN_SLEEP": "0"}
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -63,6 +65,16 @@ def _clone(remote: Path, dest: Path, env: dict[str, str], commit: str | None = N
         subprocess.run(["git", "add", "-A"], cwd=dest, check=True, env=env)
         subprocess.run(["git", "commit", "-qm", commit], cwd=dest, check=True, env=env)
     return dest
+
+
+def _with_gh(tmp_path: Path, env: dict[str, str], body: str) -> dict[str, str]:
+    """``env`` with a stub gh running ``body`` first on PATH; it logs each call to ``gh.log``."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    gh = bin_dir / "gh"
+    gh.write_text(f'#!/bin/bash\necho "$*" >>"{tmp_path / "gh.log"}"\n{body}')
+    gh.chmod(0o755)
+    return {**env, **QUICK, "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}"}
 
 
 def _land(clone: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
@@ -136,3 +148,91 @@ def test_a_red_trunk_stops_the_push_unless_allowed(remote: Path, tmp_path: Path,
     cp = _land(clone, env, "--allow-red-trunk")
     assert cp.returncode == 8
     assert _git(remote, "rev-parse", "main") == _git(clone, "rev-parse", "HEAD")
+
+
+def test_a_gh_that_answers_nothing_is_ci_not_read_and_pushes_nothing(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 15 S63, S59: every gh call failing (a TLS timeout under load) read as "no CI runs" and then
+    as green, so the trunk check passed and the read-back printed "LANDED <sha>, CI green" with no run read.
+    Not read is its own outcome: exit 9 before the push, with nothing pushed."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    cp = _land(clone, _with_gh(tmp_path, env, 'echo "TLS handshake timeout" >&2\nexit 1\n'))
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert (
+        "could not read trunk CI (gh run list failed 3 times" in cp.stderr and "nothing pushed" in cp.stderr
+    )
+    assert "CI green" not in cp.stdout
+    assert _git(remote, "rev-parse", "main") == before
+    cp = _land(clone, _with_gh(tmp_path, env, "exit 1\n"), "--allow-red-trunk")
+    assert cp.returncode == 9, "not read is not red: --allow-red-trunk does not cover it"
+    assert _git(remote, "rev-parse", "main") == before
+
+
+def test_a_run_whose_watch_and_view_fail_is_not_read_not_red(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 15 S63, S59: `run list` answered and `run watch`/`run view` failed, and the empty conclusion
+    read as red: exit 6 before the push, or 8 after it, for a run that may be green."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    before = _git(remote, "rev-parse", "main")
+    body = 'case "$1 $2" in\n  "run list") echo 111 ;;\n  *) exit 1 ;;\nesac\n'
+    cp = _land(clone, _with_gh(tmp_path, env, body))
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert "could not read trunk CI (gh run view 111 failed 3 times)" in cp.stderr
+    assert _git(remote, "rev-parse", "main") == before
+
+
+def test_a_watch_that_breaks_off_reads_the_runs_state(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 15 S63 (c): a watch that failed once read every conclusion but cancelled as red, success too.
+    The run's state decides: one that completed green is green, and one still running is watched again."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    count = tmp_path / "views"
+    body = (
+        'case "$1 $2" in\n'
+        '  "run list") echo 111 ;;\n'
+        '  "run watch") exit 1 ;;\n'
+        f'  "run view") echo x >>"{count}"; [ "$(wc -l <"{count}")" -gt 1 ] && echo completed success'
+        " || echo in_progress ;;\n"
+        "esac\n"
+    )
+    cp = _land(clone, _with_gh(tmp_path, env, body))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "CI green" in cp.stdout
+    assert _git(remote, "rev-parse", "main") == _git(clone, "rev-parse", "HEAD")
+
+
+def test_a_pushed_sha_with_no_run_says_landed_and_ci_not_read(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 15 S59: a pushed sha whose runs never appeared printed "LANDED <sha>, CI green". It says the
+    push landed and that its CI was not read (exit 9), and a run still going after the bounded watches is not
+    read either, never a wait without end."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    trunk = _git(remote, "rev-parse", "main")
+    body = (
+        'case "$1 $2" in\n'
+        f'  "run list") if [ "$4" = {trunk} ]; then echo 101; fi ;;\n'
+        '  "run watch") exit 0 ;;\n'
+        "esac\n"
+    )
+    cp = _land(clone, _with_gh(tmp_path, env, body))
+    sha = _git(clone, "rev-parse", "HEAD")
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert f"LANDED {sha[:8]}, CI NOT READ: no CI run for {sha[:8]} after 0 s" in cp.stdout
+    assert "CI green" not in cp.stdout and _git(remote, "rev-parse", "main") == sha
+
+    other = _clone(remote, tmp_path / "b", env, "two")
+    body = (
+        'case "$1 $2" in\n'
+        '  "run list") echo 101 ;;\n'
+        '  "run watch") exit 1 ;;\n'
+        '  "run view") echo in_progress ;;\n'
+        "esac\n"
+    )
+    cp = _land(other, _with_gh(tmp_path, env, body))
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert "could not read trunk CI (run 101 is still in_progress after 3 watches)" in cp.stderr

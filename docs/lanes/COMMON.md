@@ -69,7 +69,8 @@ and gated again), then reads the push's CI back; exit codes are in its header. N
 the operator's ask rule (in round 14 lane D's push waited about 4 hours). Every other full test run also takes the
 same lock: `lockf /tmp/b13-r15-land.lock scripts/gate.sh --lane` (round 13: three full runs at once filled swap and a
 run was SIGKILLed); `--affected` runs need no lock. If ship-land exits 5 with workers lost ("cannot send", exit 137),
-that is memory, not your diff: wait for load to fall and run it again.
+that is memory, not your diff: wait for load to fall and run it again. Exit 9 (from lane E's S59, S63) is CI it could
+not read, never green or red: `nothing pushed` before the push (retry), `LANDED` after it (read the runs back by hand).
 
 Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6). If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the
