@@ -1835,6 +1835,13 @@ def test_state_md_next_is_the_blocking_finding_that_held_the_commit(env: Env) ->
     )
     assert want.rule == 1
     assert _state_next_block(env.text("_sync/STATE.md")) == want.lines()
+    # B13 round 16 T55: the count by number, at 2 as well
+    other = dataclasses.replace(finding, path="topics/a/y.md")
+    env.pub.write_state(report(findings=(finding, other)), [status("src")])
+    assert _state_next_block(env.text("_sync/STATE.md"))[0] == (
+        "NEXT: 2 blocking findings held this run's commit (## Lint findings below): fix every ERROR, then "
+        "run `~/.local/bin/agentsync sync`"
+    )
     env.pub.write_state(report(findings=(dataclasses.replace(finding, blocking=False),)), [status("src")])
     assert _state_next_block(env.text("_sync/STATE.md")) == loop.next_step(env.config).lines()
 
