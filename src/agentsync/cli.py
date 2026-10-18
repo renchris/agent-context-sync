@@ -1709,10 +1709,11 @@ def _report_hooks() -> setup_report.ReportHooks:
     def checks(config: Config) -> list[str]:
         results = _status_checks(config, offline=True)
         fixes[:] = _fail_steps(results)
-        # The report has no "end of this run": its own note (B13 round 5 F12, F45).
+        # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
+        # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
         results = [
             dataclasses.replace(r, note=doctor.LISTING_YOURS_REPORT_NOTE)
-            if r.note in (doctor._LISTING_YOURS_NOTE, doctor._LISTING_SKIPPED_NOTE)
+            if r.note == doctor._LISTING_YOURS_NOTE
             else r
             for r in results
         ]

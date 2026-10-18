@@ -2372,9 +2372,7 @@ def test_status_under_install_says_a_fail_stops_the_sync_a_held_listing_waits_fo
     note = doctor._LISTING_SKIPPED_NOTE if blocking else doctor._LISTING_YOURS_NOTE
     assert rc == cli.EXIT_FAILED and line.endswith(f"({note})"), line
     assert ("whether it cleared it" in line) is not blocking
-    monkeypatch.setattr(
-        cli, "_status_checks", lambda config, *, offline=False: [dataclasses.replace(warn, note=note), fail]
-    )
+    # the report's own path, with the [FAIL] beside it (B13 round 15 S43: no faked _status_checks)
     [line] = [ln for ln in cli._report_hooks().doctor(initialised) if ln.startswith("[warn] heartbeat.x")]
     assert line.endswith(f"({doctor.LISTING_YOURS_REPORT_NOTE})"), line
 
