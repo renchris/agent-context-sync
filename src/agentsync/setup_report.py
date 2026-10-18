@@ -728,7 +728,7 @@ _LEGEND = {
     "proxy": (  # numbered as install.sh's shell fallback report numbers them (B13 round 8 J78, round 10 L3)
         "<proxy-N> proxy host, git URL rewrite (insteadOf) host and its company-named path, or the system "
         "PAC URL after its scheme, numbered as in the shell fallback report, so a number can be missing; "
-        "also a host a friction line's resolver error names (it need not be a proxy)"
+        "also a host a friction line's resolver error names, or a git remote's host (neither need be a proxy)"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
@@ -3144,6 +3144,58 @@ def _git_rewrite_bases() -> list[str]:
     return bases
 
 
+_GIT_URL_KEY_RE = re.compile(r"^[ \t]*url[ \t]*=[ \t]*(.*?)[ \t\r]*$", re.IGNORECASE)
+"""A ``url`` key line of a git config section (key names are case-insensitive)."""
+
+
+def _git_remote_hosts() -> list[str]:
+    """The hosts of the git remotes' URLs (``[remote "<name>"]`` with a ``url`` key) in the files
+    :func:`_git_proxy_urls` reads, as files, with no git process (B13 round 16 T88): a 403 or a TLS error
+    names the host of a hand-set origin, and step 1 tells the agent to log it. Only a URL with ``://`` (not
+    ``file://``) or git's ``[user@]host:path`` form, a host with a dot and none of :data:`_PUBLIC_HOSTS` or
+    GitHub's: a local remote (``../x``, a bare word, an absolute path) is no host, and ``<proxy-N>`` in place
+    of ``..`` or ``agent-context-sync`` broke the paths that name it. ``scripts/install.sh``'s fallback reads
+    the same (``git_remote_hosts``)."""
+    hosts: list[str] = []
+    for name in _git_config_names():
+        with contextlib.suppress(OSError):
+            remote = False
+            for line in name.read_text(encoding="utf-8", errors="replace").splitlines():
+                head = _GIT_SECTION_RE.match(line)
+                if head is not None:
+                    remote = head.group(1).lower() == "remote" and head.group(2) is not None
+                    continue
+                key = _GIT_URL_KEY_RE.match(line) if remote else None
+                host = _remote_url_host(key.group(1).removeprefix('"').removesuffix('"')) if key else None
+                if host and host.lower() not in (h.lower() for h in hosts):
+                    hosts.append(host)
+    return hosts
+
+
+def _remote_url_host(url: str) -> str | None:
+    """The host of a git remote's URL, by :func:`_git_remote_hosts`'s rule, or None."""
+    if "://" in url:
+        scheme, _, rest = url.partition("://")
+        if scheme.lower() == "file":
+            return None
+        host = re.split(r"[/?#]", rest, maxsplit=1)[0].rpartition("@")[2].partition(":")[0]
+    else:
+        before, colon, _ = url.partition(":")
+        if not colon or "/" in before:
+            return None
+        host = before.rpartition("@")[2]
+    low = host.lower()
+    if (
+        not re.fullmatch(r"[A-Za-z0-9._-]+", host)
+        or "." not in host
+        or low in _PUBLIC_HOSTS
+        or low == "github.com"
+        or low.endswith((".github.com", ".githubusercontent.com"))
+    ):
+        return None
+    return host
+
+
 _GENERIC_PATH_WORDS = frozenset(
     {"git", "scm", "repo", "repos", "mirror", "mirrors", "src", "source", "code"}
     | {"gh", "gitlab", "bitbucket", "homebrew", "npm", "node", "pypi", "artifactory", "vendor"}
@@ -3595,6 +3647,9 @@ def _build_redactor(r: _Run) -> Redactor:
         for host in _resolver_hosts(default_friction_path().read_text(encoding="utf-8", errors="replace")):
             _add_proxy_host(red, host)
     for host in _recorded_proxy_hosts():
+        _add_proxy_host(red, host)
+    # A git remote's host last, as install.sh numbers it (B13 round 16 T88)
+    for host in _git_remote_hosts():
         _add_proxy_host(red, host)
     # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
     # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.

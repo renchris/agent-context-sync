@@ -380,6 +380,36 @@ git_rewrite_bases() {
 		' "$g" || true
 	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
 }
+# The hosts of the git remotes' URLs ([remote "<name>"] with a url key), one a line, from the same files, as
+# setup_report._git_remote_hosts reads them (B13 round 16 T88): a 403 or a TLS error names the host of a
+# hand-set origin, and step 1 tells the agent to log it. Only a URL with "://" (not file://) or git's
+# [user@]host:path form, a host with a dot and none of PUBLIC_HOSTS or GitHub's: a local remote ("../x", a bare
+# word, an absolute path) is no host, and "<proxy-N>" in place of ".." or "agent-context-sync" broke paths.
+git_remote_hosts() {
+	local g
+	git_config_files | while IFS= read -r g; do
+		[ ! -f "$g" ] || PUBLIC="$PUBLIC_HOSTS" LC_ALL=C awk '
+			/^[ \t]*\[/ { remote = ($0 ~ /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"[^"]*"[ \t]*\]/); next }
+			remote && tolower($0) ~ /^[ \t]*url[ \t]*=/ {
+				u = $0; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u)
+				if (u ~ /:\/\//) {
+					if (tolower(u) ~ /^file:\/\//) next
+					h = u; sub(/^[^:]*:\/\//, "", h); sub(/[\/?#].*$/, "", h); sub(/^.*@/, "", h); sub(/:.*$/, "", h)
+				} else {
+					c = index(u, ":")
+					if (c == 0) next
+					h = substr(u, 1, c - 1)
+					if (h ~ /\//) next
+					sub(/^.*@/, "", h)
+				}
+				l = tolower(h)
+				if (h !~ /^[A-Za-z0-9._-]+$/ || h !~ /\./ || l == "github.com" || l ~ /\.github(usercontent)?\.com$/) next
+				if (index(" " ENVIRON["PUBLIC"] " ", " " l " ")) next
+				print h
+			}
+		' "$g" || true
+	done 2>/dev/null | LC_ALL=C awk '!seen[tolower($0)]++'
+}
 # The repository config files git reads for checkout DIR, one a line, as setup_report._checkout_git_configs
 # reads them: <common dir>/config and <git dir>/config.worktree, where .git is the git dir or a file naming it
 # ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
@@ -446,6 +476,7 @@ record_proxy_hosts() {
 			"${http_proxy:-}"
 		git_proxy_values
 		git_rewrite_bases
+		git_remote_hosts # B13 round 16 T88
 	)
 	[ -n "$out" ] || return 0
 	(
@@ -1959,6 +1990,9 @@ redaction_pairs() {
 			f="$(friction_file)"
 			f="${f%/*}/proxy-hosts"
 			[ ! -f "$f" ] || LC_ALL=C sed -n 's/^\([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$f"
+			# the hosts of the git remotes, after them, as the Python report registers them, so no number moves
+			# (B13 round 16 T88; no apostrophe in a comment here: bash 3.2 reads one as a quote inside this block)
+			git_remote_hosts
 			# every other system proxy host (a flag of 0, or below the top level) and PAC URL (a per-interface one,
 			# by host and by value): redacted still, numbered last
 			printf '%s\n' "$sp" | LC_ALL=C sed -n -e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' \
@@ -3057,7 +3091,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
 		say "  kept) and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be"
 		say "  missing here (an environment proxy this report names only by its variable keeps its number); also a host"
-		say "  a friction line's resolver error names (it need not be a proxy)"
+		say "  a friction line's resolver error names, or a git remote's host (neither need be a proxy)"
 		;;
 	esac
 	case "$used" in *" <folder-[0-9] "*) say_item "$folder_item" ;; esac

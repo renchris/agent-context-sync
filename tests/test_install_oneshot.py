@@ -2426,7 +2426,10 @@ def test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy(env: dict[s
     text = report_path(env).read_text()
     assert "git.contoso.example" not in text and "<proxy-" in text.split("\n## Redaction\n", 1)[0]
     legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
-    said = "also a host a friction line's resolver error names (it need not be a proxy)"
+    # B13 round 16 T88: and a git remote's host
+    said = (
+        "also a host a friction line's resolver error names, or a git remote's host (neither need be a proxy)"
+    )
     assert said in legend, legend
     assert setup_report._LEGEND["proxy"].endswith(f"so a number can be missing; {said}")
 
@@ -10601,6 +10604,48 @@ def test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset(
     assert (
         "Could not resolve host: github.com" in shell and "Failed to connect to astral.sh port 443" in shell
     )
+
+
+def test_a_git_remotes_host_is_redacted_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 16 T88 (S6's code half): a hand-set origin's host, which a 403 or a TLS error names and v24's
+    step 1 tells the agent to log, was printed in clear by both readers: none read a remote's URL. Both
+    register it as a <proxy-N>, last. A local remote (``../x``, a bare word, an absolute path, ``file://``)
+    is no host, and GitHub's hosts stay readable. The hosts carry no fixture organization name, so the test
+    is not passed by the org match."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    git = Path(env["HOME"]) / "src" / "agent-context-sync" / ".git"
+    git.mkdir(parents=True)
+    remotes = {
+        "origin": "https://git.fabrikam-eng.invalid/tools/agent-context-sync.git",
+        "mirror": "deploy@scm.northwind-lab.invalid:tools/agent-context-sync.git",
+        "up": "../agent-context-sync",
+        "word": "agent-context-sync",
+        "abs": "/srv/agent-context-sync.git",
+        "file": "file:///srv/agent-context-sync.git",
+        "gh": "git@github.com:o/r.git",
+        "ssh": "ssh://git@ssh.github.com:443/o/r.git",
+    }
+    (git / "config").write_text(
+        "[core]\n\tbare = false\n"
+        + "".join(
+            f'[remote "{name}"]\n\t{"URL" if name == "mirror" else "url"} = {url}\n'
+            for name, url in remotes.items()
+        )
+    )
+    said = (
+        "git pull: fatal: unable to access 'https://git.fabrikam-eng.invalid/tools/agent-context-sync.git/': "
+        "The requested URL returned error: 403; SSL: no alternative certificate subject name matches target "
+        "host name 'scm.northwind-lab.invalid'; cd ../agent-context-sync; ssh.github.com port 443"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == python, (shell, python)
+    assert "fabrikam" not in shell and "northwind" not in shell, shell
+    assert "'https://<proxy-1>/tools/agent-context-sync.git/'" in shell and "'<proxy-2>'" in shell, shell
+    assert "cd ../agent-context-sync; ssh.github.com port 443" in shell, "no local remote or GitHub host"
+    assert setup_report._git_remote_hosts() == ["git.fabrikam-eng.invalid", "scm.northwind-lab.invalid"]
 
 
 def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(
