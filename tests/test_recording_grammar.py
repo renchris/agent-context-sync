@@ -364,7 +364,8 @@ NOT_DETECTED = (
     "share showed; the chat unless it was shared; who joined or left; tone and laughter; "
     "the clock time of a moment."
 )
-H1_RE = re.compile(rf"# Meeting recording · ({HMS}) · (\d+) windows")
+H1_RE = re.compile(rf"# Meeting recording · ({HMS}) · (\d+) (windows?)")
+"""The title; a count of 1 takes the singular, and no other count does (B13 round 16 T61)."""
 FACTS = {
     "duration": re.compile(HMS),
     "picture size": re.compile(r"\d+x\d+"),
@@ -470,6 +471,8 @@ def index_errors(page: str) -> list[str]:
     h1 = H1_RE.fullmatch(numbered[1][1])
     if h1 is None:
         errors.append(f"line {numbered[1][0]}: not an index title: {numbered[1][1]!r}")
+    elif (h1[2] == "1") != (h1[3] == "window"):
+        errors.append(f"line {numbered[1][0]}: the window count takes its noun from the count: {h1[0]!r}")
     block: str | None = None
     seen: list[str] = []
     tables: dict[str, list[str]] = {}

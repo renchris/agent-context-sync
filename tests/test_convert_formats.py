@@ -3476,6 +3476,37 @@ def test_a_known_count_has_no_s_at_one_or_at_many(tmp_path: Path) -> None:
     assert u.summary.startswith("Teams Acme / ") and u.summary.endswith(": 1 message in 1 thread"), u.summary
 
 
+def test_a_table_and_a_sheet_count_their_rows_and_columns_at_one(tmp_path: Path) -> None:
+    """B13 round 16 T61: S52's sweep left fixed plurals in the same converters, so a one-cell workbook's
+    index read "1 sheet" and its sheet page "1 rows x 1 columns", and a one-row CSV "1 data rows x 1
+    columns" beside "Text (txt): 1 line". Each row and column count reads as ``plural`` gives it."""
+    csv = _one(
+        PlainTextConverter(CFG).convert(_write(tmp_path, "one.csv", "region\nNorth\n"), name="one.csv")
+    )
+    assert csv.summary == "CSV table: 1 row x 1 column; columns: region", csv.summary
+    assert csv.body.startswith("CSV table: 1 data row x 1 column\n"), csv.body
+    book = openpyxl.Workbook()
+    book.active.title = "Contoso"
+    book.active["A1"] = "region"
+    book.save(tmp_path / "one.xlsx")
+    _index, sheet = XlsxConverter(CFG).convert(tmp_path / "one.xlsx", name="one.xlsx")
+    assert sheet.summary == "Sheet Contoso: used range A1:A1, 1 row x 1 column; columns: region", (
+        sheet.summary
+    )
+    assert "Sheet 1 of 1 in this workbook · 1 non-empty row x 1 column" in sheet.body, sheet.body
+    assert "1 rows" not in sheet.body + csv.body and "1 columns" not in sheet.body + csv.body
+    book.active["B2"] = "spend"
+    book.save(tmp_path / "two.xlsx")
+    sheet = XlsxConverter(CFG).convert(tmp_path / "two.xlsx", name="two.xlsx")[1]
+    assert sheet.summary.startswith("Sheet Contoso: used range A1:B2, 2 rows x 2 columns"), sheet.summary
+    assert "· 2 non-empty rows x 2 columns" in sheet.body
+    book = openpyxl.Workbook()
+    book.active["A1"] = "=1+1"  # openpyxl stores no result for it
+    book.save(tmp_path / "formula.xlsx")
+    sheet = XlsxConverter(CFG).convert(tmp_path / "formula.xlsx", name="formula.xlsx")[1]
+    assert "[no cached values: 1 of 1 formula cell carries no stored result" in sheet.body, sheet.body
+
+
 def test_csv_fixture_is_a_table(fixture_files: dict[str, Path]) -> None:
     u = _one(PlainTextConverter(CFG).convert(fixture_files["sample.csv"], name="sample.csv"))
     table = "| region | spend |\n|---|---|\n| North | 100 |\n| South | 80 |\n"

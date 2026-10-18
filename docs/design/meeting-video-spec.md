@@ -425,6 +425,7 @@ mirror/<source>/Recordings/contoso-fy27-...-meeting-recording.mp4.d/
 | Index | `index` | `UnitKind.INDEX` | 0 | `00-index` | empty | `Meeting recording 00:31:40, 1920x1080; 7 five-minute windows; 9 screen states, 11 keyframes; speech not read` |
 | Window n | `window:<n>` | `UnitKind.WINDOW` (new, value `window`) | n | `NN-tHHMMSS`, `NN` = n in two digits or more | `Recording 00:05:00-00:10:00` | `Recording 00:05:00-00:10:00; 3 screen states, 2 keyframes, 14 on-screen lines, 9 speech lines` |
 
+- Every count in a summary takes its noun from the count: `1 five-minute window`, `1 screen state`, `1 keyframe`, `1 on-screen line`, `1 speech line`, `1 voice` at one, the plural at any other count, 0 included (`agentsync.text.plural`, B13 round 16 T61). The carry-over `NOTE` of 3.3 keeps `N on-screen lines` at every count: its wording is in the index's fixed-wording digest, and changing it would raise `_INDEX_REVISION` (a copy of a recording already read is read again).
 - `of` is the number of units. The path, the front matter and the `part:` key are written by publish as for a workbook (`repo:src/agentsync/convert/xlsx.py:592-619`, `repo:src/agentsync/publish.py:366-367`).
 - No body, title or summary holds the file's name. The index unit's `title` is empty, so publish writes the item's shown name as `source_title` in the index's front matter (`repo:src/agentsync/publish.py:875`); a window unit's `source_title` is its own title. The meeting title also reaches the index as the title card's lines, read from the picture. A test pins both.
 - An old binary that meets a cache entry with the new kind discards the entry as corrupt and converts again (`repo:src/agentsync/convert/cache.py:134-137, :164`).
@@ -537,7 +538,7 @@ Blocks, in this order. Every list that can grow without bound prints `showing a 
 
 | Block | Content |
 |---|---|
-| H1 | `# Meeting recording · <duration> · <n> windows` |
+| H1 | `# Meeting recording · <duration> · <n> windows`, `· 1 window` when n is 1 (B13 round 16 T61) |
 | Facts | duration; picture size; `container created` in UTC or `not recorded`; layout profile and how it was decided from the picture; the label-rule `NOTE` when a `[policy]` label rule is set (ruling 2); `languages read: en-US`; `times are media time from the first frame; screen times move in 2 s steps` |
 | Title card | under `## Read from the first frame`: the rows of tick 0 as `[00:00:00] SCREEN:` lines; only under the `teams` profile |
 | What ran | table, one row per channel: screen text, keyframes, speaker cue, speech, voices. Columns: engine and version (converter constants); `ran`, `not run` or `none found`; counts |

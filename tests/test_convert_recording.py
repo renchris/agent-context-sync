@@ -1238,6 +1238,26 @@ def test_a_hole_is_read_again_as_a_clip_and_one_left_empty_says_so(tmp_path: Pat
     _grammar(index, window)
 
 
+_COUNTED = re.compile(
+    r"\b(\d+) (five-minute window|window|screen state|keyframe|on-screen line|speech line|voice)(s?)\b"
+)
+
+
+def test_a_recording_under_five_minutes_counts_one_window_as_one(tmp_path: Path) -> None:
+    """B13 round 16 T61: every count on a recording's pages was a fixed plural, so a recording under five
+    minutes read "1 windows" in its title and "1 five-minute windows" in its index summary. Each count of
+    windows, screen states, keyframes, on-screen lines, speech lines and voices takes its noun from the
+    count, and the grammar's title rule holds the singular to a count of 1."""
+    engine = hearing(tmp_path, talk(("spk-a", 2_000, "Contoso review starts.")))
+    index, window = pages(tmp_path / "pages", teams(share(3, FIRST)), speech=engine)
+    title = index.body.split("\n")[2]
+    assert title == "# Meeting recording · 00:01:00 · 1 window", index.body[:200]
+    assert "; 1 five-minute window; " in index.summary and "1 speech line, 1 voice" in index.summary
+    counted = [m.groups() for text in (title, index.summary, window.summary) for m in _COUNTED.finditer(text)]
+    assert len(counted) >= 8 and all((n == "1") == (s == "") for n, _noun, s in counted), counted
+    _grammar(index, window)
+
+
 def test_silence_says_where_sound_ends(tmp_path: Path) -> None:
     script = teams(share(3, FIRST), sound=[(0, 20_000)])
     engine = hearing(tmp_path, talk(("spk-a", 2_000, "Contoso review starts.")))

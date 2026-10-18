@@ -313,7 +313,8 @@ def _sheet_body(sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig) ->
     rows = sheet.rows()
     ncols = 0 if sheet.bounds is None else sheet.bounds[3] - sheet.bounds[1] + 1
     out.append(
-        f"Sheet {sheet.number} of {total} in this workbook · {len(rows)} non-empty rows x {ncols} columns"
+        f"Sheet {sheet.number} of {total} in this workbook · {plural(len(rows), 'non-empty row')} x "
+        f"{plural(ncols, 'column')}"
     )
     out.append("")
     sidecar: bytes | None = None
@@ -333,13 +334,13 @@ def _sheet_body(sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig) ->
             sidecar = _csv_bytes([header, *data])
             sc = _sidecar_name(sheet.number, width, sheet.title)
             out += [
-                f"[row cap: first {shown} of {len(rows)} non-empty rows shown; "
+                f"[row cap: first {shown} of {plural(len(rows), 'non-empty row')} shown; "
                 f"every row is in the sidecar `{sc}`]",
                 "",
             ]
     if sheet.missing_cache:
         out += [
-            f"[no cached values: {sheet.missing_cache} of {sheet.formulas} formula cells carry no stored "
+            f"[no cached values: {_uncached(sheet)} no stored "
             "result (the workbook was last written by a tool that does not calculate, e.g. a script "
             "or BI export); "
             "those cells show the formula only, never a guessed number]",
@@ -428,11 +429,19 @@ def _index_title(sheets: list[_Sheet]) -> str:
     )
 
 
+def _uncached(sheet: _Sheet) -> str:
+    """``1 of 1 formula cell carries`` or ``2 of 5 formula cells carry``: the count of formula cells with no
+    stored result, its noun from the formula count and its verb from its own (B13 round 16 T61)."""
+    carry = "carries" if sheet.missing_cache == 1 else "carry"
+    return f"{sheet.missing_cache} of {plural(sheet.formulas, 'formula cell')} {carry}"
+
+
 def _sheet_summary(sheet: _Sheet) -> str:
     """Converter-derived summary of one sheet."""
     ncols = 0 if sheet.bounds is None else sheet.bounds[3] - sheet.bounds[1] + 1
     nrows = len(sheet.rows())
-    base = f"Sheet {sheet.title}: used range {sheet.used_range}, {nrows} rows x {ncols} columns"
+    size = f"{plural(nrows, 'row')} x {plural(ncols, 'column')}"
+    base = f"Sheet {sheet.title}: used range {sheet.used_range}, {size}"
     heads = sheet.headers()
     return base + ("; columns: " + _join_limited(heads, limit=120, sep=", ") if heads else "")
 
@@ -672,7 +681,8 @@ class XlsxConverter:
             hidden = " (hidden sheet)" if sheet.hidden else ""
             out = [f"# Sheet: {sheet.title} (used range {sheet.used_range}; streamed summary){hidden}", ""]
             out += [
-                f"Sheet {sheet.number} of {total} in this workbook · {total_rows} non-empty rows · streamed "
+                f"Sheet {sheet.number} of {total} in this workbook · {plural(total_rows, 'non-empty row')} · "
+                "streamed "
                 "because the file is above the size threshold: merged cells, comments and charts are "
                 "not analysed; "
                 f"every row is in the sidecar `{sc}`",
@@ -684,12 +694,12 @@ class XlsxConverter:
             if rows:
                 budget = max(1024, self._cfg.max_page_bytes - 4096 - sum(len(x) + 1 for x in out))
                 lines, shown = _table_lines(sheet, rows, sheet.shown, budget, self._cfg.max_rows_per_sheet)
-                out += [f"## First {shown} of {total_rows} non-empty rows", "", *lines, ""]
+                out += [f"## First {shown} of {plural(total_rows, 'non-empty row')}", "", *lines, ""]
             else:
                 out += ["[empty sheet]", ""]
             if sheet.missing_cache:
                 out += [
-                    f"[no cached values: {sheet.missing_cache} of {sheet.formulas} formula cells carry "
+                    f"[no cached values: {_uncached(sheet)} "
                     "no stored result; those cells show the formula only]",
                     "",
                 ]

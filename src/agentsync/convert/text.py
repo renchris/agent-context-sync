@@ -150,7 +150,7 @@ class PlainTextConverter:
         """Render delimited data as a GFM table (row- and byte-capped, full CSV sidecar when capped)."""
         header, rows = table[0], table[1:]
         shown = rows[: self._cfg.max_rows_per_sheet]
-        out = [f"{kind} table: {len(rows)} data rows x {len(header)} columns", ""]
+        out = [f"{kind} table: {plural(len(rows), 'data row')} x {plural(len(header), 'column')}", ""]
         table_lines = _gfm_table([_cell(h) for h in header], ([_cell(c) for c in r] for r in shown))
         budget = max(1024, self._cfg.max_page_bytes - 1024)
         used = sum(len(x.encode("utf-8")) + 1 for x in out)
@@ -168,12 +168,12 @@ class PlainTextConverter:
             sidecars = ((_TABLE_SIDECAR, _csv_bytes(table)),)
             out += [
                 "",
-                f"[row cap: first {rows_kept} of {len(rows)} rows shown; every row is in the sidecar "
-                f"`{_TABLE_SIDECAR}`]",
+                f"[row cap: first {rows_kept} of {plural(len(rows), 'row')} shown; every row is in the "
+                f"sidecar `{_TABLE_SIDECAR}`]",
             ]
         columns = _join_limited(header, limit=140, sep=", ")
         title = f"{kind} table: {columns}" if columns else f"{kind} table"
-        summary = f"{kind} table: {len(rows)} rows x {len(header)} columns" + (
+        summary = f"{kind} table: {plural(len(rows), 'row')} x {plural(len(header), 'column')}" + (
             f"; columns: {columns}" if columns else ""
         )
         return "\n".join(out), sidecars, title, summary

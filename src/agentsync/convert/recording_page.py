@@ -35,6 +35,7 @@ from agentsync.convert.recording import MARK_BELOW as _MARK_BELOW
 from agentsync.convert.recording import WINDOW_MS as _WINDOW_MS
 from agentsync.convert.recording import Reading, Row, State
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.text import plural
 
 _WINDOW_S = _WINDOW_MS // 1000  # S9 rule 4: window n covers [300 (n-1), 300 n) seconds
 _LOW_CONFIDENCE = _MARK_BELOW  # S6 rule 10: a printed reading under this ends in " [?]"
@@ -62,6 +63,9 @@ _ROW_TAGS = frozenset({"SCREEN", "SCREEN+", "SCREEN-", "TILE"})
 _CONTINUATION_NOTE = (
     "s{state:03d} began at {began}; its on-screen lines and keyframe are in window {window}, {at}"
 )
+# The NOTE wordings are in the index page's fixed-wording digest: changing this one's count to plural()
+# would raise _INDEX_REVISION, and a copy of a recording already read would be read again in full for a
+# count's noun (B13 round 16 T61; round 11 M64, M85).
 _CARRY_OVER_NOTE = "{left} on-screen lines of s{state:03d} left the screen; {stayed} stayed"
 _SCREEN_LIMIT_NOTE = "screen text read to {at}; {later} later changes not read (limit)"
 _READ_LIMIT_NOTE = "recording read to {read} of {duration} (limit)"
@@ -531,7 +535,7 @@ def _index_body(reading: Reading, windows: list[_Window], bytes_of: list[int]) -
     keyframes = sum(len(w.keyframes) for w in windows)
     said = sum(w.said_lines for w in windows)
     speaking = sum(w.speaking_lines for w in windows)
-    blocks: list[list[str]] = [[f"# Meeting recording · {duration} · {len(windows)} windows"]]
+    blocks: list[list[str]] = [[f"# Meeting recording · {duration} · {plural(len(windows), 'window')}"]]
 
     reason = _clean(reading.profile_reason)
     facts = [
@@ -635,9 +639,9 @@ def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]
                 file_stem=f"{w.n:02d}-t{_stem_time(w.start)}",
                 title=f"Recording {span}",
                 summary=(
-                    f"Recording {span}; {len(w.spans)} screen states, {len(w.keyframes)} keyframes, "
-                    f"{w.row_lines} on-screen lines"
-                    + (f", {w.said_lines} speech lines" if reading.speech is not None else "")
+                    f"Recording {span}; {plural(len(w.spans), 'screen state')}, "
+                    f"{plural(len(w.keyframes), 'keyframe')}, {plural(w.row_lines, 'on-screen line')}"
+                    + (f", {plural(w.said_lines, 'speech line')}" if reading.speech is not None else "")
                 ),
                 body=body,
                 sidecars=tuple(sorted((*w.keyframes, *full))),
@@ -648,10 +652,11 @@ def render(reading: Reading, *, max_page_bytes: int) -> tuple[RenderedUnit, ...]
     speech = "speech not read"
     if reading.speech is not None:
         said = sum(w.said_lines for w in windows)
-        speech = f"{said} speech lines, {len(reading.speech.reading.voices)} voices"
+        speech = f"{plural(said, 'speech line')}, {plural(len(reading.speech.reading.voices), 'voice')}"
     summary = (
         f"Meeting recording {_clock(reading.duration_ms // 1000)}, {reading.width}x{reading.height}; "
-        f"{len(windows)} five-minute windows; {states} screen states, {keyframes} keyframes; {speech}"
+        f"{plural(len(windows), 'five-minute window')}; {plural(states, 'screen state')}, "
+        f"{plural(keyframes, 'keyframe')}; {speech}"
     )
     index = make_unit(
         unit_id="index",
