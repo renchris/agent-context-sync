@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
@@ -953,21 +954,60 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         out.append(_ok("state_dir.files", f"{', '.join(present)} are 0600"))
     else:
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
+    if sp.db.name in present:
+        out += _check_manifest_readable(expand(sp.db))
     return out
+
+
+# SQLite's result codes for a file that is no database (SQLITE_NOTADB) or a damaged one (SQLITE_CORRUPT); a
+# locked, busy or unopenable one is not unreadable state, and a sync that holds it must not read as one.
+MANIFEST_UNREADABLE_CODES = frozenset({26, 11})
+MANIFEST_FIX = (
+    "the person decides, with a copy of it kept: restore it from a copy they trust, or move it aside so the "
+    "next sync starts a new one, which converts every file again (online-only ones are downloaded again) "
+    "and forgets the deletions, holds and archive it recorded"
+)
+
+
+def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
+    """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
+    open (no file is created, nothing is written); None when it reads, is missing, or is only locked, busy
+    or not openable now (B13 round 16 T12)."""
+    try:
+        conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
+        try:
+            conn.execute("PRAGMA schema_version").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        if getattr(exc, "sqlite_errorcode", None) in MANIFEST_UNREADABLE_CODES:
+            return exc
+    return None
+
+
+def _check_manifest_readable(db: Path) -> list[CheckResult]:
+    """``state_dir.manifest``: a FAIL, the person's, when the manifest is no database or a damaged one. Every
+    other check reads past it ("cannot read the state"), and every sync and add-source stops on it, so
+    status exits 1 with the one check that says why (B13 round 16 T12). Nothing when it reads."""
+    exc = manifest_unreadable(db)
+    if exc is None:
+        return []
+    return [_bad("state_dir.manifest", f"{db} cannot be read: {exc}", fix=MANIFEST_FIX)]
 
 
 # The first words of a [FAIL] fix that is the person's: a [[source]] path or sentinel, a folder or file to
 # put back, a sign-in, or a folder to sync in its app (the source checks and _missing_source_fix write them);
 # a deleted [[source]] block to put back (the config.vanished_sources check, cycle.VANISHED_FIX; B13 round
-# 15 S7); a [policy] or [governance] value (cli's POLICY_FIX and GOVERNANCE_FIX; round 16 T2, T9); Rosetta
-# to install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53).
+# 15 S7); a fix that starts "the person ": a [policy] or [governance] value (cli's POLICY_FIX and
+# GOVERNANCE_FIX; round 16 T2, T9) or a state file that cannot be read (MANIFEST_FIX; T12); Rosetta to
+# install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53).
 # A re-run fails the same way and an edit would choose a folder for them. install.sh's persons_fails reads
 # the same words from the [FAIL] lines with its own copy, since the installer runs the older installed build;
 # a test pins the two equal (B13 round 14 Q1, Q9, Q33).
 PERSONS_FIX_RE = re.compile(
     r"(fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to "
     r"|/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back "
-    r"|the person fixes \[(policy|governance)\] |Rosetta is yours to install|the native pandoc copy at )"
+    r"|the person |Rosetta is yours to install|the native pandoc copy at )"
 )
 
 

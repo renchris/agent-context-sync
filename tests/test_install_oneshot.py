@@ -736,9 +736,9 @@ PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu")
 
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
-    "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
-    "sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those "
-    "lines and go on to the report; once fixed, "
+    "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a state "
+    "file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the "
+    "agent, so show them those lines and go on to the report; once fixed, "
 )
 
 
@@ -6483,6 +6483,31 @@ def test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_lo
     # the config holds the inbox the prompt's step 2 then tells the person about
     assert 'kind = "inbox"' in cfg.read_text(encoding="utf-8")
     assert "- loads: yes, but a sync refuses it: " in report_path(env).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("knob", "created"), [("STUB_INIT_RC", False), ("STUB_ADD_SOURCE_RC", False), ("STUB_INIT_RC", True)]
+)
+def test_a_state_file_that_cannot_be_read_is_the_persons_to_fix(
+    env: dict[str, str], folder: Path, wheel: Path, knob: str, created: bool
+) -> None:
+    """B13 round 16 T12: with manifest.sqlite overwritten (no database), init and add-source ended on a
+    traceback and fail's "fix the error above, then re-run: install.sh", a re-run that fails the same way,
+    whose real fix (moving the file aside) loses history the agent must not choose to lose. agentsync now
+    exits 65 for it, with one line naming the file and the person's fix, and the NEXT names the owner, as
+    for a config that does not load; also when this run wrote the config, since the state was there."""
+    if not created:
+        _write_config(env, _inbox(env))
+    args = [str(wheel), "--source-local", str(folder)] if knob == "STUB_ADD_SOURCE_RC" else [str(wheel)]
+    cp = install_sh({**env, knob: "65"}, *args)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "65", "") in steps(install_log(env))
+    assert one_next(cp)
+    assert last_line(cp).startswith(
+        "NEXT: agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync "
+        "status prints it again): fixing it is the person's, not a step for the agent, so show them the "
+        f"error and go on to the report; once it is fixed, the next run is: {INSTALL_SH} "
+    ), last_line(cp)
 
 
 def _mode(path: Path) -> int:

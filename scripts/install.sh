@@ -166,8 +166,8 @@
 #      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
 #      [FAIL] that stops them is the person's (a [[source]] path or sentinel, a [[source]] block to put back,
-#      a [policy] or [governance] value, a folder to put back or sync, a sign-in, Rosetta or a native pandoc
-#      copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30; round 16 T5, T9)
+#      a [policy] or [governance] value, a state file that cannot be read, a folder to put back or sync, a
+#      sign-in, Rosetta or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30; round 16 T5, T9)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -5299,7 +5299,9 @@ synced_count() {
 # after they wrote the inbox or the folder's block. That one "loads, but" is refused, as the report's
 # Configuration section says, and never "does not load", the words the prompt's step 2 skips the inbox on
 # (B13 round 16 T1, T10, T29, T45, T67, T81). Only a config that was there before, and does not load, does not
-# load; one this run created that does not load is the generic failure.
+# load; one this run created that does not load is the generic failure. Exit 65 (EX_DATAERR) is agentsync's
+# state file, manifest.sqlite, that is no database or a damaged one: the person's too, since its fix loses
+# history the agent must not choose to lose (B13 round 16 T12).
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	local rc=$?
 	if [ "$rc" -eq 78 ]; then
@@ -5309,6 +5311,8 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$ORIG_ARGS"
 		fi
 	fi
+	[ "$rc" -ne 65 ] ||
+		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$ORIG_ARGS"
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
@@ -5443,16 +5447,17 @@ blocking_fails() {
 # missing, or a SharePoint library there but empty beside its organization's OneDrive folder (B13 round 13 O52;
 # round 14 Q45, Q54, Q63); Rosetta to install, or the native pandoc copy the operator installed (the pandoc
 # check's fixes, B13 round 15 S47, S53); a deleted [[source]] block to put back (config.vanished_sources,
-# round 15 S7), or a [policy] or [governance] value (round 16 T2, T9). A re-run fails the same way and an edit would
+# round 15 S7), or a fix that starts "the person ": a [policy] or [governance] value or a state file that
+# cannot be read (round 16 T2, T9, T12). A re-run fails the same way and an edit would
 # choose a folder for them, so the NEXT names the owner, as the config error's does (B13 round 13 O11, O30). Any
 # other [FAIL] keeps "fix the [FAIL] lines": a check that ran out of time is fixed by the re-run its fix names,
 # and a listing held for an Allow click by that click.
 persons_fails() {
 	local b
 	b="$(blocking_fails "$1")"
-	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person fixes \[(policy|governance)\] |Rosetta is yours to install|the native pandoc copy at )' >/dev/null
+	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at )' >/dev/null
 }
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

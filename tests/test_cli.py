@@ -112,7 +112,7 @@ def initialised(tmp_path: Path, local_source_dir: Path, capsys: pytest.CaptureFi
 def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["--help"]) == 0
     out = capsys.readouterr().out
-    for code in ("0 ", "1 ", "2 ", "75", "77", "78", "79"):
+    for code in ("0 ", "1 ", "2 ", "65", "75", "77", "78", "79"):
         assert f"\n  {code}" in out
     for command in ("add-source", "sync", "status", "accept-deletions", "purge", "hold", "offboard"):
         assert command in out
@@ -2445,8 +2445,8 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
-    "path, a [[source]] block to put back, a [policy] or [governance] value, a sign-in, Rosetta to install "
-    "or a native pandoc copy), not a step for the agent: show it to them"
+    "path, a [[source]] block to put back, a [policy] or [governance] value, a state file that cannot be "
+    "read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent: show it to them"
 )
 
 
@@ -2490,6 +2490,66 @@ def test_a_policy_or_governance_value_that_does_not_load_is_the_persons_in_statu
     assert fails[0].endswith(f"(fix: {cli.POLICY_FIX if name == 'policy' else cli.GOVERNANCE_FIX})"), fails
     assert out[0] == f"NEXT: the {name} check failed: {PERSONS_STEP}", out[0]
     assert "do what the fix" not in "\n".join(out)
+
+
+def test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 16 T12: with manifest.sqlite overwritten by bytes that are no database, status and doctor
+    exited 0 with every check [ok] and "NEXT: cannot read the state: DatabaseError: ...", while init,
+    add-source and sync ended on a traceback (exit 1). Doctor's state_dir.manifest check now fails, the
+    person's, so status exits 1 and its NEXT names that check; the commands print one line naming the file
+    and its fix and exit 65, which install.sh reads as the person's."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    db.write_bytes(os.urandom(4096))
+    for name in ("-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1, out
+    assert fails[0].startswith("[FAIL] state_dir.manifest "), fails
+    assert f" — {db} cannot be read: file is not a database (fix: " in fails[0], fails
+    assert fails[0].endswith(f"(fix: {doctor.MANIFEST_FIX})") and doctor.is_persons_fix(doctor.MANIFEST_FIX)
+    assert out[0] == f"NEXT: the state_dir.manifest check failed: {PERSONS_STEP}", out[0]
+    assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    second = tmp_path / "beta"
+    second.mkdir()
+    for argv in (["init"], ["add-source", str(second)], ["sync"]):
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_STATE, argv
+        err = capsys.readouterr().err
+        line = f"state: {db} cannot be read: file is not a database (fix: {doctor.MANIFEST_FIX})"
+        assert line in err.splitlines() and "Traceback" not in err, (argv, err)
+
+
+def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
+    """The other side of T12: a manifest another process holds in a write transaction is busy, not
+    unreadable state, so status reports no state_dir.manifest [FAIL]; neither does a healthy one."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    assert doctor.manifest_unreadable(db) is None
+    holder = sqlite3.connect(db, isolation_level=None)
+    try:
+        holder.execute("BEGIN EXCLUSIVE")
+        assert doctor.manifest_unreadable(db) is None
+        assert doctor._check_manifest_readable(db) == []
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "state_dir.manifest" in ln], out
+    damaged = db.with_name("damaged.sqlite")
+    damaged.write_bytes(db.read_bytes()[:100] + bytes(4096 - 100))  # the header, then no schema page
+    exc = doctor.manifest_unreadable(damaged)
+    assert exc is not None and exc.sqlite_errorcode == 11, exc
+    empty = db.with_name("empty.sqlite")
+    empty.write_bytes(b"")
+    assert doctor.manifest_unreadable(empty) is None
 
 
 def _drop_block(cfg: Path, sid: str, retire: bool = False) -> None:

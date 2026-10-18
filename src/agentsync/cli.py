@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -106,6 +107,7 @@ EXIT_USAGE = 2
 EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <holder>"
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
+EXIT_STATE = 65  # EX_DATAERR: the manifest is no database or a damaged one (doctor's state_dir.manifest)
 EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher that wraps a LaunchAgent run
 
 # Commands by their full path, which works with ~/.local/bin off PATH (B13 round 6 G79, as §16.51 Q49); the
@@ -116,6 +118,8 @@ exit codes:
   1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a status check
       failed, a purge/compaction was not verified, or discovery was incomplete (curate rows are not a failure)
   2   usage error (bad arguments)
+  65  the state file (manifest.sqlite) is no database or a damaged one: the person's to fix (the message
+      names the file and the fix; `{loop.BIN} status` prints it as state_dir.manifest)
   75  skipped: another agentsync cycle holds the single-writer lock (EX_TEMPFAIL; launchd retries later);
       `sync` (not a LaunchAgent's run) first waits up to 10 minutes for it
   77  sign-in required: a Graph source needs `{loop.BIN} graph login` (auth REAUTH_REQUIRED),
@@ -617,8 +621,27 @@ def _alarms_in_the_report(config: Config) -> Iterator[None]:
             h.removeFilter(held)
 
 
+class StateUnreadableError(AgentSyncError):
+    """The manifest is no database or a damaged one (``doctor.manifest_unreadable``): exit 65, one line."""
+
+
+@contextlib.contextmanager
+def _state_readable(config: Config) -> Iterator[None]:
+    """A database error whose cause is the manifest itself, no database or a damaged one, becomes one line
+    naming the file and the person's fix (exit 65), never a traceback; init and add-source then stop where
+    install.sh names the owner, not "fix the error above, then re-run" (B13 round 16 T12). A locked or busy
+    database, or another file's error, is raised as it was."""
+    try:
+        yield
+    except sqlite3.DatabaseError as exc:
+        db = expand(config.state_paths.db)
+        if doctor.manifest_unreadable(db) is None:
+            raise
+        raise StateUnreadableError(f"{db} cannot be read: {exc}") from exc
+
+
 def _run(config: Config, **kwargs: object) -> int:
-    with _alarms_in_the_report(config):
+    with _alarms_in_the_report(config), _state_readable(config):
         report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
     budget = kwargs.get("budget_bytes")
     _print_report(report, run_budget=budget if isinstance(budget, int) else None)
@@ -687,7 +710,7 @@ def _ensure_setup(config: Config) -> int:
     inside = _tighten_own_paths(config)
     if inside:
         _out(f"tightened {inside} path(s) inside the docs repo, the cache or the logs: they hold tenant data")
-    with Manifest(config.state_paths.db) as manifest:
+    with _state_readable(config), Manifest(config.state_paths.db) as manifest:
         written = Publisher(config, manifest).ensure_scaffold()
     # The count carries its verb: install.sh calls add-source once per folder, and a bare "0 scaffold
     # file(s)" on the second call read as the first call's files undone. One is "1 scaffold file" (B13
@@ -1191,7 +1214,8 @@ class _Status:
 # PERSONS_FAILS; tests pin the two lists equal (B13 round 16 T5, T9).
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a sign-in, Rosetta to install or a native pandoc copy"
+    "[governance] value, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc "
+    "copy"
 )
 
 
@@ -1234,6 +1258,19 @@ def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
         return fn()
     except Exception as exc:
         return [f"{name}: cannot read the state: {type(exc).__name__}: {exc}"]
+
+
+def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
+    """The loop's NEXT with the FAILs' fixes; when the loop's state cannot be read and a check failed, rule
+    1's NEXT from the first fix, so a FAIL that says why (state_dir.manifest) is named, never "cannot read
+    the state" (B13 round 16 T12)."""
+    try:
+        lines = loop.next_lines(config, fixes=fixes)
+    except Exception:
+        if not fixes:
+            raise
+        lines = []
+    return lines or ([loop.NEXT_PREFIX + fixes[0]] if fixes else [])
 
 
 def _status_checks(
@@ -1294,7 +1331,7 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         if step is not None and not fixes and step.rule < 9:
             next_lines = step.lines()
         else:
-            next_lines = _guarded("NEXT", lambda: loop.next_lines(config, fixes=fixes))
+            next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes))
     detail: list[str] = []
     if not (brief or hint_off):
         detail = _guarded("status", lambda: _status_lines(config))
@@ -2337,6 +2374,9 @@ def _main(argv: Sequence[str] | None) -> int:
     except ConfigError as exc:
         _err(f"configuration error: {exc}")
         return EXIT_CONFIG
+    except StateUnreadableError as exc:
+        _err(f"state: {exc} (fix: {doctor.MANIFEST_FIX})")
+        return EXIT_STATE
     except AuthBlockedError as exc:
         _err(f"sign-in blocked ({exc.state}{', ' + exc.aadsts if exc.aadsts else ''}): {exc}")
         return EXIT_REAUTH
@@ -2351,6 +2391,10 @@ def _main(argv: Sequence[str] | None) -> int:
         return EXIT_FAILED
     except AgentSyncError as exc:
         _err(f"error: {exc}")
+        return EXIT_FAILED
+    except sqlite3.Error as exc:  # a locked or busy database: one line, its traceback at -v (B13 r16 T12)
+        _log.debug("database error", exc_info=True)
+        _err(f"error: {type(exc).__name__}: {exc}")
         return EXIT_FAILED
     except KeyboardInterrupt:
         _err("interrupted")
