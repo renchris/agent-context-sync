@@ -8596,10 +8596,14 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
     return f"- F{e.line} · {step} · {e.kind} · {_item_what(r.red.redact(e.what), e.kind)}{fix}"
 
 
-_FAILED_EXIT_RE = re.compile(r"(?:\b(?:failed|exited|returned)\b|\(exit\b)[^:]{0,24}?\d+\)?\s*:")
+_FAILED_EXIT_RE = re.compile(
+    r"(?:\b(?:failed|exited|returned)\b|\(exit\b)[^:]{0,24}?\d+\)?\s*:"
+    r"|\b(?:exit(?:\s+(?:code|status))?|rc)\s*=?\s*\d+\)?\s*:"
+)
 """Where an error line's command ends and its error starts ("... failed (exit 1): fatal: ...", "... returned
-exit code 128: ...", "... (exit 1): ..."), the shapes the prompt's friction rule invites ("include its exit
-code")."""
+exit code 128: ...", "... (exit 1): ...", and with no verb before it "... exit 1: ...", "... exit code 1:
+...", "... exit status 128: ...", "... rc=1: ..." or "... rc 1: ..."), the shapes the prompt's friction rule
+invites ("include its exit code"; B13 round 15 S1)."""
 
 
 def _item_what(what: str, kind: str) -> str:

@@ -21420,7 +21420,16 @@ Tests: the dated-line scan, and the §16.22 pin in `test_round_11s_and_12s_lines
 
 ### 16.116 Round 15: setup report (2026-10-18, wave B13 round 15 lane RA)
 
-Reserved for round 15 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 15").
+The setup report's findings of the v23 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 15"; specs `round15/items/S<n>.md`, the verifier's corrected fix built). Each item has a test that fails
+without it. Where an item changes what an older section states, that section has a dated line (`Amended 2026-10-18,
+§16.116 S<n>`). No item needs prompt words.
+
+**An Items line keeps the error after an exit code with no verb before it** (S1; extends §16.110 Q31). Q31's cut of
+an error line longer than 220 characters starts the error where `_FAILED_EXIT_RE` matches, which needed `failed`,
+`exited`, `returned` or `(exit` first; the shapes `<cmd> exit 1: <error>`, `exit code 1:`, `exit status 128:`, `rc=1:`
+and `rc 1:` were cut inside the command, with no word of git's error. A second arm matches them; the leftmost match
+is unchanged for the old shapes. Test: `test_a_logged_command_keeps_its_bars_and_its_error`.
 
 ### 16.117 Round 15: installer, the no-[FAIL] status NEXT and the unread patch (2026-10-18, wave B13 round 15 lane RB)
 

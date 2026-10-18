@@ -1296,6 +1296,10 @@ def test_a_logged_command_keeps_its_bars_and_its_error(
     )
     returned = setup_report._item_what(f"{STEP1_ONE_LINER} returned exit code 128: {error}", "error")
     assert "returned exit code 128: fatal: unable to access" in returned and len(returned) <= 220
+    for shape in ("exit 1:", "exit code 1:", "exit status 128:", "rc=1:", "rc 1:"):
+        # B13 round 15 S1: an exit code with no verb before it ends the command too.
+        cut = setup_report._item_what(f"{STEP1_ONE_LINER} {shape} {error}", "error")
+        assert f"{shape} fatal: unable to access" in cut and len(cut) <= 220, (shape, cut)
     short = "2026-10-06T02:16:01Z | step 1 | error | git pull failed (exit 1): a || b | -\n"
     [event] = setup_report.parse_friction(short).attempts[0].events
     assert (event.what, event.fix) == ("git pull failed (exit 1): a || b", "")
