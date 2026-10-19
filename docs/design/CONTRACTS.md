@@ -22954,3 +22954,27 @@ which finds each named line in install.sh.
 the older count lines at eight sections, but Q39's paragraph still named only §16.39 N36, so the amendment could be
 traced from one side. A dated line after Q39's names them. Written under §16.121's own marker, the line was held by
 no claim (the verifier measured it); under T89's, this claim holds it. Test: the dated-line scan.
+
+### 16.128 Round 17: setup report (2026-10-19, wave B13 round 17 lane RA)
+
+Reserved for round 17 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 17").
+
+### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
+
+Reserved for round 17 lane RB of B13.
+
+### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
+
+Reserved for round 17 lane P of B13.
+
+### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
+
+Reserved for round 17 lane B of B13.
+
+### 16.132 Round 17: the pandoc fix's owner, converter counts and the gate (2026-10-19, wave B13 round 17 lane E)
+
+Reserved for round 17 lane E of B13.
+
+### 16.133 Round 17: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 17 lane D)
+
+Reserved for round 17 lane D of B13.

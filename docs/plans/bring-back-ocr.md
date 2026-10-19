@@ -1162,6 +1162,39 @@ not redacted (lane RB); and two prompt phrasings deferred past v25 (lane RB).
 Round 17: the round 16 workflow with prompt v25 on this section's landed tip, BASE `dd5d55d5` (ids U<n>, outputs
 `round17/`); scenario C plays the v24 and v23 blocks.
 
+### B13 round 17: v25 rehearsal, cross-lane review, harvest (2026-10-19)
+
+Run `wf_9a91496d-dbd` on `3274f9a2` (123 agents, 0 errors). Rehearsals C and D sat about five hours on unanswered
+permission prompts for their sandbox `git clone`; the run was stopped and resumed (finished agents replayed from
+cache), C went through, and D's prompt came back once more before it cleared. All six scenarios pass their EXPECTED
+with no turn: the field Mac is "fully one command", every v24 and v23 copy is refused in step 1 with exit 2, and no
+sandbox holds a lock named for the real home. 112 findings, 107 confirmed (0 turn, 25 wrong, 82 small), 5 refuted
+(U59, U98, U99, U100, U110: the three round 16 not-built reasons hold); 6 need prompt text, so the next prompt is v26.
+The 25 wrongs are 17 defects, all from probes of states the rehearsed paths do not reach and from review: the
+governance.remote [FAIL] puts the docs repo's remote URL in the report (U1, U15, U56, U93); a disallowed docs remote is
+handed to the agent to delete (U2, U16) after step 2 says the repo has no remote (U17); a converter missing at sync
+time makes a permanent "unreadable" stub (U3); install.sh's report word list unredacts an organization (U4, U94) and the
+shell fallback shows a policy label (U54); the company-mirror git message (U32); --report-only closes the previous
+session's attempt (U33); the older build's git-stop and step 1 reports (U34, U53, U81); add-source prints "failed" after
+writing a valid block (U40); a corrupt manifest's report (U41); the first report drops its Doctor section (U48); the
+report's person's-fix kinds (U52); exit 65 has no first-sync branch (U55, U65); a damaged table page passes status
+(U64, U95); and v25 makes the bundled pandoc's [FAIL] the person's (U80). Neither CI flake has come back since lane E's
+fixes (U101).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107 over rounds 2 and 4 to 17; turns 3,
+0, 0, 1, 5, 2, 4, 1, 1, 3, 1, 0, 0, 0, 0; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22, 25 (17
+distinct). Four rounds with no turn, but the totals have risen two rounds running: each round's builds open seams
+(the new exit 65, the remote-host redaction, the older build's rewrite) that the next round's probes reach.
+
+Lanes (`--account auto`, CONTRACTS §16.128 to §16.133, brief `lanes/COMMON16.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r17-land.lock`; scratch goes under `round17/`, not
+`/tmp`): RA 26 (setup_report.py: the remote URL, the person's-fix kinds, a vanished source's labels), RB 21 (install.sh:
+the report word list and shell fallback, the older build's rewrite, the hash wording, exit 65's first sync), P 14
+(prompt v26, config_failed and the add-source loop), B 22 (vanished-source fix, damaged manifest, the CLI's docs-repo
+line, the quiet lock wait, "(s)"), E 14 (the bundled pandoc's owner and path, converters; lands last if it changes the
+gate), D 9 (docs/deploy, CONTRACTS, CLAUDE.md's CI time). Lead: U111, built (the seven round 16 files deleted by exact
+path).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
