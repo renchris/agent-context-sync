@@ -6626,6 +6626,9 @@ page whose comments could not be read (Failure, below).
   summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
   file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
   cache GC drops it.
+  Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its
+  key (a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced
+  folder, keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 - **No text, some comments.** A PDF with no text on any page is still `UnreadableSourceError` (`no text layer
   …`) when no comment is emitted. With at least one comment it is a page, titled `Untitled PDF` (amends §16.9).
 - **Failure.** Comments are read inside `_pdfium_pages(src, name)`, on the page and text page already open; it
@@ -7096,6 +7099,9 @@ Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-on
 summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
 file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
 cache GC drops it.
+Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its key
+(a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced folder,
+keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 
 **Shared options.** `_OCR_OPTIONS` (`ocr_languages`, `ocr_max_pages`, `ocr_max_pictures`,
 `ocr_max_picture_bytes`) is the one set for every converter that has an engine: the limits here that can
@@ -7282,6 +7288,9 @@ Signed in Rotterdam
   summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
   file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
   cache GC drops it.
+  Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its
+  key (a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced
+  folder, keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 - **A PDF of page images** is a page as soon as OCR reads a line on any page. When OCR reads every page it
   may and finds nothing, and no comment is listed, it is refused with a reason of its own, `no text layer
   (scanned or image-only PDF; on-device OCR found no text)` (`_NO_TEXT_FOUND`): a settled UNREADABLE result,
@@ -7393,6 +7402,9 @@ North | 12
   summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
   file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
   cache GC drops it.
+  Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its
+  key (a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced
+  folder, keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 - **Failure** (plan D10). Any failure of the pass is one `OcrError("on-device OCR failed")`, raised before
   a slide is written: `_read_pictures` left a picture unread (the helper may not be run, exits non-zero,
   runs out of time, answers something else, or Vision gave up), a copy cannot be written, memory runs out,
@@ -7537,6 +7549,9 @@ Approved \| 12 May
   summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
   file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
   cache GC drops it.
+  Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its
+  key (a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced
+  folder, keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 - **Failure** (plan D10). One `OcrError("on-device OCR failed")`, raised before anything is returned:
   `_read_pictures` left a picture unread (the helper may not be run, exits non-zero, runs out of time,
   answers something else, or Vision gave up), a copy cannot be written, memory runs out, the pass raises;
@@ -14689,6 +14704,9 @@ Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-on
 summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
 file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
 cache GC drops it.
+Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its key
+(a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced folder,
+keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 
 **Under a label rule a `.msg` that holds MIME text is screened and read (Q78; amends §16.48 R87 and §16.47 R33).**
 `policy.read_labels` reads a `.msg` whose first `policy.MIME_HEAD_BYTES` (64 KiB) is an RFC 822 header block (no
@@ -21256,6 +21274,9 @@ Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-on
 summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
 file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
 cache GC drops it.
+Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its key
+(a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced folder,
+keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 
 Amended 2026-10-18, §16.116 S26, S30, S31: every count the setup report knows takes its noun from the count, not
 only the lines listed here; install.sh's report readers accept both forms.
@@ -22304,6 +22325,9 @@ Amended 2026-10-18, §16.126 T62: not only a page converted before: the write-on
 summary cached before, `(s)` and all, to any page with the same bytes (a copy, a second synced folder, a restored
 file) until its action key moves (the bytes, the converter's version as run, or its options) or a reconcile's
 cache GC drops it.
+Amended 2026-10-19, §16.132 U77: a reconcile's cache GC drops a cached summary only once no live page holds its key
+(a purge or a label escalation also deletes it), so a copy beside its live original, or in a second synced folder,
+keeps the old wording until the key moves; only a restored file whose page was removed meets the GC.
 Amended 2026-10-18, §16.126 T61: so do a table's and a sheet's rows and columns (`CSV table: 1 row x 1 column`,
 `1 non-empty row x 1 column`) and a recording's windows, screen states, keyframes, on-screen lines, speech lines
 and voices (`· 1 window`, `1 five-minute window`); the carry-over NOTE keeps `N on-screen lines`, whose wording is

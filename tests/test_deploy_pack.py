@@ -5556,8 +5556,18 @@ _ROUND_16_PARAGRAPH_AMENDS = (
 _ROUND_17_PARAGRAPH_AMENDS = (
     ("16.29", "**Who calls it.** Every non-dry cycle", "§16.133 U83 (by §16.125 T32)"),
     ("16.14", "decoded by `EXIT_MEANINGS` (0 ok, 1, 2, 75, 77, 78, 79 TCC_PENDING,", "§16.133 U84"),
+    ("16.24", "**Summary.** `; N comment(s) on M page(s)` follows the page count", "§16.132 U77"),
+    ("16.26", "**One wording for every document.**", "§16.132 U77"),
+    ("16.26", "`PDF: 3 page(s), 1 read by on-device OCR", "§16.132 U77"),
+    ("16.26", "`Presentation: 3 slide(s); text of 2 picture(s)", "§16.132 U77"),
+    ("16.26", "`Word document; text of 2 picture(s) read by on-device OCR", "§16.132 U77"),
+    ("16.54", "**A template with no slides says what its layouts and master hold", "§16.132 U77"),
+    ("16.111", "**A known count takes its noun from the count** (Q39, Q44", "§16.132 U77"),
+    ("16.120", "**No converter count keeps `(s)` (S52;", "§16.132 U77"),
 )
-"""Round 17's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
+"""Round 17's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`:
+lane D's two (U83, U84) and U77's beside each
+of T62's eight."""
 
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
@@ -5587,14 +5597,16 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.26 (five) and §16.37, and S67's at §16.14's "Prompt v7." paragraph, and §16.120 (lane E) six: S49's
     two in §15's `convert.pandoc` section, S29's and S53's in §16.32, and S52's at §16.26 and §16.42. Round
     16's §16.127 (lane D) one: T51 and T69's at §16.14's amended re-read clause, and §16.126 (lane E) seven:
-    T17's and T54's in §16.32's out-of-time paragraph, and T62's at §16.24 and at four §16.26 blocks."""
+    T17's and T54's in §16.32's out-of-time paragraph, and T62's at §16.24 and at four §16.26 blocks. Round
+    17's §16.133 (lane D) two, U83's and U84's, and §16.132 (lane E) eight: U77's beside each of T62's
+    lines."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
-    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 2
+    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 10
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
