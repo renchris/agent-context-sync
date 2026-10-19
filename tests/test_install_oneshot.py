@@ -6424,6 +6424,91 @@ def test_list_folders_names_a_mirrored_folder_to_add_back_as_a_next_shows_a_fold
         assert "Q$1 Plans" not in text and "Q\\$1 Plans" not in text, name
 
 
+def _config_step_2_stops_on(env: dict[str, str], state: str) -> Path:
+    """Probe PT, GV or MF of round 17's rehearsal A on a Mac that syncs Project Alpha (Project Beta listed
+    beside it): a policy.toml with a [policy] value that is not valid, a [governance] remote prefix that is no
+    URL (a made-up host), or a manifest that is no database. load_config reads the config all the same."""
+    cs = _cloud(env)
+    alpha = cs / "OneDrive-Contoso" / "Project Alpha"
+    for d in (alpha, cs / "OneDrive-Contoso" / "Project Beta"):
+        d.mkdir(parents=True)
+    cfg = _write_config(env, local_source_table("project-alpha", alpha), _inbox(env))
+    if state == "PT":
+        (cfg.parent / "policy.toml").write_text('[policy]\nrefuse_unlabelled = "yes"\n', encoding="utf-8")
+    elif state == "GV":
+        gov = '[governance]\nallow_remote = true\nremote_url_prefixes = ["git.contoso.invalid/team/x"]\n\n'
+        cfg.write_text(gov + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    elif state == "MF":
+        db = _state_db(env)
+        db.parent.mkdir(parents=True, exist_ok=True)
+        db.write_bytes(b"Contoso junk, no database\n" * 64)
+    return cfg
+
+
+CONFIG_STOP = {
+    "PT": "an invalid [policy] in policy.toml",
+    "GV": "an invalid [governance] value in {cfg}",
+    "MF": "agentsync's state file, which cannot be read",
+}
+
+
+@pytest.mark.parametrize("state", ["PT", "GV", "MF", "clean"])
+def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, str], state: str) -> None:
+    """B13 round 17 U12 (probes PT, GV, MF): step 1's readers call load_config alone, which reads neither
+    policy.toml nor [governance], and a damaged manifest read as no vanished source, so the NEXT ended "(none
+    is needed)" and step 2 then stopped at its config step on an error that was already there. A third reader
+    asks policy.load_policy, governance.load_governance and doctor's read-only manifest probe, and the NEXT
+    says what step 2 stops on, the person's to fix, in fixed words: never the error's text (the host, the
+    label), in the NEXT or in install.log. The installed agentsync here is not this checkout's build, so it
+    says step 2 reinstalls first. A clean config says "(none is needed)" as before."""
+    cfg = _config_step_2_stops_on(env, state)
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    head = f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
+    assert last_line(cp).startswith(head), last_line(cp)
+    logged = install_log(env)[-2]
+    if state == "clean":
+        assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
+        return
+    cause = CONFIG_STOP[state].format(cfg=cfg)
+    assert last_line(cp).endswith(
+        "; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it too, step 2 stops "
+        f"at its config step on {cause}: fixing that is the person's, and ~/.local/bin/agentsync status "
+        "prints the error"
+    ), last_line(cp)
+    assert "(none is needed)" not in last_line(cp)
+    word = {"PT": "policy", "GV": "governance", "MF": "state"}[state]
+    assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
+    for text in (last_line(cp), "\n".join(install_log(env))):
+        assert "contoso.invalid" not in text and "refuse_unlabelled" not in text and "junk" not in text
+
+
+def test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_checkouts(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 17 U12: when the installed agentsync is already this clean checkout's build, step 2 does
+    not reinstall it, so the clause says plainly that step 2 stops (round 11 M37's rule). An older build
+    that lacks one of the loaders reads nothing for it: the list is as before."""
+    checkout, head = _committed_checkout(tmp_path)
+    script = checkout / "scripts" / "install.sh"
+    _config_step_2_stops_on(env, "PT")
+    py = _tool_python(env)
+    bin_ = Path(env["HOME"]) / ".local" / "bin"
+    bin_.mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], bin_ / "agentsync")
+    (py.parent.parent / ".agentsync-install-source").write_text(f"commit={head} source={checkout}")
+    subprocess.run([BASH32, "-c", STUB_PYPANDOC], env=env, check=True)
+    cp = install_sh(env, "--list-folders", script=script)
+    assert last_line(cp).endswith(
+        "; step 2 stops at its config step on an invalid [policy] in policy.toml: fixing that is the "
+        "person's, and ~/.local/bin/agentsync status prints the error"
+    ), last_line(cp)
+    _tool_python_without(env, "agentsync.policy", "load_policy")
+    cp = install_sh(env, "--list-folders", script=script)
+    assert cp.returncode == 0 and last_line(cp).endswith("(none is needed)"), last_line(cp)
+
+
 def test_list_folders_names_a_mirrored_source_that_is_no_listed_folder_without_its_id(
     env: dict[str, str],
 ) -> None:
@@ -6464,7 +6549,8 @@ def test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing
 ) -> None:
     """B13 round 16 T6, T30: the reader is allowed to fail. No manifest, one it cannot read, and an installed
     agentsync it cannot run (one without derive_source_id) leave the list, its marks and "(none is needed)"
-    as they were."""
+    as they were. B13 round 17 U12: a manifest that is no database is what step 2's config step stops on, so
+    that NEXT says so (config_errors, not the vanished reader) in place of "(none is needed)"."""
     _cfg, alpha, beta = _vanished_list(env)
     _tool_python(env)
     if manifest == "not a database":
@@ -6476,14 +6562,22 @@ def test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing
         _tool_python_without(env, "agentsync.config", "derive_source_id")
     cp = install_sh(env, "--list-folders")
     assert (cp.returncode, cp.stderr) == (0, ""), cp.stdout + cp.stderr
+    tail, logged = " (none is needed)", ""
+    if manifest == "not a database":
+        tail = (
+            "; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it too, step 2 "
+            f"stops at its config step on {CONFIG_STOP['MF']}: fixing that is the person's, and "
+            "~/.local/bin/agentsync status prints the error"
+        )
+        logged = " config_err=state"
     assert cp.stdout.splitlines() == [
         "already synced on this Mac: 1 folder (marked [synced] below)",
         f"[synced] {alpha}",
         f"{beta}",
         f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
-        '--source-local "<folder>" for each unmarked folder to add from the list above (none is needed)',
+        f'--source-local "<folder>" for each unmarked folder to add from the list above{tail}',
     ]
-    assert install_log(env)[-2].endswith(" result=done note=listed-2 synced=1")
+    assert install_log(env)[-2].endswith(f" result=done note=listed-2 synced=1{logged}")
 
 
 STUB_FIND_HELD = """#!/bin/bash

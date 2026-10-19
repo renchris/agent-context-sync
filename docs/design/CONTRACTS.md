@@ -22664,6 +22664,8 @@ which": a source no folder adds back is given by count only. The re-add is the p
 unasked; with no answer, the first exception's "add none and go on to step 2" and the new Mac's wait hold as before.
 Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`MIRRORED_NO_BLOCK`).
 Amended 2026-10-19, §16.130 U88: the clause's `--source-local` shows the folder through `shown_arg`.
+Amended 2026-10-19, §16.130 U12: a config step 2's config step will stop on (policy.toml, `[governance]`, the state
+file) replaces `(none is needed)` with the clause that says so.
 
 **Step 2 names every kind of fix that is the person's** (T70, with lane B's words for its T5 cluster, T2 and T9;
 amends §16.106 O11). v24's "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder
@@ -23234,6 +23236,27 @@ sign, so the escaped form is redacted too. Test:
 `test_list_folders_names_a_mirrored_folder_to_add_back_as_a_next_shows_a_folder` (a folder named with `$1` and a
 backtick: the shown word reads back through bash as the path, and neither form reaches setup-report.md or
 bring-back.md).
+
+**Step 1 says what step 2's config step will stop on** (U12; amends §16.124 T6). Step 1's readers call `load_config`
+alone, which reads neither policy.toml nor `[governance]`, and a manifest that is no database read as no vanished
+source, so on a Mac that syncs a folder the NEXT ended `(none is needed)` while step 2 then stopped at its config step
+on an error that was already there (probes PT, GV, MF). A third reader, `config_errors`, runs after `synced_folders`
+under the vanished reader's guard (a config read, no provider denied or still asking), within 5 s, and may fail
+without changing anything. It asks the installed agentsync's `policy.load_policy`, `governance.load_governance` and
+`doctor.manifest_unreadable` (the read-only probe init's exit 65 uses; an older build falls back to the same schema
+read), and prints only fixed words, `policy`, `governance`, `state`, never the error's text, which can quote a host or
+a label. With any, the NEXT ends `; step 2 stops at its config step on <an invalid [policy] in policy.toml | an
+invalid [governance] value in <CONFIG> | agentsync's state file, which cannot be read, joined by "and">: fixing that
+is the person's, and ~/.local/bin/agentsync status prints the error` in place of `(none is needed)`, and the list's
+log line adds `config_err=<words>`. When the installed agentsync is not this clean checkout's build, step 2
+reinstalls it first, so the clause opens `step 2 reinstalls agentsync first, and if this checkout's agentsync rejects
+it too, step 2 stops ...`, as the `marks=failed` clause words it (§16.87 L11, M37). Not `agentsync status` from step
+1 (U12's verifier: it also FAILs on what step 2 fixes itself). A name an older build lacks reads nothing for its
+check. v26's step 1 tells the person (below). Tests: `test_list_folders_says_step_2_stops_on_a_config_it_refuses`
+(PT, GV, MF and a clean config; no host or label in the NEXT or install.log),
+`test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_checkouts` (and an older build without
+`load_policy`: "(none is needed)"), `test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing`
+(a manifest that is no database now names the state file).
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 

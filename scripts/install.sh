@@ -5064,6 +5064,66 @@ out = [str(len(vanished) - len(back)), *back.values()]
 sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 ' "$CONFIG" "$2"
 }
+# What step 2's config step will stop on in the config $CONFIG, read by the interpreter $1 (B13 round 17 U12):
+# prints "policy" when policy.load_policy refuses it (a policy.toml beside it, a [policy] value), "governance"
+# when governance.load_governance refuses its [governance] table, and "state" when the manifest is a file that
+# is no database or a damaged one (doctor.manifest_unreadable, the read-only probe init's exit 65 uses), one
+# word a line. load_config alone, which the readers above use, reads neither policy.toml nor [governance], so
+# the list said "(none is needed)" over a config step 2 then stopped on. Fixed words only, never the error's
+# text, which can quote a host or a label. A reader of its own, after synced_folders and allowed to fail: a
+# name an older agentsync lacks reads nothing for that check (manifest_unreadable falls back to the same
+# read-only schema read). -I: nothing from the folder this runs in is imported.
+config_errors() { # PYTHON
+	with_timeout 5 "$1" -I -c '
+import sqlite3, sys
+from pathlib import Path
+from agentsync.config import ConfigError, load_config
+from agentsync.paths import expand
+
+config = load_config(Path(sys.argv[1]))
+words = []
+try:
+    from agentsync.policy import load_policy
+except ImportError:
+    load_policy = None
+if load_policy is not None:
+    try:
+        load_policy(config)
+    except ConfigError:
+        words.append("policy")
+try:
+    from agentsync.governance import load_governance
+except ImportError:
+    load_governance = None
+if load_governance is not None:
+    try:
+        load_governance(config.config_path)
+    except ConfigError:
+        words.append("governance")
+db = expand(config.state_paths.db)
+if db.is_file():
+    try:
+        from agentsync.ops.doctor import manifest_unreadable
+    except ImportError:
+
+        def manifest_unreadable(path):
+            try:
+                conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=0.5)
+                try:
+                    conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+                finally:
+                    conn.close()
+            except sqlite3.OperationalError:
+                return None
+            except sqlite3.DatabaseError as exc:
+                return exc
+            return None
+
+    if manifest_unreadable(db) is not None:
+        words.append("state")
+sys.stdout.write("".join(w + "\n" for w in words))
+' "$CONFIG"
+}
 # --list-folders: the folders 1-2 levels inside each ~/Library/CloudStorage/<provider>, names only (find reads
 # directory entries and their metadata; no file is opened, so nothing is downloaded). Sets NEXT_MSG; returns
 # 0 listed, 3 none or a synced folder under CloudStorage whose app is signed out (B13 round 11 M4, round 12
@@ -5072,7 +5132,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -5165,6 +5225,11 @@ list_folders() {
 					done < <(sed -n '2,$p' "$tmp/vanished")
 					;;
 				esac
+			fi
+			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
+			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="${cerr%,}"
 			fi
 		fi
 	fi
@@ -5267,6 +5332,21 @@ list_folders() {
 		vtail="$vtail; $vother sources that no folder in the list above adds back are still mirrored but have no [[source]] block in $CONFIG. Step 2's status fails on each until its [[source]] block is put back, as it was or retired"
 	fi
 	[ $((vback + vother)) -eq 0 ] || vlog=" vanished=$((vback + vother))"
+	# A config step 2's config step will stop on (U12): what it is, in fixed words, and whose. An installed
+	# agentsync older than this checkout's is not the one step 2 runs (it reinstalls first), so then only if this
+	# checkout's rejects it too, as the marks=failed clause below words it.
+	if [ -n "$cerr" ]; then
+		case ",$cerr," in *",policy,"*) ctail="an invalid [policy] in policy.toml" ;; esac
+		case ",$cerr," in *",governance,"*) ctail="${ctail:+$ctail and }an invalid [governance] value in $CONFIG" ;; esac
+		case ",$cerr," in *",state,"*) ctail="${ctail:+$ctail and }agentsync's state file, which cannot be read" ;; esac
+		git_ro_resolve
+		if checkout_is_installed >/dev/null; then
+			ctail="; step 2 stops at its config step on $ctail: fixing that is the person's, and ~/.local/bin/agentsync status prints the error"
+		else
+			ctail="; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it too, step 2 stops at its config step on $ctail: fixing that is the person's, and ~/.local/bin/agentsync status prints the error"
+		fi
+		clog=" config_err=$cerr"
+	fi
 	term="$(terminal_app)"
 	term="this terminal app${term:+ ($term)}"
 	# A config whose folders could not be read is still there: the NEXTs that ask for a folder or a sign-in
@@ -5325,8 +5405,9 @@ list_folders() {
 			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF (no folder to add is listed: no folders are synced yet in $cs)"
 		else
 			NEXT_MSG="this Mac already syncs $sn, and a re-run keeps $them: run $SELF, with one --source-local \"<folder>\" for each unmarked folder to add from the list above"
-			# none is needed, unless a source still mirrored has no block (T6, T30)
-			[ -n "$vtail" ] || NEXT_MSG="$NEXT_MSG (none is needed)"
+			# none is needed, unless a source still mirrored has no block (T6, T30) or step 2 will stop on the
+			# config (U12)
+			[ -n "$vtail$ctail" ] || NEXT_MSG="$NEXT_MSG (none is needed)"
 		fi
 		# A folder gone while its app is signed in: no sign-in (a re-run of this list would stop the same way),
 		# and step 2 still runs, so its doctor names the folder and its fix and the report is written. The clause
@@ -5355,10 +5436,10 @@ list_folders() {
 		elif [ "$libs" -gt 1 ]; then
 			NEXT_MSG="$NEXT_MSG; $libs of them are not on disk because their SharePoint libraries are not synced on this Mac (each organization's OneDrive folder is there): $libpaths. Step 2's status fails on each and names the fix (sync each SharePoint library to this Mac with Sync on its SharePoint page, or fix its [[source]] path in $CONFIG), so step 2 runs no first sync until then; a sync still mirrors the folders that are there"
 		fi
-		NEXT_MSG="$NEXT_MSG$vtail"
+		NEXT_MSG="$NEXT_MSG$vtail$ctail"
 		gone=$((gone + others + libs))
 		[ "$gone" -eq 0 ] || more=" gone=$gone"
-		step_end "done" 0 "listed-$total synced=$synced$more$vlog"
+		step_end "done" 0 "listed-$total synced=$synced$more$vlog$clog"
 	elif [ "$providers" -eq 0 ]; then
 		rc=3
 		NEXT_MSG="OneDrive is not signed in on this Mac: sign in to OneDrive, then re-run: $RERUN$kept"
@@ -5374,8 +5455,8 @@ list_folders() {
 		NEXT_MSG="no folder can be added until the config is fixed: run $SELF with no --source-local, which shows the error$kept"
 		step_end "done" 0 "listed-$total$unread"
 	else
-		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$vtail$kept"
-		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread$vlog"
+		NEXT_MSG="choose the folders to sync from the list above (project folders rather than a whole library), then run: $SELF --source-local \"<folder>\" (one --source-local per folder)$vtail$ctail$kept"
+		step_end "done" 0 "listed-$total${synced:+ synced=$synced}$unread$vlog$clog"
 	fi
 	return "$rc"
 }
