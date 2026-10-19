@@ -23195,6 +23195,17 @@ WARNING and issue label stay as `compute_outcome` gives them, since a stuck conf
 agent to go on to step 2. An attempt with an end line (`--report-only` ran: round 8 J36) and a list that failed
 keep their words. Test: `test_an_earlier_attempt_that_only_listed_the_folders_stopped_and_did_not_fail`.
 
+**The sync clause names an earlier run's sync when the last run stopped before its own** (U42). `_first_sync_line`
+took the newest run with a first-sync step and tagged it `(install.log)` unnamed, so when the last install run
+failed its config step (rc 65) and logged no first sync, the Summary showed an earlier run's `sync: done in 1s ·
+converted 2` or `skipped ... agentsync status reported a failure` as the last run's. When the last install run
+(never a `--list-folders` one, which never syncs) has no first-sync step and an earlier one does, the clause reads
+`no first sync in the last install run (install.log: it stopped at its <step> step)` (or `it logged no first-sync
+step` for a run that was killed), then `the newest earlier run's sync: <its words> (install.log: <that run>)`, as
+`_newer_sync` words it; that run's counts are tagged with its name, and install.out's sync line is not read as the
+last run's. The label (`sync` or `first sync`) comes from the last run's config note. Test:
+`test_the_sync_clause_names_an_earlier_runs_sync_when_the_last_run_stopped_before_its_own`.
+
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
 Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest

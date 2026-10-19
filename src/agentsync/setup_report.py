@@ -8690,8 +8690,19 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     parts: list[str] = []
     counts: tuple[int, int, int] | None = None
     label = "first sync"
+    # The last install run (never a --list-folders one) stopped before its own first sync: the pool's run is
+    # an earlier one, named, and its counts are not the last run's (B13 round 17 U42)
+    installs = install_runs_only(runs or r.install_runs)
+    last = installs[-1] if installs else None
+    earlier = (
+        not borrowed
+        and bool(pool)
+        and last is not None
+        and last.step("first-sync") is None
+        and pool[-1].run_id != last.run_id
+    )
     if pool:
-        config = pool[-1].step("config") or {}
+        config = ((last if earlier and last is not None else pool[-1]).step("config")) or {}
         if config.get("note") in ("add-source", "exists"):  # sources.toml was there before that run
             label = "sync"
         text, counts = _sync_step_words(pool[-1].step("first-sync") or {})
@@ -8699,6 +8710,13 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             text += (
                 f" (install.log: {_run_named(pool[-1], r.install_runs)}, before this attempt; this "
                 "attempt ran none)"
+            )
+        elif earlier and last is not None:
+            failing = last.failed_step()
+            where = f"it stopped at its {failing[0]} step" if failing else "it logged no first-sync step"
+            parts.append(f"no first sync in the last install run (install.log: {where})")
+            text = (
+                f"the newest earlier run's sync: {text} (install.log: {_run_named(pool[-1], r.install_runs)})"
             )
         else:
             text += " (install.log)"
@@ -8725,15 +8743,24 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             if missing
             else "no install.sh run with a first-sync step (install.log)"
         )
-    source = "install.log: that earlier run" if borrowed else "install.log"
+    source = (
+        "install.log: that earlier run"
+        if borrowed
+        else f"install.log: {_run_named(pool[-1], r.install_runs)}"
+        if earlier
+        else "install.log"
+    )
     # install.out's last sync line is this step's only when the step ran a sync and the line is in its run's
     # output: a skipped sync (lock-busy, no-sources, status-failed) or one that printed no counts left an
     # earlier run's line there, which read as its own (B13 round 7 H29). An install.out with no run header
     # (an older install.sh) cannot say whose the line is: only a skipped step leaves it out then
     shown = pool[-1] if pool and not borrowed else None
-    own_line = shown is None or (
-        (shown.step("first-sync") or {}).get("result") != "skipped"
-        and r.facts.first_sync_run in ("", shown.run_id)
+    own_line = not earlier and (
+        shown is None
+        or (
+            (shown.step("first-sync") or {}).get("result") != "skipped"
+            and r.facts.first_sync_run in ("", shown.run_id)
+        )
     )
     out_source = (
         "install.out: an earlier run's; this attempt ran none" if scoped and not runs else "install.out"

@@ -1679,6 +1679,47 @@ def test_an_earlier_attempt_that_only_listed_the_folders_stopped_and_did_not_fai
     assert "after its folder list, with no report" not in got, "the latest attempt's outcome is unchanged"
 
 
+def test_the_sync_clause_names_an_earlier_runs_sync_when_the_last_run_stopped_before_its_own(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 17 U42: the last install run failed its config step (rc 65) and logged no first sync, yet
+    the Summary's sync clause gave an earlier run's sync, unnamed, with its counts as if they were the last
+    run's. It says the last run has none and where it stopped, then the newest earlier run's sync, named; a
+    --list-folders run after a completed sync leaves that sync's clause as it was."""
+    stopped = (
+        "2026-09-29T10:05:00Z run=20260929T100500Z-77 start install.sh compat=25 commit=0123456789ab "
+        "kind=checkout source=- args=--source-local x\n"
+        "2026-09-29T10:05:00Z run=20260929T100500Z-77 step=agentsync seconds=1 rc=0 result=done\n"
+        "2026-09-29T10:05:01Z run=20260929T100500Z-77 step=config seconds=1 rc=65 result=failed\n"
+        "2026-09-29T10:05:02Z run=20260929T100500Z-77 end rc=65 seconds=2\n"
+    )
+    log = fake_mac["setup"] / "install.log"
+    write_friction(fake_mac, V5_HAPPY.replace("2026-09-29T10:01:06Z | end | finished\n", ""))
+    for first_sync, said in (
+        ("seconds=1 rc=0 result=done note=converted-2-deferred-0", "done in 1s"),
+        ("seconds=0 rc=0 result=skipped note=status-failed", "skipped in 0s"),
+    ):
+        write_install_log(fake_mac, first_sync=first_sync)
+        log.write_text(log.read_text(encoding="utf-8") + stopped, encoding="utf-8")
+        _text, summary = summary_of(fake_mac)
+        line = _line(summary, "- first sync: ")
+        assert line.startswith(
+            "- first sync: no first sync in the last install run (install.log: it stopped at its config "
+            f"step) · the newest earlier run's sync: {said}"
+        ), line
+        assert "(install.log: the install run of 2026-09-29T10:00:00Z)" in line, line
+        assert "(install.log)" not in line, "no clause reads as the last run's"
+        if "converted" in first_sync:
+            named = (
+                "converted 2, deferred 0 online-only (install.log: the install run of 2026-09-29T10:00:00Z)"
+            )
+            assert named in line, line
+    write_install_log(fake_mac, first_sync="seconds=1 rc=0 result=done note=converted-2-deferred-0")
+    log.write_text(log.read_text(encoding="utf-8") + LIST_RUN.replace("09:58:0", "10:05:0"), encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert _line(summary, "- first sync: ").startswith("- first sync: done in 1s (install.log)"), summary
+
+
 def test_attempts_the_latest_is_judged_and_earlier_ones_listed(fake_mac: dict[str, Path]) -> None:
     write_install_log(fake_mac)
     first = (
