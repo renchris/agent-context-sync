@@ -22995,6 +22995,21 @@ unread; the sentences after it count those. Tests: `test_a_report_that_sends_two
 `test_setup_report.py::test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 
+**An exit 65 at the first sync is the person's** (U55, U65: one defect from two finders). A manifest damaged under a
+table passes init, add-source and status, which read only its schema, so the first sync is where its exit 65 (cli's
+`EXIT_STATE`, round 16's T12) shows; it fell to the else branch, `fix what the first sync printed above (exit 65), then
+re-run`, handing the agent a fix that loses history. The first sync has a 65 branch beside 78's (`first-sync failed
+65 state-unreadable`): `agentsync's state file cannot be read (the first sync's error above, with its fix;
+~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the
+error and go on to the report; once it is fixed, the next run is: <install.sh> <RERUN_ARGS>`. It points at `sync`, not
+config_failed's `status`, which at such damage prints only `cannot read the state`, and re-runs with `RERUN_ARGS`,
+since add-source has put every folder in the config. A first background run that exited 65 gets the same owner and
+names its err log. `rc_meaning` and `setup_report.EXIT_MEANINGS` read 65 as `the state file (manifest.sqlite) cannot
+be read: the person's to fix`, so the Background runs line decodes it too. Tests:
+`test_first_sync_failure_fails_the_run_before_the_agent[65]`,
+`test_a_background_run_that_cannot_read_the_state_names_the_persons_fix`, `test_a_signal_exit_is_named_by_its_signal`,
+`test_setup_report.py::test_background_runs_decode_exit_codes_and_ownership`.
+
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 
 Reserved for round 17 lane P of B13.

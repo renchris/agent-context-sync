@@ -1066,6 +1066,7 @@ rc_meaning() {
 	2) printf 'usage error' ;;
 	3) printf 'the wait for the first background run ran out' ;;
 	64) printf 'the launcher refused the job: its program is not the one it starts, or an option is wrong' ;;
+	65) printf "the state file (manifest.sqlite) cannot be read: the person's to fix" ;; # B13 round 17 U55, U65
 	75) printf 'lock busy: another agentsync cycle is running' ;;
 	77) printf 'sign-in required' ;;
 	78) printf 'configuration invalid' ;;
@@ -6111,6 +6112,16 @@ else
 		printf 'error: %s\n' "$LAST_ERROR" >&2
 		NEXT_MSG="the first sync refused the config $CONFIG (the configuration error above; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		exit 1
+	elif [ "$SYNC_RC" -eq 65 ]; then
+		# A manifest damaged under a table: init, add-source and status read only its schema, so the first sync
+		# is where it shows. Its fix loses history, so it is the person's, as config_failed's 65 is; the sync
+		# prints it again (status, at such damage, says only "cannot read the state"), and add-source has put
+		# every folder in the config, so the re-run names none (B13 round 17 U55, U65).
+		step_end failed 65 state-unreadable
+		LAST_ERROR="the first sync (agentsync sync --once) exited 65 ($(rc_meaning 65))"
+		printf 'error: %s\n' "$LAST_ERROR" >&2
+		NEXT_MSG="agentsync's state file cannot be read (the first sync's error above, with its fix; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		exit 1
 	else
 		step_end failed "$SYNC_RC"
 		LAST_ERROR="the first sync (agentsync sync --once) exited $SYNC_RC ($(rc_meaning "$SYNC_RC"))"
@@ -6379,6 +6390,8 @@ elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT
 	elif [ "$WAIT_RESULT" = "tcc" ]; then
 		EXIT_RC=3
 		next="macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is showing, or $TCC_CLICK, then re-run: $SELF$RERUN_ARGS"
+	elif [ "$WAIT_CODE" = "65" ]; then # the person's fix, as the first sync's 65 (B13 round 17 U55)
+		next="the first background run exited 65 ($(rc_meaning 65)): agentsync's state file cannot be read (the error in $WAIT_ERRLOG, with its fix; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_CODE" = "80" ]; then
 		next="macOS denied agentsync-launcher access to files managed by $(provider_name) (an earlier \"Don't Allow\"): $TCC_CLICK, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_RESULT" = "timeout" ]; then

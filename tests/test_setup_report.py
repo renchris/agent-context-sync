@@ -1847,6 +1847,10 @@ def test_background_runs_decode_exit_codes_and_ownership(
     assert setup_report.decode_exit("64") == (
         "64 (the launcher refused the job: its program is not the one it starts, or an option is wrong)"
     )
+    # B13 round 17 U55, U65: agentsync --help lists 65, the manifest it cannot read, which read as a bare 65
+    assert setup_report.decode_exit("65") == (
+        "65 (the state file (manifest.sqlite) cannot be read: the person's to fix)"
+    )
 
 
 def test_a_shadowing_agentsync_on_path_is_flagged(

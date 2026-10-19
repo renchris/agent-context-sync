@@ -390,6 +390,7 @@ EXIT_MEANINGS = {
     1: "failed: a source failed or a blocking lint fired (see Recent errors)",
     2: "usage error",
     64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
+    65: "the state file (manifest.sqlite) cannot be read: the person's to fix",  # B13 round 17 U55, U65
     75: "skipped: another cycle held the lock; launchd retries",
     77: f"sign-in required ({AGENTSYNC_BIN} graph login)",
     78: "configuration invalid (sources.toml or policy.toml)",
