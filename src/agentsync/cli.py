@@ -57,7 +57,7 @@ from agentsync import (
     skill,
 )
 from agentsync import policy as content_policy
-from agentsync.arm_local import ECHOED_ALARM, exclude_advice, exclude_globs
+from agentsync.arm_local import ECHOED_ALARM, PROGRESS, exclude_advice, exclude_globs
 from agentsync.config import (
     Config,
     SourceConfig,
@@ -2479,6 +2479,16 @@ def _contended(exc: sqlite3.DatabaseError) -> bool:
     return isinstance(code, int) and code & 0xFF in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
 
 
+class _Formatter(logging.Formatter):
+    """The stderr handler's format; a live progress notice (:data:`arm_local.PROGRESS`, the inbox's settle
+    wait) is a plain indented line instead, with no time, level or logger name (B13 round 17 U18)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        if getattr(record, PROGRESS, False):
+            return f"  {record.getMessage()}"
+        return super().format(record)
+
+
 def _setup_logging(verbosity: int) -> None:
     level = logging.WARNING if verbosity <= 0 else logging.INFO if verbosity == 1 else logging.DEBUG
     root = logging.getLogger()
@@ -2490,7 +2500,7 @@ def _setup_logging(verbosity: int) -> None:
     # (a lock holder's "since"): local time with no zone showed two clocks on one line (B13 round 8 J26). No
     # datefmt: with one, formatTime drops the milliseconds. The setup report writes older local lines this
     # same way (setup_report._utc_log_times).
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    fmt = _Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     fmt.converter = time.gmtime
     fmt.default_time_format = "%Y-%m-%dT%H:%M:%S"
     fmt.default_msec_format = "%s.%03dZ"

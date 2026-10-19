@@ -33,6 +33,7 @@ from agentsync.manifest import Manifest, TombstoneRow
 from agentsync.model import PageStatus
 from agentsync.ops.launchd import plist_path
 from agentsync.publish import render_tombstone
+from agentsync.text import plural
 
 NOW = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
 
@@ -599,7 +600,9 @@ def test_purge_dry_run_of_an_id_that_names_nothing_says_no_commit_would_be_rewri
         world.config, gv.PurgeSelector(stable_id="S1"), reason=gv.PurgeReason.OPERATOR, dry_run=True
     )
     assert named.blobs_targeted > 0
-    assert named.notes == (f"up to {commits} commit(s) would be rewritten",)
+    # B13 round 17 U71: a known count needs no "(s)", in the purge command's own lines too (T32)
+    assert named.notes == (f"up to {plural(commits, 'commit')} would be rewritten",)
+    assert commits > 1 and "commits" in named.notes[0]
     # an outputs row with no items row and no page: no blob, but the docs path is still a needle
     conn = sqlite3.connect(world.config.state_paths.db)
     conn.execute(
@@ -615,7 +618,7 @@ def test_purge_dry_run_of_an_id_that_names_nothing_says_no_commit_would_be_rewri
         dry_run=True,
     )
     assert phantom.items == () and phantom.blobs_targeted == 0
-    assert phantom.notes == (f"up to {commits} commit(s) would be rewritten",)
+    assert phantom.notes == (f"up to {plural(commits, 'commit')} would be rewritten",)
 
 
 def test_purge_reports_survivor_when_content_is_copied_elsewhere(world: World) -> None:
@@ -807,7 +810,7 @@ def test_purge_queue_keeps_an_upstream_deletion_of_a_file_that_is_listed_again(w
     reports = gv.run_purge_queue(world.config, now=NOW)
     assert [r.verified for r in reports] == [False, False, True, True]
     assert reports[0].notes == (
-        "stays queued: the manifest lists the file as live or online-only (1 row(s), 1 of them under a later "
+        "stays queued: the manifest lists the file as live or online-only (1 row, 1 of them under a later "
         "id); an upstream deletion is not run against a listed file; a later `purge --queue` runs it once "
         "the file is gone",
     )
@@ -1012,6 +1015,10 @@ def test_compact_history_squashes_old_commits_and_prunes(
     assert git(repo, "rev-parse", f"{revs[0]}^{{tree}}").strip() == trees[40]
     assert [git(repo, "rev-parse", f"{r}^{{tree}}").strip() for r in revs[1:]] == [trees[10], trees[5]]
     assert "history before" in git(repo, "log", "-1", "--format=%s", revs[0])
+    # B13 round 17 U71: the commit's own count line, no "(s)"
+    assert "\n3 commits older than 30 days were squashed into this snapshot " in git(
+        repo, "log", "-1", "--format=%B", revs[0]
+    )
     assert git(repo, "rev-parse", "published").strip() == rep.new_root
     assert not exists(repo, old_blob) and not exists(repo, shas[100])
     assert git(repo, "reflog", "--all").strip() == ""

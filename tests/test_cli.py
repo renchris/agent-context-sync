@@ -1832,7 +1832,7 @@ def test_purge_removes_every_blob_and_the_item_never_comes_back(
     # A dry run changed nothing, so its headline says what would go and names no commit count
     (head,) = [line for line in out.splitlines() if line.startswith("purge ")]
     assert head.endswith(" · 1 cache entry would be removed") and "rewritten" not in head
-    assert "note: up to " in out and " commit(s) would be rewritten" in out
+    assert "note: up to " in out and " would be rewritten" in out and "commit(s)" not in out  # U71
     rc = cli.main(
         ["purge", f"id={sid}", "--source", "source", "--reason", "erasure-request", "--config", cfg]
     )

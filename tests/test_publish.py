@@ -1214,6 +1214,19 @@ def test_check_deletions_under_and_over_threshold(env: Env) -> None:
     assert src is not None and src.breaker_candidates == 5 and src.breaker_until == "2026-10-06T12:00:00Z"
     held = env.pub.check_deletions("src", ids[:1])  # breaker now active: even one deletion is held
     assert held is not None and "tripped until" in held.message
+    assert held.message.endswith("; 1 deletion held, nothing removed"), held.message  # B13 round 17 U71
+    two = env.pub.check_deletions("src", ids[:2])
+    assert two is not None and two.message.endswith("; 2 deletions held, nothing removed"), two.message
+
+
+def test_the_changelogs_lint_line_counts_its_findings(env: Env) -> None:
+    """B13 round 17 U71: the run's lint line read "N finding(s)" beside the NEXT's "N blocking findings"."""
+    one = (LintFinding("SECRET", "mirror/src/a.md", "aws-access-key at line 3", blocking=False),)
+    for n, findings in ((1, one), (2, one * 2)):
+        change = MirrorChange(ChangeOp.ADDED, f"mirror/src/{n}.md", "src", str(n))
+        env.pub.append_changelog(7 + n, TODAY, [change], report(findings=findings))
+        lines = [ln for ln in env.text("CHANGELOG/2026-09.md").splitlines() if ln.startswith("- lint: ")]
+        assert lines[-1] == f"- lint: {n} finding{'s' if n > 1 else ''}, 0 blocking", lines
 
 
 def test_check_deletions_exempts_retired_sources(env: Env) -> None:

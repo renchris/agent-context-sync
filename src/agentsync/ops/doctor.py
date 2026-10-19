@@ -873,7 +873,7 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
                 out.append(
                     _bad(
                         "docs_repo.symlinks",
-                        f"{len(links)} tracked symlink(s): {shown}",
+                        f"{plural(len(links), 'tracked symlink')}: {shown}",
                         fix=(
                             f"git -C {_shell_path(repo)} rm --cached <path> for each, and replace them with "
                             "real files"
@@ -1912,7 +1912,10 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
         return []
     if not pairs:
         return []
-    shown = "; ".join(f"{n} file(s) in {a} have the same content as a file in {b}" for a, b, n in pairs)
+    shown = "; ".join(
+        f"{plural(n, 'file')} in {a} {'has' if n == 1 else 'have'} the same content as a file in {b}"
+        for a, b, n in pairs
+    )
     return [
         _ok(
             "sources.shared_content",
@@ -2168,7 +2171,7 @@ def _check_logs(config: Config) -> list[CheckResult]:
                 fix="; ".join(f": > {_shell_path(p)}" for p, _ in big),
             )
         ]
-    return [_ok("logs", f"{len(files)} log file(s) in {log_dir}")]
+    return [_ok("logs", f"{plural(len(files), 'log file')} in {log_dir}")]
 
 
 _PERM_SAMPLE = 500  # files per tree whose mode is checked (a bounded walk, newest pages first is not needed)

@@ -1786,7 +1786,7 @@ class Publisher:
                 "BREAKER",
                 f"mirror/{source_id}",
                 f"{source_id}: deletion breaker is tripped until {until or 'an operator clears it'}; "
-                f"{n} deletion(s) held, nothing removed",
+                f"{plural(n, 'deletion')} held, nothing removed",
             )
         live = self._manifest.live_count(source_id)
         threshold = breaker.threshold(live)
@@ -2027,7 +2027,9 @@ class Publisher:
                 section.append(f"- {sid}: " + " · ".join(bits))
             blocking = [f for f in report.lint_findings if f.blocking]
             if report.lint_findings:
-                section.append(f"- lint: {len(report.lint_findings)} finding(s), {len(blocking)} blocking")
+                section.append(
+                    f"- lint: {plural(len(report.lint_findings), 'finding')}, {len(blocking)} blocking"
+                )
             section.append("")
             ordered = sorted(changes, key=lambda c: (c.path, c.op.value))
             for c in ordered[:_CHANGELOG_MAX_PATHS]:

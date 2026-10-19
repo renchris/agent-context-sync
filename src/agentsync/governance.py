@@ -2301,7 +2301,7 @@ def _purge_locked(
             # the scrubber's needles are the docs paths, the ids and the source paths: with none of them and
             # no blob, no commit changes
             if plan.target_blobs or docs_paths or plan.ids or rel_paths:
-                note = f"up to {len(graph)} commit(s) would be rewritten"
+                note = f"up to {plural(len(graph), 'commit')} would be rewritten"
             else:
                 note = "nothing is targeted: no commit would be rewritten"
             return PurgeReport(
@@ -2561,15 +2561,16 @@ def _kept_note(q: QueuedPurge, listed: Sequence[tuple[str, str]]) -> str:
         return ""
     later = sum(1 for _s, i in listed if i != q.selector.stable_id) if q.selector.stable_id else 0
     via = f", {later} of them under a later id" if later else ""
+    rows = plural(len(listed), "row")
     if q.reason is PurgeReason.LABEL_ESCALATION:
         return (
             f"stays queued: the label policy no longer refuses the file and its page is current again "
-            f"({len(listed)} row(s){via}); running it would erase that page and stop the file syncing. "
+            f"({rows}{via}); running it would erase that page and stop the file syncing. "
             "`purge --queue` skips it while the file is published, and runs it if the policy refuses the "
             f"file again; `{AGENTSYNC_BIN} purge path=<its path> --source <its source>` erases it anyway"
         )
     return (
-        f"stays queued: the manifest lists the file as live or online-only ({len(listed)} row(s){via}); "
+        f"stays queued: the manifest lists the file as live or online-only ({rows}{via}); "
         "an upstream deletion is not run against a listed file; a later `purge --queue` runs it once the "
         "file is gone"
     )
@@ -2917,7 +2918,8 @@ def compact_history(
             rw = _Rewriter(repo, cat, hlen, selector=None, explicit_paths=set(), plan=_Plan())
             message = (
                 f"agentsync: history before {cutoff} compacted\n\n"
-                f"{len(squash)} commit(s) older than {days} day(s) were squashed into this snapshot "
+                f"{plural(len(squash), 'commit')} older than {plural(days, 'day')} "
+                f"{'was' if len(squash) == 1 else 'were'} squashed into this snapshot "
                 "([governance] history_days); their content is no longer recoverable from this repo.\n\n"
                 f"Agentsync-Compacted: {len(squash)}\nAgentsync-Cutoff: {cutoff}\n"
             ).encode()

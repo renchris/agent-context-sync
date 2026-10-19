@@ -36,6 +36,7 @@ from agentsync.model import CycleMode, PassKind, RowState, SourceItem, SourceKin
 from agentsync.ops import doctor, launchd
 from agentsync.ops.doctor import CheckResult, Severity, format_results
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, LockInfo, SingleWriterLock, boot_time, write_heartbeat
+from agentsync.paths import expand
 from conftest import config_text, fails_without_a_fix
 from media_kit import fake_media
 from speech_kit import fake_speech, place_models
@@ -918,7 +919,12 @@ def test_docs_repo_tracked_symlink(sample_config: Config) -> None:
     subprocess.run([GIT, "-C", str(repo), "add", "-A"], check=True)
     subprocess.run([GIT, "-C", str(repo), "commit", "-qm", "x"], check=True)
     r = by_name(run_checks(sample_config))["docs_repo.symlinks"]
-    assert not r.ok and "link.md" in r.detail and "1 tracked symlink" in r.detail
+    assert not r.ok and r.detail == "1 tracked symlink: link.md", r.detail  # no "(s)" (B13 round 17 U71)
+    (repo / "link2.md").symlink_to("real.md")
+    subprocess.run([GIT, "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run([GIT, "-C", str(repo), "commit", "-qm", "y"], check=True)
+    r = by_name(run_checks(sample_config))["docs_repo.symlinks"]
+    assert r.detail == "2 tracked symlinks: link.md, link2.md", r.detail
 
 
 # ------------------------------------------------------------------------------------------------ state_dir
@@ -1876,7 +1882,8 @@ def test_two_sources_holding_the_same_files_is_an_info_line(sample_config: Confi
             )
     r = by_name(run_checks(cfg))["sources.shared_content"]
     assert r.ok and r.severity is Severity.INFO and r.fix is None
-    assert r.detail.startswith("1 file(s) in local-fixture have the same content as a file in team-copy: ")
+    # B13 round 17 U71, U102: noun and verb by the count
+    assert r.detail.startswith("1 file in local-fixture has the same content as a file in team-copy: ")
     # The advice is the cycle's own rule: deleting the [[source]] block is refused at the next sync (exit 78).
     # B13 round 5 F97: in the refusal's own words, from one constant
     assert r.detail.endswith(f"give its [[source]] block in sources.toml {RETIRE_ADVICE}"), r.detail
@@ -2112,6 +2119,16 @@ def test_heartbeat_corrupt(sample_config: Config) -> None:
 
 
 # ------------------------------------------------------------------------------------------------ logs
+
+
+def test_the_logs_line_counts_its_files(sample_config: Config) -> None:
+    """B13 round 17 U71, U102: "N log file(s) in" beside a count it knows."""
+    log_dir = sample_config.log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
+    for n in (1, 2):
+        (log_dir / f"com.agentsync.{n}.log").write_text("x")
+        r = by_name(run_checks(sample_config))["logs"]
+        assert r.ok and r.detail == f"{n} log file{'s' if n > 1 else ''} in {expand(log_dir)}", r.detail
 
 
 def test_big_log_warns(sample_config: Config) -> None:

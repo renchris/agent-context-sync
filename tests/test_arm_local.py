@@ -24,7 +24,7 @@ from typing import Any
 import pytest
 
 from agentsync import arm_local as al
-from agentsync import cycle, manifest, model
+from agentsync import cli, cycle, manifest, model
 from agentsync import materialise as mat
 from agentsync.config import DEFAULT_EXCLUDES, SourceConfig
 from agentsync.errors import BudgetExhaustedError, ConfigError, MaterialiseError
@@ -823,8 +823,14 @@ def test_an_empty_root_alarm_never_advises_an_exclude(tmp_path: Path, tree: Path
         arm.known_h0 = mirrored
         res = arm.scan(None, full=True)
         assert res.unknown_dirs == (".",) and not res.enumeration_complete
+        assert len(mirrored) > 1
         assert res.alarms == (
-            f"source root {root} is empty but {len(mirrored)} file(s) are mirrored (unmounted volume?): "
+            f"source root {root} is empty but {len(mirrored)} files are mirrored (unmounted volume?): "
+            "enumeration incomplete, nothing is deleted",
+        )
+        arm.known_h0 = dict(list(mirrored.items())[:1])  # one file: its noun and verb by the count (U71)
+        assert arm.scan(None, full=True).alarms == (
+            f"source root {root} is empty but 1 file is mirrored (unmounted volume?): "
             "enumeration incomplete, nothing is deleted",
         )
     (alarm,) = al.LocalArm(_cfg(cloud)).scan(None, full=True).alarms  # nothing mirrored yet
@@ -1339,12 +1345,25 @@ def test_inbox_settle_waits_for_a_fresh_file_beside_a_future_dated_one(
     os.utime(_write(root / "fromzip.eml"), ns=(ahead, ahead))
     arm = _inbox(root)
     sleeps = _settling(arm)
+    said: list[str] = []
+    take = arm._sleep
+    arm._sleep = lambda s: (said.extend(r.getMessage() for r in caplog.records), take(s))  # type: ignore[method-assign]
     with caplog.at_level(logging.WARNING, logger=al.__name__):
         res = arm.scan(None, full=True)
     assert len(sleeps) == 1 and 0 < sleeps[0] <= 60
     assert [i.rel_path for i in res.items] == ["fresh.eml"]
     assert res.enumeration_complete is False and any("fromzip.eml" in a for a in res.alarms)
-    assert any("still settling" in r.getMessage() for r in caplog.records)
+    # B13 round 17 U18: said before the sleep, its noun counted, and a live progress notice, which the CLI's
+    # stderr handler prints as a plain indented line, never a timestamped "WARNING agentsync.arm_local:" one
+    [record] = [r for r in caplog.records if "still settling" in r.getMessage()]
+    assert record.getMessage() in said
+    assert record.getMessage().startswith(f"{arm.source_id}: 2 inbox items still settling; waiting ")
+    assert getattr(record, al.PROGRESS, False) is True
+    assert cli._Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s").format(record) == (
+        f"  {record.getMessage()}"
+    )
+    (alarm,) = [a for a in res.alarms if "withheld" in a]
+    assert alarm.startswith("1 inbox item withheld: "), alarm  # U102: by the count, no "(s)"
 
 
 def test_inbox_settle_never_waits_past_the_budget_left(tmp_path: Path) -> None:

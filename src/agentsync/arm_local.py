@@ -61,6 +61,7 @@ from agentsync.model import (
 )
 from agentsync.paths import _glob_regex, cloud_storage_roots, expand, glob_match, glob_strip, is_under
 from agentsync.skill import AGENTSYNC_BIN
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +70,12 @@ ECHOED_ALARM = "agentsync_echoed_alarm"
 alarm under its source, so a run that prints the report drops the record from its stderr, and the
 LaunchAgent's job keeps it in its err.log, where the setup report's Recent errors reads it (B13 round 15 S2,
 S13: an interactive sync printed it twice, the WARNING above the run line)."""
+
+PROGRESS = "agentsync_progress"
+"""The ``extra`` key on a WARNING that is a live progress notice (the inbox's settle wait): the CLI's stderr
+handler prints it as a plain indented line, with no time, level or logger name, the moment it happens, never
+held back to the report, which prints only after the cycle (B13 round 17 U18). Only an interactive run
+settles its inbox, so the LaunchAgent's err.log never gets one."""
 
 _T = TypeVar("_T")
 
@@ -1296,7 +1303,8 @@ class LocalArm:
             # "everything was deleted" (design 4.7), sentinel or not.
             stats = dataclasses.replace(stats, unknown_dirs=(".",))
             alarms.append(
-                f"source root {self.root} is empty but {known_files} file(s) are mirrored "
+                f"source root {self.root} is empty but {plural(known_files, 'file')} "
+                f"{'is' if known_files == 1 else 'are'} mirrored "
                 "(unmounted volume?): "
                 "enumeration incomplete, nothing is deleted"
             )
@@ -1465,18 +1473,19 @@ class InboxArm(LocalArm):
             wait_s = min((max(settling) - horizon) / 1e9, budget.remaining_s)  # until the youngest leaves
             budget.remaining_s -= wait_s
             log.warning(
-                "%s: %d inbox item(s) still settling; waiting %.0fs, then listing the inbox once more",
+                "%s: %s still settling; waiting %.0fs, then listing the inbox once more",
                 self.source_id,
-                len(withheld),
+                plural(len(withheld), "inbox item"),
                 wait_s,
+                extra={PROGRESS: True},
             )
             self._sleep(wait_s)
         if withheld:
             shown = ", ".join(repr(p) for p in withheld[:5])
             more = f" (+{len(withheld) - 5} more)" if len(withheld) > 5 else ""
             alarms.append(
-                f"{len(withheld)} inbox item(s) withheld: changed within the last {self.cfg.quiescence_s}s "
-                f"(still being written?): {shown}{more}"
+                f"{plural(len(withheld), 'inbox item')} withheld: changed within the last "
+                f"{self.cfg.quiescence_s}s (still being written?): {shown}{more}"
             )
         complete = stats.sentinel_present is not False and not stats.unknown_dirs and not withheld
         log.info(
