@@ -22502,6 +22502,8 @@ N16). A vanished source, a policy.toml that does not pass and a bad `[governance
 `unexpected`, which three tests pin on purpose (§16.104 O13, §16.110 Q36). Test:
 `test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket` (CF, PT and GV; a `policy` FAIL
 whose policy loads and an unrelated FAIL stay unexpected).
+Amended 2026-10-19, §16.128 U58: both read one list, `_sync_refusals`, and the loads line names every refusal in it,
+the first as `agentsync sync` prints it, then `; once that is fixed, a sync also refuses it: ...`.
 
 **A "from" bucket's count is in a bracket** (T20, T34: one defect from two finders, built once; amends §16.116
 S12, §16.110 Q3, §16.39 N16). `found not on disk 2:` read as a disk's number, and `from the sign-in stop 2:` the
@@ -23174,6 +23176,15 @@ whole). The pointer comes before the words, since a value pattern runs to the li
 needs it to fix the file.
 Tests: `test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted`,
 `test_a_config_the_sync_refuses_loads_but_says_so`.
+
+**Every check the refused-configuration bucket holds is on the loads line** (U58; amends §16.122 T14). With a
+vanished source and a bad policy.toml at once, `_refusing_checks` put both FAILs under `(see Configuration)` while
+`_live_refusal` returned at the first refusal, so the Configuration line never named the vanished source. Both read
+`_sync_refusals(c, red)`, the sync's three read-only checks in its order, each on its own: the bucket takes their
+check names, and the loads line the first refusal, the one `agentsync sync` prints, then `; once that is fixed, a
+sync also refuses it: <the rest>`, each worded as before (`_table_refusal`, `_Labels`). Its start is unchanged,
+so the prompt's finish keys ("loads: no", "loads: not") are unaffected. Test:
+`test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket` (the combined case).
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 

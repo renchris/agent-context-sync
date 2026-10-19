@@ -12424,6 +12424,21 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     assert "not on disk" not in line and line.split(" · unexpected ", 1)[1].count(" FAIL") == 4, line
 
 
+def test_the_sync_refusals_read_through_a_state_folder_it_cannot_search(fake_mac: dict[str, Path]) -> None:
+    """B13 round 17 U58's review: ``_refusing_checks`` once kept its manifest read inside a suppress, and the
+    shared ``_sync_refusals`` called ``Path.is_file`` outside any guard: a state folder with no search
+    permission raised PermissionError and failed the whole Summary. It reads as not read, no refusal."""
+    config = load_config(fake_mac["config"])
+    state = expand(config.state_paths.db).parent
+    state.mkdir(parents=True, exist_ok=True)
+    state.chmod(0)
+    try:
+        assert setup_report._sync_refusals(config, setup_report.Redactor()) == ([], False)
+        assert setup_report._refusing_checks(config) == frozenset()
+    finally:
+        state.chmod(0o700)
+
+
 @pytest.mark.usefixtures("roomy_calls")
 def test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -12545,6 +12560,22 @@ def test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket(
     extra.append(doctor.CheckResult("policy", False, "something else", fix="fix [policy] / policy.toml"))
     line = doctor_line()
     assert "a sync refuses" not in line and "policy FAIL" in unexpected(line), line
+    extra.clear()
+    # B13 round 17 U58: two refusals at once (the vanished source and the policy): the loads line names
+    # both, in the sync's order, so the bucket's "see Configuration" holds for each check in it
+    cfg.write_text("[[source]]".join([head, *(b for b in blocks if f'id = "{gone}"' not in b)]), "utf-8")
+    (cfg.parent / "policy.toml").write_text('[policy]\nexclude_label_ids = ["Contoso Zebra"]\n', "utf-8")
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    loads = _line(section(text, "Configuration"), "- loads: ")
+    both = " · from the configuration a sync refuses (2 checks): config.vanished_sources FAIL, policy FAIL"
+    assert both + " (see Configuration) · " in line, line
+    assert loads.startswith(
+        "- loads: yes, but a sync refuses it: [policy] exclude_label_ids in policy.toml"
+    ), loads
+    assert "; once that is fixed, a sync also refuses it: a source (" in loads, loads
+    assert "is mirrored but no longer in sources.toml" in loads, loads
+    assert "Zebra" not in line and "Zebra" not in loads, (line, loads)
 
 
 @pytest.mark.usefixtures("roomy_calls")

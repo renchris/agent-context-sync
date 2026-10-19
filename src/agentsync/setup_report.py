@@ -4963,13 +4963,14 @@ def _table_refusal(exc: Exception, file: str, path: Path | None = None) -> str:
     )
 
 
-def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
-    """(why every sync refuses ``c``, a config that loads, or None; whether the vanished-source check could
-    read the manifest). The sync's own read-only checks before it writes anything, in its order: the policy
+def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], bool]:
+    """([(doctor check, why a sync refuses ``c``)], whether the vanished-source check read the manifest):
+    the sync's own read-only checks before it writes anything, each read on its own, in its order: the policy
     (``Publisher``), the ``[governance]`` table (``Cycle.__init__``), then the manifest's present rows against
-    the configured ids (``cycle._refuse_vanished_sources``, in ``Cycle.run``), so the first refusal is the
-    one ``agentsync sync`` prints. A source the config does not have is named as :class:`_Labels` names it,
-    never by its id."""
+    the configured ids (``cycle._refuse_vanished_sources``, in ``Cycle.run``), so the first is the refusal
+    ``agentsync sync`` prints. A source the config does not have is named as :class:`_Labels` names it, never
+    by its id. The one reading the loads line and the Summary's doctor bucket share, so the bucket's "see
+    Configuration" holds for every check in it (B13 round 17 U58)."""
     from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
     from agentsync.cycle import VANISHED_ADVICE, VANISHED_WORDS, vanished_from  # noqa: PLC0415
     from agentsync.manifest import present_counts_on  # noqa: PLC0415
@@ -4977,18 +4978,23 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
     sidecar = c.config_path.parent / policy.POLICY_FILE_NAME
     db = expand(c.state_paths.db)
     read = True
+    found: list[tuple[str, str]] = []
     try:
         policy.load_policy(c)
     except Exception as exc:
         mine = str(exc).startswith(str(sidecar))
         file = policy.POLICY_FILE_NAME if mine else c.config_path.name
-        return _table_refusal(exc, file, sidecar if mine else c.config_path), read
+        found.append(("policy", _table_refusal(exc, file, sidecar if mine else c.config_path)))
     try:
         governance.load_governance(c.config_path)
     except Exception as exc:
-        return _table_refusal(exc, c.config_path.name, c.config_path), read
+        found.append(("governance.config", _table_refusal(exc, c.config_path.name, c.config_path)))
     vanished: list[tuple[str, int]] = []
-    if db.is_file():
+    try:  # a state folder that cannot be searched raises here (U58's review)
+        present = db.is_file()
+    except OSError:
+        present, read = False, False
+    if present:
         try:
             # its own read-only connection (a Manifest opens read-write and may migrate), with the cycle's
             # query, rule and words (B13 round 16 T52, T87)
@@ -4998,17 +5004,31 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
             finally:
                 conn.close()
             vanished = sorted(vanished_from((s.id for s in c.sources), counts).items())
-        except sqlite3.Error:
+        except (OSError, sqlite3.Error):
             read = False
     if vanished:
-        labels = _Labels(c, r.red)
+        labels = _Labels(c, red)
         # the count inside the label's own bracket, one bracket a source (B13 round 16 T7, T15)
         names = ", ".join(_with_count(labels.of(sid), _plural(n, "file")) for sid, n in vanished)
         which = "a source" if len(vanished) == 1 else f"{len(vanished)} sources"
-        return (
-            f"{which} {names} {'is' if len(vanished) == 1 else 'are'} {VANISHED_WORDS}; {VANISHED_ADVICE}"
-        ), read
-    return None, read
+        verb = "is" if len(vanished) == 1 else "are"
+        found.append(
+            ("config.vanished_sources", f"{which} {names} {verb} {VANISHED_WORDS}; {VANISHED_ADVICE}")
+        )
+    return found, read
+
+
+def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
+    """(why every sync refuses ``c``, a config that loads, or None; whether the vanished-source check could
+    read the manifest), from :func:`_sync_refusals`: the first refusal, the one ``agentsync sync`` prints,
+    then the others it would print once that is fixed (B13 round 17 U58)."""
+    found, read = _sync_refusals(c, r.red)
+    if not found:
+        return None, read
+    first, *rest = (why for _check, why in found)
+    if rest:
+        first += "; once that is fixed, a sync also refuses it: " + "; ".join(rest)
+    return first, read
 
 
 def _reads_again(said: str, read: bool) -> bool:
@@ -8435,35 +8455,13 @@ def _yours_warn(name: str, detail: str, checks: Collection[str]) -> bool:
 
 
 def _refusing_checks(c: Config) -> frozenset[str]:
-    """The doctor checks whose [FAIL] is a refusal every sync makes of ``c`` now, each read on its own, as
-    :func:`_live_refusal` reads the first: ``policy`` when the policy does not load, ``governance.config``
-    when the ``[governance]`` table does not, ``config.vanished_sources`` when the manifest mirrors a source
-    sources.toml lacks (B13 round 16 T14). Keyed on the report's own reading, never on doctor's words: a
-    ``policy`` FAIL whose policy loads stays unexpected."""
-    from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
-    from agentsync.cycle import vanished_from  # noqa: PLC0415
-    from agentsync.manifest import present_counts_on  # noqa: PLC0415
-
-    found: set[str] = set()
-    try:
-        policy.load_policy(c)
-    except Exception:
-        found.add("policy")
-    try:
-        governance.load_governance(c.config_path)
-    except Exception:
-        found.add("governance.config")
-    db = expand(c.state_paths.db)
-    with contextlib.suppress(OSError, sqlite3.Error):
-        if db.is_file():
-            conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
-            try:
-                counts = present_counts_on(conn)
-            finally:
-                conn.close()
-            if vanished_from((s.id for s in c.sources), counts):
-                found.add("config.vanished_sources")
-    return frozenset(found)
+    """The doctor checks whose [FAIL] is a refusal every sync makes of ``c`` now: ``policy`` when the policy
+    does not load, ``governance.config`` when the ``[governance]`` table does not, ``config.vanished_sources``
+    when the manifest mirrors a source sources.toml lacks (B13 round 16 T14), from the one reading the loads
+    line names them by (:func:`_sync_refusals`; round 17 U58). Keyed on the report's own reading, never on
+    doctor's words: a ``policy`` FAIL whose policy loads stays unexpected."""
+    found, _read = _sync_refusals(c, Redactor())
+    return frozenset(check for check, _why in found)
 
 
 def _remote_refused(c: Config) -> bool:
