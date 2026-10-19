@@ -5521,6 +5521,11 @@ _ROUND_16_PARAGRAPH_AMENDS = (
 )
 """Round 16's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
+_ROUND_17_PARAGRAPH_AMENDS = (
+    ("16.29", "**Who calls it.** Every non-dry cycle", "§16.133 U83 (by §16.125 T32)"),
+)
+"""Round 17's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5556,6 +5561,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
+    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5572,6 +5578,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_14_PARAGRAPH_AMENDS,
         *_ROUND_15_PARAGRAPH_AMENDS,
         *_ROUND_16_PARAGRAPH_AMENDS,
+        *_ROUND_17_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -5770,6 +5777,32 @@ def test_the_guide_quotes_the_counted_re_read_clause() -> None:
     assert len(quotes) == 2  # §16.14's amended line and §16.40 N32
     for quote in quotes:
         assert "§16.127 T51, T69 (by §16.116 S26): " in quote[:400]
+
+
+def test_contracts_quote_the_tightened_line_as_cli_prints_it() -> None:
+    """B13 round 17 U83: since round 16 T32 cli.py prints add-source's count line as `tightened N
+    paths ...: they hold tenant data` (`1 path ...: it holds` for one), but §16.29 still quoted the `(s)`
+    form with no dated line and §16.127 said cli.py still prints it. Every CONTRACTS paragraph that quotes
+    the `(s)` form holds a dated line with the counted form, and §16.127's withdraws its claim."""
+    from agentsync import cli, text  # noqa: PLC0415
+
+    code = " ".join(inspect.getsource(cli).split())
+    assert (
+        "f\"tightened {plural(inside, 'path')} inside the docs repo, the cache or the logs: \" "
+        "f\"{'it holds' if inside == 1 else 'they hold'} tenant data\""
+    ) in code
+    assert "tightened N path(s)" not in code and text.plural(1, "path") == "1 path"
+    paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", CONTRACTS.read_text(encoding="utf-8"))]
+    quoting = [p for p in paragraphs if "tightened N path(s)" in p]
+    assert len(quoting) == 2  # §16.29's "Who calls it." and §16.127's T51 paragraph
+    for para in quoting:
+        [line] = re.findall(r"Amended 2026-10-19, §16\.133 U83\b(.*?)(?= Amended \d{4}-\d\d-\d\d, |$)", para)
+        assert "`tightened N paths" in line, line
+    who = next(p for p in quoting if p.startswith("**Who calls it.**"))
+    assert (
+        "§16.133 U83 (by §16.125 T32): the line counts its noun, `tightened N paths inside the docs repo, "
+        "the cache or the logs: they hold tenant data` (`1 path ...: it holds tenant data` for one)"
+    ) in who
 
 
 def test_the_guide_places_a_vanished_sources_label_in_the_loads_line() -> None:

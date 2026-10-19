@@ -8992,6 +8992,8 @@ at (`cycle._own_paths`):
 0700 (was 0755): it holds tenant data` line each (the agent-context folder, the docs repo, `.git`, the cache,
 the logs, the state dir). When it changes a path they print one more line, a count and no path:
 `tightened N path(s) inside the docs repo, the cache or the logs: they hold tenant data`.
+Amended 2026-10-19, §16.133 U83 (by §16.125 T32): the line counts its noun, `tightened N paths inside the docs
+repo, the cache or the logs: they hold tenant data` (`1 path ...: it holds tenant data` for one).
 That list of folders follows the same rule (`cli._owner_only_dirs`, review, 2026-10-07): a cache, log or state
 folder that is the home folder, or holds it, is not in it. Before, `log_dir = "~"` made setup print `tightened
 <home> to 0700 (was 0755)` ahead of a sync that would have left the folder alone, which ends sharing from that
@@ -22979,6 +22981,8 @@ amended line and §16.40 N32 still quoted `N read(s) again by K other run(s)`. T
 and each CONTRACTS quote has a dated line. The guide's `tightened N path(s)` quote stays: cli.py still prints it.
 Tests: `test_the_guide_quotes_the_counted_re_read_clause`, the dated-line scan, and the §16.14 pin in
 `_ROUND_16_PARAGRAPH_AMENDS`.
+Amended 2026-10-19, §16.133 U83: cli.py prints the counted form since §16.125 T32 (295650c0), not `tightened N
+path(s)`; the guide's `tightened N paths` quote is right, and §16.29's quote has a dated line.
 
 **`(not in the config, N)` is in the Configuration section's loads line too** (T68). Since §16.118 S8 the
 Configuration section's `- loads: yes, but a sync refuses it: ...` line (and its `... step 2's sync refused it`
@@ -23468,3 +23472,11 @@ which sends nothing new and gives the hash. The T28 test read only the two hashe
 and counted 2; it reads all four now. Lane RB's U60 names the same no-hash sentence; it is built once, here. Tests:
 `test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`, `test_prompt_routes_changes_to_the_source_not_the_checkout`
 and the dated-line scan.
+
+**add-source's tightened line is quoted as cli.py prints it** (U83; dated lines at §16.29 and §16.127 T51). Since
+§16.125 T32 (295650c0) cli.py prints `tightened N paths ...: they hold tenant data` (`1 path ...: it holds` for
+one). §16.29's "Who calls it." paragraph still quoted the `(s)` form with no dated line, and §16.127's T51 paragraph
+said cli.py still prints it. Each gets a dated line; the landed sentences stay as the record. §16.29's
+`N path(s) could not be made owner-only` is a log line (`cycle.py`) and keeps `(s)`. Tests:
+`test_contracts_quote_the_tightened_line_as_cli_prints_it`, which finds every `(s)` quote of the line and its dated
+line, the dated-line scan, and the §16.29 pin in `_ROUND_17_PARAGRAPH_AMENDS`.
