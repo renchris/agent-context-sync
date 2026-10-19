@@ -2922,8 +2922,35 @@ class _Facts:
     runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
     loop: tuple[str | None, int | None, bool | None] | None = None  # status's (baseline, topics, a sync ran)
     loop_unread: str | None = None  # why status could not read the state (its words), when it said so
+    doctor_pandoc: tuple[str, str] | None = None  # the doctor's pandoc check: (tag, detail)
+    doctor_cut_off: float | None = None  # the seconds the doctor call had when the time limit cut it off
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
+
+
+_PANDOC_FROM_DOCTOR = "\x00from the doctor's pandoc check"
+"""The Environment's pandoc value while a doctor runs: :func:`_pandoc_from_doctor` replaces it."""
+
+
+def _slow_start() -> str:
+    """doctor's words for a pandoc start that takes long (``_PANDOC_SLOW_START``)."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # its own words
+        return "a new copy's first start can take a minute, and any start can on a busy Mac"
+    return str(doctor._PANDOC_SLOW_START)
+
+
+def _pandoc_from_doctor(r: _Run) -> str:
+    """The Environment's pandoc line from the doctor's own pandoc check, read in Doctor (U48)."""
+    if r.facts.doctor_pandoc is not None:
+        tag, detail = r.facts.doctor_pandoc
+        at = detail.rfind(" (fix: ")  # the fix stays on Doctor's line, which this one points at
+        detail = detail[:at] if at >= 0 else detail
+        return detail if tag == "ok" else f"{detail} (doctor's pandoc check: [{tag}]; its fix is in Doctor)"
+    if r.facts.doctor_cut_off is not None:
+        return "not checked: the doctor call was cut off by the report's time limit"
+    return "not checked: no doctor pandoc check ran (see Doctor)"
 
 
 def _exited(rc: int, text: str | None = None) -> str:
@@ -4106,6 +4133,11 @@ def _environment(r: _Run) -> list[str]:
         return f"{text}; last re-screen: {_last_rescreen(r)}"
 
     def pandoc() -> str:
+        # Started once a report: the doctor's own check runs it (its time-out is the slow first start's),
+        # and this line is filled from that check after Doctor runs; a second start here took up to 5 s of
+        # the doctor's share and cut Doctor off on a busy Mac (B13 round 17 U48)
+        if r.hooks.doctor is not None and r.config is not None:
+            return _PANDOC_FROM_DOCTOR
         # the one the converters run, as doctor's check resolves it (B13 round 14 Q60)
         which = ""
         if r.config is not None and r.config.convert.pandoc_path is not None:
@@ -4120,6 +4152,9 @@ def _environment(r: _Run) -> list[str]:
                 return str(exc)
             which = " (native arm64 copy)" if kind == "native" else ""
         rc, text = r.run([str(exe), "--version"], 5.0)
+        if rc == 124 and text.startswith("timed out after "):  # a slow start, not an exit code (U48)
+            secs = text.removeprefix("timed out after ")
+            return f"{exe}{which} did not answer within {secs} ({_slow_start()})"
         return text.splitlines()[0] + which if rc == 0 and text else f"{exe}{which} {_exited(rc, text[:200])}"
 
     def app(name: str) -> Callable[[], str]:
@@ -5165,7 +5200,12 @@ def _doctor(r: _Run) -> list[str]:
         return ["Not run: no doctor hook."]
     config = r.config
     doctor_fn = r.hooks.doctor
-    lines = r.call(lambda: doctor_fn(config), timeout=max(1.0, r.remaining() - 2.0 - _LOOP_FLOOR_S))
+    limit = max(1.0, r.remaining() - 2.0 - _LOOP_FLOOR_S)
+    try:
+        lines = r.call(lambda: doctor_fn(config), timeout=limit)
+    except TimeoutError:  # the Summary says cut off, not "not run" (U48)
+        r.facts.doctor_cut_off = max(0.0, min(limit, r.remaining()))
+        raise
     tags: Counter[str] = Counter()
     ok_names: list[str] = []
     shown: list[str] = []
@@ -5178,6 +5218,8 @@ def _doctor(r: _Run) -> list[str]:
         m = _DOCTOR_TAG_RE.match(raw)
         if m is not None:
             tags[m.group(1)] += 1
+            if m.group(2) == "pandoc":
+                r.facts.doctor_pandoc = (m.group(1), raw.split(" — ", 1)[1] if " — " in raw else raw)
             current_ok = m.group(1) == "ok"
             if current_ok:
                 ok_names.append(m.group(2))
@@ -8566,6 +8608,22 @@ def _state_unreadable(c: Config) -> bool:
 
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
+    if d is None and r.facts.doctor_cut_off is not None:
+        # B13 round 17 U48: the report's time limit cut it off; install.sh's own doctor, in install.out, does
+        # not depend on this run's
+        line = (
+            f"- doctor: cut off by the report's time limit after {r.facts.doctor_cut_off:.1f}s (see Doctor)"
+        )
+        gone = _install_doctor_only(r, runs)
+        if gone is not None:
+            run, named = gone
+            tags = Counter(tag for tag, _name in named)
+            counts = ", ".join(f"{tags[t]} {t}" for t in ("FAIL", "warn") if tags[t])
+            line += (
+                f" · install.sh's doctor before its first sync (run {run.display_id}): {counts}: "
+                + ", ".join(name for _tag, name in named)
+            )
+        return line
     if d is None:
         return "- doctor: not run (see Doctor)"
     installed = agents_installed(r.install_runs)
@@ -10402,6 +10460,10 @@ def build_report(
                 for line in bodies["Environment"]
             ]
         bodies[title] = _section(title, functools.partial(fn, r))
+    waiting = f"- pandoc: {_PANDOC_FROM_DOCTOR}"
+    bodies["Environment"] = [
+        f"- pandoc: {_pandoc_from_doctor(r)}" if line == waiting else line for line in bodies["Environment"]
+    ]
     try:  # the Loop line's hook is a slow call: in its own pass, so ``took`` counts it
         r.loop_line = _loop_line(r)
     except Exception as exc:

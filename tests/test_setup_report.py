@@ -661,7 +661,11 @@ def test_the_pandoc_line_is_the_pandoc_the_converters_run(
     copy.chmod(0o755)
     monkeypatch.setattr(pandoc_mod, "resolved_pandoc", lambda configured: (copy, "native"))
     _rc, text, _ = report(tmp_path, fake_mac["config"])
-    assert "- pandoc: pandoc 3.9 (native arm64 copy)\n" in section(text, "Environment")
+    # B13 round 17 U48: the line is the doctor's own check of that pandoc, started once a report
+    [line] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- pandoc: ")]
+    assert line.startswith("- pandoc: pandoc 3.9 at ") and line.endswith("/bin/pandoc (native arm64 copy)"), (
+        line
+    )
 
     def missing(configured: Path | None) -> tuple[Path, str]:
         raise ConversionError(
@@ -669,11 +673,15 @@ def test_the_pandoc_line_is_the_pandoc_the_converters_run(
         )
 
     monkeypatch.setattr(pandoc_mod, "resolved_pandoc", missing)
+    monkeypatch.setattr(pandoc_mod, "_wheel_pandoc", lambda: Path("/nonexistent/pandoc"))
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
-    assert (
-        "- pandoc: bundled pandoc not found at /nonexistent/pandoc (is pypandoc_binary installed?)\n" in env
+    # doctor's own words for the missing binary, never a traceback; its fix stays on Doctor's line
+    said = (
+        "/nonexistent/pandoc is missing or not executable (doctor's pandoc check: [FAIL]; its fix is in "
+        "Doctor)"
     )
+    assert f"- pandoc: {said}\n" in env, env
 
 
 @pytest.mark.usefixtures("roomy_budget")
@@ -6027,6 +6035,72 @@ def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(
         "the state file cannot be read: see Doctor's state_dir.manifest line"
     )
     assert setup_report._why_not_read(RuntimeError("/Users/jdoe/x")) == "an unexpected error: RuntimeError"
+
+
+def _slow_pandoc(tmp_path: Path, cfg: Path, seconds: int) -> Path:
+    """A ``[convert] pandoc_path`` that takes ``seconds`` to answer ``--version``."""
+    exe = tmp_path / "bin" / "pandoc"
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_text(f"#!/bin/sh\ntouch '{exe}.ran'\nsleep {seconds}\necho 'pandoc 3.9'\n", encoding="utf-8")
+    exe.chmod(0o755)
+    cfg.write_text(
+        f'[convert]\npandoc_path = "{exe}"\n\n' + cfg.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return exe
+
+
+def test_the_reports_pandoc_line_is_the_doctors_check_and_never_starves_doctor(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 17 U48: the Environment section started pandoc first (up to 5 s), and on a busy Mac a slow
+    first start took that much of the doctor's share: the first report of a session had no Doctor section
+    (`did not finish within 1.9s`), its Summary said `doctor: not run`, and the line read `exited 124`.
+    pandoc is started once a report, by the doctor's own check, and the Environment line is filled from it."""
+    exe = _slow_pandoc(tmp_path, fake_mac["config"], 30)
+
+    def doctor_fn(config: object) -> list[str]:
+        return ["[ok] pandoc — pandoc 3.9 at /opt/pandoc", "[warn] logs — something odd"]
+
+    hooks = setup_report.ReportHooks(doctor=doctor_fn)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert not Path(f"{exe}.ran").exists(), "the report started no pandoc of its own"
+    assert "- pandoc: pandoc 3.9 at /opt/pandoc\n" in section(text, "Environment")
+    assert "exited 124" not in text and "[warn] logs — something odd" in section(text, "Doctor")
+
+
+def test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 17 U48: a doctor the report's time limit cut off read ``doctor: not run (see Doctor)`` and
+    dropped install.sh's own doctor line, which does not depend on this run's; with no doctor hook, a
+    pandoc that took past 5 s read ``exited 124: timed out after 5.0s``."""
+    write_install_log(fake_mac)
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "[warn] logs — something odd\nfirst sync: converted 1, deferred 0 online-only\n",
+        encoding="utf-8",
+    )
+
+    def hung(config: object) -> list[str]:
+        time.sleep(30)
+        return []
+
+    hooks = setup_report.ReportHooks(doctor=hung)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert line.startswith("- doctor: cut off by the report's time limit after "), line
+    assert (
+        "(see Doctor) · install.sh's doctor before its first sync (run 20260929T100000Z): 1 warn: logs"
+        in line
+    )
+    assert "- pandoc: not checked: the doctor call was cut off by the report's time limit" in text
+    _slow_pandoc(tmp_path, fake_mac["config"], 30)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    [pandoc] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- pandoc: ")]
+    assert re.search(
+        r"did not answer within \d+\.\ds \(a new copy's first start can take a minute", pandoc
+    ), pandoc
+    assert "exited 124" not in pandoc, pandoc
 
 
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:

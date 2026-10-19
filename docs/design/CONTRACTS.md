@@ -21588,6 +21588,9 @@ an older one and a missing wheel binary, run by bash 3.2).
 Amended 2026-10-18, §16.120 S47: the native copy's fix is the person's, `the native pandoc copy at <copy> is yours
 to replace or remove (the converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an
 absolute pandoc`; after a time-out the agent's re-run comes first, then `show the person this line: ...`.
+Amended 2026-10-19, §16.128 U48: with a doctor hook the report starts no pandoc of its own: its Environment line is
+the doctor's pandoc check (`pandoc 3.9 at <path> (native arm64 copy)`, a FAIL's words with its fix left on
+Doctor's line); with none it still runs the resolver's pandoc, and a start past 5 s reads `did not answer within`.
 
 **The operator's native pandoc reaches the test gate (Q61; tests only).** X26 was aimed at the gate's load (51
 sandbox denies per 10 s on a worktree venv's pandoc), but `_native_pandoc` reads `Path.home()`, and every test's
@@ -23245,6 +23248,22 @@ sqlite's own plain words; `the configuration is refused (the governance.config o
 Kept: `loads: no: ConfigError: ...` (round 12 N11's pin, the prompt's finish key), a section's `This section failed:
 <type>: <message>` and the friction log's and install source's failure lines, which only an unexpected error
 reaches. Test: `test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name`.
+
+**The first report keeps its Doctor section: pandoc starts once, in Doctor** (U48; amends §16.114 Q60). All four
+reports of a session's first act said `- pandoc: ... exited 124: timed out after 5.0s`, `Doctor: _This section
+failed: TimeoutError: did not finish within 1.9s_` and `doctor: not run (see Doctor)`: the Environment section,
+first in order, started pandoc with 5 s, and a slow start on a busy Mac (the wheel's Intel binary under Rosetta)
+took those 5 s from the doctor's share of the 12 s budget, while the doctor's own pandoc check started it again.
+With a doctor hook the Environment line is filled from that check after Doctor runs (its detail; a FAIL's or warn's
+with its `(fix: ...)` left on Doctor's line and `(doctor's pandoc check: [FAIL]; its fix is in Doctor)`), or
+`not checked: the doctor call was cut off by the report's time limit`. With no doctor hook the report runs the
+resolver's pandoc as before, and a start past its limit reads `did not answer within 5.0s (a new copy's first
+start can take a minute, and any start can on a busy Mac)`, doctor's `_PANDOC_SLOW_START`, never `exited 124`. A
+doctor the time limit cuts off reads `- doctor: cut off by the report's time limit after N s (see Doctor)` and
+still names install.sh's own doctor's warns and FAILs from install.out, which do not depend on this run's. Tests:
+`test_the_reports_pandoc_line_is_the_doctors_check_and_never_starves_doctor`,
+`test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code`,
+`test_the_pandoc_line_is_the_pandoc_the_converters_run`.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
