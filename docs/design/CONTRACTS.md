@@ -13071,6 +13071,7 @@ an empty cloud root): the old text, byte for byte"); both carry dated lines. Tes
 **Amended 2026-10-16, §16.95 M42 (by §16.95 M47):** a root that cannot be listed is named with its reason, `could not be
 read: '.' (EPERM: ...)`; EPERM keeps the grant, and EACCES reads `the source folder's own permissions do not let
 this account read it: check its owner and mode with ls -ld`, with no grant.
+Amended 2026-10-19, §16.131 U18, U71, U102: `is empty but N files are mirrored` (`1 file is mirrored`).
 
 **R102.** The wait for a local source whose listing a folder blocks (no access, a missing folder or sentinel) is
 per source when the source's last walk missed mirrored files (`loop._missed` > 0): `a folder in <id> could not be
@@ -13203,6 +13204,7 @@ line before the first sync or when the manifest cannot be read. Tests: `tests/te
 (`test_shared_canonical_counts_pairs_the_given_sources_in_one_query`,
 `test_shared_canonical_counts_meets_each_copy_once`), `tests/test_ops_doctor.py`
 (`test_two_sources_holding_the_same_files_is_an_info_line`).
+Amended 2026-10-19, §16.131 U18, U71, U102: `<n> files in <a> have the same content` (`1 file in <a> has`).
 
 **R75: a background run finds the gitleaks the person's shell finds.** launchd gives a LaunchAgent run the PATH
 `/usr/bin:/bin:/usr/sbin:/sbin`, so a gitleaks that only a shell PATH reaches (`go install`, MacPorts, `~/bin`) was
@@ -16370,6 +16372,8 @@ Amended 2026-10-14, §16.85 K53 (by §16.77 J11): the stderr line H31 leans on n
 `_describe_holder`'s, not the WARNING's `another sync (its pass: <label>)` (since §16.83 K37 it reads `pid N (a
 sync, its pass: poll) since ...`).
 Amended 2026-10-18, §16.125 T33: under the quiet wait the first beat is DEBUG too; install.sh's line announces it.
+Amended 2026-10-19, §16.131 U68, U69, U92, U105: install.sh's line announces the wait only when its lock probe found
+the lock busy; a wait the probe missed gets one plain line from agentsync, in install.sh's words.
 
 **H33: a terminal's sync is not called the background one (`scripts/install.sh`, `agentsync.cli`).** A sync typed
 in a terminal holds the lock as `poll` or `reconcile`, as the job does, and the installer reads only the lock.
@@ -22137,6 +22141,9 @@ test_the_vanished_source_check_says_nothing_before_the_first_sync`, the `vanishe
 `test_install_oneshot.py::_persons_fail_lines`.
 Amended 2026-10-18, §16.125 T5, T13, T31, T57, T71, T85: the person's-fix lists name the block (`a [[source]]
 block to put back`); the widening this round left unbuilt is built.
+Amended 2026-10-19, §16.131 U9, U25, U46: the fix ends `; or add its folder again, under the same id:
+~/.local/bin/agentsync add-source <folder>` when the recorded root is a folder here that add-source adds back under
+the same id (`doctor.vanished_fix`); a custom id or a root that is gone keeps the block-only fix.
 
 **S11, S28, S64: the held-listing note promises only what the run's end says (`agentsync.ops.doctor`,
 `scripts/install.sh`; amends §16.113 Q10).** The note said `if this run's sync runs, the end of this run says
@@ -22407,6 +22414,7 @@ or `exclude_label_names: ` is `<label>`, and after `remote_url_prefixes: ` (`...
 carries a password`) `<remote>`, two unnumbered kinds in the legend that never make the report private. Not by
 registering policy.toml's strings as values: a label name is often a word the report prints, which would cut its
 prose. `agentsync sync` still prints the value. Test: `test_a_policy_or_governance_errors_value_is_never_in_the_report`.
+Amended 2026-10-19, §16.131 U103: a [governance] type error's `got <repr>` is `<value>`, a third unnumbered kind.
 
 **A vanished source's id is a placeholder in every section** (T42, T53, T66). doctor's `config.vanished_sources`
 [FAIL] and the sync's refusal quote the id of a source whose [[source]] block is gone, and `_build_redactor`
@@ -22764,6 +22772,11 @@ other exit keeps fail's line. setup-report still writes its report over such a m
 `test_cli.py::test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line`,
 `test_cli.py::test_a_manifest_a_sync_holds_is_no_fail`,
 `test_install_oneshot.py::test_a_state_file_that_cannot_be_read_is_the_persons_to_fix`.
+Amended 2026-10-19, §16.131 U64, U95, U66, U72, U73: status classifies a NOTADB or CORRUPT error from its own read of
+the loop's state as the `state_dir.manifest` FAIL, so damage under a table that read touches fails status; any
+command's NOTADB or CORRUPT error exits 65 on the one line; only a locked or busy database is one `error:` line,
+any other sqlite3 error keeps its traceback; MANIFEST_FIX ends `the deletion breaker's suspended removals and the
+archive it recorded; legal holds are kept, in governance/holds.json`.
 
 **T19: a missing root whose app folder is gone names the sign-in first (`agentsync.loop`; amends §16.119 S3).**
 With the provider folder itself gone (signed out, `provider_state` `signed-out`), the wait read `renamed, moved or
@@ -22789,6 +22802,8 @@ summed over the folders) with the retire warning; one whose glob collides gets t
 name, so an exclude of it would also match a folder whose files are mirrored: rename or remove the empty folder
 in the cloud drive`; a mixed run prints both, then the one pointer. Tests: `test_exclude_empty.py::
 test_folders_left_for_two_causes_are_said_apart` and the pins in `test_exclude_empty.py` and `test_loop.py`.
+Amended 2026-10-19, §16.131 U49, U50, U51: a mixed run prints one head with the total, then each cause with its own
+count; one file `retires its page`; the pointer names `the folder` or `the folders`.
 
 **T39: the gone line says its missed files once (`agentsync.loop`; amends §16.119 S44).** `held 1 file ...; in
 all, the last walk of X did not list 1 file ...` said one file twice. The gone line's tail follows
@@ -22809,6 +22824,9 @@ built. T86 adds the count-2 pins S65 claimed: the over-budget and refused waits,
 `test_rule_7_two_curation_errors`, `test_rule_9_two_rows_are_curated_up_to_the_bound`, the count-2 case of
 `test_publish.py::test_state_md_next_is_the_blocking_finding_that_held_the_commit`, and the pins in
 `test_cli.py`, `test_cycle.py`, `test_publish.py`.
+Amended 2026-10-19, §16.131 U18, U71, U102: the purge notes, the empty-root and withheld alarms, the breaker finding,
+the CHANGELOG's lint line, doctor's symlink, shared-content and logs lines and the compaction commit drop `(s)`
+too; the inbox's settle wait, a progress notice, is counted and printed plain.
 
 **T37, T56, T33: a WARNING the report prints is held back from a foreground sync (`agentsync.arm_local`,
 `agentsync.cycle`, `agentsync.cli`; amends §16.119 S2, §16.68 H31).** A foreground sync still printed raw
@@ -22828,6 +22846,9 @@ first fails reading a recording's frames. The checkpoint line counts `1 curation
 `test_cycle.py::test_an_ocr_helper_that_first_fails_in_the_recording_pass_has_its_alarm`, the time-out case in
 `test_arm_local.py::test_a_held_listing_still_warns_about_the_folders_it_could_not_list`, and
 `test_cli.py::test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`.
+Amended 2026-10-19, §16.131 U68, U69, U92, U105: a foreground run's beats are plain stderr lines (`cli._lock_say`);
+under the quiet wait a wait install.sh's probe missed says its first beat once and marks stdout
+(`cli.LOCK_WAITED_MARK`).
 
 ### 16.126 Round 16: the pandoc fix and wait, the CI flakes, converter counts (2026-10-18, wave B13 round 16 lane E)
 
@@ -23302,7 +23323,122 @@ Tests: `test_the_prompt_text_changes_only_with_its_version` (`PROMPT` 26), `test
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 
-Reserved for round 17 lane B of B13.
+Lane B's round 17 items (`docs/plans/bring-back-ocr.md`, "B13 round 17"; specs `round17/items/U<n>.md`, the
+verifier's corrected fix built unless said): U9, U14, U17, U18, U25, U46, U49, U50, U51, U64, U66, U68, U69, U70,
+U71, U72, U73, U92, U95, U102, U103 and U105, all built. One defect from several finders is built once: U9, U25 and
+U46; U14 and U17; U64 and U95; U68, U69, U92 and U105 (the lock wait); U71 and U102 (the `(s)` sweep). U69's
+docstring and comment, and U70's two tests, change no output, so no test fails without U70 (a mutation that makes a
+busy manifest unreadable turns its new half red). Exit 65's first-sync branch and `rc_meaning` entry in install.sh
+are lane RB's (U55, U65), so U64 and U95 build the status half. No item needs prompt words: the raced lock wait's
+line uses the words the setup prompt already quotes. Where an item changes what an older section states, that
+section has a dated line (`Amended 2026-10-19, §16.131 U<n>`).
+
+**U9, U25, U46: the vanished-source fix names the add-source that brings the same id back (`agentsync.ops.doctor`,
+`agentsync.setup_report`; amends §16.119 S7).** Step 1's NEXT offers to add a vanished source's folder again (one
+`--source-local`), while step 2's `config.vanished_sources` fix named only putting the [[source]] block back.
+Doctor builds the fix at run time (`doctor.vanished_fix`): `cycle.VANISHED_FIX` first, unchanged, so
+`PERSONS_FIX_RE` and install.sh's `persons_fails` still read it as the person's, then `; or add its folder again,
+under the same id: ~/.local/bin/agentsync add-source <folder>` for each folder that passes install.sh's
+`vanished_folders` rule (`doctor._vanished_add_backs`): the manifest's `scope_root:<id>` is a folder here, not the
+inbox and not another source's folder (an id renamed in sources.toml), and add-source derives that id for it; a
+root this process may not read is skipped, never an error that drops the FAIL. A custom id (add-source would derive another, mirroring the folder
+twice and leaving the refusal) or a root that is gone keeps the block-only fix. The command is the CLI's own verb by
+its full path, not install.sh's (status prints it outside install.sh too); install.sh's step 2 NEXT is unchanged,
+since the [FAIL] line it shows the person now carries the add-back and the re-run after either fix is the same.
+`cycle.VANISHED_ADVICE` (sync's refusal, the report's Configuration line) is unchanged. The setup report registers a
+vanished id's recorded root, after the vanished ids (`setup_report._unconfigured_roots`): a cloud root by its
+components (the listing stops at level 3), any other as a project folder, so the path never shows in clear. Tests:
+`test_cli.py::test_the_vanished_sources_fix_names_the_re_add_only_where_it_adds_the_same_id` (default id: the
+command it names clears the refusal; custom id; root gone),
+`test_cli.py::test_the_vanished_sources_fix_offers_each_folder_and_says_which_when_not_all_have_one`,
+`test_setup_report.py::test_a_vanished_sources_add_back_folder_is_never_in_the_report`, the `vanished-add-back` case
+of `test_install_oneshot.py::_persons_fail_lines`.
+
+**U14, U17: the docs-repo line names the remotes git has (`agentsync.cli`).** init and add-source printed `docs
+repo <path> (exists, no remote; ...)` from a fixed string, one line above the governance refusal of that repo's
+remote, and also over a remote [governance] allows. `cli._remote_clause` reads `git remote`: `no remote` when
+there is none (the wording install.sh and the older tests read), else `remote origin` or `remotes backup, origin`
+with `refused by [governance]` or `allowed by [governance]`. No URL (the governance line shows it, redacted) and no
+"below" (the refusal is on stderr, this line on stdout). Test:
+`test_cli.py::test_the_docs_repo_line_names_the_remotes_git_has`.
+
+**U64, U95, U66, U72, U73: a damaged table page fails status, and every command says the manifest's one line
+(`agentsync.cli`, `agentsync.ops.doctor`; amends §16.125 T12).** Damage under a table the schema probe does not
+read (the items table's root page) left status, and install.sh's doctor, at exit 0 with every check `[ok]` and
+`NEXT: cannot read the state: DatabaseError: database disk image is malformed`, while the sync exited 65: status's
+own read of the loop's state hit the SQLITE_CORRUPT and threw it away. That error now adds the `state_dir.manifest`
+FAIL (`cli._with_damaged_manifest`, `doctor.manifest_damaged`), once (not beside the schema probe's), after the
+other `state_dir` checks, so status exits 1 and its NEXT names the person's fix; no read is added. Damage under a
+table no status read touches still shows only at a sync. `_main` sends a NOTADB or CORRUPT error from any command
+(exclude-empty, curate, purge) to `state: <path> cannot be read: <error> (fix: <MANIFEST_FIX>)` and exit 65, as
+the help says (U66); only a locked or busy database (SQLITE_BUSY, SQLITE_LOCKED, extended codes included) is one
+`error:` line and exit 1, and any other sqlite3 error (an IntegrityError, a missing column) propagates with its
+traceback again (U72). `doctor.MANIFEST_FIX` ends `and forgets the deletions, the deletion breaker's suspended
+removals and the archive it recorded; legal holds are kept, in governance/holds.json` (U73: "holds" read as the
+legal holds, which live outside the manifest). Tests:
+`test_cli.py::test_a_manifest_damaged_under_a_table_status_reads_fails_status`, the exclude-empty, curate and purge
+cases of `test_cli.py::test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line`,
+`test_cli.py::test_only_a_locked_or_busy_database_is_one_line_other_sqlite_errors_keep_their_traceback`,
+`test_cli.py::test_the_manifest_fix_says_legal_holds_are_kept`.
+
+**U70: two tests prove what they claim (tests only).** `test_a_manifest_a_sync_holds_is_no_fail` held its lock on
+the WAL-mode manifest, where a writer never blocks the probe's read; a rollback-journal copy under the same lock now
+proves the busy half (its read raises SQLITE_BUSY, which is still no FAIL), the WAL case kept.
+`test_a_cycle_warning_the_report_prints_is_held_back_only_when_it_prints_it` pinned `checkpoint held: 0 curation
+errors`, a line no run prints; its held checkpoint carries the two blockers its logged line names.
+
+**U68, U69, U92, U105: the lock wait speaks in plain lines (`agentsync.cycle`, `agentsync.cli`,
+`scripts/install.sh`; amends §16.125 T33 and §16.68 H31).** A foreground run's beats go through a `say` callback
+(`cli._lock_say`, threaded through `run_cycle`): plain stderr lines, `another sync is running (<holder>); waiting
+for it to finish (Ns of at most Ms)`, each with a DEBUG record beside it, never a timestamped `WARNING
+agentsync.cycle:` line (U105); a library caller with no `say` keeps the WARNING. install.sh passes
+`AGENTSYNC_LOCK_WAIT_ANNOUNCED=$SYNC_LOCK_BUSY` (`cycle.LOCK_WAIT_ANNOUNCED_ENV`): under the quiet wait every beat stays DEBUG while install.sh
+announced the wait, and a wait its probe missed (a sync that took the lock after the probe) says its first beat
+once, in install.sh's words, which the setup prompt quotes (`another sync is still running (<holder>); waiting for
+it to end, at most 10 minutes`), and marks stdout with `cli.LOCK_WAITED_MARK`, which install.sh reads to book the
+wait as `waited-for-the-lock`, not conversion (U68). The dead `level` variable is gone (U69, U92); install.sh's
+comment says every beat goes to DEBUG; `_fail_step`'s docstring points at `PERSONS_KINDS`. Tests:
+`test_cli.py::test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not_announce`,
+`test_cli.py::test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`,
+`test_install_oneshot.py::test_a_lock_wait_the_probe_missed_is_booked_from_agentsyncs_stdout_mark`, and the
+announced flag in `test_first_sync_lock_busy_is_skipped_not_failed` and
+`test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before`.
+
+**U18, U71, U102: counted nouns, and a plain settle notice (`agentsync.arm_local`, `agentsync.cli`,
+`agentsync.governance`, `agentsync.publish`, `agentsync.ops.doctor`; amends §16.125 T32, §16.45 R103 and R144).**
+The purge dry run's `up to N commit(s)`, the purge notes' `N row(s)`, the empty-root alarm's `N file(s) are
+mirrored` (`1 file is mirrored`), the inbox's `N inbox item(s) withheld`, the breaker finding's `N deletion(s)
+held`, the CHANGELOG's `- lint: N finding(s)`, doctor's `tracked symlink(s)`, `N file(s) in A have the same content`
+(`1 file in A has`) and `N log file(s)`, and the compaction commit's `N commit(s) older than N day(s) were` take
+noun and verb from the count. Log lines keep `(s)`, but for one: the inbox's settle wait (U18) is a live progress
+notice, not a log line, so its noun is counted (`2 inbox items still settling`) and its record carries
+`arm_local.PROGRESS`, which the CLI's stderr formatter (`cli._Formatter`) prints as a plain indented line, with no
+time, level or logger name, before the sleep. Only an interactive run settles, so no err.log changes. Tests: the
+pins in `test_arm_local.py`, `test_governance.py`, `test_publish.py`, `test_ops_doctor.py` and `test_cli.py`,
+with count-1 and count-2 cases (`test_publish.py::test_the_changelogs_lint_line_counts_its_findings`,
+`test_ops_doctor.py::test_the_logs_line_counts_its_files`), and
+`test_arm_local.py::test_inbox_settle_waits_for_a_fresh_file_beside_a_future_dated_one`.
+
+**U49, U50, U51: the empty-folder waits point by noun, exclude-empty says one head (`agentsync.loop`,
+`agentsync.cli`; amends §16.125 T38).** The collides wait pointed at the alarm with `which names them` when its own
+subject was one folder; every wait now says `which names the folder` or `the folders` by the stored count, and so
+does exclude-empty's pointer (U49). exclude-empty with folders left for both causes said `N empty cloud folders in
+<id> were left as they are` twice; it says one head with the total, then each cause with its own count and verb,
+`2 held 3 files ...; 2 have a [ in the name ...: rename or remove them in the cloud drive` (`1 held 1 file ...; 1
+has a [ in its name ...: rename or remove it`) (U50). One file is one page: a gone folder that held one file
+`retires its page at once`, in the gone wait and in exclude-empty, never `their` (U51). Tests:
+`test_exclude_empty.py::test_one_folder_left_for_each_cause_is_one_head_with_singular_clauses`,
+`test_exclude_empty.py::test_folders_left_for_two_causes_are_said_apart` and the pins in `test_exclude_empty.py`
+and `test_loop.py`.
+
+**U103: a [governance] type error's value is a placeholder (`agentsync.setup_report`; amends §16.122 T3).**
+governance.py's `_bool`, `_int` and `_opt_str` raise `[governance].<key>: expected ..., got <repr>`, and the report
+showed the value in Doctor's governance.config FAIL, the install.out tail and Status; a `hold_owner` list can carry
+a name. A new unnumbered `<value>` kind replaces it, matched after the key and the form (a fixed-width lookbehind
+per key and form, never any `, got `), up to ` (fix: ` or the line end, so Doctor keeps its fix; it never makes the
+report private. `agentsync sync` still prints the value. Tests: the four U103 cases of
+`test_setup_report.py::test_a_policy_or_governance_errors_value_is_never_in_the_report` (one with no organization
+word, which the residue check would not flag) and `test_setup_report.py::test_the_reports_governance_value_keys_are_governances`.
 
 ### 16.132 Round 17: the pandoc fix's owner, converter counts and the gate (2026-10-19, wave B13 round 17 lane E)
 
