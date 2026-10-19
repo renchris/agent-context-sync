@@ -700,6 +700,18 @@ def test_a_failed_step_2_names_no_folder_the_config_step_added(
     assert last_line(cp).startswith(
         f'NEXT: fix the error above, then re-run: {INSTALL_SH} {wheel} --source-local "{folder}" ['
     ), last_line(cp)
+    # B13 round 17 U63: a failure inside the config step's add-source loop keeps every folder, the one added
+    # before it too: add-source says "already configured" and exits 0 on it, and a followed retry must read as
+    # "the same command" in the report (setup_report._again_words), not one "with other folders"
+    other = folder.parent / "Other"
+    other.mkdir()
+    e = {**env, "STUB_ADD_SOURCE_FAIL": str(other)}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder), "--source-local", str(other))
+    assert cp.returncode == 1
+    assert last_line(cp).startswith(
+        f'NEXT: fix the error above, then re-run: {INSTALL_SH} {wheel} --source-local "{folder}" '
+        f'--source-local "{other}" ['
+    ), last_line(cp)
 
 
 @pytest.mark.parametrize(

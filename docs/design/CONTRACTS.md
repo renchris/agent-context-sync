@@ -22536,6 +22536,8 @@ quotes, keeps the `%q` form. install.log's `args=`, which both reports parse, ke
 redacts a loose name in its quoted form too. Tests: `test_a_failed_step_2_names_no_folder_the_config_step_added`,
 `test_a_re_run_names_a_folder_in_double_quotes`.
 Amended 2026-10-19, §16.130 U57, U67, U87, U96: config_failed's exit-65 NEXT re-runs with `$RERUN_ARGS` too.
+Amended 2026-10-19, §16.130 U63: "names no folder the config step added" is said of the NEXTs after the config step;
+one written inside its add-source loop names every folder, the one added before the failure too.
 
 **The list counts only a CloudStorage folder as not on disk** (T46; dated line at §16.117 S10). The S10 header's
 `the 1 not on disk` counted a folder missing outside `~/Library/CloudStorage`, which no NEXT clause or `gone=` names;
@@ -23211,6 +23213,15 @@ unchanged. T29's reorder (check `[governance]` before the write) stays not built
 agentsync, one folder and two), `test_setup_report.py::test_the_folders_line_counts_what_was_kept_added_and_named`
 (U40's case); a refusal with nothing written keeps "failed"
 (`test_a_failed_add_source_still_fails_the_run_through_the_filter`).
+
+**A failure inside the config step keeps every folder in its re-run** (U63; amends §16.123 T22). T22's heading, "A
+re-run names no folder the config step added", read as if a NEXT written inside the add-source loop dropped the
+folders an earlier call of the same run had added. It does not, and is not built to: the switch to `$BASE_ARGS` comes
+once the config step ends, as T22's verifier chose. Inside the loop the NEXT names every folder, the one added before
+the failure too, since add-source exits 0 with `already configured` on a folder it has, and a followed retry must read
+as "the same command" in the report (`setup_report._again_words`), not "with other folders" (U63's verifier: the
+finder's per-folder drop makes that line worse). No code change. Test:
+`test_a_failed_step_2_names_no_folder_the_config_step_added` (a second folder's add-source failing names both).
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 
