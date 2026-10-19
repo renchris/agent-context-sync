@@ -431,10 +431,37 @@ _REMOTE_VALUE_RE = (  # the unquoted form is a URL (``://`` or ``@``): never the
     rf"(?<=remote_url_prefixes: )(?:{_REPR}(?= is not a remote URL| carries a password)"
     rf"|[ \t]*[^\s'\"]*(?:://|@)[^\s'\"]*)"
 )
+_GOVERNANCE_TYPED_KEYS = (
+    "history_days",
+    "compaction_slack_days",
+    "allow_remote",
+    "hold",
+    "hold_reason",
+    "hold_owner",
+    "purge_on_upstream_delete",
+    "archive",
+)
+"""The [governance] keys whose type error quotes the value (governance.py's ``_bool``, ``_int`` and
+``_opt_str``): every key but ``remote_url_prefixes``, which :data:`_REMOTE_VALUE_RE` covers; a test pins them
+equal."""
+_GOVERNANCE_VALUE_RE = (  # a fixed-width lookbehind per key and form; the value ends at "(fix:" or EOL
+    "(?:"
+    + "|".join(
+        f"(?<={re.escape(f'[governance].{key}: expected {what}, got ')})"
+        for key in _GOVERNANCE_TYPED_KEYS
+        for what in ("a non-empty string", "true/false", *(f"an integer >= {n}" for n in range(10)))
+    )
+    + r")[^\n]+?(?= \(fix: |\n|\Z)"
+)
+"""The value a [governance] type error quotes (``got <repr>``: a list, a number or a string, which can carry
+a name), after its key and form, never any ", got " (B13 round 17 U103; round 16 T3 covered only the label
+and remote values)."""
 _HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-Fa-f]{16,}(?![0-9A-Za-z])"
 _REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
 _LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
-_UNNUMBERED = frozenset({"home", "user", "name", "serial", "host", "mdmhost", "tmp", "label", "remote"})
+_UNNUMBERED = frozenset(
+    {"home", "user", "name", "serial", "host", "mdmhost", "tmp", "label", "remote", "value"}
+)
 _NUMBERED_RE = re.compile(r"<[a-z]+-[0-9]+>")  # a numbered placeholder (<folder-12>); never <mdmhost>
 _TMP_RE = r"/(?:private/)?var/folders/[^/\s]+/[^/\s]+"  # a per-user temporary folder id (stable per account)
 _GENERIC_FOLDERS = frozenset(
@@ -735,6 +762,7 @@ _LEGEND = {
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
     "remote": "<remote> a remote URL prefix a [governance] error quotes",
+    "value": "<value> any other value a [governance] error quotes",
 }
 _FIXED_PLACEHOLDERS = frozenset(
     {*(f"<{k}>" for k in _UNNUMBERED), "<path>", "<org>", "<Org>", "<team>", "<TEAMID>"}
@@ -1195,6 +1223,7 @@ class Redactor:
             # "<folder-1>") made it <<folder-1>>. Only the shapes :data:`_FIXED_PLACEHOLDERS` names are held:
             # "<contoso>" still has its value replaced (R69).
             alts += [f"(?P<label>{_LABEL_VALUE_RE})", f"(?P<remote>{_REMOTE_VALUE_RE})"]
+            alts += [f"(?P<value>{_GOVERNANCE_VALUE_RE})"]
             alts += [f"(?P<email>{_EMAIL_RE})", f"(?P<guid>(?<![0-9A-Fa-f-]){_GUID_RE}(?![0-9A-Fa-f-]))"]
             if self._commits:
                 prefixes = "|".join(sorted(self._commits))
@@ -1278,8 +1307,8 @@ class Redactor:
         groups = m.groupdict()
         if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
-        if groups.get("label") is not None or groups.get("remote") is not None:
-            kind = "label" if groups.get("label") is not None else "remote"
+        if any(groups.get(k) is not None for k in ("label", "remote", "value")):
+            kind = next(k for k in ("label", "remote", "value") if groups.get(k) is not None)
             placeholder = f"<{kind}>"
             self._kind_of.setdefault(placeholder, kind)
         elif groups.get("email") is not None:

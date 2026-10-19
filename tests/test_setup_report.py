@@ -1105,6 +1105,27 @@ def test_the_reports_vanished_source_check_is_the_cycles(fake_mac: dict[str, Pat
             "zeta",
             "remote_url_prefixes: <remote>",
         ),
+        # B13 round 17 U103: a type error's "got <repr>" (hold_owner, hold, history_days), and a value with no
+        # organization word, which the residue check would not flag
+        (
+            "",
+            'hold = true\nhold_reason = "x"\nhold_owner = ["Legal - Zeta Counsel"]',
+            "Counsel",
+            "[governance].hold_owner: expected a non-empty string, got <value>",
+        ),
+        ("", 'hold = ["Zeta Counsel"]', "Counsel", "[governance].hold: expected true/false, got <value>"),
+        (
+            "",
+            'history_days = "Zeta Counsel"',
+            "Counsel",
+            "[governance].history_days: expected an integer >= 1, got <value>",
+        ),
+        (
+            "",
+            'hold = true\nhold_reason = "x"\nhold_owner = ["Legal Department"]',
+            "Department",
+            "[governance].hold_owner: expected a non-empty string, got <value>",
+        ),
     ],
 )
 def test_a_policy_or_governance_errors_value_is_never_in_the_report(
@@ -1142,8 +1163,25 @@ def test_a_policy_or_governance_errors_value_is_never_in_the_report(
     assert said in section(text, "Installer"), section(text, "Installer")
     [fail] = [ln for ln in section(text, "Doctor").splitlines() if said in ln]
     assert fail.startswith(("[FAIL] policy ", "[FAIL] governance.config ")), fail
-    placeholder = "<label>" if "label" in said else "<remote>"
+    placeholder = "<label>" if "label" in said else "<remote>" if "remote" in said else "<value>"
+    if placeholder == "<value>":  # the Doctor line keeps its fix after the value (U103)
+        assert f"got <value> (fix: {cli.GOVERNANCE_FIX})" in fail, fail
     assert setup_report._LEGEND[placeholder[1:-1]] in section(text, "Redaction"), section(text, "Redaction")
+
+
+def test_the_reports_governance_value_keys_are_governances() -> None:
+    """B13 round 17 U103: the report's [governance] value pattern names every key a type error quotes."""
+    from agentsync import governance  # noqa: PLC0415
+
+    keys = set(governance._GOVERNANCE_KEYS) - {"remote_url_prefixes"}
+    assert set(setup_report._GOVERNANCE_TYPED_KEYS) == keys
+    red = setup_report.Redactor()
+    line = (
+        "[FAIL] governance.config — x: [governance].hold_owner: expected a non-empty string, got 3 (fix: y)"
+    )
+    assert red.redact(line).endswith("got <value> (fix: y)"), red.redact(line)
+    other = "converter: expected a non-empty string, got 'Contoso Notes'"  # no [governance] key before it
+    assert red.redact(other) == other
 
 
 # ---- the v5 friction log -------------------------------------------------------------------------------
