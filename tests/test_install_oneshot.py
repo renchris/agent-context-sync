@@ -12151,7 +12151,46 @@ def test_a_git_remotes_host_is_redacted_in_both_readers(
     assert "fabrikam" not in shell and "northwind" not in shell, shell
     assert "'https://<proxy-1>/tools/agent-context-sync.git/'" in shell and "'<proxy-2>'" in shell, shell
     assert "cd ../agent-context-sync; ssh.github.com port 443" in shell, "no local remote or GitHub host"
-    assert setup_report._git_remote_hosts() == ["git.fabrikam-eng.invalid", "scm.northwind-lab.invalid"]
+    assert [h for h, _url in setup_report._git_remotes()] == [
+        "git.fabrikam-eng.invalid",
+        "scm.northwind-lab.invalid",
+    ]
+
+
+def test_a_governance_lines_remote_url_and_the_docs_repos_host_are_redacted_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U93 (U1, U15, U56): a governance remote finding quotes the docs repo's remote URL,
+    host and path, and neither reader matched it; the shell had none of round 16 T3's patterns either.
+    Both write ``remote <name> (<remote>)`` for the three phrasings (an ssh URL whole, not an <email-N>
+    front), ``<label>`` and ``<remote>`` for T3's values, and register the docs repo's remote host last,
+    with one number in both, and its path as a rewrite's (U15)."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    git = Path(env["HOME"]) / "agent-context" / "docs" / ".git"
+    git.mkdir(parents=True)
+    (git / "config").write_text('[remote "origin"]\n\turl = https://git.northwind-docs.invalid/kb/docs.git\n')
+    said = (
+        "remote origin (https://git.northwind-docs.invalid/kb/docs.git) exists but [governance] allow_remote "
+        "= false; remote up (git@git.northwind-docs.invalid:kb/docs.git) is not under a tenant-owned prefix; "
+        "refused: remote origin (https://github.com/fabrikam-team/docs.git) is not tenant-owned per "
+        "remote_url_prefixes; exclude_label_ids: 'Fabrikam Zeta' is not a label GUID; "
+        "remote_url_prefixes: 'git.fabrikam.invalid/x' is not a remote URL; "
+        "fatal: unable to access 'https://git.northwind-docs.invalid/kb/docs.git/': 403; "
+        f"remote own (git@github.com:{setup_report._REPO_SLUG}.git) exists but [governance] allow_remote"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == python, (shell, python)
+    assert "northwind" not in shell and "fabrikam" not in shell.lower() and "kb/" not in shell, shell
+    assert shell.startswith("remote origin (<remote>) exists but [governance] allow_remote"), shell
+    assert "remote up (<remote>) is not under" in shell and "<email-" not in shell, shell
+    assert "refused: remote origin (<remote>) is not tenant-owned" in shell, shell
+    assert "exclude_label_ids: <label> is not" in shell and "remote_url_prefixes: <remote> is not" in shell
+    assert "'https://<proxy-1>/<proxy-2>/': 403" in shell, "the path is a company word's (U15)"
+    assert shell.endswith("remote own (<remote>) exists but [governance] allow_remote"), "this repo's too"
+    text = report_path(env).read_text()
+    assert "- <remote>: a remote URL, or a URL prefix, that a [governance] error or check quotes" in text
+    assert "- <label>: a label id or name a policy error quotes" in text
 
 
 def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(

@@ -23099,6 +23099,25 @@ else, and a fix that is not the person's, keep `fix:`. The clause's noun is `lin
 so after the [FAIL] rule's (whose words install.sh's older-report rewrite inserts, unchanged). Test:
 `test_a_persons_fix_on_an_error_line_is_not_a_hint_when_its_next_says_so`.
 
+**A governance remote finding's URL is `<remote>` in both reports** (U1, U15, U56, U93, one defect from four
+finders). A docs repo with a remote under `allow_remote = false` printed `[FAIL] governance.remote — remote origin
+(<url>) exists but ...` with its host and path: governance.py masks only a password, the Redactor's `<remote>`
+matched only after `remote_url_prefixes: `, and no git-config reader read the docs repo's. The Redactor matches the
+URL inside `remote <name> (<url>)` before `exists but [governance] allow_remote`, `is not under a tenant-owned
+prefix` and push_rewritten's `is not tenant-owned per remote_url_prefixes` (`_GOV_REMOTE_RE`, in the `remote`
+group, before the email pattern, so an ssh URL is no `<email-N>:path`), whatever its host: github.com and a public
+host are no proxy host, and the path names the company. governance.py's words are unchanged, so `agentsync status`
+still prints the URL. For git's own errors, which quote the URL without those words, `_git_remotes` (the one reader, which replaced `_git_remote_hosts`) reads the
+docs repo's config last (the configured `docs_repo`; the shell its default place), and every remote URL is
+registered as a rewrite base (host, then a path with a company word in it, `_GENERIC_PATH_WORDS` and the report's
+words left out), so no number moves. The shell fallback report runs the same patterns (`gov_value_sed`, with round
+16 T3's `<label>` and `remote_url_prefixes:` values, which it lacked) before its pairs, holds `<label>` and
+`<remote>`, lists them in its legend, and registers the remote URLs as `rw=` bases; the legend's `remote` item reads
+"a remote URL, or a URL prefix, that a [governance] error or check quotes". Tests:
+`test_a_docs_repo_remotes_url_is_a_placeholder_wherever_a_governance_line_quotes_it`,
+`test_a_docs_repo_remotes_host_is_a_proxy_placeholder_where_git_names_it`,
+`test_install_oneshot.py::test_a_governance_lines_remote_url_and_the_docs_repos_host_are_redacted_in_both_readers`.
+
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
 Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest

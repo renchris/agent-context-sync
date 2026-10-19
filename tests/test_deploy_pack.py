@@ -5783,7 +5783,8 @@ def test_the_guides_say_a_git_remotes_host_is_redacted_and_kept() -> None:
     script = SCRIPTS[0].read_text(encoding="utf-8")
     body = script.split("\nrecord_proxy_hosts() {\n", 1)[1].split("\n}\n", 1)[0]
     assert "\t\tgit_remote_hosts # B13 round 16 T88\n" in body
-    assert "for host in _git_remote_hosts():" in inspect.getsource(setup_report)
+    # B13 round 17 U15, U93: each remote URL registers as a rewrite base, its host first
+    assert "for _host, url in _git_remotes(docs)" in inspect.getsource(setup_report)
     host = setup_report._remote_url_host
     assert (
         host("https://git.contoso.example/team/x.git")

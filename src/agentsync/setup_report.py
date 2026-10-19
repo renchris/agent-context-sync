@@ -71,7 +71,9 @@ and the system PAC URL after its scheme (``<proxy-N>``) and this account's tempo
 ``/var/folders/<x>/<y>``: ``<tmp>``), and the value a policy or ``[governance]`` error quotes: a label id or
 name after ``exclude_label_ids:`` or ``exclude_label_names:`` (``<label>``) and a remote URL prefix after
 ``remote_url_prefixes:`` (``<remote>``), matched by pattern wherever the report shows the error (Doctor, the
-install.out tail, Recent errors), as no value of policy.toml is registered (B13 round 16 T3). A dotless
+install.out tail, Recent errors), as no value of policy.toml is registered (B13 round 16 T3), and the remote
+URL a governance remote finding quotes, ``remote <name> (<url>) exists but ...`` (``<remote>``; B13 round 17
+U1), whose host the docs repo's own git config also registers as a ``<proxy-N>``. A dotless
 generic host (``proxy``, ``wpad``, ``gateway``: :data:`_GENERIC_PROXY_HOSTS`) is replaced only where a URL
 names it (after ``//`` or ``@``, or before ``:port``), so ``HTTPS_PROXY`` and ``network.proxy`` stay readable;
 any other dotless host is matched bare.
@@ -139,7 +141,14 @@ from agentsync.config import (
 )
 from agentsync.materialise import file_provider_marker
 from agentsync.ops.lock import Stage
-from agentsync.paths import TEMPORARY_ROOTS, default_config_path, expand, is_temporary, provider_link_resolved
+from agentsync.paths import (
+    TEMPORARY_ROOTS,
+    default_config_path,
+    default_docs_repo,
+    expand,
+    is_temporary,
+    provider_link_resolved,
+)
 from agentsync.skill import AGENTSYNC_BIN, INSTALL_SH
 from agentsync.text import plural as _plural
 
@@ -457,6 +466,17 @@ _GOVERNANCE_VALUE_RE = (  # a fixed-width lookbehind per key and form; the value
 """The value a [governance] type error quotes (``got <repr>``: a list, a number or a string, which can carry
 a name), after its key and form, never any ", got " (B13 round 17 U103; round 16 T3 covered only the label
 and remote values)."""
+# The remote URL a governance remote finding quotes: ``remote <name> (<url>) exists but [governance]
+# allow_remote``, ``... is not under a tenant-owned prefix`` (remote_policy_findings: doctor's
+# governance.remote [FAIL], init's ``governance:`` line) and ``refused: remote <name> (<url>) is not
+# tenant-owned per remote_url_prefixes`` (push_rewritten). By pattern, before the email pattern (an ssh
+# ``git@host:path`` stays whole), and whatever its host: github.com and a public host are no proxy host, and
+# the path names the organisation (B13 round 17 U1, U15, U56, U93). No parenthesis inside, so the match
+# starts at the one that opens the URL; ``agentsync status`` still prints the URL.
+_GOV_REMOTE_RE = (
+    r"(?<=\()[^()\n]+?(?=\) (?:exists but \[governance\] allow_remote|is not under a tenant-owned prefix"
+    r"|is not tenant-owned per remote_url_prefixes))"
+)
 _HASH_RE = r"(?<![0-9A-Za-z])(?=[0-9A-Fa-f]*[A-Fa-f])(?=[0-9A-Fa-f]*[0-9])[0-9A-Fa-f]{16,}(?![0-9A-Za-z])"
 _REFLOG_RE = re.compile(r"^([0-9a-f]{40}) ([0-9a-f]{40}) ")
 _LAST_RUNS_RE = re.compile(r"\b\d+ \S+ \S+ ([0-9a-f]{7,40})\b")
@@ -762,7 +782,7 @@ _LEGEND = {
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
     "label": "<label> a label id or name a policy error quotes",
-    "remote": "<remote> a remote URL prefix a [governance] error quotes",
+    "remote": "<remote> a remote URL, or a URL prefix, that a [governance] error or check quotes",
     "value": "<value> any other value a [governance] error quotes",
 }
 _FIXED_PLACEHOLDERS = frozenset(
@@ -1208,7 +1228,10 @@ class Redactor:
             # This repository's own locator first, kept whole: on a Mac whose full name run together is its
             # public owner ("Jane Doe", "doejane/..."), the name forms cut every copy of the issue link and
             # the source URL to github.com/<name>/... Only this owner's: a fork's owner stays a name (R20).
-            alts = [rf"(?P<keep>(?i:(?:git@)?github\.com[:/]{re.escape(_REPO_SLUG)}(?:\.git)?)(?![\w-]))"]
+            # A governance remote finding's URL first, even this repository's own: the shell's sed takes it
+            # before its hold of the locator, so both reports print <remote> (B13 round 17 U93)
+            alts = [f"(?P<govremote>{_GOV_REMOTE_RE})"]
+            alts += [rf"(?P<keep>(?i:(?:git@)?github\.com[:/]{re.escape(_REPO_SLUG)}(?:\.git)?)(?![\w-]))"]
             # agentsync's own fixed path names, the same text on every Mac, are held whole too: an
             # organisation "Context" or "Agent" (matched everywhere) cut ~/agent-context to ~/agent-<org-1>,
             # from which a reader recovers the name (B13 round 7 H74). Case-sensitive, after a slash, to a
@@ -1308,6 +1331,8 @@ class Redactor:
         groups = m.groupdict()
         if any(groups.get(held) is not None for held in ("keep", "keep_path", "hold")):
             return text
+        if groups.get("govremote") is not None:
+            groups["remote"] = text
         if any(groups.get(k) is not None for k in ("label", "remote", "value")):
             kind = next(k for k in ("label", "remote", "value") if groups.get(k) is not None)
             placeholder = f"<{kind}>"
@@ -3179,16 +3204,21 @@ _GIT_URL_KEY_RE = re.compile(r"^[ \t]*url[ \t]*=[ \t]*(.*?)[ \t\r]*$", re.IGNORE
 """A ``url`` key line of a git config section (key names are case-insensitive)."""
 
 
-def _git_remote_hosts() -> list[str]:
-    """The hosts of the git remotes' URLs (``[remote "<name>"]`` with a ``url`` key) in the files
+def _git_remotes(docs: Path | None = None) -> list[tuple[str, str]]:
+    """``(host, URL)`` of the git remotes' URLs (``[remote "<name>"]`` with a ``url`` key) in the files
     :func:`_git_proxy_urls` reads, as files, with no git process (B13 round 16 T88): a 403 or a TLS error
     names the host of a hand-set origin, and step 1 tells the agent to log it. Only a URL with ``://`` (not
     ``file://``) or git's ``[user@]host:path`` form, a host with a dot and none of :data:`_PUBLIC_HOSTS` or
     GitHub's: a local remote (``../x``, a bare word, an absolute path) is no host, and ``<proxy-N>`` in place
     of ``..`` or ``agent-context-sync`` broke the paths that name it. ``scripts/install.sh``'s fallback reads
-    the same (``git_remote_hosts``)."""
-    hosts: list[str] = []
-    for name in _git_config_names():
+    the same (``git_remote_hosts``). ``docs``: the docs repo, whose config files are read last, so no number
+    moves (B13 round 17 U93): a push or fetch error names its remote's host too. The first URL of each host:
+    the report registers it as a rewrite base (:func:`_rewrite_values`), its path too when a company word is
+    in it, so git's error keeps no organisation in the path either (U15; ``git_remote_urls``)."""
+    found: list[tuple[str, str]] = []
+    names = _git_config_names()
+    names += [n for n in (_checkout_git_configs(docs) if docs is not None else []) if n not in names]
+    for name in names:
         with contextlib.suppress(OSError):
             remote = False
             for line in name.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -3197,14 +3227,15 @@ def _git_remote_hosts() -> list[str]:
                     remote = head.group(1).lower() == "remote" and head.group(2) is not None
                     continue
                 key = _GIT_URL_KEY_RE.match(line) if remote else None
-                host = _remote_url_host(key.group(1).removeprefix('"').removesuffix('"')) if key else None
-                if host and host.lower() not in (h.lower() for h in hosts):
-                    hosts.append(host)
-    return hosts
+                url = key.group(1).removeprefix('"').removesuffix('"') if key else ""
+                host = _remote_url_host(url) if key else None
+                if host and host.lower() not in (h.lower() for h, _ in found):
+                    found.append((host, url))
+    return found
 
 
 def _remote_url_host(url: str) -> str | None:
-    """The host of a git remote's URL, by :func:`_git_remote_hosts`'s rule, or None."""
+    """The host of a git remote's URL, by :func:`_git_remotes`'s rule, or None."""
     if "://" in url:
         scheme, _, rest = url.partition("://")
         if scheme.lower() == "file":
@@ -3712,9 +3743,16 @@ def _build_redactor(r: _Run) -> Redactor:
             _add_proxy_host(red, host)
     for host in _recorded_proxy_hosts():
         _add_proxy_host(red, host)
-    # A git remote's host last, as install.sh numbers it (B13 round 16 T88)
-    for host in _git_remote_hosts():
+    # A git remote's host last, as install.sh numbers it (B13 round 16 T88), the docs repo's after the rest
+    # (round 17 U93), each as a rewrite base: its host, then its path when a company word is in it (U15)
+    docs = expand(r.config.docs_repo) if r.config is not None else default_docs_repo()
+    for found in filter(None, (_rewrite_values(url) for _host, url in _git_remotes(docs))):
+        host, value, tail = found
         _add_proxy_host(red, host)
+        if value.lower() != host.lower():
+            red.add("proxy", value, ignore_case=True)
+        if tail:
+            red.add("proxy", tail, ignore_case=True, keep_lead=True)
     # The full name's bracketed words, without the brackets, as lone names (written and upper-case forms),
     # after every fuzzy value: a tail that is the organisation ("Contoso") stays <org-N>, bare and joined.
     for word in (w.strip(".,") for w in tail_words):

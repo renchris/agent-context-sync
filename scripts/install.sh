@@ -384,13 +384,18 @@ git_rewrite_bases() {
 	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
 }
 # The hosts of the git remotes' URLs ([remote "<name>"] with a url key), one a line, from the same files, as
-# setup_report._git_remote_hosts reads them (B13 round 16 T88): a 403 or a TLS error names the host of a
+# setup_report._git_remotes reads them (B13 round 16 T88): a 403 or a TLS error names the host of a
 # hand-set origin, and step 1 tells the agent to log it. Only a URL with "://" (not file://) or git's
 # [user@]host:path form, a host with a dot and none of PUBLIC_HOSTS or GitHub's: a local remote ("../x", a bare
 # word, an absolute path) is no host, and "<proxy-N>" in place of ".." or "agent-context-sync" broke paths.
-git_remote_hosts() {
+git_remote_entries() { # host TAB url, one a line; git_remote_hosts and git_remote_urls read them
 	local g
-	git_config_files | while IFS= read -r g; do
+	# the docs repo's own config last, as setup_report reads it, so no number moves (B13 round 17 U93); the
+	# shell reads only its default place, since it never loads the config
+	{
+		git_config_files
+		checkout_git_configs "$HOME/agent-context/docs"
+	} | while IFS= read -r g; do
 		[ ! -f "$g" ] || PUBLIC="$PUBLIC_HOSTS" LC_ALL=C awk '
 			/^[ \t]*\[/ { remote = ($0 ~ /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"[^"]*"[ \t]*\]/); next }
 			remote && tolower($0) ~ /^[ \t]*url[ \t]*=/ {
@@ -408,11 +413,15 @@ git_remote_hosts() {
 				l = tolower(h)
 				if (h !~ /^[A-Za-z0-9._-]+$/ || h !~ /\./ || l == "github.com" || l ~ /\.github(usercontent)?\.com$/) next
 				if (index(" " ENVIRON["PUBLIC"] " ", " " l " ")) next
-				print h
+				print h "\t" u
 			}
 		' "$g" || true
-	done 2>/dev/null | LC_ALL=C awk '!seen[tolower($0)]++'
+	done 2>/dev/null | LC_ALL=C awk -F '\t' '!seen[tolower($1)]++'
 }
+git_remote_hosts() { git_remote_entries | LC_ALL=C cut -f 1; }
+# The first URL of each host, as setup_report._git_remotes gives it: the redaction pairs take it as a rewrite
+# base, so a path with a company word in it is a <proxy-N> too (B13 round 17 U15).
+git_remote_urls() { git_remote_entries | LC_ALL=C cut -f 2-; }
 # The repository config files git reads for checkout DIR, one a line, as setup_report._checkout_git_configs
 # reads them: <common dir>/config and <git dir>/config.worktree, where .git is the git dir or a file naming it
 # ("gitdir: <path>", a linked worktree's or a submodule's; relative to DIR) and the git dir's commondir file
@@ -2056,8 +2065,9 @@ redaction_pairs() {
 			f="${f%/*}/proxy-hosts"
 			[ ! -f "$f" ] || LC_ALL=C sed -n 's/^\([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$f"
 			# the hosts of the git remotes, after them, as the Python report registers them, so no number moves
-			# (B13 round 16 T88; no apostrophe in a comment here: bash 3.2 reads one as a quote inside this block)
-			git_remote_hosts
+			# (B13 round 16 T88; no apostrophe in a comment here: bash 3.2 reads one as a quote inside this block),
+			# each URL as a rewrite base, so a company word in its path is redacted too (B13 round 17 U15)
+			git_remote_urls | LC_ALL=C sed 's/^/rw=/'
 			# every other system proxy host (a flag of 0, or below the top level) and PAC URL (a per-interface one,
 			# by host and by value): redacted still, numbered last
 			printf '%s\n' "$sp" | LC_ALL=C sed -n -e 's/^[[:space:]]*HTTPS\{0,1\}Proxy : //p' \
@@ -2065,6 +2075,20 @@ redaction_pairs() {
 pacv=\1/p' || true
 		} 2>/dev/null
 	)
+}
+# The values a governance or policy error quotes, as setup_report.Redactor matches them by pattern (B13 round 16
+# T3, round 17 U93): the remote URL in "remote <name> (<url>) exists but [governance] allow_remote", "... is not
+# under a tenant-owned prefix" and push's "refused: remote <name> (<url>) is not tenant-owned per
+# remote_url_prefixes" (any host: the path names the company too), a label id or name after
+# exclude_label_ids: or exclude_label_names:, and a URL prefix after remote_url_prefixes:. Before every pair,
+# so a folder or organisation pair never cuts the URL first.
+gov_value_sed() {
+	cat <<'SED'
+s/\(([^()]+)\) (exists but \[governance\] allow_remote|is not under a tenant-owned prefix|is not tenant-owned per remote_url_prefixes)/(<remote>) \2/g
+s/(exclude_label_(ids|names): )('([^'\\]|\\.)*'|"([^"\\]|\\.)*")/\1<label>/g
+s/(remote_url_prefixes: )('([^'\\]|\\.)*'|"([^"\\]|\\.)*")( is not a remote URL| carries a password)/\1<remote>\5/g
+s/(remote_url_prefixes: )[[:blank:]]*[^[:space:]'"]*(:\/\/|@)[^[:space:]'"]*/\1<remote>/g
+SED
 }
 repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's own locator
 	local s="${ISSUE_URL#https://github.com/}"
@@ -2079,6 +2103,7 @@ redact_stream() {
 	# regex match (the placeholder match, the word test) under UTF-8 exits at a byte that is not UTF-8 on its
 	# own ("Jane" + U+2019), and the placeholder match runs on every line.
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
+		LC_ALL=C sed -E -f <(gov_value_sed) |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
@@ -2255,7 +2280,7 @@ redact_stream() {
 	{
 		m = 0; s = $0
 		while (1) {
-			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
+			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|label|remote|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
 			if ((r = repo_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = RL }
 			if ((r = own_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = OL }
 			if (!RSTART) break
@@ -3015,7 +3040,7 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # its own words never count.
 legend_kinds() { # BODY
 	local used=" ~ " k
-	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>'; do
+	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>' '<label>' '<remote>'; do
 		! LC_ALL=C grep -q -- "$k" "$1" 2>/dev/null || used+="$k "
 	done
 	printf '%s' "$used"
@@ -3034,7 +3059,7 @@ say_item() { # TEXT
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
 	local org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
-	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
+	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
@@ -3177,6 +3202,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		say "  an accent"
 		;;
 	esac
+	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
+	case "$used" in *" <label> "*) say "- <label>: a label id or name a policy error quotes" ;; esac
+	case "$used" in *" <remote> "*) say "- <remote>: a remote URL, or a URL prefix, that a [governance] error or check quotes" ;; esac
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an

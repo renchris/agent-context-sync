@@ -1184,6 +1184,75 @@ def test_the_reports_governance_value_keys_are_governances() -> None:
     assert red.redact(other) == other
 
 
+@pytest.mark.parametrize(
+    ("url", "words"),
+    [
+        ("https://git.contoso-docs.invalid/team-zeta/agentsync-docs.git", ("contoso-docs", "team-zeta")),
+        ("https://github.com/contoso-team/agentsync-docs.git", ("contoso-team",)),
+        ("git@git.contoso-docs.invalid:team-zeta/agentsync-docs.git", ("contoso-docs", "team-zeta")),
+    ],
+)
+def test_a_docs_repo_remotes_url_is_a_placeholder_wherever_a_governance_line_quotes_it(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    url: str,
+    words: tuple[str, ...],
+) -> None:
+    """B13 round 17 U1, U15, U56, U93: a docs repo with a remote under ``allow_remote = false`` printed
+    ``[FAIL] governance.remote — remote origin (<url>) exists but ...`` with the URL in full: governance.py
+    masks only a password, no pattern matched the message, and no reader of git's config read the docs
+    repo's. Any host (github.com and a public host are no proxy host) and the path both name the company.
+    The URL is ``<remote>`` wherever a governance remote finding quotes it (doctor's [FAIL], init's
+    ``governance:`` line, push_rewritten's ``refused:``), before the email pattern takes an ssh URL's front;
+    ``agentsync status`` still prints it. No ``clean_doctor``: the check's own [FAIL] line is what leaked."""
+    docs = fake_mac["home"] / "agent-context" / "docs"
+    subprocess.run(["git", "-C", str(docs), "remote", "add", "origin", url], check=True, capture_output=True)
+    capsys.readouterr()
+    cli.main(["status", "--config", str(fake_mac["config"])])
+    assert url in capsys.readouterr().out, "status keeps the URL: the person needs it to act on the fix"
+    refused = f"refused: remote origin ({url}) is not tenant-owned per remote_url_prefixes"
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"governance: remote origin ({url}) exists but [governance] allow_remote = false: every clone\n"
+        f"{refused}\n",
+        encoding="utf-8",
+    )
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    for word in words:
+        assert word not in text.lower(), [ln for ln in text.splitlines() if word in ln.lower()]
+    [fail] = [ln for ln in section(text, "Doctor").splitlines() if "governance.remote" in ln]
+    assert "remote origin (<remote>) exists but [governance] allow_remote" in fail, fail
+    inst = section(text, "Installer")
+    assert "governance: remote origin (<remote>) exists but" in inst, inst
+    assert "refused: remote origin (<remote>) is not tenant-owned per remote_url_prefixes" in inst, inst
+    assert "<email-" not in fail, fail
+    assert setup_report._LEGEND["remote"] in section(text, "Redaction"), section(text, "Redaction")
+
+
+def test_a_docs_repo_remotes_host_is_a_proxy_placeholder_where_git_names_it(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U93: a push or fetch error (a 403, a TLS error) names the docs repo's remote host
+    without the governance words. The docs repo's git config is read last, after the checkout's, so no
+    ``<proxy-N>`` the shell shares moves; its path is the configured docs_repo, not a guess."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    docs = fake_mac["home"] / "agent-context" / "docs"
+    url = "https://git.contoso-docs.invalid/team-zeta/agentsync-docs.git"
+    subprocess.run(["git", "-C", str(docs), "remote", "add", "origin", url], check=True, capture_output=True)
+    assert setup_report._git_remotes() == []
+    assert setup_report._git_remotes(docs) == [("git.contoso-docs.invalid", url)]
+    red = setup_report._build_redactor(
+        setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    )
+    said = red.redact("fatal: unable to access 'https://git.contoso-docs.invalid/x': error: 403")
+    assert "contoso-docs" not in said and re.search(r"'https://<proxy-\d+>/x'", said), said
+    said = red.redact(f"fatal: unable to access '{url}/': error: 403")
+    assert "team-zeta" not in said and re.search(r"'https://<proxy-\d+>/<proxy-\d+>/'", said), said
+
+
 # ---- the v5 friction log -------------------------------------------------------------------------------
 
 
