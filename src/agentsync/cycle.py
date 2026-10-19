@@ -71,6 +71,8 @@ from agentsync.classifier import (
 from agentsync.classifier import classify_pass as _classify_pass
 from agentsync.config import RETIRE_ADVICE, BreakerConfig, Config, SourceConfig, canonical_source_root
 from agentsync.convert import (
+    CONVERSION_FAILED,
+    CONVERTER_UNAVAILABLE,
     NO_CONVERTER_ID,
     NO_CONVERTER_PREFIX,
     NO_CONVERTER_VERSION,
@@ -236,6 +238,18 @@ _REREAD_ATTEMPTS = 2
 """The cycles in which one file's re-read may fail before the file is given up for what this install has.
 One would make every passing fault final (a full disk, pandoc timing out under load); none would read a
 file that cannot be converted in every cycle for ever."""
+_CONVERT_RETRIES = 2
+"""The later cycles in which a file whose conversion failed is converted again from the same bytes (B13 round
+17 U3): a pandoc that timed out under load converts it the next time, and a converter that always fails on one
+file stops being run on it. A failure whose converter could not start (``CONVERTER_UNAVAILABLE``) is not
+counted: the file waits, its error and stub as they are, until the converter starts."""
+_UNAVAILABLE = "unavailable"
+"""The converter version ``convert_file`` gives a conversion whose converter could not start
+(``CONVERTER_UNAVAILABLE``)."""
+_RETRY_META = "convert-retry:"
+"""``convert-retry:<source_id>``: a JSON object ``{stable_id: [canonical sha256, retries]}`` of the source's
+files whose conversion failed and was tried again from those bytes (``_CONVERT_RETRIES``). New bytes count
+from zero; a file that converts leaves it."""
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""
@@ -1710,9 +1724,11 @@ class _Cycle:
         self._rereads: dict[str, _Rereads] = {}  # per source: its record, read once and kept current
         self._reread_others: dict[str, set[str]] = {}  # per source: the ids its other record holds
         self._queue_targets: dict[str, list[tuple[str, str, str | None, str]]] = {}
+        self._reread_waits: set[str] = set()  # sources with a stub whose converter cannot start yet (U3)
         self._reread_streak = 0  # re-reads that failed in a row
         self._reread_s = 0.0  # seconds spent reading files again
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
+        self._convert_retries: dict[str, dict[str, tuple[str, int]]] = {}  # per source: _RETRY_META
         self._reread_n = 0  # files read again
         self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
         self._reread_kept = 0  # of those, the ones whose conversion failed: their page is as it was
@@ -3401,6 +3417,9 @@ class _Cycle:
         if result.status is ConversionStatus.REFUSED:
             stub = (result.reason or "").startswith(NO_CONVERTER_PREFIX)
             return stub and result.converter_id != conv.converter_id
+        if result.status is ConversionStatus.FAILED and result.converter_version == _UNAVAILABLE:
+            # its converter could not start, so it read nothing; once it starts it reads the file (U3)
+            return conv.converter_id == result.converter_id and self._runs(conv)
         if result.status not in (ConversionStatus.OK, ConversionStatus.UNREADABLE):
             return False
         if result.converter_id in _replaced(conv):
@@ -3436,6 +3455,12 @@ class _Cycle:
             for conv in converters:
                 rule = _outdated_rule(conv)
                 outdated = conv.converter_id == converter_id and rule is not None and rule(version, reason)
+                # a stub made while the converter could not start, once it starts (B13 round 17 U3); until
+                # then the source's record is not done, so the first cycle it starts in looks again
+                if not outdated and conv.converter_id == converter_id and version == _UNAVAILABLE:
+                    outdated = self._runs(conv)
+                    if not outdated:
+                        self._reread_waits.add(source_id)
                 if outdated or converter_id in _replaced(conv):
                     targets.update((converter_id, version, reason, ext) for ext in conv.extensions)
         mine = [t for t in targets if (t[3] in self._recording_suffixes()) == recordings]
@@ -3578,7 +3603,7 @@ class _Cycle:
             targets = self._reread_targets(src.id)
         left = self.manifest.reread_count(src.id, targets, skip=state.tried()) if targets else 0
         self._reread_left += left
-        state.done = not left
+        state.done = not left and src.id not in self._reread_waits
         self._save_reread(src.id)
 
     def _reread_batch(
@@ -3628,6 +3653,7 @@ class _Cycle:
                     "%s cannot run (%s): no file is read again for it in this cycle",
                     conv.converter_id,
                     type(exc).__name__,
+                    extra={ECHOED_WHEN: "error"},  # the run's error lines say it (B13 round 17 U3)
                 )
             else:
                 self._cannot_run[id(conv)] = False
@@ -4520,6 +4546,8 @@ class _Cycle:
         if recording:  # read in the recording pass, never in a source's queue (spec S0 rule 4)
             self._recording_defer(src, row, acc)
             return
+        if self._converter_waits(row, acc):  # nothing reads its bytes yet: never download them (U3)
+            return
         if not budget.can_afford(_download_cost(src, row)):
             self._defer(src, row, budget, acc)
             return
@@ -4620,6 +4648,7 @@ class _Cycle:
         *,
         reread: bool = False,
         h1: CanonicalHash | None = None,
+        retry: bool = False,
     ) -> ConversionResult | None:
         """H1, convert, H2, publish for one fetched file.  Returns the conversion its pages now stand for;
         None when none took the place of what they stood for before.
@@ -4631,7 +4660,10 @@ class _Cycle:
         ``no converter`` stub, which was made without reading a byte: a failed read of the file leaves the
         stub, where it would otherwise become a failed conversion nothing reads again.
 
-        ``h1``: the canonical hash of the staged bytes, when the caller has it (the recording pass)."""
+        ``h1``: the canonical hash of the staged bytes, when the caller has it (the recording pass).
+
+        ``retry``: the bytes are the ones a failed conversion's stub was made from, converted again
+        (:meth:`_retries`; B13 round 17 U3): the early cutoff would settle the stub as it is."""
         sid, stable = row.source_id, row.stable_id
         if h1 is None:
             h1 = canonical_hash(fetched.path, suffix=_item_from_row(row).suffix)
@@ -4658,7 +4690,14 @@ class _Cycle:
         # the path, so every read plans the item again at the path it has now.
         intact = _pages_intact(self.repo, outs) and not _stubbed_for_path(fresh)
         same = c2.verdict is Verdict.TOUCHED_NOT_CHANGED and intact and not self._relabelled(fresh, fetched)
-        if same and not reread and not self._reads_anyway(fresh):
+        if same and not reread and not retry and not self._reads_anyway(fresh):
+            retried = self._retries(src, fresh, h1.sha256, acc)
+            if retried is None:  # its converter still cannot start: the error and its stub stay as they are
+                return None
+            if retried:
+                result = self._after_fetch(src, row, fetched, acc, retry=True, h1=h1)
+                self._retried(src.id, stable)
+                return result
             result = None
             if self._outdated_in_queue(src, fresh):
                 # The same bytes, and pages from before something their converter has: read again here.
@@ -4678,6 +4717,8 @@ class _Cycle:
             return result
         if not reread:
             self._reread_forget(src, stable)  # new bytes: what a re-read of the old ones did is void
+        if not reread and not retry:
+            self._retry_forget(sid, stable)  # and so is what a retry of them did
         again = reread and same  # the bytes its pages were made from, converted once more
         # A re-screen (B13 round 5 F35): a [policy] or secret-rule change forgot the hashes of a file whose
         # pages were made from its bytes (``mark_for_rescreen``, ``mark_quarantined_rescreen``), so it is
@@ -4807,6 +4848,79 @@ class _Cycle:
             or row.state_reason in (RECORDING_WAITS, *_RECORDING_STOPPED_REASONS)
             or _no_converter_stub(row)
         )
+
+    def _retries(self, src: SourceConfig, row: ItemRow, h1: str, acc: _SourceAcc) -> bool | None:
+        """Whether the early cutoff converts ``row`` again from the bytes its stub was made from: the stub of
+        a failed conversion, which said "retried next cycle" while the cutoff settled it for good (B13 round
+        17 U3). One whose converter could not start is converted once the converter starts, uncounted, and is
+        None while it still cannot: its verdict stays ERROR, so the next cycle asks again, and the run reports
+        its error line again. Any other one is converted in up to ``_CONVERT_RETRIES`` later cycles per
+        bytes (``_RETRY_META``)."""
+        reason = row.state_reason or ""
+        if row.state is not RowState.QUARANTINED or not reason.startswith(CONVERSION_FAILED):
+            return False
+        if reason.startswith(CONVERTER_UNAVAILABLE):
+            return None if self._converter_waits(row, acc) else self.registry.for_name(row.name) is not None
+        tries = self._retry_load(src.id)
+        held = tries.get(row.stable_id)
+        done = held[1] if held is not None and held[0] == h1 else 0
+        if done >= _CONVERT_RETRIES:
+            return False
+        tries[row.stable_id] = (h1, done + 1)
+        self._retry_save(src.id)
+        return True
+
+    def _converter_waits(self, row: ItemRow, acc: _SourceAcc) -> bool:
+        """True when ``row`` is the stub of a conversion whose converter could not start and still cannot in
+        this cycle (B13 round 17 U3): its verdict stays ERROR, so a later cycle asks again, and the run
+        reports its error line again; its stub and QUARANTINE row stay as they are, and nothing is fetched,
+        since nothing would read the bytes. New bytes behind it are read once the converter starts."""
+        reason = row.state_reason or ""
+        if row.state is not RowState.QUARANTINED or not reason.startswith(CONVERTER_UNAVAILABLE):
+            return False
+        conv = self.registry.for_name(row.name)
+        if conv is None or self._runs(conv):
+            return False
+        self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.ERROR)
+        acc.settle(row.stable_id, Verdict.ERROR)
+        acc.errors.append(_one_line(f"{row.rel_path}: {reason}"))
+        return True
+
+    def _retried(self, source_id: str, stable: str) -> None:
+        """A file converted again by :meth:`_retries` that is no failed conversion's stub any more leaves the
+        source's ``_RETRY_META`` record."""
+        now = self.manifest.get_item(source_id, stable)
+        failed = now is not None and (now.state_reason or "").startswith(CONVERSION_FAILED)
+        tries = self._retry_load(source_id)
+        if not failed and stable in tries:
+            del tries[stable]
+            self._retry_save(source_id)
+
+    def _retry_forget(self, source_id: str, stable: str) -> None:
+        """New bytes: the source's ``_RETRY_META`` record (read once a cycle) forgets what the retries of the
+        old ones did."""
+        tries = self._retry_load(source_id)
+        if stable in tries:
+            del tries[stable]
+            self._retry_save(source_id)
+
+    def _retry_load(self, source_id: str) -> dict[str, tuple[str, int]]:
+        """The source's ``_RETRY_META`` record, read once a cycle; a value it cannot read counts as none."""
+        if source_id not in self._convert_retries:
+            tries: dict[str, tuple[str, int]] = {}
+            with contextlib.suppress(ValueError, TypeError):
+                for stable, (sha, n) in json.loads(
+                    self.manifest.get_meta(_RETRY_META + source_id) or "{}"
+                ).items():
+                    if isinstance(sha, str) and isinstance(n, int):
+                        tries[str(stable)] = (sha, n)
+            self._convert_retries[source_id] = tries
+        return self._convert_retries[source_id]
+
+    def _retry_save(self, source_id: str) -> None:
+        tries = self._convert_retries[source_id]
+        value = json.dumps({k: [sha, n] for k, (sha, n) in sorted(tries.items())}, separators=(",", ":"))
+        self.manifest.set_meta(_RETRY_META + source_id, value)
 
     def _move_key(
         self,
@@ -5331,7 +5445,8 @@ ECHOED_WHEN = "agentsync_echoed_when"
 of a source's alarm lines), ``"checkpoint"`` (the held-checkpoint line) or ``"rescreen"`` (the run line's
 re-screen count). A run that prints its report holds such a record back from its stderr and logs it after
 the cycle only when the report did not print it; the LaunchAgent's job keeps it in its err.log, as
-``arm_local.ECHOED_ALARM`` (B13 round 16 T33, T56; round 15 S2, S13)."""
+``arm_local.ECHOED_ALARM`` (B13 round 16 T33, T56; round 15 S2, S13). ``"error"``: a converter that could not
+start, which the run's error lines name for each file it left (B13 round 17 U3)."""
 
 
 def quiet_lock_wait() -> bool:

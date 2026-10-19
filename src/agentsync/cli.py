@@ -72,6 +72,7 @@ from agentsync.config import (
     parse_size,
     set_source_exclude,
 )
+from agentsync.convert import CONVERTER_UNAVAILABLE
 from agentsync.cycle import (
     ECHOED_WHEN,
     INTERACTIVE_LOCK_WAIT_S,
@@ -615,8 +616,12 @@ class _HeldAlarms(logging.Filter):
 def _printed(record: logging.LogRecord, report: CycleReport) -> bool:
     """Whether ``report`` prints what a held ``record`` says: an arm_local alarm always does; a
     :data:`ECHOED_WHEN` record only when its alarm line, its held checkpoint or its re-screen count is
-    in this report (B13 round 16 T33, T56: never hidden when the report leaves it out)."""
+    in this report (B13 round 16 T33, T56: never hidden when the report leaves it out); an ``"error"`` one (a
+    converter that could not start) when an error line of this report says a converter was unavailable
+    (B13 round 17 U3)."""
     when = getattr(record, ECHOED_WHEN, None)
+    if when == "error":
+        return any(CONVERTER_UNAVAILABLE in e for s in report.sources for e in s.errors)
     if when == "alarm":
         return any(record.getMessage() in s.alarms for s in report.sources)
     if when == "checkpoint":
@@ -690,6 +695,11 @@ def _lock_say(line: str) -> None:
 
 
 def _run(config: Config, **kwargs: object) -> int:
+    return _run_report(config, **kwargs).exit_code
+
+
+def _run_report(config: Config, **kwargs: object) -> CycleReport:
+    """One cycle, its report printed (:func:`_run` gives its exit code)."""
     kwargs.setdefault("say", _lock_say)
     with _alarms_in_the_report(config) as held, _state_readable(config):
         report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
@@ -705,7 +715,7 @@ def _run(config: Config, **kwargs: object) -> int:
                 _log.warning("time machine: %s", line)
         except (OSError, AgentSyncError) as exc:
             _log.warning("time machine exclusions not applied: %s", exc)
-    return report.exit_code
+    return report
 
 
 def _owner_only_dirs(config: Config) -> list[Path]:
@@ -943,14 +953,29 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     config = _config(args)
     mode = CycleMode(args.mode) if args.mode else None
     if args.materialise_budget is None:
-        rc = _run(config, mode=mode)
+        report = _run_report(config, mode=mode)
     else:
         budget = parse_size(args.materialise_budget, where="--materialise-budget")
-        rc = _run(config, mode=mode, budget_bytes=budget)
+        report = _run_report(config, mode=mode, budget_bytes=budget)
     if mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
-        for line in loop.next_lines(config):
+        for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
             _out(line)
-    return rc
+    return report.exit_code
+
+
+def _unavailable_steps(config: Config, report: CycleReport) -> list[str]:
+    """Rule 1's fix when a file's converter could not start in this sync and the pandoc check fails: the
+    file's error line said why it was not converted while the NEXT went on to the baseline step (B13 round 17
+    U3). It names status, whose [FAIL] pandoc line carries the fix and whose NEXT says whose it is; the sync
+    prints no check line. The cycle converts the file once the converter starts."""
+    if not any(CONVERTER_UNAVAILABLE in e for s in report.sources for e in s.errors):
+        return []
+    if all(r.ok for r in doctor._check_pandoc(config)):
+        return []
+    return [
+        "the pandoc check failed (a file's converter could not start in this sync, so it is not converted "
+        f"yet): run `{loop.BIN} status`, whose [FAIL] pandoc line names the fix"
+    ]
 
 
 def _cmd_reconcile(args: argparse.Namespace) -> int:

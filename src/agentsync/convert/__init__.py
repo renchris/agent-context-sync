@@ -21,6 +21,16 @@ it).  The page, its ``reason:`` and ``_sync/QUARANTINE.tsv`` of a file a label r
 by label rule: ...`` instead (``publish._withheld_reason``, B13 round 6 G29).  The cycle goes by the prefix to
 find the files a converter registered since can read."""
 
+CONVERSION_FAILED = "conversion failed"
+"""How the reason of a FAILED conversion starts (``convert_file``; its stub keeps it as the row's state
+reason). :data:`CONVERTER_UNAVAILABLE` is the one whose converter could not start, so no byte of the file was
+read: the cycle tries such a file again once the converter starts, and any other failed one a bounded number
+of times (``cycle._CONVERT_RETRIES``; B13 round 17 U3)."""
+CONVERTER_UNAVAILABLE = f"{CONVERSION_FAILED}: converter unavailable"
+_ECHOED_WHEN = "agentsync_echoed_when"
+"""``cycle.ECHOED_WHEN``, which this module cannot import (the cycle imports it); a test pins the two
+equal."""
+
 NO_CONVERTER_ID = "none"
 NO_CONVERTER_VERSION = "0"
 """The converter id and version of a ``no converter`` refusal (and of the page of a withheld file, which
@@ -153,7 +163,14 @@ def convert_file(
     try:
         version, opts = _identity(conv, name)
     except Exception as exc:
-        log.warning("converter %s unavailable for %s: %s", conv.converter_id, name, _reason(exc))
+        # The run's report prints the file's error line: a foreground sync holds this back (B13 round 17 U3)
+        log.warning(
+            "converter %s unavailable for %s: %s",
+            conv.converter_id,
+            name,
+            _reason(exc),
+            extra={_ECHOED_WHEN: "error"},
+        )
         opts = options_hash({})
         return _result(
             ConversionStatus.FAILED,
@@ -168,7 +185,7 @@ def convert_file(
             ),
             content_sha256=content_sha256,
             canonical_sha256=canonical_sha256,
-            reason=f"conversion failed: converter unavailable: {_reason(exc)}",
+            reason=f"{CONVERTER_UNAVAILABLE}: {_reason(exc)}",
         )
     key = action_key(
         converter_id=conv.converter_id,
@@ -255,12 +272,12 @@ def convert_file(
                 cache=cache,
             )
         log.info("conversion of %s by %s failed: %s", name, conv.converter_id, _reason(exc))
-        return make(ConversionStatus.FAILED, reason=f"conversion failed: {_reason(exc)}")
+        return make(ConversionStatus.FAILED, reason=f"{CONVERSION_FAILED}: {_reason(exc)}")
     else:
         problem = _validate(units)
         if problem is not None:
             log.warning("converter %s broke its contract on %s: %s", conv.converter_id, name, problem)
-            return make(ConversionStatus.FAILED, reason=f"conversion failed: {problem}")
+            return make(ConversionStatus.FAILED, reason=f"{CONVERSION_FAILED}: {problem}")
         result = make(ConversionStatus.OK, units=units)
     try:
         cache.put(result)
@@ -313,6 +330,8 @@ def double_conversion_differs(src: Path, *, name: str, registry: Registry) -> bo
 
 
 __all__ = [
+    "CONVERSION_FAILED",
+    "CONVERTER_UNAVAILABLE",
     "NO_CONVERTER_ID",
     "NO_CONVERTER_PREFIX",
     "NO_CONVERTER_VERSION",

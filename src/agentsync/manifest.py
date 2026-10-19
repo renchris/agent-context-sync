@@ -464,7 +464,9 @@ _REREAD_SQL = (
     "WHERE o.source_id = i.source_id AND o.stable_id = i.stable_id "
     "AND length(i.name) > length(t.ext) AND substr(lower(i.name), -length(t.ext)) = t.ext "
     "AND ((t.why IS NULL AND o.status = 'ok' AND i.state = 'live') "
-    "OR (t.why = i.state_reason AND o.status = i.state AND i.state IN ('quarantined', 'refused'))))"
+    "OR (t.why = i.state_reason AND o.status = i.state AND i.state IN ('quarantined', 'refused')) "
+    "OR (t.why = i.state_reason AND t.ver = 'unavailable' AND o.status = 'failed' "
+    "AND i.state = 'quarantined')))"
 )
 """The files ``Manifest.reread_candidates`` and ``reread_left`` look for; the caller adds the rest of the
 WHERE clause.  The cache row is joined LEFT: a page whose row is gone is judged by its ``outputs`` columns,
@@ -2100,7 +2102,9 @@ class Manifest:
         key: the H2 early cutoff moves that key and leaves the ``outputs`` columns as they were, so the cache
         row is the one that says which version last converted the file.  Where it is gone the ``outputs``
         columns stand in.  Online-only files, directories and tombstones are left out, and so is a stub that
-        is not its item's own state (a ``duplicate-of`` stub, a failed conversion)."""
+        is not its item's own state (a ``duplicate-of`` stub, a failed conversion), but for the stub of a
+        conversion whose converter could not start (version ``unavailable``), which read no byte of the
+        file: the cycle reads it again once that converter starts (B13 round 17 U3)."""
         rows = self._db.execute(
             "SELECT DISTINCT COALESCE(c.converter_id, o.converter_id), "
             "COALESCE(c.converter_version, o.converter_version), "
@@ -2111,7 +2115,9 @@ class Manifest:
             "AND COALESCE(c.converter_id, o.converter_id) IS NOT NULL "
             "AND COALESCE(c.converter_version, o.converter_version) IS NOT NULL "
             "AND ((o.status = 'ok' AND i.state = 'live') OR (o.status = i.state "
-            "AND i.state IN ('quarantined', 'refused') AND i.state_reason IS NOT NULL)) ORDER BY 1, 2, 3",
+            "AND i.state IN ('quarantined', 'refused') AND i.state_reason IS NOT NULL) "
+            "OR (o.status = 'failed' AND i.state = 'quarantined' AND i.state_reason IS NOT NULL "
+            "AND COALESCE(c.converter_version, o.converter_version) = 'unavailable')) ORDER BY 1, 2, 3",
             (source_id,),
         ).fetchall()
         return [(str(r[0]), str(r[1]), None if r[2] is None else str(r[2])) for r in rows]

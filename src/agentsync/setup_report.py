@@ -6987,12 +6987,14 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         *_table(header, rows),
     ]
     if any(x.n("converted_failed") for x in runs[:_RUNS_SHOWN]):
-        # A run with failures followed by runs with none reads like a retry that worked. It is not one.
+        # A run with failures followed by runs with none: a retry that worked, or one given up. Since B13
+        # round 17 U3 a failed conversion is tried again (cycle._CONVERT_RETRIES; a test pins the count).
         out += [
             "",
-            "- a conversion that failed is counted in the run it failed in and is not tried again until the "
-            "file's bytes change: later runs with no failure are not a retry that worked, and the files "
-            'still without a page are in Quarantine by reason, class "conversion failed"',
+            "- a conversion that failed is counted in each run it failed in and is tried again from the same "
+            "bytes in up to 2 later runs, or, when its converter could not start, once it starts: a later "
+            "run with no failure converted it or gave it up, and the files still without a page are in "
+            'Quarantine by reason, class "conversion failed"',
         ]
     rescreened = [x for x in runs[:_RUNS_SHOWN] if x.n("rescreened")]
     if rescreened:

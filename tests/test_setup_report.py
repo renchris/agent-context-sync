@@ -8876,8 +8876,10 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         "(5), 1 by the run before it" in part
     )
     # Run 5 has a failed conversion: the part says what a later run without one does not mean.
-    note = "- a conversion that failed is counted in the run it failed in and is not tried again until"
+    # B13 round 17 U3: a failed conversion is tried again, as many times as the cycle does
+    note = "- a conversion that failed is counted in each run it failed in and is tried again from the same"
     assert note in part and 'Quarantine by reason, class "conversion failed"\n' in part
+    assert f" bytes in up to {cycle._CONVERT_RETRIES} later runs, or, when its converter could not " in part
     seed = Seed(fake_mac["config"])
     seed.m._db.execute(
         "UPDATE runs SET counts_json = ? WHERE run_id IN (4, 5)", (json.dumps({"converted": 2}),)
