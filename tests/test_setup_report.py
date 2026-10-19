@@ -10810,14 +10810,16 @@ def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
     nested = patch.parent / "older" / patch.name
     nested.parent.mkdir()
     patch.rename(nested)
-    neutral = "- local-work branch(es) in the checkout: {} with commits of their own, no patch file in the "
+    # B13 round 17 U38: a known count takes no "(es)", and one branch has commits of its own
+    neutral = "- local-work branches in the checkout: {0} with commits of {1}, no patch file in the "
     neutral += "setup folder's local-work "
     neutral += "(moved, deleted or never written; those commits are not in bring-back.md, whose section 3 "
     neutral += "says how to send them)"
-    assert setup_report._local_work_line() == neutral.format(2)
+    assert setup_report._local_work_line() == neutral.format(2, "their own")
     # a branch at main's own commit (packed) or origin/main's (loose) holds no commit of its own (L58)
     (git / "refs" / "heads" / "local-work-20261014-005444").write_text("c" * 40 + "\n", encoding="utf-8")
-    assert setup_report._local_work_line() == neutral.format(1), "the branch at main's sha is not counted"
+    one = neutral.format(1, "its own")
+    assert setup_report._local_work_line() == one, "the branch at main's sha is not counted"
     (git / "refs" / "remotes" / "origin").mkdir(parents=True)
     (git / "refs" / "remotes" / "origin" / "main").write_text("b" * 40 + "\n", encoding="utf-8")
     assert setup_report._local_work_line() is None, "both branches sit on main or origin/main"
@@ -10825,11 +10827,11 @@ def test_the_run_metadata_says_step_1_kept_local_work_in_counts_only(
     assert "local work kept" not in text and "local-work branch" not in text
     # a loose main overrides its packed line: the branch at the old packed sha has a commit of its own now
     (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n", encoding="utf-8")
-    assert setup_report._local_work_line() == neutral.format(1)
+    assert setup_report._local_work_line() == neutral.format(1, "its own")
     # an empty local-work folder beside a branch of its own: no "kept", no section 3 (L40)
     nested.unlink()
     _rc, text, _ = report(tmp_path, fake_mac["config"])
-    assert neutral.format(1) + "\n" in text and "local work kept" not in text
+    assert neutral.format(1, "its own") + "\n" in text and "local work kept" not in text
     # B13 round 16 T82: section 3 is named only as where the remedy is, never as holding the patches
     assert text.count("section 3") == text.count("whose section 3 says how to send them") == 1, text
 
@@ -12648,7 +12650,7 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
     repo(home / "sep.git")
     (home / "src" / "agent-context-sync").mkdir(parents=True, exist_ok=True)
     dot.write_text(f"gitdir: {home / 'sep.git'}\r\n", encoding="utf-8")  # a CRLF line, and no local-work
-    neutral = "- local-work branch(es) in the checkout: 1 with commits of their own, no patch file in the "
+    neutral = "- local-work branches in the checkout: 1 with commits of its own, no patch file in the "
     neutral += "setup folder's local-work "
     neutral += "(moved, deleted or never written; those commits are not in bring-back.md, whose section 3 "
     neutral += "says how to send them)"

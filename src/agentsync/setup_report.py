@@ -9794,9 +9794,12 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     )
 
 
+# "by its hash when it can be read", the prompt's words: a carried patch this account cannot read now is
+# listed in section 3 with no line count or hash (B13 round 16 T24), so an unconditional "by its hash"
+# promised one that section 3 does not give (round 17 U36, U60, U89)
 LOCAL_WORK_WHERE = (
     "no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch "
-    "an earlier report already carried is listed there by its hash"
+    "an earlier report already carried is listed there, by its hash when it can be read"
 )
 """The bracket after the local-work line's patch count, word for word in install.sh's fallback: it claims
 nothing this report cannot know (which patches an earlier report carried), B13 round 10 L8, L25. "any patch",
@@ -9913,9 +9916,11 @@ def _local_work_line() -> str | None:
     if branches:
         # the counted branches hold commits of their own, so "a keep with nothing to keep writes none" was
         # false of them since round 11's filter (B13 round 13 O23): their commits are on the branch only, and
-        # section 3 says how to send them, a pointer the issue path (this report alone) needs (round 16 T82)
+        # section 3 says how to send them, a pointer the issue path (this report alone) needs (round 16
+        # T82); a known count takes no "(es)", and one branch has commits of its own (round 17 U38)
+        own = "its own" if len(branches) == 1 else "their own"
         return (
-            f"- local-work branch(es) in the checkout: {len(branches)} with commits of their own, no patch "
+            f"- local-work branches in the checkout: {len(branches)} with commits of {own}, no patch "
             "file in the setup folder's local-work (moved, deleted or never written; those commits are not "
             "in bring-back.md, whose section 3 says how to send them)"
         )

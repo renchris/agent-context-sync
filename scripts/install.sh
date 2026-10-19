@@ -2655,8 +2655,9 @@ checkout_ref_sha() { # GIT REF
 	[ -n "$s" ] || s="$(R="$2" LC_ALL=C awk '$2 == ENVIRON["R"] { print $1; exit }' "$1/packed-refs" 2>/dev/null || true)"
 	printf '%s' "$s"
 }
-# The words after the local-work line patch count, as setup_report.LOCAL_WORK_WHERE (B13 round 10 L8, L25).
-LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch an earlier report already carried is listed there by its hash"
+# The words after the local-work line patch count, as setup_report.LOCAL_WORK_WHERE (B13 round 10 L8, L25); "by its
+# hash when it can be read", since an unreadable carried patch is listed with none (round 17 U36, U60, U89).
+LOCAL_WORK_WHERE="no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch an earlier report already carried is listed there, by its hash when it can be read"
 # The command that sends a patch made readable, as setup_report.LOCAL_WORK_AGAIN (B13 round 14 Q29).
 # shellcheck disable=SC2088 # the ~ is printed
 LOCAL_WORK_AGAIN="~/src/agent-context-sync/scripts/install.sh --report-only"
@@ -2685,8 +2686,11 @@ fallback_local_work_line() {
 		say "- local work kept by setup prompt step 1: $n $pf in the setup folder's local-work$unread${newest:+, newest written $newest} ($LOCAL_WORK_WHERE); $b $lb in the checkout"
 	elif [ "$b" -gt 0 ]; then
 		# the counted branches hold commits of their own: those commits are on the branch only (B13 round 13 O23);
-		# section 3 has the remedy, which the issue path, sending only this report, never shows (B13 round 16 T82)
-		say "- local-work branch(es) in the checkout: $b with commits of their own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says how to send them)"
+		# section 3 has the remedy, which the issue path, sending only this report, never shows (B13 round 16 T82);
+		# a known count takes no "(es)", and one branch has commits of its own (round 17 U38)
+		local own="their own"
+		[ "$b" != 1 ] || own="its own"
+		say "- local-work branches in the checkout: $b with commits of $own, no patch file in the setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says how to send them)"
 	fi
 	return 0
 }
@@ -3721,7 +3725,16 @@ write_bring_back() {
 			# what a person-made commit puts in section 3: its From: line is kept, so whoever triages the file can
 			# tell it from the agentsync commit of the keep (B13 round 8 J65)
 			if [ "$sent" -gt 0 ]; then
-				printf '%s\n' "Section 3 holds one patch per kept commit, and each starts with its author's name and email and the" \
+				# the count sent, not "one per kept commit": beside patches listed by their hash or unread ones, that
+				# claimed a patch for each, and one patch is no "each" (B13 round 17 U37, as round 11 M18)
+				if [ "$sent" -eq 1 ]; then
+					printf '%s' "Section 3 sends one patch; it starts"
+				elif [ "$nskip" -eq 0 ] && [ "$unread" -eq 0 ]; then
+					printf '%s' "Section 3 sends $sent patches, one per kept commit; each starts"
+				else
+					printf '%s' "Section 3 sends $sent patches; each starts"
+				fi
+				printf '%s\n' " with its author's name and email and the" \
 					"commit's date and message; a commit of your own carries your git name and email (or, if git never had them" \
 					"set, a name and address git filled in from this Mac's account), so check those lines too."
 				# the remedy here too, in the file the person reviews (B13 round 14 Q29)

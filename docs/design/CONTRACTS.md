@@ -17202,6 +17202,8 @@ Amended 2026-10-14, §16.87 L4: the review sentence names only the sections that
 section 3, or both), beside L25's author rule.
 Amended 2026-10-15, §16.93 M18: with one patch not repeated it reads "Section 3 sends no patch this time: its one
 patch was in an earlier report and is listed by its hash."
+Amended 2026-10-19, §16.129 U37: the sentence that names the authors opens on the count sent, `Section 3 sends one
+patch; it starts with its author's name ...` or `Section 3 sends N patches[, one per kept commit]; each starts ...`.
 
 **The shell report redacts what the Python one does, numbered alike** (J37, J78, J71; J45 is J71; dated lines at
 §16.69 H20 and H74). J37: the scp rewrite path's pair is `e` (end boundary only: no letter or digit after it, so `.git` or `-tools`
@@ -18414,6 +18416,8 @@ any commit origin/main's reflog names is not counted, since v19's recovery moves
 checkout is, and the branches read from its common dir, so a `.git` file is no reason for no line.
 Amended 2026-10-15, §16.93 M18: the bracket reads `...; any patch an earlier report already carried is listed there
 by its hash`, and the header's no-patch sentence is `its one patch was in an earlier report` for one patch.
+Amended 2026-10-19, §16.129 U36, U60, U89: the bracket ends `listed there, by its hash when it can be read`, the
+prompt's words: since §16.123 T24 a carried patch this account cannot read is listed with no hash.
 Amended 2026-10-16, §16.94 M83 (moved here by §16.103 N70): L58's prompt half is built in v20, so the sentence
 above saying it was not built no longer holds. A keep with nothing to keep deletes its branch. That branch sat at
 the old main, a commit the sha skip does not catch and M71's reflog skip catches only when origin/main's reflog
@@ -21721,6 +21725,8 @@ shell report's `folder glob` and `source`); lane RB's S14 owns the unread-patch 
 Amended 2026-10-18, §16.123 T27, T50, T83: install.sh's two bring-back.md lines with a known count of local-work
 branches are covered too (`M local-work branches ... hold`, `1 local-work branch ... holds`); the label line keeps its
 `(es)`, its count standing after the colon.
+Amended 2026-10-19, §16.129 U38: the label line drops its `(es)` too, `- local-work branches in the checkout: N with
+commits of their own` (`1 with commits of its own`), so it is no example of an `(s)` with no count.
 Amended 2026-10-18, §16.127 T76: those numbers have moved with later scripts/install.sh changes. The unread-patch
 lines are `write_bring_back`'s section 3 `not sent: ... this account cannot read` line, the header's `Section 3 does
 not hold ... this account cannot read` and `Section 3 sends no patch: ... could not be read` sentences, the `could not
@@ -22514,6 +22520,8 @@ bring-back.md, whose section 3 says how to send them)`: on the issue path the ma
 Tests: `test_the_shell_report_says_step_1_kept_local_work_in_counts_only` (2 and 1),
 `test_setup_report.py::test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+Amended 2026-10-19, §16.129 U38: the Summary label keeps no `(es)`: `- local-work branches in the checkout: N with
+commits of their own`, and `1 with commits of its own` for one.
 
 **A re-run names no folder the config step added, and quotes a spaced one** (T22, T35). Every add-source failure stops
 the run, so once the config step ends each `--source-local` folder is in the config, and the NEXTs after it re-run
@@ -22961,7 +22969,31 @@ Reserved for round 17 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
-Reserved for round 17 lane RB of B13.
+Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest
+(`docs/plans/bring-back-ocr.md`, "B13 round 17"; specs `round17/items/U<n>.md`, the verifier's corrected fix built).
+The U ids are round 17's. A dated line this round writes reads `Amended 2026-10-19, §16.129 U<n>`.
+
+**A carried patch is listed by its hash when it can be read** (U36, U60, U89: one defect from three finders; dated
+line at §16.86 L8). Since §16.123 T24 section 3 lists a carried patch this account cannot read with no line count or
+hash, yet both readers' `LOCAL_WORK_WHERE` bracket said every carried patch `is listed there by its hash`. It ends
+`listed there, by its hash when it can be read`, the prompt's v25 words, so the prompt is unchanged; one fixed
+string, since section 1 is written by agentsync, which does not know section 3's state. setup-feedback.md quotes it;
+what the guide says of a no-hash line is lane D's U82 (U60's fourth step, the same defect). Test:
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`.
+
+**The header counts the patches section 3 sends** (U37; dated line at §16.75 J65). Whatever it sent, it said
+`Section 3 holds one patch per kept commit, and each starts with its author's name`, beside patches listed by their
+hash or not readable, and for one patch. It reads `Section 3 sends one patch; it starts with ...`, or `Section 3 sends
+N patches; each starts with ...`, with `, one per kept commit` only when no kept patch is listed by its hash or
+unread; the sentences after it count those. Tests: `test_a_report_that_sends_two_patches_counts_them`,
+`test_a_report_that_sends_a_patch_counts_the_ones_listed_by_their_hash`, `test_report_only_writes_one_bring_back_file`.
+
+**The branches label takes its count's noun** (U38; dated lines at §16.123 T27 and §16.116 S26). Both readers'
+`- local-work branch(es) in the checkout: 1 with commits of their own` kept `(es)` beside a known count. It reads
+`- local-work branches in the checkout: N with commits of their own`, and `1 with commits of its own`. Tests:
+`test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
+`test_setup_report.py::test_the_run_metadata_says_step_1_kept_local_work_in_counts_only`,
+`test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 

@@ -169,7 +169,7 @@ words) is yours to remove. The CLI always redacts.
   Both reports also say in counts that step 1 kept local work, under Run metadata in the agentsync report and at
   the end of the shell fallback's Summary: `- local work kept by setup prompt step 1: N patch files in the setup folder's local-work, newest written
   <time> (no patch text is in this report: each patch goes once to the private bring-back.md section 3; any patch
-  an earlier report already carried is listed there by its hash); M local-work branches in the checkout` (`1 patch file`, `1 local-work branch` for one). Patches
+  an earlier report already carried is listed there, by its hash when it can be read); M local-work branches in the checkout` (`1 patch file`, `1 local-work branch` for one). Patches
   this account cannot read are not in bring-back.md, so after `local-work` the line then adds `, U of them unreadable
   and not in bring-back.md (chmod u+r, then run ~/src/agent-context-sync/scripts/install.sh --report-only again)`
   (B13 round 14 Q29); a later report sends such a patch once it is readable. A patch an earlier attempt's report
@@ -179,8 +179,8 @@ words) is yours to remove. The CLI always redacts.
   branches that hold a commit of their own (one at main's or origin/main's commit, or at any commit origin/main's
   reflog names, is not counted unless a patch is named for it), read from the checkout's common dir, so a checkout
   whose `.git` is a file (a clone whose git dir is kept apart, a linked worktree) is counted too; with branches
-  and no patch it reads `- local-work branch(es) in the checkout: M with commits of their own, no patch file in the
-  setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says how to send them)`
+  and no patch it reads `- local-work branches in the checkout: M with commits of their own, no patch file in the
+  setup folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose section 3 says how to send them)` (`1 with commits of its own` for one; B13 round 17 U38)
   (the pointer since B13 round 16 T82: the issue path sends this report alone), and
   section 3 reads `none: no patch file is in ~/agent-context/setup/local-work, but M local-work branches in
   ~/src/agent-context-sync hold commits this file does not carry` (`1 local-work branch ... holds` for one; B13

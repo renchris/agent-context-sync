@@ -6001,7 +6001,8 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         "'patch file')} in the setup folder's local-work",  # B13 round 15 S31: the noun by the count
         "({LOCAL_WORK_WHERE}); ",
         '"local-work branch", "local-work branches"',
-        "- local-work branch(es) in the checkout: ",
+        "- local-work branches in the checkout: ",  # B13 round 17 U38: a known count takes no "(es)"
+        'own = "its own" if len(branches) == 1 else "their own"',
     ):
         assert words in work, words
     assert (
@@ -6009,7 +6010,7 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
         f"written <time> ({setup_report.LOCAL_WORK_WHERE}); M local-work branches in the checkout`" in page
     )
     assert (  # B13 round 13 O23
-        "`- local-work branch(es) in the checkout: M with commits of their own, no patch file in the setup "
+        "`- local-work branches in the checkout: M with commits of their own, no patch file in the setup "
         "folder's local-work (moved, deleted or never written; those commits are not in bring-back.md, whose "
         "section 3 says how to send them)`" in page  # B13 round 16 T82
     )

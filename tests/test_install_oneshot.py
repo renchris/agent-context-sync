@@ -2493,7 +2493,7 @@ def test_report_only_writes_one_bring_back_file(env: dict[str, str]) -> None:
     assert "Sections 2 and 3 are not redacted: they may name a real folder, file or person" in text
     # B13 round 8 J65: a person's own kept commit brings its From: line, which the header now names
     assert " ".join(text.split("\n## 1. Setup report", 1)[0].split()).endswith(
-        "review them before sending. Section 3 holds one patch per kept commit, and each starts with its "
+        "review them before sending. Section 3 sends one patch; it starts with its "
         "author's name and email and the commit's date and message; a commit of your own carries your git "
         "name and email (or, if git never had them set, a name and address git filled in from this Mac's "
         "account), so check those lines too."
@@ -2565,7 +2565,7 @@ def test_the_bring_back_header_names_only_what_the_file_holds(
         "Section 3 is not",
     ):
         assert (sentence in head) == (review is not None and review.startswith(sentence)), sentence
-    assert ("Section 3 holds one patch per kept commit" in head) == (patch == "new")
+    assert ("Section 3 sends one patch; it starts with its author's name" in head) == (patch == "new")
     assert ("not repeated: a patch file" in text) == (patch == "old")
 
 
@@ -2800,7 +2800,7 @@ def test_a_patch_this_account_cannot_read_is_counted_not_sent(
     ), last_line(cp)
     if readable:
         assert "~diff\n+def ocr(): ...\n~~~" in section3 and section3.count("~diff\n") == 1
-        assert "Section 3 holds one patch per kept commit" in " ".join(head.split())
+        assert "Section 3 sends one patch; it starts with its author's name" in " ".join(head.split())
         # B13 round 14 Q29: the remedy is in the header beside a patch that was sent, too
         assert (
             f"Section 3 does not hold {files} this account cannot read; make {them} readable "
@@ -2809,7 +2809,7 @@ def test_a_patch_this_account_cannot_read_is_counted_not_sent(
         ), head
     else:
         assert "diff" not in section3 and "\nnone\n" not in section3
-        assert "holds one patch per kept commit" not in " ".join(head.split())
+        assert "Section 3 sends one patch" not in " ".join(head.split())
         assert (
             f"Section 3 sends no patch: {files} could not be read; make {them} readable (chmod u+r) "
             "and run the report again (install.sh --report-only), as its last line says."
@@ -3337,8 +3337,43 @@ def test_a_report_that_sends_a_patch_counts_the_ones_listed_by_their_hash(
         "Section 3 does not hold 1 patch file this account cannot read; make it readable (chmod u+r) and run "
         "the report again (install.sh --report-only), as its last line says. "
     )
-    assert "Section 3 holds one patch per kept commit" in head
+    # B13 round 17 U37: the header counts the one patch it sends, not "one per kept commit, and each"
+    assert "Section 3 sends one patch; it starts with its author's name" in head
+    assert "holds one patch per kept commit" not in head and "each starts" not in head
     assert head.endswith("so check those lines too. " + remedy * unread + others), head
+
+
+@pytest.mark.parametrize("unread", [0, 1])
+@pytest.mark.parametrize("skipped", [0, 1])
+def test_a_report_that_sends_two_patches_counts_them(env: dict[str, str], skipped: int, unread: int) -> None:
+    """B13 round 17 U37: the header said "Section 3 holds one patch per kept commit, and each starts with its
+    author's name" whatever it sent, beside patches only listed by their hash or not readable. It counts the
+    patches it sends, and says "one per kept commit" only when it sends every kept patch."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    _two_attempts(env)
+    for n in range(skipped):
+        _keep_patch(env, "2026-10-06T16:00:00Z", f"+old = {n}\n", f"000{n}-old.patch")
+    _keep_patch(env, "2026-10-07T16:00:00Z", name="0007-new.patch")
+    _keep_patch(env, "2026-10-07T16:00:00Z", "+y\n", name="0008-new.patch")
+    locked = [_keep_patch(env, "2026-10-07T16:00:00Z", "+x\n", "0009-x.patch")] if unread else []
+    for path in locked:
+        path.chmod(0)
+    try:
+        _local_work(env)
+        text = (report_path(env).parent / "bring-back.md").read_text(encoding="utf-8")
+    finally:
+        for path in locked:
+            path.chmod(0o600)
+    head = " ".join(text.split("\n## 1. Setup report", 1)[0].split())
+    first = (
+        "Section 3 sends 2 patches; each starts"
+        if skipped or unread
+        else "Section 3 sends 2 patches, one per kept commit; each starts"
+    )
+    assert first + " with its author's name and email and the commit's date and message;" in head, head
+    assert "holds one patch per kept commit" not in head
 
 
 def test_bring_back_does_not_repeat_local_work_an_earlier_attempt_reported(env: dict[str, str]) -> None:
@@ -3383,7 +3418,7 @@ def test_bring_back_names_patch_authors_only_when_section_3_sends_a_patch(env: d
     """B13 round 10 L25: every patch was in an earlier report, so section 3 held only "not repeated:" lines,
     yet the header said "Section 3 holds one patch per kept commit, and each starts with its author's name
     ... so check those lines too", lines that were not there. The header now says what section 3 holds."""
-    authors = "Section 3 holds one patch per kept commit, and each starts with its author's name"
+    authors = "with its author's name and email"
 
     def header() -> str:
         cp = install_sh(env, "--report-only")
@@ -11554,14 +11589,19 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     ), text
     assert f'LOCAL_WORK_WHERE="{setup_report.LOCAL_WORK_WHERE}"\n' in INSTALL_SH.read_text(), "one wording"
     # B13 round 11 M18: "one an earlier report already carried" read as a count beside "1 patch file(s)"
-    assert "; any patch an earlier report already carried is listed there by its hash); " in text, text
+    # B13 round 17 U36, U60, U89: an unreadable carried patch has no hash in section 3 (T24)
+    carried = "; any patch an earlier report already carried is listed there, "
+    carried += "by its hash when it can be read); "
+    assert carried in text, text
+    assert "listed there by its hash)" not in text, text
     for word in ("Northwind", "Fabrikam", "pricing", "0001"):
         assert word not in text, word
     # a nested patch is not counted, nor a branch at main's or origin/main's own commit
     nested = patch.parent / "older" / patch.name
     nested.parent.mkdir()
     patch.rename(nested)
-    neutral = "- local-work branch(es) in the checkout: {} with commits of their own, no patch file in the "
+    # B13 round 17 U38: a known count takes no "(es)", and one branch has commits of its own
+    neutral = "- local-work branches in the checkout: {0} with commits of {1}, no patch file in the "
     neutral += "setup folder's local-work "
     # B13 round 16 T82: it points to section 3's remedy, which the issue path (this report alone) never shows
     neutral += (
@@ -11570,7 +11610,7 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     neutral += "how to send them)\n"
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
-    assert neutral.format(2) in text and "local work kept" not in text, text
+    assert neutral.format(2, "their own") in text and "local work kept" not in text, text
 
     def section3() -> str:
         back = (report_path(env).parent / "bring-back.md").read_text()
@@ -11602,7 +11642,7 @@ def test_the_shell_report_says_step_1_kept_local_work_in_counts_only(env: dict[s
     assert section3() == "none\n", "no branch with a commit of its own: nothing is missing"
     (git / "refs" / "heads" / "main").write_text("d" * 40 + "\n")  # a loose main overrides its packed line
     assert install_sh(env, "--report-only").returncode == 0
-    assert neutral.format(1) in report_path(env).read_text()
+    assert neutral.format(1, "its own") in report_path(env).read_text()
     head = (report_path(env).parent / "bring-back.md").read_text().split("\n## 1. Setup report", 1)[0]
     assert section3().startswith(
         "none: no patch file is in ~/agent-context/setup/local-work, but 1 local-work branch in "
