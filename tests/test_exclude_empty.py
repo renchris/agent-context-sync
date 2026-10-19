@@ -86,8 +86,9 @@ def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     # B13 round 16 T38: the count it knows and the one cause it has, not "file(s) ..., or its exclude ..."
     assert (
         "1 empty cloud folder in work was left as it is: it held 1 file the mirror still has (excluding such "
-        "a folder retires its pages at once, with no deletion check); "
+        "a folder retires its page at once, with no deletion check); "
     ) in out, out
+    assert "its pages" not in out, out  # B13 round 17 U51: one file is one page
     assert "file(s)" not in out and "or its exclude" not in out and "has a [" not in out, out
     # B13 round 12 N40: "without them" after one folder, beside "files", and the left one is "it"
     assert "the next sync lists work without that folder; " in out and "without them" not in out, out
@@ -211,7 +212,9 @@ def test_a_folder_whose_glob_would_match_a_folder_with_files_is_left(
     (wait,) = [ln for ln in lines if ln.startswith("WAITING ON YOU: 1 empty cloud folder in work has a [")]
     assert "rename or remove the empty folder in the cloud drive" in wait
     # B13 round 14 Q23, Q41: one folder stored, which the alarm names in full: no five clause
-    assert "STATE.md keeps the alarm line for work, which names it (a plain " in wait and "Plans" not in wait
+    # B13 round 17 U49: the noun form, as the clear and gone waits say it
+    assert "STATE.md keeps the alarm line for work, which names the folder (a plain " in wait, wait
+    assert "Plans" not in wait
     assert "(a plain `~/.local/bin/agentsync sync` prints it too)" in wait and "sync -v" not in wait
     assert "the mirror still has" not in wait, "not the gone line: the folder held no file"
 
@@ -240,13 +243,51 @@ def test_folders_left_for_two_causes_are_said_apart(
     run_cycle(load_config(cfg), mode=None)
     rc, out = _exclude_empty(cfg, "work", capsys)
     assert rc == cli.EXIT_OK and out.startswith("exclude-empty work: nothing to exclude; "), out
+    # B13 round 17 U50: one head with the total, then each cause with its own count (the head said twice)
     assert (
-        "; 2 empty cloud folders in work were left as they are: they held 3 files the mirror still has "
-        "(excluding such a folder retires its pages at once, with no deletion check); 2 empty cloud folders "
-        "in work were left as they are: they have a [ in the name, so an exclude of one would also match a "
-        "folder whose files are mirrored: rename or remove the empty folders in the cloud drive; "
+        "; 4 empty cloud folders in work were left as they are: 2 held 3 files the mirror still has "
+        "(excluding such a folder retires its pages at once, with no deletion check); 2 have a [ in the "
+        "name, so an exclude of one would also match a folder whose files are mirrored: rename or remove "
+        "them in the cloud drive; "
     ) in out, out
+    assert out.count("left as") == 1, out
     assert "each held" not in out and "file(s)" not in out and "or its exclude" not in out, out
+
+
+def test_one_folder_left_for_each_cause_is_one_head_with_singular_clauses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 17 U49, U50, U51: an empty 'Team [A]' beside a mirrored 'Team xA]', and a folder whose one
+    file was deleted. exclude-empty says one head, "2 ... were left as they are", then "1 held 1 file ...
+    its page" and "1 has a [ in its name ... rename or remove it", never "was left as it is" twice; the
+    loop's collides and gone waits both point at the alarm by noun, "which names the folders", never
+    "which names them" with no plural before it."""
+    root = _root()
+    (root / "Team [A]").mkdir()
+    (root / "Team xA]").mkdir()
+    (root / "Team xA]" / "Kickoff.txt").write_text("Kickoff agenda.\n", encoding="utf-8")
+    (root / "Held Folder").mkdir()
+    (root / "Held Folder" / "Plan.txt").write_text("The plan.\n", encoding="utf-8")
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    (root / "Held Folder" / "Plan.txt").unlink()
+    run_cycle(load_config(cfg), mode=None)
+    lines = loop.next_lines(load_config(cfg), count_queue=False)
+    waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: 1 empty cloud folder in work ")]
+    assert len(waits) == 2, lines
+    for wait in waits:
+        assert "STATE.md keeps the alarm line for work, which names the folders (a plain " in wait, wait
+        assert "which names them" not in wait, wait
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK and out.startswith("exclude-empty work: nothing to exclude; "), out
+    assert (
+        "; 2 empty cloud folders in work were left as they are: 1 held 1 file the mirror still has "
+        "(excluding such a folder retires its page at once, with no deletion check); 1 has a [ in its name, "
+        "so an exclude of it would also match a folder whose files are mirrored: rename or remove it in the "
+        "cloud drive; "
+    ) in out, out
+    assert out.count("left as") == 1 and "was left as it is" not in out, out
+    assert "which names the folders" in out and "which names them" not in out, out
 
 
 class _Rows:

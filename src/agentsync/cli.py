@@ -1023,7 +1023,9 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
             # names this command by the same rule (B13 round 5 F65).
             clear, collides = loop._excludable(found)
         gone = len(below) - len(clear)
-        left = "it" if gone == 1 else "them"  # B13 round 12 N40: by the count, as the line's own folders
+        # the noun the alarm's folders take, by the stored count it names, as the loop's waits (B13 round 17
+        # U49; round 12 N40's "it"/"them" had no noun before it)
+        left = "the folder" if found.stored == 1 else "the folders"
         # the alarm is from the walk before this exclude (or one by hand since): it names folders now excluded
         # (B13 round 15 S32), so the pointer says so, as the loop's waits do
         since = bool(clear) or len(below) < found.stored
@@ -1036,16 +1038,36 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         # hedge, "held file(s) ..., or its exclude would also match ...", for both); noun, verb and pronoun
         # by the count (B13 round 14 Q42, Q57). The gone folders' files are summed: theirs may differ.
         kept = [d for d, n in below.items() if n]
+        n_files = sum(below[d] for d in kept)
+        # one file is one page (B13 round 17 U51); "its" stays the folder's, never "their"
+        retires = f"(excluding such a folder retires {'its page' if n_files == 1 else 'its pages'} at once, "
+        retires += "with no deletion check)"
         parts: list[str] = []
-        if kept:
+        if kept and collides:
+            # both causes in one sentence: one head with the total, then each cause with its own count, noun
+            # and verb (B13 round 17 U50: the head said twice read as a stutter; the total is `gone`, which
+            # the pointer after it is keyed on)
+            two = len(collides) == 1
+            parts.append(
+                f"{gone} empty cloud folders in {src.id} were left as they are: {len(kept)} "
+                f"held {loop._files(n_files)} the mirror still has {retires}; "
+                f"{len(collides)} "
+                + (
+                    "has a [ in its name, so an exclude of it"
+                    if two
+                    else "have a [ in the name, so an exclude of one"
+                )
+                + " would also match a folder whose files are mirrored: rename or remove "
+                f"{'it' if two else 'them'} in the cloud drive"
+            )
+        elif kept:
             one = len(kept) == 1
             parts.append(
                 f"{len(kept)} empty cloud {'folder' if one else 'folders'} in {src.id} "
                 f"{'was left as it is: it' if one else 'were left as they are: they'} held "
-                f"{loop._files(sum(below[d] for d in kept))} the mirror still has (excluding such a folder "
-                "retires its pages at once, with no deletion check)"
+                f"{loop._files(n_files)} the mirror still has {retires}"
             )
-        if collides:
+        elif collides:
             one = len(collides) == 1
             parts.append(
                 f"{len(collides)} empty cloud {'folder' if one else 'folders'} in {src.id} "

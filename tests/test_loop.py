@@ -788,7 +788,7 @@ def test_an_empty_cloud_folder_in_an_inbox_gets_the_waits_of_a_local_source(tmp_
             "listing stays incomplete, so its deletion is held; another sync does not clear it): if the "
             "file was removed on purpose, remove the empty folder from the cloud drive too, and later "
             "syncs take its page out with the usual deletion check; excluding such a folder instead retires "
-            "its pages at once, with no deletion check and no purge queued; "
+            "its page at once, with no deletion check and no purge queued; "  # one file, one page (U51)
             + _named(config, "drop", "the folders"),
         ]  # B13 round 16 T39: its one missed file is the folder's own, said once
         assert not any("did not list" in ln for ln in lines), lines
@@ -1717,7 +1717,7 @@ def test_exclude_empty_says_the_alarm_names_five_only_past_five(
         else ("1 empty cloud folder in work was left as it is: it held 1 file the mirror still has (")
     )
     assert left in out, out
-    assert "which names it, " not in out and "which names them, " not in out, out
+    assert "which names it" not in out and "which names them" not in out, out  # B13 round 17 U49
     if empty:  # it excluded the six: the alarm is from before that (B13 round 15 S32)
         assert "before the exclude, so it may name folders now excluded" in out and "which names" not in out
     else:

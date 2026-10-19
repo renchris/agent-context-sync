@@ -1147,11 +1147,12 @@ def next_step(
         since = len(below) < n_stored
         still = ", still not excluded," if since else ""
 
+        # the noun form on every wait (B13 round 17 U49: the collides wait's "which names them" had no plural
+        # before it; the alarm names every stored empty folder, so "the folders" is true at every count)
         if since:
-            points = points_it = named_since(src.id, len(below))
+            points = named_since(src.id, len(below))
         else:
             points = named([src.id], _alarm_names("the folder" if alone else "the folders", n_stored))
-            points_it = named([src.id], _alarm_names("it" if alone else "them", n_stored))
         if clear:
             one = len(clear) == 1
             waits.append(
@@ -1188,7 +1189,7 @@ def next_step(
                 + " would also match a folder whose files are mirrored (the listing stays incomplete, so "
                 f"deletions in {src.id} are held, and another sync does not clear it): rename or remove the "
                 f"empty {'folder' if one else 'folders'} in the cloud drive; "
-                + points_it
+                + points
                 + (f"; {size}" if size and not gone else "")
             )
             names_source(src.id)
@@ -1202,8 +1203,9 @@ def next_step(
                 f"{'the file was' if one_file else 'the files were'} removed on purpose, remove the empty "
                 f"{'folder' if one else 'folders'} from the cloud drive too, and later syncs take "
                 f"{'its page' if one_file else 'the pages'} out with the usual deletion check; "
-                "excluding such a folder instead retires its pages at once, with no deletion check and no "
-                "purge queued; " + points + gone_tail(src.id, missed, size)
+                # one file is one page (B13 round 17 U51); "its" stays the folder's, never "their"
+                f"excluding such a folder instead retires {'its page' if one_file else 'its pages'} at once, "
+                "with no deletion check and no purge queued; " + points + gone_tail(src.id, missed, size)
             )
             names_source(src.id)
 
