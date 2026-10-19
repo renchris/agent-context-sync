@@ -1195,6 +1195,34 @@ line, the quiet lock wait, "(s)"), E 14 (the bundled pandoc's owner and path, co
 gate), D 9 (docs/deploy, CONTRACTS, CLAUDE.md's CI time). Lead: U111, built (the seven round 16 files deleted by exact
 path).
 
+### B13 round 17 landed (2026-10-19)
+
+All six lanes landed; CI green on `c90b0808` (ci `39338574076`; prompt v26). Notes `lanes/r17-<lane>.md`, lead notes
+`round17/lead-notes.md`; the round's worktrees and branches, and round 16's lane E one, are removed.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| P | `0ede5567..a41d6ed0`, 7 commits (v26) |
+| B | `09e6e67c..b11cf991`, 8 commits |
+| D | `ea35a2bd..b450ca4b`, 5 commits |
+| E | `0c6753b0..59e14533`, 6 commits, plus the gate change `efd8e92b` |
+| RA | `92f0fd78..8beaed06`, 12 commits |
+| RB | `369d9eaa..162d15aa`, 7 commits, plus `c90b0808` (U54's parity cases, after RA) |
+
+Built differently or not built, each measured in its lane's note: RB built U4/U94 as "the shell's report words are the
+words install.sh prints" rather than a closed list pinned to Python's (that pin would break on every string change),
+and left U34's outcome-cause shim out; E's U101 needed no code (no flake in three clean runs); P's U63 is contract-only.
+
+Learnings: rehearsals C and D waited about five hours on unanswered permission prompts for their sandbox clone; a
+stop-and-resume of the workflow (finished agents replay from cache) cleared C, and D needed the operator. Three land
+gates failed before the first push (one a dead test helper), and with every lane queued on the one lock the first land
+reached trunk about two hours after the fire. Lane E's gate change landed before RB's last item; it touches only the
+lane and affected modes, so the order cost nothing. RA moved the person's-fix kinds into `doctor.PERSONS_KINDS`, with a
+copy in the report and a test pinning them equal, after which P's and E's new kinds landed in all three places.
+
+Round 18: the round 17 workflow with prompt v26 on this section's landed tip, BASE `e5c5b0e2` (ids V<n>, outputs
+`round18/`); scenario C plays the v25 and v24 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
