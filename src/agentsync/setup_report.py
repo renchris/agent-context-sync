@@ -8976,8 +8976,11 @@ def _kept_added(run: InstallRun) -> tuple[int | None, int | None]:
 
 def _done(run: InstallRun) -> bool:
     """Whether the run's config step wrote sources.toml (``result=done``); an exit 1 at a later step, status
-    for one, leaves what it wrote."""
-    return (run.step("config") or {}).get("result") == "done"
+    for one, leaves what it wrote. So does a config step that failed after add-source wrote a folder's block,
+    which install.sh logs ``note=added-then-refused`` (B13 round 17 U40: the config loads, but agentsync
+    refuses a value in it, and the block stays)."""
+    step = run.step("config") or {}
+    return step.get("result") == "done" or step.get("note") == "added-then-refused"
 
 
 def _named(runs: Sequence[InstallRun]) -> int:

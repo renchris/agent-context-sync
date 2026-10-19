@@ -22623,6 +22623,8 @@ policy.toml, `[governance] history_days`, `[governance] archive` through add-sou
 policy.toml), `test_a_first_sync_refusal_is_no_config_that_does_not_load`.
 Amended 2026-10-19, §16.130 U20: the "loads, but" NEXT reads `loads, but agentsync refuses a value in it or in
 policy.toml beside it (the configuration error above names the file; ...)`.
+Amended 2026-10-19, §16.130 U40: a refused add-source that printed `added source` says the folder was added, and
+logs `note=added-then-refused` with its counts.
 
 **Step 1 names a mirrored folder whose [[source]] block is gone** (T6, T30). Step 1's list read the config alone,
 so a folder whose block was deleted while its pages stay mirrored was listed unmarked and the NEXT said `(none is
@@ -23191,6 +23193,24 @@ same NEXT with no new exit code, and an older installed agentsync keeps exit 1 e
 `test_cli.py::test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_in_status`,
 `test_setup_report.py::test_a_docs_repo_remote_governance_does_not_allow_has_the_persons_doctor_bucket`,
 `test_governance.py::test_remote_policy_and_push`, and the `remote` case of `_persons_fail_lines`.
+
+**A folder add-source wrote before agentsync refused the config is added, not failed** (U40; amends §16.124 T29).
+add-source appends the folder's block and prints `added source ...`, then `_ensure_setup` refuses a `[governance]`
+value or a policy.toml beside the config (exit 78); the block stays, and the re-run after the person's fix says
+`already configured`. install.sh printed `error: agentsync add-source <folder> failed (see the error above)` right
+after the block, logged `step=config rc=78 result=failed` with no counts, and the report then said `kept ... (none
+added)`. Decided by evidence, never by exit 78 alone (a config that never loads exits 78 with nothing written):
+`add_source_filter` records a call that printed `added source ` in a file, and a refusal after it says `error: the
+folder <folder> was added to <CONFIG>, but agentsync refuses the config (see the error above)`, with `; the 1 folder
+after it was not added` (or `the N folders`) when later folders were not tried; the step logs
+`note=added-then-refused kept=K added=N` (the counts as the done step's, when the installed agentsync gives them),
+and the report's `_done` reads that step as one that wrote sources.toml, so the folders line counts its add (`1
+added to the K already synced (by run <id>, which exited 1)`). The NEXT is config_failed's "loads, but" one,
+unchanged. T29's reorder (check `[governance]` before the write) stays not built, as §16.124 records. Tests:
+`test_install_oneshot.py::test_a_folder_added_before_agentsync_refuses_the_config_is_no_failed_add` (the real
+agentsync, one folder and two), `test_setup_report.py::test_the_folders_line_counts_what_was_kept_added_and_named`
+(U40's case); a refusal with nothing written keeps "failed"
+(`test_a_failed_add_source_still_fails_the_run_through_the_filter`).
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 

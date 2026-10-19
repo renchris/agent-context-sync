@@ -6947,6 +6947,56 @@ def test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_lo
     assert "- loads: yes, but a sync refuses it: " in report_path(env).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("more", [False, True])
+def test_a_folder_added_before_agentsync_refuses_the_config_is_no_failed_add(
+    real_env: dict[str, str], wheel: Path, more: bool
+) -> None:
+    """B13 round 17 U40, with the real agentsync: add-source appends the folder's block and prints "added
+    source", then refuses a [governance] value (exit 78); the block stays. install.sh said "agentsync
+    add-source <folder> failed" right after the block, logged no add, and once the person fixed the value the
+    re-run said "already configured" and the report "kept ... (none added)". Now the error says the folder was
+    added and the config refused, a later folder was not added, and the log counts the add, which the report
+    names. A refusal with nothing written keeps "failed"
+    (test_a_failed_add_source_still_fails_the_run_through_the_filter)."""
+    env = real_env
+    ctx = Path(env["HOME"]) / "agent-context"
+    cfg = ctx / "sources.toml"
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    whole = cfg.read_text(encoding="utf-8")
+    cfg.write_text(whole + '\n[governance]\narchive = "yes"\n', encoding="utf-8")
+    beta, gamma = folder.parent / "Beta", folder.parent / "Gamma"
+    beta.mkdir()
+    gamma.mkdir()
+    args = [str(wheel), "--source-local", str(beta)] + (["--source-local", str(gamma)] if more else [])
+    cp = install_sh(env, *args)
+    out = cp.stdout + cp.stderr
+    assert cp.returncode == 1, out
+    assert "added source 'beta'" in cp.stdout and "configuration error: " in cp.stderr, out
+    said = (
+        f"error: the folder {beta} was added to {cfg}, but agentsync refuses the config (see the error above)"
+    )
+    assert said + ("; the 1 folder after it was not added" if more else "") + "\n" in cp.stderr, out
+    assert "failed (see the error above)" not in out and "folder(s)" not in out, out
+    assert ("config", "failed", "78", "added-then-refused") in steps(install_log(env)), install_log(env)
+    [logged] = [ln for ln in install_log(env) if "step=config " in ln and "rc=78" in ln]
+    assert logged.endswith(" note=added-then-refused kept=1 added=1"), logged
+    assert last_line(cp).startswith(f"NEXT: the config {cfg} loads, but agentsync refuses a value in it"), out
+    assert f'path = "{beta}"' in cfg.read_text(encoding="utf-8") and str(gamma) not in cfg.read_text("utf-8")
+    if more:
+        return
+    # the person fixes the value; the same command keeps the block (the report's count of that add:
+    # test_setup_report.py::test_the_folders_line_counts_what_was_kept_added_and_named, U40's case)
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace('\n[governance]\narchive = "yes"\n', "\n"), "utf-8"
+    )
+    again = install_sh(env, *args)
+    assert again.returncode == 0 and "already configured" in again.stdout, again.stdout + again.stderr
+
+
 @pytest.mark.parametrize("call", ["init", "add-source"])
 def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle(
     real_env: dict[str, str], wheel: Path, call: str
@@ -6982,9 +7032,15 @@ def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle(
         f"is settled, the next run is: {INSTALL_SH} {wheel}"
     ), out
     assert "run `git" not in out and "fix the error above" not in out, out
-    assert subprocess.run(
-        ["git", "-C", str(docs), "remote", "get-url", "origin"], capture_output=True, text=True, check=True
-    ).stdout.strip() == url
+    assert (
+        subprocess.run(
+            ["git", "-C", str(docs), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        == url
+    )
     # with the remote gone, the same run passes: the NEXT was keyed on the remote, not on exit 1
     subprocess.run(["git", "-C", str(docs), "remote", "remove", "origin"], check=True)
     again = install_sh(env, *args)

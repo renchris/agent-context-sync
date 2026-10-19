@@ -5012,6 +5012,16 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
             0,
             "kept the 2 already synced (none added) · 0 named with --source-local (last run;",
         ),
+        # B13 round 17 U40: add-source wrote the folder's block, then agentsync refused a [governance] value
+        # (exit 78): that run added it, and the retry after the person's fix kept it
+        (
+            [
+                (f"--source-local {one}", "failed note=added-then-refused kept=2 added=1"),
+                (f"--source-local {one}", "done note=add-source kept=3 added=0"),
+            ],
+            1,
+            by_first + "--source-local",
+        ),
     ):
         log = set_up_log(fake_mac, *installs, listed=" synced=2")
         first = "2026-09-29T10:00:00Z run=20260929T100000Z-4242 end rc=0 "
@@ -12175,7 +12185,9 @@ def test_a_docs_repo_remote_governance_does_not_allow_has_the_persons_doctor_buc
         " · from a docs-repo remote [governance] does not allow, the person's to remove or allow (1 check): "
         "governance.remote FAIL · " in line
     ), line
-    assert "governance.remote" not in line.split(" · unexpected ", 1)[1] and "a sync refuses" not in line, line
+    assert "governance.remote" not in line.split(" · unexpected ", 1)[1] and "a sync refuses" not in line, (
+        line
+    )
     subprocess.run(["git", "-C", str(docs), "remote", "remove", "origin"], check=True)
     assert "docs-repo remote" not in doctor_line()
 

@@ -5971,9 +5971,11 @@ KEPT=0 # the folders synced before this step, and below the ones it added: both 
 # its error, as it was printed before, and the file is emptied
 # once printed, so nothing comes twice. With one folder nothing is held or dropped. Every other line passes,
 # stderr is not read, and the call's exit status is the pipeline's (pipefail). LC_ALL=C: a byte that is no
-# character must not fail the filter.
-add_source_filter() { # I N HELD
-	LC_ALL=C awk -v i="$1" -v n="$2" -v held="$3" '
+# character must not fail the filter. A call that prints "added source " wrote the folder's block, which the
+# file MARK records, so a refusal after it is told apart from a call that wrote nothing (B13 round 17 U40).
+add_source_filter() { # I N HELD MARK
+	LC_ALL=C awk -v i="$1" -v n="$2" -v held="$3" -v mark="$4" '
+		/^added source / { print "added" >> mark; close(mark) }
 		n > 1 && /^added inbox source / { print >> held; next }
 		n > 1 && (/^docs repo / || (/^time machine: / && i == 1)) { if (i == 1) print >> held; next }
 		/^sources: / && i < n { next }
@@ -5986,19 +5988,44 @@ add_source_filter() { # I N HELD
 		}
 		{ print }'
 }
+# init and add-source exit 78 for a config that loads (a bad [governance] value, a policy.toml beside it) only
+# after add-source appended the folder's block (cli._ensure_setup runs after the write), which stays: the
+# person's fix keeps it, and the re-run says "already configured". So a refusal after the block was written
+# (the call printed "added source ", never read off the exit code alone: a config that never loads exits 78
+# with nothing written) says the folder was added, not that add-source failed, and the step's log line counts
+# the add (note=added-then-refused, with kept= and added= when the installed agentsync can count them), which
+# the report reads as an add (B13 round 17 U40). Every later folder is not added: the loop stops at the first
+# refusal, each would be refused the same way, and the re-run names them.
 if [ "${#FOLDERS[@]}" -gt 0 ]; then
 	nth=0
 	HELD=""
 	[ "${#FOLDERS[@]}" -eq 1 ] || HELD="$(mktemp)"
+	MARK="$(mktemp)"
 	for f in "${FOLDERS[@]}"; do
 		nth=$((nth + 1))
-		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" || {
+		: >"$MARK"
+		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || {
 			HELD_RC=$?
 			[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
-			(exit "$HELD_RC") || config_failed "agentsync add-source $f failed (see the error above)"
+			WHY="agentsync add-source $f failed (see the error above)"
+			if [ "$HELD_RC" -eq 78 ] && [ -s "$MARK" ]; then
+				WHY="the folder $f was added to $CONFIG, but agentsync refuses the config (see the error above)"
+				left=$((${#FOLDERS[@]} - nth))
+				[ "$left" -ne 1 ] || WHY="$WHY; the 1 folder after it was not added"
+				[ "$left" -le 1 ] || WHY="$WHY; the $left folders after it were not added"
+				NOW="$(synced_count)"
+				if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -gt "$KEPT" ]; then
+					step_end failed 78 "added-then-refused kept=$KEPT added=$((NOW - KEPT))"
+				else
+					step_end failed 78 "added-then-refused"
+				fi
+			fi
+			rm -f "$MARK"
+			(exit "$HELD_RC") || config_failed "$WHY"
 		}
 	done
 	[ -z "$HELD" ] || rm -f "$HELD"
+	rm -f "$MARK"
 	RERUN_ARGS="$BASE_ARGS" # every add-source that failed stopped the run: each folder is in the config now
 else
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || config_failed "agentsync init failed (see the error above)"
