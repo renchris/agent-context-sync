@@ -1129,6 +1129,39 @@ deleted block in step 1), B 20 (status's person's fixes, the CLI's counts and WA
 ticker and wait, `with_timeout`, converters, the gate journal; lands last), D 9 (docs/deploy, CONTRACTS). Lead: T92
 (one operator cleanup, `b13-r15`, replacing the `b13-r14` one).
 
+### B13 round 16 landed (2026-10-19)
+
+All six lanes landed; CI green on `a49acdba` (ci `39224535079`, diagrams `39224535086`; prompt v25). Notes
+`lanes/r16-<lane>.md`, lead notes `round16/lead-notes.md`. The operator ran T92's cleanup: 0 round 15 scratch entries
+left.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `2be5e2ab` |
+| P | `ee9c71ac..3b75cefa`, 4 commits (v25) |
+| RA | `43d5d94b..caa74374`, 11 commits |
+| B | `8334a6e4..b8f8c0b8`, 13 commits |
+| RB | `497121e5..302d782d`, 8 commits |
+| E | `b7a70bb3..a49acdba`, 7 commits (landed last) |
+
+Not built, each with a measured reason in its lane's note: lane P's T29 reorder in `cli.py`, lane RA's broad T4 bucket
+(it breaks the O13 and Q36 pins; T14's bucket covers T4), lane RB's T26 `.sent` begin field (T16's precedence covers
+it), and lane E's T61 carry-over note, T65's `uv pip` one-liner and two optional extras.
+
+Learnings: the Mac rebooted at 16:34 mid-round. Every lane session resumed with its transcript and its commits, the
+lead moved from window 377 to 10 and the lanes to 13 to 18 (pings to 377 were forwarded), and `/tmp` was emptied, which
+took the fire briefs and the lead's brief generator with it; any land in flight died and was re-run. Round inputs now
+live under `round<n>/`, not `/tmp`. The two CI flakes recurred on lanes B and RB before lane E's fixes landed (each
+green on a re-run) and stayed green on lane E's first attempt. Lane E's land failed twice on lost xdist workers at a
+load of 725 and 805 from other projects' jobs, with 0 failures, and landed on the third try at about 300.
+
+For round 17's harvest (lead notes): the `governance.remote` [FAIL] prints the docs repo's remote URL unredacted (lane
+RA); `install.sh`'s `report_word` turns any lower-case code word into a report word, so an organization of that name is
+not redacted (lane RB); and two prompt phrasings deferred past v25 (lane RB).
+
+Round 17: the round 16 workflow with prompt v25 on this section's landed tip, BASE `dd5d55d5` (ids U<n>, outputs
+`round17/`); scenario C plays the v24 and v23 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
