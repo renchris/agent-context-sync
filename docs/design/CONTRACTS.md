@@ -22967,6 +22967,10 @@ digits of the patch's SHA-256 and `still in <setup>/local-work`, and on purpose 
 its commit's subject). The guide now asks the person to run `shasum -a 256 ~/agent-context/setup/local-work/*.patch`
 on that Mac (the folder the line names, if another) and to send privately the patch whose hash starts with the line's
 12 digits. Test: `test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`, which reads both lines install.sh writes.
+Amended 2026-10-19, §16.133 U39, U82: install.sh writes four `not repeated:` lines since §16.123 T24, a held form
+(`an earlier attempt's report held (<time>)`, from `local-work/.sent`, read first) and a last-written form, each
+with a line count and hash or, for a patch this account cannot read now, with neither; the test reads all four, and
+the guide gives the held form first and the two without a hash their route.
 
 **The re-read clause's counts take their noun** (T51, T69: one defect from two finders, built once; dated lines at
 §16.40 N32 and §16.14). Since §16.116 S26 the Summary's clause reads `since this install run began, [at least ]N
@@ -23446,4 +23450,21 @@ Reserved for round 17 lane E of B13.
 
 ### 16.133 Round 17: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 17 lane D)
 
-Reserved for round 17 lane D of B13.
+Docs and dated lines that lagged round 16's code (`docs/plans/bring-back-ocr.md`, "B13 round 17"; specs
+`round17/items/U<n>.md`, the verifier's corrected fix built). Lane D's round 17 items: U39, U82, U83, U84, U85, U90,
+U91, U109 and U112. Every edit is outside the prompt block and no item needs prompt words, so none went to lane P. A
+dated line this round writes reads `Amended 2026-10-19, §16.133 U<n>`, with `(by §16.NN T<n>)` when it records
+round 16's change.
+
+**The guide's `not repeated:` paragraph leads with the held form and routes a line with no hash** (U39, U82; dated
+line at §16.127 T28). Since §16.123 T16 `local-work/.sent` is read first, and every report that embeds a patch adds
+it there, so after any earlier report the line reads `not repeated: a patch file an earlier attempt's report held
+(<time>)`; the guide gave the last-written time as the line's form and the held one only for an attempt that wrote
+no end line, so a triager reading the usual line would think that attempt had stopped at step 1. The paragraph names
+the held form first and the last-written form for a patch `.sent` lacks. Since T24 two of the four lines say `this
+account cannot read it now, so no line count or hash`, and the guide's one route (send the patch whose hash starts
+with the line's 12 digits) had nothing to match: such a line's patch is made readable and the report run again,
+which sends nothing new and gives the hash. The T28 test read only the two hashed lines (`skipped="${skipped}...`)
+and counted 2; it reads all four now. Lane RB's U60 names the same no-hash sentence; it is built once, here. Tests:
+`test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`, `test_prompt_routes_changes_to_the_source_not_the_checkout`
+and the dated-line scan.

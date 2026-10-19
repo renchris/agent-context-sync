@@ -193,15 +193,22 @@ words) is yours to remove. The CLI always redacts.
   person for that only if the file came back without it. A public report shows that the work exists, never the
   patches.
   Section 3 holds the local work kept since an earlier attempt reached its report. A patch from before that is
-  not sent again: one `not repeated:` line gives the time it was last written, its line count and the first 12
-  hex digits of its SHA-256, and says it is still in `~/agent-context/setup/local-work`. Compare that hash with
+  not sent again: one `not repeated:` line names the earlier report that held it, `not repeated: a patch file an
+  earlier attempt's report held (<time>)` (read from `local-work/.sent`, which every report that embeds a patch
+  adds it to, so also after an attempt that stopped at step 1 and wrote no end line), or, for a patch that record
+  lacks, the time it was last written and that report's time, `not repeated: a patch file last written <time>, at
+  or before an earlier attempt's report (<time>)` (B13 round 17 U39). While this account can read the patch, the
+  line then gives its line count and the first 12 hex digits of its SHA-256, and says it is still in
+  `~/agent-context/setup/local-work`. Compare that hash with
   the patch you hold (`shasum -a 256`). If you hold none, that work never arrived: the Mac cannot know what was
   copied back. The line names no file (a patch's file name carries its commit's subject), so ask the person to run
   `shasum -a 256 ~/agent-context/setup/local-work/*.patch` on that Mac (the folder the line's `still in` names, if
-  it is another) and to send privately the patch whose hash starts with the line's 12 digits. A patch an earlier
-  attempt's report embedded is listed the same
-  way even when that attempt stopped at step 1 and wrote no end line (`local-work/.sent`): its line reads `not
-  repeated: a patch file an earlier attempt's report held (<time>)`. The header's sentence on each patch's author is there only
+  it is another) and to send privately the patch whose hash starts with the line's 12 digits. A line ending `this
+  account cannot read it now, so no line count or hash; still in ...` has no hash to match (B13 round 17 U82). Ask
+  the person to make that patch readable (`chmod u+r ~/agent-context/setup/local-work/*.patch`, as the Summary's
+  unreadable clause says; it works only where their account owns the file) and to run
+  `~/src/agent-context-sync/scripts/install.sh --report-only` again: that rerun sends nothing new, since an earlier
+  report carried the patch, but its line then gives the line count and the hash, and you go on as above. The header's sentence on each patch's author is there only
   when section 3 sends a patch; when it sends none because each was in an earlier report, the header says so (`its one patch` when there is one).
   Whoever looks after agentsync for your team triages it there with this page, exactly like an issue; that needs
   no contact with the agentsync maintainer.

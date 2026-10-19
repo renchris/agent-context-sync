@@ -1172,10 +1172,12 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # Section 3 is the local work kept since an earlier attempt's report; an older patch is one line there,
     # which the page names by the installer's own first words.
     assert "Section 3 holds the local work kept since an earlier attempt reached its report" in private
+    # B13 round 17 U39: the line names the earlier report that held it first (.sent), the time only without it
     assert (
-        "one `not repeated:` line gives the time it was last written, its line count and the first 12"
-        in private
+        "one `not repeated:` line names the earlier report that held it, `not repeated: a patch file an "
+        "earlier attempt's report held (<time>)`" in private
     )
+    assert "line then gives its line count and the first 12 hex digits of its SHA-256" in private
     assert "still in `~/agent-context/setup/local-work`" in private
     assert "}not repeated: a patch file last written $at," in SCRIPTS[0].read_text(encoding="utf-8")
     finish = _prompt_steps()[3].rsplit("Finish with:", 1)[1]
@@ -5704,18 +5706,37 @@ def test_the_deploy_guide_gives_not_sents_third_field() -> None:
 
 
 def test_the_guide_asks_for_a_not_repeated_patch_by_its_hash() -> None:
-    """B13 round 16 T28: the guide told the reader to ask for "the file the line names", but install.sh's two
+    """B13 round 16 T28: the guide told the reader to ask for "the file the line names", but install.sh's
     `not repeated:` lines name a folder and a hash prefix, and on purpose no file (a patch's name carries its
     commit's subject). The guide asks for the patch in that folder whose SHA-256 starts with the line's 12
-    digits, the prefix install.sh cuts from `shasum -a 256` of the file."""
+    digits, the prefix install.sh cuts from `shasum -a 256` of the file. B13 round 17 U82: since round 16 T24
+    install.sh writes four such lines, a held and a last-written form each with a hash and each without (a
+    patch this account cannot read now), and this test read only the two `skipped="${skipped}` ones; the guide
+    gives the no-hash lines their route: make the patch readable and run the report again."""
     script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-    lines = [ln for ln in script.splitlines() if 'skipped="${skipped}not repeated: ' in ln]
-    assert len(lines) == 2
+    lines = [
+        ln for ln in script.splitlines() if re.match(r'\s*skipped(?:\+="|="\$\{skipped\})not repeated: ', ln)
+    ]
+    assert len(lines) == 4
+    hashed = [ln for ln in lines if ln.endswith("sha256 $sha; still in $shown/local-work\"$'\\n'")]
+    blind = [ln for ln in lines if "so no line count or hash; still in $shown/local-work" in ln]
+    assert len(hashed) == len(blind) == 2
     for line in lines:
-        assert line.endswith("sha256 $sha; still in $shown/local-work\"$'\\n'")
         assert not re.search(r"\$\{?p\b|basename", line.replace('<"$p"', "")), line  # wc reads it; no name
     assert 'sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"' in script
+    from agentsync import setup_report  # noqa: PLC0415
+
     page = " ".join(_feedback_page().split())
+    # the guide quotes the no-hash lines' own tail, as install.sh writes it
+    [tail] = {
+        re.findall(r"; (this account cannot read it now, [^;]*); still in \$shown", ln)[0] for ln in blind
+    }
+    assert (
+        f"A line ending `{tail}; still in ...` has no hash to match (B13 round 17 U82). Ask the person to "
+        "make that patch readable (`chmod u+r ~/agent-context/setup/local-work/*.patch`, as the Summary's "
+        "unreadable clause says; it works only where their account owns the file) and to run "
+        f"`{setup_report.LOCAL_WORK_AGAIN}` again: that rerun sends nothing new"
+    ) in page
     assert "ask for the file the line names" not in page
     assert (
         "the Mac cannot know what was copied back. The line names no file (a patch's file name carries its "
