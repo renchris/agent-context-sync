@@ -23419,6 +23419,14 @@ not redacted, as in Python (§16.122 T40: the whole name only). Tests:
 `test_a_cloudstorage_symlink_is_a_link_in_both_readers`, `test_the_onedrive_organisation_is_org_1_in_both_readers`,
 `test_the_shell_report_keeps_the_word_a_one_word_organisation_spells[symlink]`.
 
+**A policy or governance value is redacted alike in both readers** (U54). The shell fallback embeds doctor's
+`policy` and `governance.config` [FAIL] lines, which quote an `exclude_label_ids` value that is no GUID and a
+`remote_url_prefixes` value, quoted or as a URL with a password, in clear; round 16 T3 gave only the Python report
+the patterns. Built by lane RA's U93 (`gov_value_sed` in redact_stream, `label|remote` held, their legend items;
+9c3b0954, §16.128), one stage for both defects. RB adds the parity cases RA's test left out: the password-carrying
+prefix and a message with no value (`expected a list of non-empty strings`), which stays as written. Test:
+`test_a_policy_or_governance_value_is_redacted_alike_in_both_readers`.
+
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 
 The B13 round 17 items of lane P (specs `round17/items/U<n>.md`, the verifier's corrected fix built unless a

@@ -12193,6 +12193,32 @@ def test_a_governance_lines_remote_url_and_the_docs_repos_host_are_redacted_in_b
     assert "- <label>: a label id or name a policy error quotes" in text
 
 
+def test_a_policy_or_governance_value_is_redacted_alike_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U54 (T3's shell twin; the patterns are lane RA's U93, gov_value_sed): doctor's policy and
+    governance.config [FAIL] lines, which the shell fallback embeds, quote a label id typed as a name and a
+    remote_url_prefixes value, a quoted one or a URL with a password, in clear. Both readers write
+    ``<label>`` and ``<remote>`` alike; a message with no value ("expected a list of non-empty strings")
+    stays as written."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    said = (
+        "[FAIL] policy: [policy]: exclude_label_ids: 'Heliotrope Zebra' is not a label GUID; "
+        "[FAIL] governance.config: [governance].remote_url_prefixes: "
+        "'https://git.tailspin-int.invalid/team' is not a remote URL; remote_url_prefixes: "
+        "https://***@git.tailspin-int.invalid/team carries a password; "
+        "exclude_label_names: expected a list of non-empty strings"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == python, (shell, python)
+    assert shell == (
+        "[FAIL] policy: [policy]: exclude_label_ids: <label> is not a label GUID; [FAIL] governance.config: "
+        "[governance].remote_url_prefixes: <remote> is not a remote URL; remote_url_prefixes: <remote> "
+        "carries a password; exclude_label_names: expected a list of non-empty strings"
+    ), shell
+
+
 def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(
     env: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
