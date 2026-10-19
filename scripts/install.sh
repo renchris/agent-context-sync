@@ -1379,11 +1379,24 @@ joined_word() {
 REPORT_WORDS=""
 report_word() {
 	joined_word "$1" && return 0
-	# a URL or this repository's locator names its owner, a login run together: never a report word
+	# a URL or this repository's locator names its owner, a login run together: never a report word. Only
+	# printed text counts, as setup_report.report_words reads only string literals: double-quoted strings with
+	# their expansions removed, and the single-quoted format of a printf or say. A code word (a variable, a
+	# case label, an awk or Python name) is no report word, so an organisation named so is cut out of a longer
+	# word and makes no private-only report, as in the Python report (B13 round 17 U4, U94)
 	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '/^[[:space:]]*#/ { next }
-		{ sub(/[[:space:]]#[[:space:]].*$/, ""); gsub(/[A-Za-z]+:\/\/[^ \t"\047]*|github\.com[:\/][^ \t"\047]*/, " ")
-			n = split($0, a, /[^A-Za-z]+/)
-			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1 }
+		function words(t,    n, a, i) {
+			gsub(/\$\([^)]*\)|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*/, " ", t)
+			n = split(t, a, /[^A-Za-z]+/)
+			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1
+		}
+		{
+			gsub(/[A-Za-z]+:\/\/[^ \t"\047]*|github\.com[:\/][^ \t"\047]*/, " ")
+			t = $0
+			while (match(t, /"([^"\\]|\\.)*"/)) { words(substr(t, RSTART + 1, RLENGTH - 2)); t = substr(t, RSTART + RLENGTH) }
+			t = $0
+			while (match(t, /(printf|say)[ \t]+\047[^\047]*\047/)) { q = substr(t, RSTART, RLENGTH); t = substr(t, RSTART + RLENGTH); sub(/^[^\047]*\047/, "", q); words(q) }
+		}
 		END { for (k in w) printf "%s ", k }' "$SELF_FILE" 2>/dev/null || true) "
 	case "$REPORT_WORDS" in *" $1 "*) return 0 ;; esac
 	return 1

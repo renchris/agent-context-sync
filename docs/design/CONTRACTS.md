@@ -23097,7 +23097,25 @@ stop. The verifier's outcome shim (`; it stopped: <cause>`) is not built: the re
 `no install.sh run; step 1 logged an error` with no cause. The attempt split and its note are not shimmed: the old
 build reads one attempt where the renderer reads two, and the words cannot be rebuilt from its text. Rendering with
 the checkout's src stays refused (§16.110 Q27, T11). Test:
-`test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words` (and an install run after it).
+`test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words` (an install run after it, a later
+attempt).
+
+**The shell's report words are its printed text** (U4, U94: one defect from two finders). `report_word` read every
+lower-case word of 3 or more letters on every non-comment line of install.sh, code included: variables
+(`target=$((runs + 1))`, `local ... core`), the terminal-app case labels `vscode)` and `ghostty)`, pattern fragments
+(`ersonal`, `usiness`, `ork`) and the embedded Python's names. An organisation named like one stayed in clear inside a
+longer word in the shell report (flag o skipped: `MyTargetTeam`, where Python writes `My<org-1>Team`), made the report
+private only and dropped its issue link; Python's `report_words()` reads string literals only. The scan now reads only
+printed text: double-quoted strings with `$(...)`, `${...}` and `$var` removed, and the single-quoted format of a
+`printf` or `say`; `joined_word` stays first. The finder's and verifier's closed list (Option A: `report_words()`
+plus install.sh's printed words, pinned equal by a test) is not built: every later change to a string of
+setup_report.py or install.sh, which several lanes edit each round, would fail the pin until the list in install.sh was
+regenerated. Measured at this commit: the old scan had 1154 words, the new one 766, Python's 1198; 140 words Python
+prints that the old scan held only from code (`data`, `group`, `shared`, `volume`, ...) are no longer the shell's,
+which the shell report does not print either, so an organisation of that name is cut everywhere in the shell report,
+as before for the 452 words only Python held. Tests: `test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_python`
+(Target, Core, Ghostty, Contoso), `test_the_shell_report_words_are_its_printed_text`,
+`test_an_organisation_is_redacted_inside_a_longer_word[Target-...]`; the M50 and N57 rows stay green.
 
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 

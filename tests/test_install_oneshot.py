@@ -11677,6 +11677,9 @@ def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held
             "StartInterval 900 s, ThrottleInterval, StartCalendarInterval, AcmeInterval",
             "StartInterval 900 s, ThrottleInterval, StartCalendarInterval, Acme<org-1>",
         ),
+        # an install.sh code word ("target=", a variable) is no report word: cut out as in Python (B13 round
+        # 17 U4)
+        ("Target", "MyTargetTeam, Target2026, AcmeTarget", "My<org-1>Team, <org-1>2026, Acme<org-1>"),
     ],
 )
 def test_an_organisation_is_redacted_inside_a_longer_word(
@@ -11688,6 +11691,62 @@ def test_an_organisation_is_redacted_inside_a_longer_word(
     ("Contosoft") and never out of OneDrive, GoogleDrive, CloudStorage and the like."""
     shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said, org=org)
     assert shell == want and python == want, (shell, python)
+
+
+@pytest.mark.parametrize("org", ["Target", "Core", "Ghostty", "Contoso"])
+def test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_python(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, org: str
+) -> None:
+    """B13 round 17 U94 (U4 one defect): report_word read every lower-case word on every line of install.sh,
+    code too (``target=``, ``local ... core``, the ``ghostty)`` case label), so an organisation named so
+    stayed in clear inside longer words in the shell report, and made it private only and dropped its link,
+    where the Python report, whose words are its string literals, cut it out. Contoso is the control."""
+    said = f"{org}Group, {org}2026, Acme{org}, {org}Corp.com, {org.lower()} ran"
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said, org=org)
+    assert shell == python == "<org-1>Group, <org-1>2026, Acme<org-1>, <org-1>Corp.com, <org-1> ran", (
+        shell,
+        python,
+    )
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "Private only:" not in text and "issues/new" in text, text[-800:]
+
+
+def test_the_shell_report_words_are_its_printed_text() -> None:
+    """B13 round 17 U94: the shell's report words are the words install.sh prints (double-quoted strings,
+    their expansions removed, and printf or say formats), never a code word, a case label or a pattern
+    fragment; every word joined_word holds is one."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "".join(re.findall(r"(?ms)^(?:joined_word|report_word)\(\) \{\n.*?^\}\n", script))
+    cp = subprocess.run(
+        [
+            BASH32,
+            "-c",
+            fns + 'SELF_FILE="$1"; REPORT_WORDS=""; report_word zzzz; printf "%s\\n" $REPORT_WORDS',
+            "-",
+            str(INSTALL_SH),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+    )
+    words = set(cp.stdout.split())
+    assert len(words) > 500, "the scan is broken"
+    for code in (
+        "target",
+        "core",
+        "groups",
+        "machine",
+        "vscode",
+        "ghostty",
+        "ersonal",
+        "usiness",
+        "ork",
+        "box",
+    ):
+        assert code not in words, code
+    for printed in ("folder", "report", "redacted", "private", "organization", "installer"):
+        assert printed in words, printed
 
 
 def test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset(
