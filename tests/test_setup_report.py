@@ -13,6 +13,7 @@ import logging
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -1002,6 +1003,44 @@ def test_a_vanished_sources_id_is_a_placeholder_in_every_section(
     installer = section(text, "Installer")
     assert installer.count(re.search(r"<source-\d+>", fail).group(0)) >= 2, installer  # type: ignore[union-attr]
     assert "(not in the config, 1" in section(text, "Configuration"), "the evidence names it by place still"
+
+
+@pytest.mark.usefixtures("roomy_calls")
+@pytest.mark.parametrize("where", ["cloud", "local", "deep-cloud"])
+def test_a_vanished_sources_add_back_folder_is_never_in_the_report(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 17 U46: doctor's config.vanished_sources fix now names the folder add-source adds back under
+    the same id (``doctor.vanished_fix``), a path no configured source has any more. The report's Doctor
+    section must show it by placeholder, never in clear: a cloud folder, and a local folder outside
+    CloudStorage. No ``clean_doctor``: the [FAIL] line is the leak."""
+    cfg = fake_mac["config"]
+    if where == "cloud":
+        folder = fake_mac["two"]
+    elif where == "deep-cloud":  # below the listing's level 3 (review)
+        folder = fake_mac["one"] / "Zeta Deep" / "Specs Ledger"
+        folder.mkdir(parents=True)
+        assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
+    else:
+        folder = fake_mac["home"] / "Projects" / "Zeta Ledger Notes"
+        folder.mkdir(parents=True)
+        assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
+    (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
+    [gone] = [src.id for src in load_config(cfg).sources if src.path == folder]
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    head, *blocks = cfg.read_text(encoding="utf-8").split("[[source]]")
+    cfg.write_text("[[source]]".join([head, *(b for b in blocks if f'id = "{gone}"' not in b)]), "utf-8")
+    capsys.readouterr()
+    assert cli.main(["status", "--config", str(cfg)]) == 1
+    [fail] = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[FAIL] config.vanished")]
+    assert f"add-source {shlex.quote(str(folder))})" in fail, fail  # the leak this test guards
+    rc, text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    words = [*folder.name.split(), *(["Zeta"] if where == "deep-cloud" else []), gone]
+    leaked = [ln for ln in text.splitlines() if any(w.lower() in ln.lower() for w in words)]
+    assert not leaked, leaked
+    [shown] = [ln for ln in section(text, "Doctor").splitlines() if ln.startswith("[FAIL] config.vanished")]
+    assert "; or add its folder again, under the same id: ~/.local/bin/agentsync add-source " in shown, shown
 
 
 def test_the_reports_vanished_source_check_is_the_cycles(fake_mac: dict[str, Path]) -> None:

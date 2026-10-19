@@ -18,6 +18,7 @@ import logging
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import sqlite3
 import stat
@@ -33,7 +34,7 @@ from urllib.parse import quote
 from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
-from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
+from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root, derive_source_id
 from agentsync.cycle import VANISHED_FIX, _holds_home, _sync_leaves, vanished_detail, vanished_sources
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError
 from agentsync.it_request import org_of
@@ -1934,6 +1935,7 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
     try:
         with Manifest(db) as manifest:
             vanished = vanished_sources(config, manifest)
+            back = _vanished_add_backs(config, manifest, vanished)
     except (OSError, sqlite3.Error, AgentSyncError):
         return []
     if not vanished:
@@ -1943,9 +1945,52 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
             "config.vanished_sources",
             f"{vanished_detail(vanished)}, so every sync refuses this config (exit 78)",
             Severity.ERROR,
-            fix=VANISHED_FIX,
+            fix=vanished_fix(back, every=len(back) == len(vanished)),
         )
     ]
+
+
+def _vanished_add_backs(config: Config, manifest: Manifest, vanished: Collection[str]) -> list[Path]:
+    """The folders that ``add-source`` adds back under a vanished id, in id order: the manifest's recorded
+    root (``scope_root:<id>``) when it is a folder here and the id add-source derives for it is that id,
+    install.sh's ``vanished_folders`` rule ("a name alone never matches"). A custom id, or a root that is
+    gone, has none: re-adding it would mirror the folder twice under a new id and leave the refusal (B13
+    round 17 U9, U25, U46). Nor does a folder another source has now (an id renamed in sources.toml):
+    add-source would only say it is configured already. A root this process may not read is skipped, never
+    an error that would drop the FAIL itself (review)."""
+    configured = {s.id for s in config.sources}
+    taken = {canonical_source_root(expand(s.path)) for s in config.sources if s.path is not None}
+    inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")  # every init adds it back
+    out: list[Path] = []
+    for sid in sorted(vanished):
+        raw = (manifest.get_meta(f"scope_root:{sid}") or "").partition(":")[2]
+        if not raw:
+            continue
+        try:
+            root = canonical_source_root(Path(raw))
+            if root == inbox or root in taken or str(root) != raw or not root.is_dir():
+                continue
+        except OSError:  # 3.11's is_dir raises EACCES and EPERM
+            continue
+        if derive_source_id(root, configured) == sid:
+            out.append(root)
+    return out
+
+
+def vanished_fix(roots: Sequence[Path], *, every: bool) -> str:
+    """Doctor's config.vanished_sources fix: :data:`cycle.VANISHED_FIX`, which starts with the person's words
+    (``PERSONS_FIX_RE``), then, for each folder :func:`_vanished_add_backs` found, the one command that adds
+    it back under the same id, as step 1's NEXT offers (``--source-local``, which runs it); the CLI's own
+    verb, by its full path, since status and doctor print it outside install.sh too (B13 round 17 U9, U25,
+    U46). ``every``: every vanished source has one."""
+    if not roots:
+        return VANISHED_FIX
+    cmds = ", then ".join(f"{BIN} add-source {shlex.quote(str(r))}" for r in roots)
+    if every:
+        what = "its folder" if len(roots) == 1 else "their folders"
+    else:
+        what = "the folder still here" if len(roots) == 1 else "the folders still here"
+    return f"{VANISHED_FIX}; or add {what} again, under the same id: {cmds}"
 
 
 def _check_heartbeat(

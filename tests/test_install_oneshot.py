@@ -800,6 +800,10 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
         fix=VANISHED_FIX,
     )
     cases["vanished"] = doctor.format_results([vanished]).splitlines()
+    # B13 round 17 U9, U25, U46: the same fix with the add-back command after it
+    add_back = doctor.vanished_fix([cfg.config_path.parent / "Project Delta"], every=True)
+    with_add_back = dataclasses.replace(vanished, fix=add_back)
+    cases["vanished-add-back"] = doctor.format_results([with_add_back]).splitlines()
     # B13 round 16 T2, T9: a [policy] value in policy.toml, or a [governance] one, that does not load
     policy = cfg.config_path.parent / "policy.toml"
     policy.write_text('[policy]\nrefuse_unlabelled = "yes"\n', encoding="utf-8")

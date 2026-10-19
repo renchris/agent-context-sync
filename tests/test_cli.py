@@ -2971,7 +2971,11 @@ def test_a_mirrored_source_whose_block_is_deleted_fails_status_as_the_persons(
         return
     assert rc == cli.EXIT_FAILED and len(fails) == 1, out
     assert f"source '{beta}' (1 file) is mirrored but no longer in sources.toml" in fails[0], fails
-    assert fails[0].endswith(f"(fix: {cycle_mod.VANISHED_FIX})"), fails
+    # B13 round 17 U9, U25, U46: its folder is still here and add-source derives the same id for it
+    add_back = (
+        f"; or add its folder again, under the same id: {loop.BIN} add-source {canonical_source_root(second)}"
+    )
+    assert fails[0].endswith(f"(fix: {cycle_mod.VANISHED_FIX}{add_back})"), fails
     assert out[0] == f"NEXT: the config.vanished_sources check failed: {PERSONS_STEP}", out[0]
     assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
     assert any(ln.startswith("[FAIL] config.vanished_sources") for ln in capsys.readouterr().out.splitlines())
@@ -2981,6 +2985,77 @@ def test_a_mirrored_source_whose_block_is_deleted_fails_status_as_the_persons(
         f"source '{beta}' (1 file) is mirrored but no longer in sources.toml; retirement is explicit: " in err
     )
     assert f"put the [[source]] block back with {RETIRE_ADVICE}, or restore it" in err, err
+
+
+@pytest.mark.parametrize("case", ["default-id", "custom-id", "root-gone", "renamed-id", "unreadable"])
+def test_the_vanished_sources_fix_names_the_re_add_only_where_it_adds_the_same_id(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str], case: str
+) -> None:
+    """B13 round 17 U9, U25, U46: step 1's NEXT offers to add a vanished source's folder again (one
+    --source-local, which runs add-source and restores the same id), while step 2's [FAIL] fix named only
+    putting the [[source]] block back. The fix now ends with the add-source command for the folder, by the
+    rule install.sh's vanished_folders uses: the manifest's recorded root is a folder here and add-source
+    derives the vanished id for it. A custom id (add-source would derive another, mirroring the folder twice
+    and leaving the refusal) or a root that is gone keeps the block-only fix. The person's start stays.
+    Review: an id renamed in sources.toml leaves its folder configured (add-source would only say so), and a
+    root under a folder this process may not read must not drop the FAIL itself: both keep the plain fix."""
+    gate = tmp_path / "gate"
+    folder = gate / "Project Delta"
+    (folder / "notes").mkdir(parents=True)
+    (folder / "notes" / "plan.txt").write_text("The plan.\n", encoding="utf-8")
+    cfg = str(initialised.config_path)
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    [sid] = [s.id for s in load_config(initialised.config_path).sources if s.path == folder]
+    if case == "custom-id":
+        text = initialised.config_path.read_text(encoding="utf-8")
+        initialised.config_path.write_text(text.replace(f'id = "{sid}"', 'id = "delta-x"'), encoding="utf-8")
+        sid = "delta-x"
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    if case == "renamed-id":
+        text = initialised.config_path.read_text(encoding="utf-8")
+        initialised.config_path.write_text(text.replace(f'id = "{sid}"', 'id = "delta-y"'), encoding="utf-8")
+    else:
+        _drop_block(initialised.config_path, sid, retire=False)
+    if case == "root-gone":
+        shutil.rmtree(folder)
+    capsys.readouterr()
+    if case == "unreadable":
+        gate.chmod(0)
+    try:
+        rc, out = _status(cfg, capsys)
+    finally:
+        gate.chmod(0o700)
+    [fail] = [ln for ln in out if ln.startswith("[FAIL] config.vanished_sources")]
+    fix = fail.split(" (fix: ", 1)[1]
+    assert rc == cli.EXIT_FAILED and fix.startswith("put the [[source]] block back "), fail
+    assert doctor.is_persons_fix(fix)
+    if case != "default-id":
+        assert fix == f"{cycle_mod.VANISHED_FIX})" and "add-source" not in fix, fail
+        return
+    assert sid == "project-delta"
+    cmd = f"{loop.BIN} add-source {shlex.quote(str(canonical_source_root(folder)))}"
+    assert fix == f"{cycle_mod.VANISHED_FIX}; or add its folder again, under the same id: {cmd})", fail
+    # the command it names clears the refusal: the same id comes back, and the sync runs
+    assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
+    assert sid in [s.id for s in load_config(initialised.config_path).sources]
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert not [ln for ln in out if "config.vanished_sources" in ln and ln.startswith("[FAIL]")], out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
+def test_the_vanished_sources_fix_offers_each_folder_and_says_which_when_not_all_have_one() -> None:
+    """The several-source forms of the add-back clause (B13 round 17 U46: one --source-local per folder)."""
+    a, b = Path("/Users/x/Project Delta"), Path("/Users/x/Gamma")
+    both = doctor.vanished_fix([a, b], every=True)
+    assert both.endswith(
+        f"; or add their folders again, under the same id: {loop.BIN} add-source '{a}', "
+        f"then {loop.BIN} add-source {b}"
+    ), both
+    assert doctor.vanished_fix([a], every=False).startswith(
+        f"{cycle_mod.VANISHED_FIX}; or add the folder still here again, under the same id: "
+    )
+    assert doctor.vanished_fix([], every=False) == cycle_mod.VANISHED_FIX
 
 
 def test_the_vanished_source_check_says_nothing_before_the_first_sync(

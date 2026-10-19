@@ -3395,6 +3395,22 @@ def _unconfigured_ids(config: Config) -> list[str]:
     return sorted(sid for sid in ids if sid and sid not in configured)
 
 
+def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
+    """The folders the manifest records as ``ids``' roots (``scope_root:<id>``, ``<run>:<path>``), sorted;
+    read-only, as :func:`_unconfigured_ids`."""
+    db = expand(config.state_paths.db)
+    if not ids or not db.is_file():
+        return []
+    wanted = {f"scope_root:{sid}" for sid in ids}
+    conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+    try:
+        rows = conn.execute("SELECT key, value FROM meta WHERE key LIKE ?", ("scope_root:%",)).fetchall()
+    finally:
+        conn.close()
+    roots = {str(value).partition(":")[2] for key, value in rows if key in wanted}
+    return sorted(Path(root) for root in roots if root)
+
+
 def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
     red = Redactor()
@@ -3607,9 +3623,26 @@ def _build_redactor(r: _Run) -> Redactor:
     if r.config is not None:
         config = r.config
         with contextlib.suppress(Exception):
-            for sid in r.call(lambda: _unconfigured_ids(config), timeout=_UNCONFIGURED_IDS_S):
+            gone_ids = r.call(lambda: _unconfigured_ids(config), timeout=_UNCONFIGURED_IDS_S)
+            for sid in gone_ids:
                 if sid not in _GENERIC_IDS:
                     red.add("source", sid)
+            # and the folder each one's walk recorded (``scope_root:<id>``), as a configured source's is: a
+            # cloud folder by its components (the listing stops at level 3 and can run out of time), any other
+            # as a project folder. doctor's fix names the folder add-source adds back under the same id (B13
+            # round 17 U46)
+            for root in r.call(lambda: _unconfigured_roots(config, gone_ids), timeout=_UNCONFIGURED_IDS_S):
+                cloud = _cloud_parts(root)
+                if cloud is not None:
+                    provider, comps = cloud
+                    shared = provider.startswith("OneDrive-SharedLibraries-") and bool(comps)
+                    if shared:
+                        red.add("library", comps[0], fuzzy=True)
+                    for c in comps[1:] if shared else comps:
+                        red.add("folder", c, fuzzy=True)
+                elif not any(root.is_relative_to(o) for o in own):
+                    for value in _project_values(root):
+                        red.add("folder", value, ignore_case=True)
     for host in _proxy_hosts(_proxy_urls(r)):
         _add_proxy_host(red, host)
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL
