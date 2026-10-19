@@ -318,7 +318,7 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v25). agentsync keeps a local, agent-readable git repo
+Set up agentsync on this Mac (setup prompt v26). agentsync keeps a local, agent-readable git repo
 (~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
 https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
 yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
@@ -356,7 +356,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v25, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v26, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -404,22 +404,25 @@ the name in fix-request.md.
    ~/src/agent-context-sync/scripts/install.sh command at all after them; your final message still follows step 3's
    "Finish with". If git failed any other way, show me its error and tell me: "A corporate proxy may need
    HTTPS_PROXY set in your terminal. If git's error names a host other than github.com, git was told to use that host
-   in one of three ways, and any of them may point at a network this Mac is not on: a URL rewrite, which
+   in one of four ways, and any of them may point at a network this Mac is not on: this checkout's own remote, which
+   `git -C ~/src/agent-context-sync remote get-url origin` prints and which this setup expects to be
+   https://github.com/renchris/agent-context-sync.git; a URL rewrite, which
    `git config --get-regexp '^url\..*\.insteadof$'` prints; git's own proxy setting, which
    `git config --get-urlmatch http.proxy https://github.com` prints and which wins over the terminal's; or the
    terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which `env | grep -i proxy` shows. Once git can reach
-   GitHub from a terminal, start a new session from that terminal and paste this prompt again. If the setup report
-   gets written, its `proxy in git's config` and `URL rewrite in git's config` entries say whether each is set,
-   never which host, and what it says about proxy variables comes from the shell the report ran in, which may not be
-   your terminal" (those three commands are mine to run in my own terminal: do not run them yourself), and go to
+   GitHub, or the remote this checkout uses, from a terminal, start a new session from that terminal and paste this
+   prompt again. If the setup report gets written, its `proxy in git's config` and `URL rewrite in git's config`
+   entries say whether each is set, never which host, its install source line says `origin: other` when the checkout's
+   remote is not GitHub, and what it says about proxy variables comes from the shell the report ran in, which may not
+   be your terminal" (those four commands are mine to run in my own terminal: do not run them yourself), and go to
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 25", log the command that failed (git's pull or clone, or
+   it exists and its output ends with "setup-prompt-compat 26", log the command that failed (git's pull or clone, or
    xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
-   report replaces the host of a proxy, of a URL rewrite and of a "Could not resolve" or "Failed to connect to"
-   message; the role rule is for your own words), as a step 1 error, starting its what-text with prompt
-   v25, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
+   report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "Could not resolve" or "Failed to
+   connect to" message; the role rule is for your own words), as a step 1 error, starting its what-text with prompt
+   v26, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
    report. If it exists and its output does not end so (or the command fails), that stop has no report either: tell
    me that the code on this Mac is not this prompt's version and that setup stopped before it could be updated, and
    that this asks nothing more of me: once the cause of this stop is fixed, the next paste of this prompt tries to
@@ -428,9 +431,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 25", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v25, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v25, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 26", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v26, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v26, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -444,7 +447,8 @@ the name in fix-request.md.
    1 GiB per folder per run. If you cannot ask me (your tool runs unattended, or the question comes back unanswered),
    do not choose folders for me: log a deviation, stop and wait for my answer. If the list's NEXT: line says a folder
    or source is still mirrored but has no [[source]] block, tell me what it says (which folder, or how many sources)
-   and the fix it names, and add that folder again only if I name it. Two exceptions. First, if
+   and the fix it names, and add that folder again only if I name it. If it says step 2 stops at its config step on
+   something, tell me what it names and that fixing it is mine, and still go on to step 2. Two exceptions. First, if
    --list-folders printed a line that starts "already synced on this Mac:", I chose those folders before and they are
    kept (each has [synced] before its path in the list). If the list's NEXT: line asks me to sign in and then re-run,
    tell me which folders are kept and that I must sign in to the app that line names, and wait for me as for a click;
@@ -494,26 +498,27 @@ the name in fix-request.md.
    running then. Both waits and that skip are expected, not deviations: do not log them. If this Mac already runs
    agentsync, its sources, history and background jobs are kept. Any [warn] or WAITING ON YOU: line this command
    prints is mine (on such a Mac it may predate this session): show it to me and do not do what it says, neither its
-   commands nor its sources.toml edits. A [FAIL] line whose fix edits sources.toml (a [[source]] block or path, a
-   [convert] line or a [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back,
-   rename or sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to replace or
-   remove, a state file that cannot be read) is mine too: show it to me and do not make that edit or run its command.
-   Otherwise, re-running the install.sh command its fix names is yours, once: if the same [FAIL] line comes back
-   after it, show it to me, log it and go to step 3's report.
-   If your tool cannot wait that long in the foreground, run it in the background and read its output until the NEXT:
-   line appears; that is expected, not a deviation. When it ends, whether or not it exited non-zero, unless its
-   NEXT: line says the config does not load, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me
-   about my inbox: it is the folder named inbox beside the docs repo, one of the kind = "inbox" sources in
-   ~/agent-context/sources.toml; any other kind = "inbox" source there is a folder I added myself, not my inbox. I
-   drop files there by hand: Outlook mail dragged out as .eml, a meeting transcript as .docx or .vtt. Only .eml, .pdf
-   and Office files such as .docx carry a sensitivity label, so .eml and .docx are better than .vtt or pasted text.
-   Files stay in the inbox: never empty it by hand, because removing a file turns its page into a deletion notice and
-   queues a purge. If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the
-   configuration error or a status error with no [FAIL] line are mine to fix), log it as a step 2 error, show me
-   those lines and go to step 3's report; do not run the re-run it names. Otherwise, if it exits non-zero, do what
-   NEXT: says only if it is an install.sh or agentsync command or a click for me (but after "no folder is synced
-   yet", do as step 1's last sentences say, not its add-source); otherwise log it and go to step 3's report. A failed
-   run whose NEXT: you follow this way is not logged (the report names it once a later run ends 0).
+   commands nor its sources.toml edits. A [FAIL] line whose fix starts with an edit to sources.toml (a [[source]]
+   block or path, a [convert] line or a [governance] value) or policy.toml (a [policy] value), asks me to sign in, or
+   to put back, rename or sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to
+   replace or remove, a docs-repo remote to remove or allow, a state file that cannot be read) is mine too: show it to
+   me and do not make that edit or run its command. Otherwise, re-running the install.sh command its fix names is
+   yours, once, even when the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays mine: if
+   the same [FAIL] line comes back after it, show it to me, log it and go to step 3's report. If your tool cannot wait
+   that long in the foreground, run it in the background and read its output until the NEXT: line appears; that is
+   expected, not a deviation. When it ends, whether or not it exited non-zero, unless its NEXT: line says the config
+   does not load, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox: it is the
+   folder named inbox beside the docs repo, one of the kind = "inbox" sources in ~/agent-context/sources.toml; any
+   other kind = "inbox" source there is a folder I added myself, not my inbox. I drop files there by hand: Outlook
+   mail dragged out as .eml, a meeting transcript as .docx or .vtt. Only .eml, .pdf and Office files such as .docx
+   carry a sensitivity label, so .eml and .docx are better than .vtt or pasted text. Files stay in the inbox: never
+   empty it by hand, because removing a file turns its page into a deletion notice and queues a purge. If it exits
+   non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the configuration error or a status
+   error with no [FAIL] line are mine to fix), log it as a step 2 error, show me those lines and go to step 3's
+   report; do not run the re-run it names. Otherwise, if it exits non-zero, do what NEXT: says only if it is an
+   install.sh or agentsync command or a click for me (but after "no folder is synced yet", do as step 1's last
+   sentences say, not its add-source); otherwise log it and go to step 3's report. A failed run whose NEXT: you follow
+   this way is not logged (the report names it once a later run ends 0).
 3. Sync loop and report. Run `~/.local/bin/agentsync sync` and do what its NEXT: line says (it comes before any
    WAITING ON YOU: and note: lines): another command, such as `~/.local/bin/agentsync curate`, or pages or
    questions to write, usually followed by `~/.local/bin/agentsync sync` again. `~/.local/bin/agentsync status`
@@ -577,9 +582,12 @@ the name in fix-request.md.
    line the same command printed; and ~/agent-context/bring-back.md, the one file I review and copy back (the
    redacted report, then your fix request and the patches of any work step 1 kept; a patch an earlier report
    carried is not repeated, only listed there, by its hash when it can be read); if the report's run printed that
-   bring-back.md could not be written, say so, do not name ~/agent-context/bring-back.md, and name the files the
-   NEXT: line says to copy back instead; if no report ran this session, or you are waiting for my folder answer, say
-   "none" for that file instead, and do not point me to an older bring-back.md.
+   bring-back.md could not be written, say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT:
+   line says to copy back instead; if the report's NEXT: line says bring-back.md does not hold a kept patch, name
+   ~/agent-context/bring-back.md and then tell me, in that line's words, which file in
+   ~/agent-context/setup/local-work to make readable and that I should run the report again before I copy the file
+   back; do not change that file or run the report again yourself; if no report ran this session, or you are waiting
+   for my folder answer, say "none" for that file instead, and do not point me to an older bring-back.md.
 ```
 
 <details>

@@ -16885,6 +16885,8 @@ unanchored `'url\..*insteadof'` also printed `url.<base>.pushinsteadof`, which n
 (measured: `git remote get-url origin` resolved to the insteadOf host, only `--push` to the pushInsteadOf one); git
 lower-cases the key name, so the anchored query keeps every insteadOf, whatever its case. Test:
 `tests/test_deploy_pack.py` (`test_readme_step1_is_one_command`).
+Amended 2026-10-19, §16.130 U32: since v26 the quote names four ways, this checkout's own remote first, and
+"Once git can reach GitHub, or the remote this checkout uses, from a terminal"; still no parenthesis.
 
 **One `## Not used` line after a stop before step 2** (H26). Before step 2 no part of agentsync has run, so the
 line per part was twelve copies of one reason. Step 3 adds, after "saying why", "(if setup stopped before step 2,
@@ -22036,6 +22038,7 @@ logs xcode-select's error. Not the finder's "the report replaces host names", wh
 (a host only in a 403 or TLS error is not replaced). Test: `test_readme_step1_is_one_command`.
 Amended 2026-10-18, §16.123 T88: both readers now replace a git remote's host as well, so a 403 or TLS error on a
 hand-set origin is replaced too.
+Amended 2026-10-19, §16.130 U97: since v26 the prompt's parenthesis names a git remote's host too.
 
 **A failed step 2 run whose NEXT the agent follows is not logged** (S18). Step 2's middle branch (do what a non-zero
 run's NEXT: says when it is an install.sh or agentsync command or a click) said nothing on logging, against the
@@ -22689,6 +22692,8 @@ the re-run is the agent's and the [convert] edit the person's. "Once" is the tim
 "if this line comes back: show the person this line") and lane E's: a line that comes back after a reinstall is a
 whole file a reinstall does not change. Test:
 `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`FAIL_IS_MINE`).
+Amended 2026-10-19, §16.130 U2, U16: since v26 the sentence reads "whose fix starts with an edit to sources.toml",
+names a docs-repo remote to remove or allow, and keeps the bundled pandoc's [convert] edit the person's (lane E).
 
 **Step 1 gives a folder unticked in its app the sync fix** (T72; amends §16.112 Q15). For a synced folder gone while
 its app is signed in, doctor's fix (§16.119 S4) and the wait (§16.119 S3) name "not synced on this Mac" and "sync
@@ -23257,6 +23262,43 @@ check. v26's step 1 tells the person (below). Tests: `test_list_folders_says_ste
 `test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_checkouts` (and an older build without
 `load_policy`: "(none is needed)"), `test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing`
 (a manifest that is no database now names the state file).
+
+**Setup prompt v26** (U29, U32, U97 and U12's prompt half; lane E's and U2's words). U12, U29, U32 and U97 need prompt
+text, so the prompt is **setup prompt v26**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v26` and
+`setup-prompt-compat 26`, the issue form's placeholder, setup-feedback.md's version lists and the block's digest move
+together, and a saved v25 copy is stopped at step 1 like every older copy. v26 moves no step, so it has no
+`PROMPT_LAYOUTS` entry. None adds an agentsync command, an installer flag, a config key or a friction kind. Lanes that
+sent words: lane E (its §16.132 U13, U47, U79, U80: a fix's first words decide whose it is; step 2's two clauses
+below); lane RB sent none (its U36, U60, U89 move both reports to v25's hash words, which stay). Lane B's U17 and lane
+RA's U1 needed none.
+- Step 1 (U12): after the mirrored-folder sentence, before the two exceptions, so both lists' tails reach it: "If it
+  says step 2 stops at its config step on something, tell me what it names and that fixing it is mine, and still go
+  on to step 2." Step 2 then stops at its config step with config_failed's person's NEXT.
+- Step 1's other-git-failure quote (U32; amends §16.72 H21). With origin pointed at a company mirror the error names
+  the mirror's host, and none of the three causes the quote listed applied; "Once git can reach GitHub" was no fix,
+  since the pull never contacts GitHub. Four ways now, the first `this checkout's own remote, which `git -C
+  ~/src/agent-context-sync remote get-url origin` prints and which this setup expects to be
+  https://github.com/renchris/agent-context-sync.git`; `Once git can reach GitHub, or the remote this checkout uses,
+  from a terminal`; the report sentence adds `its install source line says `origin: other` when the checkout's remote
+  is not GitHub`; `(those four commands are mine ...)`. Still sentences with no parenthesis (H21), and the expected
+  URL is said, never a command that changes a mirror the company may require (U32's verifier).
+- The log rule's parenthesis (U97; amends §16.118 S6): `the report replaces the host of a proxy, of a URL rewrite, of
+  a git remote and of a "Could not resolve" or "Failed to connect to" message`, true since §16.123 T88. U97's hash
+  half was already in v25.
+- Step 2's person's fixes (U2's kind and lane E's words; amends §16.124 T70): `A [FAIL] line whose fix starts with an
+  edit to sources.toml (...)`, the `says it is mine` list adds `a docs-repo remote to remove or allow`, and `Otherwise,
+  re-running the install.sh command its fix names is yours, once, even when the fix goes on to name a [convert] edit
+  for me (the bundled pandoc's), which stays mine`.
+- The finish (U29): after the could-not-be-written clause, `if the report's NEXT: line says bring-back.md does not
+  hold a kept patch, name ~/agent-context/bring-back.md and then tell me, in that line's words, which file in
+  ~/agent-context/setup/local-work to make readable and that I should run the report again before I copy the file
+  back; do not change that file or run the report again yourself`. The report stays the last command, and the agent
+  changes no permission in a folder the person owns (U29's verifier). No command in a code span: the NEXT names the
+  re-run itself.
+Tests: `test_the_prompt_text_changes_only_with_its_version` (`PROMPT` 26), `test_readme_step1_is_one_command`
+(`GIT_REMOTE_QUERY`, `PERSONS_COMMANDS`, the log rule's parenthesis), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`
+(`CONFIG_STOP_TOLD`, `FAIL_IS_MINE`), the finish's pin with `UNREAD_PATCH_TOLD`, and the version lists in
+`test_setup_report.py` and `test_install_oneshot.py`; register `docs/deploy/setup-feedback.md` K50.
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 

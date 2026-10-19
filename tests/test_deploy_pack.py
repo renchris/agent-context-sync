@@ -557,7 +557,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (25, "4085b979065cb668788aa025ad0ee3530f458b43beed5543887b95ae3b87e107")
+PROMPT = (26, "bf0cb172efac8f494e49a68971224dc26cb9178f5c7e27d57f9982752475960d")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -707,8 +707,13 @@ worktree leaves the other checkout an entry git marks prunable, and that checkou
 local-work branch the person was told keeps the work ("already used by worktree", measured); ``worktree
 move`` moves it cleanly, ``worktree repair`` fixes a folder already moved."""
 
-PERSONS_COMMANDS = "(those three commands are mine to run in my own terminal: do not run them yourself)"
-"""What follows the git stop's quote since v18: its three commands are the person's (B13 round 9 K31)."""
+PERSONS_COMMANDS = "(those four commands are mine to run in my own terminal: do not run them yourself)"
+"""What follows the git stop's quote since v18: its commands are the person's (B13 round 9 K31); four since
+v26, the checkout's own remote first (B13 round 17 U32)."""
+
+GIT_REMOTE_QUERY = "git -C ~/src/agent-context-sync remote get-url origin"
+"""What the git stop's quote names first since v26: this checkout's own remote, which step 1's pull reads and
+which a company mirror changes (B13 round 17 U32; the report's install source line says `origin: other`)."""
 
 GIT_REWRITE_QUERY = "git config --get-regexp '^url\\..*\\.insteadof$'"
 GIT_PROXY_QUERY = "git config --get-urlmatch http.proxy https://github.com"
@@ -947,6 +952,7 @@ def test_readme_step1_is_one_command() -> None:
         WORKTREE_REPAIR,
         WORKTREE_DETACH,
         WORKTREE_BACK,
+        GIT_REMOTE_QUERY,
         GIT_REWRITE_QUERY,
         GIT_PROXY_QUERY,
         VERSION_CHECK,
@@ -983,13 +989,17 @@ def test_readme_step1_is_one_command() -> None:
     assert (
         'If git failed any other way, show me its error and tell me: "A corporate proxy may need HTTPS_PROXY '
         "set in your terminal. If git's error names a host other than github.com, git was told to use that "
-        "host in one of three ways, and any of them may point at a network this Mac is not on: a URL "
+        "host in one of four ways, and any of them may point at a network this Mac is not on: this "
+        f"checkout's own remote, which `{GIT_REMOTE_QUERY}` prints and which this setup expects to be "
+        "https://github.com/renchris/agent-context-sync.git; a URL "
         f"rewrite, which `{GIT_REWRITE_QUERY}` prints; git's own proxy setting, which `{GIT_PROXY_QUERY}` "
         "prints and which wins over the terminal's; or the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or "
-        "all_proxy, which `env | grep -i proxy` shows. Once git can reach GitHub from a terminal, start a "
+        "all_proxy, which `env | grep -i proxy` shows. Once git can reach GitHub, or the remote this "
+        "checkout uses, from a terminal, start a "
         "new session from that terminal and paste this prompt again. If the setup report gets written, its "
         "`proxy in git's config` and `URL rewrite in git's config` entries say whether each is set, never "
-        "which host, and what it says about proxy variables comes from the shell the report ran in, which "
+        "which host, its install source line says `origin: other` when the checkout's remote is not GitHub, "
+        "and what it says about proxy variables comes from the shell the report ran in, which "
         "may not be "
         f"your terminal\" {PERSONS_COMMANDS}, and go to step {report}'s report."
     ) in flat
@@ -1013,7 +1023,7 @@ def test_readme_step1_is_one_command() -> None:
     # without saying whose they are; run by the agent, their output puts proxy hosts, company paths and any
     # stored credential in the chat, where the report prints only yes or no
     assert flat.count(PERSONS_COMMANDS) == 1
-    quote = flat.split('tell me: "A corporate proxy', 1)[1].split('" (those three', 1)[0]
+    quote = flat.split('tell me: "A corporate proxy', 1)[1].split('" (those four', 1)[0]
     assert "(" not in quote, "H21: sentences, no parenthesis"
     assert "check that setting" not in flat
     assert "that host is a proxy git was told to use" not in flat
@@ -1048,7 +1058,7 @@ def test_readme_step1_is_one_command() -> None:
         "it may be older than this prompt. If it exists and its output "
         f'ends with "setup-prompt-compat {PROMPT[0]}", log the command that failed (git\'s pull or clone, or '
         "xcode-select -p; not step 1's whole command) and its error as the command printed it, host names "
-        "included (the report replaces the host of a proxy, of a URL rewrite and of a "
+        "included (the report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "
         '"Could not resolve" or "Failed to connect to" message; the role rule is for your own words), as a '
         "step 1 error, starting its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
@@ -1177,10 +1187,18 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "step 1 kept; a patch an earlier report carried is not repeated, only listed there, by its hash when "
         "it can be read); if the "
         "report's run printed that bring-back.md could not be written, say so, do not name "
-        "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; if no "
+        "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; "
+        f"{UNREAD_PATCH_TOLD} if no "
         'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
         "and do not point me to an older bring-back.md."
     )
+    # B13 round 17 U29: the report's NEXT for a kept patch it could not read asks for a chmod and the report
+    # again, but the report is the last command and the finish relayed only the NEXT before it; the person is
+    # told in that line's words, and the agent changes nothing and runs no report again. The words the finish
+    # keys on are install.sh's own.
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'NEXT_MSG="$back does not hold $up this account cannot read' in script
+    assert "kept patch file" in script.split('NEXT_MSG="$back does not hold $up', 1)[0].rsplit("up=", 1)[1]
     # B13 round 12 N71 (lane RB's words): when the report could not write bring-back.md, the finish still
     # named that file; it now names what the report's NEXT: line says to copy back instead. B13 round 13
     # O15: v21's "the files the NEXT: line names" took in bring-back.md itself, which that NEXT names as the
@@ -2904,6 +2922,16 @@ name" is wrong for a library that was never synced (B13 round 14 Q15, Q73: one d
 branch also syncs the folder to this Mac in its app: a folder unticked in a signed-in app's folder choice is
 gone from disk too, and doctor's fix and the wait name that (B13 round 16 T72)."""
 
+UNREAD_PATCH_TOLD = (
+    "if the report's NEXT: line says bring-back.md does not hold a kept patch, name"
+    " ~/agent-context/bring-back.md and then tell me, in that line's words, which file in"
+    " ~/agent-context/setup/local-work to make readable and that I should run the report again before I"
+    " copy the file back; do not change that file or run the report again yourself;"
+)
+"""The finish's words, since v26, for a report whose bring-back.md lacks a kept patch it could not read (B13
+round 17 U29): the person makes it readable and runs the report; the agent neither, since the report is the
+last command it runs."""
+
 MIRRORED_NO_BLOCK = (
     "If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell"
     " me what it says (which folder, or how many sources) and the fix it names, and add that folder again"
@@ -2913,6 +2941,15 @@ MIRRORED_NO_BLOCK = (
 block is gone (B13 round 16 T6, T30): v24 had none, and the list said "(none is needed)" while step 2's
 status FAILed on it. Before the two exceptions, so both lists' tails reach it; the re-add stays the
 person's to choose, since deleting a block may have been a deliberate stop."""
+
+CONFIG_STOP_TOLD = (
+    "If it says step 2 stops at its config step on something, tell me what it names and that fixing it is"
+    " mine, and still go on to step 2."
+)
+"""Step 1's words, since v26, for the list's tail on a config step 2's config step will stop on: a policy.toml
+or [governance] value that does not load, or a state file that cannot be read (B13 round 17 U12). v25 had
+none, and the list said "(none is needed)" over it. Step 2 still runs: it stops at its config step with a
+NEXT that names the stop as the person's."""
 
 PERSONS_NEXT = (
     "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the"
@@ -2929,11 +2966,14 @@ exit 2 are no errors. Since v24 the bracket also names a status that exits non-z
 round 15 lane RB's words for its S33, S58, S62), whose NEXT says the same "not a step for the agent"."""
 
 FAIL_IS_MINE = (
-    "A [FAIL] line whose fix edits sources.toml (a [[source]] block or path, a [convert] line or a"
+    "A [FAIL] line whose fix starts with an edit to sources.toml (a [[source]] block or path, a [convert]"
+    " line or a"
     " [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, rename or"
     " sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to replace or"
-    " remove, a state file that cannot be read) is mine too: show it to me and do not make that edit or"
-    " run its command. Otherwise, re-running the install.sh command its fix names is yours, once: if the"
+    " remove, a docs-repo remote to remove or allow, a state file that cannot be read) is mine too: show it"
+    " to me and do not make that edit or"
+    " run its command. Otherwise, re-running the install.sh command its fix names is yours, once, even when"
+    " the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays mine: if the"
     " same [FAIL] line comes back after it, show it to me, log it and go to step 3's report."
 )
 """Step 2's words, since v22, on whose a [FAIL] line's fix is (B13 round 13 O11, O30): v21 named only [warn]
@@ -2960,7 +3000,11 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     says so."""
     step1, step2 = _prompt_steps()[1], _prompt_steps()[2]
     stop = "do not choose folders for me: log a deviation, stop and wait for my answer."
-    assert f"{stop} {MIRRORED_NO_BLOCK} Two exceptions." in step1, "for both lists, before the exceptions"
+    assert f"{stop} {MIRRORED_NO_BLOCK} {CONFIG_STOP_TOLD} Two exceptions." in step1, (
+        "for both lists, before the exceptions"
+    )
+    # the words it reads are the list's own (B13 round 17 U12)
+    assert "; step 2 stops at its config step on " in SCRIPTS[0].read_text(encoding="utf-8")
     kept = (
         "Two exceptions. First, if --list-folders printed a line that starts "
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
@@ -3556,7 +3600,8 @@ def _copilot_rule_matches(rule: str, command: str) -> bool:
 
 def _agent_commands() -> list[str]:
     """Every command the block has the agent run on its normal path (``xcode-select --install``, the git
-    stop's two queries and the worktree stop's two commands are the person's to run; :data:`KEEP_LOCAL_WORK`,
+    stop's three queries and the worktree stop's two commands are the person's to run;
+    :data:`KEEP_LOCAL_WORK`,
     :data:`KEEP_RETRY` and :data:`KEEP_BRANCH_WORK` run only after a failed pull or keep, and ask first)."""
     persons = (
         "xcode-select --install",
@@ -3567,6 +3612,7 @@ def _agent_commands() -> list[str]:
         WORKTREE_REPAIR,
         WORKTREE_DETACH,
         WORKTREE_BACK,
+        GIT_REMOTE_QUERY,
         GIT_REWRITE_QUERY,
         GIT_PROXY_QUERY,
     )
