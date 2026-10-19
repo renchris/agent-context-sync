@@ -191,6 +191,20 @@ def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> Non
     assert "`.github/workflows/download-hosts.yml` is not in this list" in guide
 
 
+def test_claude_md_gives_cis_time_and_its_limit() -> None:
+    """B13 round 17 U112: CLAUDE.md said `ci` takes about 6 minutes, the October 6 figure; its test job took
+    15 to 20 minutes in round 16's runs, so a reader timing the read-back loop by it would think CI stuck. It
+    gives the measured range and the job's limit, the `timeout-minutes` of ci.yml's one job, read here."""
+    guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
+    assert "about 6 minutes" not in guide
+    assert (
+        "`ci` takes about 15 to 20 minutes once its job starts (measured October 2026), plus any wait for a "
+        f"macOS runner; the job's limit is {limit} minutes (`timeout-minutes` in ci.yml)."
+    ) in guide
+
+
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:
     profile = plistlib.loads(PPPC.read_bytes())
     tcc, managed = profile["PayloadContent"]
@@ -5996,7 +6010,11 @@ def test_contracts_quote_the_counted_unread_patch_lines() -> None:
             "**A known count takes its noun from the count, everywhere in the report**", "\n\n"
         ).split()
     )
-    [t76] = re.findall(r"Amended 2026-10-18, §16\.127 T76: .*", s26)
+    # B13 round 17 U109: the line ends at the next dated line, so a later one in this paragraph is not T76's
+    t76_line = r"Amended 2026-10-18, §16\.127 T76: (.*?)(?= Amended \d{4}-\d\d-\d\d, |$)"
+    [t76] = re.findall(t76_line, s26)
+    later = " Amended 2026-10-25, §16.999 X1: the `Contoso widget` line."
+    assert re.findall(t76_line, s26 + later) == [t76]
     named = re.findall(r"`([^`]+)`", t76)
     assert len(named) == 9, named
     for words in named[:-2]:

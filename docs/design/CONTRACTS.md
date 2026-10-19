@@ -23520,3 +23520,20 @@ the field, and the install.log row, which names only the `synced=` fields, point
 others (`gone=`, `missing=`, `apps=`, `vanished=`) rather than growing a partial list. Test:
 `test_the_guide_gives_the_list_tail_for_a_mirrored_folder_whose_block_is_gone`, which reads the words from
 install.sh.
+
+**T76's test reads its dated line up to the next one** (U109). `test_contracts_quote_the_counted_unread_patch_lines`
+read §16.127 T76's line in §16.116 S26's paragraph with a greedy `.*`, so it ran to the paragraph's end and passed
+only because T76's line is the last; a later dated line in that paragraph would add its code spans to the nine the
+test counts and turn it red. The match stops at the next `Amended <date>, ` (a dated line's shape, not any later
+"Amended " in prose) or the paragraph's end, and the test holds that a made-up later line leaves the match as it was.
+Test: `test_contracts_quote_the_counted_unread_patch_lines`.
+
+**CLAUDE.md gives `ci`'s measured time and its limit** (U112). CLAUDE.md said `ci` takes about 6 minutes, the
+figure of 2026-10-06; round 16's main runs took 15 to 21 minutes once the job started (the pytest summary of
+39231001978: 864.52 s) and up to 43 minutes end to end with the wait for a macOS runner. It gives the measured range,
+the wait, and the job's 30-minute `timeout-minutes`, which tells a reader when a run is stuck.
+`docs/plans/test-suite-performance.md` keeps the 2026-10-06 measurement as history. Test:
+`test_claude_md_gives_cis_time_and_its_limit`, which reads the limit from ci.yml.
+
+All nine are built; none was recorded as making things worse. U83's verifier measured that its finder's fix (two
+unheld dated lines) turns the dated-line test red, so each line here has a claim or a pin.
