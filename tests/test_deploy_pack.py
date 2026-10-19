@@ -5564,10 +5564,14 @@ _ROUND_17_PARAGRAPH_AMENDS = (
     ("16.54", "**A template with no slides says what its layouts and master hold", "§16.132 U77"),
     ("16.111", "**A known count takes its noun from the count** (Q39, Q44", "§16.132 U77"),
     ("16.120", "**No converter count keeps `(s)` (S52;", "§16.132 U77"),
+    ("16.28", "- A failed conversion is not retried.", "§16.132 U3"),
+    ("16.106", "**A [FAIL] whose fix is the person's sends the agent to the report**", "§16.132 U80"),
+    ("16.126", "**Doctor's pandoc time-out gives the installer's reason (T17, T77;", "§16.132 U104"),
+    ("16.126", "- Doctor's bundled fix is `run scripts/install.sh again", "§16.132 U13, U30, U47, U78"),
 )
 """Round 17's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`:
-lane D's two (U83, U84) and U77's beside each
-of T62's eight."""
+lane D's two (U83, U84), U77's beside each of T62's eight, U3's at §16.28's not-retried bullet, U80's at
+§16.106 O11, and U104's and the bundled fix's in §16.126."""
 
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
@@ -5598,15 +5602,15 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     two in §15's `convert.pandoc` section, S29's and S53's in §16.32, and S52's at §16.26 and §16.42. Round
     16's §16.127 (lane D) one: T51 and T69's at §16.14's amended re-read clause, and §16.126 (lane E) seven:
     T17's and T54's in §16.32's out-of-time paragraph, and T62's at §16.24 and at four §16.26 blocks. Round
-    17's §16.133 (lane D) two, U83's and U84's, and §16.132 (lane E) eight: U77's beside each of T62's
-    lines."""
+    17's §16.133 (lane D) two, U83's and U84's, and §16.132 (lane E) twelve: U77's beside each of T62's lines,
+    U3's at §16.28, U80's at §16.106 and two in §16.126."""
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
-    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 10
+    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 14
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:

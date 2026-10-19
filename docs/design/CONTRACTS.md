@@ -8092,6 +8092,13 @@ other key that would be 0 is left out. No reader depended on the old content.
   and setup-report's first-sync clause carries the same breakdown from install.out's line of that sync
   (install.log's `converted-N-deferred-M` note, written by install.sh, has none).
   **Amended 2026-10-12, §16.58 F8:** setup-report reads the breakdown wherever it stands after the counts.
+  Amended 2026-10-19, §16.132 U3: a failed conversion is now tried again. Its row stayed ERROR, but the early
+  cutoff settled the same bytes behind an intact stub, so "retried next cycle" never happened, a pandoc that
+  timed out under load included. The same bytes are converted again in up to `_CONVERT_RETRIES` (2) later runs,
+  counted per file and bytes in the source's `convert-retry:` meta; one whose converter could not start
+  (`conversion failed: converter unavailable`) is not counted, is not read while it still cannot start, and is
+  converted in the first run in which it starts. `converted_failed` still counts a conversion in each run it
+  failed in, so a later run with none converted the file or gave it up.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `reread_for` lets the report tell a current re-read record from a stale one. A record in manifest meta
   `reread:<source id>` says what it was written `for` (§16.27: the build, the suffixes with a converter, the
@@ -20782,6 +20789,11 @@ Amended 2026-10-18, §16.124 T70: since v25 step 2's sentence names every kind o
 person's (a [[source]] block or path, a [convert] line, a [governance] value, policy.toml's [policy] value, a folder
 or file to put back, Rosetta, a native pandoc copy, a state file that cannot be read), and only otherwise is
 re-running the install.sh command its fix names the agent's, once.
+Amended 2026-10-19, §16.132 U80: CORRECTED: `persons_fails` read no [convert] line as the person's when the line
+above was written. Since round 17 it and `doctor.PERSONS_FIX_RE` read a fix that starts with a [convert]
+pandoc_path edit (the configured or not-absolute pandoc's) as the person's, and v26's step 2 says a fix's first
+words decide: the bundled pandoc's install.sh re-run stays the agent's, once, and the [convert] edit it names
+after it stays the person's.
 
 **The finish names the files the NEXT: line says to copy back** (O15; amends §16.100 N71). v21's "name the files the
 NEXT: line names instead" took in bring-back.md, which that NEXT (`--report-only` after `write_bring_back` failed
@@ -22892,6 +22904,9 @@ on a busy Mac; S17 changed only install.sh's ticker. `_PANDOC_SLOW_START` is now
 first start can take a minute, and any start can on a busy Mac`, still for the bundled pandoc only. Tests:
 `test_ops_doctor.py::test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash`,
 `test_ops_doctor.py::test_the_pandoc_slow_start_reason_is_the_installers_wait_line` (reads install.sh's line).
+Amended 2026-10-19, §16.132 U104: not for the bundled pandoc only any more: a native or configured pandoc that
+does not answer gives `(any start can take a minute on a busy Mac)`, the busy-Mac half; the first-start half is
+Rosetta's and stays the bundled one's.
 
 **The bundled pandoc's fix is install.sh's reinstall (T54, T59, T60, T65; `agentsync.ops.doctor`,
 `scripts/install.sh`; dated lines at §16.32 and §16.120 S29).** The fix was `<uv> tool upgrade --reinstall-package
@@ -22916,6 +22931,10 @@ did not help, because step 2 skipped whenever the stamp named this commit. Now:
 - Doctor's bundled fix is `run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or
   not the file pypandoc_binary installed), or set [convert] pandoc_path to an absolute pandoc`, the agent's step, as
   `_PYTHON_FIX` is; `_uv_word` has no caller left and is gone.
+  Amended 2026-10-19, §16.132 U13, U30, U47, U78: the fix names the installer by its checkout path and ends `; if
+  this line comes back after that, show the person this line: setting [convert] pandoc_path to an absolute pandoc
+  is theirs`, so the re-run is the agent's and the edit the person's by the fix's own first words; under
+  install.sh, a time-out that comes back names that person's line, not the same re-run again.
 Not built: T65's `uv pip install --python <tool python> --reinstall --no-deps pypandoc_binary==<version>`, which
 holds no sync lock (T54's verifier: the person's at best), and T60's `AGENTSYNC_FORCE_REINSTALL=1`, a new setting
 the RECORD test makes unneeded. Tests: `test_install_oneshot.py::test_a_rerun_reinstalls_a_bundled_pandoc_that_is_not_the_one_pip_installed`
@@ -23476,7 +23495,110 @@ word, which the residue check would not flag) and `test_setup_report.py::test_th
 
 ### 16.132 Round 17: the pandoc fix's owner, converter counts and the gate (2026-10-19, wave B13 round 17 lane E)
 
-Reserved for round 17 lane E of B13.
+Round 17's lane E items: whose step the bundled pandoc's [FAIL] is (U13, U47, U79, U80), the installer's path in
+doctor's fixes (U30), a pandoc time-out's fallback (U78) and reason (U104), a converter missing at sync time (U3),
+the converters' counts (U74, U75, U76), T62's cache caveat (U77) and the CI flakes (U101, not built).
+
+**A pandoc fix's first words say whose it is (U13, U47, U79, U80; `agentsync.ops.doctor`, `agentsync.cli`,
+`scripts/install.sh`; dated lines at §16.106 O11 and §16.126 T54).** v25's step 2 made a [FAIL] whose fix "edits
+sources.toml (... a [convert] line ...)" the person's, and the bundled pandoc's fix ended `, or set [convert]
+pandoc_path to an absolute pandoc`, while status and install.sh handed the line to the agent (`PERSONS_FIX_RE` reads
+the start of a fix). Its fix now reads `run ~/src/agent-context-sync/scripts/install.sh again (it reinstalls
+agentsync when the bundled pandoc is missing or not the file pypandoc_binary installed); if this line comes back
+after that, show the person this line: setting [convert] pandoc_path to an absolute pandoc is theirs`: the re-run
+first, the agent's, then the edit, the person's, kept as their one lead when a re-run cannot restore the bundled
+copy (U13's verifier). U47's fix with no [convert] text at all is not built: a missing file has no time-out
+fallback to carry the edit, so the person would lose it. A configured pandoc_path's fix (`check or replace the
+pandoc at [convert] pandoc_path ...`) and a not-absolute one's (`set [convert] pandoc_path to an absolute pandoc`)
+are a [convert] edit only, which a re-run does not touch, so `PERSONS_FIX_RE` and install.sh's `persons_fails` read
+both as the person's (alternatives `set \[convert\] pandoc_path ` and `check or replace the pandoc at \[convert\]
+pandoc_path `), and `PERSONS_FAILS` and `PERSONS_KINDS` name `a [convert] pandoc_path`. A configured pandoc that
+times out keeps the agent's re-run first. Lane P's v26 (§16.130) words step 2 to match: "A [FAIL] line whose fix
+starts with an edit to sources.toml ... Otherwise, re-running the install.sh command its fix names is yours, once,
+even when the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays mine". Tests:
+`test_install_oneshot.py::test_doctors_persons_fix_words_are_install_shs` (every pandoc line's owner, through
+`_pandoc_fail_lines`), `test_cli.py::test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs` (configured,
+not absolute, bundled), `test_ops_doctor.py::test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv`.
+
+**Doctor's fixes name the installer by its path (U30, U47; `agentsync.ops.doctor`, `agentsync.cycle`,
+`agentsync.ops.launchd`).** `scripts/install.sh` in a fix is a path inside a checkout the prompt never runs from: it
+runs `~/src/agent-context-sync/scripts/install.sh` under `GIT_CEILING_DIRECTORIES`, and its allow rule names that
+path. Doctor's python, bundled pandoc, OCR, media, speech, launcher and Developer ID texts, the time-out's install.sh
+re-run, the cycle's OCR and media alarms and launchd's launcher error now build it from `skill.INSTALL_SH`, and the
+launcher's build script as `~/src/agent-context-sync/launcher/build.sh`. Tests: the pinned strings in
+`test_ops_doctor.py`.
+
+**A time-out under install.sh does not name the same re-run twice (U78; `agentsync.ops.doctor`).** `_again_fix`
+gives `run the same <installer> command again ...; if this line comes back: <fallback>`, and the bundled pandoc's
+fallback was its re-run: install.sh's step 2 has already found the bundled file whole (`install_is_current`) or
+reinstalled it, so a second re-run repeated the first. Under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the fallback is
+`show the person this line: setting [convert] pandoc_path to an absolute pandoc is theirs (the bundled pandoc does
+not answer on this Mac, and install.sh found its file whole)`; by hand it stays the re-run, which checks and repairs
+the file. Not `_STILL_NO_ANSWER`, whose "no setup step clears that" setting pandoc_path contradicts. Tests:
+`test_ops_doctor.py::test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash`,
+`test_ops_doctor.py::test_a_program_that_never_answers_is_told_what_to_do_when_the_line_comes_back`.
+
+**A native or configured pandoc's time-out gives the busy Mac's reason (U104; `agentsync.ops.doctor`; dated line
+at §16.126 T17, T77).** It gave none, and round 16 left T77's optional part unrecorded. `_PANDOC_BUSY_START` is `any
+start can take a minute on a busy Mac`; `_PANDOC_SLOW_START`, with Rosetta's first start, stays the bundled
+pandoc's, so round 15 S29's guard (no "first start" on a configured line) holds. Tests:
+`test_ops_doctor.py::test_a_native_pandoc_that_fails_names_that_copy_and_not_rosetta`,
+`test_ops_doctor.py::test_a_configured_pandoc_that_fails_names_that_pandoc_and_not_the_bundled_one`.
+
+**A failed conversion is tried again (U3; `agentsync.cycle`, `agentsync.manifest`, `agentsync.convert`,
+`agentsync.cli`, `agentsync.setup_report`; dated line at §16.28).** Probe PD: a .docx added while pandoc could not
+start got a `conversion failed: converter unavailable` stub and QUARANTINE row; once install.sh had restored pandoc
+every sync settled it as unchanged, since the early cutoff of `_after_fetch` finds the same canonical hash behind
+an intact stub, whatever "retried next cycle" said. Now:
+- The cutoff converts a failed conversion's stub again (`_retries`) in up to `_CONVERT_RETRIES` = 2 later cycles
+  per file and bytes (the source's `convert-retry:` meta), so a pandoc that timed out under load converts it and a
+  converter that always fails on a file stops being run on it; new bytes count from zero, and a file that converts
+  leaves the record.
+- One whose converter could not start is not counted. While it still cannot (`_runs`), its row stays ERROR with its
+  stub, QUARANTINE row and error line, and it is not fetched (`_converter_waits`, before any download); the first
+  cycle in which the converter starts converts it.
+- A stub an older build settled is read again by the re-read pass once its converter starts: `produced_by` and the
+  re-read query include a `failed` stub of version `unavailable`, and `_reread_targets` and `_lacks` call it
+  outdated while `_runs`. While it cannot start, the source's re-read record stays open (`_reread_waits`), so a
+  later cycle with the same build and capabilities still looks.
+- A foreground sync whose cycle reported such an error, while the pandoc check fails, has rule 1's NEXT `the pandoc
+  check failed (a file's converter could not start in this sync, so it is not converted yet): run
+  ~/.local/bin/agentsync status, whose [FAIL] pandoc line names the fix` (`cli._unavailable_steps`). The convert
+  logger's `converter ... unavailable` WARNING and the cycle's `cannot run` one carry `ECHOED_WHEN = "error"`: a
+  foreground run holds them back while its error line says it, and a LaunchAgent's err.log keeps them.
+- The report's Repeat conversions note and setup-feedback.md say a failed conversion is tried again, in up to 2
+  later runs or once its converter starts.
+- `agentsync.convert` exports `CONVERSION_FAILED` and `CONVERTER_UNAVAILABLE`, how a failed conversion's reason
+  starts, which `agentsync.cycle` and `agentsync.cli` import; every other new name is private.
+§16.28's "Whether a failed conversion should be tried again is older behavior and a separate decision" is that
+decision. Tests: `test_cycle.py::test_a_conversion_that_failed_is_tried_again_a_bounded_number_of_times`,
+`test_cycle.py::test_a_file_whose_converter_could_not_start_is_converted_once_it_starts`,
+`test_cycle.py::test_a_stub_settled_before_the_retry_is_read_again_once_its_converter_starts`,
+`test_cycle.py::test_a_foreground_sync_whose_converter_could_not_start_names_the_pandoc_check`, and
+`test_setup_report.py`'s Repeat conversions note.
+
+**The converters' counts (U74, U75, U76; `agentsync.convert.xlsx`, `agentsync.convert.recording_page`).** xlsx's
+no-cached-values note said `those cells show` for one cell; it follows the uncached count now (`that cell shows`),
+full and streamed. The workbook index said `(1 rarer terms omitted)`; it is `plural(dropped, 'rarer term')`. No
+emitter version moves (Q39's rule, as T61). The recording's screen-limit NOTE keeps `N later changes` for the index
+digest, as the carry-over NOTE keeps `N on-screen lines`; the spec and the code comment name both now, and no
+wording moved, so neither the digest nor `_INDEX_REVISION` did. Tests:
+`test_convert_formats.py::test_xlsx_uncached_note_and_term_index_take_their_noun_from_the_count`,
+`test_convert_recording.py::test_every_note_that_keeps_a_fixed_plural_is_named_where_the_spec_says_why`.
+
+**A copy's old wording waits for its key to move (U77; dated lines at §16.24, §16.26 (four), §16.54, §16.111 and
+§16.120).** T62's lines said a cached summary lasts until its action key moves "or a reconcile's cache GC drops
+it". `ConverterCache.gc` keeps every key `live_action_keys()` names, so beside its live original, or in a second
+synced folder, a copy keeps the old wording until the key moves; only a restored file whose page was removed meets
+the GC, and a purge or a label escalation deletes the entry too. Not built: U77's optional clause in T61's §16.126
+paragraph, since that paragraph takes dated lines only and its pointer to Q39 already reaches T62's line there.
+Test: `test_deploy_pack.py::test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`
+(`_ROUND_17_PARAGRAPH_AMENDS`).
+
+**The CI flakes are not seen again (U101; not built).** Neither the Q40 pandoc line nor the `--list-folders` time-out
+has failed attempt 1 of a `ci` run on main since a49acdba: 39224535079 (a49acdba), 39231001978 (3274f9a2) and
+39290708602 (e5c5b0e2), each `4926 passed, 3 skipped` with neither test skip-gated. Three runs prove nothing fixed:
+keep reading attempt 1, and reopen against 29876f26 if either comes back.
 
 ### 16.133 Round 17: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 17 lane D)
 
