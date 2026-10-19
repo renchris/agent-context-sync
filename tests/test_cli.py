@@ -2642,8 +2642,8 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
     "path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or "
-    "allow, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a "
-    "step for the agent: show it to them"
+    "allow, a state file that cannot be read, a sign-in, a [convert] pandoc_path, Rosetta to install or a "
+    "native pandoc copy), not a step for the agent: show it to them"
 )
 
 
@@ -3123,7 +3123,9 @@ def test_status_puts_the_agents_own_fail_fix_before_a_persons(
     assert _status(cfg, capsys)[1][0] == f"NEXT: the source.x.listable check failed: {PERSONS_STEP}"
 
 
-@pytest.mark.parametrize("case", ["rosetta", "native", "native-bad-cpu", "native-timeout"])
+@pytest.mark.parametrize(
+    "case", ["rosetta", "native", "native-bad-cpu", "native-timeout", "configured", "not-absolute", "wheel"]
+)
 def test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs(
     case: str, initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -3132,14 +3134,17 @@ def test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs(
     yet status's NEXT said "do what the fix on its [FAIL] line below says": an install the setup prompt does
     not let the agent make, and a delete of a program the operator installed. Both are the person's now. A
     native copy that ran out of time keeps the agent's re-run first, and its line names the copy as theirs
-    only once the same line comes back."""
+    only once the same line comes back. B13 round 17 U79, U80: a configured or not-absolute pandoc_path's
+    fix is a [convert] edit only, the person's; the bundled pandoc's starts with the agent's install.sh
+    re-run and names the [convert] edit as the person's after it, so it stays the agent's step."""
     cfg = _synced(initialised)
     copy = Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc"
     copy.parent.mkdir(parents=True)
     copy.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
     copy.chmod(0o755)
-    kind = "wheel" if case == "rosetta" else "native"
-    monkeypatch.setattr(doctor, "_pandoc_route", lambda config: (copy, kind))
+    kind = {"rosetta": "wheel", "wheel": "wheel", "configured": "configured", "not-absolute": "configured"}
+    route = (Path("bin/pandoc") if case == "not-absolute" else copy, kind.get(case, "native"))
+    monkeypatch.setattr(doctor, "_pandoc_route", lambda config: route)
     real_run = doctor._run
 
     def run(argv: Sequence[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
@@ -3147,7 +3152,7 @@ def test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs(
             return real_run(argv, timeout)
         if case == "native-timeout":
             raise subprocess.TimeoutExpired(list(argv), timeout)
-        if case == "native":
+        if case in ("native", "configured", "wheel"):
             return subprocess.CompletedProcess(list(argv), 3, "", "broken")
         raise OSError(doctor._EBADARCH, "Bad CPU type in executable")
 
@@ -3160,6 +3165,10 @@ def test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs(
         assert out[0] == "NEXT: the pandoc check failed: do what the fix on its [FAIL] line below says", line
         assert "if this line comes back: show the person this line: the native pandoc copy at " in line
         assert "is theirs to replace or remove" in line
+    elif case == "wheel":
+        assert out[0] == "NEXT: the pandoc check failed: do what the fix on its [FAIL] line below says", line
+        assert f"(fix: run {doctor.INSTALL_SH} again (" in line
+        assert "; if this line comes back after that, show the person this line: setting [convert] " in line
     else:
         assert out[0] == f"NEXT: the pandoc check failed: {PERSONS_STEP}", (out[0], line)
         assert not any("do what the fix" in ln for ln in out)

@@ -38,6 +38,7 @@ from agentsync.config import Config
 from agentsync.errors import ConfigError
 from agentsync.model import CycleMode, SourceKind
 from agentsync.paths import cloud_relative, expand, is_cloud_path, is_under
+from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
 
@@ -394,11 +395,14 @@ def _spec(config: Config, suffix: str, mode: CycleMode, interval_s: int) -> Agen
     if launcher is None:
         if launcher_required(config):
             protected = ", ".join(str(p) for p in canary_paths(config))
+            # the installer and the launcher's build script by the checkout path (B13 round 17 U30, U47)
+            launcher_dir = f"{Path(INSTALL_SH).parents[1]}/launcher"
             raise ConfigError(
                 f"{label}: live sources under TCC-protected folders ({protected}) need the signed "
-                f"{LAUNCHER_EXECUTABLE}: run scripts/install.sh --confirm-install-agent (it builds the "
-                f"launcher and installs the LaunchAgents), or launcher/build.sh, copy "
-                f"build/{LAUNCHER_BUNDLE} to {default_launcher_app().parent}/ and run install-agent again"
+                f"{LAUNCHER_EXECUTABLE}: run {INSTALL_SH} --confirm-install-agent (it builds the "
+                f"launcher and installs the LaunchAgents), or {launcher_dir}/build.sh, copy "
+                f"{launcher_dir}/build/{LAUNCHER_BUNDLE} to {default_launcher_app().parent}/ and run "
+                "install-agent again"
             )
         log.warning(
             "launchd: %s not found; %s runs the interpreter directly (fine only while no source is under a "

@@ -1331,7 +1331,7 @@ class _Status:
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
     "[governance] value, a docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, "
-    "Rosetta to install or a native pandoc copy"
+    "a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
 )
 
 

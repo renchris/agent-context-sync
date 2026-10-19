@@ -38,7 +38,7 @@ from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_sour
 from agentsync.cycle import VANISHED_FIX, _holds_home, _sync_leaves, vanished_detail, vanished_sources
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError
 from agentsync.it_request import org_of
-from agentsync.loop import BIN, NO_NEXT_HINT_ENV, empty_cloud_folders_held
+from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
@@ -71,12 +71,15 @@ _XCODE_SELECT = "/usr/bin/xcode-select"
 _DEVTOOLS_TIMEOUT_S = 5.0
 # Only scripts/install.sh builds the OCR, media and speech helpers (convert/ocr.py, convert/media.py,
 # convert/speech.py), so the ocr, media and speech texts name it and no agentsync command.  Without developer
-# tools it builds nothing, so there the not-built line says what it waits for.
-_OCR_NOT_BUILT = "scripts/install.sh builds it"
+# tools it builds nothing, so there the not-built line says what it waits for.  Every text names the
+# installer by INSTALL_SH, the path the setup prompt clones it to: the prompt runs nothing from inside the
+# checkout, so a bare scripts/install.sh is not found from where the agent or the person runs it (B13 round 17
+# U30).
+_OCR_NOT_BUILT = f"{INSTALL_SH} builds it"
 _OCR_NOT_BUILT_NO_DEVTOOLS = (
-    "scripts/install.sh builds it once the Command Line Tools are installed (xcode-select --install)"
+    f"{INSTALL_SH} builds it once the Command Line Tools are installed (xcode-select --install)"
 )
-_OCR_DEVTOOLS_FIX = "xcode-select --install, then run scripts/install.sh again"
+_OCR_DEVTOOLS_FIX = f"xcode-select --install, then run {INSTALL_SH} again"
 
 # Also under NO_NEXT_HINT_ENV, when install.sh was not asked for the agent step: a launchd.* warn whose fix is
 # install-agent or a bootstrap (LaunchAgents left by an earlier install) is the person's to refresh, so it
@@ -130,22 +133,27 @@ LISTING_YOURS_REPORT_NOTE = (
 # that Mac; but a later start took 110 s at a load of about 600 (B13 round 15 S17), so a busy Mac slows any
 # start. scripts/install.sh therefore starts it once before it runs status (its "pandoc: ..." lines), outside
 # this limit; a status run by hand right after an update, or on a busy Mac, can still meet a slow one. The
-# reason is install.sh's ticker's, word for word (B13 round 16 T17, T77).
+# reason is install.sh's ticker's, word for word (B13 round 16 T17, T77). A native or configured copy needs
+# no Rosetta, so its first start is not slow; the busy Mac's half alone is its reason (B13 round 17 U104).
 _PANDOC_TIMEOUT_S = 60.0
 _PANDOC_SLOW_START = "a new copy's first start can take a minute, and any start can on a busy Mac"
+_PANDOC_BUSY_START = "any start can take a minute on a busy Mac"
 # The first words of the native copy's fix, which PERSONS_FIX_RE reads as the person's (B13 round 15 S47).
 _NATIVE_COPY_FIX = "the native pandoc copy at"
 # A Python older than 3.11 is a tool environment install.sh did not make (it asks uv for 3.11); its step 2
 # makes a new one (B13 round 15 S29: `uv sync` syncs only the folder it runs in).
-_PYTHON_FIX = "run scripts/install.sh again (it installs agentsync with uv's Python 3.11)"
+_PYTHON_FIX = f"run {INSTALL_SH} again (it installs agentsync with uv's Python 3.11)"
 # The bundled pandoc's: install.sh's step 2 reinstalls when that pandoc is not the file pypandoc_binary's
 # RECORD lists (its install_is_current), under the sync locks and the TLS setting, at uv.lock's versions; the
 # bare `uv tool upgrade` it replaces had none of those and moved every dependency (B13 round 16 T54, T59, T60,
-# T65).
+# T65). Its fix starts with that re-run, the agent's step, and names the [convert] edit, the person's, only as
+# what to show them once the re-run has not cleared the line: a fix's first words say whose it is, here, in
+# install.sh's persons_fails and in the setup prompt (B13 round 17 U13, U47, U79, U80).
 _BUNDLED_PANDOC_FIX = (
-    "run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the "
+    f"run {INSTALL_SH} again (it reinstalls agentsync when the bundled pandoc is missing or not the "
     "file pypandoc_binary installed)"
 )
+_PANDOC_PATH_THEIRS = "setting [convert] pandoc_path to an absolute pandoc is theirs"
 _EBADARCH = getattr(errno, "EBADARCH", 86)  # "Bad CPU type in executable": an Intel program and no Rosetta
 
 # A check that ran out of time has no answer: a slow program and one that never answers read the same from
@@ -535,7 +543,7 @@ def _again_fix(fallback: str | None = None) -> str:
     answers the next time.  One that never answers gives the same line at every run, so the fix does not
     end at "again": it names ``fallback`` (the check's own fix), else says to report the line."""
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
-        again = "run the same scripts/install.sh command again as it is (its NEXT line names it)"
+        again = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
     else:
         again = f"{BIN} status (run it again as it is)"
     return f"{again}; if this line comes back: {fallback or _STILL_NO_ANSWER}"
@@ -656,9 +664,16 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     when that pandoc is not the file pypandoc_binary installed, with its sync locks, TLS setting and uv.lock's
     versions (B13 round 16 T54, T59, T60, T65; `uv sync` syncs only the folder it runs in). The operator's
     native copy is the person's to replace or remove (they installed it), so status and
-    install.sh name it as theirs (``PERSONS_FIX_RE``); after a time-out the agent's re-run comes first."""
+    install.sh name it as theirs (``PERSONS_FIX_RE``); after a time-out the agent's re-run comes first.
+
+    The bundled one's fix is the agent's re-run first, then the [convert] edit as the person's, shown to them
+    if the line comes back (B13 round 17 U13, U47, U80). A configured path and a not-absolute one are a
+    [convert] edit only, so their fixes are the person's (``PERSONS_FIX_RE``). After a time-out under
+    install.sh, whose step 2 has already found the bundled file whole or reinstalled it, a second re-run
+    repeats the first, so the line that comes back names the person's edit (U78)."""
     own = "set [convert] pandoc_path to an absolute pandoc"
-    fix = f"{_BUNDLED_PANDOC_FIX}, or {own}"
+    comes_back = f"if this line comes back after that, show the person this line: {_PANDOC_PATH_THEIRS}"
+    fix = f"{_BUNDLED_PANDOC_FIX}; {comes_back}"
     try:
         pandoc, kind = _pandoc_route(config)
     except ImportError as exc:
@@ -667,6 +682,11 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     which = {"native": " (native arm64 copy)", "wheel": " (bundled with pypandoc_binary)"}.get(kind, "")
     failed = which if kind == "native" else ""
     again = fix  # what a time-out's fix names once the re-run gives the same line
+    if kind == "wheel" and os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        again = (
+            f"show the person this line: {_PANDOC_PATH_THEIRS} (the bundled pandoc does not answer on this "
+            "Mac, and install.sh found its file whole)"
+        )
     if kind == "configured":  # the operator's path: the wheel's reinstall does not touch it
         fix = again = (
             f"check or replace the pandoc at [convert] pandoc_path ({_shell_path(pandoc)}), or remove that "
@@ -687,8 +707,9 @@ def _check_pandoc(config: Config) -> list[CheckResult]:
     try:
         cp = _run([str(pandoc), "--version"], timeout=_PANDOC_TIMEOUT_S)
     except subprocess.TimeoutExpired as exc:
-        # the 10 to 67 s were Rosetta's translation of the bundled Intel binary, which no other pandoc has
-        why = _PANDOC_SLOW_START if kind == "wheel" else None
+        # A new copy's slow first start is Rosetta's translation of the bundled Intel binary, which no other
+        # pandoc has; a busy Mac slows any start, of any copy (B13 round 15 S17, round 17 U104)
+        why = _PANDOC_SLOW_START if kind == "wheel" else _PANDOC_BUSY_START
         return [_timed_out("pandoc", exc, what=f"{pandoc}{failed} --version", why=why, fallback=again)]
     except OSError as exc:
         detail = f"{pandoc}{failed} could not be started: {exc.strerror or exc}"
@@ -1019,14 +1040,17 @@ def manifest_damaged(db: Path, exc: sqlite3.DatabaseError) -> CheckResult:
 # a deleted [[source]] block to put back (the config.vanished_sources check, cycle.VANISHED_FIX; B13 round
 # 15 S7); a fix that starts "the person ": a [policy] or [governance] value (cli's POLICY_FIX and
 # GOVERNANCE_FIX; round 16 T2, T9) or a state file that cannot be read (MANIFEST_FIX; T12); Rosetta to
-# install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53).
+# install, or the native pandoc copy they installed (the pandoc check; B13 round 15 S47, S53); a fix that
+# starts with a [convert] pandoc_path edit, the configured or not-absolute pandoc's (round 17 U79, U80). The
+# bundled pandoc's starts with the agent's install.sh re-run and stays the agent's: its first words decide.
 # A re-run fails the same way and an edit would choose a folder for them. install.sh's persons_fails reads
 # the same words from the [FAIL] lines with its own copy, since the installer runs the older installed build;
 # a test pins the two equal (B13 round 14 Q1, Q9, Q33).
 PERSONS_FIX_RE = re.compile(
     r"(fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to "
     r"|/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back "
-    r"|the person |Rosetta is yours to install|the native pandoc copy at )"
+    r"|the person |Rosetta is yours to install|the native pandoc copy at |set \[convert\] pandoc_path "
+    r"|check or replace the pandoc at \[convert\] pandoc_path )"
 )
 
 
@@ -1440,13 +1464,14 @@ def _check_disk(config: Config) -> list[CheckResult]:
 
 # Plain install.sh builds no launcher (KISS K11b): only --confirm-install-agent does, and it installs the
 # LaunchAgents too.
+# Both name the installer, and the build script beside it, by the checkout path (B13 round 17 U30).
 _LAUNCHER_FIX = (
-    "scripts/install.sh --confirm-install-agent (builds, signs and installs "
+    f"{INSTALL_SH} --confirm-install-agent (builds, signs and installs "
     "~/Applications/AgentSyncLauncher.app, then the LaunchAgents)"
 )
 _DEVELOPER_ID_FIX = (
-    "SIGN_IDENTITY='Developer ID Application: <Org> (<TEAMID>)' launcher/build.sh, then "
-    "scripts/install.sh --confirm-install-agent --launcher <built .app>"
+    f"SIGN_IDENTITY='Developer ID Application: <Org> (<TEAMID>)' {Path(INSTALL_SH).parents[1]}/launcher/"
+    f"build.sh, then {INSTALL_SH} --confirm-install-agent --launcher <built .app>"
 )
 _FP_CANARY_TIMEOUT_S = 15.0
 

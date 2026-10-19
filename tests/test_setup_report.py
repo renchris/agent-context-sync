@@ -7344,10 +7344,10 @@ def test_ocr_not_built_is_an_info_line_and_an_ocr_warn_is_unexpected(fake_mac: d
     and (OCR being optional) with the same outcome."""
     v6_install_log(fake_mac)
     write_friction(fake_mac, V6_HAPPY)
-    info = "[info] ocr — the OCR helper is not built; scripts/install.sh builds it"
+    info = "[info] ocr — the OCR helper is not built; ~/src/agent-context-sync/scripts/install.sh builds it"
     warn = (
         "[warn] ocr — on-device OCR is not working: no Xcode or Command Line Tools (xcode-select -p names "
-        "no folder) (fix: xcode-select --install, then run scripts/install.sh again)"
+        "no folder) (fix: xcode-select --install, then run ~/src/agent-context-sync/scripts/install.sh again)"
     )
 
     def outcome(text: str) -> str:

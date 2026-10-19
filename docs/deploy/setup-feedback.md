@@ -707,24 +707,31 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   start followed by a status that waits was about 27 s with no line.
 - A check whose program does not answer in time says so:
   `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
-  wrong`. Under `install.sh` its fix starts `run the same scripts/install.sh command again as it is (its
-  NEXT line names it)`, a step the prompt lets the agent take. Run by hand, it starts `~/.local/bin/agentsync
+  wrong`. Under `install.sh` its fix starts `run the same ~/src/agent-context-sync/scripts/install.sh command
+  again as it is (its NEXT line names it)`, a step the prompt lets the agent take. Run by hand, it starts `~/.local/bin/agentsync
   status (run it again as it is)`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
   which is the fix of the pandoc the line names (CONTRACTS §16.120, S29; §16.126, T54): for the bundled one
-  `run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the file
-  pypandoc_binary installed), or set [convert] pandoc_path to an absolute pandoc`, and for a `[convert]
-  pandoc_path` `check or replace the pandoc at [convert] pandoc_path ('<path>'), or remove that line to use the
-  bundled pandoc or its native arm64 copy`. For any other check it says `report it (the program does not answer
-  on this Mac, and no setup step clears that)`.
+  `run ~/src/agent-context-sync/scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is
+  missing or not the file pypandoc_binary installed); if this line comes back after that, show the person this
+  line: setting [convert] pandoc_path to an absolute pandoc is theirs`, and for a `[convert] pandoc_path`
+  `check or replace the pandoc at [convert] pandoc_path ('<path>'), or remove that line to use the bundled
+  pandoc or its native arm64 copy`. Under `install.sh`, whose step 2 has already found the bundled pandoc's
+  file whole or reinstalled it, a second re-run would repeat the first, so the bundled one's names `show the
+  person this line: setting [convert] pandoc_path to an absolute pandoc is theirs (the bundled pandoc does not
+  answer on this Mac, and install.sh found its file whole)` (CONTRACTS §16.132, U78). For any other check it
+  says `report it (the program does not answer on this Mac, and no setup step clears that)`.
   The bundled pandoc's re-run is a step the prompt lets the agent take: install.sh's step 2 reinstalls when that
   pandoc is not the file pypandoc_binary's RECORD lists, under the background sync's lock, with
   `UV_SYSTEM_CERTS=1` and at uv.lock's versions. Before, the fix was a bare `uv tool upgrade --reinstall-package
   pypandoc_binary agentsync`, which had none of those and moved every dependency to its newest allowed version.
   A pandoc whose file is whole and still gives the line is not something a reinstall changes, so an agent that
-  meets the line again after that re-run, or meets the configured pandoc's or another check's line twice, logs
-  it and goes to the report. A `pandoc` line whose path is followed by `(native arm64 copy)` is the operator's own copy under
+  meets the line again after that re-run, or meets another check's line twice, logs it and goes to the report.
+  A fix's first words say whose it is: the bundled pandoc's starts with the agent's re-run and names the
+  `[convert]` edit only as the person's, while a `[convert] pandoc_path` that fails or is not absolute has a
+  `[convert]` edit for its whole fix, which status's and the installer's `NEXT:` name as the person's
+  (CONTRACTS §16.132, U79, U80). A `pandoc` line whose path is followed by `(native arm64 copy)` is the operator's own copy under
   `~/.local/share/agentsync/pandoc/<version>-arm64`, which the converters run instead of the bundled pandoc. Its
   fix is the person's: `the native pandoc copy at ~/'.local/share/agentsync/pandoc/<version>-arm64' is yours to
   replace or remove (the converters run it instead of the bundled pandoc), or set [convert] pandoc_path to an
@@ -732,6 +739,8 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   it, so status's and the installer's `NEXT:` name it as theirs (CONTRACTS §16.120, S47). After a time-out the
   agent's re-run comes first, then `show the person this line: ...`, and its time-out line gives no
   slow-first-start reason: the 10 to 67 s were macOS translating the Intel program (CONTRACTS §16.114, Q60).
+  It, and a configured pandoc's, gives `(any start can take a minute on a busy Mac)` instead, the half of the
+  bundled one's reason that holds for any copy (CONTRACTS §16.132, U104).
 - Every `[FAIL]` line names a fix. A check that crashed keeps its `check crashed: ...` text and names
   `~/.local/bin/agentsync status -v`, which prints the traceback: that is a fault in agentsync, and the line says to
   report it.

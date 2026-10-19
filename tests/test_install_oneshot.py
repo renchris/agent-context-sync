@@ -828,7 +828,10 @@ def _pandoc_fail_lines(cfg: Config) -> dict[str, str]:
     """The pandoc check's [FAIL] lines, from doctor itself (B13 round 15 S47, S53): the bundled pandoc on an
     Apple silicon Mac without Rosetta, the operator's native copy that exits non-zero or that macOS will not
     start (the person's fixes), and the native copy and the bundled pandoc that ran out of time (the agent's
-    re-run first)."""
+    re-run first). B13 round 17 U79, U80: the bundled pandoc that exits non-zero (the agent's re-run first,
+    the [convert] edit the person's after it), and a configured pandoc_path that fails or is not absolute (a
+    [convert] edit only, the person's); a configured one that ran out of time keeps the agent's re-run
+    first."""
     copy = Path.home() / ".local/share/agentsync/pandoc/3.9-arm64/bin/pandoc"
     copy.parent.mkdir(parents=True, exist_ok=True)
     copy.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
@@ -850,9 +853,14 @@ def _pandoc_fail_lines(cfg: Config) -> dict[str, str]:
         ("native-bad-cpu", "native", bad_cpu),
         ("native-timeout", "native", silent),
         ("wheel-timeout", "wheel", silent),
+        ("wheel", "wheel", exits),
+        ("configured", "configured", exits),
+        ("configured-timeout", "configured", silent),
+        ("not-absolute", "configured", exits),
     ):
+        path = Path("bin/pandoc") if case == "not-absolute" else copy
         with (
-            patch.object(doctor, "_pandoc_route", lambda config, k=kind: (copy, k)),
+            patch.object(doctor, "_pandoc_route", lambda config, k=kind, p=path: (p, k)),
             patch.object(doctor, "_run", run),
         ):
             lines[case] = doctor.format_results(doctor._check_pandoc(cfg)).strip()
@@ -860,15 +868,15 @@ def _pandoc_fail_lines(cfg: Config) -> dict[str, str]:
     return lines
 
 
-PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu")
+PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu", "configured", "not-absolute")
 
 
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
     "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
-    "docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, Rosetta to install or "
-    "a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once "
-    "fixed, "
+    "docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, a [convert] "
+    "pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those "
+    "lines and go on to the report; once fixed, "
 )
 
 
@@ -971,7 +979,7 @@ def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
     monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
     timeout = subprocess.TimeoutExpired(["/x/pandoc", "--version"], 60)
     again = doctor.format_results([doctor._timed_out("pandoc", timeout)])
-    assert again.startswith("[FAIL] pandoc") and "run the same scripts/install.sh command again" in again
+    assert again.startswith("[FAIL] pandoc") and f"run the same {doctor.INSTALL_SH} command again" in again
     renamed = _persons_fail_lines(sample_config)["renamed"]
     native = _pandoc_fail_lines(sample_config)["native-timeout"]  # B13 round 15 S47: the re-run first
     for fails in (

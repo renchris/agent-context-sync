@@ -208,7 +208,7 @@ _OCR_CANARY = ".agentsync-ocr-canary.png"
 _OCR_CANARY_S = 30.0
 _OCR_DOWN = (
     "on-device OCR stopped working in this sync (the helper fails on a blank image); files are converted "
-    "without it and read again once it works: run scripts/install.sh again"
+    f"without it and read again once it works: run {skill.INSTALL_SH} again"
 )
 _REREAD_META = "reread:"
 """``reread:<source_id>``, for a local or inbox source: what the cycle looked for among the source's pages
@@ -390,7 +390,7 @@ reason a row stored then, still read as a stopped recording."""
 _RECORDING_STOPPED_REASONS = (_RECORDING_STOPPED, _RECORDING_STOPPED_OLD)
 _MEDIA_DOWN = (
     "the media helper stopped working in this sync (it does not answer --version); recordings wait and are "
-    "read once it works: run scripts/install.sh again"
+    f"read once it works: run {skill.INSTALL_SH} again"
 )
 _RECORDING_FETCHES = 1
 """Recordings downloaded per cycle (spec S0 rule 3, ruling 1): newest modification time first, only in the

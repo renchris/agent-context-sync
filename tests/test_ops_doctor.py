@@ -210,7 +210,7 @@ def test_old_python_fails(sample_config: Config, monkeypatch: pytest.MonkeyPatch
     assert not r.ok and r.severity is Severity.ERROR and "3.10.9" in r.detail
     # B13 round 15 S29: `uv sync` syncs the project in the folder it runs in, never the tool environment
     # install.sh made, and install.sh leaves uv off PATH; its step 2 makes that environment with Python 3.11.
-    assert r.fix == "run scripts/install.sh again (it installs agentsync with uv's Python 3.11)"
+    assert r.fix == f"run {INSTALL_SH} again (it installs agentsync with uv's Python 3.11)"
 
 
 def test_git_broken_shim(sample_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -372,7 +372,11 @@ def test_a_native_pandoc_that_fails_names_that_copy_and_not_rosetta(
 
         monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(copy)))
         [r] = doctor._check_pandoc(sample_config)
-        assert r.detail == f"{copy} (native arm64 copy) --version did not answer within 60s: {OUT_OF_TIME}"
+        # B13 round 17 U104: a busy Mac slows any copy's start; the first-start half is Rosetta's alone
+        assert r.detail == (
+            f"{copy} (native arm64 copy) --version did not answer within 60s: {OUT_OF_TIME} ({BUSY_START})"
+        )
+        assert "Rosetta" not in r.detail and "first start" not in r.detail
         assert r.fix == f"{RUN_AGAIN}{COMES_BACK}{NATIVE_COMES_BACK}"
     finally:
         pandoc_mod._wheel_pandoc_version.cache_clear()
@@ -418,7 +422,7 @@ def test_a_configured_pandoc_that_fails_names_that_pandoc_and_not_the_bundled_on
     monkeypatch.setattr(doctor, "_run", _silent(lambda argv: argv[0] == str(pandoc)))
     first, second = (by_name(run_checks(cfg))["pandoc"] for _ in range(2))
     assert first == second
-    assert first.detail == f"{pandoc} --version did not answer within 60s: {OUT_OF_TIME}"
+    assert first.detail == f"{pandoc} --version did not answer within 60s: {OUT_OF_TIME} ({BUSY_START})"
     assert first.fix == f"{RUN_AGAIN}{COMES_BACK}{own}"
     for line in (first.detail, first.fix):
         assert "pypandoc_binary" not in line and "first start" not in line, line
@@ -504,14 +508,24 @@ def test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv(
 # --------------------------------------------------------------------- a check that does not finish
 
 RUN_AGAIN = "~/.local/bin/agentsync status (run it again as it is)"
-RUN_AGAIN_INSTALL = "run the same scripts/install.sh command again as it is (its NEXT line names it)"
+INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
+RUN_AGAIN_INSTALL = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
 COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
 AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its own for a broken program
+PANDOC_PATH_THEIRS = "setting [convert] pandoc_path to an absolute pandoc is theirs"
 PANDOC_FIX = (
-    "run scripts/install.sh again (it reinstalls agentsync when the bundled pandoc is missing or not the "
-    "file pypandoc_binary installed), or set [convert] pandoc_path to an absolute pandoc"
+    f"run {INSTALL_SH} again (it reinstalls agentsync when the bundled pandoc is missing or not the "
+    "file pypandoc_binary installed); if this line comes back after that, show the person this line: "
+    f"{PANDOC_PATH_THEIRS}"
 )
+# B13 round 17 U78: under install.sh, whose step 2 found the bundled file whole or reinstalled it, a time-out
+# that comes back after the re-run names the person's edit, not that same re-run a second time
+PANDOC_INSTALL_COMES_BACK = (
+    f"show the person this line: {PANDOC_PATH_THEIRS} (the bundled pandoc does not answer on this Mac, and "
+    "install.sh found its file whole)"
+)
+BUSY_START = "any start can take a minute on a busy Mac"
 OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
 CRASH_FIX = (
     "~/.local/bin/agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to "
@@ -560,10 +574,11 @@ def test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash(
 
     monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")  # as scripts/install.sh runs status
     r = by_name(run_checks(sample_config))["pandoc"]
-    assert r.fix == RUN_AGAIN_INSTALL + COMES_BACK + PANDOC_FIX
+    assert r.fix == RUN_AGAIN_INSTALL + COMES_BACK + PANDOC_INSTALL_COMES_BACK
     assert format_results([r]).endswith(
-        f"and any start can on a busy Mac) (fix: {RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_FIX})"
+        f"and any start can on a busy Mac) (fix: {RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_INSTALL_COMES_BACK})"
     )
+    assert "again" not in r.fix.split(COMES_BACK, 1)[1], "the second re-run repeats the first (U78)"
 
 
 def test_the_pandoc_slow_start_reason_is_the_installers_wait_line() -> None:
@@ -589,7 +604,7 @@ def test_a_program_that_never_answers_is_told_what_to_do_when_the_line_comes_bac
     first, second = (by_name(run_checks(sample_config)) for _ in range(2))
     assert first["pandoc"] == second["pandoc"] and first["git"] == second["git"]
     # The run an agent may make comes first, then the two ways out of a pandoc that is stuck.
-    assert first["pandoc"].fix == f"{RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_FIX}"
+    assert first["pandoc"].fix == f"{RUN_AGAIN_INSTALL}{COMES_BACK}{PANDOC_INSTALL_COMES_BACK}"
     assert first["git"].fix == f"{RUN_AGAIN_INSTALL}{COMES_BACK}{STILL_NO_ANSWER}"
     for line in (first["pandoc"], first["git"]):
         said = f"{line.detail} (fix: {line.fix})"
@@ -1730,9 +1745,7 @@ def test_launchd_job_whose_interpreter_the_launcher_refuses_is_a_warn_that_names
     (elsewhere / "python").symlink_to(python)
     monkeypatch.setattr(sys, "executable", str(elsewhere / "python"))
     r = by_name(run_checks(sample_config))["launchd.poll"]
-    assert r.severity is Severity.WARN and (r.fix or "").startswith(
-        "scripts/install.sh --confirm-install-agent"
-    )
+    assert r.severity is Severity.WARN and (r.fix or "").startswith(f"{INSTALL_SH} --confirm-install-agent")
 
 
 def test_launchd_unreadable_plist(sample_config: Config) -> None:
@@ -2704,7 +2717,7 @@ def test_ocr_not_built_is_an_info_line_and_doctor_never_builds(
     for results in (run_checks(sample_config), cli._status_checks(sample_config, offline=True)):
         r = by_name(results)["ocr"]
         assert (r.ok, r.severity, r.fix, r.note) == (False, Severity.INFO, None, None)
-        assert r.detail == "the OCR helper is not built; scripts/install.sh builds it"
+        assert r.detail == f"the OCR helper is not built; {INSTALL_SH} builds it"
         assert errors([r]) == []
     assert not (sample_config.cache_dir / "ocr").exists()
     line = format_results([r])
@@ -2723,7 +2736,7 @@ def test_ocr_not_built_without_developer_tools_says_what_the_build_waits_for(
     r = by_name(results)["ocr"]
     assert (r.ok, r.severity, r.fix, r.note) == (False, Severity.INFO, None, None)
     assert r.detail == (
-        "the OCR helper is not built; scripts/install.sh builds it once the Command Line Tools are "
+        f"the OCR helper is not built; {INSTALL_SH} builds it once the Command Line Tools are "
         "installed (xcode-select --install)"
     )
     line = format_results([r])
@@ -2762,7 +2775,7 @@ def test_ocr_failed_is_a_warn_with_a_fix_only_without_developer_tools(
     results = run_checks(sample_config)
     r = by_name(results)["ocr"]
     assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"on-device OCR is not working: {reason}")
-    assert r.fix == ("xcode-select --install, then run scripts/install.sh again" if missing else None)
+    assert r.fix == (f"xcode-select --install, then run {INSTALL_SH} again" if missing else None)
     assert errors(results) == [], "OCR is optional: never a FAIL"
     assert "agentsync doctor" not in format_results([r])
 
@@ -2824,14 +2837,14 @@ def test_media_not_built_is_an_info_line_and_doctor_never_builds(
     for results in (run_checks(sample_config), cli._status_checks(sample_config, offline=True)):
         r = by_name(results)["media"]
         assert (r.ok, r.severity, r.fix, r.note) == (False, Severity.INFO, None, None)
-        assert r.detail == "the media helper is not built; scripts/install.sh builds it"
+        assert r.detail == f"the media helper is not built; {INSTALL_SH} builds it"
         assert errors([r]) == []
     assert not (sample_config.cache_dir / "media").exists()
     line = format_results([r])
     assert line.startswith("[info] media") and "fix:" not in line
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     assert by_name(run_checks(sample_config))["media"].detail == (
-        "the media helper is not built; scripts/install.sh builds it once the Command Line Tools are "
+        f"the media helper is not built; {INSTALL_SH} builds it once the Command Line Tools are "
         "installed (xcode-select --install)"
     )
 
@@ -2852,7 +2865,7 @@ def test_media_reads_the_helper_under_the_configured_cache_dir(
     assert r.detail == "media helper: not working (the media helper exited 3: no message)"
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
     r = by_name(run_checks(sample_config))["media"]
-    assert r.fix == "xcode-select --install, then run scripts/install.sh again"
+    assert r.fix == f"xcode-select --install, then run {INSTALL_SH} again"
     assert errors(run_checks(sample_config)) == [], "the media helper is optional: never a FAIL"
 
 
@@ -2921,7 +2934,7 @@ def test_speech_not_built_is_an_info_line_and_doctor_never_builds_or_digests(
     for results in (run_checks(sample_config), cli._status_checks(sample_config, offline=True)):
         r = by_name(results)["speech"]
         assert (r.ok, r.severity, r.fix) == (False, Severity.INFO, None)
-        assert r.detail == "speech: not-built (the speech helper is not built; scripts/install.sh builds it)"
+        assert r.detail == f"speech: not-built (the speech helper is not built; {INSTALL_SH} builds it)"
         assert errors([r]) == []
     assert not (sample_config.cache_dir / "speech").exists()
 
@@ -2934,7 +2947,7 @@ def test_speech_failed_is_a_warn_never_a_fail(sample_config: Config, monkeypatch
     r = by_name(run_checks(sample_config))["speech"]
     assert (r.ok, r.severity) == (False, Severity.WARN)
     assert r.detail == "speech: failed (the speech helper exited 3: no message)"
-    assert r.fix == "xcode-select --install, then run scripts/install.sh again"
+    assert r.fix == f"xcode-select --install, then run {INSTALL_SH} again"
 
     def crash(cfg: Config) -> tuple[str, str]:
         raise PermissionError(errno.EACCES, "Permission denied", str(cfg.cache_dir))
