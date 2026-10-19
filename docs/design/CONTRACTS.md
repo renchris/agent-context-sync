@@ -23010,6 +23010,15 @@ be read: the person's to fix`, so the Background runs line decodes it too. Tests
 `test_a_background_run_that_cannot_read_the_state_names_the_persons_fix`, `test_a_signal_exit_is_named_by_its_signal`,
 `test_setup_report.py::test_background_runs_decode_exit_codes_and_ownership`.
 
+**The bash 3.2 comment lint reads a braced substitution** (U108). `substitution_comment_apostrophes` opened a block
+only at a line ending `$(` or `<(`, so a comment inside `done < <({ ... }` or `"$({ ... })"` (four such blocks in
+the scripts, none with a comment today) went unread, though /bin/bash 3.2 passes `-n` on its apostrophe and then
+fails at run time, dropping the block's input. Each open block keeps the closer it waits for: `)` for `$(`/`<(`, `}`
+for `$({`/`<({`. The finder's close rule (a line starting `)` or a `}...)` line) was not built: the redaction
+block's `}` line goes on in a pipe, so its `)` comes a line later, and that rule held the block open to the end of
+install.sh (124 false hits). A comment between such a `}` line and its `)` is still not read; none exists. Test:
+`test_deploy_pack.py::test_the_substitution_lint_finds_the_round_3_shape`.
+
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 
 Reserved for round 17 lane P of B13.

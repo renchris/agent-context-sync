@@ -215,8 +215,8 @@ def test_pppc_profile_passes_plutil_lint() -> None:
 def test_scripts_parse_with_bash_n(script: Path) -> None:
     """Every ``#!/bin/bash`` script parses under the bash it runs under, /bin/bash 3.2 on a Mac: an apostrophe
     in a comment inside a multi-line ``"$( )"`` fails 3.2's ``-n`` and passes bash 5's (B13 round 4 Q84).  It
-    does not catch the same apostrophe inside ``<( )``, which 3.2 parses and then fails at run time;
-    test_no_apostrophe_in_a_comment_inside_a_substitution is for that."""
+    does not catch the same apostrophe inside ``<( )`` or ``< <({ ... })``, which 3.2 parses and then fails at
+    run time; test_no_apostrophe_in_a_comment_inside_a_substitution is for that."""
     proc = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
 
@@ -224,21 +224,26 @@ def test_scripts_parse_with_bash_n(script: Path) -> None:
 def substitution_comment_apostrophes(text: str) -> list[int]:
     """The line numbers of comment lines holding a straight apostrophe inside a multi-line ``$(``, ``"$(``
     or ``<(`` block: one opened by a line ending in it, closed by a line whose first non-blank character is
-    ``)``.  A line ending in another ``(`` (an array, a subshell) opens a block that is not a substitution."""
+    ``)``.  A line ending in another ``(`` (an array, a subshell) opens a block that is not a substitution.
+    A line ending in ``$({`` or ``<({`` opens a braced substitution, closed by a line starting ``}``: its
+    ``)`` may come only on a pipe's continuation line (B13 round 17 U108; a comment between that ``}`` line
+    and the ``)`` is not read)."""
     found: list[int] = []
-    open_: list[bool] = []
+    open_: list[tuple[bool, str]] = []  # (a substitution, the closer it waits for)
     for number, line in enumerate(text.splitlines(), 1):
         body = line.strip()
         if body.startswith("#"):
-            if any(open_) and "'" in body:
+            if any(sub for sub, _ in open_) and "'" in body:
                 found.append(number)
             continue
-        if body.startswith(")") and open_:
+        if open_ and body.startswith(open_[-1][1]):
             open_.pop()
         if re.search(r"[$<]\($", body):
-            open_.append(True)
+            open_.append((True, ")"))
+        elif re.search(r"[$<]\(\{$", body):
+            open_.append((True, "}"))
         elif body.endswith("("):
-            open_.append(False)
+            open_.append((False, ")"))
     return found
 
 
@@ -248,6 +253,14 @@ def test_the_substitution_lint_finds_the_round_3_shape() -> None:
         '\t\tprintf "a\\n"\n\t)\n}\nx="$(\n\t# a quoted one\n\tdate\n)"\narr=(\n\t# Contoso\'s array\n)\n'
     )
     assert substitution_comment_apostrophes(text) == [5]
+    # B13 round 17 U108: a braced "< <({" block, whose "}" line goes on in a pipe, was never opened, and a
+    # "}...)" close rule would have held it open to the end of the file
+    braced = (
+        'g() {\n\twhile read -r k; do\n\t\techo "$k"\n\tdone < <({\n\t\t# Contoso\'s braced one\n'
+        '\t\tprintf "a\\n"\n\t} 2>/dev/null | LC_ALL=C sed s/a/b/ |\n\t\tLC_ALL=C sort -u)\n}\n'
+        "# Contoso's comment after the block\ny=\"$({\n\t# Fabrikam's one\n\tdate\n})\"\n"
+    )
+    assert substitution_comment_apostrophes(braced) == [5, 12]
 
 
 @pytest.mark.parametrize("script", SHELL_SCRIPTS, ids=lambda p: p.name)
