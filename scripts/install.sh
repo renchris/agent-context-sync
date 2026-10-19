@@ -5253,9 +5253,11 @@ list_folders() {
 	rm -rf "$tmp"
 	# The words for those sources: a listed folder one --source-local adds back under the same id, else only
 	# the block put back; never "on disk" or "not signed in", the words the prompt's other step 1 cases read.
-	# Logged as a count, never an id (B13 round 16 T6, T30).
+	# Logged as a count, never an id (B13 round 16 T6, T30). The command names the folder as every NEXT does
+	# (shown_arg: a $ or a backtick in a OneDrive name must not expand when pasted; B13 round 17 U88); the
+	# listing before it is the list's own text.
 	if [ "$vback" -eq 1 ]; then
-		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again (one --source-local \"$vpaths\") or its [[source]] block is put back, as it was or retired"
+		vtail="; 1 folder in the list above is still mirrored but has no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on it until it is added again (one --source-local $(shown_arg "$vpaths")) or its [[source]] block is put back, as it was or retired"
 	elif [ "$vback" -gt 1 ]; then
 		vtail="; $vback folders in the list above are still mirrored but have no [[source]] block in $CONFIG: $vpaths. Step 2's status fails on each until it is added again (one --source-local for each) or its [[source]] block is put back, as it was or retired"
 	fi

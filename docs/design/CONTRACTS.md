@@ -22663,6 +22663,7 @@ v25's step 1, after the folder question's wait and before its two exceptions, so
 which": a source no folder adds back is given by count only. The re-add is the person's to choose (deleting a block may have been a deliberate stop), so it is not added
 unasked; with no answer, the first exception's "add none and go on to step 2" and the new Mac's wait hold as before.
 Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`MIRRORED_NO_BLOCK`).
+Amended 2026-10-19, §16.130 U88: the clause's `--source-local` shows the folder through `shown_arg`.
 
 **Step 2 names every kind of fix that is the person's** (T70, with lane B's words for its T5 cluster, T2 and T9;
 amends §16.106 O11). v24's "A [FAIL] line whose fix edits sources.toml or asks me to sign in, rename or sync a folder
@@ -23222,6 +23223,17 @@ the failure too, since add-source exits 0 with `already configured` on a folder 
 as "the same command" in the report (`setup_report._again_words`), not "with other folders" (U63's verifier: the
 finder's per-folder drop makes that line worse). No code change. Test:
 `test_a_failed_step_2_names_no_folder_the_config_step_added` (a second folder's add-source failing names both).
+
+**Step 1's command for a mirrored folder with no block shows the folder as every NEXT does** (U88; amends §16.124
+T6). The vanished-folder clause, `(one --source-local "<folder>")`, put the raw path between double quotes, the one
+`--source-local` in a NEXT that skipped `shown_arg` (§16.123 T35): a OneDrive name with `$` or a backtick expanded
+when pasted (`Q$1` lost `$1`, a backtick ran a command). It is now `(one --source-local $(shown_arg <folder>))`:
+`\ " $` and a backtick escaped, or the `%q` form for a name with `!` or a byte `%q` writes as `$'..'`. The listing
+before it (`...: <folder>.`) stays the list's own text. The shell redactor already takes a backslash before any ASCII
+sign, so the escaped form is redacted too. Test:
+`test_list_folders_names_a_mirrored_folder_to_add_back_as_a_next_shows_a_folder` (a folder named with `$1` and a
+backtick: the shown word reads back through bash as the path, and neither form reaches setup-report.md or
+bring-back.md).
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 

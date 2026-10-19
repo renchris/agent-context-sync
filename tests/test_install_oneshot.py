@@ -53,6 +53,7 @@ from agentsync.config import (
     SourceConfig,
     canonical_source_root,
     default_config_text,
+    derive_source_id,
     inbox_source_table,
     load_config,
     local_source_table,
@@ -6387,6 +6388,40 @@ def test_list_folders_names_a_mirrored_folder_whose_block_is_gone(env: dict[str,
     )
     assert install_log(env)[-2].endswith(" result=done note=listed-2 synced=1 vanished=1")
     assert "project-beta" not in "\n".join(install_log(env))
+
+
+def test_list_folders_names_a_mirrored_folder_to_add_back_as_a_next_shows_a_folder(
+    env: dict[str, str],
+) -> None:
+    """B13 round 17 U88: the vanished folder's command, ``(one --source-local "<folder>")``, put the raw
+    path in double quotes, the one --source-local in a NEXT that skipped shown_arg (round 16 T35). A
+    OneDrive name with a ``$`` or a backtick then expands when pasted: ``Q$1`` loses ``$1`` and a backtick
+    runs a command. It is shown as every NEXT shows a folder, escaped; the listing before it stays the
+    list's own text, and the report keeps the name out in either form."""
+    cs = _cloud(env)
+    alpha = cs / "OneDrive-Contoso" / "Project Alpha"
+    odd = cs / "OneDrive-Contoso" / "Q$1 Plans `id`"
+    for d in (alpha, odd):
+        d.mkdir(parents=True)
+    _write_config(env, local_source_table("project-alpha", alpha), _inbox(env))
+    sid = derive_source_id(canonical_source_root(odd), {"project-alpha", "inbox"})
+    _manifest_rows(
+        env, ("project-alpha", "live", 3), (sid, "live", 4), roots={"project-alpha": alpha, sid: odd}
+    )
+    _tool_python(env)
+    cp = install_sh(env, "--list-folders")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    shown = str(odd).replace("$", "\\$").replace("`", "\\`")
+    assert f": {odd}. Step 2's status fails on it" in last_line(cp), last_line(cp)
+    assert f'(one --source-local "{shown}") or its [[source]] block' in last_line(cp), last_line(cp)
+    back = subprocess.run(
+        ["/bin/bash", "-c", f'printf %s "{shown}"'], capture_output=True, text=True, check=True
+    ).stdout
+    assert back == str(odd), back
+    assert install_sh(env, "--report-only").returncode == 0  # its Installer output holds step 1's NEXT
+    for name in ("setup-report.md", "bring-back.md"):
+        text = (report_path(env).parent / name).read_text(encoding="utf-8")
+        assert "Q$1 Plans" not in text and "Q\\$1 Plans" not in text, name
 
 
 def test_list_folders_names_a_mirrored_source_that_is_no_listed_folder_without_its_id(
