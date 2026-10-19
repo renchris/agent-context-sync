@@ -60,6 +60,7 @@ from agentsync.convert.cache import ConverterCache
 from agentsync.convert.image import ImageConverter
 from agentsync.convert.recording import RecordingConverter
 from agentsync.convert.registry import Registry
+from agentsync.errors import ConfigError
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, PassKind
 from agentsync.ops import doctor, launchd
@@ -891,11 +892,13 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     assert cli.main(["sync", "--config", str(cfg)]) == 78
     _rc, text, _ = report(tmp_path, cfg)
     assert "Payroll" not in text
+    # B13 round 17 U22, U43: the error's own words, its value a placeholder as in Doctor, and status named
     assert loads() == (
-        "- loads: yes, but a sync refuses it: [policy] exclude_label_ids in policy.toml is not valid "
-        "(the error's words are not shown here, as they can name a label or a host: "
-        "`~/.local/bin/agentsync sync` prints them)"
+        "- loads: yes, but a sync refuses it: [policy] exclude_label_ids in policy.toml is not valid (a "
+        "value in the error is a placeholder here; `~/.local/bin/agentsync status` prints it in full): "
+        "[policy]: exclude_label_ids: <label> is not a label GUID"
     )
+    assert "not shown" not in section(text, "Configuration")
     policy_toml.unlink()
     # a cause the live check does not read: step 2's own line, from install.out
     out.write_text(
@@ -931,6 +934,50 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     assert gone not in line
     write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
     assert loads() == "- loads: yes"
+
+
+def test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted() -> None:
+    """B13 round 17 U22, U43: the loads line said the error's words "are not shown here, as they can name a
+    label or a host", while Doctor in the same report showed them with any label or remote as a placeholder
+    (round 16 T3), and it named `agentsync sync`, which writes, where install.sh's NEXT names status. It
+    gives Doctor's words, the file's path alone cut from their front, so every value pattern that redacts
+    Doctor's line redacts them (lane B's U103 ``got <value>`` needs the ``[governance].<key>: `` before it),
+    and names status for the full text."""
+    cfg = Path("/Users/jdoe/agent-context/sources.toml")
+    tail = "(a value in the error is a placeholder here; `~/.local/bin/agentsync status` prints it in full)"
+    said = setup_report._table_refusal(
+        ConfigError(f"{cfg}: [governance].history_days: expected an integer >= 1, got 'thirty'"),
+        cfg.name,
+        cfg,
+    )
+    red = setup_report.Redactor()
+    assert red.redact(said) == (
+        f"[governance] history_days in sources.toml is not valid {tail}: [governance].history_days: expected "
+        "an integer >= 1, got <value>"
+    )
+    prefix = setup_report._table_refusal(
+        ConfigError(
+            f"{cfg}: [governance].remote_url_prefixes: https://git.contoso.invalid/x carries a password"
+        ),
+        cfg.name,
+        cfg,
+    )
+    assert red.redact(prefix) == (
+        f"[governance] remote_url_prefixes in sources.toml is not valid {tail}: "
+        "[governance].remote_url_prefixes: <remote> carries a password"
+    )
+    unknown = setup_report._table_refusal(
+        ConfigError(f"{cfg}: [governance]: unknown key(s) foo; allowed: archive"), cfg.name, cfg
+    )
+    said_unknown = (
+        f"the [governance] table in sources.toml is not valid {tail}: [governance]: unknown key(s) foo;"
+    )
+    assert unknown.startswith(said_unknown), unknown
+    toml = setup_report._table_refusal(
+        ConfigError(f"{cfg}: not valid TOML: Expected '=' (at line 2)"), "x", cfg
+    )
+    assert toml.endswith(f" in x is not valid {tail}: not valid TOML: Expected '=' (at line 2)"), toml
+    assert "Error" not in said + prefix + toml.replace("Expected", ""), "never a class name"
 
 
 @pytest.mark.usefixtures("clean_doctor")

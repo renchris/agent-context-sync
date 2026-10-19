@@ -4937,20 +4937,29 @@ def _with_count(label: str, count: str) -> str:
     return f"{label} ({count})"
 
 
-def _table_refusal(exc: Exception, file: str) -> str:
-    """A ``[policy]`` or ``[governance]`` refusal as the table, its key when it is one of the table's own
-    and the file: never the message's other words, which can quote a label's name or id or a remote's host,
-    nor the exception's class name, which is no word of the person's (B13 round 16 T15)."""
+def _table_refusal(exc: Exception, file: str, path: Path | None = None) -> str:
+    """A ``[policy]`` or ``[governance]`` refusal as the table, its key when it is one of the table's own,
+    the file, and the error's own words with only the file's path cut from their front, never the
+    exception's class name, which is no word of the person's (B13 round 16 T15). The words are Doctor's, so
+    every value the report's one redaction pass matches after its table and key there (a label, a remote, a
+    governance type error's ``got <value>``: round 16 T3, round 17 U103) is a placeholder here too;
+    ``agentsync status`` prints it in full, which the person needs to find the entry (B13 round 17 U22,
+    U43). ``path``: the file whose path the message starts with."""
     from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
 
-    m = _TABLE_KEY_RE.search(str(exc))
+    said = str(exc)
+    if path is not None:
+        said = said.removeprefix(f"{path}: ")
+    m = _TABLE_KEY_RE.search(said)
     table = m.group("table") if m is not None else "policy"
     key = (m.group("dot") or m.group("key")) if m is not None else None
     keys = policy.POLICY_KEYS if table == "policy" else governance._GOVERNANCE_KEYS
     named = f"[{table}] {key}" if key in keys else f"the [{table}] table"
+    # the pointer before the words: a value pattern runs to the line's end (U103's ``got <value>``)
+    words = f": {said}" if said else ""
     return (
-        f"{named} in {file} is not valid (the error's words are not shown here, as they can name a label or "
-        f"a host: `{AGENTSYNC_BIN} sync` prints them)"
+        f"{named} in {file} is not valid (a value in the error is a placeholder here; `{AGENTSYNC_BIN} "
+        f"status` prints it in full){words}"
     )
 
 
@@ -4971,12 +4980,13 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
     try:
         policy.load_policy(c)
     except Exception as exc:
-        file = policy.POLICY_FILE_NAME if str(exc).startswith(str(sidecar)) else c.config_path.name
-        return _table_refusal(exc, file), read
+        mine = str(exc).startswith(str(sidecar))
+        file = policy.POLICY_FILE_NAME if mine else c.config_path.name
+        return _table_refusal(exc, file, sidecar if mine else c.config_path), read
     try:
         governance.load_governance(c.config_path)
     except Exception as exc:
-        return _table_refusal(exc, c.config_path.name), read
+        return _table_refusal(exc, c.config_path.name, c.config_path), read
     vanished: list[tuple[str, int]] = []
     if db.is_file():
         try:

@@ -22073,6 +22073,10 @@ Amended 2026-10-18, §16.122 T7, T15: a vanished source's count sits inside its 
 files) is mirrored ...`, on the live line and on step 2's install.out line; a table's refusal no longer names the
 exception's class: `[policy] exclude_label_ids in policy.toml is not valid (the error's words are not shown here,
 ...)`.
+Amended 2026-10-19, §16.128 U22, U43: the refusal gives Doctor's words, only the file's path cut from their front, a
+value a placeholder as in Doctor: `[policy] exclude_label_ids in policy.toml is not valid (a value in the error is a
+placeholder here; `~/.local/bin/agentsync status` prints it in full): [policy]: exclude_label_ids: <label> is not a
+label GUID`.
 
 **Step 1 logs a failed command's error as printed, host names included** (S6; amends §16.112 Q31). Step 1's "log the
 command that failed ... and its error" met the friction rule's "name ... my organization ... by its role, never by
@@ -23157,6 +23161,19 @@ listing's, when no Loop line could be read, beside it as `heartbeat.<id> warn (n
 the state)`: not `yours`, as there is no WAITING ON YOU line to point at. With a manifest that reads, a Loop hook
 that fails still leaves that warn unexpected. The outcome counts the FAIL as before. Test:
 `test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket`.
+
+**A refusal's loads line gives the error's words** (U22, U43, one defect from two finders; amends §16.118 S8). The
+line said the words "are not shown here, as they can name a label or a host: `agentsync sync` prints them", while
+Doctor's [FAIL] line, the install.out tail and Status showed them with any label or remote a placeholder (round 16
+T3 matches the value by pattern in the report's one redaction pass). `_table_refusal` gives Doctor's words with only
+the file's path cut from their front: every pattern that matches a value after its table and key in Doctor's line
+(round 16 T3's label and remote, lane B's round 17 U103 `[governance].<key>: expected ..., got <value>`) matches it
+here, which a cut table or key would defeat (measured: `got 'Zeta Counsel'` printed in clear before this was kept
+whole). The pointer comes before the words, since a value pattern runs to the line's end. Never the class name
+(T15); it names `agentsync status`, which install.sh's NEXT names and which prints the value in full, as the person
+needs it to fix the file.
+Tests: `test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted`,
+`test_a_config_the_sync_refuses_loads_but_says_so`.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
