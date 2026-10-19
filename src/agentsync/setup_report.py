@@ -7918,16 +7918,42 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
     fr = r.friction
     assert fr is not None
     latest = index == len(fr.attempts) - 1
-    outcome = compute_outcome(
-        fr.attempts[index],
-        runs_for_attempt(fr, index, r.install_runs),
-        doctor_fails=_doctor_fails(r) if latest else (),
-    )
+    runs = runs_for_attempt(fr, index, r.install_runs)
+    outcome = compute_outcome(fr.attempts[index], runs, doctor_fails=_doctor_fails(r) if latest else ())
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
         kind, note = rerun
         return Outcome(kind, 1, outcome.why, outcome.version, note)
+    if (
+        not latest
+        and (outcome.kind, outcome.step) == ("failed", 1)
+        and _listed_and_left(fr.attempts[index], runs)
+    ):
+        return Outcome(
+            "stopped", 1, (_LISTED_AND_LEFT,), outcome.version, "after its folder list, with no report"
+        )
     return outcome
+
+
+_LISTED_AND_LEFT = (
+    "no install run and no event line: only install.sh --list-folders ran, in step 1, and it listed the "
+    "folders"
+)
+"""Why an earlier attempt that :func:`_listed_and_left` reads stopped (B13 round 17 U35)."""
+
+
+def _listed_and_left(att: Attempt, runs: Sequence[InstallRun]) -> bool:
+    """Whether an attempt ended where step 1 waits for the folder answer: begun (an ``Attempt:`` line), no
+    event, no closing line and no v4 line, and only ``--list-folders`` runs, the last of which listed the
+    folders (rc 0, ``result=done``). Nothing in step 1 failed: the prompt shows the list and waits, and a
+    session closed there. Only for an earlier attempt: the latest one's outcome, WARNING and issue label
+    stay as they are, since a stuck config's list (rc 0 too) tells the agent to go on to step 2."""
+    if att.started is None or att.events or att.finished or att.legacy or not runs:
+        return False
+    if not all(run.list_only for run in runs):
+        return False
+    step = runs[-1].step("list-folders") or {}
+    return step.get("result") == "done" and step.get("rc") == "0"
 
 
 _RERUN_WINDOW = timedelta(seconds=120)

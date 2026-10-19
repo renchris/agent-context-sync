@@ -23186,6 +23186,15 @@ sync also refuses it: <the rest>`, each worded as before (`_table_refusal`, `_La
 so the prompt's finish keys ("loads: no", "loads: not") are unaffected. Test:
 `test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket` (the combined case).
 
+**An earlier attempt that only listed the folders stopped** (U35). An attempt with an `Attempt:` line and nothing
+else (no event, no `end | finished`, no v4 line), whose only runs are `--list-folders` and whose last listed the
+folders (rc 0, `result=done`), read `failed at step 1` in the attempt list and the `earlier:` clause, though that is
+step 1's designed wait for the folder answer, or a session closed there. `_attempt_outcome` reads it `stopped at
+step 1 (after its folder list, with no report)` for an earlier attempt only: the latest attempt's Summary outcome,
+WARNING and issue label stay as `compute_outcome` gives them, since a stuck config's list (rc 0 too) tells the
+agent to go on to step 2. An attempt with an end line (`--report-only` ran: round 8 J36) and a list that failed
+keep their words. Test: `test_an_earlier_attempt_that_only_listed_the_folders_stopped_and_did_not_fail`.
+
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
 Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest

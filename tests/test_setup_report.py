@@ -1636,6 +1636,49 @@ def test_failure_before_the_installer_is_the_errors_step(fake_mac: dict[str, Pat
     assert "- install.sh: no run in the install log" in summary_of(fake_mac)[1], "a log with no run in it"
 
 
+def test_an_earlier_attempt_that_only_listed_the_folders_stopped_and_did_not_fail(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 17 U35: an earlier attempt with no event line, no end line and one --list-folders run that
+    listed the folders (rc 0) read "failed at step 1", which is the designed wait for the folder answer (or a
+    session closed there). It reads "stopped at step 1 (after its folder list, with no report)" in the
+    attempt list and the ``earlier:`` clause. An attempt with an end line, a list that failed, and the same
+    state as the latest attempt keep their words."""
+    listed = (
+        "2026-09-29T09:50:05Z run=20260929T095005Z-9 start install.sh compat=25 commit=0123456789ab "
+        "kind=checkout source=- args=--list-folders\n"
+        "2026-09-29T09:50:05Z run=20260929T095005Z-9 step=list-folders seconds=4 rc={rc} result={result} "
+        "note={note}\n"
+        "2026-09-29T09:50:09Z run=20260929T095005Z-9 end rc={rc} seconds=4\n"
+    )
+    first = "Attempt: 2026-09-29T09:50:00Z\nPrompt: v25\nAgent: Claude Code\n"
+    stopped = "earlier: attempt 1 stopped at step 1 (after its folder list, with no report)"
+
+    def summary(
+        head: str, rc: int = 0, result: str = "done", note: str = "listed-6 synced=2"
+    ) -> tuple[str, str]:
+        write_install_log(fake_mac)
+        log = fake_mac["setup"] / "install.log"
+        log.write_text(listed.format(rc=rc, result=result, note=note) + log.read_text(encoding="utf-8"))
+        write_friction(fake_mac, head + V5_HAPPY)
+        text, summary = summary_of(fake_mac)
+        return section(text, "Agent friction log"), summary
+
+    fr, got = summary(first)
+    assert f"- attempt: 2 of 2; {stopped}" in got, got
+    assert "stopped at step 1 (after its folder list, with no report); 0 event lines" in fr, fr
+    _fr, got = summary(first + "2026-09-29T09:51:00Z | end | finished\n")
+    assert "- attempt: 2 of 2; earlier: attempt 1 failed at step 1" in got, "an end line: --report-only ran"
+    _fr, got = summary(first, rc=3, result="failed", note="not-signed-in")
+    assert stopped not in got and "earlier: attempt 1 " in got, got
+    write_install_log(fake_mac)
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(listed.format(rc=0, result="done", note="listed-6 synced=2"))
+    write_friction(fake_mac, first)
+    _text, got = summary_of(fake_mac)
+    assert "after its folder list, with no report" not in got, "the latest attempt's outcome is unchanged"
+
+
 def test_attempts_the_latest_is_judged_and_earlier_ones_listed(fake_mac: dict[str, Path]) -> None:
     write_install_log(fake_mac)
     first = (
