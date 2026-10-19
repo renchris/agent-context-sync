@@ -342,8 +342,7 @@ def _sheet_body(sheet: _Sheet, *, total: int, width: int, cfg: ConvertConfig) ->
         out += [
             f"[no cached values: {_uncached(sheet)} no stored "
             "result (the workbook was last written by a tool that does not calculate, e.g. a script "
-            "or BI export); "
-            "those cells show the formula only, never a guessed number]",
+            f"or BI export); {_uncached_cells(sheet)} the formula only, never a guessed number]",
             "",
         ]
     if sheet.comments:
@@ -401,7 +400,7 @@ def _index_body(
         ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0].casefold(), kv[0]))[:_INDEX_TERM_LIMIT]
         terms = sorted((t for t, _ in ranked), key=lambda t: (t.casefold(), t))
         dropped = len(counter) - len(terms)
-        note = f" ({dropped} rarer terms omitted)" if dropped > 0 else ""
+        note = f" ({plural(dropped, 'rarer term')} omitted)" if dropped > 0 else ""  # B13 round 17 U75
         out += [f"## Terms{note}", ""]
         used = sum(len(x.encode("utf-8")) + 1 for x in out)
         for t in terms:
@@ -434,6 +433,12 @@ def _uncached(sheet: _Sheet) -> str:
     stored result, its noun from the formula count and its verb from its own (B13 round 16 T61)."""
     carry = "carries" if sheet.missing_cache == 1 else "carry"
     return f"{sheet.missing_cache} of {plural(sheet.formulas, 'formula cell')} {carry}"
+
+
+def _uncached_cells(sheet: _Sheet) -> str:
+    """``that cell shows`` or ``those cells show``: the cells with no stored result, by their own count like
+    :func:`_uncached`'s verb, not by the formula count (B13 round 17 U74)."""
+    return "that cell shows" if sheet.missing_cache == 1 else "those cells show"
 
 
 def _sheet_summary(sheet: _Sheet) -> str:
@@ -700,7 +705,7 @@ class XlsxConverter:
             if sheet.missing_cache:
                 out += [
                     f"[no cached values: {_uncached(sheet)} "
-                    "no stored result; those cells show the formula only]",
+                    f"no stored result; {_uncached_cells(sheet)} the formula only]",
                     "",
                 ]
             units.append(

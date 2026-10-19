@@ -45,6 +45,7 @@ from agentsync.convert import msg as msg_mod
 from agentsync.convert import pandoc as pandoc_mod
 from agentsync.convert import pdf as pdf_mod
 from agentsync.convert import pptx as pptx_mod
+from agentsync.convert import xlsx as xlsx_mod
 from agentsync.convert._common import _emitter, _headings, _open_fence
 from agentsync.convert.canonical import canonical_hash
 from agentsync.convert.diagram import DiagramConverter
@@ -296,6 +297,7 @@ def test_xlsx_fixture_units_and_the_measured_failure_modes(fixture_files: dict[s
     assert "| 4 | Total | `=SUM(B2:B3)` | `=SUM(C2:C3)` |  |" in q3.body  # empty stays empty
     assert q3.body.count("Merged note across four columns") == 4  # merged anchor propagated
     assert "[no cached values: 4 of 4 formula cells" in q3.body
+    assert "; those cells show the formula only" in q3.body  # B13 round 17 U74
     for bad in ("NaN", "None", "100.0", "Unnamed"):
         assert bad not in q3.body + notes.body
     assert "| 3 | empty |  |" in notes.body and "| 4 | ratio | 0.25 |" in notes.body
@@ -3505,6 +3507,54 @@ def test_a_table_and_a_sheet_count_their_rows_and_columns_at_one(tmp_path: Path)
     book.save(tmp_path / "formula.xlsx")
     sheet = XlsxConverter(CFG).convert(tmp_path / "formula.xlsx", name="formula.xlsx")[1]
     assert "[no cached values: 1 of 1 formula cell carries no stored result" in sheet.body, sheet.body
+
+
+def test_xlsx_uncached_note_and_term_index_take_their_noun_from_the_count(tmp_path: Path) -> None:
+    """B13 round 17 U74, U75: T61 gave the no-cached-values note its noun and verb from the count, but the
+    note still said "those cells show" for one cell, in the full and the streamed sheet alike; the workbook
+    index said "(1 rarer terms omitted)". The pronoun follows the uncached count, not the formula count."""
+
+    def sheet_body(cells: dict[str, object], conv: XlsxConverter | None = None) -> str:
+        book = openpyxl.Workbook()
+        book.active.title = "Contoso"
+        for ref, value in cells.items():
+            book.active[ref] = value
+        path = tmp_path / "book.xlsx"
+        book.save(path)
+        return (conv or XlsxConverter(CFG)).convert(path, name="book.xlsx")[1].body
+
+    one = (
+        "[no cached values: 1 of 1 formula cell carries no stored result (the workbook was last written by "
+        "a tool that does not calculate, e.g. a script or BI export); that cell shows the formula only, "
+        "never a guessed number]"
+    )
+    assert one in sheet_body({"A1": "=1+1", "A2": 5})
+    two = sheet_body({"A1": "=1+1", "A2": "=2+2"})
+    assert "2 of 2 formula cells carry no stored result" in two
+    assert "; those cells show the formula only" in two
+    streamed = XlsxConverter(replace(CFG, xlsx_stream_threshold_bytes=0))
+    body = sheet_body({"A1": "=1+1", "A2": 5}, streamed)
+    assert "streamed summary" in body, body
+    assert "1 of 1 formula cell carries no stored result; that cell shows the formula only]" in body, body
+    body = sheet_body({"A1": "=1+1", "A2": "=2+2"}, streamed)
+    assert "2 of 2 formula cells carry no stored result; those cells show the formula only]" in body, body
+
+    def terms_line(count: int) -> str:
+        book = openpyxl.Workbook()
+        book.active.title = "Contoso"
+        book.active["A1"] = "item"  # the header cell is a term too
+        for n in range(1, count):
+            book.active[f"A{n + 1}"] = f"Contoso item {n:04d}"
+        path = tmp_path / f"terms-{count}.xlsx"
+        book.save(path)
+        index = XlsxConverter(CFG).convert(path, name="terms.xlsx")[0].body
+        [line] = [ln for ln in index.splitlines() if ln.startswith("## Terms")]
+        return line
+
+    limit = xlsx_mod._INDEX_TERM_LIMIT
+    assert terms_line(limit) == "## Terms"
+    assert terms_line(limit + 1) == "## Terms (1 rarer term omitted)"
+    assert terms_line(limit + 2) == "## Terms (2 rarer terms omitted)"
 
 
 def test_csv_fixture_is_a_table(fixture_files: dict[str, Path]) -> None:
