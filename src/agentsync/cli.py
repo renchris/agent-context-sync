@@ -1389,13 +1389,29 @@ def _fail_steps(results: Sequence[doctor.CheckResult]) -> list[str]:
     return [_fail_step(r) for r in sorted(fails, key=lambda r: doctor.is_persons_fix(r.fix))]
 
 
+def _unread_words(exc: Exception) -> str:
+    """Why a part of status cannot read the state, in words (B13 round 17 U21): the setup report copies
+    these lines, so no Python class name for a failure a setup meets. sqlite's own message is plain English
+    and holds no path; a refused configuration's words are on its [FAIL] line, which names the value; an
+    error no setup should meet keeps its class and message, for whoever debugs it."""
+    if isinstance(exc, ConfigError):
+        return "the configuration is refused (the governance.config or policy [FAIL] line says why)"
+    if isinstance(exc, StateUnreadableError):
+        return f"the state file cannot be read ({exc.__cause__ or 'see the state_dir.manifest [FAIL] line'})"
+    if isinstance(exc, sqlite3.Error):
+        return f"the state file cannot be read ({exc})"
+    if isinstance(exc, OSError):
+        return f"a file cannot be opened ({exc.strerror})" if exc.strerror else "a file cannot be opened"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
     """``fn()``, or one line naming the error: a part of status that cannot be read never hides the checks
     (the matching FAIL, e.g. governance.config or a manifest check, explains it)."""
     try:
         return fn()
     except Exception as exc:
-        return [f"{name}: cannot read the state: {type(exc).__name__}: {exc}"]
+        return [f"{name}: cannot read the state: {_unread_words(exc)}"]
 
 
 def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
@@ -1434,7 +1450,7 @@ def _loop_line(config: Config) -> str:
     try:
         return loop.status_line(config)
     except Exception as exc:
-        return f"loop: cannot read the state: {type(exc).__name__}: {exc}"
+        return f"loop: cannot read the state: {_unread_words(exc)}"
 
 
 def _with_damaged_manifest(

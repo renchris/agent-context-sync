@@ -4012,7 +4012,7 @@ def _last_rescreen(r: _Run) -> str:
             conn.close()
         stored = json.loads(row[0]) if row and row[0] else None
     except (sqlite3.Error, ValueError) as exc:
-        return f"not read ({type(exc).__name__})"
+        return f"not read ({_why_not_read(exc)})"
     if not isinstance(stored, dict):
         return "none recorded"
     return "with gitleaks" if stored.get("gitleaks") else "builtin patterns only"
@@ -4159,7 +4159,7 @@ def _environment(r: _Run) -> list[str]:
                     key=lambda e: e[0],
                 )
         except OSError as exc:
-            return f"this terminal cannot list {root}: {type(exc).__name__}: {exc.strerror or exc}"
+            return f"this terminal cannot list {root}: {_os_why(exc)}"
         names = [n for n, _link, _folder in entries if not n.startswith(".")]
         # a link is no provider folder of its own (--list-folders lists folders only: B13 round 4 Q33)
         links = sum(1 for n, link, _folder in entries if link and not n.startswith("."))
@@ -4623,7 +4623,7 @@ def _installer_output(r: _Run) -> list[str]:
             "install.sh does not)."
         ]
     except OSError as exc:
-        return [f"Cannot read the installer output at {path}: {type(exc).__name__}: {exc.strerror or exc}"]
+        return [f"Cannot read the installer output at {path}: {_os_why(exc)}"]
     # What is read can start inside a run: the last 64 KiB by bytes here, and install.sh keeps the last
     # 2000 lines. That run's NEXT: line is read and its header is not, so the count starts at the first
     # header: NEXT: lines and runs are then counted over the same whole runs.
@@ -4878,7 +4878,7 @@ def _configuration(r: _Run) -> list[str]:
     try:
         refused = _sync_refusal(r, c)
     except Exception as exc:  # the check is a reading of its own: the rest of the section still prints
-        refused = f"- loads: yes (whether a sync refuses it: not read, {type(exc).__name__})"
+        refused = f"- loads: yes (whether a sync refuses it: not read, {_why_not_read(exc)})"
     out.append(refused or "- loads: yes")
     kinds = Counter(s.kind.value for s in c.sources)
     states = Counter(s.state.value for s in c.sources)
@@ -5128,7 +5128,7 @@ def _policy_line(c: Config) -> str:
     try:
         pol = policy.load_policy(c)
     except Exception as exc:  # the type only: a message may name a label
-        return f"- [policy] label rule: not read ({type(exc).__name__}){sidecar}"
+        return f"- [policy] label rule: not read ({_why_not_read(exc)}){sidecar}"
     if not pol.labels_active:
         return f"- [policy] label rule: off{sidecar}"
     return (
@@ -5760,6 +5760,38 @@ class _Labels:
         return self._shown[text]
 
 
+def _why_not_read(exc: BaseException) -> str:
+    """Why a part of the report was not read, in words, for a ``not read (...)``, ``not measured (...)`` or
+    ``cannot read: ...`` line: never the exception's message (it can hold a path or a label) and, for the
+    failures a setup meets, never its class name, which is no word of the person's (B13 round 17 U21; round
+    16 T15's rule, everywhere). A refused config points at Configuration, an unreadable state file at
+    Doctor's state_dir.manifest; an exception no setup should meet keeps a short marker with its class, so
+    a report still says what to look for."""
+    from agentsync.errors import ConfigError  # noqa: PLC0415 - lazy, as the doctor reads are
+
+    if isinstance(exc, ConfigError):
+        return "the configuration is refused: see Configuration"
+    if isinstance(exc, sqlite3.Error):
+        said = str(exc).lower()
+        if "locked" in said or "busy" in said:
+            return "the state file is busy: a sync holds it"
+        return "the state file cannot be read: see Doctor's state_dir.manifest line"
+    if isinstance(exc, (TimeoutError, CallTimedOutError)):
+        return "it did not finish in time"
+    if isinstance(exc, plistlib.InvalidFileException):
+        return "the plist cannot be parsed"
+    if isinstance(exc, OSError):
+        return f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
+    return f"an unexpected error: {type(exc).__name__}"
+
+
+def _os_why(exc: BaseException) -> str:
+    """An OSError's own words (``Permission denied``), no class name; else :func:`_why_not_read`."""
+    if isinstance(exc, OSError) and exc.strerror:
+        return exc.strerror
+    return _why_not_read(exc)
+
+
 def _lines(fn: Callable[[], list[str]]) -> list[str]:
     """``fn()``, or the one line that says why it was not measured. Never an exception's message: it can
     hold a path."""
@@ -5770,7 +5802,7 @@ def _lines(fn: Callable[[], list[str]]) -> list[str]:
     except _NoManifestError:
         return ["- no manifest yet (no sync has run)"]
     except Exception as exc:
-        return [f"- not measured ({type(exc).__name__})"]
+        return [f"- not measured ({_why_not_read(exc)})"]
 
 
 def _table(header: Sequence[str], rows: Sequence[Sequence[object]], limit: int = _ROWS_SHOWN) -> list[str]:
@@ -5894,7 +5926,7 @@ def _helper_line(r: _Run, m: _Mirror, label: str, module: str, words: dict[str, 
         late = NOT_MEASURED if room < _PROBE_S else f"did not answer within {_PROBE_S:.1f}s"
         return f"- {label}: {late}"
     except Exception as exc:
-        return f"- {label}: not measured ({type(exc).__name__})"
+        return f"- {label}: not measured ({_why_not_read(exc)})"
     finally:
         m.not_counted(time.monotonic() - started)
 
@@ -5933,7 +5965,7 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
                 "ocr line gives the same probe more time)"
             ]
     except Exception as exc:
-        out = [f"- helper: not measured ({type(exc).__name__})"]
+        out = [f"- helper: not measured ({_why_not_read(exc)})"]
     finally:
         m.not_counted(time.monotonic() - started)
     out.append(_helper_line(r, m, "media helper", "media", words))
@@ -5944,7 +5976,7 @@ def _ocr_helper(r: _Run, m: _Mirror) -> tuple[list[str], str, bool]:
         active = bool(policy.load_policy(config).labels_active)
         out.append(f"- [policy] label rule: {'on (no image is read under one)' if active else 'off'}")
     except Exception as exc:
-        out.append(f"- [policy] label rule: not read ({type(exc).__name__})")
+        out.append(f"- [policy] label rule: not read ({_why_not_read(exc)})")
     return out, state, active
 
 
@@ -6783,7 +6815,7 @@ def _purge_audit(path: Path, since: str) -> str:
     except FileNotFoundError:
         return "- audit trail: no file"
     except OSError as exc:
-        return f"- audit trail: cannot read: {type(exc).__name__}"
+        return f"- audit trail: cannot read: {_why_not_read(exc)}"
     day = since if _DAY_RE.fullmatch(since) else ""
     actions: Counter[str] = Counter()
     for line in text.splitlines():
@@ -7506,7 +7538,7 @@ def _plist_compared(r: _Run, config: Config) -> list[str]:
                 raise ValueError("not a dictionary")
             expected = plistlib.loads(launchd.render_plist(build(config)))
         except Exception as exc:  # an unreadable plist, or a spec this config cannot give (no launcher)
-            out.append(f"- {label}: not compared ({type(exc).__name__})")
+            out.append(f"- {label}: not compared ({_why_not_read(exc)})")
             continue
         differing = [k for k in _PLIST_KEYS if installed.get(k) != expected.get(k)]
         unknown = sum(1 for k in set(installed) | set(expected) if k not in _PLIST_KEYS)
@@ -7608,7 +7640,7 @@ def _background(r: _Run) -> list[str]:
     except Exception as exc:  # the comparison is extra: it never costs the section its other lines
         out += [
             "",
-            f"Installed plist against what this build would write: not compared ({type(exc).__name__})",
+            f"Installed plist against what this build would write: not compared ({_why_not_read(exc)})",
         ]
     out += ["", "Last launcher TCC lines (per job, newest last):", ""]
     tcc: list[str] = []
@@ -7620,7 +7652,7 @@ def _background(r: _Run) -> list[str]:
         except FileNotFoundError:
             continue
         except OSError as exc:
-            tcc.append(f"{path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
+            tcc.append(f"{path.name}: cannot read: {_os_why(exc)}")
             continue
         tcc += [f"{path.name}: {ln}" for ln in hits[-5:]]
     return out + _fence(tcc)
@@ -7800,7 +7832,7 @@ def _recent_errors(r: _Run) -> list[str]:
             read, longer = _tail_cut(path)
             own = [ln for ln in read if _LEVEL_RE.search(ln)]
         except OSError as exc:
-            problems.append(f"- {path.name}: cannot read: {type(exc).__name__}: {exc.strerror or exc}")
+            problems.append(f"- {path.name}: cannot read: {_os_why(exc)}")
             continue
         longer_any |= longer
         lines += len(own)
@@ -8969,7 +9001,7 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
     except FileNotFoundError:
         return f"- IT draft: {IT_DRAFT} not written (prompt step {step}: `{command}`)"
     except OSError as exc:
-        return f"- IT draft: {IT_DRAFT} cannot be read: {type(exc).__name__}: {exc.strerror or exc}"
+        return f"- IT draft: {IT_DRAFT} cannot be read: {_os_why(exc)}"
     person, admin = it_draft_fields(text)
     mine = f"{_plural(len(person), 'field')} left for you" + (f" ({', '.join(person)})" if person else "")
     line = f"- IT draft: {IT_DRAFT} exists; {mine}; {len(admin)} left for IT"
@@ -8986,7 +9018,7 @@ def _it_draft_line(step: int = REPORT_STEP) -> str:
 
         n = it_request.first_difference(it_request.load_template(), text)
     except Exception as exc:  # one clause: the rest of the Summary stands (as _loop_line's catch)
-        return line + f"; not compared with what agentsync it-request writes now ({type(exc).__name__})"
+        return line + f"; not compared with what agentsync it-request writes now ({_why_not_read(exc)})"
     if n is not None:
         line += (
             f"; differs from what `{command}` writes now from line {n} (an earlier agentsync wrote it, or it "
@@ -9087,7 +9119,7 @@ def _loop_line(r: _Run) -> str:
         got = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
         lines = [_eval_by_name(ln, config) for ln in (got if isinstance(got, list) else got.lines())]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
-        return f"- Loop: {stage}; NEXT: not read ({type(exc).__name__})"
+        return f"- Loop: {stage}; NEXT: not read ({_why_not_read(exc)})"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
     text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
     waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
@@ -10373,7 +10405,7 @@ def build_report(
     try:  # the Loop line's hook is a slow call: in its own pass, so ``took`` counts it
         r.loop_line = _loop_line(r)
     except Exception as exc:
-        r.loop_line = f"- Loop: not read ({type(exc).__name__})"
+        r.loop_line = f"- Loop: not read ({_why_not_read(exc)})"
     header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s)")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
     # the friction section is built first: it says the Summary's F<n> ids are its line numbers only when the

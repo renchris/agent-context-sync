@@ -12047,6 +12047,9 @@ agentsync no longer sends. After "M left for IT" it now adds, in this order:
   different earlier draft as `<path>.<stamp>.bak`, so the advice loses nothing).
 - `; not compared with what agentsync it-request writes now (<exception type>)` when loading the page or the
   compare raises anything: the type only, and the rest of the Summary stands (as `_loop_line`'s catch).
+Amended 2026-10-19, §16.128 U21: the bracket says why in words (`_why_not_read`: a refused configuration, an
+unreadable state file, a file that cannot be opened), and only an error no setup meets keeps its type, as `(an
+unexpected error: ValueError)`.
 
 ```python
 # agentsync.it_request
@@ -22492,6 +22495,8 @@ entries could not be told apart. A table's refusal drops the exception's class n
 `test_a_vanished_sources_count_is_inside_its_labels_bracket`, `test_a_config_the_sync_refuses_loads_but_says_so`.
 Amended 2026-10-19, §16.128 U8, U23, U44: the label is the placeholder Doctor prints, `(<source-3>, not in the config;
 4 files)`.
+Amended 2026-10-19, §16.128 U21: no line of the report names a class for a failure a setup meets, not only the two
+T15 changed.
 
 **The doctor line's refused-configuration bucket** (T4, T14: one defect from two finders, built once; amends §16.39
 N16). A vanished source, a policy.toml that does not pass and a bad `[governance]` key each read `unexpected 1:
@@ -23225,6 +23230,21 @@ leaves the field out. The report's `loop_next` hook caught only `OSError` and `A
 manifest's `sqlite3.DatabaseError` left the Loop line no NEXT; on any error it now gives what `agentsync status`
 prints then (`_next_or_fix`: rule 1's NEXT from the first FAIL's fix, here state_dir.manifest's, the person's).
 Test: `test_a_loop_stage_status_could_not_read_is_not_read_not_installed`.
+
+**A part the report could not read says why in words** (U21; amends §16.40 N29 and §16.122 T15). T15 dropped the
+class name from a table's refusal and the loads line only: a damaged state file and a policy.toml that does not pass
+still gave `not read (ConfigError)`, five `not measured (DatabaseError)`, `NEXT: not read (DatabaseError)` and
+status's `cannot read the state: DatabaseError: file is not a database`. One helper, `_why_not_read`, words every
+`not read (...)`, `not measured (...)`, `not compared (...)` and `cannot read: ...` site: `the configuration is
+refused: see Configuration`, `the state file cannot be read: see Doctor's state_dir.manifest line` (`... is busy: a
+sync holds it` for a locked one), `it did not finish in time`, `the plist cannot be parsed`, an OSError by its own
+words (`Permission denied`); never the message, which can hold a path or a label. An error no setup should meet
+keeps a short marker, `an unexpected error: RuntimeError`, so a report still says what to look for. cli's
+`_guarded` and `_loop_line` say the same in status (`the state file cannot be read (file is not a database)`, with
+sqlite's own plain words; `the configuration is refused (the governance.config or policy [FAIL] line says why)`).
+Kept: `loads: no: ConfigError: ...` (round 12 N11's pin, the prompt's finish key), a section's `This section failed:
+<type>: <message>` and the friction log's and install source's failure lines, which only an unexpected error
+reaches. Test: `test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name`.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 

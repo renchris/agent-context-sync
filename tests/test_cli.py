@@ -3192,7 +3192,8 @@ def test_status_prints_every_check_when_its_state_cannot_be_read(
     assert len(checks) > 15 and any(ln.startswith("loop: ") for ln in out), out
     if breakage == "governance":
         assert rc == cli.EXIT_FAILED and any(ln.startswith("[FAIL] governance.config") for ln in checks)
-        assert any(ln.startswith("status: cannot read the state: ConfigError") for ln in out)
+        said = "status: cannot read the state: the configuration is refused (the governance.config or policy"
+        assert any(ln.startswith(said) for ln in out)
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     assert cli.main(["doctor", "--config", cfg]) == rc
     alias = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[")]

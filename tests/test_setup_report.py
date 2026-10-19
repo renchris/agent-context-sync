@@ -1970,7 +1970,8 @@ def test_first_sync_doctor_warns_and_it_draft_in_the_summary(
     # a compare that fails costs its own clause, not the Summary
     monkeypatch.setattr(it_request, "load_template", broken)
     text, summary = summary_of(fake_mac, doctor=doctor, status=status)
-    assert "; not compared with what agentsync it-request writes now (ValueError)\n" in summary
+    unexpected = "(an unexpected error: ValueError)"
+    assert f"; not compared with what agentsync it-request writes now {unexpected}\n" in summary
     assert "- first sync: " in summary and "Contoso" not in text
     monkeypatch.setattr(it_request, "load_template", load_template)
     draft.write_text(draft_text.replace("`<team>`", "Finance").replace("`<wanted-by>`", "Friday"))
@@ -2472,7 +2473,7 @@ def test_a_broken_governance_table_still_renders_every_check(
     doctor_section, status = section(text, "Doctor"), section(text, "Status")
     assert rc == 0 and "This section failed" not in doctor_section + status
     assert "[FAIL] governance.config" in doctor_section and "loop: skill " in status
-    assert "status: cannot read the state: ConfigError" in status
+    assert "status: cannot read the state: the configuration is refused" in status
 
 
 # ---- the redactor ---------------------------------------------------------------------------------------
@@ -5999,6 +6000,35 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     assert "loop_stage=" not in text and "Loop: installed" not in text
 
 
+def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 17 U21: round 16 T15 dropped the class name from two lines only; with a damaged state file
+    and a policy.toml that does not pass, the report still said ``not read (ConfigError)``, ``not measured
+    (DatabaseError)`` and status ``cannot read the state: DatabaseError: ...``. Each says why in words and
+    where to look; an error no setup should meet keeps a short marker with its class."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    expand(load_config(cfg).state_paths.db).write_bytes(b"not a database, " * 256)
+    (cfg.parent / "policy.toml").write_text('[policy]\nrefuse_unlabelled = "maybe"\n', encoding="utf-8")
+    capsys.readouterr()
+    cli.main(["status", "--config", str(cfg)])
+    out = capsys.readouterr().out
+    assert "status: cannot read the state: the state file cannot be read (file is not a database)" in out, out
+    _rc, text, _ = report(tmp_path, cfg)
+    unread = re.compile(r"not read|not measured|not compared|cannot read|cannot be read")
+    said = [ln for ln in text.splitlines() if unread.search(ln) and not ln.startswith(("[FAIL]", "[warn]"))]
+    assert said, "the fixture's parts are not read"
+    named = [ln for ln in said if re.search(r"\b[A-Z]\w*Error\b", ln)]
+    assert named == [], named
+    assert "not read (the configuration is refused: see Configuration)" in text
+    assert setup_report._why_not_read(sqlite3.DatabaseError("x")) == (
+        "the state file cannot be read: see Doctor's state_dir.manifest line"
+    )
+    assert setup_report._why_not_read(RuntimeError("/Users/jdoe/x")) == "an unexpected error: RuntimeError"
+
+
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
     def crash(config: object) -> list[str]:
         raise RuntimeError("loop exploded")
@@ -6010,7 +6040,8 @@ def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Pat
     assert "- Loop: baseline drafted; NEXT: not read (no loop hook)" in section(text, "Summary")
     hooks = setup_report.ReportHooks(loop_next=crash)
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
-    assert "NEXT: not read (RuntimeError)" in section(text, "Summary"), "the message may hold a path"
+    said = "NEXT: not read (an unexpected error: RuntimeError)"
+    assert said in section(text, "Summary"), "the message may hold a path"
 
 
 def test_the_loop_line_relays_the_first_wait_and_took_counts_the_hook(fake_mac: dict[str, Path]) -> None:
@@ -9758,7 +9789,7 @@ def test_the_ocr_part_has_a_speech_line_of_its_own(
 
     monkeypatch.setattr(speech, "probe", broken)
     text, parts = status_parts(fake_mac)
-    assert "- speech: not measured (RuntimeError)\n- [policy] label rule" in parts["OCR"]
+    assert "- speech: not measured (an unexpected error: RuntimeError)\n- [policy] label rule" in parts["OCR"]
     assert "Contoso" not in text
 
 
@@ -10001,10 +10032,10 @@ def test_background_runs_say_which_arguments_of_an_installed_plist_differ(fake_m
     launcher.unlink()
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
     bg = section(text, "Background runs")
-    assert "- com.agentsync.poll: not compared (InvalidFileException)\n" in bg
-    assert "- com.agentsync.reconcile: not compared (ConfigError)\n" in bg, (
-        "no launcher: this build writes none"
-    )
+    assert "- com.agentsync.poll: not compared (the plist cannot be parsed)\n" in bg
+    assert (
+        "- com.agentsync.reconcile: not compared (the configuration is refused: see Configuration)\n" in bg
+    ), "no launcher: this build writes none"
 
 
 def test_an_installed_job_that_names_the_launchers_pin_has_the_same_interpreter(
@@ -10354,9 +10385,8 @@ def test_configuration_says_a_label_rule_is_on_in_counts_only(fake_mac: dict[str
     ), conf
     (cfg.parent / "policy.toml").write_text("[policy]\nexclude_label_ids = [1]\n", encoding="utf-8")
     conf = section(setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0], "Configuration")
-    assert "- [policy] label rule: not read (ConfigError); policy.toml beside sources.toml: yes\n" in conf, (
-        conf
-    )
+    refused = "not read (the configuration is refused: see Configuration)"
+    assert f"- [policy] label rule: {refused}; policy.toml beside sources.toml: yes\n" in conf, conf
 
 
 def test_configuration_counts_the_source_excludes_beyond_agentsyncs_own(fake_mac: dict[str, Path]) -> None:
@@ -11119,7 +11149,7 @@ def test_no_yours_group_when_the_loop_line_is_not_read(
     )
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     summary = section(text, "Summary")
-    assert "- Loop: not read (ValueError)" in summary
+    assert "- Loop: not read (an unexpected error: ValueError)" in summary
     assert "yours" not in summary
     assert "unexpected 1: heartbeat.project-x warn" in summary
 
