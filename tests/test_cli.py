@@ -49,7 +49,16 @@ from agentsync.graph.auth import AuthStatus
 from agentsync.graph.drive import DiscoveredScope
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.manifest import MANIFEST_SCHEMA_VERSION, Manifest
-from agentsync.model import CycleMode, CycleReport, PassKind, RowState, SourceKind, SourceReport, Verdict
+from agentsync.model import (
+    CycleMode,
+    CycleReport,
+    LintFinding,
+    PassKind,
+    RowState,
+    SourceKind,
+    SourceReport,
+    Verdict,
+)
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock
 from agentsync.paths import expand
@@ -2532,6 +2541,13 @@ def test_a_cycle_warning_the_report_prints_is_held_back_only_when_it_prints_it(
             (),
             None,
             checkpoint="held" if printed else None,
+            # a held checkpoint always has a blocker (cycle.py holds it only then), as many as the logged
+            # line says: "0 curation errors" was a line no run prints (B13 round 17 U70)
+            checkpoint_blockers=tuple(
+                LintFinding("FRONTMATTER", f"topics/contoso-{n}.md", "no title") for n in (1, 2)
+            )
+            if printed
+            else (),
             rescreened=3 * printed,
         )
 
@@ -2545,7 +2561,7 @@ def test_a_cycle_warning_the_report_prints_is_held_back_only_when_it_prints_it(
     if printed:
         assert f"    alarm: {cycle_mod._OCR_DOWN}" in out.splitlines(), out
         assert (
-            "checkpoint held: 0 curation errors; fix them" in out
+            "checkpoint held: 2 curation errors; fix them" in out
             and "; re-screened 3 for a rule change" in out
         )
     assert len(warned) == (4 if job or not printed else 0), err
@@ -2680,16 +2696,140 @@ def test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line
     capsys.readouterr()
     second = tmp_path / "beta"
     second.mkdir()
-    for argv in (["init"], ["add-source", str(second)], ["sync"]):
-        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_STATE, argv
+    # B13 round 17 U66: exclude-empty, curate and purge, which no _state_readable wraps, printed only "error:
+    # DatabaseError: file is not a database" and exited 1, while --help says 65 names the file and the fix
+    src_id = initialised.sources[0].id
+    for argv in (
+        ["init"],
+        ["add-source", str(second)],
+        ["sync"],
+        ["exclude-empty", src_id],
+        ["curate"],
+        [
+            "purge",
+            "path=*",
+        ],
+    ):
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_STATE, (argv, capsys.readouterr())
         err = capsys.readouterr().err
         line = f"state: {db} cannot be read: file is not a database (fix: {doctor.MANIFEST_FIX})"
         assert line in err.splitlines() and "Traceback" not in err, (argv, err)
 
 
+def test_the_manifest_fix_says_legal_holds_are_kept(initialised: Config) -> None:
+    """B13 round 17 U73: MANIFEST_FIX said moving the manifest aside forgets "the deletions, holds and archive
+    it recorded", but legal holds live in governance/holds.json, outside the manifest, and survive a new one;
+    what it loses is the deletion breaker's suspended removals. The fix says both, and stays the person's."""
+    fix = doctor.MANIFEST_FIX
+    holds = governance._holds_file(expand(initialised.state_dir))
+    assert holds.parent.parent == expand(initialised.state_paths.db).parent  # beside the manifest, not in it
+    assert f"legal holds are kept, in {holds.parent.name}/{holds.name}" in fix, fix
+    assert "the deletion breaker's suspended removals" in fix and "deletions, holds and" not in fix, fix
+    assert doctor.is_persons_fix(fix)
+
+
+def _raise_sqlite(kind: str, where: Path) -> None:
+    """Raise a real sqlite3 error of ``kind`` from a scratch database at ``where`` (not the manifest)."""
+    conn = sqlite3.connect(where, isolation_level=None, timeout=0)
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("CREATE TABLE IF NOT EXISTS t (k TEXT PRIMARY KEY)")
+    if kind == "locked":
+        holder = sqlite3.connect(where, isolation_level=None)
+        holder.execute("BEGIN EXCLUSIVE")
+        try:
+            conn.execute("SELECT count(*) FROM t")
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+    elif kind == "integrity":
+        conn.execute("INSERT OR IGNORE INTO t VALUES ('a')")
+        conn.execute("INSERT INTO t VALUES ('a')")
+    else:
+        conn.execute("SELECT missing FROM t")
+
+
+@pytest.mark.parametrize("kind", ["locked", "integrity", "no-such-column"])
+def test_only_a_locked_or_busy_database_is_one_line_other_sqlite_errors_keep_their_traceback(
+    initialised: Config,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kind: str,
+) -> None:
+    """B13 round 17 U72: round 16 T12's catch-all printed every sqlite3 error as one line and exit 1, its
+    traceback at DEBUG only, so a code defect (an IntegrityError, a missing column) left no stack in a
+    LaunchAgent's err.log. Only a locked or busy database (SQLITE_BUSY, SQLITE_LOCKED) is one line now; any
+    other error propagates with its traceback, as before T12."""
+    scratch = tmp_path / "scratch.sqlite"
+
+    def handler(_args: object) -> int:
+        _raise_sqlite(kind, scratch)
+        return cli.EXIT_OK
+
+    monkeypatch.setattr(cli, "_cmd_curate", handler)
+    argv = ["curate", "--config", str(initialised.config_path)]
+    if kind == "locked":
+        assert cli.main(argv) == cli.EXIT_FAILED
+        err = capsys.readouterr().err.splitlines()
+        assert err == ["error: OperationalError: database is locked"], err
+    else:
+        with pytest.raises(sqlite3.IntegrityError if kind == "integrity" else sqlite3.OperationalError):
+            cli.main(argv)
+
+
+def _damage_table_root(db: Path, table: str) -> int:
+    """Overwrite the first 64 bytes of ``table``'s root page with 0xff, after a checkpoint, leaving the header
+    and the schema intact; returns the page number."""
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        (root,) = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (table,)).fetchone()
+        (size,) = conn.execute("PRAGMA page_size").fetchone()
+    finally:
+        conn.close()
+    for name in ("-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    with db.open("r+b") as f:
+        f.seek((root - 1) * size)
+        f.write(b"\xff" * 64)
+    return int(root)
+
+
+def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 17 U64, U95: with the items table's root page damaged under an intact header and schema,
+    status exited 0 with every check [ok] and "NEXT: cannot read the state: DatabaseError: database disk
+    image is malformed", and so did install.sh's doctor, while the sync then exited 65. Status's own read of
+    the loop's state hits the damage: its SQLITE_CORRUPT now FAILs state_dir.manifest, the person's, once."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    assert _damage_table_root(db, "items") > 1
+    assert doctor.manifest_unreadable(db) is None  # the schema probe reads past it
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1, out
+    assert fails[0].startswith("[FAIL] state_dir.manifest ") and f" — {db} cannot be read: " in fails[0], (
+        fails
+    )
+    assert fails[0].endswith(f"(fix: {doctor.MANIFEST_FIX})"), fails
+    assert out[0] == f"NEXT: the state_dir.manifest check failed: {PERSONS_STEP}", out[0]
+    assert "cannot read the state" not in out[0]
+    names = [ln.split("]", 1)[1].split()[0] for ln in out if ln.startswith("[")]
+    assert names.index("state_dir.manifest") == names.index("state_dir.files") + 1, names
+    monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")  # install.sh's call
+    assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr().out.splitlines()
+    assert len([ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, out
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
-    """The other side of T12: a manifest another process holds in a write transaction is busy, not
-    unreadable state, so status reports no state_dir.manifest [FAIL]; neither does a healthy one."""
+    """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
+    [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read
+    at all, so a rollback-journal copy under the same lock proves the busy half: its read raises SQLITE_BUSY
+    (code 5), which is still no FAIL (B13 round 17 U70: the WAL case alone never saw a busy manifest)."""
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     db = initialised.state_paths.db
@@ -2699,6 +2839,29 @@ def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.
         holder.execute("BEGIN EXCLUSIVE")
         assert doctor.manifest_unreadable(db) is None
         assert doctor._check_manifest_readable(db) == []
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    copy = db.with_name("busy.sqlite")
+    src, dst = sqlite3.connect(db), sqlite3.connect(copy)
+    try:
+        src.backup(dst)
+        dst.execute("PRAGMA journal_mode=DELETE")
+    finally:
+        src.close()
+        dst.close()
+    holder = sqlite3.connect(copy, isolation_level=None)
+    try:
+        holder.execute("BEGIN EXCLUSIVE")
+        probe = sqlite3.connect(f"file:{copy}?mode=ro", uri=True, timeout=0.5)
+        try:
+            with pytest.raises(sqlite3.OperationalError) as busy:
+                probe.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        finally:
+            probe.close()
+        assert busy.value.sqlite_errorcode & 0xFF == sqlite3.SQLITE_BUSY, busy.value  # the lock is real
+        assert doctor.manifest_unreadable(copy) is None
+        assert doctor._check_manifest_readable(copy) == []
     finally:
         holder.execute("ROLLBACK")
         holder.close()

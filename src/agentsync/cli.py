@@ -97,7 +97,15 @@ from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import SingleWriterLock, read_heartbeat
-from agentsync.paths import DocsLayout, default_config_path, expand, is_under, provider_link_resolved
+from agentsync.paths import (
+    DocsLayout,
+    StatePaths,
+    default_config_path,
+    default_state_dir,
+    expand,
+    is_under,
+    provider_link_resolved,
+)
 from agentsync.publish import Publisher, archive_path
 from agentsync.slug import collision_key
 from agentsync.text import plural
@@ -1369,6 +1377,23 @@ def _loop_line(config: Config) -> str:
         return f"loop: cannot read the state: {type(exc).__name__}: {exc}"
 
 
+def _with_damaged_manifest(
+    config: Config, checks: list[doctor.CheckResult], exc: Exception | None
+) -> list[doctor.CheckResult]:
+    """``checks`` with the state_dir.manifest FAIL when the loop's own read of the manifest (status's, and the
+    ``doctor`` alias install.sh runs) raised SQLITE_NOTADB or SQLITE_CORRUPT: damage under a table the schema
+    probe does not read, which status read and threw away, so it exited 0 with every check [ok] and a sync
+    then exited 65 (B13 round 17 U64, U95). The manifest is the one database the loop opens, so the error is
+    its; a locked or busy one is no FAIL, and a FAIL the schema probe already gave is not doubled. It goes
+    after the other state_dir checks; no read is added."""
+    if not (isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)):
+        return checks
+    if any(r.name == "state_dir.manifest" for r in checks):
+        return checks
+    at = max((i + 1 for i, r in enumerate(checks) if r.name.startswith("state_dir.")), default=len(checks))
+    return [*checks[:at], doctor.manifest_damaged(expand(config.state_paths.db), exc), *checks[at:]]
+
+
 def _build_status(config: Config, *, brief: bool = False) -> _Status:
     """``status``'s output. ``brief`` (the ``doctor`` alias, or AGENTSYNC_NO_NEXT_HINT=1, both install.sh's):
     no detail and no policy lines, so install.sh's output (and setup-report's tail of it) holds what the old
@@ -1379,15 +1404,18 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
     changes). Its NEXT is that read's when no check failed and the step came before rule 9, which is all
     the count changes; otherwise the loop is read again as before, with the FAILs' fixes."""
     hint_off = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
+    state_exc: Exception | None = None
     try:
         step: loop.NextStep | None = loop.next_step(config, count_queue=False)
-    except Exception:  # the NEXT read below names the error; the checks keep their default wording
+    except Exception as exc:  # the NEXT read below names the error; the checks keep their default wording
         step = None
+        state_exc = exc
     checks = _status_checks(
         config,
         loop_checks=None if step is None else step.checks,
         loop_waits=None if step is None else step.wait_counts,
     )
+    checks = _with_damaged_manifest(config, checks, state_exc)
     fixes = _fail_steps(checks)
     if hint_off and any(_blocks_install(r) for r in checks):  # install.sh runs no sync (B13 round 14 Q10)
         checks = [
@@ -2420,6 +2448,21 @@ def _lock_holder(who: str) -> str:
     return f"another sync (its pass: {who})" if who in {m.value for m in CycleMode} else who
 
 
+def _state_db(args: argparse.Namespace) -> Path:
+    """The manifest a command's database error came from: its config's, or the default state dir's when the
+    config does not load."""
+    try:
+        return expand(_config(args).state_paths.db)
+    except Exception:  # the error path: never a second error over the first
+        return StatePaths(default_state_dir()).db
+
+
+def _contended(exc: sqlite3.DatabaseError) -> bool:
+    """Whether ``exc`` is SQLITE_BUSY or SQLITE_LOCKED, an extended code (BUSY_SNAPSHOT, ...) included."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    return isinstance(code, int) and code & 0xFF in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+
+
 def _setup_logging(verbosity: int) -> None:
     level = logging.WARNING if verbosity <= 0 else logging.INFO if verbosity == 1 else logging.DEBUG
     root = logging.getLogger()
@@ -2494,8 +2537,17 @@ def _main(argv: Sequence[str] | None) -> int:
     except AgentSyncError as exc:
         _err(f"error: {exc}")
         return EXIT_FAILED
-    except sqlite3.Error as exc:  # a locked or busy database: one line, its traceback at -v (B13 r16 T12)
-        _log.debug("database error", exc_info=True)
+    except sqlite3.DatabaseError as exc:
+        # the manifest is the one database agentsync opens: a command no _state_readable wraps (exclude-empty,
+        # curate, purge) says the same one line and exits 65, as --help says (B13 round 17 U66)
+        db = _state_db(args)
+        if doctor.unreadable_code(exc) or doctor.manifest_unreadable(db) is not None:
+            _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
+            return EXIT_STATE
+        if not _contended(exc):  # a code defect (IntegrityError, a missing column) keeps its traceback (U72)
+            raise
+        # a locked or busy database: one line, its traceback at -vv (B13 round 16 T12)
+        _log.debug("database busy or locked", exc_info=True)
         _err(f"error: {type(exc).__name__}: {exc}")
         return EXIT_FAILED
     except KeyboardInterrupt:

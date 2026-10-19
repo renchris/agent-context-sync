@@ -961,8 +961,12 @@ MANIFEST_UNREADABLE_CODES = frozenset({26, 11})
 MANIFEST_FIX = (
     "the person decides, with a copy of it kept: restore it from a copy they trust, or move it aside so the "
     "next sync starts a new one, which converts every file again (online-only ones are downloaded again) "
-    "and forgets the deletions, holds and archive it recorded"
+    "and forgets the deletions, the deletion breaker's suspended removals and the archive it recorded; legal "
+    "holds are kept, in governance/holds.json"
 )
+"""The person's fix for a manifest that is no database or a damaged one. "holds" said the manifest held the
+legal holds, which live in governance/holds.json and survive a new manifest; what it loses is the deletion
+breaker's state (B13 round 17 U73)."""
 
 
 def unreadable_code(exc: sqlite3.Error) -> bool:
@@ -976,7 +980,9 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     open (no file is created, nothing is written) of its schema, which every open of the manifest reads
     first (a header alone can be intact over a damaged schema page); None when it reads, is missing, or is
     only locked, busy or not openable now. Damage further in, under a table, shows when a command reads it
-    (``cli._state_readable``); status does not scan the whole file (B13 round 16 T12)."""
+    (``cli._state_readable``); status's own read of the loop's state is one such read, and its error FAILs
+    through :func:`manifest_damaged` (B13 round 17 U64, U95). Status does not scan the whole file, so damage
+    under a table no status read touches still shows only at a sync (B13 round 16 T12)."""
     try:
         conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
         try:
@@ -992,11 +998,19 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
 def _check_manifest_readable(db: Path) -> list[CheckResult]:
     """``state_dir.manifest``: a FAIL, the person's, when the manifest is no database or a damaged one. Every
     other check reads past it ("cannot read the state"), and every sync and add-source stops on it, so
-    status exits 1 with the one check that says why (B13 round 16 T12). Nothing when it reads."""
+    status exits 1 with the one check that says why (B13 round 16 T12). Nothing when its schema reads:
+    damage under a table that status's loop read hits FAILs through :func:`manifest_damaged`."""
     exc = manifest_unreadable(db)
     if exc is None:
         return []
-    return [_bad("state_dir.manifest", f"{db} cannot be read: {exc}", fix=MANIFEST_FIX)]
+    return [manifest_damaged(db, exc)]
+
+
+def manifest_damaged(db: Path, exc: sqlite3.DatabaseError) -> CheckResult:
+    """The ``state_dir.manifest`` FAIL for ``exc``, an error :func:`unreadable_code` accepts, read from the
+    manifest at ``db``: by the schema probe, or by status's read of the loop's state, which reads a table the
+    probe does not (B13 round 17 U64, U95: a damaged table page passed status with every check [ok])."""
+    return _bad("state_dir.manifest", f"{db} cannot be read: {exc}", fix=MANIFEST_FIX)
 
 
 # The first words of a [FAIL] fix that is the person's: a [[source]] path or sentinel, a folder or file to
