@@ -744,6 +744,21 @@ def _write_config(cfg_path: Path, text: str) -> None:
     _out(f"wrote {cfg_path}")
 
 
+def _remote_clause(config: Config, *, refused: bool) -> str:
+    """The docs-repo line's word on its remotes, read from git: ``no remote`` (what init creates), else the
+    names, no URL (the governance line beside it shows that, redacted), and whether [governance] refuses or
+    allows them. It said "no remote" one line above a refusal of the repo's remote (B13 round 17 U14, U17).
+    No "below": the refusal goes to stderr, this line to stdout."""
+    repo = expand(config.docs_repo)
+    if not (repo / ".git").exists():
+        return "no remote"
+    names = sorted(gitops.run_git(repo, "remote", check=False).stdout.split())
+    if not names:
+        return "no remote"
+    word = "remote" if len(names) == 1 else "remotes"
+    return f"{word} {', '.join(names)}, {'refused' if refused else 'allowed'} by [governance]"
+
+
 def _ensure_setup(config: Config) -> int:
     """Create whatever is missing for ``config`` (KISS K14, shared by init and add-source): the inbox, the
     docs repo (no remote) and its scaffold, the state dir, owner-only modes, the Time Machine exclusions.
@@ -771,8 +786,9 @@ def _ensure_setup(config: Config) -> int:
     # file(s)" on the second call read as the first call's files undone. One is "1 scaffold file" (B13
     # round 14 Q39).
     scaffold = f"{plural(len(written), 'scaffold file')} written" if written else "scaffold up to date"
-    _out(f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, no remote; {scaffold})")
     findings = _refuse_remotes(config, gov)
+    remotes = _remote_clause(config, refused=bool(findings))
+    _out(f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, {remotes}; {scaffold})")
     for f in findings:
         _err(f"governance: {f}")
     for line in governance.ensure_time_machine_exclusions(config):

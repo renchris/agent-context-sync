@@ -2281,6 +2281,46 @@ def test_remote_on_the_docs_repo_is_refused(
     assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_FAILED  # the same refusal
 
 
+def _docs_repo_line(out: str) -> str:
+    (line,) = [ln for ln in out.splitlines() if ln.startswith("docs repo ")]
+    return line
+
+
+def test_the_docs_repo_line_names_the_remotes_git_has(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 17 U14, U17: init's line said "(exists, no remote; ...)" one line above the refusal of that
+    repo's remote, and also over a remote [governance] allows. The clause is read from git: the remote's
+    name, no URL, and whether [governance] refuses or allows it; a repo with none keeps "no remote"."""
+    cfg = str(initialised.config_path)
+    repo = initialised.docs_repo
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_OK
+    assert "(exists, no remote; scaffold up to date)" in _docs_repo_line(capsys.readouterr().out)
+    git(repo, "remote", "add", "origin", "https://git.contoso.example/docs.git")
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_FAILED
+    cap = capsys.readouterr()
+    line = _docs_repo_line(cap.out)
+    assert "(exists, remote origin, refused by [governance]; scaffold up to date)" in line, line
+    assert "no remote" not in line and "contoso.example" not in line, line
+    assert "allow_remote = false" in cap.err
+    git(repo, "remote", "add", "backup", "https://git.contoso.example/backup.git")
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_FAILED
+    assert "(exists, remotes backup, origin, refused by [governance];" in _docs_repo_line(
+        capsys.readouterr().out
+    )
+    git(repo, "remote", "remove", "backup")
+    text = initialised.config_path.read_text(encoding="utf-8")
+    initialised.config_path.write_text(
+        text
+        + '\n[governance]\nallow_remote = true\nremote_url_prefixes = ["https://git.contoso.example/"]\n',
+        encoding="utf-8",
+    )
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_OK
+    cap = capsys.readouterr()
+    assert "(exists, remote origin, allowed by [governance]; " in _docs_repo_line(cap.out), cap.out
+    assert "governance:" not in cap.err
+
+
 def test_doctor_reports_network_broker_governance_and_policy(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
