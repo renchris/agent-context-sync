@@ -10012,7 +10012,9 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     component, the provider folder or a generic folder. So the argument never shows a folder name the
     Redactor does not know, whatever quoting the shell chose. A word with no quote, slash or backslash is
     not a path (an agent's prose): it is left as it is, and so is the punctuation that closes a bare word
-    in prose (a backtick, a bracket, a full stop)."""
+    in prose (a backtick, a bracket, a full stop). The shown text keeps the word's quotes, as the agent saw
+    them: ``"..."`` and ``'...'`` as written, ``$'...'`` as ``"..."`` (its escapes are decoded, and ``$'``
+    never reaches the report), an unterminated quote its opening one only (B13 round 17 U10)."""
     word, tail = m.group(2), ""
     if not re.search(r"""[/\\'"]""", word):
         return m.group(0)
@@ -10020,6 +10022,18 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
         bare = re.fullmatch(r"((?:\\.|[^\\])*?)([)\]}.,;:`]*)", word, re.DOTALL)
         if bare is not None:
             word, tail = bare.group(1), bare.group(2)
+    if re.fullmatch(r"\$'(?:[^'\\]|\\.)*'", word) or re.fullmatch(r'"(?:[^"\\]|\\.)*"', word):
+        opened, closed = '"', '"'
+    elif re.fullmatch(r"'[^']*'", word):
+        opened, closed = "'", "'"
+    elif (word.startswith("$'") and re.search(r"(?<!\\)'", word[2:]) is None) or (
+        word[0] == '"' and re.search(r'(?<!\\)"', word[1:]) is None
+    ):  # left open: its opening one
+        opened, closed = '"', ""
+    elif word[0] == "'" and "'" not in word[1:]:
+        opened, closed = "'", ""
+    else:  # bare, or quotes mixed inside one word: shown bare, as before
+        opened, closed = "", ""
     pieces = _PLACEHOLDER_RE.split(_shell_unquote(word))
     text = "".join(piece if i % 2 else red.redact(piece) for i, piece in enumerate(pieces))
     parts = text.split("/")
@@ -10033,8 +10047,8 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
             or (i > 0 and parts[i - 1] == "CloudStorage")
         )
         if not known:
-            return m.group(1) + "/".join([*parts[:i], "<path>"]) + tail
-    return m.group(1) + text + tail
+            return m.group(1) + opened + "/".join([*parts[:i], "<path>"]) + closed + tail
+    return m.group(1) + opened + text + closed + tail
 
 
 def _redact_lines(red: Redactor, lines: list[str]) -> str:

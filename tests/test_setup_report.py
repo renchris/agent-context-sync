@@ -3783,6 +3783,37 @@ def test_shell_escaped_folder_names_are_redacted(fake_mac: dict[str, Path], tmp_
     )
 
 
+def test_a_source_local_argument_keeps_its_quotes_in_the_installer_embed() -> None:
+    """B13 round 17 U10: the install.out embed, "what the agent saw", dropped every --source-local
+    argument's quotes, so installer guidance that quotes a spaced folder (``--source-local "<folder>"``)
+    read unquoted. The shown text keeps the word's quote style; ``$'...'`` is shown in double quotes, so
+    ``$'`` never reaches the report; a quote left open keeps its opening one only; a bare word stays bare."""
+    red = setup_report.Redactor()
+    red.add("home", "/Users/jdoe")
+    red.add("org", "Contoso")
+    red.add("folder", "Project Beta - General", fuzzy=True)
+    root = "/Users/jdoe/Library/CloudStorage/OneDrive-Contoso"
+    shown = "~/Library/CloudStorage/OneDrive-<org-1>/<folder-1>"
+    lines = [
+        'NEXT: run install.sh --source-local "<folder>" (one --source-local per folder)',
+        f'(one --source-local "{root}/Project Beta - General")',
+        f"--source-local '{root}/Project Beta - General'",
+        f"--source-local $'{root}/Project Beta - General'",
+        f'--source-local "{root}/Project Beta - General',
+        f"--source-local {root}/Project\\ Beta\\ -\\ General",
+        "--source-local $HOME/Library/x",
+    ]
+    assert setup_report._redact_lines(red, lines).splitlines() == [
+        'NEXT: run install.sh --source-local "<folder>" (one --source-local per folder)',
+        f'(one --source-local "{shown}")',
+        f"--source-local '{shown}'",
+        f'--source-local "{shown}"',
+        f'--source-local "{shown}',
+        f"--source-local {shown}",
+        "--source-local <path>",
+    ]
+
+
 def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
@@ -3811,9 +3842,11 @@ def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     inst = section(text, "Installer")
     under = "--source-local ~/Library/CloudStorage/OneDrive-<org-1>/"
-    shown = re.search(rf"args={under}(<folder-\d+>) {under}<path> {under}<path>\n", inst)
+    # B13 round 17 U10: a $'...' word is shown in double quotes, as decoded; a bare one stays bare
+    quoted = '--source-local "~/Library/CloudStorage/OneDrive-<org-1>/'
+    shown = re.search(rf'args={quoted}(<folder-\d+>)" {quoted}<path>" {under}<path>\n', inst)
     assert shown, "the decoded name is a known folder; the other two are cut below the provider folder"
-    assert inst.count(f"install.sh {under}{shown.group(1)} {under}<path> {under}<path>\n") == 2
+    assert inst.count(f'install.sh {quoted}{shown.group(1)}" {quoted}<path>" {under}<path>\n') == 2
     for raw in ("rich", "Tide", "Tables", "Gone", "Deck", "\\303", "\\200", "$'", "\ufffd"):
         assert raw not in text, raw
 
@@ -3825,7 +3858,7 @@ def test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know
     )
     quoted = "I ran (`install.sh --source-local /Users/jdoe/Development/Client\\ Alpha/Notes\\ \\(old\\)`)."
     assert setup_report._redact_lines(red, [typed, "the --source-local option is unclear", quoted]) == (
-        "ran install.sh --source-local ~/Library/CloudStorage/Dropbox/<folder-1>/<path> twice\n"
+        'ran install.sh --source-local "~/Library/CloudStorage/Dropbox/<folder-1>/<path>" twice\n'
         "the --source-local option is unclear\n"
         "I ran (`install.sh --source-local ~/Development/<folder-1>/<path>`)."
     )

@@ -23206,6 +23206,15 @@ step` for a run that was killed), then `the newest earlier run's sync: <its word
 last run's. The label (`sync` or `first sync`) comes from the last run's config note. Test:
 `test_the_sync_clause_names_an_earlier_runs_sync_when_the_last_run_stopped_before_its_own`.
 
+**A `--source-local` argument keeps its quotes in the install.out embed** (U10). `_source_local_shown` unquoted every
+argument and returned the redacted text bare, so the embed labelled "what the agent saw" showed installer guidance
+that quotes a spaced folder (`--source-local "<folder>"`) unquoted. The shown text keeps the word's quote style:
+`"..."` and `'...'` as written, `$'...'` as `"..."` (decoded, so `$'` still never reaches the report), a quote left
+open its opening one only, a bare word bare; the cut form is quoted the same way, the prose tail outside. The quote
+characters carry no identifying text, so redaction is unchanged. Tests:
+`test_a_source_local_argument_keeps_its_quotes_in_the_installer_embed`,
+`test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know`.
+
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
 Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest
