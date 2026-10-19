@@ -23147,6 +23147,17 @@ hand-edited queue), each sorted; a report word in the second group is not regist
 registered otherwise, so an older log line quoting one stays redacted. Test:
 `test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_stays_a_word`.
 
+**A state file no command can read has its own doctor bucket** (U5, U24, U41, one defect from three finders). With a
+damaged manifest.sqlite, step 2's NEXT and status call `state_dir.manifest`'s FAIL the person's, while the
+Summary's doctor line listed it, and the incomplete-listing heartbeat warn beside it, as `unexpected`. Keyed on the
+report's own read of the file, `doctor.manifest_unreadable` (a file that is no database or a damaged one; None for a
+locked or busy one), never on doctor's words: the FAIL goes in `from the state file that cannot be read (N checks):
+state_dir.manifest FAIL (the person's; see Doctor)`, and a `heartbeat.<id>` warn whose detail is the incomplete
+listing's, when no Loop line could be read, beside it as `heartbeat.<id> warn (not judged: the loop cannot read
+the state)`: not `yours`, as there is no WAITING ON YOU line to point at. With a manifest that reads, a Loop hook
+that fails still leaves that warn unexpected. The outcome counts the FAIL as before. Test:
+`test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket`.
+
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
 Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest

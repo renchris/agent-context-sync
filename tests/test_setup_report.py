@@ -12343,7 +12343,7 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
         fails, warns = (int(n) for n in re.search(r"- doctor: (\d+) FAIL, (\d+) warn", line).groups())
         # B13 round 16 T20, T34: a "from" bucket's count is in a bracket with its unit, no digit after "disk"
         counted = re.findall(
-            r"(?:expected|yours|unexpected) (\d+)\b|(?:stop|disk|refuses) \((\d+) checks?\)", line
+            r"(?:expected|yours|unexpected) (\d+)\b|(?:stop|disk|refuses|be read) \((\d+) checks?\)", line
         )
         assert sum(int(a or b) for a, b in counted) == fails + warns, line
         assert re.search(r"not on disk \d", line) is None, line
@@ -12375,6 +12375,66 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     # two folders missing where step 1 counted one: which one went later cannot be told, so both unexpected
     line = _line(summary(" synced=2 gone=1"), "- doctor: ")
     assert "not on disk" not in line and line.split(" · unexpected ", 1)[1].count(" FAIL") == 4, line
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U5, U24, U41: with a damaged manifest.sqlite, step 2's NEXT and status call
+    state_dir.manifest's FAIL the person's, while the Summary listed it, and the listing warn beside it,
+    as ``unexpected``. Keyed on the report's own read of the file (doctor's ``manifest_unreadable``): the
+    FAIL has its own bucket, and the warn there too, not judged (no Loop line can say whose it is, so not
+    ``yours``). With a manifest that reads, or one that is only locked, both stay unexpected."""
+    real = cli._status_checks
+    extra: list[doctor.CheckResult] = []
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        found = real(config, offline=offline)
+        kept = [c for c in found if c.ok or c.severity is not doctor.Severity.ERROR]
+        return kept + [c for c in found if not c.ok and c.name == "state_dir.manifest"] + extra
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    listing = setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)"
+    extra.append(doctor.CheckResult("heartbeat.x", False, listing, doctor.Severity.WARN))
+    injected = doctor._bad("state_dir.manifest", "manifest.sqlite cannot be read: x", fix=doctor.MANIFEST_FIX)
+    added = re.compile(r"(?:expected|yours|unexpected) (\d+)\b|(?:refuses|be read) \((\d+) checks?\)")
+
+    def doctor_line() -> str:
+        _rc, text, _ = report(tmp_path, cfg)
+        line = _line(section(text, "Summary"), "- doctor: ")
+        found = re.search(r"- doctor: (\d+) FAIL, (\d+) warn", line)
+        assert found is not None, line
+        assert sum(int(a or b) for a, b in added.findall(line)) == sum(map(int, found.groups())), line
+        return line
+
+    def unexpected(line: str) -> str:
+        return line.split(" · unexpected ", 1)[1]
+
+    extra.append(injected)  # a manifest that reads: a FAIL by that name is not the file's
+    line = doctor_line()
+    assert "state_dir.manifest FAIL" in unexpected(line) and "heartbeat.x warn" in unexpected(line), line
+    assert "from the state file" not in line, line
+    conn = sqlite3.connect(db)
+    try:  # one that is only locked: no command is refused for good
+        conn.execute("BEGIN EXCLUSIVE")
+        line = doctor_line()
+    finally:
+        conn.close()
+    assert "state_dir.manifest FAIL" in unexpected(line) and "from the state file" not in line, line
+    extra.remove(injected)
+    db.write_bytes(b"not a database, " * 256)
+    line = doctor_line()
+    bucket = (
+        " · from the state file that cannot be read (2 checks): state_dir.manifest FAIL (the person's; see "
+        "Doctor), heartbeat.x warn (not judged: the loop cannot read the state) · "
+    )
+    assert bucket in line and "FAIL" not in unexpected(line) and "heartbeat" not in unexpected(line), line
+    assert "yours" not in line, "no WAITING ON YOU line for a pointer to land on"
 
 
 @pytest.mark.usefixtures("roomy_calls")

@@ -8471,6 +8471,18 @@ def _remote_refused(c: Config) -> bool:
         return False
 
 
+def _state_unreadable(c: Config) -> bool:
+    """Whether the report's own read finds the manifest no command can read: doctor's ``manifest_unreadable``,
+    which opens it read-only and names only a file that is no database or a damaged one, never a locked or
+    busy one (B13 round 17 U5, U24, U41). Keyed on the file, never on doctor's words."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    try:
+        return doctor.manifest_unreadable(expand(c.state_paths.db)) is not None
+    except Exception:  # a reader that fails says nothing about the file
+        return False
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None:
@@ -8488,6 +8500,8 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     from_gone: list[str] = []
     from_config: list[str] = []
     from_remote: list[str] = []
+    unreadable = r.config is not None and _state_unreadable(r.config)
+    from_state: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
@@ -8503,6 +8517,22 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             continue
         if tag == "FAIL" and name == "governance.remote" and remote:  # B13 round 17 U2, U16
             from_remote.append(name)
+            continue
+        # B13 round 17 U5, U24, U41: the state file no command can read is the stop's own FAIL, the person's
+        # (MANIFEST_FIX); the listing warn beside it cannot be judged, as the loop that says whose it is
+        # cannot read the state. Keyed on the report's own read of the file: a locked one is not it, and
+        # with a readable state a Loop hook that fails still leaves that warn unexpected
+        if unreadable and tag == "FAIL" and name == "state_dir.manifest":
+            from_state.append(f"{name} FAIL (the person's; see Doctor)")
+            continue
+        if (
+            unreadable
+            and tag == "warn"
+            and name.startswith("heartbeat.")
+            and detail.startswith(_LISTING_INCOMPLETE)
+            and not r.facts.loop_checks
+        ):
+            from_state.append(f"{name} warn (not judged: the loop cannot read the state)")
             continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
@@ -8549,6 +8579,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(
             "from a docs-repo remote [governance] does not allow, the person's to remove or allow "
             f"({_plural(len(from_remote), 'check')}): " + ", ".join(f"{n} FAIL" for n in from_remote)
+        )
+    if from_state:
+        parts.append(
+            f"from the state file that cannot be read ({_plural(len(from_state), 'check')}): "
+            + ", ".join(from_state)
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)
