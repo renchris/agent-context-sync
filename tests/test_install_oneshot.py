@@ -213,6 +213,7 @@ case "$sub" in
     fi
     [ -z "${STUB_SYNC_SLEEP:-}" ] || sleep "$STUB_SYNC_SLEEP"
     echo "quiet=${AGENTSYNC_QUIET_LOCK_WAIT:-}" >> "$STUB_LOG.quiet"
+    echo "announced=${AGENTSYNC_LOCK_WAIT_ANNOUNCED:-}" >> "$STUB_LOG.announced"
     echo "stub cycle"
     [ -z "${STUB_SYNC_OUT:-}" ] || printf '%s\\n' "$STUB_SYNC_OUT"
     [ -z "${STUB_SYNC_ERR:-}" ] || printf '%s\\n' "$STUB_SYNC_ERR" >&2
@@ -1079,6 +1080,22 @@ def test_first_sync_lock_busy_is_skipped_not_failed(env: dict[str, str], folder:
     # names the holder), and the first sync is asked for the quiet lock wait, as this step ticks on its own
     assert "another agentsync cycle is running" not in cp.stdout
     assert (Path(env["STUB_LOG"] + ".quiet")).read_text(encoding="utf-8").splitlines() == ["quiet=1"]
+    # B13 round 17 U68: its probe found no lock busy, so agentsync is told the wait was not announced
+    assert (Path(env["STUB_LOG"] + ".announced")).read_text(encoding="utf-8").splitlines() == ["announced=0"]
+
+
+def test_a_lock_wait_the_probe_missed_is_booked_from_agentsyncs_stdout_mark(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 17 U68: a sync that takes the lock after install.sh's probe found it free waits with no wait
+    line of install.sh's; agentsync then says the wait itself and marks stdout (cli.LOCK_WAITED_MARK), and the
+    install.log note books the wait, not conversion (round 4 Q29), with no wait line of the step's own."""
+    cp = install_sh({**env, "STUB_SYNC_OUT": cli.LOCK_WAITED_MARK}, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert ("first-sync", "done", "0", "waited-for-the-lock") in steps(install_log(env))
+    assert "another sync is still running" not in cp.stdout
+    # the literal install.sh greps for is the CLI's constant
+    assert f'grep -qx "{cli.LOCK_WAITED_MARK}" "$SYNC_OUT"' in INSTALL_SH.read_text(encoding="utf-8")
 
 
 def test_confirm_install_agent_without_any_source_exits_1(env: dict[str, str], wheel: Path) -> None:
@@ -12970,6 +12987,8 @@ def test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before(
     # The first sync then waits for the same lock: its note says so, after the counts when the sync prints
     # them (the stub prints none; setup_report's test reads the joined note) (B13 round 4 Q29).
     assert ("first-sync", "done", "0", "waited-for-the-lock") in steps(install_log(e))
+    # B13 round 17 U68: the probe found the lock busy and said so, so agentsync's quiet wait stays silent
+    assert (Path(e["STUB_LOG"] + ".announced")).read_text(encoding="utf-8").splitlines() == ["announced=1"]
     # B13 round 6 G37: that second wait was said only in agentsync's WARNING lines, which the prompt never
     # names, so an agent logged it as a deviation. A line of the installer's own says it first, in the words
     # step 2 of the prompt quotes; this Mac's config existed, so the step is "sync", not "first sync".

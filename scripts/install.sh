@@ -225,7 +225,7 @@
 # nothing needs adding to PATH or to a shell profile; uv's "not on your PATH ... update-shell" hint is
 # filtered out of its output; every other agentsync call gets AGENTSYNC_NO_NEXT_HINT=1 (no "next:" hints of
 # its own; the first sync also gets AGENTSYNC_QUIET_LOCK_WAIT=1, since that step prints its own lock-wait line
-# and ticker), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
+# and ticker, and AGENTSYNC_LOCK_WAIT_ANNOUNCED, whether that line was printed), and with --confirm-install-agent step 5 gets AGENTSYNC_AGENT_STEP_PENDING=1 (its launchd.* lines
 # then say the agent step below installs the LaunchAgents instead of naming a command). Step 9's setup-report
 # gets AGENTSYNC_REPORT_RUN=<this run's id>: the run's NEXT: line comes after the report, which counts it as
 # still to come.
@@ -6382,10 +6382,16 @@ FIRST_SYNC_NOTE=""
 SYNC_LABEL="first sync"
 [ "$CONFIG_STATE" = "created" ] || SYNC_LABEL="sync"
 SYNC_SUMMARY_RE='converted [0-9]+, deferred [0-9]+ online-only'
-# stderr as it comes. AGENTSYNC_QUIET_LOCK_WAIT=1: this step prints its own wait line and ticker, so agentsync logs
-# its lock wait once (its 30 s beats go to DEBUG) and leaves its skip WARNING to the stderr line beside it (B13
-# round 7 H31); an older agentsync ignores it.
-first_sync_run() { AGENTSYNC_QUIET_LOCK_WAIT=1 "$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT"; }
+# stderr as it comes. AGENTSYNC_QUIET_LOCK_WAIT=1: this step prints its own ticker, and its own wait line when its
+# lock probe found the lock busy, so agentsync sends every lock-wait beat to DEBUG, the first too (B13 round 16
+# T33), and leaves its skip WARNING to the stderr line beside it (B13 round 7 H31). AGENTSYNC_LOCK_WAIT_ANNOUNCED
+# says whether the probe saw the lock busy: when it did not (a sync took the lock after the probe), agentsync says
+# the wait once, as a plain line, and marks stdout so the note below books it (B13 round 17 U68). An older
+# agentsync ignores both.
+first_sync_run() {
+	AGENTSYNC_QUIET_LOCK_WAIT=1 AGENTSYNC_LOCK_WAIT_ANNOUNCED="$SYNC_LOCK_BUSY" \
+		"$AGENTSYNC" "${FIRST_SYNC[@]}" --config "$CONFIG" >"$SYNC_OUT"
+}
 # What the first sync printed: its "converted N, deferred M online-only" line(s) after a success, else all of
 # it (a failure's detail, or an agentsync that prints no such line).
 show_first_sync() { # RC
@@ -6431,7 +6437,10 @@ else
 	with_progress "$SYNC_LABEL" first_sync_run || SYNC_RC=$?
 	show_first_sync "$SYNC_RC"
 	if [ "$SYNC_RC" -eq 0 ]; then
-		[ "$SYNC_LOCK_BUSY" -eq 0 ] || FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-the-lock"
+		# a wait the probe missed is booked too, from agentsync's stdout mark (cli.LOCK_WAITED_MARK; U68)
+		if [ "$SYNC_LOCK_BUSY" -eq 1 ] || grep -qx "lock wait: this sync waited for another sync's lock" "$SYNC_OUT" 2>/dev/null; then
+			FIRST_SYNC_NOTE="${FIRST_SYNC_NOTE:+$FIRST_SYNC_NOTE-}waited-for-the-lock"
+		fi
 		step_end "done" 0 "$FIRST_SYNC_NOTE"
 	elif [ "$SYNC_RC" -eq 80 ]; then
 		step_end failed 80 tcc-denied

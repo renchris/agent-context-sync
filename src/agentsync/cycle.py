@@ -5314,11 +5314,17 @@ def _carried_entry(entry: object) -> CarriedLines | None:
 
 
 QUIET_LOCK_WAIT_ENV = "AGENTSYNC_QUIET_LOCK_WAIT"
-"""Set to 1 by scripts/install.sh for its first sync only, which prints its own wait line and a ticker: the
-lock wait then sends every beat to DEBUG, the first too, since install.sh's line already says it waits (B13
-round 16 T33; round 7 H31 kept the first at WARNING), and the CLI drops its skip WARNING, which the stderr
-line beside it already carries (H31). Every other run keeps the beats: with no ticker of its own, they are
-its only sign of life while it waits."""
+"""Set to 1 by scripts/install.sh for its first sync only, which prints a ticker and, when its lock probe
+found the lock busy, its own wait line: the lock wait then sends every beat to DEBUG, the first too (B13 round
+16 T33; round 7 H31 kept the first at WARNING), and the CLI drops its skip WARNING, which the stderr line
+beside it already carries (H31). A wait install.sh's probe did not see (:data:`LOCK_WAIT_ANNOUNCED_ENV` not 1:
+a sync that took the lock after the probe) still gets one plain line, its first beat (B13 round 17 U68). Every
+other run keeps the beats: with no ticker of its own, they are its only sign of life while it waits."""
+
+LOCK_WAIT_ANNOUNCED_ENV = "AGENTSYNC_LOCK_WAIT_ANNOUNCED"
+"""Set to 1 by scripts/install.sh beside :data:`QUIET_LOCK_WAIT_ENV` when its lock probe found the lock busy
+and it printed its own wait line; under the quiet wait without it, the first beat is said once, as a plain
+line (B13 round 17 U68)."""
 
 ECHOED_WHEN = "agentsync_echoed_when"
 """The ``extra`` key on a WARNING whose words the sync's own report may print: ``"alarm"`` (the message is one
@@ -5363,14 +5369,27 @@ def _interactive_mode(config: Config, now: datetime) -> CycleMode:
     return CycleMode.RECONCILE if age >= config.reconcile_interval_s else CycleMode.POLL
 
 
-def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
-    """Take the lock, retrying while another cycle holds it; progress is logged every 30 s, at DEBUG under
-    :func:`quiet_lock_wait`.  After ``wait_s`` the last LockHeldError is raised (naming how long this run
-    waited)."""
+def _minutes(seconds: float) -> str:
+    """``10 minutes`` for a whole number of minutes, else ``Ns``: the wait's bound in its plain line."""
+    whole = int(seconds)
+    return plural(whole // 60, "minute") if whole >= 60 and whole % 60 == 0 else f"{whole}s"
+
+
+def _acquire_waiting(
+    lock: SingleWriterLock, wait_s: float, *, say: Callable[[str], None] | None = None
+) -> LockAcquisition:
+    """Take the lock, retrying while another cycle holds it, with a beat every 30 s.  After ``wait_s`` the
+    last LockHeldError is raised (naming how long this run waited).
+
+    ``say`` writes a plain line for the person (the CLI's stderr, no logger header): a foreground run's beats
+    go there, each with a DEBUG record beside it, not as timestamped WARNING lines (B13 round 17 U105).
+    Without it (a library caller) a beat is a WARNING.  Under :func:`quiet_lock_wait` every beat is DEBUG
+    (B13 round 16 T33), and only a wait install.sh did not announce (:data:`LOCK_WAIT_ANNOUNCED_ENV`) says its
+    first beat once (B13 round 17 U68)."""
     start = time.monotonic()
     noted = -_LOCK_PROGRESS_S
-    later = logging.DEBUG if quiet_lock_wait() else logging.WARNING
-    level = later  # under the quiet wait install.sh's own line announces it (B13 round 16 T33)
+    quiet = quiet_lock_wait()
+    unannounced = quiet and os.environ.get(LOCK_WAIT_ANNOUNCED_ENV) != "1"
     while True:
         try:
             return lock.acquire()
@@ -5379,15 +5398,24 @@ def _acquire_waiting(lock: SingleWriterLock, wait_s: float) -> LockAcquisition:
             if waited >= wait_s:
                 raise LockHeldError(f"{exc.holder}; waited {int(waited)}s", who=exc.who) from None
             if waited - noted >= _LOCK_PROGRESS_S:
+                first = noted < 0
                 noted = waited
-                log.log(
-                    level,
-                    "another sync is running (%s); waiting for it to finish (%ds of at most %ds)",
-                    exc,
-                    int(waited),
-                    int(wait_s),
+                beat = (
+                    f"another sync is running ({exc}); waiting for it to finish "
+                    f"({int(waited)}s of at most {int(wait_s)}s)"
                 )
-                level = later
+                if quiet and not (first and unannounced):
+                    log.debug("%s", beat)
+                else:
+                    if quiet:  # install.sh's ticker runs, but its own wait line did not: its words, which
+                        # the setup prompt quotes as an expected wait (README, step 2)
+                        beat = f"another sync is still running ({exc}); waiting for it to end, at most "
+                        beat += _minutes(wait_s)
+                    if say is None:
+                        log.warning("%s", beat)
+                    else:
+                        log.debug("%s", beat)
+                        say(beat)
             time.sleep(min(_LOCK_RETRY_S, max(0.0, wait_s - waited)))
 
 
@@ -5404,6 +5432,7 @@ def run_cycle(
     lock_wait_s: float = INTERACTIVE_LOCK_WAIT_S,
     wait_for_lock: bool | None = None,
     recordings: _RecordingRun | None = None,
+    say: Callable[[str], None] | None = None,
 ) -> CycleReport:
     """Run one cycle under the single-writer lock; returns the report (never raises for per-source failures).
 
@@ -5427,7 +5456,8 @@ def run_cycle(
     the cycle leaves one of their known files unlisted: then nothing applies and the breaker stays;
     ``recordings`` says who reads recordings (spec S0 rule 5): None derives it, ``named`` for
     ``materialise_paths``, ``none`` for an interactive run, else ``background``.  An operator verb with a mode
-    of its own (``reconcile``, ``accept-deletions``) passes ``none``: a tool's timeout can end it.
+    of its own (``reconcile``, ``accept-deletions``) passes ``none``: a tool's timeout can end it.  ``say``
+    writes the lock wait's plain lines (:func:`_acquire_waiting`; the CLI's stderr).
     """
     clock = now or (lambda: datetime.now(UTC))
     stale_backups = migration_backups(config.state_paths.db)  # before any open: one taken now waits a cycle
@@ -5450,7 +5480,7 @@ def run_cycle(
     # who started this run, from the environment, never from mode or wait_for_lock (B13 round 10 L73)
     started_by = STARTED_BY_LAUNCHD if started_by_our_job(config) else STARTED_BY_OTHER
     lock = SingleWriterLock(config.state_paths.lock, mode.value, started_by=started_by)
-    acquisition = _acquire_waiting(lock, lock_wait_s) if interactive else lock.acquire()
+    acquisition = _acquire_waiting(lock, lock_wait_s, say=say) if interactive else lock.acquire()
     if mode is not CycleMode.DRY_RUN:
         rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)
     own_client = client is None

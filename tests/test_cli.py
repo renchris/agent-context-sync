@@ -1135,7 +1135,9 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
     wait added a WARNING every 30 s and two skip lines more. Under AGENTSYNC_QUIET_LOCK_WAIT=1 (install.sh's
     first sync only) the wait sends every beat to DEBUG (round 16 T33: the first too, a timestamped WARNING
     under install.sh's own wait line), and the skip is said once, on the stderr line that names the holder. A
-    run without it keeps a beat every interval: it has no ticker."""
+    run without it keeps a beat every interval: it has no ticker. A library caller (no ``say``) logs them at
+    WARNING; the CLI's plain lines are pinned in the next test (B13 round 17 U105). Round 17 U68: a quiet wait
+    install.sh did not announce logs its first beat once."""
     monkeypatch.setattr(cycle_mod, "_LOCK_PROGRESS_S", 0.2)
     lock = SingleWriterLock(initialised.state_paths.lock, "poll")
     lock.acquire()
@@ -1144,15 +1146,20 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
         caplog.clear()
         with caplog.at_level(logging.DEBUG, logger=cycle_mod.__name__), pytest.raises(LockHeldError):
             run_cycle(initialised, mode=None, lock_wait_s=2.0)  # a retry every 0.5 s
-        return [r.levelno for r in caplog.records if "another sync is running" in r.getMessage()]
+        beat = re.compile(r"another sync is (still )?running")
+        return [r.levelno for r in caplog.records if beat.match(r.getMessage())]
 
     try:
         default = beats()
         assert len(default) >= 3 and set(default) == {logging.WARNING}, default
         monkeypatch.setenv(cycle_mod.QUIET_LOCK_WAIT_ENV, "1")
+        monkeypatch.setenv(cycle_mod.LOCK_WAIT_ANNOUNCED_ENV, "1")
         quiet = beats()
         # B13 round 16 T33: the first beat too, since install.sh's own line already says it waits
         assert len(quiet) >= 3 and set(quiet) == {logging.DEBUG}, quiet
+        monkeypatch.setenv(cycle_mod.LOCK_WAIT_ANNOUNCED_ENV, "0")
+        raced = beats()  # install.sh's probe saw the lock free: the first beat is said, once (U68)
+        assert len(raced) >= 3 and raced[0] == logging.WARNING and set(raced[1:]) == {logging.DEBUG}, raced
         capsys.readouterr()
         assert cli.main(["sync", "--mode", "poll", "--config", str(initialised.config_path)]) == 75
         err = capsys.readouterr().err.splitlines()
@@ -1161,6 +1168,48 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
         ], err
     finally:
         lock.release()
+
+
+@pytest.mark.parametrize("env", ["plain", "quiet-announced", "quiet-unannounced"])
+def test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not_announce(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env: str,
+) -> None:
+    """B13 round 17 U105: a foreground ``agentsync sync`` that waits for the lock says each beat as a plain
+    stderr line (``_lock_say``), never as a timestamped ``WARNING agentsync.cycle:`` logger line. Round 17
+    U68: under install.sh's quiet wait every beat is DEBUG while install.sh announced the wait (its probe
+    found the lock busy); a wait its probe missed says its first beat once, in plain words, and marks stdout
+    with ``LOCK_WAITED_MARK``, which install.sh reads to book the wait in install.log."""
+    monkeypatch.setattr(cycle_mod, "_LOCK_PROGRESS_S", 0.2)
+    if env != "plain":
+        monkeypatch.setenv(cycle_mod.QUIET_LOCK_WAIT_ENV, "1")
+        monkeypatch.setenv(cycle_mod.LOCK_WAIT_ANNOUNCED_ENV, "1" if env == "quiet-announced" else "0")
+    lock = SingleWriterLock(initialised.state_paths.lock, "poll")
+    lock.acquire()
+    timer = threading.Timer(1.2, lock.release)
+    timer.start()
+    try:
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    finally:
+        timer.join()
+        lock.release()
+    cap = capsys.readouterr()
+    err, out = cap.err.splitlines(), cap.out.splitlines()
+    said = [ln for ln in err if re.match(r"another sync is (still )?running \(", ln)]
+    assert not [ln for ln in err if "agentsync.cycle:" in ln], err
+    if env == "plain":
+        assert len(said) >= 2 and all(ln.endswith("s of at most 600s)") for ln in said), err
+        assert cli.LOCK_WAITED_MARK not in out
+    elif env == "quiet-announced":
+        assert not said and cli.LOCK_WAITED_MARK not in out, (err, out)
+    else:
+        # install.sh's own words, which the setup prompt quotes as an expected wait
+        assert [ln.split(" (", 1)[0] for ln in said] == ["another sync is still running"], err
+        assert [ln.split("); ", 1)[1] for ln in said] == ["waiting for it to end, at most 10 minutes"], err
+        assert out.count(cli.LOCK_WAITED_MARK) == 1, out
 
 
 def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:

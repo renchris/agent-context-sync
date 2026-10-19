@@ -667,7 +667,22 @@ def _state_readable(config: Config) -> Iterator[None]:
         raise StateUnreadableError(f"{db} cannot be read: {exc}") from exc
 
 
+LOCK_WAITED_MARK = "lock wait: this sync waited for another sync's lock"
+"""The stdout line a quiet lock wait (install.sh's first sync) prints when install.sh's probe did not see the
+lock busy, so its install.log note books the wait, not conversion (B13 round 17 U68; round 4 Q29)."""
+
+
+def _lock_say(line: str) -> None:
+    """The lock wait's plain line, on stderr with no logger header (B13 round 17 U105); under the quiet
+    wait (said only when install.sh did not announce it, U68) it also marks stdout with
+    :data:`LOCK_WAITED_MARK`."""
+    _err(line)
+    if quiet_lock_wait():
+        _out(LOCK_WAITED_MARK)
+
+
 def _run(config: Config, **kwargs: object) -> int:
+    kwargs.setdefault("say", _lock_say)
     with _alarms_in_the_report(config) as held, _state_readable(config):
         report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
     if held is not None:
@@ -965,7 +980,7 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         _out(f"exclude-empty {src.id}: nothing to exclude: no sync has stored an empty cloud folder yet")
         return EXIT_OK
     lock = SingleWriterLock(config.state_paths.lock, "exclude-empty")
-    _acquire_waiting(lock, INTERACTIVE_LOCK_WAIT_S)
+    _acquire_waiting(lock, INTERACTIVE_LOCK_WAIT_S, say=_lock_say)
     try:
         # the wait can be minutes: an exclude edited by hand meanwhile is read again, not written over (F70)
         try:
@@ -1277,11 +1292,10 @@ PERSONS_KINDS = (
 def _fail_step(result: doctor.CheckResult) -> str:
     """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
     keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it. A
-    fix that is the person's (``doctor.is_persons_fix``: a [[source]] path, a deleted [[source]] block to
-    put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a folder to put back or
-    sync, a sign-in, Rosetta or the native pandoc copy) is named as theirs, as install.sh's NEXT names it, not
-    as a step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17
-    U2, U16)."""
+    fix that is the person's (``doctor.is_persons_fix``: the kinds :data:`PERSONS_KINDS` names; a third
+    hand-kept list went stale, B13 round 17 U69) is named as theirs, as install.sh's NEXT names it, not as a
+    step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17 U2,
+    U16)."""
     if doctor.is_persons_fix(result.fix):
         return (
             f"the {result.name} check failed: its fix on the [FAIL] line below is the person's "

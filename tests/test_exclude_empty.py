@@ -285,11 +285,11 @@ def _edit_during_the_wait(monkeypatch: pytest.MonkeyPatch, cfg: Path, old: str, 
     """Make the lock wait (``_acquire_waiting``) the moment a hand edit of sources.toml lands."""
     real = _ACQUIRE_WAITING
 
-    def waiting(lock: object, wait_s: float) -> None:
+    def waiting(lock: object, wait_s: float, **kw: object) -> None:
         text = cfg.read_text(encoding="utf-8")
         assert old in text
         cfg.write_text(text.replace(old, new), encoding="utf-8")
-        real(lock, wait_s)  # type: ignore[arg-type]
+        real(lock, wait_s, **kw)  # type: ignore[arg-type]
 
     monkeypatch.setattr(cli, "_acquire_waiting", waiting)
 
