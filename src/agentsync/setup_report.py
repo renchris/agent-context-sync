@@ -5011,9 +5011,9 @@ def _doctor(r: _Run) -> list[str]:
     summary = f"{_plural(sum(tags.values()), 'check')}: " + ", ".join(
         f"{tags.get(t, 0)} {t}" for t in ("ok", "info", "warn", "FAIL")
     )
-    note = (
+    note = (  # "its fix" for one warn (B13 round 17 U31)
         f" {_plural(annotated, 'expected warn')} end{'s' if annotated == 1 else ''} in (expected: <why>) "
-        "instead of their fix: nothing for this "
+        f"instead of {'its' if annotated == 1 else 'their'} fix: nothing for this "
         f"setup to do{_STOPPED_COPY_BEYOND * stopped_note}."
         if annotated
         else ""

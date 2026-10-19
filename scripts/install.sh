@@ -4052,6 +4052,71 @@ stopped_run_labels() {
 			}
 		}'
 }
+# The install.sh a report names for its rerun: skill.INSTALL_SH, setup_report's INSTALL_SH (a test keeps them equal)
+# shellcheck disable=SC2088 # the ~ is printed, for the reader's shell to expand
+REPORT_INSTALL_SH="~/src/agent-context-sync/scripts/install.sh"
+# Facts older_report_rewrite reads where the renderer reads them (B13 round 17 U27, U28), as files with no
+# agentsync: OR_LASTRUN, the last install.sh run that reached an install step (a --list-folders run, or one a
+# usage error stopped, logs commit=- and says nothing of the installed copy), "commit <c>[ tree <t> (...)]" or
+# "no commit read", empty with none, as setup_report._installed_where words it; OR_FETCH, the checkout's
+# FETCH_HEAD as _last_fetch words it, empty when it cannot be read; OR_FSSTART, the start time of the last run
+# with a first-sync step.
+older_report_facts() {
+	local d paths=() p rel common best="" bm=-1 m z
+	OR_LASTRUN="" OR_FETCH="" OR_FSSTART=""
+	if [ -f "$SETUP_LOG" ]; then
+		IFS='|' read -r OR_LASTRUN OR_FSSTART < <(LC_ALL=C awk '
+			match($0, / run=[^ ]+ /) { r = substr($0, RSTART + 5, RLENGTH - 6) }
+			index($0, " start install.sh ") { st[r] = $0; at[r] = $1 }
+			match($0, / step=[^ ]+ /) {
+				s = substr($0, RSTART + 6, RLENGTH - 7)
+				if (s != "report" && s != "list-folders") real = r
+				if (s == "first-sync") fs = r
+			}
+			END {
+				w = ""
+				if (real != "" && (real in st)) {
+					c = v(st[real], "commit"); t = v(st[real], "tree")
+					if (t == "" && match(st[real], / commit=[^ ]+-dirty dirty [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/)) { t = substr(st[real], RSTART, RLENGTH); sub(/.* /, "", t) }
+					if (c == "-") w = "no commit read"
+					else if (c != "") w = "commit " c (t != "" ? " tree " t " (the SHA-256 prefix of `git diff HEAD` in that checkout)" : "")
+				}
+				printf "%s|%s\n", w, (fs != "" && (fs in at)) ? at[fs] : ""
+			}
+			function v(l, k) { if (!match(l, " " k "=[^ ]*")) return ""; return substr(l, RSTART + length(k) + 2, RLENGTH - length(k) - 2) }
+		' "$SETUP_LOG" 2>/dev/null) || true
+	fi
+	# a worktree's FETCH_HEAD is its own, but origin/main is shared: the newer of the two dates it
+	d="$repo"
+	if [ -d "$d/.git" ]; then
+		paths=("$d/.git/FETCH_HEAD")
+	elif [ -e "$d/.git" ] && /usr/bin/xcode-select -p >/dev/null 2>&1; then # no git shim's install dialog
+		rel="$(GIT_OPTIONAL_LOCKS=0 git -C "$d" rev-parse --git-path FETCH_HEAD 2>/dev/null)" || return 0
+		common="$(GIT_OPTIONAL_LOCKS=0 git -C "$d" rev-parse --git-common-dir 2>/dev/null)" || return 0
+		case "$rel" in /*) ;; *) rel="$d/$rel" ;; esac
+		case "$common" in /*) ;; *) common="$d/$common" ;; esac
+		paths=("$rel" "$common/FETCH_HEAD")
+	else
+		return 0
+	fi
+	for p in "${paths[@]}"; do
+		[ -e "$p" ] || [ -L "$p" ] || continue
+		m="$(/usr/bin/stat -f %m "$p" 2>/dev/null)" || return 0
+		[ "$m" -le "$bm" ] || { bm="$m" best="$p"; }
+	done
+	if [ -z "$best" ]; then
+		OR_FETCH="no fetch since the clone"
+		return 0
+	fi
+	z="$(/usr/bin/stat -f %z "$best" 2>/dev/null)" || return 0
+	m="$(TZ=UTC0 /usr/bin/stat -f %Sm -t %Y-%m-%dT%H:%M:%SZ "$best" 2>/dev/null)" || return 0
+	if [ "$z" = 0 ]; then
+		OR_FETCH="the checkout's last fetch, $m, failed; origin/main is from an earlier fetch"
+	else
+		OR_FETCH="as of the checkout's last fetch, $m"
+	fi
+	return 0
+}
 # The rewrite of a report an agentsync older than this checkout rendered (stopped_report_note's, above), on
 # stdout, MODE copy or step1. "copy" is a stopped copy's: everything above. "step1" is the report of this
 # attempt's own step 1 stop, which the installed build renders too, as nothing reinstalled it (B13 round 16
@@ -4063,9 +4128,11 @@ stopped_run_labels() {
 # installed build wrote them: doctor stays one build (a checkout's renderer over an old install mixed two
 # builds, §16.110 Q27).
 older_report_rewrite() { # MODE
-	local cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}"
-	[ "$1" != copy ] || { cp=1 note="" apps="" cause="" turns=""; }
-	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" awk -v cp="$cp" -v s1note="$note" -v s1apps="$apps" \
+	local cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}" item="${S1_ITEM:-}"
+	[ "$1" != copy ] || { cp=1 note="" apps="" cause="" turns="" item=""; }
+	older_report_facts
+	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" OR_LASTRUN="$OR_LASTRUN" OR_FETCH="$OR_FETCH" OR_FSSTART="$OR_FSSTART" awk \
+		-v cp="$cp" -v s1note="$note" -v s1apps="$apps" -v s1item="$item" -v inst="$REPORT_INSTALL_SH" \
 		-v s1cause="$cause" -v s1turns="$turns" -v w1="$STEP1_STOP_WARN" -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
 		-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
 		-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
@@ -4163,8 +4230,9 @@ older_report_rewrite() { # MODE
 			for (i = 1; i <= n; i++) if (t[i] != "other" && t[i] != "" && (prov == t[i] || index(prov, t[i] "-") == 1)) return name
 			return ""
 		}
-		# The Summary doctor line with those FAILs out of its unexpected list and in "from the sign-in stop N",
-		# after the expected and yours parts, as the renderer orders them
+		# The Summary doctor line with those FAILs out of its unexpected list and in "from the sign-in stop (N
+		# checks)", after the expected and yours parts, as the renderer orders and words them (B13 round 16
+		# T20: a bare number after "stop" read as a name; round 17 U53, U81)
 		function stop_bucket(line,    k, p, i, j, a, m, items, moved, nm, out, put) {
 			k = split(substr(line, 11), p, " \302\267 "); moved = ""; nm = 0
 			for (i = 2; i <= k; i++) if (p[i] ~ /^unexpected [0-9]+: /) {
@@ -4178,10 +4246,10 @@ older_report_rewrite() { # MODE
 			if (!nm) return line
 			out = "- doctor: " p[1]; put = 0
 			for (i = 2; i <= k; i++) {
-				if (!put && p[i] !~ /^(expected|yours) [0-9]+: /) { out = out " \302\267 from the sign-in stop " nm ": " moved; put = 1 }
+				if (!put && p[i] !~ /^(expected|yours) [0-9]+: /) { out = out " \302\267 from the sign-in stop (" pl(nm, "check") "): " moved; put = 1 }
 				out = out " \302\267 " p[i]
 			}
-			return out (put ? "" : " \302\267 from the sign-in stop " nm ": " moved)
+			return out (put ? "" : " \302\267 from the sign-in stop (" pl(nm, "check") "): " moved)
 		}
 		function ends(line, tail) { return length(line) >= length(tail) && substr(line, length(line) - length(tail) + 1) == tail }
 		# An older renderer writes "(s)" beside a known count in the lines the current one words by the count (B13
@@ -4312,13 +4380,15 @@ older_report_rewrite() { # MODE
 		# "N checks:" and "1 expected warn ends in" / "N expected warns end in": both are read, and a merged
 		# count keeps its form (in the newer form, noun and verb go by the sum)
 		cp && c && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ {
-			if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn" (c == 1 ? " ends" : "s end") " in (expected: <why>) instead of their fix: nothing for this setup to do."
+			# "its fix" for one warn (B13 round 17 U31); a merged count is 2 or more, so "their"
+			if ($0 ~ /not ok:$/) $0 = $0 " " c " expected warn" (c == 1 ? " ends in (expected: <why>) instead of its fix" : "s end in (expected: <why>) instead of their fix") ": nothing for this setup to do."
 			else if (match($0, / [0-9]+ expected warn\(s\) end in /)) {
 				e = substr($0, RSTART + 1) + 0
 				$0 = substr($0, 1, RSTART) (e + c) substr($0, RSTART + 1 + length(e ""))
 			} else if (match($0, / [0-9]+ expected warns? ends? in /)) {
 				e = substr($0, RSTART + 1) + 0
 				$0 = substr($0, 1, RSTART) (e + c) " expected warns end in " substr($0, RSTART + RLENGTH)
+				sub(/ instead of its fix:/, " instead of their fix:", $0)
 			}
 		}
 		cp && (c || st) && sec == "## Doctor" && $0 ~ /^[0-9]+ checks?(\(s\))?: .*\. Only the lines that are not ok:/ && !index($0, b) && ends($0, "nothing for this setup to do.") {
@@ -4327,10 +4397,44 @@ older_report_rewrite() { # MODE
 		c && sec == "## Summary" && index($0, "- doctor: ") == 1 { $0 = doctor_line($0, cp ? w : w1) }
 		s1note != "" && sec == "## Summary" && index($0, "- doctor: ") == 1 && nmv { $0 = stop_bucket($0) }
 		# the stop of step 1 (B13 round 16 T11): its cause, as a renderer from N31 on writes it, and the turns
+		# v10\047s "ran (step 1))" reads "ran, in step 1" since 92b5fd13 (B13 round 17 U81)
 		s1cause != "" && sec == "## Summary" && index($0, "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran") == 1 && !index($0, "; it stopped: ") && ends($0, ")") {
-			$0 = substr($0, 1, length($0) - 1) "; it stopped: " s1cause ")"
+			if (ends($0, " ran (step 1))")) $0 = substr($0, 1, length($0) - 13) "ran, in step 1; it stopped: " s1cause ")"
+			else $0 = substr($0, 1, length($0) - 1) "; it stopped: " s1cause ")"
 		}
-		s1turns != "" && sec == "## Summary" && index($0, "- expected turns: ") == 1 && !index($0, "list stopped: ") { $0 = s1turns }
+		s1turns != "" && sec == "## Summary" && index($0, "- expected turns: ") == 1 && !index($0, "list stopped: ") && !index($0, "command stopped before ") { $0 = s1turns }
+		# the stop is the Items list\047s first entry, as _sign_in_stop_item puts it (B13 round 17 U26, U107)
+		s1item != "" && sec == "## Summary" && $0 ~ /^Items that were not one command \(attempt [0-9]+\):$/ { itm = FNR }
+		# a stopped copy of an attempt that ran no install.sh: its first sync is an earlier run\047s (B13 round 17 U28)
+		cp && norun && sec == "## Summary" && $0 ~ /^- (first )?sync: [a-z]+ in [0-9]+s[^(]* \(install\.log\)/ && !index($0, "before this attempt") && (j = index($0, " (install.log)")) {
+			$0 = substr($0, 1, j - 1) " (install.log: " (ENVIRON["OR_FSSTART"] != "" ? "the install run of " ENVIRON["OR_FSSTART"] : "an earlier install run") ", before this attempt; this attempt ran none)" substr($0, j + 14)
+			if ((j = index($0, " (install.log)"))) $0 = substr($0, 1, j - 1) " (install.log: that earlier run)" substr($0, j + 14)
+			else if ((j = index($0, " (install.out)"))) $0 = substr($0, 1, j - 1) " (install.out: an earlier run\047s; this attempt ran none)" substr($0, j + 14)
+		}
+		# v10\047s friction words, in both modes (B13 round 17 U27): the rerun the header names, the attempt\047s bits
+		# joined by "; ", "line N" for one line, and no "finished" tail beside a count of it
+		!det && !fence && (j = index($0, "(a line written after that is not in this report: run setup-report again)")) {
+			$0 = substr($0, 1, j - 1) "(a line written after that is not in this report: run `" inst " --report-only` again)" substr($0, j + 73)
+		}
+		!det && !fence && sec == "## Friction log" && $0 ~ /^- attempt [0-9]+ \(lines? [0-9]+(-[0-9]+)?; / {
+			if (match($0, /^- attempt [0-9]+ \(lines [0-9]+-[0-9]+;/)) {
+				x = substr($0, 1, RLENGTH); k = index(x, "("); y = substr(x, k + 7, length(x) - k - 7); j = index(y, "-")
+				if (substr(y, 1, j - 1) == substr(y, j + 1)) $0 = substr(x, 1, k) "line " substr(y, 1, j - 1) ";" substr($0, RLENGTH + 1)
+			}
+			if (!index($0, "; prompt ") && (j = index($0, ", prompt "))) {
+				$0 = substr($0, 1, j - 1) "; prompt " substr($0, j + 9)
+				if ((k = index(substr($0, j), ", agent "))) $0 = substr($0, 1, j + k - 2) "; agent " substr($0, j + k + 7)
+			}
+			if (ends($0, "; finished") && index(substr($0, 1, length($0) - 10), " finished")) $0 = substr($0, 1, length($0) - 10)
+		}
+		# the last install run\047s commit, and the fetch\047s date, from install.log and FETCH_HEAD (B13 round 17 U27)
+		!det && !fence && match($0, /; last install\.sh run: commit -($|[;) ])/) {
+			k = substr($0, RSTART + RLENGTH - 1, 1); k = (k == "-" ? "" : k)
+			$0 = substr($0, 1, RSTART - 1) (ENVIRON["OR_LASTRUN"] != "" ? "; last install.sh run: " ENVIRON["OR_LASTRUN"] : "") k substr($0, RSTART + RLENGTH)
+		}
+		!det && !fence && ENVIRON["OR_FETCH"] != "" && (j = index($0, "(as of the checkout\047s last fetch)")) {
+			$0 = substr($0, 1, j) ENVIRON["OR_FETCH"] substr($0, j + 32)
+		}
 		cp && sec == "## Doctor" && (j = index($0, heldold)) > 0 { $0 = substr($0, 1, j - 1) heldnow substr($0, j + length(heldold)) }
 		cp && (index($0, "Send it: ") == 1 || index($0, u) == 1) { next }
 		cp && (index($0, u) > 0 || index($0, "bring back: ") == 1) { if (shown++) next; $0 = gone }
@@ -4338,6 +4442,11 @@ older_report_rewrite() { # MODE
 		sec == "## Installer" && index($0, "|") == 1 { tb[++tn] = $0; next }
 		tn { table() }
 		$0 == "" { blank++; next }
+		itm && FNR > itm {
+			itm = 0
+			if ($0 == "- none") $0 = s1item
+			else if (index($0, "- ") == 1 && !index($0, "the folder list stopped")) { for (; blank > 0; blank--) print ""; print s1item }
+		}
 		{ for (; blank > 0; blank--) print ""; print (det || fence ? $0 : plural_all($0)) }
 		END { if (tn) table(); if (cp) { print ""; print "Not for sending: see the note at the top of this report." } }' "$REPORT_PATH" "$REPORT_PATH"
 }
@@ -4347,10 +4456,12 @@ older_report_rewrite() { # MODE
 # S1_CAUSE (setup_report._list_stop_words) and S1_TURNS (the expected-turns line, as
 # setup_report._expected_turns_line words it for a list that stopped, with "none": an unattended stop has no
 # sign-in answer to count); else all empty, and 1 is returned. As files, with no agentsync: the installed one is
-# older, which is why this runs.
+# older, which is why this runs. S1_ITEM is the Items list's entry for the stop, as setup_report._sign_in_stop_item
+# words it, only under its guards: no install run in the attempt, every list run of it failed, and no error line
+# in the attempt (a friction stop, which is the Items list's first entry then; B13 round 17 U26, U107).
 step1_stop_facts() {
-	local facts begin who="" names t n=0 of missing gone app label
-	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS=""
+	local facts begin who="" names t n=0 of missing gone app label clause why
+	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM=""
 	[ -f "$SETUP_LOG" ] || return 1
 	begin="$(utc_stamp "$(friction_attempt_begin)")"
 	facts="$(BEGIN_AT="$begin" LC_ALL=C awk '
@@ -4362,12 +4473,17 @@ step1_stop_facts() {
 			if (a[2] != 1 || fl !~ / result=failed / || fl !~ / note=(not-signed-in|no-folders)( |$)/) exit
 			b = ENVIRON["BEGIN_AT"]; if (b != "" && a[1] < b) exit
 			n = fl; sub(/.* note=/, "", n); sub(/ .*/, "", n)
-			printf "%s|%s|%s|%s\n", n, v(fl, "apps"), v(fl, "missing"), v(fl, "synced")
+			printf "%s|%s|%s|%s|%s\n", n, v(fl, "apps"), v(fl, "missing"), v(fl, "synced"), (other ? "" : "item")
 		}
+		# the attempt\047s other runs: an install run, or a list that did not fail, keeps the item out
+		index($0, " start install.sh ") && (ENVIRON["BEGIN_AT"] == "" || $1 >= ENVIRON["BEGIN_AT"]) && $0 !~ / args=--list-folders$/ { other = 1 }
+		index($0, " step=list-folders ") && (ENVIRON["BEGIN_AT"] == "" || $1 >= ENVIRON["BEGIN_AT"]) && $0 !~ / result=failed( |$)/ { other = 1 }
+		# a list that ended on the Allow click (exit 4) makes the attempt that click\047s, as _list_stopped reads it
+		index($0, " step=list-folders ") && (ENVIRON["BEGIN_AT"] == "" || $1 >= ENVIRON["BEGIN_AT"]) && $0 ~ / note=(denied|tcc-pending)( |$)/ { other = 1 }
 		function v(l, k,    x) { if (!match(l, " " k "=[^ ]*")) return ""; x = substr(l, RSTART + length(k) + 2, RLENGTH - length(k) - 2); return x }
 	' "$SETUP_LOG" 2>/dev/null)" || return 1
 	[ -n "$facts" ] || return 1
-	IFS='|' read -r S1_NOTE S1_APPS missing of <<<"$facts"
+	IFS='|' read -r S1_NOTE S1_APPS missing of item <<<"$facts"
 	case "$missing" in *[!0-9]* | "") missing="" ;; esac
 	case "$of" in *[!0-9]* | "") of="" ;; esac
 	if [ "$S1_NOTE" = no-folders ]; then
@@ -4411,9 +4527,44 @@ step1_stop_facts() {
 		fi
 		if [ "$of" -eq 1 ]; then t="it is"; else t="they are"; fi
 		S1_TURNS="- expected turns: none (step 1's list stopped: $S1_CAUSE, so $gone missing; $t kept: no folder question and no Allow click)"
+		clause="$S1_CAUSE, so $gone missing" why="an unattended run goes to the report"
 	else
 		S1_TURNS="- expected turns: none (step 1's list stopped: $S1_CAUSE, so no folder was listed: no folder question and no Allow click)"
+		clause="$S1_CAUSE, so no folder was listed" why="on this stop step 1 goes to the report"
 	fi
+	# step 1: the shim fires only for the current prompt's step 1 list, as S1_TURNS says
+	[ "$item" != item ] || friction_attempt_errors || S1_ITEM="- install.sh · step 1 · the folder list stopped: $clause (not logged: $why)"
+	return 0
+}
+# Whether the friction log's last attempt (after its last Attempt: line) has an error line: a friction stop
+friction_attempt_errors() {
+	local f
+	f="$(friction_file)"
+	[ -f "$f" ] || return 1
+	LC_ALL=C awk '/^Attempt:/ { e = 0; next } /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[^|]*[|][^|]*[|] error [|]/ { e = 1 }
+		END { exit !e }' "$f" 2>/dev/null
+}
+# The step 1 stop of step 1's own command, before install.sh --log-start (a git or Xcode stop), when the
+# installed build is older (B13 round 17 U34): friction.md's last event line, an end line aside, is a step 1
+# error stating "prompt vN, <agent>:" (track()\047s stated()), and install.log has no install run (a --list-folders
+# one aside) started at or after it. S1_TURNS is the renderer's line for that attempt (_expected_turns_line,
+# unstarted); S1_NOTE and S1_APPS stay empty, so no FAIL moves to the sign-in stop, and S1_CAUSE too: the
+# renderer names no cause beside "step 1 logged an error". The attempt split and its note are not shimmed.
+step1_cmd_stop_facts() {
+	local f at
+	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM=""
+	f="$(friction_file)"
+	[ -f "$f" ] && [ -f "$SETUP_LOG" ] || return 1
+	at="$(LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		{ track($0) }
+		NH { NH = 0; last = ""; next }
+		/^Attempt:/ || /^[-* ]*(Prompt|Agent|Outcome|Run):/ { last = ""; next }
+		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/ && !/[|] end [|] finished[[:space:]]*$/ { last = $0 }
+		END { if (last ~ s1 && stated(last)) print substr(last, 1, 20) }' "$f" 2>/dev/null)"
+	[ -n "$at" ] || return 1
+	AT="$at" LC_ALL=C awk 'index($0, " start install.sh ") && $1 >= ENVIRON["AT"] && $0 !~ / args=--list-folders$/ { found = 1 }
+		END { exit found }' "$SETUP_LOG" 2>/dev/null || return 1
+	S1_TURNS="- expected turns: none (step 1's command stopped before install.sh --log-start, before the folder list: no folder question and no Allow click)"
 	return 0
 }
 # The report of this attempt's own step 1 stop rendered by the installed agentsync, which is older than this
@@ -4422,7 +4573,7 @@ step1_stop_facts() {
 step1_report_note() {
 	local tmp
 	LC_ALL=C grep -q '^\[warn\] install\.commit .*, but the checkout at ' "$REPORT_PATH" 2>/dev/null || return 0
-	step1_stop_facts || return 0
+	step1_stop_facts || step1_cmd_stop_facts || return 0
 	tmp="$(mktemp "${REPORT_PATH%/*}/.step1-report.XXXXXX" 2>/dev/null)" || return 1
 	if older_report_rewrite step1 >"$tmp" && [ -s "$tmp" ]; then
 		if cmp -s "$tmp" "$REPORT_PATH"; then rm -f "$tmp"; return 0; fi
@@ -6400,7 +6551,7 @@ elif [ "$INSTALL_AGENT" -eq 1 ] && [ "$WAIT_RESULT" != "ok" ] && [ "$WAIT_RESULT
 		EXIT_RC=3
 		next="macOS is still waiting for Allow for agentsync-launcher: click Allow if the prompt is showing, or $TCC_CLICK, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_CODE" = "65" ]; then # the person's fix, as the first sync's 65 (B13 round 17 U55)
-		next="the first background run exited 65 ($(rc_meaning 65)): agentsync's state file cannot be read (the error in $WAIT_ERRLOG, with its fix; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+		next="the first background run exited 65 ($(rc_meaning 65)): agentsync's state file cannot be read (the error in ${WAIT_ERRLOG:-the err log of the job}, with its fix; ~/.local/bin/agentsync sync prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_CODE" = "80" ]; then
 		next="macOS denied agentsync-launcher access to files managed by $(provider_name) (an earlier \"Don't Allow\"): $TCC_CLICK, then re-run: $SELF$RERUN_ARGS"
 	elif [ "$WAIT_RESULT" = "timeout" ]; then

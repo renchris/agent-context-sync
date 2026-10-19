@@ -21727,6 +21727,8 @@ branches are covered too (`M local-work branches ... hold`, `1 local-work branch
 `(es)`, its count standing after the colon.
 Amended 2026-10-19, §16.129 U38: the label line drops its `(es)` too, `- local-work branches in the checkout: N with
 commits of their own` (`1 with commits of its own`), so it is no example of an `(s)` with no count.
+Amended 2026-10-19, §16.129 U31: the Doctor header's note reads `1 expected warn ends in (expected: <why>) instead
+of its fix`; `their fix` for two or more.
 Amended 2026-10-18, §16.127 T76: those numbers have moved with later scripts/install.sh changes. The unread-patch
 lines are `write_bring_back`'s section 3 `not sent: ... this account cannot read` line, the header's `Section 3 does
 not hold ... this account cannot read` and `Section 3 sends no patch: ... could not be read` sentences, the `could not
@@ -22556,6 +22558,8 @@ second digit). Tests: `test_a_stopped_copy_by_an_older_agentsync_words_every_cou
 `test_a_stopped_copys_waits_of_ten_or_more_folders_keep_their_count`,
 `test_a_stopped_copy_by_the_v10_agentsync_takes_its_one_folder_words`, `test_no_renderer_line_writes_s_beside_a_count`,
 `test_the_shell_stopped_copy_fix_line_is_the_reports`.
+Amended 2026-10-19, §16.129 U28: a copy whose attempt ran no install.sh names the earlier run its first-sync line
+reads.
 
 **A step 1 stop the older installed agentsync rendered takes this checkout's words** (T11). After the current prompt's
 step 1 stopped, the field Mac's report is rendered by the installed build, which nothing reinstalled (rehearsal B's
@@ -22569,6 +22573,13 @@ stopped: <cause>`, the expected-turns line, and the stopped app's source FAILs i
 the redacted CloudStorage path as `_sign_in_stop_fails` picks them. The Loop NEXT, the Doctor part and the Items list
 stay as written. Tests: `test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words`
 (a report in the current words passes unchanged), `test_a_report_that_is_no_step_1_stop_of_an_older_build_is_left_as_rendered`.
+Amended 2026-10-19, §16.129 U53, U81: the bucket reads `from the sign-in stop (N checks)` and the outcome `ran, in
+step 1; it stopped: <cause>`, as §16.122 T20 and 92b5fd13 word them; `from the sign-in stop N` above was the old form.
+Amended 2026-10-19, §16.129 U26, U107: the Items list is no longer as written: the stop is its first entry.
+Amended 2026-10-19, §16.129 U27: the friction section's v10 words and the checkout line's fetch and last-run clauses
+take the current ones too, in both modes.
+Amended 2026-10-19, §16.129 U34: a git or Xcode stop of step 1's command, before `--log-start`, is rewritten too, by
+a second fact reader.
 
 ### 16.124 Round 16: setup prompt v25 and the config a sync refuses (2026-10-18, wave B13 round 16 lane P)
 
@@ -23027,6 +23038,66 @@ report's note said `--report-only had no attempt to close`. The check now runs `
 splits as the parser does, and closes nothing when the latest attempt is such a header-less one; an `Attempt:` line
 alone (G51) and a stated line with no `<agent>:` open none, so their attempt is still closed once. `--log-end` reads
 the same rule. Test: `test_report_only_closes_only_the_attempt_the_report_reads_as_latest`.
+
+**A step 1 stop the older build rendered takes the renderer's bucket and outcome words** (U53, U81: one defect from
+two finders; dated line at §16.123 T11). T11's `stop_bucket` wrote `from the sign-in stop N:`, the form §16.122 T20
+replaced (a bare number after "stop" read as a name), and its outcome rule kept v10's `ran (step 1)` before `; it
+stopped:`; the test pinned both as the current words, so its round trip proved nothing. The bucket reads `from the
+sign-in stop (N checks):` (`pl()`), and a line ending `ran (step 1))` reads `ran, in step 1; it stopped: <cause>)`;
+no general `(step 1)` rewrite, which another path's old outcome keeps. Test:
+`test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words`.
+
+**Its Items list names the stop** (U26, U107: one defect from two finders; dated line at §16.123 T11). v10 wrote
+`- none` under `Items that were not one command (attempt N):` beside `failed at step 1 ... it stopped`. `step1_stop_facts`
+builds `S1_ITEM` as `_sign_in_stop_item` does (`- install.sh · step 1 · the folder list stopped: <clause> (not
+logged: <why>)`, the clause and why by the note and the synced count) under its guards: no install run in the
+attempt, every list run of it failed and none on the Allow click (`note=denied` or `tcc-pending`, which
+`_list_stopped` makes the attempt's stop), and no error line in the friction log's last attempt (a friction stop,
+which is the list's first entry then). A lone `- none` becomes the entry; a list with entries takes it first, unless a line
+already names `the folder list stopped`; `- none (no friction log)` stays. Test:
+`test_a_step_1_stop_of_the_older_build_lists_the_stop_as_an_item` (none, an entry, no folders, a friction stop).
+
+**v10's friction and checkout words take the current ones** (U27; dated line at §16.123 T11). In both modes, outside
+`<details>` and fences: the friction header's `run setup-report again` reads ``run `~/src/agent-context-sync/
+scripts/install.sh --report-only` again`` (`REPORT_INSTALL_SH`, `setup_report.INSTALL_SH`); an attempt line's bits
+are joined by `; ` (only the first `, prompt ` and `, agent `, so an agent's own comma stays), `lines N-N` reads `line
+N`, and a `; finished` tail goes when the counts hold `finished`. From files, with no agentsync
+(`older_report_facts`): `last install.sh run: commit -`, which v10 took from the `--list-folders` run, names the last
+run that reached an install step (its commit and tree, `no commit read` for its own `-`, no clause with none), and
+`(as of the checkout's last fetch)` takes FETCH_HEAD's date as `_last_fetch` words it (`no fetch since the clone`; a
+0-byte one `failed; origin/main is from an earlier fetch`; a worktree's and the common one, the newer), or stays when
+it cannot be read. The bucket's `(N checks)` is U53's. Test:
+`test_a_step_1_stop_of_the_older_build_takes_the_current_friction_and_checkout_words`.
+
+**A stopped copy names the earlier run its first sync reads** (U28; dated line at §16.123 T23). A copy of an attempt
+that ran no install.sh (its own `- install.sh: no run during this attempt` line) printed an earlier run's `first sync:
+done in 4s (install.log) · converted 7, ... (install.log)` as this attempt's. In copy mode it reads `(install.log:
+the install run of <start>, before this attempt; this attempt ran none)`, the start from install.log's last run with
+a first-sync step (`an earlier install run` with none), and the counts' tag `(install.log: that earlier run)` or
+`(install.out: an earlier run's; this attempt ran none)`; a line already saying `before this attempt` stays. The
+`, run <label>` of two runs in one second (`_run_named`) is not added. Test:
+`test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync`.
+
+**One expected warn ends in its fix** (U31; dated line at §16.116 S26). Both the renderer and the stopped copy's
+header wrote `1 expected warn ends in (expected: <why>) instead of their fix`. It reads `its fix` for one; the copy's
+merge of a newer header's count, always two or more, turns `its` into `their`. Tests:
+`test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected` (`_new_note`; a newer header's `1 ... its fix`
+merged into `2 ... their fix`), `test_setup_report.py::test_a_stopped_copys_install_commit_warn_is_expected`.
+
+**A git stop the older build rendered takes this checkout's words** (U34; dated line at §16.123 T11). A stop of step
+1's own command (git or Xcode) before `--log-start` starts no install.log run, so `step1_stop_facts`, keyed on a failed
+list run, left the older build's report as rendered: install.commit unexpected, a folder-question turns line, `(s)`.
+A second reader, `step1_cmd_stop_facts`, fires when friction.md's last event line (an end line aside, and none
+before a later `Attempt:` or header line, another session's attempt) is a step 1 error stating `prompt vN, <agent>:`
+(`stated()`) and install.log has no install run (a `--list-folders` one aside)
+started at or after it; `older_report_rewrite step1` then moves install.commit to expected, takes the counts' nouns
+and sets the turns line to the renderer's for that attempt (`none (step 1's command stopped before install.sh
+--log-start, before the folder list: ...)`). `S1_NOTE` and `S1_APPS` stay empty, so no FAIL moves to the sign-in
+stop. The verifier's outcome shim (`; it stopped: <cause>`) is not built: the renderer words a step 1 error's outcome
+`no install.sh run; step 1 logged an error` with no cause. The attempt split and its note are not shimmed: the old
+build reads one attempt where the renderer reads two, and the words cannot be rebuilt from its text. Rendering with
+the checkout's src stays refused (§16.110 Q27, T11). Test:
+`test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words` (and an install run after it).
 
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 

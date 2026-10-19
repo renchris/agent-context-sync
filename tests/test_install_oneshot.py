@@ -40,7 +40,7 @@ import threading
 import time
 import unicodedata
 import urllib.parse
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -9239,8 +9239,9 @@ _V10_FAILS = [
 ]
 
 
-def _v10_step1_report(summary: list[str]) -> str:
-    """A report as the v10 build (4a42af9) renders a step 1 sign-in stop, with made-up names."""
+def _v10_step1_report(summary: list[str], tail: Sequence[str] = ()) -> str:
+    """A report as the v10 build (4a42af9) renders a step 1 sign-in stop, with made-up names; ``tail``: the
+    sections after Doctor."""
     return "\n".join(
         [
             "# agentsync setup report",
@@ -9257,8 +9258,93 @@ def _v10_step1_report(summary: list[str]) -> str:
             *_V10_DOCTOR,
             "~~~",
             "",
+            *tail,
         ]
     )
+
+
+_V10_ITEMS = ["", "Items that were not one command (attempt 2):", "", "- none"]
+_STOP_ITEM = (
+    "- install.sh \u00b7 step 1 \u00b7 the folder list stopped: OneDrive is not signed in, so the 2 "
+    "folders this Mac "
+    "already syncs are missing (not logged: an unattended run goes to the report)"
+)
+"""The Items list's entry the current renderer writes for M1o's stop (_sign_in_stop_item; B13 round 17 U26,
+U107)."""
+_NOW_ITEMS = [*_V10_ITEMS[:-1], _STOP_ITEM]
+_V10_TAIL = [
+    "## Run metadata",
+    "",
+    "- agentsync: checkout ~/src/agent-context-sync @ 0123456789ab \u00b7 on origin/main: yes (as of the "
+    "checkout's last fetch); last install.sh run: commit -",
+    "",
+    "## Friction log",
+    "",
+    "Embedded from ~/agent-context/setup/friction.md as this report read it: 7 line(s), last modified "
+    "2026-10-18T10:00:05Z (a line written after that is not in this report: run setup-report again). "
+    "Redacted "
+    "with the same placeholders as the rest of the report.",
+    "",
+    "2 attempt(s):",
+    "- attempt 1 (lines 1-4; started 2026-10-18T09:00:00Z, prompt v10, agent Contoso Agent, beta): worked; 1 "
+    "event line(s): 1 finished; finished",
+    "- attempt 2 (lines 5-5; started 2026-10-18T10:00:00Z, prompt v25, agent x): failed at step 1; 0 event "
+    'line(s): none; no "end | finished" line',
+    "",
+]
+"""v10's words the rewrite misses (B13 round 17 U27): the checkout line's undated fetch and the --list-folders
+run's commit, the friction header's rerun, the attempt bits joined by ", " and a "finished" tail."""
+
+
+def _now_tail(fetch: str) -> list[str]:
+    """:data:`_V10_TAIL` in the current renderer's words, the fetch as ``fetch`` words it."""
+    return [
+        "## Run metadata",
+        "",
+        "- agentsync: checkout ~/src/agent-context-sync @ 0123456789ab \u00b7 on origin/main: yes "
+        f"({fetch}); "
+        "last install.sh run: commit 0123456789ab",
+        "",
+        "## Friction log",
+        "",
+        "Embedded from ~/agent-context/setup/friction.md as this report read it: 7 lines, last modified "
+        "2026-10-18T10:00:05Z (a line written after that is not in this report: run "
+        f"`{setup_report.INSTALL_SH} --report-only` again). Redacted with the same placeholders as the "
+        "rest of "
+        "the report.",
+        "",
+        "2 attempts:",
+        "- attempt 1 (lines 1-4; started 2026-10-18T09:00:00Z; prompt v10; agent Contoso Agent, beta): "
+        "worked; "
+        "1 event line: 1 finished",
+        "- attempt 2 (line 5; started 2026-10-18T10:00:00Z; prompt v25; agent x): failed at step 1; 0 event "
+        'lines: none; no "end | finished" line',
+        "",
+    ]
+
+
+def _checkout_fetch() -> str:
+    """The checkout's last fetch as setup_report._last_fetch words it (install.sh's own checkout)."""
+    repo = INSTALL_SH.parent.parent
+    if (repo / ".git").is_dir():
+        paths = [repo / ".git" / "FETCH_HEAD"]
+    else:
+
+        def path(*args: str) -> Path:
+            out = subprocess.run(
+                ["git", "-C", str(repo), "rev-parse", *args], capture_output=True, text=True, check=True
+            ).stdout.strip()
+            return Path(out) if Path(out).is_absolute() else repo / out
+
+        paths = [path("--git-path", "FETCH_HEAD"), path("--git-common-dir") / "FETCH_HEAD"]
+    stats = [p.lstat() for p in dict.fromkeys(paths) if os.path.lexists(p)]
+    if not stats:
+        return "no fetch since the clone"
+    st = max(stats, key=lambda x: x.st_mtime)
+    when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(st.st_mtime)))
+    if st.st_size == 0:
+        return f"the checkout's last fetch, {when}, failed; origin/main is from an earlier fetch"
+    return f"as of the checkout's last fetch, {when}"
 
 
 _V10_SUMMARY = [
@@ -9274,9 +9360,9 @@ _V10_SUMMARY = [
     f"- doctor: 7 FAIL, 1 warn (54 checks) {_DOT} unexpected 8: "
     + ", ".join([*_V10_FAILS, "install.commit warn"]),
 ]
-_NOW_SUMMARY = [
-    "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran (step "
-    "1); it "
+_NOW_SUMMARY = [  # B13 round 17 U53, U81: the renderer's "ran, in step 1" and "(N checks)", T20's
+    "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran, in step "
+    "1; it "
     "stopped: OneDrive is not signed in)",
     _V10_SUMMARY[1],
     "- expected turns: none (step 1's list stopped: OneDrive is not signed in, so the 2 folders this Mac "
@@ -9285,34 +9371,46 @@ _NOW_SUMMARY = [
     "- installer output: 2 NEXT: lines in 2 runs (exactly one per install.sh run is expected) and 0 other "
     "instruction-like lines in the last 139 lines of install.out",
     f"- doctor: 7 FAIL, 1 warn (54 checks) {_DOT} expected 1: install.commit (step 1 stopped this attempt "
-    f"before step 2 reinstalls agentsync) {_DOT} from the sign-in stop 4: "
+    f"before step 2 reinstalls agentsync) {_DOT} from the sign-in stop (4 checks): "
     + ", ".join(_V10_FAILS[1:5])
     + f" {_DOT} unexpected 3: "
     + ", ".join([_V10_FAILS[0], *_V10_FAILS[5:]]),
 ]
 
 
-def _step1_stop_home(env: dict[str, str], tmp_path: Path, report: str, *, last: str = "list") -> str:
+def _step1_stop_home(
+    env: dict[str, str],
+    tmp_path: Path,
+    report: str,
+    *,
+    last: str = "list",
+    listed: str = "note=not-signed-in apps=onedrive missing=2 synced=2",
+    friction: str = "",
+    before: Sequence[str] = (),
+) -> str:
     """M1o's state (rehearsal B): an install by an older build, then this attempt's step 1, which stopped on
     OneDrive's sign-in, then --report-only, whose report the installed build renders (``report``); the
-    report as install.sh leaves it. ``last="install"``: an install run after the list."""
+    report as install.sh leaves it. ``last="install"``: an install run after the list; ``listed``: the list
+    step's tokens; ``friction``: lines this attempt logged; ``before``: install.log lines before its list."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
     friction_path(env).write_text(
         "Attempt: 2026-10-18T09:00:00Z\nPrompt: v10\nAgent: x\n2026-10-18T09:05:00Z | end | finished\n"
-        f"Attempt: 2026-10-18T10:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n",
+        f"Attempt: 2026-10-18T10:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n{friction}",
         encoding="utf-8",
     )
     log = [
-        "2026-10-18T09:00:10Z run=20261018T090010Z-41 start install.sh compat=10 commit=- kind=- source=- "
-        "args=--source-local x",
+        "2026-10-18T09:00:10Z run=20261018T090010Z-41 start install.sh compat=10 commit=0123456789ab kind=- "
+        "source=- args=--source-local x",
+        "2026-10-18T09:00:20Z run=20261018T090010Z-41 step=first-sync seconds=4 rc=0 result=done",
         "2026-10-18T09:00:30Z run=20261018T090010Z-41 end rc=0 seconds=20",
+        *before,
         "2026-10-18T10:00:10Z run=20261018T100010Z-42 start install.sh compat=24 commit=- kind=- source=- "
         "args=--list-folders",
         "2026-10-18T10:00:11Z run=20261018T100010Z-42 step=list-folders seconds=1 rc=3 result=failed "
-        "note=not-signed-in apps=onedrive missing=2 synced=2",
+        f"{listed}",
         "2026-10-18T10:00:11Z run=20261018T100010Z-42 end rc=3 seconds=1",
     ]
     if last == "install":
@@ -9351,6 +9449,216 @@ def test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_chec
     assert _NOW_SUMMARY[0] in bring_back, "bring-back.md embeds the rewritten report"
     now = _v10_step1_report(_NOW_SUMMARY).replace("54 check(s):", "54 checks:")
     assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
+
+
+def _items(text: str) -> list[str]:
+    """The Summary's Items list, heading first."""
+    summary = text.split("## Summary\n\n", 1)[1].split("\n\n## ", 1)[0]
+    return summary.split("\n\nItems that were not one command", 1)[1].splitlines()
+
+
+@pytest.mark.parametrize(
+    "state", ["none", "an entry", "no folders", "a friction stop", "an Allow click first"]
+)
+def test_a_step_1_stop_of_the_older_build_lists_the_stop_as_an_item(
+    env: dict[str, str], tmp_path: Path, state: str
+) -> None:
+    """B13 round 17 U26, U107 (one defect from two finders): the rewrite left v10's Items list, "- none",
+    beside "failed at step 1 ... it stopped". The stop is the list's first entry, as the current renderer's
+    _sign_in_stop_item words it, under its guards: an attempt with a friction stop (an error line) keeps the
+    list as rendered, and a list that already names the stop passes unchanged."""
+    entry = "- question \u00b7 step 2 \u00b7 the agent asked which folder to add (F7)"
+    items = [*_V10_ITEMS[:-1], entry] if state == "an entry" else _V10_ITEMS
+    listed = "note=no-folders apps= synced=0" if state == "no folders" else ""
+    friction = (
+        "2026-10-18T10:00:30Z | step 1 | error | git pull failed | -\n" if state == "a friction stop" else ""
+    )
+    # a list of the attempt that ended on the Allow click makes it that click's (_list_stopped): no item
+    clicked = [
+        "2026-10-18T10:00:02Z run=20261018T100002Z-40 start install.sh compat=24 commit=- kind=- source=- "
+        "args=--list-folders",
+        "2026-10-18T10:00:03Z run=20261018T100002Z-40 step=list-folders seconds=1 rc=4 result=failed "
+        "note=denied",
+        "2026-10-18T10:00:03Z run=20261018T100002Z-40 end rc=4 seconds=1",
+    ]
+    text = _step1_stop_home(
+        env,
+        tmp_path,
+        _v10_step1_report([*_V10_SUMMARY, *items]),
+        friction=friction,
+        before=clicked if state == "an Allow click first" else (),
+        **({"listed": listed} if listed else {}),
+    )
+    got = _items(text)
+    item = (
+        "- install.sh \u00b7 step 1 \u00b7 the folder list stopped: no folders are synced yet, so no "
+        "folder was "
+        "listed (not logged: on this stop step 1 goes to the report)"
+        if state == "no folders"
+        else _STOP_ITEM
+    )
+    want = {
+        "none": [" (attempt 2):", "", item],
+        "an entry": [" (attempt 2):", "", item, entry],
+        "no folders": [" (attempt 2):", "", item],
+        "a friction stop": [" (attempt 2):", "", "- none"],
+        "an Allow click first": [" (attempt 2):", "", "- none"],
+    }[state]
+    assert got == want, got
+    if state == "none":
+        now = _v10_step1_report([*_NOW_SUMMARY, *_NOW_ITEMS]).replace("54 check(s):", "54 checks:")
+        assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
+
+
+def test_a_step_1_stop_of_the_older_build_takes_the_current_friction_and_checkout_words(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 17 U27 (M1o): v10's words the step 1 rewrite missed: the friction header's "run setup-report
+    again", the attempt bits joined by ", " (an agent's own comma kept), "lines 5-5" and a "finished" tail
+    beside "1 finished", the checkout's undated "(as of the checkout's last fetch)", and "last install.sh run:
+    commit -", which v10 took from the --list-folders run: the renderer names the last run that reached an
+    install step, from install.log. A report in the current words passes unchanged."""
+    text = _step1_stop_home(env, tmp_path, _v10_step1_report(_V10_SUMMARY, _V10_TAIL))
+    tail = "## Run metadata" + text.split("## Run metadata", 1)[1]
+    # the fetch's words by _last_fetch's kind, its time aside: another checkout of the same repository may
+    # fetch while this runs (a worktree's FETCH_HEAD and the common one are both read)
+    stamp = r"(last fetch, )\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
+    kind = re.sub(stamp, r"\1<t>", _checkout_fetch())
+    assert re.sub(stamp, r"\1<t>", tail) == "\n".join(_now_tail(kind)), tail
+    now = _v10_step1_report(_NOW_SUMMARY, _now_tail("as of the checkout's last fetch, 2026-10-18T09:59:00Z"))
+    now = now.replace("54 check(s):", "54 checks:")
+    assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
+
+
+_STEP1_STOP_WARN = "step 1 stopped this attempt before step 2 reinstalls agentsync"
+_GIT_STOP_REPORT = [
+    "# agentsync setup report",
+    "",
+    "## Summary",
+    "",
+    "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)",
+    "- expected turns: no folder question (2 folders already synced: step 1 asks at most whether to add one; "
+    "not logged) \u00b7 Allow clicks: none possible (sandbox)",
+    "- friction (attempt 1): 2 event line(s): 1 error, 1 finished",
+    f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} unexpected 1: install.commit warn",
+    "",
+    "## Doctor",
+    "",
+    "54 check(s): 53 ok, 0 info, 1 warn, 0 FAIL. Only the lines that are not ok:",
+    "",
+    "~~~text",
+    "[warn] install.commit \u2014 installed from 4a42af9abcde, but the checkout at "
+    "~/src/agent-context-sync is "
+    "at 0123456789ab (fix: re-run install.sh (~/src/agent-context-sync/scripts/install.sh))",
+    "~~~",
+    "",
+]
+"""rehearsal D's oldr: a git stop of the current prompt's step 1 command, rendered by the v10 build."""
+
+
+@pytest.mark.parametrize(
+    "after", [False, True, "attempt"], ids=["git stop", "an install run after it", "a later attempt"]
+)
+def test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words(
+    env: dict[str, str], tmp_path: Path, after: bool | str
+) -> None:
+    """B13 round 17 U34 (rehearsal D, oldr): a step 1 command's git stop, before --log-start, starts no
+    install.log run, so the T11 rewrite (keyed on a failed list run) left the older build's report as
+    rendered: install.commit unexpected, a folder-question turns line, "(s)" beside counts. A second fact
+    reader keys on the stated step 1 error with no install run after it: install.commit moves to expected,
+    the turns line is the renderer's for a command that stopped before --log-start, and the counts take
+    their nouns; no cause is added to the outcome, which the renderer does not word. An install run after the
+    error leaves the report as rendered, and the current words pass unchanged."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        f"Attempt: 2026-10-18T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n"
+        f"2026-10-18T10:00:30Z | step 1 | error | prompt v{COMPAT}, Claude Code test-agent: git -C "
+        "~/src/agent-context-sync pull --ff-only failed | -\n"
+        # another session's attempt after the stop (its list ended on the Allow click): not the git stop's
+        + (f"Attempt: 2026-10-18T11:00:00Z\nPrompt: v{COMPAT}\nAgent: y\n" if after == "attempt" else ""),
+        encoding="utf-8",
+    )
+    log = [
+        "2026-10-18T09:00:10Z run=20261018T090010Z-41 start install.sh compat=24 commit=- kind=- source=- "
+        "args=--list-folders",
+        "2026-10-18T09:00:11Z run=20261018T090010Z-41 step=list-folders seconds=1 rc=0 result=done "
+        "note=listed-6",
+        "2026-10-18T09:00:11Z run=20261018T090010Z-41 end rc=0 seconds=1",
+    ]
+    if after is True:
+        log.append(
+            "2026-10-18T10:05:00Z run=20261018T100500Z-42 start install.sh compat=24 commit=- kind=- "
+            "source=- args="
+        )
+    (home / "agent-context" / "setup" / "install.log").write_text("\n".join(log) + "\n", encoding="utf-8")
+
+    def rendered(report: str) -> str:
+        stub = tmp_path / "rendered.md"
+        stub.write_text(report, encoding="utf-8")
+        cp = install_sh({**env, "STUB_REPORT_FILE": str(stub)}, "--report-only")
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        return report_path(env).read_text(encoding="utf-8")
+
+    report = "\n".join(_GIT_STOP_REPORT)
+    text = rendered(report)
+    if after:
+        assert text == report
+        return
+    summary = text.split("## Summary\n\n", 1)[1].split("\n\n", 1)[0].splitlines()
+    now = [
+        _GIT_STOP_REPORT[4],
+        "- expected turns: none (step 1's command stopped before install.sh --log-start, before the folder "
+        "list: no folder question and no Allow click)",
+        # an error and the end line alone are the quiet kinds the renderer drops (STOPPED_COPY_QUIET_KINDS)
+        f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} expected 1: install.commit ({_STEP1_STOP_WARN}) {_DOT} "
+        "unexpected 0",
+    ]
+    assert summary == now, summary
+    assert "(s)" not in text.split("~~~text", 1)[0], text
+    current = "\n".join([*_GIT_STOP_REPORT[:4], *now, *_GIT_STOP_REPORT[8:]]).replace(
+        "54 check(s):", "54 checks:"
+    )
+    assert rendered(current) == current, "the current words pass unchanged"
+
+
+def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 17 U28 (rehearsal B, SC): a stopped copy whose attempt ran no install.sh printed the earlier
+    run's first sync as "done in 4s (install.log), converted 7, deferred 0 online-only (install.log)", as if
+    this attempt's; the renderer since c774962d names that run "before this attempt; this attempt ran none".
+    Only beside the report's own "no run during this attempt" line."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True, exist_ok=True)
+    (setup / "install.log").write_text(
+        "2026-10-18T09:00:10Z run=20261018T090010Z-41 start install.sh compat=24 commit=0123456789ab kind=- "
+        "source=- args=--source-local x\n"
+        "2026-10-18T09:00:20Z run=20261018T090010Z-41 step=first-sync seconds=4 rc=0 result=done "
+        "note=converted-7-deferred-0\n"
+        "2026-10-18T09:00:30Z run=20261018T090010Z-41 end rc=0 seconds=20\n",
+        encoding="utf-8",
+    )
+    norun = "- install.sh: no run during this attempt (1 earlier in the install log)"
+    sync = f"- first sync: done in 4s (install.log) {_DOT} converted 7, deferred 0 online-only ({{}}) "
+    sync += f"{_DOT} 5 of 6 sources"
+    head = ["# agentsync setup report", "", "## Summary", ""]
+    text = _stopped_copy_of(env, tmp_path, "\n".join([*head, norun, sync.format("install.log"), ""]))
+    assert (
+        "- first sync: done in 4s (install.log: the install run of 2026-10-18T09:00:10Z, before this "
+        "attempt; "
+        "this attempt ran none) \u00b7 converted 7, deferred 0 online-only (install.log: that earlier "
+        "run) \u00b7 5 of 6 "
+        "sources\n" in text
+    ), text
+    text = _stopped_copy_of(env, tmp_path, "\n".join([*head, norun, sync.format("install.out"), ""]))
+    assert (
+        "deferred 0 online-only (install.out: an earlier run's; this attempt ran none) \u00b7 5 of 6" in text
+    ), text
+    text = _stopped_copy_of(env, tmp_path, "\n".join([*head, sync.format("install.log"), ""]))
+    assert sync.format("install.log") + "\n" in text, "an attempt that ran install.sh keeps its words"
 
 
 @pytest.mark.parametrize("state", ["an install run after the list", "no install.commit warn"])
@@ -9410,10 +9718,12 @@ _NEW_HEAD = "42 checks: 39 ok, 0 info, 3 warn, 0 FAIL. Only the lines that are n
 
 
 def _new_note(n: int, stopped: bool = False) -> str:
-    """That renderer's expected-warn note, noun and verb by ``n``, with K24's words when ``stopped``."""
+    """That renderer's expected-warn note, noun, verb and pronoun by ``n`` (B13 round 17 U31: "its fix" for
+    one), with K24's words when ``stopped``; a merged "its" reads "their" by the sum."""
     said = " 1 expected warn ends in" if n == 1 else f" {n} expected warns end in"
     tail = setup_report._STOPPED_COPY_BEYOND if stopped else ""
-    return f"{said} (expected: <why>) instead of their fix: nothing for this setup to do{tail}."
+    its = "its" if n == 1 else "their"
+    return f"{said} (expected: <why>) instead of {its} fix: nothing for this setup to do{tail}."
 
 
 def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:

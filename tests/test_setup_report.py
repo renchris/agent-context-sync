@@ -10888,7 +10888,7 @@ def test_a_stopped_copys_install_commit_warn_is_expected(fake_mac: dict[str, Pat
         doctor_part.strip()
         .splitlines()[0]
         .endswith(
-            " 1 expected warn ends in (expected: <why>) instead of their fix: nothing for this setup to do "
+            " 1 expected warn ends in (expected: <why>) instead of its fix: nothing for this setup to do "
             "beyond the report's NEXT line (the fresh copy of the prompt reinstalls in its step 2)."
         )
     ), doctor_part
