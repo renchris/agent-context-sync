@@ -780,6 +780,27 @@ def test_the_index_wording_and_its_revision_move_together() -> None:
     assert found == INDEX_WORDINGS[latest], message
 
 
+def test_every_note_that_keeps_a_fixed_plural_is_named_where_the_spec_says_why() -> None:
+    """B13 round 17 U76: T61 moved every counted noun of a recording's summaries to ``plural`` but kept the
+    NOTEs' counts, whose wording the digest above holds; its record, the spec and the code comment named
+    only the carry-over NOTE, while the screen-limit NOTE also prints ``1 later changes``. Each NOTE whose
+    count stands before a plural noun is named in the spec's line on why, and in the comment above them."""
+    kept = sorted(
+        m[1]
+        for name, value in vars(rec_page).items()
+        if name.startswith("_") and name.endswith("_NOTE") and isinstance(value, str)
+        for m in re.finditer(r"\{\w+\} ((?:[\w-]+ )?[\w-]+s)\b", value)
+    )
+    assert kept == ["later changes", "on-screen lines"], kept
+    root = Path(__file__).parents[1]
+    spec = (root / "docs/design/meeting-video-spec.md").read_text(encoding="utf-8")
+    [why] = [ln for ln in spec.splitlines() if "fixed-wording digest" in ln and "keep their plural" in ln]
+    source = (root / "src/agentsync/convert/recording_page.py").read_text(encoding="utf-8")
+    for noun in kept:
+        assert f"`N {noun}`" in why, (noun, why)
+        assert f'"N {noun}"' in source, noun
+
+
 def test_a_recording_past_the_tick_limit_is_read_to_the_limit_and_says_so(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

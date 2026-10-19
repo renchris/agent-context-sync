@@ -63,9 +63,10 @@ _ROW_TAGS = frozenset({"SCREEN", "SCREEN+", "SCREEN-", "TILE"})
 _CONTINUATION_NOTE = (
     "s{state:03d} began at {began}; its on-screen lines and keyframe are in window {window}, {at}"
 )
-# The NOTE wordings are in the index page's fixed-wording digest: changing this one's count to plural()
+# The NOTE wordings are in the index page's fixed-wording digest, so the carry-over and screen-limit NOTEs
+# below keep their fixed plural ("N on-screen lines", "N later changes"): moving either count to plural()
 # would raise _INDEX_REVISION, and a copy of a recording already read would be read again in full for a
-# count's noun (B13 round 16 T61; round 11 M64, M85).
+# count's noun (B13 round 16 T61, round 17 U76; round 11 M64, M85).
 _CARRY_OVER_NOTE = "{left} on-screen lines of s{state:03d} left the screen; {stayed} stayed"
 _SCREEN_LIMIT_NOTE = "screen text read to {at}; {later} later changes not read (limit)"
 _READ_LIMIT_NOTE = "recording read to {read} of {duration} (limit)"
