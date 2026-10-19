@@ -5523,6 +5523,7 @@ _ROUND_16_PARAGRAPH_AMENDS = (
 
 _ROUND_17_PARAGRAPH_AMENDS = (
     ("16.29", "**Who calls it.** Every non-dry cycle", "§16.133 U83 (by §16.125 T32)"),
+    ("16.14", "decoded by `EXIT_MEANINGS` (0 ok, 1, 2, 75, 77, 78, 79 TCC_PENDING,", "§16.133 U84"),
 )
 """Round 17's dated lines at sections its claims name with no item, as :data:`_ROUND_12_PARAGRAPH_AMENDS`."""
 
@@ -5561,7 +5562,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_14_PARAGRAPH_AMENDS)) == len(_ROUND_14_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
-    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5693,6 +5694,35 @@ def test_the_deploy_guide_names_every_file_install_sh_keeps_in_local_work() -> N
     for name in sorted(names):
         assert f"`local-work/{name}`" in row, name
     assert "it is not copied into `bring-back.md`), `proxy-hosts`" in row
+
+
+def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
+    """B13 round 17 U84: since round 16 T12 a sync exits 65 on a manifest that is no database or a damaged
+    one, and a LaunchAgent's job passes it on, but the deploy guide's exit-code list, the report's
+    `EXIT_MEANINGS` and install.sh's `rc_meaning` had no 65: the report printed a bare 65 and install.sh
+    `exit 65`. Every `cli.EXIT_*` code has a meaning in each, and the guide lists every one a job can end on
+    (a job's arguments are written by install-agent, so never `2`, a usage error)."""
+    from agentsync import cli, setup_report  # noqa: PLC0415
+
+    codes = {v for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
+    assert {0, 1, 2, 65, 75, 77, 78, 79} <= codes, "the scan is broken"
+    assert codes <= set(setup_report.EXIT_MEANINGS)
+    fn = re.search(r"^rc_meaning\(\) \{\n.*?^\}\n", SCRIPTS[0].read_text(encoding="utf-8"), re.M | re.S)
+    assert fn is not None
+    order = sorted(codes)
+    run = fn.group(0) + 'for c in "$@"; do rc_meaning "$c"; echo; done'
+    cp = subprocess.run(
+        ["/bin/bash", "-c", run, "-", *map(str, order)], capture_output=True, text=True, check=True
+    )
+    meanings = dict(zip(order, cp.stdout.splitlines(), strict=True))
+    assert not [c for c, m in meanings.items() if m == f"exit {c}"], meanings
+    assert meanings[65] == setup_report.EXIT_MEANINGS[65]
+    readme = (DEPLOY / "README.md").read_text(encoding="utf-8")
+    listed = " ".join(readme.split("## Exit codes the jobs report", 1)[1].split("\n## ", 1)[0].split())
+    assert set(map(int, re.findall(r"(?:^|· )`(\d+)`", listed))) == codes - {cli.EXIT_USAGE} | {80}
+    assert (
+        "`65` the state file (`manifest.sqlite`) is no database or a damaged one: you, not an agent" in listed
+    )
 
 
 def test_the_deploy_guide_gives_not_sents_third_field() -> None:

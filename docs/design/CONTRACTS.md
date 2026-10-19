@@ -5069,6 +5069,8 @@ but the job belongs to another install (its plist or any ProgramArguments path i
 other than this home: its exit codes are not reported as this setup's); loaded, but the plist is absent (removed
 without bootout); or loaded with `last exit code` decoded by `EXIT_MEANINGS` (0 ok, 1, 2, 75, 77, 78, 79 TCC_PENDING,
 80 TCC_DENIED; "(never exited)" explained). Redaction lists only the placeholder kinds used.
+Amended 2026-10-19, §16.133 U84: it decodes 64 (the launcher's refusal) and 65 too, the state file that cannot be
+read, and `install.sh`'s `rc_meaning` and the deploy guide's exit-code list name 65 as well.
 
 v4 revision, redaction adds: every folder name `cloud_folder_names` finds under `~/Library/CloudStorage` at depth 2
 and 3 (what the prompt's `find ... -mindepth 2 -maxdepth 3 -type d ! -name '.*'` shows, configured or not; a depth-2
@@ -23480,3 +23482,14 @@ said cli.py still prints it. Each gets a dated line; the landed sentences stay a
 `N path(s) could not be made owner-only` is a log line (`cycle.py`) and keeps `(s)`. Tests:
 `test_contracts_quote_the_tightened_line_as_cli_prints_it`, which finds every `(s)` quote of the line and its dated
 line, the dated-line scan, and the §16.29 pin in `_ROUND_17_PARAGRAPH_AMENDS`.
+
+**Exit 65 has its meaning in each exit-code list** (U84; dated line at §16.14). Since §16.125 T12 `cli._run`
+wraps a cycle in `_state_readable`, so a sync, and a LaunchAgent's job, which the launcher passes through, ends on
+65 when the manifest is no database or a damaged one. The CLI's `--help` named it; the deploy guide's "Exit codes
+the jobs report", `setup_report.EXIT_MEANINGS` and install.sh's `rc_meaning` did not, so the report printed a bare
+`65` and install.sh `exit 65`. Each names it now: the two maps' `the state file (manifest.sqlite) cannot be read:
+the person's to fix` landed first with lane RB's U55, U65 (3bfef31c; it promises no `state_dir.manifest` line, which
+status does not print for damage under a table), and this item adds the guide's line and the test. The guide's line points at `~/.local/bin/agentsync sync`, which
+prints the file and the fix again. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which
+holds every `cli.EXIT_*` code to all three lists, so the next new code cannot drift the same way; and the §16.14
+pin in `_ROUND_17_PARAGRAPH_AMENDS`.

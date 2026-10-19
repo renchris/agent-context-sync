@@ -399,7 +399,8 @@ EXIT_MEANINGS = {
 }
 """agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists its own; 64 and 80 are
 the launcher's: 64 is its usage exit, which a job whose interpreter is not the launcher's pinned one ends on
-at every run, with a PROGRAM_REFUSED line in the job's error log)."""
+at every run, with a PROGRAM_REFUSED line in the job's error log). 65 is a sync's on a manifest that is no
+database or a damaged one (B13 round 17 U84): every ``cli.EXIT_*`` code is a key, as in ``rc_meaning``."""
 
 _RESERVE_S = 1.0
 _LOOP_NEXT_S = 4.0  # the Summary's Loop line: the ``loop_next`` hook's own limit
