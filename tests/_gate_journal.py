@@ -9,8 +9,10 @@ matches by prefix, so ``test_a`` would also drop ``test_ab``, and ``test_a[1]`` 
 A failed phase's line also keeps the last ``_TAIL_LINES`` lines of its report and the last ``_TAIL_CHARS``
 characters of its captured stderr, and an xdist worker that goes down with an error appends
 ``{"node_down": <gwN>, "error": <its text>}``: the only text a worker crash leaves, since the crashed test's
-own report says no more than "worker crashed while running" and the gate's terminal output is not kept (B13
-round 16 T90). Its line has no nodeid, so a resume never reads it.
+own report says no more than "worker crashed while running" (B13 round 16 T90). Its line has no nodeid, so a
+resume never reads it. The whole output of a lane part that fails or is killed, stderr too, is kept beside
+its journal as ``<tree>-<salt>.<part>.out`` (appended on a resume, removed when the part is green; B13 round
+17 U106), where these tails are cut.
 
 CLI: ``passed <journal>`` prints the nodeids that passed, ``skipped-timing <journal>`` counts the tests the
 load skip of ``conftest.pytest_runtest_setup`` decided, ``finished <journal>`` exits 0 when the journal

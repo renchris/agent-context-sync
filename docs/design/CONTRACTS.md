@@ -23023,6 +23023,9 @@ crashed test's own report says only `worker 'gwN' crashed while running ...`, so
 diagnosed it. Neither changes what a resume reads (`_last`). Not built: teeing the lane-mode pytest output to a file
 (optional; scripts/gate.sh is every lane's). Tests: `test_gate_journal.py::test_the_journal_keeps_a_failures_text_and_a_lost_workers_error`
 (a real worker crash), `test_gate_journal.py::test_the_journal_loads_without_xdist`.
+Amended 2026-10-19, §16.132 U106: the tee is built: a lane part that fails or is killed keeps its whole output, stderr
+too, in `<tree>-<salt>.<part>.out` beside its journal (appended on a resume, removed when the part is green); being
+every lane's file was a landing order, so it landed after the other five lanes.
 
 ### 16.127 Round 16: deploy docs and CONTRACTS cross-references (2026-10-18, wave B13 round 16 lane D)
 
@@ -23692,7 +23695,8 @@ word, which the residue check would not flag) and `test_setup_report.py::test_th
 
 Round 17's lane E items: whose step the bundled pandoc's [FAIL] is (U13, U47, U79, U80), the installer's path in
 doctor's fixes (U30), a pandoc time-out's fallback (U78) and reason (U104), a converter missing at sync time (U3),
-the converters' counts (U74, U75, U76), T62's cache caveat (U77) and the CI flakes (U101, not built).
+the converters' counts (U74, U75, U76), T62's cache caveat (U77), the CI flakes (U101, not built) and the gate's
+lane-mode log (U106, landed after the other five lanes).
 
 **A pandoc fix's first words say whose it is (U13, U47, U79, U80; `agentsync.ops.doctor`, `agentsync.cli`,
 `scripts/install.sh`; dated lines at §16.106 O11 and §16.126 T54).** v25's step 2 made a [FAIL] whose fix "edits
@@ -23794,6 +23798,17 @@ Test: `test_deploy_pack.py::test_round_11s_and_12s_lines_at_unlettered_paragraph
 has failed attempt 1 of a `ci` run on main since a49acdba: 39224535079 (a49acdba), 39231001978 (3274f9a2) and
 39290708602 (e5c5b0e2), each `4926 passed, 3 skipped` with neither test skip-gated. Three runs prove nothing fixed:
 keep reading attempt 1, and reopen against 29876f26 if either comes back.
+
+**A lane part that fails keeps its whole output (U106; `scripts/gate.sh`, `tests/_gate_journal.py`; landed after
+the other five lanes).** Round 16 left T90's tee unbuilt because `scripts/gate.sh` is every lane's file, which is a
+landing order, not a harm. In the lane modes pytest's output went only to the caller's terminal, and the journal
+keeps a failure's last 20 lines cut to 2000 characters, so a crash or a long traceback was lost with the terminal.
+`run_part` now runs a lane part as `step env PYTHONUNBUFFERED=1 ... uv run --locked pytest ... 2>&1 | tee -a
+<tree>-<salt>.<part>.out` beside its journal (pipefail keeps pytest's status): a fresh run empties the file, a
+resume appends `== resumed by <pid>` after the killed run's text, and a green part removes it. Journals are never
+removed, so nothing else is tied to them. Test:
+`test_gate_journal.py::test_a_lane_part_that_fails_keeps_its_whole_output_beside_its_journal` (gate.sh's own
+`run_part`, over a stand-in `uv`: failed, resumed, green).
 
 ### 16.133 Round 17: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 17 lane D)
 

@@ -94,6 +94,9 @@ union_check() {
 
 # One pytest part. In the lane modes it journals to <tree>-<salt>.<part>.jsonl; a journal with no summary
 # line whose holder (the gate.sh that wrote it) is gone was killed, and its passed tests are deselected.
+# Its output, stderr too, goes to <tree>-<salt>.<part>.out beside the journal, appended on a resume so a
+# killed run's text stays; a green part removes it, so a failed or killed part keeps its whole log, which
+# the journal's cut tails do not (B13 round 17 U106). Journals are never removed.
 run_part() {
   local part=$1
   shift
@@ -102,8 +105,9 @@ run_part() {
     count_timing_skips "$tmp/$part.out"
     return
   fi
-  local dir="$common/gate-journal" journal
+  local dir="$common/gate-journal" journal out
   journal="$dir/$tree-$salt.$part.jsonl"
+  out="$dir/$tree-$salt.$part.out"
   holder="$dir/$tree-$salt.holder"
   mkdir -p "$dir"
   local pid
@@ -123,14 +127,18 @@ run_part() {
     resumed=$((resumed + n))
     echo "== resuming $part: $n tests passed in a killed run of this tree"
     deselect=$tmp/$part.passed
+    echo "== resumed by $$" >>"$out"
   else
     : >"$journal"
+    : >"$out"
   fi
   local rc=0
-  step env "GATE_DESELECT=$deselect" "GATE_JOURNAL=$journal" uv run --locked pytest -q -p no:cacheprovider \
-    -p _gate_journal "$@" || rc=$?
+  # pipefail: rc is pytest's; unbuffered, so a SIGKILL leaves no tail in Python's buffer
+  step env PYTHONUNBUFFERED=1 "GATE_DESELECT=$deselect" "GATE_JOURNAL=$journal" uv run --locked pytest -q \
+    -p no:cacheprovider -p _gate_journal "$@" 2>&1 | tee -a "$out" || rc=$?
   skipped_timing=$((skipped_timing + $(journal_cli skipped-timing "$journal")))
   if [ "$rc" = 5 ] && [ -n "$deselect" ]; then rc=0; fi # every test had passed already
+  [ "$rc" != 0 ] || rm -f "$out"
   return "$rc"
 }
 
