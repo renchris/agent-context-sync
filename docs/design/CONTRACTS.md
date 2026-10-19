@@ -22535,6 +22535,7 @@ with no --source-local" is lane RA's T21. A NEXT shows a folder in double quotes
 quotes, keeps the `%q` form. install.log's `args=`, which both reports parse, keeps `%q`, and the shell fallback
 redacts a loose name in its quoted form too. Tests: `test_a_failed_step_2_names_no_folder_the_config_step_added`,
 `test_a_re_run_names_a_folder_in_double_quotes`.
+Amended 2026-10-19, §16.130 U57, U67, U87, U96: config_failed's exit-65 NEXT re-runs with `$RERUN_ARGS` too.
 
 **The list counts only a CloudStorage folder as not on disk** (T46; dated line at §16.117 S10). The S10 header's
 `the 1 not on disk` counted a folder missing outside `~/Library/CloudStorage`, which no NEXT clause or `gone=` names;
@@ -22620,6 +22621,8 @@ inbox skip on "says the config does not load" and the finish on the report's "lo
 does not), `test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_load` (the real agentsync:
 policy.toml, `[governance] history_days`, `[governance] archive` through add-source, and a new config beside a bad
 policy.toml), `test_a_first_sync_refusal_is_no_config_that_does_not_load`.
+Amended 2026-10-19, §16.130 U20: the "loads, but" NEXT reads `loads, but agentsync refuses a value in it or in
+policy.toml beside it (the configuration error above names the file; ...)`.
 
 **Step 1 names a mirrored folder whose [[source]] block is gone** (T6, T30). Step 1's list read the config alone,
 so a folder whose block was deleted while its pages stay mirrored was listed unmarked and the NEXT said `(none is
@@ -23133,7 +23136,28 @@ not redacted, as in Python (§16.122 T40: the whole name only). Tests:
 
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 
-Reserved for round 17 lane P of B13.
+The B13 round 17 items of lane P (specs `round17/items/U<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): U2, U12, U16, U20, U29, U32, U40, U57, U63, U67, U87, U88, U96, U97. U57, U67, U87
+and U96 are one defect from four finders, built once; U2 and U16 are one, built once.
+
+**The refused config's NEXT names policy.toml beside it** (U20; amends §16.124 T1). config_failed's exit-78 NEXT for
+a config that loads said `the config <CONFIG> loads, but agentsync refuses it`, where `<CONFIG>` is always
+sources.toml, while the error above it named policy.toml (a `[policy]` value the compliance team owns). The NEXT
+never reads the error, so it does not say which file: `the config <CONFIG> loads, but agentsync refuses a value in it
+or in policy.toml beside it (the configuration error above names the file; ~/.local/bin/agentsync status prints it
+again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it
+is fixed, the next run is: <install.sh and its arguments>`. "loads", "not a step for the agent ..." and the absence
+of "does not load", which the prompt's step 2 and its tests read, are kept. Test:
+`test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_load` (the policy.toml cases name it).
+
+**The state file's NEXT re-runs with a folder in double quotes** (U57, U67, U87, U96; amends §16.123 T35).
+config_failed's exit-65 NEXT ended `$SELF$ORIG_ARGS`, `printf %q`'s form (`FY26\ Projects`), the one re-run NEXT
+T35's switch to `$RERUN_ARGS` missed. It now ends `$SELF$RERUN_ARGS`, as the two exit-78 NEXTs beside it do. Only the
+quoting changes: config_failed runs inside the config step, before `RERUN_ARGS` becomes `$BASE_ARGS`, so it names
+every `--source-local` folder either way (U96's verifier; T22 does not apply here). `ORIG_ARGS` stays for install.log's
+`args=` and the `--list-folders` guard. Tests: `test_a_state_file_that_cannot_be_read_is_the_persons_to_fix` (the
+whole re-run tail, a spaced folder), `test_no_next_names_the_percent_q_args` (no `NEXT_MSG`, `FAIL_NEXT`, `NEXT` or
+`next` assignment names `ORIG_ARGS`).
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 

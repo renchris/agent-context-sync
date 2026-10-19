@@ -6874,8 +6874,9 @@ def test_a_config_that_does_not_load_is_the_persons_to_fix(
         )
     elif rc == "78":
         assert last_line(cp).startswith(
-            f"NEXT: the config {cfg} loads, but agentsync refuses it (the configuration error above; "
-            f"{status}): {tail}; once it is fixed, the next run is: {INSTALL_SH} "
+            f"NEXT: the config {cfg} loads, but agentsync refuses a value in it or in policy.toml beside it "
+            f"(the configuration error above names the file; {status}): {tail}; once it is fixed, the next "
+            f"run is: {INSTALL_SH} "
         )
         assert "does not load" not in cp.stdout + cp.stderr
     else:
@@ -6924,11 +6925,17 @@ def test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_lo
     assert cp.returncode == 1, out
     assert "configuration error: " in cp.stderr, out
     assert one_next(cp) and last_line(cp).startswith(
-        f"NEXT: the config {cfg} loads, but agentsync refuses it (the configuration error above; "
-        "~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the "
-        "agent, so show them the error and go on to the report; once it is fixed, the next run is: "
+        f"NEXT: the config {cfg} loads, but agentsync refuses a value in it or in policy.toml beside it (the "
+        "configuration error above names the file; ~/.local/bin/agentsync status prints it again): fixing it "
+        "is the person's, not a step for the agent, so show them the error and go on to the report; once it "
+        "is fixed, the next run is: "
     ), out
     assert "does not load" not in out
+    # B13 round 17 U20: a policy.toml error is not sources.toml's; the NEXT no longer says agentsync refuses
+    # the config it names, and names policy.toml beside it (the error above names which)
+    assert "agentsync refuses it (" not in last_line(cp)
+    if state.startswith("policy.toml"):
+        assert "policy.toml: [policy]" in cp.stderr and "or in policy.toml beside it" in last_line(cp), out
     # the config holds the inbox the prompt's step 2 then tells the person about
     assert 'kind = "inbox"' in cfg.read_text(encoding="utf-8")
     assert "- loads: yes, but a sync refuses it: " in report_path(env).read_text(encoding="utf-8")
@@ -6944,7 +6951,10 @@ def test_a_state_file_that_cannot_be_read_is_the_persons_to_fix(
     traceback and fail's "fix the error above, then re-run: install.sh", a re-run that fails the same way,
     whose real fix (moving the file aside) loses history the agent must not choose to lose. agentsync now
     exits 65 for it, with one line naming the file and the person's fix, and the NEXT names the owner, as
-    for a config that does not load; also when this run wrote the config, since the state was there."""
+    for a config that does not load; also when this run wrote the config, since the state was there.
+    B13 round 17 U57, U67, U87, U96: the re-run is $RERUN_ARGS, as the exit-78 NEXTs beside it name it: a
+    --source-local folder in double quotes (shown_arg, round 16 T35), never %q's backslashes. The folder
+    fixture's name has a space, and the whole tail is matched, so a return to $ORIG_ARGS fails."""
     if not created:
         _write_config(env, _inbox(env))
     args = [str(wheel), "--source-local", str(folder)] if knob == "STUB_ADD_SOURCE_RC" else [str(wheel)]
@@ -6957,6 +6967,22 @@ def test_a_state_file_that_cannot_be_read_is_the_persons_to_fix(
         "status prints it again): fixing it is the person's, not a step for the agent, so show them the "
         f"error and go on to the report; once it is fixed, the next run is: {INSTALL_SH} "
     ), last_line(cp)
+    rerun = f"the next run is: {INSTALL_SH} {wheel}" + (
+        f' --source-local "{folder}"' if knob == "STUB_ADD_SOURCE_RC" else ""
+    )
+    assert " " in folder.name and f"{rerun} [setup report: " in last_line(cp), last_line(cp)
+    assert "\\ " not in last_line(cp), last_line(cp)
+
+
+def test_no_next_names_the_percent_q_args() -> None:
+    """B13 round 17 U57, U67, U87, U96: config_failed's exit-65 NEXT ended $SELF$ORIG_ARGS, %q's form, after
+    round 16 T35 moved every re-run NEXT to $RERUN_ARGS (a folder in double quotes). ORIG_ARGS stays for
+    install.log's args= and --list-folders' guard; no NEXT, FAIL_NEXT or next assignment names it."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    code = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    names = re.compile(r"\b(NEXT_MSG|FAIL_NEXT|NEXT|next)=")
+    assert [ln for ln in code if names.search(ln) and "ORIG_ARGS" in ln] == []
+    assert any(names.search(ln) and "$SELF$RERUN_ARGS" in ln for ln in code)
 
 
 def _mode(path: Path) -> int:

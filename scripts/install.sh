@@ -5906,18 +5906,22 @@ synced_count() {
 # (B13 round 16 T1, T10, T29, T45, T67, T81). Only a config that was there before, and does not load, does not
 # load; one this run created that does not load is the generic failure. Exit 65 (EX_DATAERR) is agentsync's
 # state file, manifest.sqlite, that is no database or a damaged one: the person's too, since its fix loses
-# history the agent must not choose to lose (B13 round 16 T12).
+# history the agent must not choose to lose (B13 round 16 T12). The "loads, but" NEXT names policy.toml beside
+# the config too, since the error may be that file's and the NEXT never reads it to say which (B13 round 17
+# U20). Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
+# 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
+# before the switch to $BASE_ARGS below.
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	local rc=$?
 	if [ "$rc" -eq 78 ]; then
 		if [ -n "$(synced_count)" ]; then
-			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses it (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+			FAIL_NEXT="the config $CONFIG loads, but agentsync refuses a value in it or in policy.toml beside it (the configuration error above names the file; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 		elif [ "$CONFIG_STATE" != "created" ]; then
 			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$RERUN_ARGS"
 		fi
 	fi
 	[ "$rc" -ne 65 ] ||
-		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$ORIG_ARGS"
+		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	(exit "$rc") || fail "$@"
 }
 KEPT=0 # the folders synced before this step, and below the ones it added: both in its log line
