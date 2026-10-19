@@ -10068,6 +10068,48 @@ def test_report_only_closes_the_current_attempt_once(env: dict[str, str]) -> Non
     assert sum(ln.endswith(" | end | finished") for ln in f.read_text().splitlines()) == 2
 
 
+@pytest.mark.parametrize("shape", ["stated", "open", "attempt-only", "no-agent"])
+def test_report_only_closes_only_the_attempt_the_report_reads_as_latest(
+    env: dict[str, str], shape: str
+) -> None:
+    """B13 round 17 U33: after this session's header, a step 1 error stating "prompt vN, <agent>:" opens
+    another session's header-less attempt (a git or Xcode stop before --log-start), yet --report-only closed
+    the headed attempt's "Attempt:", so the end line went to the stopped session and the report said
+    --report-only had no attempt to close. It closes the attempt parse_friction reads as latest, and only an
+    open one: a plain open attempt, an "Attempt:" line alone before a stated error (G51: no header), and a
+    stated line with no agent (no "<agent>:", so no new attempt) are each closed once."""
+    agent = "Claude Code, claude-opus-5-5"
+    header = {
+        "stated": f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: {agent}\n",
+        "open": f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: {agent}\n",
+        "attempt-only": "Attempt: 2026-10-06T16:42:44Z\n",
+        "no-agent": f"Attempt: 2026-10-06T16:42:44Z\nPrompt: v{COMPAT}\nAgent: {agent}\n",
+    }[shape]
+    what = {
+        "stated": f"prompt v{COMPAT}, {agent}: git pull failed",
+        "open": "git pull failed",
+        "attempt-only": f"prompt v{COMPAT}, {agent}: git pull failed",
+        "no-agent": f"prompt v{COMPAT}, git pull failed",
+    }[shape]
+    f = friction_path(env)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(f"{header}2026-10-06T16:43:11Z | step 1 | error | {what} | -\n", encoding="utf-8")
+    before = f.read_text(encoding="utf-8")
+    attempts = setup_report.parse_friction(before).attempts
+    assert len(attempts) == (2 if shape == "stated" else 1)
+    assert install_sh(env, "--report-only").returncode == 0
+    after = f.read_text(encoding="utf-8")
+    if shape == "stated":
+        assert after == before, "the stopped session's attempt is not closed"
+        attempts = setup_report.parse_friction(after).attempts
+        assert [a.finished for a in attempts] == [False, False]
+    else:
+        assert after.startswith(before) and after[len(before) :].endswith(" | end | finished\n")
+        assert setup_report.parse_friction(after).attempts[-1].finished
+    assert install_sh(env, "--report-only").returncode == 0
+    assert f.read_text(encoding="utf-8") == after, "a second --report-only adds nothing"
+
+
 def test_a_dry_run_writes_no_friction_line(env: dict[str, str]) -> None:
     """K17 review: AGENTSYNC_INSTALL_DRY_RUN=1 covers the friction options: one "dry run:" line, exit 0."""
     dry = {**env, "AGENTSYNC_INSTALL_DRY_RUN": "1"}

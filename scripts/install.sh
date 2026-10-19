@@ -796,12 +796,21 @@ friction_attempt_stopped() {
 }
 # --report-only: close the friction log's current attempt with "<UTC> | end | finished", only when its last
 # "Attempt:" has no end line yet (so a second --report-only adds none). No log or no attempt: nothing to close.
+# The latest attempt is the one track() splits, as parse_friction does: a header-less attempt a stated step 1
+# error opened (a git or Xcode stop of another session, after this one's header) is never closed, since the
+# report says --report-only had no attempt to close, and an end line there was credited to the stopped
+# session (B13 round 17 U33). An Attempt: line alone, or a stated line with no agent, opens none (G51).
 friction_close_attempt() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
-	LC_ALL=C awk '/^Attempt:/ { open = 1; ended = 0; next } /\| end \| finished[[:space:]]*$/ { ended = 1 }
-		END { exit !(open && !ended) }' "$f" || return 0
+	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
+		{ q = track($0) }
+		NH { NH = 0; open = 1; ended = 0; hl = 0; next }
+		/^Attempt:/ { open = 1; ended = 0; hl = 0; next }
+		q { hl = 1; next }
+		/\| end \| finished[[:space:]]*$/ { ended = 1 }
+		END { exit !(open && !ended && !hl) }' "$f" || return 0
 	if friction_append "$(date -u +%Y-%m-%dT%H:%M:%SZ) | end | finished"$'\n'; then
 		printf 'friction log: attempt finished in %s\n' "$f"
 	else

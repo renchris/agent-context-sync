@@ -23019,6 +23019,15 @@ block's `}` line goes on in a pipe, so its `)` comes a line later, and that rule
 install.sh (124 false hits). A comment between such a `}` line and its `)` is still not read; none exists. Test:
 `test_deploy_pack.py::test_the_substitution_lint_finds_the_round_3_shape`.
 
+**--report-only closes only the attempt the report reads as latest** (U33). `friction_close_attempt` closed the last
+`Attempt:` with no end line, while `parse_friction` reads a step 1 error stating `prompt vN, <agent>:` after a header
+as another session's header-less attempt (a git or Xcode stop before `--log-start`, while this session waits on its
+folder answer): the end line went to the stopped session, its duration ran to the report's own end line, and the
+report's note said `--report-only had no attempt to close`. The check now runs `FRICTION_AWK`'s `track()`, which
+splits as the parser does, and closes nothing when the latest attempt is such a header-less one; an `Attempt:` line
+alone (G51) and a stated line with no `<agent>:` open none, so their attempt is still closed once. `--log-end` reads
+the same rule. Test: `test_report_only_closes_only_the_attempt_the_report_reads_as_latest`.
+
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 
 Reserved for round 17 lane P of B13.
