@@ -1054,6 +1054,16 @@ PERSONS_FIX_RE = re.compile(
 )
 
 
+# The kinds of fix PERSONS_FIX_RE reads, in the words of install.sh's PERSONS_FAILS: cli's rule 1 NEXT and
+# the setup report's installer-output count name them; tests pin it to PERSONS_FAILS and to the report's own
+# copy (B13 round 16 T5, T9; round 17 U11, U19, U45, U52, U86).
+PERSONS_KINDS = (
+    "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
+    "[governance] value, a docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, "
+    "a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
+)
+
+
 def is_persons_fix(fix: str | None) -> bool:
     """Whether a [FAIL]'s fix is the person's to make, not a step for the agent (``PERSONS_FIX_RE``)."""
     return bool(fix) and PERSONS_FIX_RE.match(fix or "") is not None

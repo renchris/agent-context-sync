@@ -21747,6 +21747,11 @@ Amended 2026-10-18, §16.122 T8, T47, T49: the clauses are an Oxford-comma list 
 by the count: `..., 0 other instruction-like lines, and 6 [FAIL] lines whose fix: is the person's (a sign-in, a
 folder, a [[source]] path or block, Rosetta or a native pandoc copy; not hints for the agent) in the last ...`. A run
 whose `NEXT:` line does not say the [FAIL] lines are the person's counts none of them.
+Amended 2026-10-19, §16.128 U11, U19, U45, U52, U86: the bracket is `doctor.PERSONS_KINDS`, every kind the rule reads (a
+[policy] or [governance] value and a state file that cannot be read among them), and the clause counts lines: `..., and
+6 lines whose fix: is the person's (a folder or file to put back or sync, ..., Rosetta to install or a native pandoc
+copy; not hints for the agent) in the last ...`; U6: a person's fix on any line of a run whose NEXT says fixing its
+error is the person's counts there too.
 
 **A known count takes its noun from the count, everywhere in the report** (S26, S30, S31: one defect from three
 finders, built once; amends §16.111 Q39). Q39 moved a few lines to `plural`; the report still wrote `(s)` after
@@ -23068,7 +23073,31 @@ no claim (the verifier measured it); under T89's, this claim holds it. Test: the
 
 ### 16.128 Round 17: setup report (2026-10-19, wave B13 round 17 lane RA)
 
-Reserved for round 17 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 17").
+The setup report's findings of the v25 rehearsal, the cross-lane review and the harvest (`docs/plans/bring-back-ocr.md`,
+"B13 round 17"; specs `round17/items/U<n>.md`, the verifier's corrected fix built unless said). Lane RA's items: U1, U5,
+U6, U7, U8, U10, U11, U15, U19, U21, U22, U23, U24, U35, U41, U42, U43, U44, U45, U48, U52, U56, U58, U62, U86 and
+U93. One defect from several finders is built once, as each paragraph names. Each has a test that fails without it.
+Where an item changes what an older section states, that section has a dated line (`Amended 2026-10-19, §16.128
+U<n>`).
+
+**The person's clause names every kind its count reads** (U11, U19, U45, U52, U86; amends §16.116 S5). The
+Installer output count takes a [FAIL] fix as the person's by `doctor.PERSONS_FIX_RE`, whose `the person ` arm reads a
+[policy] or [governance] value and a state file that cannot be read (round 16 T2, T9, T12), while the clause listed
+"a sign-in, a folder, a [[source]] path or block, Rosetta or a native pandoc copy": a run stopped on a policy or a
+state file was counted under kinds that left its own out. `PERSONS_KINDS` moved from cli into ops/doctor.py beside
+the rule (cli keeps the name), and the clause reads it through the report's lazy doctor import, with a copy for a
+doctor that does not import; a test keeps the copy, doctor's list and install.sh's PERSONS_FAILS equal. The report
+never imports cli (cli imports the report). Test: `test_the_persons_clause_names_every_kind_the_rule_reads`.
+
+**A person's fix on an error line is no hint when its run's NEXT says so** (U6). A damaged state file stops init with
+`state: ... cannot be read: ... (fix: the person decides, ...)`, no [FAIL] line, and install.sh's NEXT "fixing it is
+the person's, not a step for the agent"; the Summary counted the fix as `1 other instruction-like line (1 fix:)`. A
+run with a `NEXT:` line holding "not a step for the agent" (every NEXT that gives the stop to the person:
+`PERSONS_FAILS`, the config's and state file's `FAIL_NEXT`, the first sync's refusal, the no-[FAIL] status NEXT)
+counts a fix that `doctor.is_persons_fix` reads on any of its lines as the person's. A run whose NEXT says something
+else, and a fix that is not the person's, keep `fix:`. The clause's noun is `line`, and the Installer sentence says
+so after the [FAIL] rule's (whose words install.sh's older-report rewrite inserts, unchanged). Test:
+`test_a_persons_fix_on_an_error_line_is_not_a_hint_when_its_next_says_so`.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 

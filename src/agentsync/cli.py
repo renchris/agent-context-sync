@@ -1352,12 +1352,9 @@ class _Status:
 
 
 # The kinds of fix ``doctor.is_persons_fix`` reads as the person's, in the words of install.sh's
-# PERSONS_FAILS; tests pin the two lists equal (B13 round 16 T5, T9).
-PERSONS_KINDS = (
-    "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, "
-    "a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
-)
+# PERSONS_FAILS; tests pin the two lists equal (B13 round 16 T5, T9). It lives beside the rule in doctor,
+# where the setup report reads it too (round 17 U11).
+PERSONS_KINDS = doctor.PERSONS_KINDS
 
 
 def _fail_step(result: doctor.CheckResult) -> str:
@@ -1366,7 +1363,7 @@ def _fail_step(result: doctor.CheckResult) -> str:
     fix that is the person's (``doctor.is_persons_fix``: the kinds :data:`PERSONS_KINDS` names; a third
     hand-kept list went stale, B13 round 17 U69) is named as theirs, as install.sh's NEXT names it, not as a
     step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17 U2,
-    U16)."""
+    U16, U11)."""
     if doctor.is_persons_fix(result.fix):
         return (
             f"the {result.name} check failed: its fix on the [FAIL] line below is the person's "

@@ -4364,7 +4364,20 @@ PERSONS_FIX = "persons-fix"
 """The :func:`instruction_counts` kind of a ``fix:`` on a [FAIL] line of a run whose blocking [FAIL]s are all
 the person's: install.sh's NEXT for that run says they are not a step for the agent (B13 round 15 S5), or
 will, after the report, for the run writing it; a run whose NEXT says something else has none (round 16
-T47)."""
+T47). Also a person's fix (``doctor.is_persons_fix``) on any line of a run whose NEXT says fixing its error
+is the person's (:data:`_PERSONS_STEP`): the state file's or a config's error line is no [FAIL] line (round
+17 U6)."""
+
+_PERSONS_STEP = "not a step for the agent"
+"""The words every install.sh NEXT that gives the run's stop to the person carries: ``PERSONS_FAILS``, the
+config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no-[FAIL] status NEXT."""
+
+_PERSONS_KINDS_COPY = (
+    "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
+    "[governance] value, a docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, "
+    "a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
+)
+"""``doctor.PERSONS_KINDS``, for a report written while doctor does not import (a test keeps them equal)."""
 
 _TCC_PENDING_FAIL_RE = re.compile(r"^\[FAIL\] tcc\.[^ ]+ +— TCC_PENDING: ")
 """A [FAIL] install.sh's ``blocking_fails`` leaves out: a macOS Allow the wait asks for."""
@@ -4376,20 +4389,22 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     the start of a line or after ``(``. A run (from one ``# run=`` header to the next) whose blocking [FAIL]
     lines all end in a fix that is the person's (``doctor.is_persons_fix``, install.sh's ``persons_fails``)
     counts those lines' ``fix:`` as :data:`PERSONS_FIX`: that run's NEXT tells the agent they are not its
-    step. A mixed run's fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a
-    fix: on any other line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
+    step. A run whose NEXT says fixing its error is the person's (:data:`_PERSONS_STEP`) counts a person's
+    fix on any of its lines so too, as the state file's error line, which is no [FAIL] line (round 17 U6).
+    A mixed run's fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on
+    any other line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
     counts: Counter[str] = Counter()
     run: list[str] = []
 
     def count(run: list[str]) -> None:
         persons = _persons_run(run)
+        told = _persons_told(run)
         for line in run:
             kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
             if (
                 kind == "fix:"
-                and persons
-                and line.startswith("[FAIL")
                 and not _TCC_PENDING_FAIL_RE.match(line)
+                and ((persons and line.startswith("[FAIL")) or (told and _persons_line(line)))
             ):
                 kind = PERSONS_FIX
             if kind is not None:
@@ -4409,6 +4424,24 @@ _PERSONS_NEXT = "the [FAIL] lines above are the person's"
 (``PERSONS_FAILS``, after ``NEXT: `` or the loop's ``background sync: <result>; ``)."""
 
 
+def _fix_of(line: str) -> str | None:
+    """The text after a line's last `` (fix: ``, as install.sh's ``persons_fails`` reads it."""
+    at = line.rfind(" (fix: ")
+    return line[at + 7 :].rstrip().removesuffix(")") if at >= 0 else None
+
+
+def _persons_told(run: Sequence[str]) -> bool:
+    """Whether a run's ``NEXT:`` line gives its stop to the person (:data:`_PERSONS_STEP`)."""
+    return any(ln.lstrip().startswith("NEXT:") and _PERSONS_STEP in ln for ln in run)
+
+
+def _persons_line(line: str) -> bool:
+    """Whether a line's ``(fix: X)`` is the person's (``doctor.is_persons_fix``)."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    return doctor.is_persons_fix(_fix_of(line))
+
+
 def _persons_run(run: Sequence[str]) -> bool:
     """Whether a run's [FAIL] lines that stop it (a TCC_PENDING Allow left out) are there and every one ends
     in `` (fix: X)`` with X the person's, by install.sh's ``persons_fails`` rule (the text after the last
@@ -4422,17 +4455,21 @@ def _persons_run(run: Sequence[str]) -> bool:
     if nexts and not any(_PERSONS_NEXT in ln for ln in nexts):
         return False
     blocking = [ln for ln in run if ln.startswith("[FAIL") and not _TCC_PENDING_FAIL_RE.match(ln)]
-
-    def fix(line: str) -> str | None:
-        at = line.rfind(" (fix: ")
-        return line[at + 7 :].rstrip().removesuffix(")") if at >= 0 else None
-
-    return bool(blocking) and all(doctor.is_persons_fix(fix(ln)) for ln in blocking)
+    return bool(blocking) and all(doctor.is_persons_fix(_fix_of(ln)) for ln in blocking)
 
 
 def install_out_path(log: Path | None = None) -> Path:
     """install.sh's output copy: :data:`INSTALL_OUT_NAME` next to install.log (:func:`default_setup_log`)."""
     return (log if log is not None else default_setup_log()).parent / INSTALL_OUT_NAME
+
+
+def _persons_kinds() -> str:
+    """``doctor.PERSONS_KINDS``, or the report's copy when doctor does not import."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:  # any import failure keeps the report's own words
+        return _PERSONS_KINDS_COPY
+    return str(getattr(doctor, "PERSONS_KINDS", _PERSONS_KINDS_COPY))
 
 
 def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, pending: bool = False) -> str:
@@ -4444,11 +4481,12 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
     other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
     persons = counts[PERSONS_FIX]
     # What the classification reads (PERSONS_FIX_RE), not what a NEXT says: the run writing this report prints
-    # its NEXT after it (B13 round 16 T47); its noun by the count (T49), and an Oxford-comma list (T8)
+    # its NEXT after it (B13 round 16 T47); its noun by the count (T49), and an Oxford-comma list (T8); every
+    # kind the rule reads, from its own list (round 17 U11, U19, U45, U52, U86), on a [FAIL] line or, in a run
+    # whose NEXT gives the stop to the person, any line (U6)
     theirs = (
-        f"{_plural(persons, '[FAIL] line')} whose fix: is the person's (a sign-in, a folder, a [[source]] "
-        f"path or block, Rosetta or a native pandoc copy; not {'a hint' if persons == 1 else 'hints'} for "
-        "the agent)"
+        f"{_plural(persons, 'line')} whose fix: is the person's ({_persons_kinds()}; not "
+        f"{'a hint' if persons == 1 else 'hints'} for the agent)"
     )
     in_runs = f" in {_plural(runs, 'run')}" if runs else ""
     whole = (
@@ -4581,7 +4619,8 @@ def _installer_output(r: _Run) -> list[str]:
         f"Installer output: {_instruction_text(*r.facts.instructions)}. An instruction-like line other "
         "than NEXT: is a hint the agent may act on before install.sh's own next step; a fix: on a [FAIL] "
         "line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so). "
-        "agentsync's own "
+        "Nor is a person's fix: on any line of a run whose NEXT says fixing its error is the person's, as "
+        "the state file's error line. agentsync's own "
         "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
         "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",

@@ -3149,10 +3149,7 @@ def test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent(
     both = setup_report.instruction_counts(run_one + run_two)
     assert both == {"NEXT:": 2, setup_report.PERSONS_FIX: 2, "fix:": 3}, both
     text = setup_report._instruction_text(setup_report.instruction_counts([*run_one[:3], next_line]), 4, 1)
-    theirs = (
-        "[FAIL] lines whose fix: is the person's (a sign-in, a folder, a [[source]] path or block, Rosetta "
-        "or a native pandoc copy; not hints for the agent)"
-    )
+    theirs = f"lines whose fix: is the person's ({doctor.PERSONS_KINDS}; not hints for the agent)"
     # B13 round 16 T8: an Oxford-comma list, not two "and"s; T47: what the rule reads, not what a NEXT says
     assert ", 0 other instruction-like lines, and 2 " + theirs + " in the last 4 lines" in text, text
     assert "NEXT says so" not in text, text
@@ -3175,14 +3172,14 @@ def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_run
     writing the report) keeps the [FAIL]-only rule."""
     one = setup_report._instruction_text(Counter({"NEXT:": 1, "fix:": 1, setup_report.PERSONS_FIX: 1}), 5, 1)
     assert (
-        "(exactly one per install.sh run is expected), 1 other instruction-like line (1 fix:), and 1 [FAIL] "
+        "(exactly one per install.sh run is expected), 1 other instruction-like line (1 fix:), and 1 line "
         in (one)
     ), one
-    assert "1 [FAIL] line whose fix: is the person's (" in one and "not a hint for the agent)" in one, one
+    assert "1 line whose fix: is the person's (" in one and "not a hint for the agent)" in one, one
     six = setup_report._instruction_text(Counter({"NEXT:": 2, setup_report.PERSONS_FIX: 6}), 81, 2)
     assert six.startswith(
         "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected), 0 other instruction-like "
-        "lines, and 6 [FAIL] lines whose fix: is the person's ("
+        "lines, and 6 lines whose fix: is the person's ("
     ), six
     assert six.endswith("not hints for the agent) in the last 81 lines of install.out"), six
     none = setup_report._instruction_text(Counter({"NEXT:": 1}), 5, 1)
@@ -3207,6 +3204,63 @@ def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_run
 _COUNTED_S_RE = re.compile(r"\b\d+ [A-Za-z:. -]{0,30}\((?:s|es|ies)\)")
 """A number before a noun written with ``(s)``: the count is known, so the noun needs none (B13 round 15 S26,
 S30, S31)."""
+
+
+def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
+    """B13 round 17 U11, U19, U45, U52, U86: the clause listed "a sign-in, a folder, a [[source]] path or
+    block, Rosetta or a native pandoc copy" while the count also takes a [policy] or [governance] value and
+    a state file that cannot be read (``PERSONS_FIX_RE``'s "the person "), so a run stopped on one of those
+    was described by kinds that left it out. The clause reads doctor's one list, which cli's NEXT and
+    install.sh's PERSONS_FAILS name too; the report's copy for a broken doctor is the same words."""
+    assert setup_report._PERSONS_KINDS_COPY == doctor.PERSONS_KINDS == cli.PERSONS_KINDS
+    head = "# run=20261019T100000Z-4242 2026-10-19T10:00:00Z install.sh"
+    run = [
+        head,
+        f"[FAIL] state_dir.manifest — ~/x/manifest.sqlite cannot be read: x (fix: {doctor.MANIFEST_FIX})",
+        f"[FAIL] policy — bad value (fix: {cli.POLICY_FIX})",
+        "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: ...), not a step for "
+        "the agent",
+    ]
+    counts = setup_report.instruction_counts(run)
+    assert counts == {"NEXT:": 1, setup_report.PERSONS_FIX: 2}, counts
+    text = setup_report._instruction_text(counts, 4, 1)
+    assert f"2 lines whose fix: is the person's ({doctor.PERSONS_KINDS}; not hints for the agent)" in text
+    assert "a [policy] or [governance] value" in text and "a state file that cannot be read" in text, text
+
+
+def test_a_persons_fix_on_an_error_line_is_not_a_hint_when_its_next_says_so() -> None:
+    """B13 round 17 U6: a damaged state file stops init with ``state: ... cannot be read: ... (fix: the
+    person decides, ...)`` and install.sh's NEXT "fixing it is the person's, not a step for the agent";
+    with no [FAIL] line in the run, the Summary counted that fix: as a hint the agent may act on. A run
+    whose NEXT gives the stop to the person counts a person's fix on any line apart; a run whose NEXT says
+    something else keeps it a hint."""
+    db = "/Users/jdoe/.local/state/agentsync/manifest.sqlite"
+    state = f"state: {db} cannot be read: x (fix: {doctor.MANIFEST_FIX})"
+    told = (
+        "NEXT: agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync "
+        "status prints it again): fixing it is the person's, not a step for the agent, so show them the "
+        "error and go on to the report; once it is fixed, the next run is: ~/x/install.sh"
+    )
+    runs = [
+        "# run=20261019T100000Z-4242 2026-10-19T10:00:00Z install.sh",
+        "NEXT: run ~/x/install.sh --list-folders",
+        "# run=20261019T100100Z-4242 2026-10-19T10:01:00Z install.sh",
+        state,
+        "error: init failed (exit 69)",
+        told,
+    ]
+    counts = setup_report.instruction_counts(runs)
+    assert counts == {"NEXT:": 2, setup_report.PERSONS_FIX: 1}, counts
+    text = setup_report._instruction_text(counts, 6, 2)
+    assert "0 other instruction-like lines, and 1 line whose fix: is the person's (" in text, text
+    other = setup_report.instruction_counts([*runs[:4], "NEXT: fix the error above, then re-run"])
+    assert other == {"NEXT:": 2, "fix:": 1}, "a NEXT that asks the agent to act keeps the fix a hint"
+    hint = "a (fix: run chmod 700 ~/.local/state/agentsync)"
+    assert setup_report.instruction_counts([*runs[2:], hint]) == {
+        "NEXT:": 1,
+        setup_report.PERSONS_FIX: 1,
+        "fix:": 1,
+    }, "a fix that is not the person's stays a hint under the person's NEXT"
 
 
 def _report_prose(text: str) -> list[str]:
