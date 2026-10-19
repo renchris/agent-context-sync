@@ -22479,6 +22479,8 @@ symlink's whole name, an entry or a configured source's provider part, is a `<li
 a registered organization, and the line reads `a symlink into OneDrive-<org-1>: read as that folder, ...`. Printing
 the link's own name would leak it (round 5 F42's test). Tests: `test_a_provider_symlink_is_no_second_organization`,
 `test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words`.
+Amended 2026-10-19, §16.129 U61: a CloudStorage symlink's whole name is a `<link-N>` in the shell report too (it was the Python report's only), after
+the organisations, and OneDrive's entries are walked first.
 
 ### 16.123 Round 16: installer, bring-back.md's patches and the stopped copy (2026-10-18, wave B13 round 16 lane RB)
 
@@ -23116,6 +23118,18 @@ which the shell report does not print either, so an organisation of that name is
 as before for the 452 words only Python held. Tests: `test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_python`
 (Target, Core, Ghostty, Contoso), `test_the_shell_report_words_are_its_printed_text`,
 `test_an_organisation_is_redacted_inside_a_longer_word[Target-...]`; the M50 and N57 rows stay green.
+
+**A CloudStorage symlink is a `<link-N>` in the shell report too** (U61; dated line at §16.122 T40). T40 kept a
+symlinked provider out of the Python report's organisations; the shell's loop tested only `-e`, which follows the
+link, so `OneDrive-Aardvark`, a link sorting first, took `<org-1>` and the real `OneDrive-Contoso` `<org-2>`. The loop
+walks `OneDrive-*` first, as Python's sort key, and keeps a symlink (dangling too: `-L` beside `-e`) apart; after the
+organisations each is registered whole as `<link-N>`, matched in any case as Python's `ignore_case`, unless its
+organisation is one already: a word-named one (`OneDrive-Link` beside `OneDrive-SharedLibraries-Link`) gives the
+link's name that organisation's entry pair, as before. `<link-N>` is held in the second pass and has a legend item,
+`- <link-N>: a symlink's own name in ~/Library/CloudStorage (not an organization)`. The bare suffix written alone is
+not redacted, as in Python (§16.122 T40: the whole name only). Tests:
+`test_a_cloudstorage_symlink_is_a_link_in_both_readers`, `test_the_onedrive_organisation_is_org_1_in_both_readers`,
+`test_the_shell_report_keeps_the_word_a_one_word_organisation_spells[symlink]`.
 
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 

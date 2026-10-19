@@ -11560,11 +11560,24 @@ def test_the_two_reports_number_each_proxy_value_alike(
 
 
 def _fuzzy_report(
-    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, folders: list[str], said: str, org: str = "Contoso"
+    env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    folders: list[str],
+    said: str,
+    org: str = "Contoso",
+    *,
+    links: Sequence[str] = (),
+    others: Sequence[str] = (),
 ) -> tuple[str, str]:
     """The friction line ``said`` as the shell report and the Python report redact it, with ``folders``
-    configured under OneDrive-<org> (B13 round 10 L66)."""
+    configured under OneDrive-<org> (B13 round 10 L66), and in CloudStorage ``links``, symlinks to it, and
+    ``others``, folders of their own."""
     lib = _cloud(env) / f"OneDrive-{org}"
+    lib.mkdir(parents=True, exist_ok=True)
+    for name in links:
+        (_cloud(env) / name).symlink_to(lib, target_is_directory=True)
+    for name in others:
+        (_cloud(env) / name).mkdir()
     tables = []
     for n, name in enumerate(folders):
         (lib / name).mkdir(parents=True)
@@ -11747,6 +11760,31 @@ def test_the_shell_report_words_are_its_printed_text() -> None:
         assert code not in words, code
     for printed in ("folder", "report", "redacted", "private", "organization", "installer"):
         assert printed in words, printed
+
+
+def test_a_cloudstorage_symlink_is_a_link_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U61 (round 16 T40's shell twin): the shell's organisation loop followed a symlink, so
+    OneDrive-Aardvark, a link sorting first, took <org-1> and the real OneDrive-Contoso <org-2>, where the
+    Python report has <org-1> and a whole-name <link-1>; the shell legend had no <link-N> item."""
+    said = "Contoso and OneDrive-Aardvark and onedrive-aardvark"
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said, links=["OneDrive-Aardvark"])
+    assert shell == python == "<org-1> and <link-1> and <link-1>", (shell, python)
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "<org-2>" not in text and "Aardvark" not in text, text
+    assert "- <link-N>: a symlink's own name in ~/Library/CloudStorage (not an organization)\n" in text
+
+
+def test_the_onedrive_organisation_is_org_1_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U61: the shell walked CloudStorage in plain name order, so Box-Fabrikam took <org-1>
+    before OneDrive-Contoso; the Python report puts OneDrive's entries first."""
+    shell, python = _fuzzy_report(
+        env, monkeypatch, ["Plans"], "Contoso and Fabrikam", others=["Box-Fabrikam"]
+    )
+    assert shell == python == "<org-1> and <org-2>", (shell, python)
 
 
 def test_a_proxy_host_an_earlier_line_names_is_redacted_once_unset(

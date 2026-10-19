@@ -1497,7 +1497,7 @@ listed_folder_names() {
 	done < <(listed_folder_lines)
 }
 redaction_pairs() {
-	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x
+	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
 	local tables=0 ids=" "
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=()
@@ -1664,9 +1664,15 @@ redaction_pairs() {
 		# An account's email address too (GoogleDrive-<address>): the shell has no email pattern. An organisation
 		# already registered takes no second number (OneDrive-X and OneDrive-SharedLibraries-X; B13 round 3
 		# R44), nor another spelling of it (B13 round 10 L66: its pair is matched as Python's fuzzy mode).
+		# OneDrive's entries first, so <org-1> is the OneDrive organisation, and a symlink is no organisation: its
+		# own name is registered whole, after the organisations, as a <link-N>, a dangling one too (B13 round 17
+		# U61, as setup_report._build_redactor since round 16 T40)
 		orgs_seen=$'\n'
-		for e in "$cs"/*; do
-			[ -e "$e" ] || continue
+		links=() walked=$'\n'
+		for e in "$cs"/OneDrive-* "$cs"/*; do
+			[ -e "$e" ] || [ -L "$e" ] || continue
+			case "$walked" in *$'\n'"$e"$'\n'*) continue ;; esac
+			walked+="$e"$'\n'
 			e="$(basename "$e")"
 			case "$e" in
 			*-*) ;;
@@ -1677,6 +1683,10 @@ redaction_pairs() {
 			case "$org" in
 			"${e%%-*}" | "" | [Pp]ersonal | [Pp]ersonal\ * | [Bb]usiness | [Ww]ork) continue ;;
 			esac
+			if [ -L "$cs/$e" ]; then
+				links+=("$e")
+				continue
+			fi
 			low="$(recase lower "$org")"
 			if [ "${org#* }" = "$org" ] && context_org_word "$low"; then
 				# a word the report prints ("Link"): in each entry's own name (and its %q form) and the domains
@@ -1714,6 +1724,21 @@ redaction_pairs() {
 			# whose words spell a report word stays whole-word (B13 round 11 M50)
 			[ "$FUZZY" != f ] || report_word "$(id_key "$org")" || FUZZY=o
 			add_pair "$org" "<org-$x>" "$FUZZY"
+		done
+		# a link named as an organisation is that organisation's (OneDrive-Contoso (1) beside OneDrive-Contoso): a
+		# word-named one is matched only in its entries' names, so the link's name takes its pair (F42, F55)
+		lk=0
+		for e in ${links[@]+"${links[@]}"}; do
+			org="${e#*-}"
+			org="${org#SharedLibraries-}"
+			case "$orgs_seen" in *$'\n'"~$(id_key "$org")"$'\t'*) continue ;; esac
+			x="$(printf '%s' "$orgs_seen" | O="$org" LC_ALL=C awk -F '\t' '$1 == ENVIRON["O"] && NF == 2 { print $2; exit }')"
+			if [ -n "$x" ]; then
+				add_pair "$e" "${e%"$org"}<org-$x>"
+				continue
+			fi
+			lk=$((lk + 1))
+			add_pair "$e" "<link-$lk>"
 		done
 	fi
 	# The configured folders first, then the listed ones, as the Python report registers them. One number per
@@ -2210,7 +2235,7 @@ redact_stream() {
 			# a proxy value is matched in any ASCII case, as setup_report registers it (ignore_case or url mode):
 			# under LC_ALL=C tolower keeps every byte where it is, so the offsets found in the lower-cased text cut
 			# the line as written (B13 round 13 O2, O67). Its kind is in its placeholder: no other pair writes one
-			if (index(f[2], "<proxy-") && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1])
+			if ((index(f[2], "<proxy-") || index(f[2], "<link-")) && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1]) # a link: ignore_case (B13 round 17 U61)
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
 			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
 		}
@@ -2229,7 +2254,7 @@ redact_stream() {
 	{
 		m = 0; s = $0
 		while (1) {
-			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy)-([0-9]+|N))>/)) RSTART = 0
+			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
 			if ((r = repo_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = RL }
 			if ((r = own_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = OL }
 			if (!RSTART) break
@@ -2989,7 +3014,7 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # its own words never count.
 legend_kinds() { # BODY
 	local used=" ~ " k
-	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>'; do
+	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>'; do
 		! LC_ALL=C grep -q -- "$k" "$1" 2>/dev/null || used+="$k "
 	done
 	printf '%s' "$used"
@@ -3008,7 +3033,7 @@ say_item() { # TEXT
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
 	local org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
-	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
+	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
@@ -3126,6 +3151,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <user> "*) say "- <user>: the login name" ;; esac
 	case "$used" in *" <name> "*) say "- <name>: the full name and its joined forms" ;; esac
 	case "$used" in *" <org-[0-9] "*) say_item "$org_item" ;; esac
+	case "$used" in *" <link-[0-9] "*) say "- <link-N>: a symlink's own name in ~/Library/CloudStorage (not an organization)" ;; esac
 	case "$used" in *" <mdmhost> "*) say "- <mdmhost>: the MDM server's host" ;; esac
 	# numbered as in agentsync's own report (B13 round 8 J78), so a number the other report gave can be missing
 	# here: the shell names an environment proxy only by its variable (B13 round 10 L3)
