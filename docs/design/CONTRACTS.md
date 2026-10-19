@@ -23215,6 +23215,17 @@ characters carry no identifying text, so redaction is unchanged. Tests:
 `test_a_source_local_argument_keeps_its_quotes_in_the_installer_embed`,
 `test_a_source_local_argument_never_shows_a_folder_the_redactor_does_not_know`.
 
+**A loop stage status could not read is not read, not `installed`** (U7). When status cannot read the state (a
+damaged manifest, a `[governance]` value that does not load), `cli._guarded` prints one `status: cannot read the
+state: ...` line in place of the detail part, `last runs:` included, so `synced` read False and the Loop line and
+the issue link's `loop_stage` said `installed` on a Mac that had synced. `synced` is three-valued: None when that
+line is there and no `last runs:` line is. `loop_stage` still returns a stage the baseline or the topics settle,
+read from disk, and otherwise None: the Loop line reads `- Loop: not read (status: <its words>); ...` and the link
+leaves the field out. The report's `loop_next` hook caught only `OSError` and `AgentSyncError`, so a damaged
+manifest's `sqlite3.DatabaseError` left the Loop line no NEXT; on any error it now gives what `agentsync status`
+prints then (`_next_or_fix`: rule 1's NEXT from the first FAIL's fix, here state_dir.manifest's, the person's).
+Test: `test_a_loop_stage_status_could_not_read_is_not_read_not_installed`.
+
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
 Installer and shell-report items from the v25 rehearsal, the cross-lane review and the harvest

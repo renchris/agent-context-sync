@@ -1995,13 +1995,17 @@ def _report_hooks() -> setup_report.ReportHooks:
         return doctor.format_results(results).splitlines()
 
     def loop_next(config: Config) -> loop.NextStep | list[str]:
-        """The loop's NextStep (its ``checks`` group doctor's warns); [] when the state cannot be read, as
-        :func:`loop.next_lines` gives."""
+        """The loop's NextStep (its ``checks`` group doctor's warns); when the state cannot be read (a
+        damaged manifest raises sqlite3.DatabaseError too), the NEXT ``agentsync status`` prints then:
+        rule 1's from the first FAIL's fix, or [] (B13 round 17 U7)."""
         try:
             return loop.next_step(config, fixes=fixes, count_queue=False)
-        except (OSError, AgentSyncError) as exc:
+        except Exception as exc:
             _log.warning("next step: cannot read the loop state: %s", exc)
-            return []
+            try:
+                return _next_or_fix(config, fixes)
+            except Exception:
+                return []
 
     return setup_report.ReportHooks(
         doctor=checks,

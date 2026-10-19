@@ -2534,10 +2534,12 @@ def compute_run_type(runs: Sequence[InstallRun], home: str) -> str:
     return "sandbox" if is_sandbox_home(home) else "real"
 
 
-def loop_stage(baseline: str | None, topics: int | None, synced: bool) -> str:
+def loop_stage(baseline: str | None, topics: int | None, synced: bool | None) -> str | None:
     """How far the loop got (:data:`LOOP_STAGES`), from status's loop line (``baseline`` is
     ``loop.baseline_state``'s word, ``topics`` the curated page count) and whether a sync ran: the furthest
-    stage reached, so a curated page outranks the baseline before it."""
+    stage reached, so a curated page outranks the baseline before it. ``synced`` None: status could not read
+    the state, so whether a sync ran is unknown; a stage the baseline or the topics settle (read from disk)
+    still stands, and otherwise there is none, never a false ``installed`` (B13 round 17 U7)."""
     if baseline == "after":
         return "after run"
     if topics:
@@ -2545,6 +2547,8 @@ def loop_stage(baseline: str | None, topics: int | None, synced: bool) -> str:
     stage = {"before": "before run", "confirmed": "baseline confirmed", "draft": "baseline drafted"}
     if baseline in stage:
         return stage[baseline]
+    if synced is None:
+        return None
     return "synced" if synced else "installed"
 
 
@@ -2916,7 +2920,8 @@ class _Facts:
     first_sync_run: str | None = None
     # (run id, started, files read again) of each run the OCR part read, newest first; None: not read
     runs_read: tuple[tuple[int, datetime | None, int], ...] | None = None
-    loop: tuple[str | None, int | None, bool] | None = None  # status's (baseline, topics, a sync ran)
+    loop: tuple[str | None, int | None, bool | None] | None = None  # status's (baseline, topics, a sync ran)
+    loop_unread: str | None = None  # why status could not read the state (its words), when it said so
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
 
@@ -5214,6 +5219,11 @@ def _doctor(r: _Run) -> list[str]:
     ]
 
 
+_STATUS_UNREAD = "status: cannot read the state:"
+"""How status's detail part starts when it cannot read the state (``cli._guarded``): no ``last runs:`` line
+follows, so the report cannot say whether a sync ran."""
+
+
 def _status(r: _Run) -> list[str]:
     if r.config is None:
         if r.config_missing:
@@ -5228,10 +5238,15 @@ def _status(r: _Run) -> list[str]:
     if baselines:
         r.facts.baseline = (baselines.count("complete"), len(baselines))
     loop_line = next((ln for ln in lines if ln.startswith("loop: ")), None)
+    unread = next((ln for ln in lines if ln.startswith(_STATUS_UNREAD)), None)
+    if unread is not None:
+        r.facts.loop_unread = unread.removeprefix(_STATUS_UNREAD).strip() or "it said no more"
     if loop_line is not None:
         baseline = _LOOP_BASELINE_RE.search(loop_line)
         topics = _LOOP_TOPICS_RE.search(loop_line)
-        synced = any(ln.startswith("last runs:") and ln != "last runs: none" for ln in lines)
+        ran = [ln for ln in lines if ln.startswith("last runs:")]
+        # no "last runs:" line because status could not read the state: unknown, not "no sync" (U7)
+        synced: bool | None = any(ln != "last runs: none" for ln in ran) if ran or unread is None else None
         r.facts.loop = (
             baseline.group(1) if baseline else None,
             int(topics.group(1)) if topics else None,
@@ -9060,6 +9075,8 @@ def _loop_line(r: _Run) -> str:
     if r.facts.loop is not None:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
+    if r.loop_stage is None and r.facts.loop is not None:  # B13 round 17 U7: not a false "installed"
+        stage = f"not read (status: {r.facts.loop_unread or 'it cannot read the state'})"
     if r.config is None:
         why = "no sources.toml yet" if r.config_missing else "the config does not load"
         return f"- Loop: {stage}; NEXT: not read ({why})"

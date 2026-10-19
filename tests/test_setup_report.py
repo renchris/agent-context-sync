@@ -5964,6 +5964,41 @@ def test_the_loop_line_carries_the_note_of_an_unfinished_re_read(fake_mac: dict[
     assert line.endswith(f"; {step}; {wait}") and "note:" not in line
 
 
+def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 17 U7: when status could not read the state (a damaged manifest, a [governance] value that
+    does not load), it printed no ``last runs:`` line and the report's Loop line and issue link said
+    ``installed`` on a Mac that had synced, while the loop hook's DatabaseError left the Loop line no NEXT.
+    The stage is not read then, and left out of the link; a stage the baseline or the topics settle, read
+    from disk, still stands; and the hook falls back to the NEXT status prints, rule 1's from the FAIL."""
+    stage = setup_report.loop_stage
+    assert stage(None, None, None) is None and stage("missing", 0, None) is None
+    assert stage("draft", 0, None) == "baseline drafted" and stage("missing", 3, None) == "topics 3"
+    unread = "status: cannot read the state: the state file cannot be read (file is not a database)"
+    hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current · baseline missing", unread])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    loop = _line(section(text, "Summary"), "- Loop: ")
+    assert loop.startswith(
+        "- Loop: not read (status: the state file cannot be read (file is not a database));"
+    )
+    assert "loop_stage=" not in text, "no stage in the issue link"
+    hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current · baseline draft", unread])
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: baseline drafted;")
+    # MF: a home that synced, then its manifest overwritten
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    expand(load_config(fake_mac["config"]).state_paths.db).write_bytes(b"not a database, " * 256)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    loop = _line(section(text, "Summary"), "- Loop: ")
+    assert loop.startswith("- Loop: not read (status: "), loop
+    assert (
+        "NEXT: the state_dir.manifest check failed: its fix on the [FAIL] line below is the person's" in loop
+    )
+    assert "loop_stage=" not in text and "Loop: installed" not in text
+
+
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
     def crash(config: object) -> list[str]:
         raise RuntimeError("loop exploded")
