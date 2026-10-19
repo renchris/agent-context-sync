@@ -22470,6 +22470,10 @@ evidence parts keep `(not in the config, N)`. The shell fallback report register
 (`redaction_pairs`, numbered after the tables). ops/doctor.py is unchanged. Tests:
 `test_a_vanished_sources_id_is_a_placeholder_in_every_section`,
 `test_install_oneshot.py::test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone`.
+Amended 2026-10-19, §16.128 U8, U23, U44: the evidence parts and the loads line name such an id by the Redactor's
+placeholder, `(<source-N>, not in the config)`; `(not in the config, N)` is left only for an id it cannot read so.
+Amended 2026-10-19, §16.128 U62: the ids a vanished line can quote (present rows) are registered first, then the
+rest, a report word among them left out.
 
 **The report's vanished-source check is the cycle's** (T52, T87). `_live_refusal` held its own copy of
 `Manifest.present_counts`' query, `vanished_sources`' rule and the refusal's words. `manifest.present_counts_on`,
@@ -22482,6 +22486,8 @@ config, 1) (4 files)` put two brackets side by side; it reads `(not in the confi
 because the evidence tables name the source by it. T15's label-free wording is not built: with two sources the
 entries could not be told apart. A table's refusal drops the exception's class name. Tests:
 `test_a_vanished_sources_count_is_inside_its_labels_bracket`, `test_a_config_the_sync_refuses_loads_but_says_so`.
+Amended 2026-10-19, §16.128 U8, U23, U44: the label is the placeholder Doctor prints, `(<source-3>, not in the config;
+4 files)`.
 
 **The doctor line's refused-configuration bucket** (T4, T14: one defect from two finders, built once; amends §16.39
 N16). A vanished source, a policy.toml that does not pass and a bad `[governance]` key each read `unexpected 1:
@@ -23117,6 +23123,29 @@ words left out), so no number moves. The shell fallback report runs the same pat
 `test_a_docs_repo_remotes_url_is_a_placeholder_wherever_a_governance_line_quotes_it`,
 `test_a_docs_repo_remotes_host_is_a_proxy_placeholder_where_git_names_it`,
 `test_install_oneshot.py::test_a_governance_lines_remote_url_and_the_docs_repos_host_are_redacted_in_both_readers`.
+
+**One vanished source has one name in the report** (U8, U23, U44, one defect from three finders; amends §16.122
+T42 and T7). Doctor's `config.vanished_sources` [FAIL] and the install.out tail showed the id as the Redactor's
+placeholder (`<folder-3>`, `<source-1>`), while the loads line, step 2's refusal and the evidence tables (Quarantine,
+Purge queue) said `(not in the config, 1)`, a number each `_Labels` gave by its own order of sight. `_Labels.of` asks
+the Redactor for an id the config lacks too: a whole placeholder reads `(<source-N>, not in the config)`, with
+`_with_count` `a source (<source-3>, not in the config; 3 files) is mirrored but no longer in sources.toml`, and
+only an id the Redactor left in clear or cut (an unreadable manifest, a timed-out read, a report word) keeps
+`(not in the config, N)`, numbered among those alone, so no id is ever shown. Where the report shows that fallback,
+the Redaction legend explains it; the `<folder-N>` and `<source-N>` items say a number can be missing (numbers
+are given at first replacement and never renumbered: the shell report and the private-only check rest on them).
+Doctor's words are unchanged: the Redactor's placeholder is one across the report. Tests:
+`test_a_vanished_sources_id_is_a_placeholder_in_every_section`,
+`test_an_unconfigured_id_the_redactor_does_not_know_keeps_its_fallback_label`.
+
+**The vanished ids number first, and a retired report word stays a word** (U62; amends §16.122 T42).
+`_unconfigured_ids` gave every unconfigured id in one sorted list, so a retired source's tombstone-only id that
+sorts first, which no vanished line quotes and the shell report does not register, moved the vanished id's
+`<source-N>` away from the shell's; and a retired id that is a word the report prints ("setup") cut "the setup
+report". It returns two groups: the ids `cycle.vanished_from` reports (present rows), then the rest (tombstones, a
+hand-edited queue), each sorted; a report word in the second group is not registered. Every retired id is still
+registered otherwise, so an older log line quoting one stays redacted. Test:
+`test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_stays_a_word`.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 

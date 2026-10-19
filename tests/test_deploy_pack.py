@@ -5963,13 +5963,15 @@ def test_the_guide_places_a_vanished_sources_label_in_the_loads_line() -> None:
     line, and its step-2 form, names a source still in the manifest and gone from sources.toml as `(not in the
     config, N)`; the guide's placeholder row said that form was in the evidence parts only. Its scope clause
     stays as round 5 pinned it, and the excludes line, which reads only the configured sources, never shows
-    the form."""
+    the form. B13 round 17 U23: the form is the fallback for an id the report cannot read as a placeholder;
+    the row says the placeholder form comes first."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
     assert 'return f"- loads: yes, but a sync refuses it: {live}"' in source
     assert 'return f"- loads: yes, but step 2\'s sync refused it (run {run.display_id}): "' in source
-    assert "(not in the config, " in inspect.getsource(setup_report._Labels)
+    assert setup_report._NOT_IN_CONFIG == "(not in the config, "
+    assert "_NOT_IN_CONFIG" in inspect.getsource(setup_report._Labels)
     assert "for src in c.sources" in inspect.getsource(setup_report._excludes_line)
     [row] = [
         ln
@@ -5978,7 +5980,7 @@ def test_the_guide_places_a_vanished_sources_label_in_the_loads_line() -> None:
     ]
     assert "(evidence parts only)" not in row
     assert row.endswith(
-        "no longer in sources.toml (the evidence parts, and the Configuration section's "
+        "so one source has one name (the evidence parts, and the Configuration section's "
         "`loads: yes, but a sync refuses it` line, or `... step 2's sync refused it` line, which names such "
         "a source the same way) |"
     )
@@ -5986,6 +5988,7 @@ def test_the_guide_places_a_vanished_sources_label_in_the_loads_line() -> None:
         "in the evidence parts and the Configuration section's `source excludes beyond agentsync's own` "
         in row
     )
+    assert "`(<source-N>, not in the config)`" in row, "the one name Doctor's line gives it (U23)"
 
 
 def test_contracts_quote_the_counted_unread_patch_lines() -> None:

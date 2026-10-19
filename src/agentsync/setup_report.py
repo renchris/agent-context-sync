@@ -765,8 +765,13 @@ _LEGEND = {
     "name": "<name> full name",
     "org": "<org-N> organization",
     "library": "<library-N> SharePoint library",
-    "folder": "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder)",
-    "source": "<source-N> source id",
+    "folder": (
+        "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder; a number can be "
+        "missing)"
+    ),
+    "source": (
+        "<source-N> source id (a configured one, or one the manifest still holds; a number can be missing)"
+    ),
     "email": "<email-N> email address",
     "guid": "<guid-N> GUID",
     "hash": "<hash-N> hex fingerprint (launcher cdhash, content hash)",
@@ -3435,25 +3440,34 @@ def _project_values(path: Path) -> list[str]:
 _UNCONFIGURED_IDS_S = 2.0  # the manifest's and the purge queue's ids, for redaction
 
 
-def _unconfigured_ids(config: Config) -> list[str]:
+def _unconfigured_ids(config: Config) -> tuple[list[str], list[str]]:
     """The source ids the manifest's rows (any state) and the purge queue hold that ``config`` does not have,
-    sorted: a source whose [[source]] block is gone, a retired one's rows, a hand-edited queue. The manifest
-    is opened read-only, as every other read of the report's."""
+    in two sorted groups: those ``cycle.vanished_from`` reports (present file rows: the ids doctor's
+    config.vanished_sources [FAIL] and the sync's refusal quote, which the shell fallback report registers
+    too), then the rest (a retired source's tombstones, a hand-edited queue), so the shared ids number alike
+    in both reports (B13 round 17 U62). The manifest is opened read-only, as every other read of the
+    report's."""
     from agentsync import governance  # noqa: PLC0415 - lazy, as in _purge_part
+    from agentsync.cycle import vanished_from  # noqa: PLC0415
+    from agentsync.manifest import present_counts_on  # noqa: PLC0415
 
     ids: set[str] = set()
+    present: dict[str, int] = {}
     db = expand(config.state_paths.db)
     if db.is_file():
         conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
         try:
             ids.update(str(row[0]) for row in conn.execute("SELECT DISTINCT source_id FROM items").fetchall())
+            present = present_counts_on(conn)
         finally:
             conn.close()
     with contextlib.suppress(Exception):
         queue = governance.pending_purges(config.state_paths.root)
         ids.update(e.selector.source_id for e in queue[:_PURGES_READ] if e.selector.source_id)
     configured = {src.id for src in config.sources}
-    return sorted(sid for sid in ids if sid and sid not in configured)
+    vanished = sorted(vanished_from(configured, present))
+    rest = sorted(sid for sid in ids if sid and sid not in configured and sid not in vanished)
+    return vanished, rest
 
 
 def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
@@ -3680,12 +3694,15 @@ def _build_redactor(r: _Run) -> Redactor:
     # Then every id the manifest or the purge queue holds that sources.toml no longer has, after the
     # configured ones so their numbers stay: doctor's config.vanished_sources [FAIL] and the sync's refusal
     # quote such an id, in Doctor, the install.out tail and Recent errors, where the report showed it in clear
-    # (B13 round 16 T42, T53, T66). An unreadable manifest or queue leaves the redactor as it was.
+    # (B13 round 16 T42, T53, T66). An unreadable manifest or queue leaves the redactor as it was. The ids
+    # those two lines quote first, as the shell registers them, then the rest; a word the report prints only
+    # when such a line quotes it, so a retired "setup" does not cut "the setup report" (round 17 U62).
     if r.config is not None:
         config = r.config
         with contextlib.suppress(Exception):
-            gone_ids = r.call(lambda: _unconfigured_ids(config), timeout=_UNCONFIGURED_IDS_S)
-            for sid in gone_ids:
+            vanished, rest = r.call(lambda: _unconfigured_ids(config), timeout=_UNCONFIGURED_IDS_S)
+            gone_ids = [*vanished, *rest]
+            for sid in [*vanished, *(sid for sid in rest if sid.lower() not in report_words())]:
                 if sid not in _GENERIC_IDS:
                     red.add("source", sid)
             # and the folder each one's walk recorded (``scope_root:<id>``), as a configured source's is: a
@@ -5651,13 +5668,27 @@ class _Mirror:
             self._conn = None
 
 
+_NOT_IN_CONFIG = "(not in the config, "
+"""The front of :class:`_Labels`' fallback label for an id the config does not have."""
+
+_NOT_IN_CONFIG_LEGEND = (
+    "(not in the config, N) a source id the manifest still holds and sources.toml no longer has, which the "
+    "report could not read as a placeholder, numbered by itself"
+)
+"""The Redaction legend's item for :class:`_Labels`' fallback label, where the report shows one (U8)."""
+
+
 class _Labels:
     """How an evidence part names a source: never by an id in clear, and never by a part of one. A
     configured id is shown as the report's Redactor shows it only when that is one whole placeholder
     (``<source-N>``, ``<folder-N>``); one the Redactor leaves alone is kept only when it is one of
     agentsync's own words (``inbox``, ``mail``). Anything else, an id the Redactor replaced only a part of
     included, is ``(source N)`` by its place in sources.toml. An id the config does not have (a retired
-    source's rows, a hand-edited queue) is registered with no one: it is ``(not in the config, N)``."""
+    source's rows, a hand-edited queue) is ``(<source-N>, not in the config)`` with the placeholder Doctor
+    and the install.out tail print for it (``_build_redactor`` registers it), so one source has one name in
+    the report (B13 round 17 U8, U23, U44); only an id the Redactor left in clear or cut a part of (an
+    unreadable manifest, a timed-out read, a word the report prints) is ``(not in the config, N)``, numbered
+    among those alone."""
 
     def __init__(self, config: Config, red: Redactor) -> None:
         self.red = red
@@ -5670,8 +5701,12 @@ class _Labels:
         text = str(source_id)
         if text not in self._shown:
             if text not in self.place:
-                others = sum(1 for known in self._shown if known not in self.place)
-                self._shown[text] = f"(not in the config, {others + 1})"
+                shown = self.red.redact(text)
+                if _PLACEHOLDER_RE.fullmatch(shown) is not None:
+                    self._shown[text] = f"({shown}, not in the config)"
+                else:
+                    others = sum(1 for v in self._shown.values() if v.startswith(_NOT_IN_CONFIG))
+                    self._shown[text] = f"{_NOT_IN_CONFIG}{others + 1})"
             else:
                 shown = self.red.redact(text)
                 whole = _PLACEHOLDER_RE.fullmatch(shown) is not None
@@ -9752,6 +9787,8 @@ def _redaction_section(
 ) -> list[str]:
     kinds = ", ".join(f"{k} {red.counts[k]}" for k in red.kinds_used()) or "none"
     legend = " · ".join(_legend_item(red, k, body) for k in red.kinds_used() if k in _LEGEND)
+    if _NOT_IN_CONFIG in body:  # U8: the fallback label, where the report shows one
+        legend = f"{legend} · {_NOT_IN_CONFIG_LEGEND}" if legend else _NOT_IN_CONFIG_LEGEND
     listed = sum(len(found) for _title, found in hits)  # as listed: a word in two sections counts twice
     unnumbered = ", ".join(k for k in _LEGEND if k in _UNNUMBERED)
     check = (

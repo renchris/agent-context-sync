@@ -863,8 +863,8 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
 
     line = loads()
     assert line == (
-        "- loads: yes, but a sync refuses it: a source (not in the config, 1; 1 file) is mirrored but no "
-        "longer in sources.toml; retirement is explicit: put the [[source]] block back with "
+        "- loads: yes, but a sync refuses it: a source (<folder-3>, not in the config; 1 file) is "
+        "mirrored but no longer in sources.toml; retirement is explicit: put the [[source]] block back with "
         f"{RETIRE_ADVICE}, or restore it"
     ), line
     # the sync's order: a policy that does not pass is what it prints first, so the report gives that one
@@ -914,7 +914,8 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
         encoding="utf-8",
     )
     assert loads() == "- loads: yes"
-    # a manifest the report cannot read: step 2's vanished-source line, its ids by place, never in clear
+    # a manifest the report cannot read: step 2's vanished-source line, its ids never in clear (this one is
+    # also a folder's slug, so the Redactor knows it as that folder's placeholder: U23's one name)
     out.write_text(
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + said + "\n",
         encoding="utf-8",
@@ -925,7 +926,7 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     line = loads()
     assert line.startswith(
         "- loads: yes, but step 2's sync refused it (run 20260929T100000Z): configuration error: source(s) "
-        "(not in the config, 1; 1 file(s)) are mirrored but no longer in sources.toml"
+        "(<folder-3>, not in the config; 1 file(s)) are mirrored but no longer in sources.toml"
     ), line
     assert gone not in line
     write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
@@ -950,7 +951,7 @@ def test_a_vanished_sources_count_is_inside_its_labels_bracket(
     _rc, text, _ = report(tmp_path, cfg)
     [line] = [ln for ln in section(text, "Configuration").splitlines() if ln.startswith("- loads: ")]
     assert line.startswith(
-        "- loads: yes, but a sync refuses it: a source (not in the config, 1; 4 files) is "
+        "- loads: yes, but a sync refuses it: a source (<folder-3>, not in the config; 4 files) is "
     ), line
     assert ") (" not in line, line
     labels = setup_report._Labels(load_config(cfg), setup_report.Redactor())
@@ -1002,7 +1003,62 @@ def test_a_vanished_sources_id_is_a_placeholder_in_every_section(
     assert re.search(r"source '<source-\d+>' \(1 file\) is mirrored", fail), fail
     installer = section(text, "Installer")
     assert installer.count(re.search(r"<source-\d+>", fail).group(0)) >= 2, installer  # type: ignore[union-attr]
-    assert "(not in the config, 1" in section(text, "Configuration"), "the evidence names it by place still"
+    # B13 round 17 U8, U23, U44: one source, one name: the loads line uses Doctor's placeholder
+    token = re.search(r"<source-\d+>", fail).group(0)  # type: ignore[union-attr]
+    conf = section(text, "Configuration")
+    assert f"a source ({token}, not in the config; 1 file) is mirrored but no longer in sources.toml" in conf
+    assert "(not in the config, " not in text, "no second name for it anywhere"
+
+
+def test_an_unconfigured_id_the_redactor_does_not_know_keeps_its_fallback_label() -> None:
+    """B13 round 17 U8, U23, U44: an id the Redactor never registered (an unreadable manifest, a timed-out
+    read, a word the report prints) is never shown in clear: it keeps ``(not in the config, N)``, numbered
+    among the fallback labels alone, and the legend says what that label is."""
+    config = Config(config_path=Path("sources.toml"))
+    red = setup_report.Redactor()
+    red.add("source", "zeta-ledger")
+    labels = setup_report._Labels(config, red)
+    assert labels.of("zeta-ledger") == "(<source-1>, not in the config)"
+    assert labels.of("northwind-archive") == "(not in the config, 1)"
+    assert labels.of("tailspin-bridge") == "(not in the config, 2)"
+    body = "a source (not in the config, 1; 3 files) is mirrored"
+    assert setup_report._NOT_IN_CONFIG_LEGEND in "\n".join(
+        setup_report._redaction_section(red, [], body=body)
+    )
+    assert setup_report._NOT_IN_CONFIG_LEGEND not in "\n".join(setup_report._redaction_section(red, []))
+
+
+def test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_stays_a_word(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U62: every unconfigured id was registered in one sorted list, so a retired id with only
+    tombstones (which no vanished line quotes, and the shell does not register) that sorts first moved the
+    vanished id's ``<source-N>`` away from the shell report's; and a retired id that is a word the report
+    prints ("setup") cut the report's own words. The ids a vanished line can quote come first, then the
+    rest, a report word among them left out."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    one = next(src.id for src in config.sources if src.path == fake_mac["one"])
+    conn = sqlite3.connect(expand(config.state_paths.db))
+    try:  # copies of a synced source's rows under ids sources.toml lacks: no foreign keys on a raw connection
+        conn.execute("CREATE TEMP TABLE t AS SELECT * FROM items WHERE source_id = ? AND is_dir = 0", (one,))
+        for sid, state in (("zeta-ledger", None), ("aaa-old", "tombstone"), ("setup", "tombstone")):
+            conn.execute("UPDATE t SET source_id = ?, state = coalesce(?, state)", (sid, state))
+            conn.execute("INSERT INTO items SELECT * FROM t")
+        conn.commit()
+    finally:
+        conn.close()
+    vanished, rest = setup_report._unconfigured_ids(config)
+    assert (vanished, rest) == (["zeta-ledger"], ["aaa-old", "setup"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    vanished_at = re.fullmatch(
+        r"source '<source-(\d+)>' \(1 file\)", red.redact("source 'zeta-ledger' (1 file)")
+    )
+    retired_at = re.fullmatch(r"<source-(\d+)>", red.redact("aaa-old"))
+    assert vanished_at and retired_at and int(vanished_at.group(1)) < int(retired_at.group(1))
+    assert red.redact("the setup report") == "the setup report"
 
 
 @pytest.mark.usefixtures("roomy_calls")
@@ -2808,7 +2864,7 @@ def test_the_folder_legend_says_why_a_listed_generic_or_agent_name_stays_in_clea
     listed = Path.home() / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Documents" / "Copilot"
     listed.mkdir(parents=True)
     write_install_log(fake_mac)
-    item = "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder"
+    item = setup_report._LEGEND["folder"][:-1]
     clause = (
         "; not a name every OneDrive has, such as Documents, nor one made of coding-agent product words, "
         "such as Copilot or GitHub Copilot, where only a folder listing names it)"
@@ -3739,9 +3795,9 @@ def test_a_project_path_under_the_home_folder_is_redacted(fake_mac: dict[str, Pa
     name = re.search(r"cannot list ~/Development/(<folder-\d+>)/notes; internal correspondence is", shown)
     assert whole and name and whole.group(1) != name.group(1)
     assert f"source.z.listable — cannot list ~/Development/{whole.group(1)}\n" in shown, "any case, ~/ form"
-    assert "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder)" in section(
-        text, "Redaction"
-    ), "the legend covers the folder it has just named outside CloudStorage"
+    assert setup_report._LEGEND["folder"] in section(text, "Redaction"), (
+        "the legend covers the folder it has just named outside CloudStorage"
+    )
     assert "~/agent-context/setup/friction.md" in text, "agentsync's own folder is not a project"
 
 
@@ -8478,7 +8534,7 @@ def test_quarantine_part_groups_by_source_state_and_reason_class(fake_mac: dict[
     )
     rows = [ln for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:]
     assert rows == [
-        "| (not in the config, 1) | refused | duplicate | 1 | 0 | - |",
+        "| (<source-1>, not in the config) | refused | duplicate | 1 | 0 | - |",
         "| <folder-2> | quarantined | no text layer (OCR not run) | 1 | 0 | 2026-09-30 |",
         "| <folder-2> | quarantined | no text layer (OCR found no text) | 1 | 0 | 2026-10-06 |",
         "| <folder-2> | quarantined | no text in image | 1 | 0 | - |",
@@ -9089,7 +9145,8 @@ def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_pl
         return [ln for ln in part.splitlines() if ln.startswith("| ") and "---" not in ln][1:]
 
     assert rows(part) == [
-        "| (not in the config, 1) | label-escalation | stable-id | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 1 | 0 |",
+        "| (<source-1>, not in the config) | label-escalation | stable-id | 2026-10-05 | 1 | 0 | 0 | 0 | 0 "
+        "| 1 | 0 |",
         "| <folder-2> | erasure-request | path-glob | 2026-10-05 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |",
         # an id that is now an alias is judged by the row it points at: listed again, and deleted again
         "| inbox | upstream-deleted | stable-id | 2026-10-02 | 8 | 1 | 1 | 3 | 2 | 1 | 0 |",
