@@ -796,8 +796,13 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
     cases["governance"] = doctor.format_results(
         cli._governance_checks(dataclasses.replace(cfg, config_path=governed))
     ).splitlines()
+    # B13 round 17 U2, U16: a docs-repo remote [governance] does not allow, the person's to remove or allow
+    remote = doctor.CheckResult(
+        "governance.remote", False, "remote origin (<url>) exists", doctor.Severity.ERROR, fix=cli.REMOTE_FIX
+    )
+    cases["remote"] = doctor.format_results([remote]).splitlines()
     assert all(cases.values()), cases
-    assert all(ln.startswith("[FAIL] ") for k in ("policy", "governance") for ln in cases[k]), cases
+    assert all(ln.startswith("[FAIL] ") for k in ("policy", "governance", "remote") for ln in cases[k]), cases
     return cases
 
 
@@ -842,9 +847,10 @@ PANDOC_PERSONS = ("rosetta", "native", "native-bad-cpu")
 
 PERSONS_NEXT = (
     "NEXT: the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back "
-    "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a state "
-    "file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the "
-    "agent, so show them those lines and go on to the report; once fixed, "
+    "or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a "
+    "docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, Rosetta to install or "
+    "a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once "
+    "fixed, "
 )
 
 
@@ -6939,6 +6945,50 @@ def test_a_config_that_loads_but_agentsync_refuses_is_no_config_that_does_not_lo
     # the config holds the inbox the prompt's step 2 then tells the person about
     assert 'kind = "inbox"' in cfg.read_text(encoding="utf-8")
     assert "- loads: yes, but a sync refuses it: " in report_path(env).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("call", ["init", "add-source"])
+def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle(
+    real_env: dict[str, str], wheel: Path, call: str
+) -> None:
+    """B13 round 17 U2, U16, with the real agentsync: a remote added to the docs repo after setup, which
+    [governance] does not allow (allow_remote = false by default). init and add-source exit 1 after a
+    "governance: remote origin (...)" line that ended "run `git -C ... remote remove origin`", and
+    config_failed had no NEXT for exit 1, so fail's "fix the error above" sent the agent to delete a remote
+    the person may have set up on purpose. The NEXT now names the remote as the person's, shown and not
+    touched, and nothing tells the agent to run the removal. The remote stays."""
+    env = real_env
+    home = Path(env["HOME"])
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    docs = home / "agent-context" / "docs"
+    url = "https://git.contoso.example/team/kb.git"
+    subprocess.run(["git", "-C", str(docs), "remote", "add", "origin", url], check=True)
+    other = folder.parent / "Beta"
+    other.mkdir()
+    args = [str(wheel), "--source-local", str(other)] if call == "add-source" else [str(wheel)]
+    cp = install_sh(env, *args)
+    out = cp.stdout + cp.stderr
+    assert cp.returncode == 1, out
+    assert "governance: remote origin (" in cp.stderr and "the person removes it (git -C " in cp.stderr, out
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert one_next(cp) and last_line(cp).startswith(
+        "NEXT: the docs repo has a git remote the [governance] policy does not allow (the governance: line "
+        "above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] "
+        "is the person's, not a step for the agent, so show them the error and go on to the report; once it "
+        f"is settled, the next run is: {INSTALL_SH} {wheel}"
+    ), out
+    assert "run `git" not in out and "fix the error above" not in out, out
+    assert subprocess.run(
+        ["git", "-C", str(docs), "remote", "get-url", "origin"], capture_output=True, text=True, check=True
+    ).stdout.strip() == url
+    # with the remote gone, the same run passes: the NEXT was keyed on the remote, not on exit 1
+    subprocess.run(["git", "-C", str(docs), "remote", "remove", "origin"], check=True)
+    again = install_sh(env, *args)
+    assert "the docs repo has a git remote" not in again.stdout + again.stderr
 
 
 @pytest.mark.parametrize(

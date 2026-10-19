@@ -8279,6 +8279,21 @@ def _refusing_checks(c: Config) -> frozenset[str]:
     return frozenset(found)
 
 
+def _remote_refused(c: Config) -> bool:
+    """Whether the docs repo has a remote ``[governance]`` does not allow, read as init and status read it
+    (``governance.remote_policy_findings``). No sync refuses a remote, so its ``governance.remote`` [FAIL] is
+    not the configuration a sync refuses: it is the person's to remove or allow (B13 round 17 U2, U16). Keyed
+    on the report's own reading, never on doctor's words."""
+    from agentsync import governance  # noqa: PLC0415 - lazy, as in _refusing_checks
+
+    try:
+        repo = expand(c.docs_repo)
+        gov = governance.load_governance(c.config_path)
+        return (repo / ".git").exists() and bool(governance.remote_policy_findings(repo, gov))
+    except Exception:
+        return False
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None:
@@ -8291,9 +8306,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
     not_on_disk = _gone_folder_fails(r, runs) - signed_out
     refusing = _refusing_checks(r.config) if r.config is not None else frozenset()
+    remote = r.config is not None and _remote_refused(r.config)
     from_stop: list[str] = []
     from_gone: list[str] = []
     from_config: list[str] = []
+    from_remote: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
@@ -8306,6 +8323,9 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         # stays unexpected (O13, Q36)
         if tag == "FAIL" and name in refusing:
             from_config.append(name)
+            continue
+        if tag == "FAIL" and name == "governance.remote" and remote:  # B13 round 17 U2, U16
+            from_remote.append(name)
             continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
@@ -8347,6 +8367,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             f"from the configuration a sync refuses ({_plural(len(from_config), 'check')}): "
             + ", ".join(f"{n} FAIL" for n in from_config)
             + " (see Configuration)"
+        )
+    if from_remote:
+        parts.append(
+            "from a docs-repo remote [governance] does not allow, the person's to remove or allow "
+            f"({_plural(len(from_remote), 'check')}): " + ", ".join(f"{n} FAIL" for n in from_remote)
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)

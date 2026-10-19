@@ -5824,9 +5824,7 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
         (
             'fix path in [[source]] id = "contoso", or put the folder back under that name in OneDrive, or '
             "sync that folder in OneDrive",
-            "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a "
-            "[[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a state file "
-            "that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the "
+            f"its fix on the [FAIL] line below is the person's ({cli.PERSONS_KINDS}), not a step for the "
             "agent: show it to them",
         ),
     ],
@@ -12143,6 +12141,43 @@ def test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket(
     extra.append(doctor.CheckResult("policy", False, "something else", fix="fix [policy] / policy.toml"))
     line = doctor_line()
     assert "a sync refuses" not in line and "policy FAIL" in unexpected(line), line
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_docs_repo_remote_governance_does_not_allow_has_the_persons_doctor_bucket(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 17 U2, U16: a remote added to the docs repo that [governance] does not allow made the
+    Summary's doctor line say ``unexpected 1: governance.remote FAIL``. No sync refuses a remote, so it is not
+    the configuration a sync refuses either: it has a bucket of its own, the person's to remove or allow,
+    keyed on the report's own reading of the docs repo, never on doctor's words."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [
+            c
+            for c in real(config, offline=offline)
+            if c.ok or c.severity is not doctor.Severity.ERROR or c.name == "governance.remote"
+        ]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    docs = expand(load_config(cfg).docs_repo)
+
+    def doctor_line() -> str:
+        _rc, text, _ = report(tmp_path, cfg)
+        return _line(section(text, "Summary"), "- doctor: ")
+
+    url = "https://git.contoso.example/team/kb.git"
+    subprocess.run(["git", "-C", str(docs), "remote", "add", "origin", url], check=True)
+    line = doctor_line()
+    assert (
+        " · from a docs-repo remote [governance] does not allow, the person's to remove or allow (1 check): "
+        "governance.remote FAIL · " in line
+    ), line
+    assert "governance.remote" not in line.split(" · unexpected ", 1)[1] and "a sync refuses" not in line, line
+    subprocess.run(["git", "-C", str(docs), "remote", "remove", "origin"], check=True)
+    assert "docs-repo remote" not in doctor_line()
 
 
 @pytest.mark.usefixtures("clean_doctor")

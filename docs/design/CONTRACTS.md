@@ -22726,6 +22726,7 @@ the `policy` and `governance` cases of `test_install_oneshot.py::_persons_fail_l
 `test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report` and
 `test_doctors_persons_fix_words_are_install_shs`), and the list pins in `test_cli.py`, `test_install_oneshot.py`
 and `test_setup_report.py`.
+Amended 2026-10-19, §16.130 U2, U16: both lists add `a docs-repo remote to remove or allow` (`cli.REMOTE_FIX`).
 
 **T12: a manifest that is no database fails status and stops setup on one line (`agentsync.ops.doctor`,
 `agentsync.cli`, `scripts/install.sh`).** With manifest.sqlite overwritten by bytes that are no database, status
@@ -23158,6 +23159,38 @@ every `--source-local` folder either way (U96's verifier; T22 does not apply her
 `args=` and the `--list-folders` guard. Tests: `test_a_state_file_that_cannot_be_read_is_the_persons_to_fix` (the
 whole re-run tail, a spaced folder), `test_no_next_names_the_percent_q_args` (no `NEXT_MSG`, `FAIL_NEXT`, `NEXT` or
 `next` assignment names `ORIG_ARGS`).
+
+**A docs-repo remote [governance] does not allow is the person's to remove or allow** (U2, U16; amends §16.125 T5).
+A remote added to the docs repo after setup (`allow_remote = false` by default, or a URL under no
+`remote_url_prefixes` entry) made init and add-source exit 1 after `governance: remote origin (<url>) exists but ...;
+run `git -C <docs> remote remove origin``, and config_failed had no NEXT for exit 1, so fail's `fix the error above`
+sent the agent to delete a remote the person may have set up on purpose; status's [FAIL] fix, `remove the remote (C15
+req 36)`, was no person's fix, so its NEXT said `do what the fix on its [FAIL] line below says`; and the report counted
+it `unexpected`. Now:
+- `governance.remote_policy_findings` names the owner: `...; the person removes it (git -C <docs> remote remove
+  <name>) or allows it in [governance], not the agent`, and for a URL under no prefix `...; the person removes it or
+  names its tenant-owned prefix there, not the agent`. Each still opens `remote <name> (<url>)`, the shape lane RA's
+  redactor replaces (U1).
+- The fix is `cli.REMOTE_FIX`, `the person removes the remote, or sets allow_remote = true and names its
+  tenant-owned prefix in [governance] remote_url_prefixes (C15 req 36)`: `the person ` is already in
+  `doctor.PERSONS_FIX_RE` and `persons_fails`. Both kinds lists (`cli.PERSONS_KINDS`, `PERSONS_FAILS`) add `a
+  docs-repo remote to remove or allow`.
+- config_failed, on exit 1, asks the agentsync step 2 installed whether the docs repo has a remote `[governance]`
+  refuses (`docs_remotes_refused`, the findings `cli._refuse_remotes` reads, 10 s bound, empty when it cannot say),
+  never the exit code alone (any failure exits 1) or the error's words; when it has, the NEXT is `the docs repo has a
+  git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints
+  it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the
+  error and go on to the report; once it is settled, the next run is: <install.sh and its arguments>`.
+- The report's doctor line gives its FAIL a bucket of its own, `from a docs-repo remote [governance] does not allow,
+  the person's to remove or allow (N check)`, keyed on the report's own reading (`_remote_refused`). Not in
+  `_refusing_checks` ("the configuration a sync refuses"): no sync refuses a remote (U2's verifier).
+U2's verifier's distinct init exit code is not built: U16's verifier's key on a refused remote being there gives the
+same NEXT with no new exit code, and an older installed agentsync keeps exit 1 either way. The "no remote" in init's
+`docs repo` line is lane B's U17. Tests: `test_install_oneshot.py::test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle`
+(the real agentsync, init and add-source; the remote stays, and without it the NEXT is gone),
+`test_cli.py::test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_in_status`,
+`test_setup_report.py::test_a_docs_repo_remote_governance_does_not_allow_has_the_persons_doctor_bucket`,
+`test_governance.py::test_remote_policy_and_push`, and the `remote` case of `_persons_fail_lines`.
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 

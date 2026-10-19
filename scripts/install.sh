@@ -168,7 +168,8 @@
 #      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
 #      [FAIL] that stops them is the person's (a [[source]] path or sentinel, a [[source]] block to put back,
-#      a [policy] or [governance] value, a state file that cannot be read, a folder to put back or sync, a
+#      a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that cannot be
+#      read, a folder to put back or sync, a
 #      sign-in, Rosetta or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30; round 16 T5, T9)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
@@ -5895,6 +5896,30 @@ synced_count() {
 	esac
 	printf '%s' "$n"
 }
+# How many remotes of the docs repo [governance] refuses, as init and add-source read them (cli._refuse_remotes):
+# a number only when the agentsync step 2 installed loads the config and its [governance] table and reads the
+# repo, within 10 s; empty when it cannot say. -I: nothing from the folder this runs in is imported.
+docs_remotes_refused() {
+	local n=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import sys
+from pathlib import Path
+from agentsync import governance
+from agentsync.config import load_config
+from agentsync.paths import expand
+
+config = load_config(Path(sys.argv[1]))
+repo = expand(config.docs_repo)
+gov = governance.load_governance(config.config_path)
+print(len(governance.remote_policy_findings(repo, gov)) if (repo / ".git").exists() else 0)
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	case "$n" in
+	*[!0-9]*) n="" ;;
+	esac
+	printf '%s' "$n"
+}
 # A config agentsync refuses (exit 78, EX_CONFIG: "configuration error: ...") is the person's to fix: a re-run
 # fails the same way, and the agent's own mistakes here (a folder that is not there, one inside the docs repo)
 # exit 2, which keeps fail's "fix the error above". So the NEXT names the owner and leads with what the agent
@@ -5908,7 +5933,11 @@ synced_count() {
 # state file, manifest.sqlite, that is no database or a damaged one: the person's too, since its fix loses
 # history the agent must not choose to lose (B13 round 16 T12). The "loads, but" NEXT names policy.toml beside
 # the config too, since the error may be that file's and the NEXT never reads it to say which (B13 round 17
-# U20). Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
+# U20). A docs repo with a remote [governance] does not allow is the person's as well: init and add-source exit
+# 1 for it (EXIT_FAILED) after the "governance: remote ..." line, whose removal or allowing is theirs, and fail's
+# "fix the error above" sent the agent to remove the remote. Exit 1 alone is any failure, so the NEXT is keyed on
+# the installed agentsync finding such a remote (docs_remotes_refused), never on the code or the error's words
+# (B13 round 17 U2, U16). Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
 # 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
 # before the switch to $BASE_ARGS below.
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
@@ -5919,6 +5948,9 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		elif [ "$CONFIG_STATE" != "created" ]; then
 			FAIL_NEXT="the config $CONFIG does not load with this agentsync (the configuration error above; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it loads, the next run is: $SELF$RERUN_ARGS"
 		fi
+	fi
+	if [ "$rc" -eq 1 ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
+		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
 	fi
 	[ "$rc" -ne 65 ] ||
 		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
@@ -6067,7 +6099,7 @@ persons_fails() {
 	b="$(blocking_fails "$1")"
 	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at )' >/dev/null
 }
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

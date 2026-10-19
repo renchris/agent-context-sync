@@ -1269,8 +1269,8 @@ class _Status:
 # PERSONS_FAILS; tests pin the two lists equal (B13 round 16 T5, T9).
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc "
-    "copy"
+    "[governance] value, a docs-repo remote to remove or allow, a state file that cannot be read, a sign-in, "
+    "Rosetta to install or a native pandoc copy"
 )
 
 
@@ -1278,9 +1278,10 @@ def _fail_step(result: doctor.CheckResult) -> str:
     """Rule 1's NEXT for a FAIL. It never copies the fix: a fix may name a path or a file (CONTRACTS §16.20
     keeps those out of NEXT) or a bare ``agentsync`` that is not on PATH; the [FAIL] line carries it. A
     fix that is the person's (``doctor.is_persons_fix``: a [[source]] path, a deleted [[source]] block to
-    put back, a [policy] or [governance] value, a folder to put back or sync, a sign-in, Rosetta or the
-    native pandoc copy) is named as theirs, as install.sh's NEXT names it, not as a step for the agent (B13
-    round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9)."""
+    put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a folder to put back or
+    sync, a sign-in, Rosetta or the native pandoc copy) is named as theirs, as install.sh's NEXT names it, not
+    as a step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17
+    U2, U16)."""
     if doctor.is_persons_fix(result.fix):
         return (
             f"the {result.name} check failed: its fix on the [FAIL] line below is the person's "
@@ -1620,6 +1621,16 @@ POLICY_FIX = (
     "the person fixes [policy] in policy.toml, which their compliance team owns: what the error names"
 )
 
+# A docs-repo remote [governance] does not allow (C15 req 36) is the person's to remove or to allow: it may
+# be one they set up on purpose, and the prompt's rules forbid the agent deleting anything. The fix starts
+# "the person ", which doctor.is_persons_fix and install.sh's persons_fails read (B13 round 17 U2, U16).
+# Allowing it takes both keys: remote_allowed needs allow_remote on and the URL under a remote_url_prefixes
+# entry.
+REMOTE_FIX = (
+    "the person removes the remote, or sets allow_remote = true and names its tenant-owned prefix in "
+    "[governance] remote_url_prefixes (C15 req 36)"
+)
+
 
 def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     try:
@@ -1630,8 +1641,7 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     findings = _refuse_remotes(config, gov)
     if findings:
         out += [
-            _check("governance.remote", False, f, doctor.Severity.ERROR, fix="remove the remote (C15 req 36)")
-            for f in findings
+            _check("governance.remote", False, f, doctor.Severity.ERROR, fix=REMOTE_FIX) for f in findings
         ]
     else:
         out.append(

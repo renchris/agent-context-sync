@@ -2536,9 +2536,31 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
-    "path, a [[source]] block to put back, a [policy] or [governance] value, a state file that cannot be "
-    "read, a sign-in, Rosetta to install or a native pandoc copy), not a step for the agent: show it to them"
+    "path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or "
+    "allow, a state file that cannot be read, a sign-in, Rosetta to install or a native pandoc copy), not a "
+    "step for the agent: show it to them"
 )
+
+
+def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_in_status(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 17 U2, U16: a remote added to the docs repo that [governance] does not allow got status's
+    "do what the fix on its [FAIL] line below says", and the line ended "run `git -C ... remote remove
+    origin`": the agent was sent to delete a remote the person may have set up on purpose. The fix is the
+    person's (``doctor.is_persons_fix``), the NEXT names it so, and no line tells anyone to "run" the
+    removal."""
+    cfg = str(initialised.config_path)
+    git(initialised.docs_repo, "remote", "add", "origin", "https://git.contoso.example/team/kb.git")
+    assert doctor.is_persons_fix(cli.REMOTE_FIX)
+    findings = cli._governance_checks(initialised)
+    [remote] = [c for c in findings if c.name == "governance.remote"]
+    assert not remote.ok and remote.fix == cli.REMOTE_FIX
+    assert cli._fail_step(remote).startswith(f"the governance.remote check failed: {PERSONS_STEP}")
+    cli.main(["status", "--config", cfg])
+    out = capsys.readouterr().out
+    assert "[FAIL] governance.remote" in out and "the person removes it (git -C " in out, out
+    assert "run `git" not in out and "do what the fix on its [FAIL] line below says" not in out, out
 
 
 @pytest.mark.parametrize(

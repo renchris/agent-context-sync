@@ -1594,15 +1594,19 @@ def remote_policy_findings(repo: Path, gov: GovernanceConfig) -> list[str]:
     for name in sorted(names):
         url = _git_text(repo, "remote", "get-url", name, check=False).strip()
         shown = _redact_url(url)
+        # Whose the fix is, in the finding itself: init's stderr and status's [FAIL] line print it, and an
+        # imperative "run git ... remote remove" there read as the agent's step (B13 round 17 U2, U16)
         if not gov.allow_remote:
             findings.append(
                 f"remote {name} ({shown}) exists but [governance] allow_remote = false: every clone flattens "
-                f"the writer's ACLs and no purge can reach it; run `git -C {repo} remote remove {name}`"
+                f"the writer's ACLs and no purge can reach it; the person removes it (git -C {repo} remote "
+                f"remove {name}) or allows it in [governance], not the agent"
             )
         elif not remote_allowed(url, gov):
             findings.append(
                 f"remote {name} ({shown}) is not under a tenant-owned prefix in [governance] "
-                "remote_url_prefixes (or is inside ~/Library/CloudStorage)"
+                "remote_url_prefixes (or is inside ~/Library/CloudStorage); the person removes it or names "
+                "its tenant-owned prefix there, not the agent"
             )
     return findings
 

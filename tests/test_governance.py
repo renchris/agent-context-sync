@@ -1076,6 +1076,10 @@ def test_remote_policy_and_push(world: World, tmp_path: Path) -> None:
     assert len(findings) == 1 and "allow_remote = false" in findings[0]
     other = gv.GovernanceConfig(allow_remote=True, remote_url_prefixes=("https://dev.azure.com/contoso/",))
     assert "not under a tenant-owned prefix" in gv.remote_policy_findings(world.repo, other)[0]
+    # B13 round 17 U2, U16: each finding says the removal or the allowing is the person's, never "run ..."
+    for finding in (*findings, *gv.remote_policy_findings(world.repo, other)):
+        assert "the person removes it" in finding and finding.endswith("not the agent"), finding
+        assert "run `git" not in finding and finding.startswith("remote origin ("), finding
     allowed = gv.GovernanceConfig(allow_remote=True, remote_url_prefixes=(str(tmp_path),))
     assert gv.remote_policy_findings(world.repo, allowed) == []
     assert gv.push_rewritten(world.repo, default, {}) == "disabled"
