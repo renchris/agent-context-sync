@@ -23493,3 +23493,30 @@ status does not print for damage under a table), and this item adds the guide's 
 prints the file and the fix again. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which
 holds every `cli.EXIT_*` code to all three lists, so the next new code cannot drift the same way; and the §16.14
 pin in `_ROUND_17_PARAGRAPH_AMENDS`.
+
+**The guides say a git remote's host is redacted and kept** (U85). Since §16.123 T88 both readers redact the host of
+a git remote's URL as a `<proxy-N>`, and `--log-start` and `--log` write it to `setup/proxy-hosts`
+(`record_proxy_hosts` reads `git_remote_hosts`), but that commit changed no file under docs/: the deploy guide's
+`setup/` row and the feedback guide's `proxy-hosts` paragraph named only the proxy and URL-rewrite hosts, and its
+`<proxy-N>` row no remote. Each names it now, the row by the rule the code applies: a `://` URL other than `file://`
+or git's `[user@]host:path` form, a host with a dot, none of the installer's public hosts and no GitHub host; a
+local remote names no host. Test: `test_the_guides_say_a_git_remotes_host_is_redacted_and_kept`, which also holds
+the rule's cases to `setup_report._remote_url_host`.
+
+**A build with a damaged bundled pandoc is reinstalled, and the README and the guide say so** (U90). Since §16.126
+T54 install.sh's `install_is_current` is `stamp_is_current` and `bundled_pandoc_intact`, and step 1's
+`marks=failed` sentence reads the same test, so a build whose stamp names this checkout but whose bundled pandoc is
+not the file RECORD lists is reinstalled by step 2, and step 1 prints its sentence that step 2 reinstalls agentsync
+first. The README's intro and the guide said, with no condition, that this checkout's build is not reinstalled.
+Both add the pandoc condition, and the guide says what step 1 prints when it fails; install.sh's quoted sentence
+stays, since it prints only when both hold. Test: `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (the README sentence it pins,
+the guide's two, and `install_is_current`'s body).
+
+**The guide gives the list's tail for a mirrored folder whose block is gone** (U91). §16.124 T6, T30 gave step 1's
+list a `NEXT:` tail for a folder still mirrored after its `[[source]]` block was deleted (and one by count for a
+source no listed folder adds back) and the log field `vanished=N`; the guide's "A Mac that is already set up", which
+gives every other list case with its log field, had neither. A bullet beside the `gone=N` one quotes the tail and
+the field, and the install.log row, which names only the `synced=` fields, points to that section for the list's
+others (`gone=`, `missing=`, `apps=`, `vanished=`) rather than growing a partial list. Test:
+`test_the_guide_gives_the_list_tail_for_a_mirrored_folder_whose_block_is_gone`, which reads the words from
+install.sh.

@@ -3123,10 +3123,28 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     # B13 round 13 O61: when step 2 does not reinstall agentsync, round 12 N29's NEXT adds no folder and v21
     # asks nothing about folders
     assert (
-        "When the installed agentsync is already this checkout's build, step 2 does not reinstall it and no "
-        "folder can be added until the config is fixed, so the agent asks you nothing about folders and runs "
-        "step 2 with no folder."
+        "When the installed agentsync is already this checkout's build, with its bundled pandoc whole, "
+        "step 2 does not reinstall it and no folder can be added until the config is fixed, so the agent "
+        "asks you nothing about folders and runs step 2 with no folder."
     ) in flat_intro
+    # B13 round 17 U90: since round 16 T54 a build whose bundled pandoc is not the file RECORD lists is
+    # reinstalled, and step 1's list then prints the reinstall sentence, as the README and the guide say
+    assert (
+        '\n\tstamp_is_current "$@" && bundled_pandoc_intact "${1%/*}"\n}\n'
+        in script.split("\ninstall_is_current() {", 1)[1][:120]
+    )
+    assert "Step 2 reinstalls agentsync first" in script
+    page = " ".join(_feedback_page().split())
+    assert (
+        "When the installed agentsync is already this checkout's build and its bundled pandoc is whole "
+        "(install.sh's `install_is_current`; B13 round 16 T54), step 2 does not reinstall it, and the "
+        "sentence says so instead:"
+    ) in page
+    assert (
+        "A build whose bundled pandoc is missing or not the file pypandoc_binary installed is reinstalled "
+        "by step 2, so step 1's list prints the sentence above that says step 2 reinstalls agentsync first "
+        "(B13 round 17 U90)."
+    ) in page
     assert "ask me nothing about folders: no folder can be added until I fix the config" in " ".join(
         step1.split()
     )
@@ -5725,6 +5743,80 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     )
 
 
+def test_the_guides_say_a_git_remotes_host_is_redacted_and_kept() -> None:
+    """B13 round 17 U85: since round 16 T88 both readers redact the host of a git remote's URL as a
+    `<proxy-N>`, and `--log-start` and `--log` keep it in `proxy-hosts`, but the deploy guide and the feedback
+    guide named only the proxy and URL-rewrite hosts there. Each says it now, by the rule the code applies:
+    a `://` URL other than `file://` or `[user@]host:path`, a host with a dot, no public or GitHub host."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    body = script.split("\nrecord_proxy_hosts() {\n", 1)[1].split("\n}\n", 1)[0]
+    assert "\t\tgit_remote_hosts # B13 round 16 T88\n" in body
+    assert "for host in _git_remote_hosts():" in inspect.getsource(setup_report)
+    host = setup_report._remote_url_host
+    assert (
+        host("https://git.contoso.example/team/x.git")
+        == host("me@git.contoso.example:x")
+        == ("git.contoso.example")
+    )
+    for local in ("file:///srv/x.git", "../x", "/srv/x.git", "origin", "intranet:x", "git@github.com:a/b"):
+        assert host(local) is None, local
+    assert host("https://codeload.githubusercontent.com/a") is None and host("https://pypi.org/x") is None
+    readme = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "`proxy-hosts` (the proxy and git URL-rewrite host names, and since 2026-10-18 the host of each git "
+        "remote's URL, in force when the agent ran `--log-start` and `--log`"
+    ) in readme
+    assert "only to keep those hosts redacted after the proxy is unset or the remote changed" in readme
+    page = " ".join(_feedback_page().split())
+    assert (
+        "the proxy, git proxy and URL rewrite hosts, and the host of each git remote's URL "
+        "(since 2026-10-18), in force at that call"
+    ) in page
+    [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<email-N>`, `<guid-N>`")]
+    assert (
+        'the host of each git remote\'s URL (`[remote "<name>"] url`, from the same git config files; B13 '
+        "round 16 T88): a `://` URL other than `file://`, or git's `[user@]host:path` form, whose host has a "
+        "dot and is none of the installer's public hosts, github.com or another GitHub host "
+        "(`*.github.com`, `*.githubusercontent.com`); a local remote (a relative or absolute path, a bare "
+        "word) names no host,"
+    ) in row
+
+
+def test_the_guide_gives_the_list_tail_for_a_mirrored_folder_whose_block_is_gone() -> None:
+    """B13 round 17 U91: round 16 T6, T30 gave step 1's list a NEXT tail for a folder still mirrored after its
+    [[source]] block was deleted, and the log field `vanished=N`, but the guide's list section, which gives
+    every other list case and its log field, had neither, and its install.log row named no list field past
+    `synced=`. The section quotes the tail install.sh writes, and the row points there for the others."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    [one] = re.findall(r'^\t\tvtail="; (1 folder in the list above [^"]*?)\(one', script, re.M)
+    [other] = re.findall(
+        r'^\t\tvtail="\$vtail; (1 source that no folder in the list above adds back[^.]*\.)', script, re.M
+    )
+    assert '[ $((vback + vother)) -eq 0 ] || vlog=" vanished=$((vback + vother))"' in script
+    page = " ".join(_feedback_page().split())
+    section = page.split("### A Mac that is already set up", 1)[1].split("### ", 1)[0]
+    words = one.replace("$CONFIG", "<config>").replace("$vpaths", "<folder>")
+    assert (
+        "a folder still mirrored after its `[[source]]` block was deleted (the manifest still holds its id; "
+        f"sources.toml no longer has it) drops `(none is needed)` from the `NEXT:` and adds `; {words}(one "
+        '--source-local "<folder>") or its [[source]] block is put back, as it was or retired`'
+    ) in section
+    assert f"never by its id (`; {other.replace('$CONFIG', '<config>')} ...`)" in section
+    assert "its log line adds `vanished=N` (those folders and sources together)" in section
+    assert "`config.vanished_sources` [FAIL] ([CONTRACTS §16.124](../design/CONTRACTS.md)" in section
+    [row] = [
+        ln for ln in _feedback_page().splitlines() if ln.startswith("| `~/agent-context/setup/install.log`")
+    ]
+    assert (
+        "and the list's other fields (`gone=`, `missing=`, `apps=`, `vanished=`) are in "
+        "[A Mac that is already set up](#a-mac-that-is-already-set-up)"
+    ) in row
+    for field in ("`gone=N`", "missing=M", "apps=<app>"):
+        assert field in section, field
+
+
 def test_the_deploy_guide_gives_not_sents_third_field() -> None:
     """B13 round 16 T73: since round 15 S34 a `.not-sent` record whose patch a report sent has a third field,
     when that report's attempt began, and goes once a later attempt reports. The guide's `setup/` row gave
@@ -6616,8 +6708,9 @@ def test_the_guide_names_every_source_of_a_proxy_number() -> None:
     ) in page
     assert (
         "`--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one host a line, in "
-        "lower case and, where it differs, as written: the proxy, git proxy and URL rewrite hosts in force "
-        "at that call). It is never embedded; both reports use it only to redact."
+        "lower case and, where it differs, as written: the proxy, git proxy and URL rewrite hosts, and the "
+        "host of each git remote's URL (since 2026-10-18), in force at that call). It is never embedded; "
+        "both reports use it only to redact."
     ) in page
     assert "Three sources feed one file" in page
 
