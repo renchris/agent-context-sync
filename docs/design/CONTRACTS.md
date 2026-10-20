@@ -24204,6 +24204,7 @@ renderer's `stopping_error` reads it, and leaves V30 and V31 off. Tests:
 `test_a_git_stop_with_no_end_line_rendered_by_the_older_build_is_not_called_stale`,
 `test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item`.
 Amended 2026-10-20, §16.141 W74: the one-timestamp count starts at the attempt `parse_friction` splits off.
+Amended 2026-10-20, §16.141 W21: a git stop's first-sync line names install.log's earlier first sync too.
 
 **The older build's attempt lines are rewritten** (V22). Round 17 U27's three attempt-line rules sat behind
 `## Friction log`, a heading no renderer writes; they read `## Agent friction log` now (their temporaries renamed, as
@@ -24795,6 +24796,16 @@ The awk now resets its count at those splits and carries the moved run, as the v
 cases agree with `parse_friction`). Test: `test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits`
 (a step 2 line before the end line: one timestamp; a step 1 line after it, and one moved before a bare `Attempt:`
 line: the span kept).
+
+**The older build's git-stop report names install.log's earlier first sync** (W21; amends §16.135 V16). V16's
+rewrite is gated on a list stop's `S1_NOTE`, which a git stop never sets, so the v10 line `no install.sh run with a
+first-sync step (install.log)` stayed beside install.log's first-sync step, the install.out counts untagged. Under
+`s1cmd`, with `OR_FSSTART` set (install.log holds a first-sync run, and `step1_cmd_stop_facts` already holds that no
+install run starts at or after the error), the phrase reads `this attempt ran no first sync (install.log: the install
+run of <start>, before this attempt)` and the install.out counts are tagged as V16 tags them. Not "this attempt ran
+no install.sh": the attempt can hold a `--list-folders` run, which its `install.sh:` line counts. With no first sync
+in install.log the v10 line is true and stays. Test: `test_a_git_stop_of_the_older_build_names_the_earlier_first_sync`
+(rehearsal D's oldr and oldr2 states, and none in install.log).
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 

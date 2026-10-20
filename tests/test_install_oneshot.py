@@ -10534,6 +10534,51 @@ def test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits(
         assert _V10_TIME in summary and _ONE_STAMP not in summary, summary
 
 
+_FIRST_SYNC_RUN = [
+    "2026-10-18T08:00:00Z run=20261018T080000Z-40 start install.sh compat=10 commit=4a42af9abcde kind=- "
+    "source=- args=--source-local x",
+    "2026-10-18T08:00:20Z run=20261018T080000Z-40 step=first-sync seconds=4 rc=0 result=done "
+    "note=converted-7-deferred-0",
+    "2026-10-18T08:00:30Z run=20261018T080000Z-40 end rc=0 seconds=30",
+]
+"""rehearsal D's v10 install, whose first sync is install.log's, before the git stop's attempt."""
+
+
+@pytest.mark.parametrize("state", ["no end line", "after a finished attempt", "no first sync in install.log"])
+def test_a_git_stop_of_the_older_build_names_the_earlier_first_sync(
+    env: dict[str, str], tmp_path: Path, state: str
+) -> None:
+    """B13 round 19 W21 (rehearsal D, oldr and oldr2): round 18 V16 gave a list stop the renderer's words for
+    install.log's earlier first sync, but a git stop sets no S1_NOTE, so the older build's "no install.sh run
+    with a first-sync step (install.log)" stayed beside install.log's first-sync step, with install.out's
+    counts untagged. It now names that earlier run, never "ran no install.sh" (the attempt can hold a
+    --list-folders run, as its install.sh line says); with no first sync in install.log the line is true and
+    stays."""
+    runs = "- install.sh: 0 install runs (+1 --list-folders) during this attempt"
+    sync = "- first sync: {} \u00b7 converted 7, deferred 0 online-only (install.out{}) \u00b7 2 of 3 sources"
+    old = sync.format("no install.sh run with a first-sync step (install.log)", "")
+    report = "\n".join([*_GIT_STOP_REPORT[:6], runs, old, *_GIT_STOP_REPORT[6:]])
+    log = [*([] if state == "no first sync in install.log" else _FIRST_SYNC_RUN), *_EARLIER_LIST]
+    friction = (
+        "2026-10-18T09:05:00Z | end | finished\n" if state == "after a finished attempt" else ""
+    ) + _GIT_ERROR
+    summary = _summary(_git_stop_report(env, tmp_path, friction, log, report))
+    if state == "no first sync in install.log":
+        assert old in summary, summary
+        return
+    assert (
+        sync.format(
+            "this attempt ran no first sync (install.log: the install run of 2026-10-18T08:00:00Z, before "
+            "this attempt)",
+            ": the install run of 2026-10-18T08:00:00Z, before this attempt",
+        )
+        in summary
+    ), summary
+    assert runs in summary and not [ln for ln in summary if "with a first-sync step" in ln], summary
+    text = "\n".join(summary)
+    assert _git_stop_report(env, tmp_path, friction, log, report).count("before this attempt") == 2, text
+
+
 def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync(
     env: dict[str, str], tmp_path: Path
 ) -> None:

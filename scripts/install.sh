@@ -4860,6 +4860,16 @@ older_report_rewrite() { # MODE
 			$0 = substr($0, 1, j - 1) "this attempt ran only install.sh --list-folders, no first sync (install.log)" substr($0, j + 54)
 			if ((j = index($0, " (install.out")) && !index($0, "before this attempt")) $0 = substr($0, 1, j - 1) " (install.out: " (ENVIRON["OR_FSSTART"] != "" ? "the install run of " ENVIRON["OR_FSSTART"] : "an earlier run\047s") ", before this attempt" substr($0, j + 13)
 		}
+		# a git stop (step1_cmd_stop_facts) after an install run with a first-sync step: the older build reads only
+		# this attempt\047s runs (none, or a --list-folders one) and words it as if install.log had none; only when
+		# install.log holds one (OR_FSSTART), whose start is before the error, which no install run follows (B13
+		# round 19 W21). Not "ran no install.sh": the attempt can hold a --list-folders run.
+		s1cmd && sec == "## Summary" && ENVIRON["OR_FSSTART"] != "" && $0 ~ /^- (first )?sync: no install\.sh run with a first-sync step \(install\.log\)/ {
+			tagged = index($0, "before this attempt")
+			j = index($0, "no install.sh run with a first-sync step (install.log)")
+			$0 = substr($0, 1, j - 1) "this attempt ran no first sync (install.log: the install run of " ENVIRON["OR_FSSTART"] ", before this attempt)" substr($0, j + 54)
+			if (!tagged && (j = index($0, " (install.out"))) $0 = substr($0, 1, j - 1) " (install.out: the install run of " ENVIRON["OR_FSSTART"] ", before this attempt" substr($0, j + 13)
+		}
 		# a git stop (step1_cmd_stop_facts; B13 round 18 V30): the older build warns that an attempt with no end
 		# line may be stale, where the renderer splits off the session that logged the stop and notes why it
 		# has no end line; with that line alone in its attempt, the time is one timestamp
