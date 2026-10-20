@@ -455,10 +455,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     L33), as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side
     (B13 round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
     [policy] or secret-rule re-screen runs the converter on the same bytes, so it is in N, and counted again
-    in S (F35), then ``; W waiting for its converter (it could not start; read once it does)`` when the
-    converter of W files could not start: nothing read them, so they are in neither N nor F (B13 round 18
-    V13), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
-    when Q files were refused with no byte read: those are in each source line's ``refused=`` but not in N, so
+    in S (F35), then ``; C waiting for its converter (it could not start; read once it does)`` when the
+    converter of C files could not start: nothing read them, so they are in neither N nor F (B13 round 18
+    V13; C, not W, which names the withheld-unread count below: round 19 W47), then ``; Q refused without a
+    read (no converter for the type, or a rule that needs no bytes)`` when Q files were refused with no
+    byte read: those are in each source line's ``refused=`` but not in N, so
     with R and W the line's refusals add up to the sources' (B13 round 7 H32). Before it, ``; W withheld
     unread by the label rule (a file whose label cannot be read: an image, or a .msg not on this Mac)`` counts
     the files refused with no byte read whose stub says a label rule withheld them, by the page's own test, so

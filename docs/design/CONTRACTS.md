@@ -25036,6 +25036,12 @@ W19's (the speech fix alone, plain words in both modes), since the plain `run <i
 under `--report-only`. Tests: `RUN_AGAIN_INSTALL` in `test_ops_doctor.py` and the W19 lines of
 `test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
 
+**W47: the run line's docstring gives the converter-waiting count its own letter (`agentsync.cli`).** Round 18's
+V13 named it W in `_print_report`'s docstring, whose next sentences use W for the withheld-unread count ("with R
+and W the line's refusals add up to the sources'"): read as the converter-waiting count, a false sum, since those
+files are never refused. It is C; no output changes. Test:
+`test_cli.py::test_the_run_lines_docstring_gives_each_count_its_own_letter`.
+
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
 Round 19's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 19"; specs `round19/items/W<n>.md`, the

@@ -435,6 +435,18 @@ def test_the_summary_line_counts_the_files_read_again_apart_from_those_converted
     assert line.split().count("converted") == 1
 
 
+def test_the_run_lines_docstring_gives_each_count_its_own_letter() -> None:
+    """B13 round 19 W47: round 18's V13 named the converter-waiting count W in ``_print_report``'s docstring,
+    whose next sentences use W for the withheld-unread count ("with R and W the line's refusals add up"), a
+    false sum for the converter-waiting files, which are never refused. It is C."""
+    doc = " ".join((cli._print_report.__doc__ or "").split())
+    assert (
+        "``; C waiting for its converter (it could not start; read once it does)`` when the converter of C"
+        in doc
+    )
+    assert "W waiting for its converter" not in doc and "converter of W files" not in doc
+
+
 def test_the_sync_line_counts_the_files_refused_without_a_read(capsys: pytest.CaptureFixture[str]) -> None:
     """B13 round 7 H32: a source line's ``refused=`` counts every refused stub, the closing split only those
     refused after a read, so a file a rule withheld by its name (refused=1) was in neither the split nor N:
