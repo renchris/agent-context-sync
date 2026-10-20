@@ -1786,6 +1786,20 @@ def test_the_sync_clause_names_an_earlier_runs_sync_when_the_last_run_stopped_be
     log.write_text(log.read_text(encoding="utf-8") + LIST_RUN.replace("09:58:0", "10:05:0"), encoding="utf-8")
     _text, summary = summary_of(fake_mac)
     assert _line(summary, "- first sync: ").startswith("- first sync: done in 1s (install.log)"), summary
+    # B13 round 18 V48: the label is the shown run's; an earlier run that found sources.toml there ran a
+    # sync, not a first sync, whatever the last run's config step (which failed with no note) logged
+    write_install_log(fake_mac, first_sync="seconds=1 rc=0 result=done note=converted-2-deferred-0")
+    earlier = log.read_text(encoding="utf-8").replace(
+        "step=agentsync seconds=41 rc=0 result=done\n",
+        "step=agentsync seconds=41 rc=0 result=done\n"
+        "2026-09-29T10:00:00Z run=20260929T100000Z-4242 step=config seconds=1 rc=0 result=done "
+        "note=add-source kept=2 added=0\n",
+    )
+    log.write_text(earlier + stopped, encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert _line(summary, "- sync: ").startswith(
+        "- sync: no first sync in the last install run (install.log: it stopped at its config step)"
+    ), summary
 
 
 def test_attempts_the_latest_is_judged_and_earlier_ones_listed(fake_mac: dict[str, Path]) -> None:
@@ -1901,12 +1915,22 @@ def test_a_logged_command_keeps_its_bars_and_its_error(
         item.startswith("- F5 · step 1 · error · export GIT_CEILING_DIRECTORIES=")
         and "→ set the proxy" in item
     )
+    room = setup_report._ERROR_WHAT_MAX
     returned = setup_report._item_what(f"{STEP1_ONE_LINER} returned exit code 128: {error}", "error")
-    assert "returned exit code 128: fatal: unable to access" in returned and len(returned) <= 220
+    assert "returned exit code 128: fatal: unable to access" in returned and len(returned) <= room
     for shape in ("exit 1:", "exit code 1:", "exit status 128:", "rc=1:", "rc 1:"):
         # B13 round 15 S1: an exit code with no verb before it ends the command too.
         cut = setup_report._item_what(f"{STEP1_ONE_LINER} {shape} {error}", "error")
-        assert f"{shape} fatal: unable to access" in cut and len(cut) <= 220, (shape, cut)
+        assert f"{shape} fatal: unable to access" in cut and len(cut) <= room, (shape, cut)
+    # B13 round 18 V34: a 221-character git error lost its last clause, the reason, at the 220 cut
+    git = (
+        "git -C ~/src/agent-context-sync pull --ff-only failed (exit 1): fatal: unable to access "
+        "\u2019https://github.com/contoso/agent-context-sync.git/\u2019: Failed to connect to github.com "
+        "port 443 after 0 ms: Couldn\u2019t connect to server"
+    )
+    assert len(git) > 220 and setup_report._item_what(git, "error") == git
+    assert len(setup_report._item_what(git + " " + "x" * 400, "error")) <= room
+    assert len(setup_report._item_what("y" * 400, "note")) <= 220, "only an error line has the room"
     short = "2026-10-06T02:16:01Z | step 1 | error | git pull failed (exit 1): a || b | -\n"
     [event] = setup_report.parse_friction(short).attempts[0].events
     assert (event.what, event.fix) == ("git pull failed (exit 1): a || b", "")
@@ -3520,6 +3544,26 @@ def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_run
     assert no_folder == {"NEXT:": 1, "fix:": 1}, no_folder
     pending = setup_report.instruction_counts([head, rosetta])
     assert pending == {setup_report.PERSONS_FIX: 1}, pending
+    # B13 round 18 V87: the state file's error line is no [FAIL] line; in a run with no NEXT yet (the one
+    # writing the report) its fix is the person's, as every exit-65 NEXT says; another NEXT keeps "fix:"
+    state = [
+        head,
+        "first sync: running",
+        f"state: <db> cannot be read: malformed (fix: {doctor.MANIFEST_FIX})",
+    ]
+    assert setup_report.instruction_counts(state) == {setup_report.PERSONS_FIX: 1}
+    words = setup_report._instruction_text(setup_report.instruction_counts(state), 3, 1)
+    assert "1 line whose fix: is the person's (" in words, words
+    other = setup_report.instruction_counts([*state, "NEXT: fix the error above, then re-run: x"])
+    assert other == {"fix:": 1, "NEXT:": 1}, other
+    told = setup_report.instruction_counts(
+        [
+            *state,
+            "NEXT: agentsync's state file cannot be read (...): fixing it is the person's, not a step for "
+            "the agent",
+        ]
+    )
+    assert told == {setup_report.PERSONS_FIX: 1, "NEXT:": 1}, told
     loop = setup_report.instruction_counts(
         [head, rosetta, "NEXT: background sync: done; the [FAIL] lines above are the person's to fix (...)"]
     )
@@ -5262,6 +5306,30 @@ def test_an_attempt_with_no_installer_run_is_given_no_folder_question(
     assert "- human turns: 1 (1 question; clicks: none possible; approvals: not observable)" in (
         section(text, "Summary").splitlines()
     )
+    # B13 round 18 V38: --log-start, then step 2 straight away, which stopped at its config step: no list
+    # ran and no run logged a count, so nobody was asked either
+    write_friction(fake_mac, header.replace("Prompt: v11", "Prompt: v26"))
+    at, run = "2026-09-29T11:00:05Z", "20260929T110005Z-4242"
+    stopped = (
+        f"{at} run={run} start install.sh compat=26 commit=0123456789ab kind=checkout source=- args=\n"
+        f"{at} run={run} step=uv seconds=0 rc=0 result=skipped note=present\n"
+        f"{at} run={run} step=agentsync seconds=1 rc=0 result=done\n"
+        f"{at} run={run} step=config seconds=1 rc=78 result=failed{{}}\n"
+        f"{at} run={run} end rc=1 seconds=5\n"
+    )
+    log = fake_mac["setup"] / "install.log"
+    log.write_text(stopped.format(""), encoding="utf-8")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary")
+    assert _line(summary, "- human turns: ").startswith("- human turns: 0 (0 questions; "), summary
+    assert _line(summary, "- expected turns: ").startswith(
+        "- expected turns: none (no install.sh --list-folders run in this attempt: "
+    ), summary
+    log.write_text(stopped.format(" kept=2"), encoding="utf-8")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert "no folder question (2 folders already synced" in _line(
+        section(text, "Summary"), "- expected turns: "
+    )
 
 
 def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
@@ -5547,6 +5615,23 @@ def test_the_folders_line_counts_what_was_kept_added_and_named(
         _rc, text, _ = report(tmp_path, fake_mac["config"])
         line = _line(section(text, "Summary"), "- folders: ")
         assert line.startswith(f"- folders: {folders}"), (installs, line)
+    # B13 round 18 V37: a retry after the end line that added nothing (the person's fix, then the same
+    # command) joins the chain, so the run that added the folder is named; one that adds stays alone (above)
+    log = set_up_log(
+        fake_mac,
+        (f"--source-local {one}", "failed note=added-then-refused kept=2 added=1"),
+        (f"--source-local {one}", "done note=add-source kept=3 added=0"),
+        listed=" synced=2",
+    )
+    first = "2026-09-29T10:00:00Z run=20260929T100000Z-4242 end rc=0 "
+    log.write_text(
+        log.read_text(encoding="utf-8")
+        .replace(first, first.replace("rc=0", "rc=1"))
+        .replace("2026-09-29T10:01:00Z", "2026-09-29T10:02:30Z")
+    )
+    write_friction(fake_mac, V11_HAPPY)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert _line(section(text, "Summary"), "- folders: ").startswith(f"- folders: {by_first}--source-local")
     # B13 round 16 T44: with no friction log, or an attempt with no begin time, the runs are the whole
     # install.log, so the sum read a re-run a month later as "2 added (none was synced before)": only an
     # attempt with a begin time sums its runs; otherwise the last run's alone, as the install line scopes
@@ -13502,6 +13587,13 @@ def test_the_helpers_steps_note_is_in_words_in_the_installer_table() -> None:
         ("no-sources", "0", "skipped", "no folder to sync in sources.toml"),
         ("status-failed", "0", "skipped", "agentsync status reported a failure, so no sync ran"),
         ("tcc-denied", "80", "failed", "this terminal app may not read the folders"),
+        # B13 round 18 V50: exit 65's note was printed as its token
+        (
+            "state-unreadable",
+            "65",
+            "failed",
+            "agentsync's state file, manifest.sqlite, cannot be read: the person's to fix",
+        ),
     ],
 )
 def test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary(

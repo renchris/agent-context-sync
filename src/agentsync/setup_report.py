@@ -4341,6 +4341,8 @@ _FIRST_SYNC_NOTE_WORDS = {
     "no-sources": "no folder to sync in sources.toml",
     "status-failed": "agentsync status reported a failure, so no sync ran",
     "tcc-denied": "this terminal app may not read the folders",
+    # exit 65 (B13 round 18 V50), with no bracket: the row and the sync line put the words in one
+    "state-unreadable": "agentsync's state file, manifest.sqlite, cannot be read: the person's to fix",
 }
 """install.log's first-sync notes with no number -> the report's words (B13 round 11 M40)."""
 
@@ -4509,7 +4511,9 @@ the person's: install.sh's NEXT for that run says they are not a step for the ag
 will, after the report, for the run writing it; a run whose NEXT says something else has none (round 16
 T47). Also a person's fix (``doctor.is_persons_fix``) on any line of a run whose NEXT says fixing its error
 is the person's (:data:`_PERSONS_STEP`): the state file's or a config's error line is no [FAIL] line (round
-17 U6)."""
+17 U6). And the state file's fix (``doctor.MANIFEST_FIX``) on any line of a run with no NEXT yet, the one
+writing the report or a killed one: every install.sh exit-65 NEXT gives that stop to the person (round 18
+V87)."""
 
 _PERSONS_STEP = "not a step for the agent"
 """The words every install.sh NEXT that gives the run's stop to the person carries: ``PERSONS_FAILS``, the
@@ -4533,7 +4537,8 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     lines all end in a fix that is the person's (``doctor.is_persons_fix``, install.sh's ``persons_fails``)
     counts those lines' ``fix:`` as :data:`PERSONS_FIX`: that run's NEXT tells the agent they are not its
     step. A run whose NEXT says fixing its error is the person's (:data:`_PERSONS_STEP`) counts a person's
-    fix on any of its lines so too, as the state file's error line, which is no [FAIL] line (round 17 U6).
+    fix on any of its lines so too, as the state file's error line, which is no [FAIL] line (round 17 U6);
+    so does a run with no NEXT yet for the state file's own fix, ``doctor.MANIFEST_FIX`` (round 18 V87).
     A mixed run's fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on
     any other line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
     counts: Counter[str] = Counter()
@@ -4542,12 +4547,19 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     def count(run: list[str]) -> None:
         persons = _persons_run(run)
         told = _persons_told(run)
+        # a run with no NEXT yet (the one writing this report, or a killed one): the state file's fix is the
+        # person's whatever line holds it, as every install.sh exit-65 NEXT says (B13 round 18 V87)
+        state = not any(ln.lstrip().startswith("NEXT:") for ln in run)
         for line in run:
             kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
             if (
                 kind == "fix:"
                 and not _TCC_PENDING_FAIL_RE.match(line)
-                and ((persons and line.startswith("[FAIL")) or (told and _persons_line(line)))
+                and (
+                    (persons and line.startswith("[FAIL"))
+                    or (told and _persons_line(line))
+                    or (state and _manifest_fix_line(line))
+                )
             ):
                 kind = PERSONS_FIX
             if kind is not None:
@@ -4576,6 +4588,16 @@ def _fix_of(line: str) -> str | None:
 def _persons_told(run: Sequence[str]) -> bool:
     """Whether a run's ``NEXT:`` line gives its stop to the person (:data:`_PERSONS_STEP`)."""
     return any(ln.lstrip().startswith("NEXT:") and _PERSONS_STEP in ln for ln in run)
+
+
+def _manifest_fix_line(line: str) -> bool:
+    """Whether a line's ``(fix: X)`` is doctor's ``MANIFEST_FIX``, the state file's (False when doctor does
+    not import)."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:
+        return False
+    return _fix_of(line) == doctor.MANIFEST_FIX
 
 
 def _persons_line(line: str) -> bool:
@@ -8961,7 +8983,9 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
         and pool[-1].run_id != last.run_id
     )
     if pool:
-        config = ((last if earlier and last is not None else pool[-1]).step("config")) or {}
+        # the run whose sync the line shows names it: a last run that stopped at its config step logged no
+        # note, and a later run's was never a first sync (B13 round 18 V48)
+        config = pool[-1].step("config") or {}
         if config.get("note") in ("add-source", "exists"):  # sources.toml was there before that run
             label = "sync"
         text, counts = _sync_step_words(pool[-1].step("first-sync") or {})
@@ -9478,16 +9502,21 @@ def _folders_line(
     named counts distinct folders, so a retry with the same options names one. When the counts do not
     chain (a source changed by hand between runs), the last run's alone, said so. Only ``scoped``, an
     attempt with a begin time, as the install line: else ``runs`` is the whole install.log, and a re-run a
-    month later read "2 added (none was synced before)" (B13 round 16 T44), so the last run's alone."""
+    month later read "2 added (none was synced before)" (B13 round 16 T44), so the last run's alone. A
+    last run after the end line is the last run's alone too, unless its config step added nothing: a retry
+    that only confirms what an earlier run wrote joins the chain (B13 round 18 V37)."""
     installs = install_runs_only(runs)
     if not installs:
         return None
     gone = _gone_clause(r, runs)
     late = _after_end(runs, end)
+    # a last run after the end line joins the chain when its config step added nothing: a retry that only
+    # confirms what an earlier run wrote (B13 round 18 V37); one that added a folder is the last run's alone
+    retry = bool(late) and installs[-1] in late and not _kept_added(installs[-1])[1]
     counted = [
         run
         for run in installs
-        if run not in late
+        if (run not in late or (retry and run is installs[-1]))
         and _count(run.step("config"), "kept") is not None
         and _count(run.step("config"), "added") is not None
     ]
@@ -9601,18 +9630,27 @@ invites ("include its exit code"; B13 round 15 S1)."""
 
 
 def _item_what(what: str, kind: str) -> str:
-    """An Items line's what-text, cut to 220 characters. An error line too long for that, whose command
-    ends where :data:`_FAILED_EXIT_RE` matches, keeps the start of the command and all it can of the error:
-    a step 1 error that logged step 1's whole one-liner was cut inside the command, with no word of git's
-    error (B13 round 14 Q31)."""
+    """An Items line's what-text, cut to 220 characters. An error line whose command ends where
+    :data:`_FAILED_EXIT_RE` matches has :data:`_ERROR_WHAT_MAX`, and when it is too long for that keeps the
+    start of the command and all it can of the error: a step 1 error that logged step 1's whole one-liner
+    was cut inside the command, with no word of git's error (B13 round 14 Q31), and a git error of 221
+    characters lost its last clause, the reason (round 18 V34)."""
     what = " ".join(what.split())
     m = _FAILED_EXIT_RE.search(what) if kind == "error" else None
-    if m is None or len(what) <= 220:
+    if m is None:
         return _shorten(what)
+    if len(what) <= _ERROR_WHAT_MAX:
+        return what
     head = _shorten(what[: m.start()], 80)
     if not head:
-        return _shorten(what)
-    return f"{head} {_shorten(what[m.start() :], 219 - len(head))}"
+        return _shorten(what, _ERROR_WHAT_MAX)
+    return f"{head} {_shorten(what[m.start() :], _ERROR_WHAT_MAX - 1 - len(head))}"
+
+
+_ERROR_WHAT_MAX = 320
+"""An Items error line's room when its command's failure is said (:data:`_FAILED_EXIT_RE`): a git error
+names the URL whose host is the clue, then its reason, last (B13 round 18 V34; the installer's stop line has
+640, :func:`_item_line`)."""
 
 
 def _without_folders(args: str) -> tuple[list[str], list[str]] | None:
@@ -9819,7 +9857,19 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         unstarted = fr is not None and _headerless(fr, len(fr.attempts) - 1) and not runs
         # An attempt with no install.sh run of its own printed no folder list, so nobody was asked: like a
         # stopped one (B13 round 3 R15). Any run, list or install, keeps the usual rules.
-        no_run = not runs and not att.layout.logs_expected_turns
+        # nor did one whose every run is an install that stopped at or before its config step with no list
+        # before it: no folders were listed, so nobody was asked (B13 round 18 V38)
+        before_config = (
+            synced is None
+            and bool(runs)
+            and all(
+                not run.list_only
+                and (run.step("config") or {}).get("result", "failed") == "failed"
+                and run.rc != 0
+                for run in runs
+            )
+        )
+        no_run = (not runs or before_config) and not att.layout.logs_expected_turns
         copy_stopped = _stopped_before_the_list(att, runs)
         # a list that stopped on a sign-in (exit 3) listed nothing, and one that stopped on a click (exit 4)
         # was asked no folder question yet; a Mac that already syncs folders keeps its own words (B13 round 11
