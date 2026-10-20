@@ -25472,3 +25472,27 @@ CLAUDE.md gives 19 to 24 minutes and the new limit in the same commit. Test:
 the range's top.
 
 All nine are built; none was recorded as making things worse. W44, W59 and W60 are one defect, built once.
+
+### 16.146 Round 20: setup report (2026-10-20, wave B13 round 20 lane RA)
+
+Reserved for round 20 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 20").
+
+### 16.147 Round 20: installer, the shell report's redaction and the stopped copy's outcome (2026-10-20, wave B13 round 20 lane RB)
+
+Reserved for round 20 lane RB of B13.
+
+### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
+
+Reserved for round 20 lane P of B13.
+
+### 16.149 Round 20: an unopenable manifest, index-root damage and staging's exclusion (2026-10-20, wave B13 round 20 lane B)
+
+Reserved for round 20 lane B of B13.
+
+### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
+
+Reserved for round 20 lane E of B13.
+
+### 16.151 Round 20: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 20 lane D)
+
+Reserved for round 20 lane D of B13.

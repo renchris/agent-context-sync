@@ -1338,6 +1338,39 @@ three hours, half of round 18's, at a load of about 70.
 Round 20: the round 19 workflow with prompt v28 on this section's landed tip, BASE `fba3908a` (ids X<n>, outputs
 `round20/`); scenario C plays the v27 and v26 blocks.
 
+### B13 round 20: v28 rehearsal, cross-lane review, harvest (2026-10-20)
+
+Run `wf_c0d52805-e81` on `5c35bfff` (99 agents, 0 errors, 59 minutes); no agent waited on a permission prompt. All six
+scenarios pass their EXPECTED with no turn: the new Mac and the field Mac are "fully one command" (step 2 took 722 s at
+a load of about 200, most of it the speech helper), every v27 and v26 copy is refused in step 1 with exit 2, and the
+git stop, the reinstall during a sync and the empty-folder alarm run as the prompt says. 88 findings, 84 confirmed (0
+turn, 21 wrong, 63 small), 4 refused (X31, X52, X87, X88: CI on main from `fba3908a` was green on attempt 1 with no
+job past 30 minutes); 3 need prompt text, so the next prompt is v29.
+The 21 wrongs are about 13 defects, most on one seam round 19 opened: a manifest this account cannot open, which W64
+handled in the report but which install.sh still treats as an ordinary error (X9), doctor calls "not excluded from Time
+Machine" (X27), the report files as "unexpected" (X28, X35), and doctor answers with a sudo chown handed to the agent
+or a generic fix for a folder it cannot search (X73, X74). The others: a damaged index root, where step 1 promises a
+step 2 stop that never comes (X1, X25, X72) and the guide repeats it (X59); the Repeat conversions note puts waiting
+files in Quarantine (X2, X10); W17's agent words (X38, X39, X40); a one-line URL rewrite left in clear by both reports
+(X8, X41); a sync that stops on the state file leaves staging without its Time Machine exclusion (X4); W3's NEXT
+blames the time limit when it did not cut the report (X37); a plain install.sh after a stopped old copy reports "fully
+one command" (X19); and a folder name with a TAB in clear in the shell report (X75).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84 over rounds 2 and 4 to
+20; turns 0 for seven rounds; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22, 25, 24, 8, 21 (about 13
+distinct). The fall stopped: round 19's W64 and W41
+reached five readers each, and this round's probes found the readers they missed.
+
+Lanes (`--account auto`, CONTRACTS §16.146 to §16.151, brief `lanes/COMMON19.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r20-land.lock`; scratch under `round20/`): RA 14 (the
+report: the unopenable manifest's bucket, the Repeat conversions note, agent words, the URL rewrite, the sqlite
+code), RB 17 (install.sh: the URL rewrite, the stopped copy's outcome, W3's NEXT, the TAB folder name, the shell's
+agent words and legend, the upgrade note in the first sync), P 9 (prompt v29, step 1's state-file tails for an index
+root and an unopenable manifest, step 2's NEXT for it), B 24 (an unopenable manifest in doctor, status and sync,
+index-root damage, staging's exclusion on exit 65, helper fixes, the lock wait), E 7 (the upgrade's retry note,
+converter error lines, helper docstrings), D 12 (guides and CONTRACTS cross-references). Lead: X86 (round 19 and 20
+/tmp leftovers and round 18's v26 sandboxes, about 43 GB, removed by exact name).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
