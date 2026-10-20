@@ -35,6 +35,7 @@ from agentsync.convert._common import (
     _FULL_TEXT_SIDECAR,
     _cap_body,
     _check_ooxml_container,
+    _emitter,
     _escape_line,
     _join_limited,
     _python_version,
@@ -42,10 +43,13 @@ from agentsync.convert._common import (
 from agentsync.convert.base import OptionValue, make_unit
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.policy import EMPTY_OUTPUT_REASON
 from agentsync.text import plural
 
-# 1.1.0: a Visio shape without text of its own shows its master's; 1.2.0: draw.io %name% placeholders
-_EMITTER_VERSION = "1.2.0"
+# 1.1.0: a Visio shape without text of its own shows its master's; 1.2.0: draw.io %name% placeholders;
+# 1.3.0: a diagram with no text is a page that says so (B13 round 19 W27)
+_EMITTER_VERSION = "1.3.0"
+_PAGE_FOR_NO_TEXT = "1.3.0"  # the first emitter that writes a page, not the empty-output stub, for no text
 _MAX_PART_BYTES = 32 * 1024 * 1024
 _MAX_TOTAL_BYTES = 128 * 1024 * 1024
 _V = "{http://schemas.microsoft.com/office/visio/2012/main}"
@@ -468,6 +472,23 @@ class DiagramConverter:
         """Version as run (emitter version + Python, whose zlib, base64 and XML parser read the file)."""
         return f"{_EMITTER_VERSION}+python-{_python_version()}"
 
+    @property
+    def outdated_key(self) -> str:
+        """What ``outdated`` goes by: the running emitter and the floor below which a no-text diagram was
+        the empty-output stub.  The cycle keeps it in what it remembers having looked for, so a new floor
+        makes it look again."""
+        return f"{_EMITTER_VERSION}<{_PAGE_FOR_NO_TEXT}"
+
+    def outdated(self, produced: str, reason: str | None = None) -> bool:
+        """True for the empty-output stub an emitter below ``_PAGE_FOR_NO_TEXT`` made of a diagram with no
+        text, which this one makes a page of (B13 round 19 W27): an unchanged file is never converted again,
+        so only this reads it again, once, since what the re-read writes is under the running emitter.
+        Never true for a page."""
+        if reason != EMPTY_OUTPUT_REASON:
+            return False
+        emitter, floor = _emitter(produced), _emitter(_PAGE_FOR_NO_TEXT)
+        return emitter is not None and floor is not None and emitter < floor
+
     def options(self) -> Mapping[str, OptionValue]:
         """Normalised options hashed into options_hash."""
         return {
@@ -490,9 +511,12 @@ class DiagramConverter:
             if page.links:
                 out += ["", "Connections:", "", *(f"- {_escape_line(x)}" for x in page.links)]
             out.append("")
-        has_text = any(p.shapes or p.links for p in pages)
+        # a diagram with no text is a page that says so, as an empty deck or document is, not the
+        # empty-output stub that said it could not be converted (B13 round 19 W27)
         body, sidecars = _cap_body(
-            "\n".join(out) if has_text else "", self._cfg.max_page_bytes, sidecar_name=_FULL_TEXT_SIDECAR
+            "\n".join(out or ["[empty diagram: no pages]"]),
+            self._cfg.max_page_bytes,
+            sidecar_name=_FULL_TEXT_SIDECAR,
         )
         summary = f"{kind}: {plural(len(pages), 'page')}"
         if pages:

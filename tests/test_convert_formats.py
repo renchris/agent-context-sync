@@ -4721,23 +4721,39 @@ def test_a_visio_master_is_read_only_when_needed_and_within_the_caps(
 
 def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
     """A deflate bomb stops at the part limit; another XML document, a broken page and a non-zip .vsdx fail
-    with what they are; a diagram with no text at all is the empty-output stub."""
+    with what they are. A diagram with no text at all is a current page that says so, as an empty deck is
+    (B13 round 19 W27: it was the empty-output stub, "could not convert", and a quarantine row): each page
+    reads ``[no text on this page]``, and one with no pages ``[empty diagram: no pages]``."""
     reg = Registry.default(CFG)
     bomb = build_drawio(tmp_path / "bomb.drawio", compressed=True, model="A" * (40 * 1024 * 1024))
     other = _write(tmp_path, "other.drawio", '<svg xmlns="http://www.w3.org/2000/svg"/>')
     garbled = _write(tmp_path, "garbled.drawio", '<mxfile><diagram name="P">!!!</diagram></mxfile>')
     blank = build_drawio(tmp_path / "blank.drawio", model="<mxGraphModel><root/></mxGraphModel>")
+    # what draw.io saves for a new file: one page whose root holds only its two default cells
+    new = _write(
+        tmp_path,
+        "Contoso new.drawio",
+        '<mxfile host="app.diagrams.net"><diagram name="Page-1" id="p1"><mxGraphModel><root>'
+        '<mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>',
+    )
+    pageless = _write(tmp_path, "pageless.drawio", '<mxfile host="x"></mxfile>')
+    no_pages = build_vsdx(
+        tmp_path / "no pages.vsdx",
+        extra={
+            "visio/pages/pages.xml": b'<Pages xmlns="http://schemas.microsoft.com/office/visio/2012/main"/>'
+        },
+    )
     renamed = _write(tmp_path, "renamed.vsdx", b"not a zip")
     got = {
         p.name: convert_file(
             p,
             name=p.name,
             content_sha256=hashlib.sha256(p.read_bytes()).hexdigest(),
-            canonical_sha256="c" * 64,
+            canonical_sha256=hashlib.sha256(p.read_bytes()).hexdigest(),  # a page each: no shared cache row
             registry=reg,
             cache=ConverterCache(tmp_path / "cache"),
         )
-        for p in (bomb, other, garbled, blank, renamed)
+        for p in (bomb, other, garbled, blank, new, pageless, no_pages, renamed)
     }
     assert got["bomb.drawio"].status is ConversionStatus.FAILED and "too large" in str(
         got["bomb.drawio"].reason
@@ -4746,7 +4762,16 @@ def test_a_diagram_that_cannot_be_read_fails_bounded(tmp_path: Path) -> None:
         "conversion failed: not a draw.io diagram (no <mxfile> or <mxGraphModel> root element)"
     )
     assert got["garbled.drawio"].status is ConversionStatus.FAILED
-    assert got["blank.drawio"].reason == policy.EMPTY_OUTPUT_REASON
+    for name, said in (
+        ("blank.drawio", "## Overview\n\n[no text on this page]\n\n## Notes\n\n[no text on this page]"),
+        ("Contoso new.drawio", "## Page-1\n\n[no text on this page]"),
+        ("pageless.drawio", "[empty diagram: no pages]"),
+        ("no pages.vsdx", "[empty diagram: no pages]"),
+    ):
+        result = got[name]
+        assert result.status is ConversionStatus.OK and result.reason is None, (name, result)
+        [unit] = result.units
+        assert said in unit.body, (name, unit.body)
     assert got["renamed.vsdx"].reason == policy.NOT_OOXML_REASON
 
 

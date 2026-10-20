@@ -7023,3 +7023,62 @@ def test_the_re_read_record_drops_the_ids_of_files_that_are_gone(
     assert states["Contoso stub.md"] is not None and states["Contoso stub.md"].state is RowState.QUARANTINED
     failed = [failed for _for, _done, failed, _reading in stored]
     assert failed == [{kept: 1, stub: 1}, {kept: 2}], stored
+
+
+def test_a_blank_diagram_is_a_page_and_no_quarantine_row(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 19 W27: what draw.io saves for a new file (one page, no text) was the empty-output stub,
+    "could not convert this source", and a QUARANTINE row; it is a current page that says it has no text."""
+    rel = "projects/Contoso blank.drawio"
+    (local_source_dir / rel).write_text(
+        '<mxfile host="app.diagrams.net"><diagram name="Page-1" id="p1"><mxGraphModel><root>'
+        '<mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    assert run(sample_config).exit_code == 0
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and row.state is RowState.LIVE, row
+    assert rel not in (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    _meta, body = _mirror_page(sample_config, rel)
+    assert "[no text on this page]" in body and "could not convert" not in body
+
+
+def test_a_blank_diagrams_stub_an_older_build_left_is_read_again_into_a_page(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 19 W27, the review: an unchanged file is never converted again, so the empty-output stub an
+    emitter before 1.3.0 left of a blank diagram stayed a quarantined stub. ``DiagramConverter.outdated``
+    names it, and the re-read pass makes the page once."""
+    from agentsync.convert import diagram  # noqa: PLC0415
+    from agentsync.errors import UnreadableSourceError  # noqa: PLC0415
+
+    rel = "projects/Contoso blank.drawio"
+    (local_source_dir / rel).write_text(
+        '<mxfile host="app.diagrams.net"><diagram name="Page-1" id="p1"><mxGraphModel><root>'
+        '<mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+
+    def older(self: Any, src: Path, *, name: str) -> Any:
+        raise UnreadableSourceError(content_policy.EMPTY_OUTPUT_REASON)
+
+    with monkeypatch.context() as m:  # what emitter 1.2.0 made of it
+        m.setattr(diagram, "_EMITTER_VERSION", "1.2.0")
+        m.setattr(diagram.DiagramConverter, "convert", older)
+        run(sample_config)
+    assert rel in (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    assert diagram.DiagramConverter(sample_config.convert).outdated(
+        "1.2.0+python-3", content_policy.EMPTY_OUTPUT_REASON
+    )
+    assert not diagram.DiagramConverter(sample_config.convert).outdated(
+        "1.3.0+python-3", content_policy.EMPTY_OUTPUT_REASON
+    )
+    assert run(sample_config).exit_code == 0
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and row.state is RowState.LIVE, row
+    assert rel not in (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    _meta, body = _mirror_page(sample_config, rel)
+    assert "[no text on this page]" in body

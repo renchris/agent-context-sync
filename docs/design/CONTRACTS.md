@@ -12607,6 +12607,8 @@ it too. It uses the standard library only: no new dependency.
   the summary is `draw.io diagram: N page(s); pages: …` or `Visio drawing: …`. Pictures, shape data,
   links and layer names are not read; a Visio shape with no `<Text>` of its own shows its master shape's
   text (§16.48 "PDF pictures and diagrams"); text on a hidden layer is read like any other.
+  Amended 2026-10-20, §16.144 W27: a diagram with no text is a page too, `[no text on this page]` under each
+  page's heading, and one with no pages reads `[empty diagram: no pages]` (emitter 1.3.0).
 - **draw.io.** `<mxfile>` with `<diagram>` pages, each a `<mxGraphModel>` or compressed (base64 of raw
   deflate of the URI-encoded XML), or a bare `<mxGraphModel>`. A shape's text is its `value` (a
   `UserObject` or `object` wrapper's `label`, its `%name%` placeholders filled in when the wrapper says
@@ -25013,6 +25015,21 @@ file keeps its stable id and so is read again, up to `_REREAD_ATTEMPTS` more tim
 says a deleted file's count lasts only until the next sync; `_ROW_NOW`'s `deleted` stays for that window and for a
 record an older build left. Tests: `test_cycle.py::test_the_re_read_record_drops_the_ids_of_files_that_are_gone`,
 `test_setup_report.py` (the re-read lead).
+
+**A blank diagram is a page (W27; `agentsync.convert.diagram`; dated line at §16.42).** What draw.io saves for a
+new file (one page whose root holds only its two default cells) and an `<mxfile>` with no pages were the
+`empty-output` stub, "agentsync could not convert this source", and a quarantine row of class "empty", while every
+other converter writes a page for a valid empty file (`[empty presentation: no slides]`, `[empty document]`,
+`[empty sheet]`). `DiagramConverter.convert` drops the `has_text` gate: a diagram with pages but no text reads
+`## <page>` and `[no text on this page]` per page, as pptx does for a slide of pictures, and one with no pages
+(no `<diagram>`, or a Visio `pages.xml` that lists none) reads `[empty diagram: no pages]`. `_EMITTER_VERSION` is
+1.3.0. An unchanged file is never converted again, so the stub an older emitter left would stay: the converter's
+`outdated(produced, reason)` is True for an `empty-output` stub below `_PAGE_FOR_NO_TEXT` (1.3.0), and its
+`outdated_key` (`1.3.0<1.3.0`) changes what the re-read pass looks for, so that pass makes the page once. Files
+that are no diagram still fail first (a `ConversionError`). Tests:
+`test_convert_formats.py::test_a_diagram_that_cannot_be_read_fails_bounded`,
+`test_cycle.py::test_a_blank_diagram_is_a_page_and_no_quarantine_row`,
+`test_cycle.py::test_a_blank_diagrams_stub_an_older_build_left_is_read_again_into_a_page`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
