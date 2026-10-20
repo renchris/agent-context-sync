@@ -44,7 +44,7 @@ from agentsync.cycle import (
     vanished_detail,
     vanished_sources,
 )
-from agentsync.errors import AgentSyncError, ConfigError, ConversionError
+from agentsync.errors import AgentSyncError, ConfigError, ConversionError, ManifestOpenError
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import Manifest
@@ -131,14 +131,45 @@ _LISTING_SKIPPED_NOTE = (
 LISTING_YOURS_REPORT_NOTE = (
     "as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it"
 )
-# The note on an incomplete listing when the loop cannot read the state file (a damaged manifest): no WAITING
-# ON YOU line can name it then, so the line does not point at one (B13 round 19 W11: the report's note sent
-# the reader to its Loop line, and the fix by hand to WAITING ON YOU lines, while the Loop line held only the
-# state_dir.manifest FAIL's NEXT). A note, not a fix, with no parentheses, as the notes above.
+# The note on an incomplete listing when the state file cannot be read (a damaged manifest): no sync lists it
+# again until it can, so the line points at no WAITING ON YOU line and gives no sync as its fix (B13 round 19
+# W11: the report's note sent the reader to its Loop line, and the fix by hand to WAITING ON YOU lines, while
+# the Loop line held only the state_dir.manifest FAIL's NEXT). It makes no claim about the loop's own read:
+# damage only a sync reached FAILs state_dir.manifest from that sync's record while the loop reads the file
+# (B13 round 20 X14, X46: "the loop cannot read the state file" beside a loop line read from it). A note, not
+# a fix, with no parentheses, as the notes above.
 LISTING_STATE_UNREADABLE_NOTE = (
-    "as of its last walk: the loop cannot read the state file, so no line here says what keeps it "
-    "incomplete; the state_dir.manifest [FAIL] line says what to do first"
+    "as of its last walk: the state file cannot be read, so no sync lists it again until it can; the "
+    "state_dir.manifest [FAIL] line says what to do first"
 )
+# The same note for a state file this account cannot open (its mode, its owner): the state_dir lines, not
+# state_dir.manifest, say why (B13 round 20 X15: W11 keyed only a damaged file, so the warn kept pointing at
+# WAITING ON YOU lines a status that cannot read the state never prints).
+LISTING_STATE_SHUT_NOTE = (
+    "as of its last walk: this account cannot open the state file, so no sync lists it again until it can; "
+    "the state_dir [FAIL] lines say what to do first"
+)
+
+
+def state_unopenable(exc: BaseException | None, state_root: Path | None = None) -> bool:
+    """Whether ``exc``, a read of the state, failed because this account cannot open the file (its mode, its
+    owner, a read-only volume): a :class:`ManifestOpenError`, sqlite's CANTOPEN, PERM or READONLY, or an
+    ``OSError`` with EACCES, EPERM or EROFS on a path in ``state_root``, the state folder (a docs repo the
+    loop cannot search is no state file's; B13 round 20 X15's reviewer). Keyed on the read's own error, never
+    on a check's name: state_dir.files also FAILs a file readable by others, which the loop reads normally."""
+    if isinstance(exc, sqlite3.Error):
+        return cannot_open(exc)
+    if isinstance(exc, ManifestOpenError):
+        return True
+    if not isinstance(exc, OSError) or exc.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
+        return False
+    if state_root is None or not isinstance(exc.filename, str | bytes | os.PathLike):
+        return False
+    path = Path(os.path.realpath(os.fsdecode(exc.filename)))
+    folder = Path(os.path.realpath(state_root))
+    return path == folder or path.is_relative_to(folder)
+
+
 LISTING_INCOMPLETE = "enumeration incomplete for "
 """How the heartbeat warn of a listing that stays incomplete starts its detail."""
 

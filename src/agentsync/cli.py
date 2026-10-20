@@ -1506,7 +1506,9 @@ def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
     1's NEXT from the first fix, so a FAIL that says why (state_dir.manifest) is named, never "cannot read
     the state" (B13 round 16 T12)."""
     try:
-        lines = loop.next_lines(config, fixes=fixes)
+        # a FAIL explains a state the loop cannot read, and NEXT is built from it: no WARNING (B13 round 20
+        # X30)
+        lines = loop.next_lines(config, fixes=fixes, quiet=bool(fixes))
     except Exception:
         if not fixes:
             raise
@@ -1557,18 +1559,27 @@ def _with_damaged_manifest(
     return [*checks[:at], doctor.manifest_damaged(expand(config.state_paths.db), exc), *checks[at:]]
 
 
-def _listings_unread(checks: list[doctor.CheckResult], exc: Exception | None) -> list[doctor.CheckResult]:
-    """``checks`` with each incomplete-listing heartbeat warn worded for a state file the loop cannot read
-    (``doctor.LISTING_STATE_UNREADABLE_NOTE``, its fix dropped): no WAITING ON YOU line can name the source
-    then, and the report's note pointed at its Loop line for one and the fix by hand at those lines (B13 round
-    19 W11). Unreadable as the setup report's Summary keys it: the loop's read raised SQLITE_NOTADB or
-    SQLITE_CORRUPT, or doctor's read-only probe FAILed state_dir.manifest (only that FAILs it); a locked or
-    busy manifest is not."""
+def _listings_unread(
+    checks: list[doctor.CheckResult], exc: Exception | None, state_root: Path | None = None
+) -> list[doctor.CheckResult]:
+    """``checks`` with each incomplete-listing heartbeat warn worded for a state file that cannot be read
+    (``doctor.LISTING_STATE_UNREADABLE_NOTE``, its fix dropped): no sync lists the source until it can, and
+    the report's note pointed at its Loop line for a WAITING ON YOU line and the fix by hand at those lines
+    (B13 round 19 W11). Unreadable as the setup report's Summary keys it: the loop's read raised SQLITE_NOTADB
+    or SQLITE_CORRUPT, or a state_dir.manifest FAIL stands (doctor's probe, or a command's record of what it
+    read: B13 round 20 X46 keeps that trigger, as a sync fix or a WAITING ON YOU pointer is wrong there too);
+    a locked or busy manifest is not. A loop read this account cannot open gets
+    ``doctor.LISTING_STATE_SHUT_NOTE`` (B13 round 20 X15), keyed on that read's error, never on the
+    state_dir.files check, which also FAILs a loose mode the loop reads past."""
     read = isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)
-    if not read and not any(r.name == "state_dir.manifest" and not r.ok for r in checks):
+    if read or any(r.name == "state_dir.manifest" and not r.ok for r in checks):
+        note = doctor.LISTING_STATE_UNREADABLE_NOTE
+    elif doctor.state_unopenable(exc, state_root):
+        note = doctor.LISTING_STATE_SHUT_NOTE
+    else:
         return checks
     return [
-        dataclasses.replace(r, note=doctor.LISTING_STATE_UNREADABLE_NOTE, fix=None)
+        dataclasses.replace(r, note=note, fix=None)
         if r.name.startswith("heartbeat.") and not r.ok and r.detail.startswith(doctor.LISTING_INCOMPLETE)
         else r
         for r in checks
@@ -1601,7 +1612,8 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         loop_checks=None if step is None else step.checks,
         loop_waits=None if step is None else step.wait_counts,
     )
-    checks = _listings_unread(_with_damaged_manifest(config, checks, state_exc), state_exc)
+    root = expand(config.state_paths.root)
+    checks = _listings_unread(_with_damaged_manifest(config, checks, state_exc), state_exc, root)
     fixes = _fail_steps(checks)
     if hint_off and any(_blocks_install(r) for r in checks):  # install.sh runs no sync (B13 round 14 Q10)
         checks = [
@@ -2172,7 +2184,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         step, state_exc = _loop_read(config)
         read[:] = [(step, state_exc)]
         results = _with_damaged_manifest(config, _status_checks(config, offline=True), state_exc)
-        results = _listings_unread(results, state_exc)
+        results = _listings_unread(results, state_exc, expand(config.state_paths.root))
         fixes[:] = _fail_steps(results)
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
@@ -2194,7 +2206,9 @@ def _report_hooks() -> setup_report.ReportHooks:
         try:
             return loop.next_step(config, fixes=fixes, count_queue=False)
         except Exception as exc:
-            _log.warning("next step: cannot read the loop state: %s", exc)
+            # the report records the error (state_error), and _next_or_fix decides whether a warning is due,
+            # so setup-report logs it at most once (B13 round 20 X16, X30)
+            _log.debug("next step: cannot read the loop state: %s", exc)
             try:
                 return _next_or_fix(config, fixes)
             except Exception:

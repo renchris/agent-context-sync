@@ -13751,7 +13751,7 @@ def test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket(
     line = doctor_line()
     bucket = (
         " · from the state file that cannot be read (2 checks): state_dir.manifest FAIL (the person's; see "
-        "Doctor), heartbeat.x warn (not judged: the loop cannot read the state) · "
+        "Doctor), heartbeat.x warn (not judged: the state file cannot be read) · "
     )
     assert bucket in line and "FAIL" not in unexpected(line) and "heartbeat" not in unexpected(line), line
     assert "yours" not in line, "no WAITING ON YOU line for a pointer to land on"
@@ -13825,8 +13825,8 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
         db.chmod(0o600)
     bucket = (
         " · from the state file this account cannot open (3 checks): state_dir.files FAIL (the person's; see "
-        "Doctor), heartbeat.x warn (not judged: the loop cannot read the state), governance.time_machine "
-        "warn (not judged: this account cannot read the state file) · unexpected 0"
+        "Doctor), heartbeat.x warn (not judged: this account cannot open the state file), "
+        "governance.time_machine warn (not judged: this account cannot read the state file) · unexpected 0"
     )
     assert line.endswith(bucket), line
     assert more.endswith(" · unexpected 1: governance.time_machine warn"), more

@@ -3010,7 +3010,16 @@ def test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_repor
     db.chmod(0)
     try:
         capsys.readouterr()
-        rc, out = _status(cfg, capsys)
+        rc = cli.main(["status", "--config", cfg])
+        said = capsys.readouterr()
+        out = said.out.splitlines()
+        # B13 round 20 X16, X30: no timestamped WARNING above NEXT repeats what the FAIL line says
+        assert "WARNING" not in said.err and "cannot read the loop state" not in said.err, said.err
+        assert out[0].startswith("NEXT: the state_dir.files check failed"), out[0]
+        # B13 round 20 X47: the reason is kept
+        reason = "status: cannot read the state: a file cannot be opened: Permission denied; "
+        reason += "the state_dir lines say why"
+        assert reason in out, out
         fails = [ln for ln in out if ln.startswith("[FAIL] ")]
         assert rc == cli.EXIT_FAILED and len(fails) == 1, out
         assert fails[0].startswith("[FAIL] state_dir.files "), fails
@@ -3019,7 +3028,10 @@ def test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_repor
         assert "state_dir.files" in out[0] and out[0].startswith("NEXT: "), out[0]
         assert not any("are 0600" in ln or "is 0600" in ln for ln in out), out
         printed = {m.group(1) for ln in out if (m := re.match(r"\[(?:ok  |FAIL|warn|info)\] (\S+)", ln))}
+        capsys.readouterr()
         text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
+        err = capsys.readouterr().err
+        assert "cannot read the loop state" not in err, err  # X16, X30: not even once
         pointers = re.findall(r"see Doctor's (state_dir(?:\.\w+)?) lines?\b", text)
         assert pointers and "state_dir.manifest" not in pointers, pointers
         assert all(any(name.startswith(p) for name in printed) for p in pointers), (pointers, printed)
@@ -3027,6 +3039,70 @@ def test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_repor
         db.chmod(0o600)
     rc, out = _status(cfg, capsys)
     assert any(re.match(r"\[ok  \] state_dir\.files +— manifest\.sqlite is 0600", ln) for ln in out), out
+
+
+def test_a_failed_loop_read_with_no_fail_still_logs_its_warning(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other side of X16, X30: with no [FAIL] line to say why, a loop read that fails is logged as before,
+    once: it is the only explanation of a missing NEXT."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+    def unreadable(*_a: object, **_k: object) -> loop.NextStep:
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(loop, "next_step", unreadable)
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_OK
+    err = capsys.readouterr().err
+    assert err.count("WARNING agentsync.loop: next step: cannot read the loop state") == 1, err
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("hint", ["by hand", "install.sh"])
+def test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], hint: str
+) -> None:
+    """B13 round 20 X15: with manifest.sqlite at 0000, status's incomplete-listing warn said "each WAITING ON
+    YOU line about <source> says ..." (by hand) or "a [FAIL] line stops this run's sync ...; status names it"
+    (install.sh) while status printed no WAITING ON YOU line and named nothing: W11 keyed only a damaged
+    file. Keyed on the loop read's own error, the warn gets the shut-state note and no fix; a state_dir.files
+    FAIL beside a loop read that succeeded keeps the warn's own words."""
+    if hint == "install.sh":
+        monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    else:
+        monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    beats = initialised.state_paths.heartbeat
+    data = json.loads(beats.read_text(encoding="utf-8"))
+    sid = _local_id(initialised)
+    data[sid]["consecutive_incomplete"] = 3
+    beats.write_text(json.dumps(data), encoding="utf-8")
+    db = initialised.state_paths.db
+    for name in ("-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.chmod(0)
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+    finally:
+        db.chmod(0o600)
+    assert rc == cli.EXIT_FAILED, out
+    assert next(ln for ln in out if ln.startswith("[FAIL] ")).startswith("[FAIL] state_dir.files "), out
+    (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert warn.endswith(f"({doctor.LISTING_STATE_SHUT_NOTE})"), warn
+    assert "WAITING ON YOU" not in warn and "status names it" not in warn and "(fix: " not in warn, warn
+    # a loose mode FAILs state_dir.files too, but the loop reads the file (its own open sets the mode back
+    # to 0600 before the checks run, so only the function shows it): the warn keeps its words
+    loose = doctor.CheckResult(
+        "state_dir.files", False, "readable by others: manifest.sqlite (0644)", fix="chmod"
+    )
+    listing = doctor.CheckResult(
+        f"heartbeat.{sid}", False, f"{doctor.LISTING_INCOMPLETE}3 consecutive passes"
+    )
+    assert cli._listings_unread([loose, listing], None) == [loose, listing]
 
 
 def test_the_manifest_fix_says_legal_holds_are_kept(initialised: Config) -> None:
@@ -3343,6 +3419,55 @@ def test_damage_under_any_table_fails_status_and_stops_the_sync(
         assert [ln for ln in text if ln.startswith("[FAIL] state_dir.manifest ")], text
 
 
+def test_a_listing_warn_over_damage_only_a_sync_read_makes_no_claim_about_the_loop(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 20 X46, X14: damage on the last leaf of outputs, which the read-only probe misses, stopped a
+    sync (exit 65, its record kept), and status's listing warn then said "the loop cannot read the state file"
+    under a loop line read from that file; the report's Summary said the same of the warn and filed the
+    record's state_dir.manifest FAIL as unexpected. The note says the state file cannot be read and no sync
+    lists the source until it can (still no fix: a sync exits 65), and the Summary files the FAIL as the
+    person's beside the warn."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda run, label: (113, "not loaded"))
+    cfg = str(initialised.config_path)
+    [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
+    assert src.path is not None
+    bulk = expand(src.path) / "bulk"
+    bulk.mkdir()
+    for i in range(160):
+        (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    _damage_table_leaf(db, "outputs", last=True)
+    assert doctor.manifest_unreadable(db) is None
+    for i in range(160):
+        (bulk / f"note-{i:03d}.txt").write_text(f"Contoso {i} v2.\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+    assert doctor.recorded_unreadable(db) is not None
+    beats = initialised.state_paths.heartbeat
+    data = json.loads(beats.read_text(encoding="utf-8"))
+    sid = _local_id(initialised)
+    data[sid]["consecutive_incomplete"] = 5
+    beats.write_text(json.dumps(data), encoding="utf-8")
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED, out
+    assert any(ln.startswith("loop: skill ") for ln in out), out  # the loop read the file
+    (warn,) = [ln for ln in out if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert warn.endswith(f"({doctor.LISTING_STATE_UNREADABLE_NOTE})"), warn
+    assert "the loop cannot read" not in warn and "(fix: " not in warn, warn
+    report = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(report), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    (summary,) = [ln for ln in report.read_text(encoding="utf-8").splitlines() if ln.startswith("- doctor: ")]
+    assert "state_dir.manifest FAIL (the person's; see Doctor)" in summary, summary
+    assert "the loop cannot read" not in summary, summary
+    unexpected = summary.split("unexpected", 1)[1] if "unexpected" in summary else ""
+    assert "state_dir.manifest" not in unexpected, summary
+
+
 _MANIFEST_INDEXES = (
     "sqlite_autoindex_meta_1",
     "sqlite_autoindex_sources_1",
@@ -3452,7 +3577,7 @@ def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_stat
     assert summary.startswith("- doctor: 1 FAIL, 1 warn "), summary
     assert (
         "from the state file that cannot be read (2 checks): state_dir.manifest FAIL (the person's; see "
-        f"Doctor), heartbeat.{sid} warn (not judged: the loop cannot read the state)" in summary
+        f"Doctor), heartbeat.{sid} warn (not judged: the state file cannot be read)" in summary
     ), summary
     assert "unexpected 0" in summary, summary
     (loop_line,) = [ln for ln in text.splitlines() if ln.startswith("- Loop: ")]

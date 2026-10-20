@@ -1472,14 +1472,22 @@ def next_step(
 
 
 def next_lines(
-    config: Config, *, fixes: Sequence[str] = (), count_queue: bool = True, in_state: bool = False
+    config: Config,
+    *,
+    fixes: Sequence[str] = (),
+    count_queue: bool = True,
+    in_state: bool = False,
+    quiet: bool = False,
 ) -> list[str]:
     """:meth:`NextStep.lines` of :func:`next_step`; [] (with a logged warning) when the state cannot be read,
-    so a caller's own exit status never changes because of the hint."""
+    so a caller's own exit status never changes because of the hint. ``quiet``: the caller prints a [FAIL]
+    line that already says why (status with a failing check), so the warning is logged at debug: a
+    timestamped ``WARNING agentsync.loop`` line above status's own NEXT repeated it (B13 round 20 X16, X30).
+    A sync's call keeps the warning, the only record a background job's err.log has of it."""
     try:
         return next_step(config, fixes=fixes, count_queue=count_queue, in_state=in_state).lines()
     except (OSError, AgentSyncError) as exc:
-        _log.warning("next step: cannot read the loop state: %s", exc)
+        (_log.debug if quiet else _log.warning)("next step: cannot read the loop state: %s", exc)
         return []
 
 

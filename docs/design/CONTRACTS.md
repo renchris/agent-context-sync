@@ -25293,6 +25293,10 @@ read-only probe finds the file so, the Summary's own test (a locked or busy mani
 Summary's buckets, keyed on the detail and the report's read, are unchanged; a readable state changes nothing.
 Test: both cases of
 `test_cli.py::test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does`.
+Amended 2026-10-20, §16.149 X14, X15, X46: the note reads `as of its last walk: the state file cannot be read, so no
+sync lists it again until it can; the state_dir.manifest [FAIL] line says what to do first`, a loop read this
+account cannot open gets `doctor.LISTING_STATE_SHUT_NOTE`, and the Summary's warn reads `not judged: the state
+file cannot be read`.
 
 **W65: a manifest this account cannot open is one line, exit 1 (`agentsync.manifest`, `agentsync.errors`,
 `agentsync.cli`).** `sync` and `curate` on a manifest this account cannot open (a root-owned file one sudo run
@@ -26075,6 +26079,44 @@ read its exclusion: <path> (<reason>)`, plus `; the state_dir lines say why` whe
 the `tenant-data paths excluded` line is printed only when neither applies. Lane RA's §16.146 X28 needs no
 time_machine case of its own. Test:
 `test_cli.py::test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded` (macOS).
+
+**X14, X15, X46: the listing note over a state file that cannot be read makes no claim about the loop, and an
+unopenable one has its own (`agentsync.cli`, `agentsync.ops.doctor`, `agentsync.setup_report`; amends §16.143
+W11).** W11's note said `the loop cannot read the state file, so no line here says what keeps it incomplete`
+whenever a state_dir.manifest FAIL stood, which W41's record also gives while the loop reads the file: damage
+only a sync reached (the last leaf of outputs) put that clause under a loop line read from the same file, and
+the Summary said `not judged: the loop cannot read the state` of the warn and filed the record's FAIL as
+unexpected (X46, X14). The trigger stays (in each of those cases no sync clears the listing, so a sync fix or a
+WAITING ON YOU pointer is wrong; X46's verifier measured both); the words change:
+`doctor.LISTING_STATE_UNREADABLE_NOTE` is `as of its last walk: the state file cannot be read, so no sync lists
+it again until it can; the state_dir.manifest [FAIL] line says what to do first`, and the Summary's warn reads
+`not judged: the state file cannot be read`. X14's other half: `setup_report._state_unreadable` also reads
+`doctor.recorded_unreadable`, so a record-only state_dir.manifest FAIL is filed `from the state file that cannot
+be read ... (the person's; see Doctor)`, never unexpected. X14's first fix (drop the FAIL trigger and key the
+note on the loop read alone) is not built: X46's verifier measured it giving status `(fix: <BIN> sync; another
+full walk lists it)`, a sync that exits 65 there. And a loop read this account cannot open (a manifest at 0000:
+`errors.ManifestOpenError`, an EACCES, EPERM or EROFS `OSError`, or sqlite's CANTOPEN, PERM or READONLY,
+`doctor.state_unopenable`) left the warn's `each WAITING ON YOU line about <source> ...` fix (by hand) or
+`... status names it` note (install.sh) under a status that prints no WAITING ON YOU line (X15). It gets
+`doctor.LISTING_STATE_SHUT_NOTE`, `as of its last walk: this account cannot open the state file, so no sync
+lists it again until it can; the state_dir [FAIL] lines say what to do first`, and no fix. Keyed on the read's
+error, never on a state_dir.files FAIL, which a loose mode the loop reads past also gives. The report's bucket
+for that FAIL is lane RA's §16.146 X28. Tests:
+`test_cli.py::test_a_listing_warn_over_damage_only_a_sync_read_makes_no_claim_about_the_loop`,
+`test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line` (0000 and 0644, by hand
+and under install.sh) and the W11 test's both cases.
+
+**X16, X30: status logs no WARNING its own FAIL line already says (`agentsync.loop`, `agentsync.cli`).** On a
+manifest this account cannot open, status's stderr began with a timestamped `WARNING agentsync.loop: next step:
+cannot read the loop state: ...` above its NEXT, while its `[FAIL] state_dir.files` and `status: cannot read the
+state:` lines said the same; setup-report logged it twice (`agentsync.cli`, then `agentsync.loop`).
+`loop.next_lines` takes `quiet`: `cli._next_or_fix` passes `quiet=bool(fixes)`, so the line is logged at debug
+when a FAIL explains it and NEXT is built from that FAIL, and the report hook's `loop_next` logs at debug (the
+report keeps the error through `state_error`). A sync's and curate's calls, with no FAIL beside them, keep the
+WARNING, which is a background job's only record in its err.log, and so does status with no FAIL. Tests: the X16
+lines of `test_cli.py::test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it`,
+`test_a_failed_loop_read_with_no_fail_still_logs_its_warning` and
+`test_loop.py::test_next_lines_keeps_its_warning_unless_a_caller_says_a_fail_explains_it`.
 
 ### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
 

@@ -9206,7 +9206,13 @@ def _state_unreadable(c: Config, read_error: BaseException | None = None) -> boo
     if isinstance(read_error, sqlite3.DatabaseError) and doctor.unreadable_code(read_error):
         return True
     try:
-        return doctor.manifest_unreadable(expand(c.state_paths.db)) is not None
+        db = expand(c.state_paths.db)
+        if doctor.manifest_unreadable(db) is not None:
+            return True
+        # B13 round 20 X14: damage only a command's read reached, kept while the file is the same, FAILs
+        # state_dir.manifest with the loop's read succeeding; that FAIL is the person's too
+        recorded = getattr(doctor, "recorded_unreadable", None)
+        return recorded is not None and recorded(db) is not None
     except Exception:  # a reader that fails says nothing about the file
         return False
 
@@ -9382,9 +9388,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             and detail.startswith(_LISTING_INCOMPLETE)
             and not r.facts.loop_checks
         ):
-            (from_state if unreadable else from_shut).append(
-                f"{name} warn (not judged: the loop cannot read the state)"
-            )
+            # not "the loop cannot read the state": a record-only FAIL leaves the loop's read whole, and a
+            # file this account cannot open is not one the loop read and found damaged (B13 round 20 X46, X15)
+            if unreadable:
+                from_state.append(f"{name} warn (not judged: the state file cannot be read)")
+            else:
+                from_shut.append(f"{name} warn (not judged: this account cannot open the state file)")
             continue
         # B13 round 20 X28: the Time Machine attribute of a file this account cannot open cannot be read, so
         # doctor called it not excluded; only when every path it names is that file (lane B's X12 makes doctor

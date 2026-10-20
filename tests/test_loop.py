@@ -7,6 +7,7 @@ from __future__ import annotations
 import dataclasses
 import errno
 import json
+import logging
 import os
 import re
 import shutil
@@ -2905,3 +2906,20 @@ def test_a_purge_leaves_the_purged_files_name_in_neither_state_md_nor_its_carrie
 
 def _raises(*_args: object, **_kwargs: object) -> object:
     raise RuntimeError("a cycle-level failure before any source")
+
+
+def test_next_lines_keeps_its_warning_unless_a_caller_says_a_fail_explains_it(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 20 X16, X30: status's call is quiet (its [FAIL] line says why); every other call, a sync's
+    and so a background job's err.log among them, keeps the WARNING, its only record of the failure."""
+
+    def unreadable(*_a: object, **_k: object) -> loop.NextStep:
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(loop, "next_step", unreadable)
+    with caplog.at_level(logging.DEBUG, logger="agentsync.loop"):
+        assert loop.next_lines(sample_config) == []
+        assert loop.next_lines(sample_config, fixes=["x"], quiet=True) == []
+    levels = [r.levelno for r in caplog.records if "cannot read the loop state" in r.getMessage()]
+    assert levels == [logging.WARNING, logging.DEBUG], levels
