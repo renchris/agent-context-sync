@@ -318,7 +318,7 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v26). agentsync keeps a local, agent-readable git repo
+Set up agentsync on this Mac (setup prompt v27). agentsync keeps a local, agent-readable git repo
 (~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
 https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
 yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
@@ -356,7 +356,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v26, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v27, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -404,9 +404,10 @@ the name in fix-request.md.
    ~/src/agent-context-sync/scripts/install.sh command at all after them; your final message still follows step 3's
    "Finish with". If git failed any other way, show me its error and tell me: "A corporate proxy may need
    HTTPS_PROXY set in your terminal. If git's error names a host other than github.com, git was told to use that host
-   in one of four ways, and any of them may point at a network this Mac is not on: this checkout's own remote, which
-   `git -C ~/src/agent-context-sync remote get-url origin` prints and which this setup expects to be
-   https://github.com/renchris/agent-context-sync.git; a URL rewrite, which
+   in one of four ways, and any of them may point at a network this Mac is not on: this checkout's own remote, if
+   ~/src/agent-context-sync exists, which `git -C ~/src/agent-context-sync config --get remote.origin.url` prints
+   and which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the cause after a
+   clone that failed, since that leaves no folder; a URL rewrite, which
    `git config --get-regexp '^url\..*\.insteadof$'` prints; git's own proxy setting, which
    `git config --get-urlmatch http.proxy https://github.com` prints and which wins over the terminal's; or the
    terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which `env | grep -i proxy` shows. Once git can reach
@@ -418,11 +419,11 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 26", log the command that failed (git's pull or clone, or
+   it exists and its output ends with "setup-prompt-compat 27", log the command that failed (git's pull or clone, or
    xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
    report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "Could not resolve" or "Failed to
    connect to" message; the role rule is for your own words), as a step 1 error, starting its what-text with prompt
-   v26, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
+   v27, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
    report. If it exists and its output does not end so (or the command fails), that stop has no report either: tell
    me that the code on this Mac is not this prompt's version and that setup stopped before it could be updated, and
    that this asks nothing more of me: once the cause of this stop is fixed, the next paste of this prompt tries to
@@ -431,9 +432,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 26", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v26, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v26, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 27", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v27, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v27, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -447,21 +448,21 @@ the name in fix-request.md.
    1 GiB per folder per run. If you cannot ask me (your tool runs unattended, or the question comes back unanswered),
    do not choose folders for me: log a deviation, stop and wait for my answer. If the list's NEXT: line says a folder
    or source is still mirrored but has no [[source]] block, tell me what it says (which folder, or how many sources)
-   and the fix it names, and add that folder again only if I name it. If it says step 2 stops at its config step on
-   something, tell me what it names and that fixing it is mine, and still go on to step 2. Two exceptions. First, if
-   --list-folders printed a line that starts "already synced on this Mac:", I chose those folders before and they are
-   kept (each has [synced] before its path in the list). If the list's NEXT: line asks me to sign in and then re-run,
-   tell me which folders are kept and that I must sign in to the app that line names, and wait for me as for a click;
-   once I say so, run --list-folders again and go by what it prints. If you cannot ask me (your tool runs unattended,
-   or the question comes back unanswered), do not wait and log nothing for it: go to step 3's report. If the list's
-   NEXT: line does not ask me to sign in and then re-run, tell me which they are and ask only whether to add any
-   unmarked folder. If that NEXT: line says any of them is no longer on disk or is not on disk, tell me which, that
-   step 2 fails on each until it is fixed, and the fix: for a folder that line says was renamed, moved or deleted,
-   put it back under its name, sync it to this Mac in its app, or fix its [[source]] path; otherwise the fix that line
-   names in parentheses (a sign-in with the account it belongs to, which is no sign-in to wait for, or Sync on its
-   SharePoint page, or the [[source]] path). Do not add another folder in its place unless I name it. If you cannot
-   ask me then, add none and go on to step 2. That is not a deviation: do not log it or stop, and say in your final
-   message that I gave no answer, so no folder was added.
+   and the fix it names, and add that folder again only if I name it. If it says step 2 stops on something (at its
+   config step, its status or its first sync), tell me what it names and that fixing it is mine, and still go on to
+   step 2. Two exceptions. First, if --list-folders printed a line that starts "already synced on this Mac:", I chose
+   those folders before and they are kept (each has [synced] before its path in the list). If the list's NEXT: line
+   asks me to sign in and then re-run, tell me which folders are kept and that I must sign in to the app that line
+   names, and wait for me as for a click; once I say so, run --list-folders again and go by what it prints. If you
+   cannot ask me (your tool runs unattended, or the question comes back unanswered), do not wait and log nothing
+   for it: go to step 3's report. If the list's NEXT: line does not ask me to sign in and then re-run, tell me which
+   they are and ask only whether to add any unmarked folder. If that NEXT: line says any of them is no longer on disk
+   or is not on disk, tell me which, that step 2 fails on each until it is fixed, and the fix: for a folder that line
+   says was renamed, moved or deleted, put it back under its name, sync it to this Mac in its app, or fix its
+   [[source]] path; otherwise the fix that line names in parentheses (a sign-in with the account it belongs to, which
+   is no sign-in to wait for, or Sync on its SharePoint page, or the [[source]] path). Do not add another folder in
+   its place unless I name it. If you cannot ask me then, add none and go on to step 2. That is not a deviation: do
+   not log it or stop, and say in your final message that I gave no answer, so no folder was added.
    Second, if the list's NEXT: line says this Mac has a config whose folders could not be read, the list marks
    none. If that line also says to re-run --list-folders to mark them, run
    `~/src/agent-context-sync/scripts/install.sh --list-folders` once and go by what it prints: if the re-run's NEXT:
@@ -529,8 +530,13 @@ the name in fix-request.md.
    ~/agent-context/docs/AGENTS.md (CLAUDE.md for Claude Code): read it, and write every page and question file
    under ~/agent-context/docs.
    Run each sync like step 2's command: with the longest command timeout your tool allows, or in the background,
-   reading its output until the NEXT: line appears. A sync prints nothing while it works and can take many
-   minutes; if it seems stuck, a macOS prompt may be waiting for me, so tell me and keep waiting. sync and curate
+   reading its output until the NEXT: line appears. A sync can take many minutes. While it works it may print a
+   line saying it is waiting: for the sync lock, up to 10 minutes (a line starting "another sync is running",
+   "another sync is still running" or "the lock is held by"), or for new inbox files to settle, up to a minute;
+   then it goes on by itself. Those waits are expected, not deviations: do not log them. If a sync then ends
+   "skipped: lock held" with no NEXT: line, run the same sync once more before going to the report; if that one
+   is skipped too, log it as a step 3 error and go to the report. Otherwise a sync prints nothing until its
+   report; if it seems stuck, a macOS prompt may be waiting for me, so tell me and keep waiting. sync and curate
    print their NEXT: line even when they exit non-zero (curate exits 1 while it lists errors for you to fix):
    follow it, and go to the report only when no NEXT: line was printed. Repeat until the NEXT: line itself says
    "session done". Step 2's NEXT: line does not count, even when it already said "session done": step 2's
@@ -584,10 +590,12 @@ the name in fix-request.md.
    carried is not repeated, only listed there, by its hash when it can be read); if the report's run printed that
    bring-back.md could not be written, say so, do not name ~/agent-context/bring-back.md, and name the files the NEXT:
    line says to copy back instead; if the report's NEXT: line says bring-back.md does not hold a kept patch, name
-   ~/agent-context/bring-back.md and then tell me, in that line's words, which file in
-   ~/agent-context/setup/local-work to make readable and that I should run the report again before I copy the file
-   back; do not change that file or run the report again yourself; if no report ran this session, or you are waiting
-   for my folder answer, say "none" for that file instead, and do not point me to an older bring-back.md.
+   ~/agent-context/bring-back.md and then tell me, in that line's words, how many kept patch files in
+   ~/agent-context/setup/local-work this account cannot read, that I should make them readable (chmod u+r) and
+   run ~/src/agent-context-sync/scripts/install.sh --report-only again before I copy the file back; name no patch
+   file (a patch's file name carries its commit's subject); do not change those files or run the report again
+   yourself; if no report ran this session, or you are waiting for my folder answer, say "none" for that file
+   instead, and do not point me to an older bring-back.md.
 ```
 
 <details>

@@ -23576,6 +23576,10 @@ unchanged. T29's reorder (check `[governance]` before the write) stays not built
 agentsync, one folder and two), `test_setup_report.py::test_the_folders_line_counts_what_was_kept_added_and_named`
 (U40's case); a refusal with nothing written keeps "failed"
 (`test_a_failed_add_source_still_fails_the_run_through_the_filter`).
+Amended 2026-10-19, §16.136 V47: the mark decides on any nonzero exit, not exit 78 alone (add-source also exits 1
+after the block on a docs-repo remote [governance] does not allow), the cause worded from the code and
+`docs_remotes_refused`, and the log line carries the real code; V26: the call's stderr is printed after its `added
+source` block, and the error says `(the configuration error just above)`.
 
 **A failure inside the config step keeps every folder in its re-run** (U63; amends §16.123 T22). T22's heading, "A
 re-run names no folder the config step added", read as if a NEXT written inside the add-source loop dropped the
@@ -23617,6 +23621,9 @@ check. v26's step 1 tells the person (below). Tests: `test_list_folders_says_ste
 `test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_checkouts` (and an older build without
 `load_policy`: "(none is needed)"), `test_list_folders_is_as_before_when_the_vanished_source_reader_reads_nothing`
 (a manifest that is no database now names the state file).
+Amended 2026-10-19, §16.136 V9, V21, V36: `config_errors` also prints `remote` (a docs-repo remote `[governance]`
+does not allow, read only when that table loads) and `state-table` (a table page that cannot be read under a schema
+that reads), which the NEXT names; the second stops step 2 at its status or first sync, not its config step.
 
 **Setup prompt v26** (U29, U32, U97 and U12's prompt half; lane E's and U2's words). U12, U29, U32 and U97 need prompt
 text, so the prompt is **setup prompt v26**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v26` and
@@ -23654,6 +23661,10 @@ Tests: `test_the_prompt_text_changes_only_with_its_version` (`PROMPT` 26), `test
 (`GIT_REMOTE_QUERY`, `PERSONS_COMMANDS`, the log rule's parenthesis), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`
 (`CONFIG_STOP_TOLD`, `FAIL_IS_MINE`), the finish's pin with `UNREAD_PATCH_TOLD`, and the version lists in
 `test_setup_report.py` and `test_install_oneshot.py`; register `docs/deploy/setup-feedback.md` K50.
+Amended 2026-10-19, §16.136 V33, V70: v27's quote names the configured URL, `git -C ~/src/agent-context-sync config
+--get remote.origin.url` (`remote get-url` applies a URL rewrite, as H21 measured), and only when the checkout
+exists; V29: the shell report has the install source line too. V12, V17, V32, V79: v27's finish gives the count, the
+chmod and the report's command, and names no file.
 
 ### 16.131 Round 17: vanished sources, the manifest checks and the CLI's words (2026-10-19, wave B13 round 17 lane B)
 
@@ -24247,6 +24258,112 @@ worse). The guide quotes section 3's `not sent:` form beside its two `not repeat
 `test_step_2_says_a_patch_this_account_cannot_read_is_the_persons`,
 `test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable` (the whole NEXT, no file name, no `this command`),
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+**Step 1 names a docs-repo remote [governance] refuses and a damaged table page** (V9, V21, V36; amends §16.130 U12).
+`config_errors` printed only `policy`, `governance` and `state`, so the `--list-folders` NEXT ended `(none is
+needed)` over a docs-repo remote that `[governance]` does not allow, which init and add-source then exit 1 on in step
+2's config step (probe GR), and over a manifest whose schema reads but a table page does not, which step 2's status or
+its first sync stops on (probe TD). Inside the same reader, under the same 5 s timeout and fail-silent guard:
+- `remote`, when `load_governance` loads (never after `governance`, which `_ensure_setup` stops on first) and
+  `governance.remote_policy_findings` finds a remote in a docs repo that has a `.git`, the check `cli._refuse_remotes`
+  makes. Every exception is caught (a git call's `CalledProcessError`, an older build's `ImportError`), so it cannot
+  take the other words with it, and the finding's text, which names the URL, is never printed. Not
+  `docs_remotes_refused` from `list_folders`: a second Python spawn of up to 10 s (V9's verifier). The clause is `a git
+  remote on the docs repo that [governance] does not allow`, in the shared `step 2 stops at its config step on ...`
+  frame, with the reinstall-first form for an older build.
+- `state-table`, when `manifest_unreadable` reads the schema but a read-only `SELECT 1 FROM "<table>" LIMIT 1` of a
+  table fails with an error `unreadable_code` accepts (SQLITE_CORRUPT or SQLITE_NOTADB). `manifest_unreadable` itself,
+  which init's exit 65 and status share, is unchanged (V21's verifier). Init reads only the schema, so this passes the
+  config step: the clause is its own, `; step 2 stops on agentsync's state file, part of which cannot be read (at its
+  status or its first sync): fixing that is the person's, and the step that stops prints the error`. It catches a
+  damaged first page of a table; damage deeper in a table still shows only at a read of it.
+The log line adds `config_err=remote` or `config_err=state-table`; no host is in the NEXT or install.log. v27's step 1
+reads a stop at step 2's config step, status or first sync alike (below). Test:
+`test_list_folders_says_step_2_stops_on_a_config_it_refuses` (GR, TD, and a remote `[governance]` allows, which ends
+`(none is needed)`).
+
+**An add-source that wrote the block says so on any exit, after its block** (V47, V26; amends §16.130 U40). U40's
+branch read only exit 78, so an add-source that wrote the folder's block and then exited 1 on a docs-repo remote
+`[governance]` does not allow (`_ensure_setup`'s `_refuse_remotes`, after the write) said `error: agentsync add-source
+<folder> failed`, logged `step=config rc=1 result=failed` with no note, and the report dropped the add. The mark (the
+call printed `added source `, which comes only after a validated write) now decides on any nonzero exit, and the code
+only words the cause: exit 78, `but agentsync refuses the config (the configuration error just above)`; exit 1 with
+`docs_remotes_refused` above 0, `but the docs repo has a git remote [governance] does not allow (the governance: line
+above)`; any other, `but agentsync add-source failed after adding it (see the error above)`; each keeps `; the N
+folder(s) after it were not added`. The log line is `step=config rc=<the code> result=failed
+note=added-then-refused[ kept=K added=N]`; the report keys on the note. config_failed's NEXT, chosen by the code, is
+unchanged. V26: install.sh's stdout and stderr go through two tees, and awk's piped stdout is held in a buffer until it
+exits, so the call's `configuration error:` line reached the terminal before its `added source` block. The call's
+stderr now goes to a file, printed once the pipeline ends, on success too (a `governance:` line), before the held lines
+and the error; add-source writes only short lines to stderr and no ticker, so nothing a person watches is delayed. The
+re-run still names every folder: an added one reads `already configured`, and naming only `$BASE_ARGS` would drop the
+folders after the refused one (V26's verifier). Tests:
+`test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle` (add-source: the block stays, the log
+line, the cause, no `add-source ... failed`), `test_a_folder_added_before_agentsync_refuses_the_config_is_no_failed_add`
+(the new error words; in one stream, the block, then the configuration error, then the error line).
+
+**Both reports' install source line reads the configured origin** (V29, V70; amends §16.130 U32). v26's git quote
+says the report's install source line says `origin: other` for a checkout whose remote is not GitHub, and only the
+agentsync report had that line: on a new Mac with a mirror checkout and no agentsync, the shell report said nothing
+of it (probes am, remsh). The shell report's Summary now ends `- install source: checkout ~/src/agent-context-sync ·
+origin: <github.com/renchris/agent-context-sync | other (redacted) | none>`, or `- install source: no checkout at
+~/src/agent-context-sync`: the last `url` of `[remote "origin"]` in the checkout's own config files
+(`checkout_git_configs`, config.worktree last), labelled by install.sh's `origin_label`, the regex of
+`setup_report.origin_label`; never the URL, and no git process, which offers to install the developer tools without
+them (V29's verifier: the finder's `git config --get` made things worse). Last in the Summary, as the agentsync
+report's line is in its Summary's last block (the Summary's other lines keep their order). V70: `remote get-url`
+applies a URL rewrite (§16.72 H21), so a GitHub origin under a rewrite alone read `other`; `_checkout_facts` labels
+`config --get remote.origin.url` and adds ` (a URL rewrite sends it elsewhere)` when `remote get-url`'s URL labels
+otherwise, never the host; `newer_copy_fix` reads the configured URL too, so a rewrite alone no longer reads as a
+checkout that follows another remote. A fork on GitHub stays `other (redacted)`. Tests:
+`test_the_shell_reports_origin_label_is_the_agentsync_reports` (12 URLs, both labels alike),
+`test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror, GitHub's scp form, no URL, no
+checkout), `test_setup_report.py::test_install_source_reads_the_configured_origin_and_says_a_rewrite_changes_it`,
+`test_a_copy_newer_than_the_checkout_is_told_what_fixes_it` (the rewrite case).
+
+**The vanished source's re-add under install.sh** (V8). Step 1's tail names one `--source-local "<folder>"` and step
+2's `[FAIL] config.vanished_sources` named `~/.local/bin/agentsync add-source '<folder>'`, which the setup prompt
+tells the agent not to run. Lane B builds the verifier's fix in the vanished-source tail its V7 shares (§16.137):
+under `AGENTSYNC_NO_NEXT_HINT=1`, `~/src/agent-context-sync/scripts/install.sh --source-local "<folder>"`, quoted as
+install.sh's `shown_arg` quotes it; elsewhere add-source, the operator's re-add. Measured here: install.sh's closing
+status, the one call with that variable unset, does not run after a status-step `[FAIL]`, so it needs no variable of
+its own.
+
+**Setup prompt v27** (V12, V17, V24, V32, V33, V39, V70, V79 and V21's prompt half; lane B's V40 words). The prompt is
+**setup prompt v27**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v27` and `setup-prompt-compat 27`,
+the issue form's placeholder, setup-feedback.md's version lists and the block's digest move together, and a saved v26
+copy is stopped at step 1 like every older copy. v27 moves no step, so it has no `PROMPT_LAYOUTS` entry; it adds no
+agentsync command, installer flag, config key or friction kind. Lanes that sent words: lane B (its V40, the lock
+wait's three openings); lane RB sent none (V12, V17, V32 and V79 need no NEXT words beyond the command this lane put
+in the report's NEXT). Lane RA, E and D sent none.
+- Step 1 (V21): `If it says step 2 stops on something (at its config step, its status or its first sync), tell me
+  what it names and that fixing it is mine, and still go on to step 2.`
+- Step 1's other-git-failure quote (V33, V70): the first way is `this checkout's own remote, if
+  ~/src/agent-context-sync exists, which `git -C ~/src/agent-context-sync config --get remote.origin.url` prints and
+  which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the cause after a clone
+  that failed, since that leaves no folder`. The configured URL, since `remote get-url` prints a rewrite's host, which
+  the next way names; the condition, since after a failed clone that query fails (probe brw). Still sentences with no
+  parenthesis (H21), and still four commands for the person.
+- Step 3 (V24, V39): `A sync prints nothing while it works` is now `A sync can take many minutes. While it works it may
+  print a line saying it is waiting: for the sync lock, up to 10 minutes (a line starting "another sync is running",
+  "another sync is still running" or "the lock is held by"), or for new inbox files to settle, up to a minute; then it
+  goes on by itself. Those waits are expected, not deviations: do not log them. If a sync then ends "skipped: lock
+  held" with no NEXT: line, run the same sync once more before going to the report; if that one is skipped too, log
+  it as a step 3 error and go to the report. Otherwise a sync prints nothing until its report; ...`. The openings are
+  cycle.py's (lane B's V40 adds the third, for an empty lock body); the settle wait is described, not quoted (V39's
+  verifier).
+- The finish (V12, V17, V32, V79): `tell me, in that line's words, how many kept patch files in
+  ~/agent-context/setup/local-work this account cannot read, that I should make them readable (chmod u+r) and run
+  ~/src/agent-context-sync/scripts/install.sh --report-only again before I copy the file back; name no patch file (a
+  patch's file name carries its commit's subject); do not change those files or run the report again yourself`. v26
+  asked which file, which no line names, by design. No command in a code span: it is the person's, and the block's
+  command list holds the agent's (`--report-only` is step 3's last command already). No literal `chmod ... *.patch`
+  glob: chmod follows the links the report skips (V79's verifier).
+Tests: `test_the_prompt_text_changes_only_with_its_version` (`PROMPT` 27), `test_readme_step1_is_one_command`
+(`GIT_REMOTE_QUERY`), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`CONFIG_STOP_TOLD`), the finish's
+pin with `UNREAD_PATCH_TOLD`, `test_step_3_calls_a_syncs_waits_expected_and_retries_a_lock_skip` (`SYNC_WAITS`, and
+the code that prints each opening it can today), and the version lists in `test_setup_report.py` and
+`test_install_oneshot.py`; register `docs/deploy/setup-feedback.md` K51.
 
 ### 16.137 Round 18: the report's doctor hook, the CLI's words and the lock wait (2026-10-19, wave B13 round 18 lane B)
 

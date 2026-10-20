@@ -571,7 +571,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (26, "bf0cb172efac8f494e49a68971224dc26cb9178f5c7e27d57f9982752475960d")
+PROMPT = (27, "43c814dc40a700374a3ba4d07684411e548f7e2f0398f230a4e862df344c8ec4")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -725,9 +725,12 @@ PERSONS_COMMANDS = "(those four commands are mine to run in my own terminal: do 
 """What follows the git stop's quote since v18: its commands are the person's (B13 round 9 K31); four since
 v26, the checkout's own remote first (B13 round 17 U32)."""
 
-GIT_REMOTE_QUERY = "git -C ~/src/agent-context-sync remote get-url origin"
+GIT_REMOTE_QUERY = "git -C ~/src/agent-context-sync config --get remote.origin.url"
 """What the git stop's quote names first since v26: this checkout's own remote, which step 1's pull reads and
-which a company mirror changes (B13 round 17 U32; the report's install source line says `origin: other`)."""
+which a company mirror changes (B13 round 17 U32; the report's install source line says `origin: other`).
+Since v27 by its configured URL: `remote get-url` applies a URL rewrite, which the quote's next way names, so
+a rewrite alone read as a mirror remote (B13 round 18 V70); and only once there is a checkout: a clone that
+failed leaves no folder, and the query then fails (V33)."""
 
 GIT_REWRITE_QUERY = "git config --get-regexp '^url\\..*\\.insteadof$'"
 GIT_PROXY_QUERY = "git config --get-urlmatch http.proxy https://github.com"
@@ -1004,8 +1007,9 @@ def test_readme_step1_is_one_command() -> None:
         'If git failed any other way, show me its error and tell me: "A corporate proxy may need HTTPS_PROXY '
         "set in your terminal. If git's error names a host other than github.com, git was told to use that "
         "host in one of four ways, and any of them may point at a network this Mac is not on: this "
-        f"checkout's own remote, which `{GIT_REMOTE_QUERY}` prints and which this setup expects to be "
-        "https://github.com/renchris/agent-context-sync.git; a URL "
+        f"checkout's own remote, if ~/src/agent-context-sync exists, which `{GIT_REMOTE_QUERY}` prints and "
+        "which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the cause "
+        "after a clone that failed, since that leaves no folder; a URL "
         f"rewrite, which `{GIT_REWRITE_QUERY}` prints; git's own proxy setting, which `{GIT_PROXY_QUERY}` "
         "prints and which wins over the terminal's; or the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or "
         "all_proxy, which `env | grep -i proxy` shows. Once git can reach GitHub, or the remote this "
@@ -2563,7 +2567,7 @@ def test_readme_step3_runs_the_loop_then_the_report() -> None:
     assert 'f"added source {sid!r} to {config.config_path}{note}:"' in Path(cli.__file__).read_text(
         encoding="utf-8"
     ), "the words the finish keys on are add-source's own, printed only for a folder it writes"
-    assert '</dev/null | add_source_filter "$nth"' in SCRIPTS[0].read_text(encoding="utf-8"), (
+    assert '</dev/null 2>"$ERRF" | add_source_filter "$nth"' in SCRIPTS[0].read_text(encoding="utf-8"), (
         "step 2 passes add-source's lines on (the filter drops only its summary lines)"
     )
     assert "the folders synced (full paths)" not in finish
@@ -2940,13 +2944,17 @@ gone from disk too, and doctor's fix and the wait name that (B13 round 16 T72)."
 
 UNREAD_PATCH_TOLD = (
     "if the report's NEXT: line says bring-back.md does not hold a kept patch, name"
-    " ~/agent-context/bring-back.md and then tell me, in that line's words, which file in"
-    " ~/agent-context/setup/local-work to make readable and that I should run the report again before I"
-    " copy the file back; do not change that file or run the report again yourself;"
+    " ~/agent-context/bring-back.md and then tell me, in that line's words, how many kept patch files in"
+    " ~/agent-context/setup/local-work this account cannot read, that I should make them readable (chmod"
+    " u+r) and run ~/src/agent-context-sync/scripts/install.sh --report-only again before I copy the file"
+    " back; name no patch file (a patch's file name carries its commit's subject); do not change those files"
+    " or run the report again yourself;"
 )
 """The finish's words, since v26, for a report whose bring-back.md lacks a kept patch it could not read (B13
 round 17 U29): the person makes it readable and runs the report; the agent neither, since the report is the
-last command it runs."""
+last command it runs. v26 asked which file, and no line names one, by design: a patch's file name carries
+its commit's subject; since v27 the count, the chmod and the report's command, no file (B13 round 18 V12,
+V17, V32, V79)."""
 
 MIRRORED_NO_BLOCK = (
     "If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell"
@@ -2959,13 +2967,14 @@ status FAILed on it. Before the two exceptions, so both lists' tails reach it; t
 person's to choose, since deleting a block may have been a deliberate stop."""
 
 CONFIG_STOP_TOLD = (
-    "If it says step 2 stops at its config step on something, tell me what it names and that fixing it is"
-    " mine, and still go on to step 2."
+    "If it says step 2 stops on something (at its config step, its status or its first sync), tell me what it"
+    " names and that fixing it is mine, and still go on to step 2."
 )
 """Step 1's words, since v26, for the list's tail on a config step 2's config step will stop on: a policy.toml
 or [governance] value that does not load, or a state file that cannot be read (B13 round 17 U12). v25 had
 none, and the list said "(none is needed)" over it. Step 2 still runs: it stops at its config step with a
-NEXT that names the stop as the person's."""
+NEXT that names the stop as the person's. Since v27 also at its status or first sync: a damaged table page
+passes the config step, and step 1's list now says so (B13 round 18 V21)."""
 
 PERSONS_NEXT = (
     "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the"
@@ -6373,6 +6382,36 @@ def test_a_page_read_that_says_neither_can_disagree_with_the_tsv() -> None:
     assert (
         "Amended 2026-10-15, §16.97 M79: so can a stub whose page was read but says neither withheld" in s91
     )
+
+
+SYNC_WAITS = (
+    "A sync can take many minutes. While it works it may print a line saying it is waiting: for the sync"
+    ' lock, up to 10 minutes (a line starting "another sync is running", "another sync is still running" or'
+    ' "the lock is held by"), or for new inbox files to settle, up to a minute; then it goes on by itself.'
+    ' Those waits are expected, not deviations: do not log them. If a sync then ends "skipped: lock held"'
+    " with no NEXT: line, run the same sync once more before going to the report; if that one is skipped"
+    " too, log it as a step 3 error and go to the report. Otherwise a sync prints nothing until its report;"
+    " if it seems stuck, a macOS prompt may be waiting for me, so tell me and keep waiting."
+)
+"""Step 3's words, since v27, for what a sync prints while it works (B13 round 18 V24, V39, with lane B's V40
+openings): v26 said a sync prints nothing, and called no wait expected, so an agent following the friction-log
+rule logged a foreground sync's lock wait and its inbox settle wait as deviations; and a sync that waited out
+the lock ends "skipped: lock held" with no NEXT: line, which sent the loop to the report early."""
+
+
+def test_step_3_calls_a_syncs_waits_expected_and_retries_a_lock_skip() -> None:
+    """The step 3 sentence on a sync's waits (:data:`SYNC_WAITS`), and the code that prints what it names: the
+    lock wait's openings (cycle._acquire_waiting; "the lock is held by" is lane B's V40 line for an empty lock
+    body), the inbox settle wait (arm_local) and the lock skip (cli). v26's "prints nothing while it works" is
+    gone."""
+    step3 = _prompt_steps()[3]
+    assert SYNC_WAITS in step3, step3
+    assert "prints nothing while it works" not in step3
+    src = ROOT / "src" / "agentsync"
+    cycle = (src / "cycle.py").read_text(encoding="utf-8")
+    assert '"another sync is running (' in cycle and '"another sync is still running (' in cycle
+    assert "still settling; waiting " in (src / "arm_local.py").read_text(encoding="utf-8")
+    assert 'f"skipped: lock held by ' in (src / "cli.py").read_text(encoding="utf-8")
 
 
 def test_the_guide_names_step_3s_four_cases_with_no_report() -> None:
