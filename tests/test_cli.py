@@ -3264,6 +3264,13 @@ def test_damage_under_any_table_fails_status_and_stops_the_sync(
         assert [ln for ln in text if "see Doctor's state_dir.manifest line" in ln], text
         assert len([ln for ln in text if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, text
         assert [ln for ln in text if ln.startswith("- doctor: 1 FAIL")], text
+        # B13 round 20 X80: the Loop line's NEXT is the loop's own, which the damage does not reach; it says
+        # beside it that the report's read found the file damaged
+        (loop_line,) = [ln for ln in text if ln.startswith("- Loop: ")]
+        assert (
+            " (the loop's own read; the report's read of the state file found it damaged: the "
+            "state_dir.manifest [FAIL] line under Doctor says what to do first)" in loop_line
+        ), loop_line
         for i in range(160):  # every file changes, so the sync reads every row
             (expand(src.path) / "bulk" / f"note-{i:03d}.txt").write_text(
                 f"Contoso {i} v2.\n", encoding="utf-8"
@@ -3337,6 +3344,7 @@ def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_stat
     (loop_line,) = [ln for ln in text.splitlines() if ln.startswith("- Loop: ")]
     assert "NEXT: the state_dir.manifest check failed: " in loop_line, loop_line
     assert "NEXT: none" not in loop_line, loop_line
+    assert "the report's read of the state file found it damaged" not in loop_line, "doctor's own FAIL (X80)"
     assert "WAITING ON YOU:" not in loop_line, loop_line
     (warn,) = [ln for ln in text.splitlines() if ln.startswith(f"[warn] heartbeat.{sid} ")]
     assert warn.endswith(f"({doctor.LISTING_STATE_UNREADABLE_NOTE})"), warn

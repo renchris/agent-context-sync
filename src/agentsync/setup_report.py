@@ -3127,6 +3127,9 @@ class _Facts:
     # those lines by why (the words in their bracket; a bare one is the time limit's), B13 round 18 V15, V35
     evidence_why: Counter[str] = dataclasses.field(default_factory=Counter)
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
+    evidence_damage_failed: bool = (
+        False  # Doctor has a state_dir.manifest FAIL only the evidence read gave (X80)
+    )
 
 
 _PANDOC_FROM_DOCTOR = "\x00from the doctor's pandoc check"
@@ -5687,7 +5690,18 @@ def _with_evidence_damage(r: _Run, config: Config, lines: list[str]) -> list[str
 
     failed = doctor.format_results([doctor.manifest_damaged(expand(config.state_paths.db), exc)]).splitlines()
     at = max((i + 1 for i, n in enumerate(names) if n is not None and n.startswith("state_dir.")), default=0)
+    r.facts.evidence_damage_failed = True  # the Loop line says so beside its NEXT (B13 round 20 X80)
     return [*lines[:at], *failed, *lines[at:]]
+
+
+_DAMAGE_SEEN = (
+    "the report's read of the state file found it damaged: the state_dir.manifest [FAIL] line under Doctor "
+    "says what to do first"
+)
+"""What the Loop line adds when Doctor's state_dir.manifest FAIL came from the evidence read alone
+(:func:`_with_evidence_damage`): the loop's own read misses damage deep in a table, so its NEXT is the
+ordinary one, which ends in a sync that stops on the damage (B13 round 20 X80; the words of doctor's
+``LISTING_STATE_UNREADABLE_NOTE``). When doctor FAILs it itself, the NEXT is already rule 1's."""
 
 
 _STATUS_UNREAD = "status: cannot read the state:"
@@ -9945,16 +9959,19 @@ def _loop_line(r: _Run) -> str:
     if r.config is None:
         why = "no sources.toml yet" if r.config_missing else "the config does not load"
         return f"- Loop: {stage}; NEXT: not read ({why})"
+    damaged = f"; {_DAMAGE_SEEN}" if r.facts.evidence_damage_failed else ""  # B13 round 20 X80
     if r.hooks.loop_next is None:
-        return f"- Loop: {stage}; NEXT: not read (no loop hook)"
+        return f"- Loop: {stage}; NEXT: not read (no loop hook){damaged}"
     config, next_fn = r.config, r.hooks.loop_next
     try:
         got = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
         lines = [_eval_by_name(ln, config) for ln in (got if isinstance(got, list) else got.lines())]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
-        return f"- Loop: {stage}; NEXT: not read ({_why_not_read(exc)})"
+        return f"- Loop: {stage}; NEXT: not read ({_why_not_read(exc)}){damaged}"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
     text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
+    if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
+        text += f" (the loop's own read; {_DAMAGE_SEEN})"
     waits = [ln for ln in lines if ln.startswith("WAITING ON YOU: ")]
     if waits:
         shown = _stopped_wait(found, waits)
