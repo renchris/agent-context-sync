@@ -7158,6 +7158,11 @@ show_first_sync() { # RC
 				if ($i == "of" && $(i + 1) == "them" && (($(i + 2) == "a" && $(i + 3) == "first") ||
 					($(i + 2) == "read" && $(i + 3) == "for"))) { x = $(i - 1); gsub(/[^0-9]/, "", x); f += x } } }
 			END { printf "converted-%d-deferred-%d", c, d; if (r > 0) { printf "-reread-%d", r; if (f > 0) printf "-first-%d", f } }')"
+		# the upgrade's one-time retry note (cli, B13 round 19 W18), which a sync that exits 0 printed only into
+		# SYNC_OUT: shown after the summary, never fed to the awk above (B13 round 20 X85); other notes keep
+		# their own handling
+		LC_ALL=C grep -E '^[[:space:]]*note: .* an older build gave up on ' "$SYNC_OUT" 2>/dev/null |
+			LC_ALL=C sed "s/^[[:space:]]*/$SYNC_LABEL: /" || true
 	else
 		cat "$SYNC_OUT" 2>/dev/null || true
 	fi

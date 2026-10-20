@@ -1097,6 +1097,26 @@ def test_a_rerun_on_a_configured_mac_says_sync_and_that_background_sync_is_insta
     assert done.count(("agent", "skipped", "0", "not-requested")) == 2
 
 
+def test_the_first_sync_shows_the_upgrades_retry_note(env: dict[str, str], folder: Path, wheel: Path) -> None:
+    """B13 round 20 X85: on exit 0 show_first_sync printed only the summary lines, so the note agentsync's
+    sync prints when it gives an older build's settled failures their retries (B13 round 19 W18) stayed in
+    the captured output, on the very run that moves them: an upgrade's first sync. It is shown after the
+    summary with the step's label, and stays out of install.log's note, which the report reads by its fields.
+    The note is in lane E's round 20 X53 words; install.sh keys on "an older build gave up on" alone."""
+    note = (
+        "  note: 1 conversion an older build gave up on is tried again, up to 2 times in the syncs of its "
+        "source from this one on; its error may show again until then"
+    )
+    e = {**env, "STUB_SYNC_OUT": f"  alpha: converted 1, deferred 0 online-only\n{note}"}
+    cp = install_sh(e, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    out = cp.stdout.splitlines()
+    shown = "first sync: " + note.strip()
+    assert out.count(shown) == 1, cp.stdout
+    assert out.index("first sync: alpha: converted 1, deferred 0 online-only") < out.index(shown)
+    assert ("first-sync", "done", "0", "converted-1-deferred-0") in steps(install_log(env))
+
+
 def test_first_sync_lock_busy_is_skipped_not_failed(env: dict[str, str], folder: Path, wheel: Path) -> None:
     cp = install_sh(
         {**env, "STUB_SYNC_RC": "75"}, str(wheel), "--source-local", str(folder), "--confirm-install-agent"

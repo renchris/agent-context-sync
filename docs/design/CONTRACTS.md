@@ -25359,6 +25359,8 @@ the summary lines (`show_first_sync`). The INFO line stays for err.log and `-v`;
 not used, as its logger prefix reads as an alarm. Tests:
 `test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once`,
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`.
+Amended 2026-10-20, §16.147 X85: install.sh's first sync shows the note too, after its summary line and with the
+step's label (`sync: note: ...`); the Repeat conversions line stays for the cycles nobody watches.
 
 **The run tally's docstring names the wait (W53; `agentsync.cycle`).** `_Cycle._run_tally` still said "a later run
 with none converted the file or gave it up", the sentence V75 corrected in the run record bullet, the report and
@@ -25716,6 +25718,16 @@ advice. Prompt v29 relays this clause (lane P's X3, which has these words). Test
 `test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review` (a W4 slow-doctor line and a
 busy-only evidence line from `_evidence_line`, each with and without an unreadable patch; no NEXT says "time
 limit").
+
+**install.sh's first sync shows the upgrade's retry note** (X85; amends §16.144 W18). On exit 0 `show_first_sync`
+printed only the lines that match `SYNC_SUMMARY_RE`, so the sync's `note: N conversion(s) an older build gave up
+on ...` line stayed in the captured output, on the run most likely to print it: an upgrade's first sync under the
+new build. It is now printed after the summary with the step's label (`sync: note: ...` or `first sync: note:
+...`), read by its own `grep` and never fed to the awk that builds `FIRST_SYNC_NOTE`, so install.log's
+`converted-N-deferred-M` gains no field. Only that note: the stale-lock note and the lock-wait mark keep their own
+handling. Lane E's X11 is the same defect and cites this sha. Test: `test_the_first_sync_shows_the_upgrades_retry_note`
+(a stub sync that prints the note and exits 0: one labeled line after the summary, install.log's note
+unchanged).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
