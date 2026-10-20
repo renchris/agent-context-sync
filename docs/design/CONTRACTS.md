@@ -24745,3 +24745,16 @@ the guide's reinstall note) and that a 71 at every run means re-running the inst
 launcher's pin as well; doctor's own fix (`install-agent`, from the environment agentsync now runs in) is lane B's
 and stays. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which reads 71 from
 main.swift beside 64 and 80, and the §16.14 pin in `_ROUND_19_D_PARAGRAPH_AMENDS`.
+
+**CI's time and its limit** (W80). CLAUDE.md said `ci` takes 15 to 20 minutes; the four green runs on main before
+this round took 23 to 24 of the job's 30 (pytest 22:25 to 23:32 at 5105 to 5120 tests). The verifier asked first
+for the slow tests that grew between c342bb2e and 4d090c1a (+137 s for 30 tests). Measured: the same 5120 tests
+and source ran 23:32 (6e7ae244) and then 20:23 (fba3908a; the two differ only in docs and three test regexes), so the runner's own spread, about 3 minutes, covers that
+jump, and a `--durations=40` run of the eleven test files that diff touched puts no test it added among the
+slowest (the four slowest, 30 to 45 s under a load of 22 per core, are older). With no outlier to cut, its third
+step is built: `timeout-minutes` is 40 (a public repository, so a hung job costs no billed minutes), and
+CLAUDE.md gives 19 to 24 minutes and the new limit in the same commit. Test:
+`test_claude_md_gives_cis_time_and_its_limit`, which reads the limit from ci.yml and holds it 10 minutes above
+the range's top.
+
+All nine are built; none was recorded as making things worse. W44, W59 and W60 are one defect, built once.

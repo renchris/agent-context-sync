@@ -14,6 +14,11 @@ name: ci
 #
 # pytest runs with `-n auto` (pytest-xdist, locked in the dev group): one worker per runner core. The same flag
 # is in CLAUDE.md's gate list; change both together.
+#
+# timeout-minutes was 30 until B13 round 19 W80: the job took 23 to 24 minutes on the four green runs before it,
+# and the same 5120 tests and source took 23:32 on one run and 20:23 on the next (6e7ae244, fba3908a: docs and
+# three test regexes apart), so the runner's own spread (about 3 minutes) and a round's new tests left too
+# little margin. No test added in the jump was an outlier to cut.
 on:
   workflow_dispatch:
   push:
@@ -30,7 +35,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

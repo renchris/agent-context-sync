@@ -194,15 +194,21 @@ def test_a_weekly_check_follows_the_download_hosts_the_it_request_names() -> Non
 def test_claude_md_gives_cis_time_and_its_limit() -> None:
     """B13 round 17 U112: CLAUDE.md said `ci` takes about 6 minutes, the October 6 figure; its test job took
     15 to 20 minutes in round 16's runs, so a reader timing the read-back loop by it would think CI stuck. It
-    gives the measured range and the job's limit, the `timeout-minutes` of ci.yml's one job, read here."""
+    gives the measured range and the job's limit, the `timeout-minutes` of ci.yml's one job, read here. B13
+    round 19 W80: the job then took 23 to 24 of its 30 minutes, and the same tests and source 23:32 on one run
+    and 20:23 on the next; the range is the measured one, and the limit keeps at least 10 minutes above its
+    top."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
-    assert "about 6 minutes" not in guide
+    assert "about 6 minutes" not in guide and "about 15 to 20 minutes" not in guide
     assert (
-        "`ci` takes about 15 to 20 minutes once its job starts (measured October 2026), plus any wait for a "
-        f"macOS runner; the job's limit is {limit} minutes (`timeout-minutes` in ci.yml)."
+        "`ci` takes about 19 to 24 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
+        " the same tests and source ran 23.5 and then 20 minutes on two runs), plus any wait for a macOS"
+        " runner; the job's"
+        f" limit is {limit} minutes (`timeout-minutes` in ci.yml)."
     ) in guide
+    assert int(limit) - 24 >= 10
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:
