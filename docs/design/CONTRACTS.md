@@ -23362,6 +23362,7 @@ still names install.sh's own doctor's warns and FAILs from install.out, which do
 `test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code`,
 `test_the_pandoc_line_is_the_pandoc_the_converters_run`.
 Amended 2026-10-19, §16.134 V3, V49, V4, V81: the cut-off seconds are the wait the doctor call was given, the one float Doctor's own line names (`did not finish within N s`), not what was left after the cut; the doctor gets at least `_DOCTOR_GRACE_S` (20 s), and one still cut off says so in Doctor and in the Summary with the advice to write the report again when the Mac is idle; with no doctor hook a start past its limit gives `_PANDOC_SLOW_START` for the bundled pandoc only and `_PANDOC_BUSY_START` for a native or configured one, as §16.132 U104 does.
+Amended 2026-10-20, §16.140 W4: a doctor cut off after the report moved its deadline for it reads `cut off after N s, the wait the report gives a slow doctor`, and its pandoc line `cut off (see Doctor)`; `the report's time limit` stays for a doctor given its own share.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
@@ -24081,6 +24082,7 @@ copy only and `_PANDOC_BUSY_START` for a native or configured one, as doctor doe
 `test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again`,
 `test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bundled_copy_only`,
 `test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code`.
+Amended 2026-10-20, §16.140 W4: a doctor cut off past the grace reads `did not finish within N s, the wait the report gives a slow doctor (it moves its B s time limit for one; see Run metadata)`, and the Summary `cut off after N s, the wait the report gives a slow doctor`; `the report's time limit` names only a doctor that kept its own share.
 
 **The docs-repo remote is read only for doctor's remote FAIL** (V55). The Summary ran
 `governance.remote_policy_findings` (git remote, then get-url per remote, each with an hour's timeout) for every
@@ -24746,7 +24748,24 @@ turns the dated-line test red, so every dated line here has a claim or a pin.
 
 ### 16.140 Round 19: setup report (2026-10-20, wave B13 round 19 lane RA)
 
-Reserved for round 19 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 19").
+Lane RA's round 19 items (`docs/plans/bring-back-ocr.md`, "B13 round 19"; specs `round19/items/W<n>.md`, the
+verifier's corrected fix built unless said): W3, W4, W6, W9, W17, W35, W37, W45, W52, W54, W64 and W68. W52 and W68
+are one defect from two finders, built once. Where an item changes what an older section states, that section has a
+dated line (`Amended 2026-10-20, §16.140 W<n>`).
+
+**A slow doctor's cut-off seconds are its own wait, not the report's time limit** (W4, W37; amends §16.128 U48 and
+§16.134 V3). The doctor gets at least `_DOCTOR_GRACE_S` (20 s) by moving the report's deadline, so a doctor cut off
+after that move showed `cut off by the report's time limit after 20.0s` beside Run metadata's `time limit 12s`.
+`_doctor` notes the move where it makes it (`r.doctor_grace` is set only in its `finally`, after the words) and
+keeps it in `facts.doctor_cut_off_moved`; then Doctor reads `Cut off: the doctor call did not finish within N s,
+the wait the report gives a slow doctor (it moves its B s time limit for one; see Run metadata); <advice>.`, the
+Summary `- doctor: cut off after N s, the wait the report gives a slow doctor (see Doctor)` and the Environment's
+pandoc line `not checked: the doctor call was cut off (see Doctor)`, B being the report's budget, never a literal.
+A doctor given its own share (no move) keeps `the report's time limit`. W37: a doctor the budget never started
+(`doctor_cut_off` 0.0) made the pandoc line say the call was cut off; it reads `not checked: the report's time
+budget was used up before doctor started (see Doctor)`, as Doctor and the Summary do. Tests:
+`test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again`,
+`test_the_summarys_doctor_cut_off_seconds_are_the_limit_the_doctor_section_names`.
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 

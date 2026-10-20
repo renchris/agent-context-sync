@@ -3006,6 +3006,9 @@ class _Facts:
     # the seconds the doctor call was given when the time limit cut it off, the limit the Doctor section names
     # (B13 round 18 V3, V49); 0.0: the budget was used up before it started
     doctor_cut_off: float | None = None
+    # the report moved its time limit to give that doctor _DOCTOR_GRACE_S, so its seconds are not the report's
+    # time limit, which Run metadata names (B13 round 19 W4)
+    doctor_cut_off_moved: bool = False
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     # those lines by why (the words in their bracket; a bare one is the time limit's), B13 round 18 V15, V35
     evidence_why: Counter[str] = dataclasses.field(default_factory=Counter)
@@ -3038,6 +3041,10 @@ def _pandoc_from_doctor(r: _Run) -> str:
         detail = detail[:at] if at >= 0 else detail
         return detail if tag == "ok" else f"{detail} (doctor's pandoc check: [{tag}]; its fix is in Doctor)"
     if r.facts.doctor_cut_off is not None:
+        if not r.facts.doctor_cut_off:  # 0.0: the budget was used up before doctor started (V3, V49; W37)
+            return "not checked: the report's time budget was used up before doctor started (see Doctor)"
+        if r.facts.doctor_cut_off_moved:  # its seconds are the doctor's own wait, not the time limit (W4)
+            return "not checked: the doctor call was cut off (see Doctor)"
         return "not checked: the doctor call was cut off by the report's time limit"
     return "not checked: no doctor pandoc check ran (see Doctor)"
 
@@ -3061,6 +3068,9 @@ class _Run:
     def __init__(self, config_path: Path | None, hooks: ReportHooks, budget_s: float) -> None:
         self.t0 = time.monotonic()
         self.deadline = self.t0 + budget_s
+        self.budget_s = (
+            budget_s  # the time limit Run metadata names, which a slow doctor's words name too (W4)
+        )
         self.hooks = hooks
         self.config_path = expand(config_path) if config_path is not None else default_config_path()
         self.config: Config | None = None
@@ -5429,9 +5439,11 @@ def _doctor(r: _Run) -> list[str]:
     limit = max(1.0, left - 2.0 - _LOOP_FLOOR_S)
     held = left - limit  # the share of the parts after Doctor (the Loop line, the late listing)
     deadline = r.deadline
+    moved = False  # read here: r.doctor_grace is set only in the finally, after the except's words (W4)
     if limit < _DOCTOR_GRACE_S:  # B13 round 18 V4: a slow doctor gets the grace, the later parts keep theirs
         r.deadline += _DOCTOR_GRACE_S - limit
         limit = _DOCTOR_GRACE_S
+        moved = True
     r.last_call_limit = None
     try:
         lines = r.call(lambda: doctor_fn(config), timeout=limit)
@@ -5439,8 +5451,15 @@ def _doctor(r: _Run) -> list[str]:
         # the wait the call was given, the number its own message names: one float in both places (V3, V49)
         had = r.last_call_limit or 0.0
         r.facts.doctor_cut_off = had if had > 0.2 else 0.0
+        r.facts.doctor_cut_off_moved = moved
         if r.facts.doctor_cut_off == 0.0:
             return [f"Not run: the report's time budget was used up before doctor started; {_IDLE_AGAIN}."]
+        if moved:  # B13 round 19 W4: the doctor's own wait, past the time limit Run metadata names
+            return [
+                f"Cut off: the doctor call did not finish within {had:.1f}s, the wait the report gives a "
+                f"slow doctor (it moves its {r.budget_s:.0f}s time limit for one; see Run metadata); "
+                f"{_IDLE_AGAIN}."
+            ]
         return [
             f"Cut off: the doctor call did not finish within {had:.1f}s, the report's time limit; "
             f"{_IDLE_AGAIN}."
@@ -8958,11 +8977,13 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if d is None and r.facts.doctor_cut_off is not None:
         # B13 round 17 U48: the report's time limit cut it off; install.sh's own doctor, in install.out, does
         # not depend on this run's. The seconds are the wait the call was given, as Doctor says (round 18 V3)
-        line = (
-            f"- doctor: cut off by the report's time limit after {r.facts.doctor_cut_off:.1f}s (see Doctor)"
-            if r.facts.doctor_cut_off
-            else "- doctor: not started: the report's time budget was used up (see Doctor)"
-        )
+        had = r.facts.doctor_cut_off
+        if not had:
+            line = "- doctor: not started: the report's time budget was used up (see Doctor)"
+        elif r.facts.doctor_cut_off_moved:  # not the report's time limit, which Run metadata names (W4)
+            line = f"- doctor: cut off after {had:.1f}s, the wait the report gives a slow doctor (see Doctor)"
+        else:
+            line = f"- doctor: cut off by the report's time limit after {had:.1f}s (see Doctor)"
         gone = _install_doctor_only(r, runs)
         if gone is not None:
             run, named = gone

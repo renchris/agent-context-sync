@@ -6448,6 +6448,9 @@ def test_the_summarys_doctor_cut_off_seconds_are_the_limit_the_doctor_section_na
     assert setup_report._doctor_line(r, []).startswith(
         "- doctor: not started: the report's time budget was used up (see Doctor)"
     )
+    # B13 round 19 W37: the Environment's pandoc line said the doctor was cut off when it never started
+    pandoc = setup_report._pandoc_from_doctor(r)
+    assert "before doctor started" in pandoc and "cut off" not in pandoc, pandoc
 
 
 @pytest.mark.timing
@@ -6487,14 +6490,20 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
         fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung, loop_next=loop), budget_s=4.0
     )
     assert section(text, "Doctor").strip() == (
-        f"Cut off: the doctor call did not finish within 6.0s, the report's time limit; "
-        f"{setup_report._IDLE_AGAIN}."
+        "Cut off: the doctor call did not finish within 6.0s, the wait the report gives a slow doctor (it "
+        f"moves its 4s time limit for one; see Run metadata); {setup_report._IDLE_AGAIN}."
     )
     line = _line(section(text, "Summary"), "- doctor: ")
     assert line == (
-        f"- doctor: cut off by the report's time limit after 6.0s (see Doctor) · {setup_report._IDLE_AGAIN}"
+        "- doctor: cut off after 6.0s, the wait the report gives a slow doctor (see Doctor) · "
+        f"{setup_report._IDLE_AGAIN}"
     ), line
     assert "--report-only" in line
+    # B13 round 19 W4: 6.0 s was called "the report's time limit" beside Run metadata's "time limit 4s"
+    took = re.search(r"^- took: [0-9.]+s \(time limit (\d+)s, ", text, re.M)
+    assert took is not None and took.group(1) == "4", text
+    assert not re.search(r"\d+\.\ds, the report's time limit|report's time limit after", text), text
+    assert "- pandoc: not checked: the doctor call was cut off (see Doctor)" in text
     assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
 
 
