@@ -9727,6 +9727,16 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     note = "- a conversion that failed is counted in each run it failed in and is tried again from the same"
     assert note in part and 'Quarantine by reason, class "conversion failed"\n' in part
     assert f" bytes in up to {cycle._CONVERT_RETRIES} later runs, or, when its converter could not " in part
+    # B13 round 18 V75: while its converter still cannot start, no run reads or counts the file
+    assert (
+        "converted it, gave it up, or (its converter still not starting) did not read it at all, which "
+        in (part)
+    )
+    guide = " ".join(
+        (Path(__file__).parents[1] / "docs" / "deploy" / "setup-feedback.md").read_text().split()
+    )
+    assert "converted it, gave it up, or, while its converter still cannot start, left it unread and" in guide
+    assert "converted it or gave it up" not in part + guide
     seed = Seed(fake_mac["config"])
     seed.m._db.execute(
         "UPDATE runs SET counts_json = ? WHERE run_id IN (4, 5)", (json.dumps({"converted": 2}),)
