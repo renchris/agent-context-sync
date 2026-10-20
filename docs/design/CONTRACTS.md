@@ -24377,6 +24377,9 @@ add-source and sync, so init no longer passes the config step on a table page it
 build that has the probe, damage on a table's root or first-row page is `state`, and step 2 stops at its config
 step (`agentsync's state file, which cannot be read`); `state-table` then names damage the probe does not read
 (an index's root or first page) or a table's damage under an older installed build without the probe.
+Amended 2026-10-20, §16.148 X72: `state-table` no longer has a clause of its own; it gives the `state` clause,
+since step 2 reinstalls this checkout, whose config step stops on any damaged table or index root, and "(at its
+status or its first sync)" was false for an index root.
 
 **An add-source that wrote the block says so on any exit, after its block** (V47, V26; amends §16.130 U40). U40's
 branch read only exit 78, so an add-source that wrote the folder's block and then exited 1 on a docs-repo remote
@@ -25644,7 +25647,25 @@ Reserved for round 20 lane RB of B13.
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
-Reserved for round 20 lane P of B13.
+The B13 round 20 items of lane P (specs `round20/items/X<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): X1, X3, X9, X24, X25, X26, X29, X71, X72. X1, X25, X71 and X72 are one defect,
+built once; X9 and X29 are one, built once, with X26 deciding whose each case is.
+
+**A damaged table or index root gives step 1 the config step's state clause** (X1, X25, X71, X72; amends §16.136
+V21). Step 1's `state-table` tail said step 2 stops on agentsync's state file "(at its status or its first sync)".
+For an index root (TD-canonical, TD-path) that was false: status and a sync with nothing new read no index, step 2
+passed with `sync: converted 0`, and only a later sync that wrote through the index exited 65. For a table root under
+an older installed build (TD-items-older) it named the wrong step: step 2 reinstalls this checkout, whose
+`cli._state_readable` stops init and add-source at 65 (round 19 W41). This checkout's `manifest_unreadable` reads
+every table's root page (W41) and, with lane B's X50, every index's, so an installed build of it says `state` for any
+damaged root page, and `state-table` comes only from an older build. The word now gives the `state` clause,
+`agentsync's state file, which cannot be read`, in the reinstall-first form when step 2 reinstalls; the separate
+tail is gone, and the log keeps `config_err=state-table`. Not a truthful reword of the old tail (X1's fallback): with
+X50 every damaged root stops step 2 at its config step, which is where the clause says. The `state-table` probe in
+`config_errors` stays, since an older installed build's probe reads no index. Test:
+`test_list_folders_says_step_2_stops_on_a_config_it_refuses` (TD-canonical, TD-path and TD-items-older end in the
+config step's clause and never "at its status or its first sync"; the logged word is `state` when this build's
+probe reads the damaged index, else `state-table`, so the test holds before and after X50 lands).
 
 ### 16.149 Round 20: an unopenable manifest, index-root damage and staging's exclusion (2026-10-20, wave B13 round 20 lane B)
 

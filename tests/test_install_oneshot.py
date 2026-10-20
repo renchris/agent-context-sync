@@ -6774,7 +6774,11 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     covering index items_by_canonical, so a damaged items root page, or a damaged items_by_path, still ended
     "(none is needed)". Each table is read NOT INDEXED and each index INDEXED BY; a clean manifest of the
     same schema is no stop. TD-items-older: an installed build without doctor.manifest_unreadable reads the
-    schema alone, so the damaged items page is this reader's to name."""
+    schema alone, so the damaged items page is this reader's to name.
+    B13 round 20 X1, X25, X71, X72: the "state-table" tail's "(at its status or its first sync)" was false for
+    TD-canonical and TD-path (step 2 passed: nothing it ran read the index) and named the wrong step for
+    TD-items-older (step 2's reinstalled build stops at its config step). Every damaged root page now gives
+    the config step's state clause."""
     cfg = _config_step_2_stops_on(env, state)
     if state.endswith("-older"):
         _tool_python_without(env, "agentsync.ops.doctor", "manifest_unreadable")
@@ -6790,17 +6794,12 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     if state in ("clean", "clean-real", "GR-allowed"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
-    # B13 round 19 W41: damage under an index root, which no NOT INDEXED table read touches, still stops
-    # step 2 at its status or first sync, and so does a table root under an older build (no table probe);
-    # under a table root, this build stops it at the config step
-    if state in ("TD-canonical", "TD-path", "TD-items-older"):
-        assert last_line(cp).endswith(
-            "; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its "
-            "first sync): fixing that is the person's, and the step that stops prints the error"
-        ), last_line(cp)
-        assert "config step" not in last_line(cp) and logged.endswith(" config_err=state-table"), logged
-        return
-    cause = CONFIG_STOP[state].format(cfg=cfg)
+    # B13 round 20 X1, X25, X71, X72: "state-table" said step 2 stops "at its status or its first sync",
+    # false for an index root (a status and a sync with nothing new read none, and step 2 passed), and the
+    # wrong step for a table root under an older build (this checkout's add-source stops on it). This
+    # checkout's agentsync reads every root page (round 19 W41, round 20 X50), and step 2 reinstalls it, so
+    # the word gives the config step's state clause; the logged word is the installed build's own reading
+    cause = CONFIG_STOP.get(state, CONFIG_STOP["TD"]).format(cfg=cfg)
     assert last_line(cp).endswith(
         "; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it too, step 2 stops "
         f"at its config step on {cause}: fixing that is the person's, and ~/.local/bin/agentsync status "
@@ -6814,7 +6813,11 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
         "TD": "state",
         "TD-items": "state",
         "GR": "remote",
-    }[state]
+        "TD-items-older": "state-table",
+    }.get(state)
+    if word is None:  # TD-canonical, TD-path: "state" once this build's probe reads index roots (X50)
+        word = "state" if doctor.manifest_unreadable(_state_db(env)) is not None else "state-table"
+    assert "at its status or its first sync" not in last_line(cp), last_line(cp)
     assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
     for text in (last_line(cp), "\n".join(install_log(env))):
         assert "contoso.invalid" not in text and "refuse_unlabelled" not in text and "junk" not in text

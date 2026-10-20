@@ -5658,7 +5658,10 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # of it) (B13 round 18 V9, V21, V36). A plain SELECT 1 from a table is answered from its smallest covering
 # index, so it read neither the table's own pages nor any other index, and the real schema's items page said
 # "(none is needed)" (round 19 W1, W10); an error other than a damaged page (an older SQLite refusing an
-# INDEXED BY) skips that one b-tree. Fixed words only,
+# INDEXED BY) skips that one b-tree. This checkout's manifest_unreadable reads every table's (round 19 W41) and
+# every index's (round 20 X50) root page the same way, so an installed build of it says "state", and
+# "state-table" comes only from an older one, whose damage step 2's reinstalled build stops on at its config
+# step (round 20 X72). Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
 # its own, after synced_folders and allowed to fail: a name an older agentsync lacks reads nothing for that
 # check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
@@ -5961,12 +5964,13 @@ list_folders() {
 	if [ -n "$cerr" ]; then
 		case ",$cerr," in *",policy,"*) ctail="an invalid [policy] in policy.toml" ;; esac
 		case ",$cerr," in *",governance,"*) ctail="${ctail:+$ctail and }an invalid [governance] value in $CONFIG" ;; esac
-		case ",$cerr," in *",state,"*) ctail="${ctail:+$ctail and }agentsync's state file, which cannot be read" ;; esac
+		# "state-table" is a damaged table or index root page an installed build's probe did not read: this
+		# checkout's reads each one (round 19 W41, round 20 X50), so step 2, which reinstalls it, stops at its
+		# config step as for "state". The words "at its status or its first sync" were false for an index: a
+		# status and a sync with nothing new read none, and step 2 passed (round 20 X1, X25, X71, X72).
+		case ",$cerr," in *",state,"* | *",state-table,"*) ctail="${ctail:+$ctail and }agentsync's state file, which cannot be read" ;; esac
 		case ",$cerr," in *",remote,"*) ctail="${ctail:+$ctail and }a git remote on the docs repo that [governance] does not allow" ;; esac
-		# A damaged table page passes the config step, which reads only the schema: step 2 stops later, at its
-		# status when that reads the table, else at its first sync (exit 65), so its clause names no one step.
 		stail=""
-		case ",$cerr," in *",state-table,"*) stail="; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its first sync): fixing that is the person's, and the step that stops prints the error" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
 			:

@@ -6066,23 +6066,24 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     ]
     [end] = {end for _, end in tails}
     words = re.findall(
-        r'^\t\tcase ",\$cerr," in \*",(\w+),"\*\) ctail="(?:\$\{ctail:\+\$ctail and \})?([^"]*)" ;; esac$',
+        r'^\t\tcase ",\$cerr," in \*",(\w+),"\*(?: \| \*",[\w-]+,"\*)?\) '
+        r'ctail="(?:\$\{ctail:\+\$ctail and \})?([^"]*)" ;; esac$',
         script,
         re.M,
     )
     assert [w for w, _ in words] == ["policy", "governance", "state", "remote"]
     assert '\t\tclog=" config_err=$cerr"\n' in script
-    # B13 round 18 V21: a damaged table page has a tail of its own, since step 2 passes its config step on it
-    [table] = re.findall(
-        r'^\t\tcase ",\$cerr," in \*",state-table,"\*\) stail="(; [^"]*)" ;; esac$', script, re.M
-    )
+    # B13 round 20 X72: "state-table" gives the state clause; round 18 V21's tail of its own, "(at its status
+    # or its first sync)", was false for an index root, which a status and a sync with nothing new never read
+    assert '\t\tcase ",$cerr," in *",state,"* | *",state-table,"*) ctail=' in script
+    assert "part of which cannot be read" not in script
     page = " ".join(_feedback_page().split())
     section = page.split("### A Mac that is already set up", 1)[1].split("### ", 1)[0]
     assert f"adds `{tails[0][0]}<what>: {end}`" in section
     assert f"the tail opens `{tails[1][0]}<what>: ...`" in section
     for _, said in words:
         assert f"`{said.replace('$CONFIG', '<config>')}`" in section, said
-    assert f"`{table}`" in section, table
+    assert "Since v29 that word gives the same `agentsync's state file, which cannot be read`" in section
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote` and `state-table`" in section
