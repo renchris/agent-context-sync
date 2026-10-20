@@ -5617,7 +5617,9 @@ found the lock busy, its own wait line: the lock wait then sends every beat to D
 16 T33; round 7 H31 kept the first at WARNING), and the CLI drops its skip WARNING, which the stderr line
 beside it already carries (H31). A wait install.sh's probe did not see (:data:`LOCK_WAIT_ANNOUNCED_ENV` not 1:
 a sync that took the lock after the probe) still gets one plain line, its first beat (B13 round 17 U68). Every
-other run keeps the beats: with no ticker of its own, they are its only sign of life while it waits."""
+other run keeps the beats: with no ticker of its own, they are its only sign of life while it waits. Of the
+others, only the background job's run logs the skip WARNING, to its err.log, which the setup report's Recent
+errors reads; a terminal's or an agent's run logs it at DEBUG (B13 round 19 W13, W30)."""
 
 LOCK_WAIT_ANNOUNCED_ENV = "AGENTSYNC_LOCK_WAIT_ANNOUNCED"
 """Set to 1 by scripts/install.sh beside :data:`QUIET_LOCK_WAIT_ENV` when its lock probe found the lock busy
@@ -5668,10 +5670,13 @@ def _interactive_mode(config: Config, now: datetime) -> CycleMode:
     return CycleMode.RECONCILE if age >= config.reconcile_interval_s else CycleMode.POLL
 
 
-UNRECORDED_LOCK_WAIT = (
-    "the lock is held by install.sh while it reinstalls agentsync, a status or doctor check, or a cycle "
-    "starting; waiting for it to be free"
+UNRECORDED_LOCK_HOLDER = (
+    "install.sh while it reinstalls agentsync, a status or doctor check, or a cycle starting"
 )
+"""What may hold a lock whose body is empty, as the wait line and the CLI's skip line name it (B13 round 19
+W14: the skip after the wait still read ``an unrecorded holder (...)``, ``ops.lock.EMPTY_BODY_HOLDER``, which
+the skip WARNING and doctor keep so the report's Recent errors still merges the skips)."""
+UNRECORDED_LOCK_WAIT = f"the lock is held by {UNRECORDED_LOCK_HOLDER}; waiting for it to be free"
 """A foreground lock wait's beat when the lock's body is empty (``ops.lock.EMPTY_BODY_HOLDER``): no sync may
 hold it, so the line does not say "another sync", and it has one bracket level (B13 round 18 V40)."""
 UNRECORDED_LOCK_WAIT_QUIET = "another sync is still running (or install.sh or a check holds the lock)"
@@ -5680,20 +5685,20 @@ wait (README, step 2), and says what else can hold the lock (B13 round 18 V40)."
 
 
 def _wait_beat(exc: LockHeldError, waited: float, wait_s: float, *, quiet: bool) -> str:
-    """One beat of a lock wait, worded from the holder (``exc.holder``, never ``str(exc)``, which starts
-    ``lock held: `` and doubled it inside the bracket; B13 round 18 V40). ``quiet``: install.sh's first sync,
-    whose wording the setup prompt quotes."""
+    """One beat of a lock wait, worded from the holder (never ``str(exc)``, which starts ``lock held: `` and
+    doubled it inside the bracket; B13 round 18 V40), as ``exc.wait_words`` names it: one bracket level, no
+    stage (B13 round 19 W29). ``quiet``: install.sh's first sync, whose wording the setup prompt quotes."""
     if quiet:
         head = (
             UNRECORDED_LOCK_WAIT_QUIET
             if exc.who == EMPTY_BODY_HOLDER
-            else f"another sync is still running ({exc.holder})"
+            else f"another sync is still running ({exc.wait_words})"
         )
         return f"{head}; waiting for it to end, at most {_minutes(wait_s)}"
     head = (
         UNRECORDED_LOCK_WAIT
         if exc.who == EMPTY_BODY_HOLDER
-        else f"another sync is running ({exc.holder}); waiting for it to finish"
+        else f"another sync is running ({exc.wait_words}); waiting for it to finish"
     )
     return f"{head} ({int(waited)}s of at most {int(wait_s)}s)"
 
@@ -5725,20 +5730,24 @@ def _acquire_waiting(
         except LockHeldError as exc:
             waited = time.monotonic() - start
             if waited >= wait_s:
-                raise LockHeldError(f"{exc.holder}; waited {int(waited)}s", who=exc.who) from None
+                raise LockHeldError(
+                    f"{exc.holder}; waited {int(waited)}s", who=exc.who, wait_words=exc.wait_words
+                ) from None
             if waited - noted >= _LOCK_PROGRESS_S:
                 first = noted < 0
                 noted = waited
                 # install.sh's ticker runs, but its own wait line did not: its words, which the setup
                 # prompt quotes as an expected wait (README, step 2)
-                beat = _wait_beat(exc, waited, wait_s, quiet=quiet)
+                shown = _wait_beat(exc, waited, wait_s, quiet=quiet)
+                # every DEBUG record keeps the elapsed time; the quiet words have none (B13 round 19 W46)
+                plain = _wait_beat(exc, waited, wait_s, quiet=False)
                 if quiet and not (first and unannounced):
-                    log.debug("%s", beat)
+                    log.debug("%s", plain)
                 elif say is None:
-                    log.warning("%s", beat)
+                    log.warning("%s", shown)
                 else:
-                    log.debug("%s", beat)
-                    say(beat)
+                    log.debug("%s", plain)
+                    say(shown)
             time.sleep(min(_LOCK_RETRY_S, max(0.0, wait_s - waited)))
 
 

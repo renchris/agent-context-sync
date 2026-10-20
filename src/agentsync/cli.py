@@ -77,6 +77,7 @@ from agentsync.cycle import (
     _CONVERT_RETRIES,
     ECHOED_WHEN,
     INTERACTIVE_LOCK_WAIT_S,
+    UNRECORDED_LOCK_HOLDER,
     _acquire_waiting,
     _holds_home,
     _tighten_own_paths,
@@ -98,7 +99,7 @@ from agentsync.loop import NO_NEXT_HINT_ENV
 from agentsync.manifest import Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
-from agentsync.ops.lock import SingleWriterLock, read_heartbeat
+from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
 from agentsync.paths import (
     DocsLayout,
     StatePaths,
@@ -115,7 +116,8 @@ from agentsync.text import plural
 EXIT_OK = 0
 EXIT_FAILED = 1  # a source failed, or a blocking lint or curate finding fired
 EXIT_USAGE = 2
-EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; logged "skipped: lock held by <holder>"
+EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; says "skipped: lock held by <holder>" (the
+# background job's run also logs it as a WARNING, to its err.log; B13 round 19 W13, W30)
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
 EXIT_STATE = 65  # EX_DATAERR: the manifest is no database or a damaged one (doctor's state_dir.manifest)
@@ -2611,6 +2613,24 @@ def _lock_holder(who: str) -> str:
     return f"another sync (its pass: {who})" if who in {m.value for m in CycleMode} else who
 
 
+def _skip_holder(exc: LockHeldError) -> str:
+    """The skip line's holder: ``exc.holder``, except that a lock held with an empty body is named in the wait
+    line's words (``cycle.UNRECORDED_LOCK_HOLDER``) and not as ``an unrecorded holder (...)``, so the wait
+    and its skip read the same (B13 round 19 W14). The skip WARNING and doctor keep ``EMPTY_BODY_HOLDER``."""
+    if exc.who != EMPTY_BODY_HOLDER:
+        return exc.holder
+    return exc.holder.replace(EMPTY_BODY_HOLDER, UNRECORDED_LOCK_HOLDER, 1)
+
+
+def _in_job(args: argparse.Namespace) -> bool:
+    """Whether this run is the LaunchAgent's job, whose stderr is the err.log the setup report's Recent errors
+    reads; a config that does not load counts as the job, so the WARNING is kept (B13 round 19 W13)."""
+    try:
+        return launchd.started_by_our_job(_config(args))
+    except Exception:  # the error path: never a second error over the first
+        return True
+
+
 def _state_db(args: argparse.Namespace) -> Path:
     """The manifest a command's database error came from: its config's, or the default state dir's when the
     config does not load."""
@@ -2679,9 +2699,13 @@ def _main(argv: Sequence[str] | None) -> int:
         return handler(args)
     except LockHeldError as exc:
         # .holder, not str(exc): that already starts "lock held: " (B13 round 8 J11, J25)
-        _err(f"skipped: lock held by {exc.holder}")
-        if not quiet_lock_wait():  # install.sh's first sync: the line above says it on the same stderr (H31)
+        _err(f"skipped: lock held by {_skip_holder(exc)}")
+        if quiet_lock_wait():  # install.sh's first sync: the line above says it on the same stderr (H31)
+            pass
+        elif _in_job(args):  # the job's err.log, which Recent errors reads (N24)
             _log.warning("skipped: lock held by %s", _lock_holder(exc.who))
+        else:  # a terminal's or an agent's run: the line above already said it (B13 round 19 W13, W30)
+            _log.debug("skipped: lock held by %s", _lock_holder(exc.who))
         return EXIT_LOCK_HELD
     except ConfigError as exc:
         _err(f"configuration error: {exc}")

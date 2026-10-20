@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import logging
 import os
@@ -1044,11 +1045,14 @@ def test_lock_held_exits_75(initialised: Config, capsys: pytest.CaptureFixture[s
 
 
 def test_lock_held_warning_names_the_holder_and_repeats_verbatim(
-    initialised: Config, capsys: pytest.CaptureFixture[str]
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """N24 (field 2026-10-08 D10.d): the report's Recent errors keeps only lines with a level word, so the
     holder goes in the WARNING itself, by its label alone (no pid, start, beat, age or stage), so that the
-    skips behind every run of one kind read the same and the report merges them."""
+    skips behind every run of one kind read the same and the report merges them. B13 round 19 W13, W30: only
+    the background job's run logs it (its err.log is what Recent errors reads); the next test pins the
+    foreground run's one line."""
+    monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.poll")
     lock = SingleWriterLock(initialised.state_paths.lock, "reconcile")
     lock.acquire()
     cfg = str(initialised.config_path)
@@ -1072,6 +1076,58 @@ def test_lock_held_warning_names_the_holder_and_repeats_verbatim(
     assert cli._lock_holder("poll") == "another sync (its pass: poll)"
     for other in (EMPTY_BODY_HOLDER, "an unidentified holder (unparseable lock body)", "governance"):
         assert cli._lock_holder(other) == other
+
+
+@pytest.mark.parametrize("holder", ["reconcile", "no body"])
+def test_a_foreground_skip_is_said_once_in_the_wait_lines_words(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    holder: str,
+) -> None:
+    """B13 round 19 W13, W30: a sync typed in a terminal that gave up on the lock said its skip twice, the
+    second time as a timestamped ``WARNING agentsync.cli:`` line, which reaches no store from a terminal: only
+    the background job's run logs it (its err.log feeds the report's Recent errors), with the same words. W14:
+    a lock held with an empty body was waited for as ``the lock is held by install.sh while ...`` and skipped
+    as ``an unrecorded holder (install.sh while ...)``; the skip now uses the wait line's words, and the
+    WARNING keeps ``EMPTY_BODY_HOLDER``, so Recent errors still merges the old and new skips."""
+    import fcntl  # noqa: PLC0415
+
+    monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
+    monkeypatch.setattr(cli, "run_cycle", functools.partial(run_cycle, lock_wait_s=0.3))
+    path = initialised.state_paths.lock
+    lock = SingleWriterLock(path, "reconcile")
+    fd: int | None = None
+    if holder == "no body":
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        os.ftruncate(fd, 0)
+        fcntl.flock(fd, fcntl.LOCK_EX)  # held, no body: what install.sh's lockf does
+    else:
+        lock.acquire()
+    cfg = str(initialised.config_path)
+    try:
+        for argv, waited in ((["sync", "--mode", "poll"], False), (["sync"], True)):
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_LOCK_HELD
+            err = capsys.readouterr().err.splitlines()
+            (skip,) = [ln for ln in err if "skipped: lock held" in ln]
+            assert skip.startswith("skipped: lock held by "), err
+            assert not [ln for ln in err if " WARNING " in ln], err
+            if holder == "no body":
+                tail = r"; waited \d+s" if waited else ""
+                words = re.escape(cycle_mod.UNRECORDED_LOCK_HOLDER)
+                assert re.fullmatch(rf"skipped: lock held by {words}{tail}", skip), err
+                assert "unrecorded holder" not in "\n".join(err) and "((" not in "\n".join(err), err
+        monkeypatch.setenv("XPC_SERVICE_NAME", f"{initialised.launchd_label_prefix}.poll")
+        assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_LOCK_HELD
+        err = capsys.readouterr().err.splitlines()
+    finally:
+        if fd is not None:
+            os.close(fd)
+        lock.release()
+    named = EMPTY_BODY_HOLDER if holder == "no body" else "another sync (its pass: reconcile)"
+    warned = [ln.split(" WARNING ", 1)[1] for ln in err if " WARNING " in ln]
+    assert warned == [f"agentsync.cli: skipped: lock held by {named}"], err
 
 
 def test_log_lines_carry_their_time_in_utc(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1151,12 +1207,17 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
     lock = SingleWriterLock(initialised.state_paths.lock, "poll")
     lock.acquire()
 
+    beat = re.compile(r"another sync is (still )?running")
+
     def beats() -> list[int]:
         caplog.clear()
         with caplog.at_level(logging.DEBUG, logger=cycle_mod.__name__), pytest.raises(LockHeldError):
             run_cycle(initialised, mode=None, lock_wait_s=2.0)  # a retry every 0.5 s
-        beat = re.compile(r"another sync is (still )?running")
         return [r.levelno for r in caplog.records if beat.match(r.getMessage())]
+
+    def debug_beats() -> list[str]:
+        said = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        return [r.getMessage() for r in said if beat.match(r.getMessage())]
 
     try:
         default = beats()
@@ -1166,9 +1227,12 @@ def test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line(
         quiet = beats()
         # B13 round 16 T33: the first beat too, since install.sh's own line already says it waits
         assert len(quiet) >= 3 and set(quiet) == {logging.DEBUG}, quiet
+        # B13 round 19 W46: each DEBUG record keeps its elapsed time; the quiet words have none
+        assert all(m.endswith("s of at most 2s)") for m in debug_beats()), debug_beats()
         monkeypatch.setenv(cycle_mod.LOCK_WAIT_ANNOUNCED_ENV, "0")
         raced = beats()  # install.sh's probe saw the lock free: the first beat is said, once (U68)
         assert len(raced) >= 3 and raced[0] == logging.WARNING and set(raced[1:]) == {logging.DEBUG}, raced
+        assert all(m.endswith("s of at most 2s)") for m in debug_beats()), debug_beats()
         capsys.readouterr()
         assert cli.main(["sync", "--mode", "poll", "--config", str(initialised.config_path)]) == 75
         err = capsys.readouterr().err.splitlines()
@@ -1210,9 +1274,15 @@ def test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not
     said = [ln for ln in err if re.match(r"another sync is (still )?running \(", ln)]
     assert not [ln for ln in err if "agentsync.cycle:" in ln], err
     assert not [ln for ln in said if "lock held: " in ln or "((" in ln], err  # B13 round 18 V40
+    # B13 round 19 W29: the holder in one bracket level, with no stage: ``pid N (a sync, its pass: poll) since
+    # ..., last beat ... (0s ago), stage 'acquired'`` nested its brackets inside the line's
+    for ln in said:
+        holder = ln.split("running (", 1)[1].split(")", 1)[0]
+        assert "(" not in holder and "stage" not in holder and "last beat" not in holder, ln
+        assert re.fullmatch(r"a sync, pass poll, pid \d+(, since \S+Z)?, active \d+s ago", holder), ln
     if env == "plain":
         assert len(said) >= 2 and all(ln.endswith("s of at most 600s)") for ln in said), err
-        assert all(ln.startswith("another sync is running (pid ") for ln in said), err
+        assert all(ln.startswith("another sync is running (a sync, pass poll, pid ") for ln in said), err
         assert cli.LOCK_WAITED_MARK not in out
     elif env == "quiet-announced":
         assert not said and cli.LOCK_WAITED_MARK not in out, (err, out)

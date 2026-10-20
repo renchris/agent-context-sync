@@ -235,8 +235,9 @@ EMPTY_BODY_HOLDER = (
 )
 """A held lock with an empty body: install.sh's reinstall (lockf writes no body, for up to its wait plus the
 uv run), an ``is_held`` probe from status or doctor, or a cycle between its flock and its body write or
-releasing. The same fixed words (no pid, no time, so the report's Recent errors merges the WARNING) name it on
-the stderr line, in the WARNING and in doctor (B13 round 2 R62; round 3 R50 named the probe and the cycle)."""
+releasing. The same fixed words (no pid, no time, so the report's Recent errors merges the WARNING) name it in
+the WARNING and in doctor (B13 round 2 R62; round 3 R50 named the probe and the cycle); the stderr skip line
+names it in the wait line's words, ``cycle.UNRECORDED_LOCK_HOLDER``, since B13 round 19 W14."""
 
 
 def _holder_identity(body: str) -> str:
@@ -297,6 +298,33 @@ def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     return out
 
 
+def _wait_words(body: str, holder: Mapping[str, object] | None) -> str:
+    """The holder as the foreground lock wait's line names it, inside its one bracket: ``a sync not started by
+    the background job, pass poll, pid N, since <time>, active Ns ago``, with no inner bracket and no stage
+    (B13 round 19 W29: :func:`_describe_holder`'s ``pid N (a sync ..., its pass: poll) since ..., last beat
+    ... (0s ago), stage 'acquired'`` nested its brackets inside the line's). ``active`` needs the same pid's
+    sidecar; ``since`` is left out when it is the beat ``active`` already gives. An empty or unparseable body
+    keeps :func:`_describe_holder`'s words. Doctor, the skip line and the report keep that function's
+    pid, beat and stage."""
+    info = LockInfo.parse(body)
+    if info is None:
+        return _describe_holder(body, holder)
+    parts = [info.label]
+    if info.label in {m.value for m in CycleMode}:
+        same = holder is not None and holder.get("pid") == info.pid
+        started = holder.get("started_by") if holder is not None and same else None
+        who = _STARTED_BY.get(started, "a sync") if isinstance(started, str) else "a sync"
+        parts = [who, f"pass {info.label}"]
+    parts.append(f"pid {info.pid}")
+    beat = holder.get("last_beat_at") if holder is not None and holder.get("pid") == info.pid else None
+    parsed = _parse_iso(beat) if isinstance(beat, str) else None
+    if beat != info.started_at or parsed is None:
+        parts.append(f"since {info.started_at}")
+    if parsed is not None:
+        parts.append(f"active {int((datetime.now(UTC) - parsed).total_seconds())}s ago")
+    return ", ".join(parts)
+
+
 class SingleWriterLock:
     """``flock(LOCK_EX|LOCK_NB)`` on StatePaths.lock.  The body is truncated on clean release."""
 
@@ -342,8 +370,11 @@ class SingleWriterLock:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 body = _read_fd(fd)
+                sidecar = self.read_holder(self._path)
                 raise LockHeldError(
-                    _describe_holder(body, self.read_holder(self._path)), who=_holder_identity(body)
+                    _describe_holder(body, sidecar),
+                    who=_holder_identity(body),
+                    wait_words=_wait_words(body, sidecar),
                 ) from None
             previous_body = _read_fd(fd)
             previous = LockInfo.parse(previous_body)

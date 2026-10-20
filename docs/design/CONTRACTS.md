@@ -11661,6 +11661,11 @@ agentsync, a status or doctor check, or a cycle starting)` in `who`, in the stde
 (one constant, `agentsync.ops.lock.EMPTY_BODY_HOLDER`); install.sh's lockf, an `is_held` probe and a cycle
 between its flock and its body write all leave the body empty. A non-empty body that does not parse keeps `an
 unidentified holder (unparseable lock body)`.
+Amended 2026-10-20, §16.143 W13, W14, W30: only the background job's run logs the skip WARNING (its err.log is
+what Recent errors reads); a terminal's or an agent's run logs it at DEBUG, its stderr line already said it. The
+stderr line names an empty body in the wait line's words, `skipped: lock held by install.sh while it reinstalls
+agentsync, a status or doctor check, or a cycle starting` (`cycle.UNRECORDED_LOCK_HOLDER`); `who`, the WARNING
+and doctor keep `EMPTY_BODY_HOLDER`.
 
 #### N26: the empty-cloud-folder wait and the report count the files the last walk did not list (`agentsync.manifest`, `agentsync.loop`, `agentsync.setup_report`)
 
@@ -16467,6 +16472,9 @@ sync, its pass: poll) since ...`).
 Amended 2026-10-18, §16.125 T33: under the quiet wait the first beat is DEBUG too; install.sh's line announces it.
 Amended 2026-10-19, §16.131 U68, U69, U92, U105: install.sh's line announces the wait only when its lock probe found
 the lock busy; a wait the probe missed gets one plain line from agentsync, in install.sh's words.
+Amended 2026-10-20, §16.143 W14: the stderr line is `skipped: lock held by <holder>` from `cli._skip_holder`:
+`LockHeldError.holder`, but an empty body in the wait line's words (`cycle.UNRECORDED_LOCK_HOLDER`), not as `an
+unrecorded holder (...)`.
 
 **H33: a terminal's sync is not called the background one (`scripts/install.sh`, `agentsync.cli`).** A sync typed
 in a terminal holds the lock as `poll` or `reconcile`, as the job does, and the installer reads only the lock.
@@ -24486,6 +24494,9 @@ source. Tests: the `default-id` and other cases of
 words for v27's step 3 (V24, V39). Tests:
 `test_cli.py::test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_sync`, the V40 lines in
 `test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not_announce`.
+Amended 2026-10-20, §16.143 W14, W29: a recorded holder is worded from `LockHeldError.wait_words`, one bracket
+level and no stage (`another sync is running (a sync, pass poll, pid N, active Ns ago); ...`), and the CLI's skip
+after an empty-body wait names the holder as the wait line does.
 
 **V41: a missing bundled pandoc's error says what to do before the path (`agentsync.convert.pandoc`).** `bundled
 pandoc not found (is pypandoc_binary installed?); set [convert] pandoc_path; looked at <~/path>`: the 200-character
@@ -24969,7 +24980,42 @@ starts `Whether or not that line names such a folder, `), and the version lists 
 
 ### 16.143 Round 19: table damage, the lock-wait words and the speech fix (2026-10-20, wave B13 round 19 lane B)
 
-Reserved for round 19 lane B of B13.
+Round 19's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 19"), each the verifier's corrected fix.
+
+**W13, W30: a foreground skip is said once (`agentsync.cli`; amends §16.39 N24).** A sync typed in a terminal
+that gave up on the lock printed `skipped: lock held by ...` and then the same as a timestamped `WARNING
+agentsync.cli:` line, which ended the output and reaches no store from a terminal. The handler logs the WARNING
+only when `launchd.started_by_our_job` says the run is the background job's (its stderr is the err.log the
+report's Recent errors reads), as `_alarms_in_the_report` does; a config that does not load counts as the job, so
+the WARNING is kept on the error path. Any other run logs it at DEBUG (`-vv` shows it); install.sh's quiet first
+sync still drops it (§16.68 H31). W30's "log file only" has no file to map onto and its DEBUG-for-every-run would
+have emptied Recent errors of background skips, so neither is built. One defect from two finders, built once.
+Tests: `test_cli.py::test_a_foreground_skip_is_said_once_in_the_wait_lines_words`, and
+`test_lock_held_warning_names_the_holder_and_repeats_verbatim` under the job's `XPC_SERVICE_NAME`.
+
+**W14, W30: the skip names an empty body as the wait did (`agentsync.cli`, `agentsync.cycle`; amends §16.68 H31
+and §16.137 V40).** The wait read `the lock is held by install.sh while it reinstalls agentsync, ...` and the skip
+that ended it `skipped: lock held by an unrecorded holder (install.sh while ...); waited 600s`. One constant,
+`cycle.UNRECORDED_LOCK_HOLDER`, builds `UNRECORDED_LOCK_WAIT`, and `cli._skip_holder` puts it in the skip line
+for an empty body: `skipped: lock held by install.sh while it reinstalls agentsync, a status or doctor check, or
+a cycle starting; waited 600s`, keeping the `skipped: lock held` opening the setup prompt and README quote.
+`EMPTY_BODY_HOLDER`, `who`, the WARNING and doctor are unchanged, so Recent errors merges old and new skips.
+Test: the W13 test's `no body` case.
+
+**W29: the wait line's holder has one bracket level (`agentsync.ops.lock`, `agentsync.errors`, `agentsync.cycle`;
+amends §16.137 V40).** A recorded holder read `another sync is running (pid N (a sync not started by the
+background job, its pass: poll) since T, last beat T (0s ago), stage 'acquired'); ...`. `lock._wait_words` words
+the same body and sidecar as `a sync not started by the background job, pass poll, pid N, active 0s ago`: no inner
+bracket, no stage, `since T` only when it is not the beat `active` already gives. It rides on
+`LockHeldError.wait_words` (default: `holder`), and `cycle._wait_beat` reads it. `_describe_holder` and `holder`
+are unchanged: doctor, the skip line and the report keep pid, beat and stage. Test: the W29 lines of
+`test_cli.py::test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not_announce`.
+
+**W46: the quiet wait's DEBUG beats keep their elapsed time (`agentsync.cycle`).** Since §16.137 V40 every quiet
+beat was `...; waiting for it to end, at most 10 minutes`, so a `-vv` log of install.sh's first sync repeated one
+line every 30 s. `_acquire_waiting` logs the plain beat, `(Ns of at most Ms)`, on every DEBUG record and keeps the
+quiet words for the one line it says. Test: the W46 lines of
+`test_cli.py::test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 

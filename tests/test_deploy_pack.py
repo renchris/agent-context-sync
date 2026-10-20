@@ -6870,7 +6870,8 @@ def test_h31s_stderr_line_quotes_the_cli() -> None:
     """B13 round 9 K53: round 8's J11 made the CLI's lock-busy line `skipped: lock held by <holder>`, while
     §16.68 H31, whose test J11 changed, still quoted `skipped: lock held (...)` with no dated line."""
     cli = (ROOT / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
-    assert '_err(f"skipped: lock held by {exc.holder}")' in cli
+    # B13 round 19 W14: the holder is exc.holder, but an empty body's in the wait line's words
+    assert '_err(f"skipped: lock held by {_skip_holder(exc)}")' in cli
     h31 = " ".join(
         _contracts_section("**H31: install.sh's first sync waits for the lock quietly", "\n\n").split()
     )
