@@ -2395,6 +2395,19 @@ def test_the_docs_repo_line_names_the_remotes_git_has(
     cap = capsys.readouterr()
     assert "(exists, remote origin, allowed by [governance]; " in _docs_repo_line(cap.out), cap.out
     assert "governance:" not in cap.err
+    # B13 round 18 V58: one remote allowed, one refused: the line names each, never both as refused
+    git(repo, "remote", "set-url", "origin", "https://git.contoso.example/team/docs.git")
+    git(repo, "remote", "add", "backup", "https://backup.contoso.example/docs.git")
+    text = initialised.config_path.read_text(encoding="utf-8")
+    initialised.config_path.write_text(
+        text.replace('["https://git.contoso.example/"]', '["https://git.contoso.example/team/"]'), "utf-8"
+    )
+    assert cli.main(["init", "--config", cfg]) == cli.EXIT_FAILED
+    cap = capsys.readouterr()
+    line = _docs_repo_line(cap.out)
+    assert "(exists, remotes backup, origin: backup refused by [governance], origin allowed; " in line, line
+    assert "contoso.example" not in line, line
+    assert "remote backup " in cap.err and "remote origin " not in cap.err, cap.err
 
 
 def test_doctor_reports_network_broker_governance_and_policy(

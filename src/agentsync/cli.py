@@ -766,19 +766,35 @@ def _write_config(cfg_path: Path, text: str) -> None:
     _out(f"wrote {cfg_path}")
 
 
-def _remote_clause(config: Config, *, refused: bool) -> str:
+def _remote_clause(config: Config, gov: governance.GovernanceConfig) -> str:
     """The docs-repo line's word on its remotes, read from git: ``no remote`` (what init creates), else the
     names, no URL (the governance line beside it shows that, redacted), and whether [governance] refuses or
     allows them. It said "no remote" one line above a refusal of the repo's remote (B13 round 17 U14, U17).
-    No "below": the refusal goes to stderr, this line to stdout."""
+    No "below": the refusal goes to stderr, this line to stdout. Each remote's verdict is the policy's own
+    test (``governance.remote_allowed``, the one ``remote_policy_findings`` makes), so when [governance]
+    refuses one remote and allows another the line names each, not every remote as refused (B13 round 18
+    V58)."""
     repo = expand(config.docs_repo)
     if not (repo / ".git").exists():
         return "no remote"
     names = sorted(gitops.run_git(repo, "remote", check=False).stdout.split())
     if not names:
         return "no remote"
+    refused = [
+        name
+        for name in names
+        if not governance.remote_allowed(
+            gitops.run_git(repo, "remote", "get-url", name, check=False).stdout.strip(), gov
+        )
+    ]
     word = "remote" if len(names) == 1 else "remotes"
-    return f"{word} {', '.join(names)}, {'refused' if refused else 'allowed'} by [governance]"
+    if not refused or len(refused) == len(names):
+        return f"{word} {', '.join(names)}, {'refused' if refused else 'allowed'} by [governance]"
+    allowed = [name for name in names if name not in refused]
+    return (
+        f"{word} {', '.join(names)}: {', '.join(refused)} refused by [governance], "
+        f"{', '.join(allowed)} allowed"
+    )
 
 
 def _ensure_setup(config: Config) -> int:
@@ -809,7 +825,7 @@ def _ensure_setup(config: Config) -> int:
     # round 14 Q39).
     scaffold = f"{plural(len(written), 'scaffold file')} written" if written else "scaffold up to date"
     findings = _refuse_remotes(config, gov)
-    remotes = _remote_clause(config, refused=bool(findings))
+    remotes = _remote_clause(config, gov)
     _out(f"docs repo {config.docs_repo} ({'created' if created else 'exists'}, {remotes}; {scaffold})")
     for f in findings:
         _err(f"governance: {f}")
