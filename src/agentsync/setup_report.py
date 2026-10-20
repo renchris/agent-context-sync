@@ -1106,9 +1106,20 @@ def _short_word(form: str) -> bool:
 
 def _a_whole_word(m: re.Match[str]) -> bool:
     """Whether ``m`` stands as a word of its own: what is on each side of it is the text's edge, a space or
-    sentence punctuation, never a path separator, a ``~`` or another word character (B13 round 19 W17)."""
-    edges = (m.string[m.start() - 1 : m.start()], m.string[m.end() : m.end() + 1])
-    return all(c == "" or c.isspace() or c in ",;:()[]'\"`." for c in edges)
+    sentence punctuation, never a path separator, a ``~`` or another word character (B13 round 19 W17). A
+    hyphen or an underscore that joins it to the rest of a model id or a CLI name (``claude-opus-5-5``,
+    ``gemini-cli``) is an edge too, but a path in the same token is not: a product word inside a path stays a
+    placeholder, whatever is around it (B13 round 20 X39)."""
+    text, start, end = m.string, m.start(), m.end()
+    edges = (text[start - 1 : start], text[end : end + 1])
+    if not all(c == "" or c.isspace() or c in ",;:()[]'\"`.-_" for c in edges):
+        return False
+    lo, hi = start, end
+    while lo > 0 and not text[lo - 1].isspace():
+        lo -= 1
+    while hi < len(text) and not text[hi].isspace():
+        hi += 1
+    return not any(c in "/~\\" for c in text[lo:hi])
 
 
 def _agent_words(name: str) -> bool:
@@ -1518,8 +1529,8 @@ class Redactor:
         or source id made only of coding-agent product words where it stands as a word of its own: "GitHub
         Copilot CLI" stays readable beside a configured ``Copilot`` folder, which reads ``<folder-N>``
         everywhere else, and its placeholder is not decoded by the name around it. A product word inside a
-        path (``~/Development/Gemini``) or a longer token is still replaced, as every other value is (B13
-        round 19 W17)."""
+        path (``~/Development/Gemini``) or a longer word is still replaced, as every other value is (B13
+        round 19 W17); one joined by a hyphen to a model id (``claude-opus-5-5``) is kept (round 20 X39)."""
         self._agent_mode = True
         try:
             return self.redact(text)

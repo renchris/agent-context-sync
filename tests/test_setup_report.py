@@ -2550,6 +2550,41 @@ def test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_
     assert "Gemini" not in text
 
 
+def test_the_agents_name_keeps_a_product_word_joined_to_a_model_id_by_a_hyphen(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 20 X39: W17's word edges left out the hyphen, so with a configured ``Programs/Claude`` the
+    name ``Claude Code, claude-opus-5-5`` read ``Claude Code, <folder-N>-opus-5-5`` in the Summary, the
+    attempt line and the Agent: line, the kept ``Claude`` beside it decoded the placeholder, and the residue
+    check listed opus. A hyphen joining it to a model id is an edge; a path in the same token is not."""
+    folder = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Programs" / "Claude"
+    gem = fake_mac["home"] / "Development" / "Gemini"
+    for d in (folder, gem):
+        d.mkdir(parents=True)
+        assert cli.main(["add-source", str(d), "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V7_HAPPY)
+    agent = "Claude Code, claude-opus-5-5"
+    text, summary = summary_of(fake_mac)
+    assert f"· agent: {agent}\n" in summary, summary
+    log = section(text, "Agent friction log")
+    assert f"; agent {agent})" in log and f"Agent: {agent}\n" in log, log
+    assert [ln for ln in text.splitlines() if "opus" in ln and "<folder-" in ln] == []
+    assert "opus" not in setup_report.residue(text)
+    assert "Programs" not in text
+    red = setup_report.Redactor()
+    red.add("folder", "Gemini", fuzzy=True)
+    red.add("folder", "Claude", fuzzy=True)
+    assert red.redact_agent("gemini-cli 1.2") == "gemini-cli 1.2"
+    assert red.redact_agent("claude_opus") == "claude_opus"
+    # a product word in a path in the name is a folder's, whatever joins it
+    assert re.fullmatch(
+        r"Claude Code in ~/Development/work-<folder-\d+>",
+        red.redact_agent("Claude Code in ~/Development/work-gemini"),
+    ), red.redact_agent("Claude Code in ~/Development/work-gemini")
+    assert "Gemini" not in red.redact_agent("Claude Code in ~/Development/Gemini-x")
+
+
 def test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder(
     fake_mac: dict[str, Path],
 ) -> None:
