@@ -2911,17 +2911,61 @@ def _damage_table_root(db: Path, table: str) -> int:
     return int(root)
 
 
+def _damage_table_leaf(db: Path, table: str) -> int:
+    """Write junk over a leaf page of ``table`` that is not its root, after a checkpoint, leaving the header,
+    the schema and the root intact; returns the page number. The root must be an interior page (enough
+    rows); its first child is found by reading the b-tree page itself, as the macOS sqlite3 has no dbstat
+    (B13 round 18 V42: the root-page damage above never reached a leaf below an interior page)."""
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        (root,) = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (table,)).fetchone()
+        (size,) = conn.execute("PRAGMA page_size").fetchone()
+    finally:
+        conn.close()
+    for name in ("-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    data = db.read_bytes()
+    page = int(root)
+    while True:  # down the left-most child pointers to a leaf
+        at = (page - 1) * size + (100 if page == 1 else 0)
+        kind = data[at]
+        if kind == 0x0D:  # a table leaf
+            break
+        assert kind == 0x05, f"page {page}: not a table b-tree page ({kind:#x})"
+        first = int.from_bytes(data[at + 12 : at + 14], "big")  # the first cell's offset in its page
+        page = int.from_bytes(data[(page - 1) * size + first : (page - 1) * size + first + 4], "big")
+    assert page != root, "the table fits on its root page: no leaf below it"
+    with db.open("r+b") as f:
+        f.seek((page - 1) * size)
+        f.write(os.urandom(size))
+    return page
+
+
+@pytest.mark.parametrize("where", ["root", "leaf"])
 def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
-    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], where: str
 ) -> None:
     """B13 round 17 U64, U95: with the items table's root page damaged under an intact header and schema,
     status exited 0 with every check [ok] and "NEXT: cannot read the state: DatabaseError: database disk
     image is malformed", and so did install.sh's doctor, while the sync then exited 65. Status's own read of
-    the loop's state hits the damage: its SQLITE_CORRUPT now FAILs state_dir.manifest, the person's, once."""
+    the loop's state hits the damage: its SQLITE_CORRUPT now FAILs state_dir.manifest, the person's, once.
+    Round 18 V42: the same for a leaf page below an interior root (enough files that items needs one), which
+    the root-page case never reached; the sync exits 65 on it too."""
     cfg = str(initialised.config_path)
+    if where == "leaf":
+        [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
+        assert src.path is not None
+        bulk = expand(src.path) / "bulk"
+        bulk.mkdir()
+        for i in range(160):
+            (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     db = initialised.state_paths.db
-    assert _damage_table_root(db, "items") > 1
+    if where == "leaf":
+        _damage_table_leaf(db, "items")
+    else:
+        assert _damage_table_root(db, "items") > 1
     assert doctor.manifest_unreadable(db) is None  # the schema probe reads past it
     capsys.readouterr()
     rc, out = _status(cfg, capsys)
@@ -2939,6 +2983,8 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out.splitlines()
     assert len([ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, out
+    if where == "leaf":
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
 
 
 def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does(
