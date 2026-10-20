@@ -5375,10 +5375,17 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # when governance.load_governance refuses its [governance] table, and "state" when the manifest is a file that
 # is no database or a damaged one (doctor.manifest_unreadable, the read-only probe init's exit 65 uses), one
 # word a line. load_config alone, which the readers above use, reads neither policy.toml nor [governance], so
-# the list said "(none is needed)" over a config step 2 then stopped on. Fixed words only, never the error's
-# text, which can quote a host or a label. A reader of its own, after synced_folders and allowed to fail: a
-# name an older agentsync lacks reads nothing for that check (manifest_unreadable falls back to the same
-# read-only schema read). -I: nothing from the folder this runs in is imported.
+# the list said "(none is needed)" over a config step 2 then stopped on. Also "remote" when that table loads
+# and the docs repo has a git remote it does not allow (governance.remote_policy_findings, the check
+# cli._refuse_remotes makes before init and add-source exit 1; never after "governance", which stops first),
+# and "state-table" when the schema reads but a table's first page does not (SELECT 1 from each table, read
+# only: status reads the schema and some tables, so such damage stopped step 2 with nothing said at step 1;
+# damage deeper in a table still shows only at a read of it) (B13 round 18 V9, V21, V36). Fixed words only,
+# never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
+# its own, after synced_folders and allowed to fail: a name an older agentsync lacks reads nothing for that
+# check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
+# exception, a git call's included, so it cannot take the other words with it). -I: nothing from the folder
+# this runs in is imported.
 config_errors() { # PYTHON
 	with_timeout 5 "$1" -I -c '
 import sqlite3, sys
@@ -5403,9 +5410,18 @@ except ImportError:
     load_governance = None
 if load_governance is not None:
     try:
-        load_governance(config.config_path)
+        gov = load_governance(config.config_path)
     except ConfigError:
         words.append("governance")
+    else:
+        try:
+            from agentsync.governance import remote_policy_findings
+
+            repo = expand(config.docs_repo)
+            if (repo / ".git").exists() and remote_policy_findings(repo, gov):
+                words.append("remote")
+        except Exception:
+            pass
 db = expand(config.state_paths.db)
 if db.is_file():
     try:
@@ -5427,6 +5443,22 @@ if db.is_file():
 
     if manifest_unreadable(db) is not None:
         words.append("state")
+    else:
+        try:
+            conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=0.5)
+            try:
+                names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = ?", ("table",))]
+                for name in names:
+                    try:
+                        conn.execute("SELECT 1 FROM \"%s\" LIMIT 1" % name.replace("\"", "\"\"")).fetchall()
+                    except sqlite3.DatabaseError as exc:
+                        if getattr(exc, "sqlite_errorcode", 0) & 0xFF in (11, 26):
+                            words.append("state-table")
+                            break
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
 sys.stdout.write("".join(w + "\n" for w in words))
 ' "$CONFIG"
 }
@@ -5438,7 +5470,7 @@ list_folders() {
 	local cs="$HOME/Library/CloudStorage" tmp e label rc total providers=0 denied="" asking="" term max=200
 	local deadline=$((SECONDS + LIST_TOTAL)) t py why lacks marks synced="" unlisted="" unread="" kept="" built
 	local line missing=0 gone=0 gonepaths="" others=0 other="" libs=0 libpaths="" apps="" tokens="" tok="" stuck=0 more=""
-	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog=""
+	local sn them ungone first one mirror pages vback=0 vother=0 vpaths="" vtail="" vlog="" cerr="" ctail="" clog="" stail=""
 	step_start list-folders
 	tmp="$(mktemp -d)"
 	: >"$tmp/list"
@@ -5534,7 +5566,7 @@ list_folders() {
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
-				cerr="$(LC_ALL=C grep -E '^(policy|governance|state)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 			fi
 		fi
@@ -5645,12 +5677,20 @@ list_folders() {
 		case ",$cerr," in *",policy,"*) ctail="an invalid [policy] in policy.toml" ;; esac
 		case ",$cerr," in *",governance,"*) ctail="${ctail:+$ctail and }an invalid [governance] value in $CONFIG" ;; esac
 		case ",$cerr," in *",state,"*) ctail="${ctail:+$ctail and }agentsync's state file, which cannot be read" ;; esac
+		case ",$cerr," in *",remote,"*) ctail="${ctail:+$ctail and }a git remote on the docs repo that [governance] does not allow" ;; esac
+		# A damaged table page passes the config step, which reads only the schema: step 2 stops later, at its
+		# status when that reads the table, else at its first sync (exit 65), so its clause names no one step.
+		stail=""
+		case ",$cerr," in *",state-table,"*) stail="; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its first sync): fixing that is the person's, and the step that stops prints the error" ;; esac
 		git_ro_resolve
-		if checkout_is_installed >/dev/null; then
+		if [ -z "$ctail" ]; then
+			:
+		elif checkout_is_installed >/dev/null; then
 			ctail="; step 2 stops at its config step on $ctail: fixing that is the person's, and ~/.local/bin/agentsync status prints the error"
 		else
 			ctail="; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it too, step 2 stops at its config step on $ctail: fixing that is the person's, and ~/.local/bin/agentsync status prints the error"
 		fi
+		ctail="$ctail$stail"
 		clog=" config_err=$cerr"
 	fi
 	term="$(terminal_app)"

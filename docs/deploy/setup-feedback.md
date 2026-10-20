@@ -570,13 +570,18 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   also asks the installed agentsync whether policy.toml, the `[governance]` values in <config> or agentsync's state
   file would stop step 2's config step. When one would, the `NEXT:` drops `(none is needed)` and adds `; step 2
   stops at its config step on <what>: fixing that is the person's, and ~/.local/bin/agentsync status prints the
-  error`, where <what> is `an invalid [policy] in policy.toml`, `an invalid [governance] value in <config>` or
-  `agentsync's state file, which cannot be read`, joined by `and`. When step 2 would reinstall agentsync first
+  error`, where <what> is `an invalid [policy] in policy.toml`, `an invalid [governance] value in <config>`,
+  `agentsync's state file, which cannot be read` or, since v27, `a git remote on the docs repo that [governance] does
+  not allow` (read only when that table loads; never the remote's host), joined by `and`. Since v27 a state file
+  whose schema reads but a table's first page does not adds its own tail, since step 2 passes its config step on it:
+  `; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its first sync): fixing
+  that is the person's, and the step that stops prints the error` (B13 round 18 V9, V21, V36). When step 2 would reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it
   too, step 2 stops at its config step on <what>: ...`. The tail is on every list whose `NEXT:` points to step 2,
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
-  `config_err=<words>`, the comma-joined fixed words `policy`, `governance` and `state`, never the error's text.
+  `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote` and `state-table`,
+  never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:

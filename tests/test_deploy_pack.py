@@ -5954,17 +5954,22 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         script,
         re.M,
     )
-    assert [w for w, _ in words] == ["policy", "governance", "state"]
+    assert [w for w, _ in words] == ["policy", "governance", "state", "remote"]
     assert '\t\tclog=" config_err=$cerr"\n' in script
+    # B13 round 18 V21: a damaged table page has a tail of its own, since step 2 passes its config step on it
+    [table] = re.findall(
+        r'^\t\tcase ",\$cerr," in \*",state-table,"\*\) stail="(; [^"]*)" ;; esac$', script, re.M
+    )
     page = " ".join(_feedback_page().split())
     section = page.split("### A Mac that is already set up", 1)[1].split("### ", 1)[0]
     assert f"adds `{tails[0][0]}<what>: {end}`" in section
     assert f"the tail opens `{tails[1][0]}<what>: ...`" in section
     for _, said in words:
         assert f"`{said.replace('$CONFIG', '<config>')}`" in section, said
+    assert f"`{table}`" in section, table
     assert (
-        "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance` and "
-        "`state`" in section
+        "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
+        "`state`, `remote` and `state-table`" in section
     )
     [row] = [
         ln for ln in _feedback_page().splitlines() if ln.startswith("| `~/agent-context/setup/install.log`")

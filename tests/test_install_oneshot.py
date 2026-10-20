@@ -6478,6 +6478,25 @@ def _config_step_2_stops_on(env: dict[str, str], state: str) -> Path:
         db = _state_db(env)
         db.parent.mkdir(parents=True, exist_ok=True)
         db.write_bytes(b"Contoso junk, no database\n" * 64)
+    elif state in ("GR", "GR-allowed"):  # B13 round 18 V9, V36: a docs-repo remote, refused or allowed
+        docs = Path(env["HOME"]) / "agent-context" / "docs"
+        docs.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(docs)], check=True)
+        url = "https://git.contoso.example/team/kb.git"
+        subprocess.run(["git", "-C", str(docs), "remote", "add", "origin", url], check=True)
+        if state == "GR-allowed":
+            gov = '[governance]\nallow_remote = true\nremote_url_prefixes = ["https://git.contoso.example/team"]\n\n'
+            cfg.write_text(gov + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    elif state == "TD":  # B13 round 18 V21: the schema reads, a table's first page does not
+        _manifest_rows(env, ("project-alpha", "live", 3))
+        db = _state_db(env)
+        conn = sqlite3.connect(db)
+        with contextlib.closing(conn):
+            [(root,)] = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = 'items'").fetchall()
+            [(size,)] = conn.execute("PRAGMA page_size").fetchall()
+        with db.open("r+b") as fh:
+            fh.seek((root - 1) * size)
+            fh.write(b"Contoso junk page" * 4)
     return cfg
 
 
@@ -6485,10 +6504,11 @@ CONFIG_STOP = {
     "PT": "an invalid [policy] in policy.toml",
     "GV": "an invalid [governance] value in {cfg}",
     "MF": "agentsync's state file, which cannot be read",
+    "GR": "a git remote on the docs repo that [governance] does not allow",
 }
 
 
-@pytest.mark.parametrize("state", ["PT", "GV", "MF", "clean"])
+@pytest.mark.parametrize("state", ["PT", "GV", "MF", "GR", "TD", "GR-allowed", "clean"])
 def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, str], state: str) -> None:
     """B13 round 17 U12 (probes PT, GV, MF): step 1's readers call load_config alone, which reads neither
     policy.toml nor [governance], and a damaged manifest read as no vanished source, so the NEXT ended "(none
@@ -6496,7 +6516,11 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     asks policy.load_policy, governance.load_governance and doctor's read-only manifest probe, and the NEXT
     says what step 2 stops on, the person's to fix, in fixed words: never the error's text (the host, the
     label), in the NEXT or in install.log. The installed agentsync here is not this checkout's build, so it
-    says step 2 reinstalls first. A clean config says "(none is needed)" as before."""
+    says step 2 reinstalls first. A clean config says "(none is needed)" as before.
+    B13 round 18 V9, V21, V36 (probes GR, TD): a docs-repo remote [governance] does not allow, which init and
+    add-source exit 1 on, and a damaged table page under a schema that reads, which step 2's status or first
+    sync stops on, also ended "(none is needed)". Both are named now, never the remote's host; a remote the
+    table allows is no stop."""
     cfg = _config_step_2_stops_on(env, state)
     _tool_python(env)
     cp = install_sh(env, "--list-folders")
@@ -6504,8 +6528,17 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     head = f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
     assert last_line(cp).startswith(head), last_line(cp)
     logged = install_log(env)[-2]
-    if state == "clean":
+    for text in (last_line(cp), "\n".join(install_log(env))):
+        assert "contoso.example" not in text and "Contoso junk" not in text, text
+    if state in ("clean", "GR-allowed"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
+        return
+    if state == "TD":
+        assert last_line(cp).endswith(
+            "; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its "
+            "first sync): fixing that is the person's, and the step that stops prints the error"
+        ), last_line(cp)
+        assert "config step" not in last_line(cp) and logged.endswith(" config_err=state-table"), logged
         return
     cause = CONFIG_STOP[state].format(cfg=cfg)
     assert last_line(cp).endswith(
@@ -6514,7 +6547,7 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
         "prints the error"
     ), last_line(cp)
     assert "(none is needed)" not in last_line(cp)
-    word = {"PT": "policy", "GV": "governance", "MF": "state"}[state]
+    word = {"PT": "policy", "GV": "governance", "MF": "state", "GR": "remote"}[state]
     assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
     for text in (last_line(cp), "\n".join(install_log(env))):
         assert "contoso.invalid" not in text and "refuse_unlabelled" not in text and "junk" not in text
