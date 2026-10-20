@@ -417,6 +417,13 @@ _LISTING_S = 3.0  # the cloud folder listing (B13 round 8 J80: a constant, so a 
 _PROXY_S = 4.0  # the LaunchAgent job's proxy read
 _STATUS_S = 4.0  # the offline Status build the report reads its lines from
 _LOOP_FLOOR_S = 1.0  # held back from Doctor's share, so the hook gets at least 2 s past a slow doctor
+_IDLE_AGAIN = f"write the report again when this Mac is idle (`{INSTALL_SH} --report-only`) before sending it"
+"""The advice for a part the report's time limit cut off: the Summary's evidence and doctor lines; Doctor."""
+_DOCTOR_GRACE_S = 20.0
+"""The least the doctor call is given (B13 round 18 V4): on a busy Mac its pandoc start alone can take longer
+than what is left of :data:`TIME_BUDGET_S`, which cut the last report of a setup off with no Doctor section.
+A doctor that would get less has the deadline moved by the difference, so the parts after it keep their share;
+the report then takes at most about 35 s, inside install.sh's 120 s bound on it."""
 _TAIL_BYTES = 64 * 1024
 _LEVEL_RE = re.compile(r"\b(?:WARNING|ERROR|CRITICAL)\b|^(?:error|fatal):|^Traceback ")
 _LAUNCHD_KEYS = ("state", "runs", "last exit code", "last terminating signal")
@@ -2923,7 +2930,9 @@ class _Facts:
     loop: tuple[str | None, int | None, bool | None] | None = None  # status's (baseline, topics, a sync ran)
     loop_unread: str | None = None  # why status could not read the state (its words), when it said so
     doctor_pandoc: tuple[str, str] | None = None  # the doctor's pandoc check: (tag, detail)
-    doctor_cut_off: float | None = None  # the seconds the doctor call had when the time limit cut it off
+    # the seconds the doctor call was given when the time limit cut it off, the limit the Doctor section names
+    # (B13 round 18 V3, V49); 0.0: the budget was used up before it started
+    doctor_cut_off: float | None = None
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
 
@@ -2932,13 +2941,18 @@ _PANDOC_FROM_DOCTOR = "\x00from the doctor's pandoc check"
 """The Environment's pandoc value while a doctor runs: :func:`_pandoc_from_doctor` replaces it."""
 
 
-def _slow_start() -> str:
-    """doctor's words for a pandoc start that takes long (``_PANDOC_SLOW_START``)."""
+def _slow_start(kind: str) -> str:
+    """doctor's words for a pandoc start that takes long, chosen as doctor chooses them: the slow first start
+    (``_PANDOC_SLOW_START``) is Rosetta's for the wheel's bundled Intel binary only; a native or configured
+    copy's is a busy Mac's (``_PANDOC_BUSY_START``; B13 round 15 S29, round 17 U104, round 18 V81)."""
+    wheel = kind == "wheel"
     try:
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
     except Exception:  # its own words
-        return "a new copy's first start can take a minute, and any start can on a busy Mac"
-    return str(doctor._PANDOC_SLOW_START)
+        if wheel:
+            return "a new copy's first start can take a minute, and any start can on a busy Mac"
+        return "any start can take a minute on a busy Mac"
+    return str(doctor._PANDOC_SLOW_START if wheel else doctor._PANDOC_BUSY_START)
 
 
 def _pandoc_from_doctor(r: _Run) -> str:
@@ -3014,6 +3028,8 @@ class _Run:
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
         self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
         self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
+        self.last_call_limit: float | None = None  # the wait :meth:`call` last gave its function (V3, V49)
+        self.doctor_grace = 0.0  # the seconds the deadline moved for a slow doctor (_DOCTOR_GRACE_S, V4)
 
     def remaining(self) -> float:
         return self.deadline - time.monotonic()
@@ -3044,6 +3060,7 @@ class _Run:
         """``fn()`` in a daemon thread, bounded by ``timeout`` and the budget (TimeoutError past it; the
         thread is abandoned, so a hung probe never holds the report)."""
         limit = min(timeout, self.remaining() - _RESERVE_S)
+        self.last_call_limit = limit
         if limit <= 0.2:
             raise TimeoutError("the report's time budget is used up")
         try:
@@ -4141,7 +4158,7 @@ def _environment(r: _Run) -> list[str]:
         # the one the converters run, as doctor's check resolves it (B13 round 14 Q60)
         which = ""
         if r.config is not None and r.config.convert.pandoc_path is not None:
-            exe = r.config.convert.pandoc_path
+            exe, kind = r.config.convert.pandoc_path, "configured"
         else:
             from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415 - lazy, as in doctor
             from agentsync.errors import ConversionError  # noqa: PLC0415 - beside it
@@ -4154,7 +4171,7 @@ def _environment(r: _Run) -> list[str]:
         rc, text = r.run([str(exe), "--version"], 5.0)
         if rc == 124 and text.startswith("timed out after "):  # a slow start, not an exit code (U48)
             secs = text.removeprefix("timed out after ")
-            return f"{exe}{which} did not answer within {secs} ({_slow_start()})"
+            return f"{exe}{which} did not answer within {secs} ({_slow_start(kind)})"
         return text.splitlines()[0] + which if rc == 0 and text else f"{exe}{which} {_exited(rc, text[:200])}"
 
     def app(name: str) -> Callable[[], str]:
@@ -5200,12 +5217,29 @@ def _doctor(r: _Run) -> list[str]:
         return ["Not run: no doctor hook."]
     config = r.config
     doctor_fn = r.hooks.doctor
-    limit = max(1.0, r.remaining() - 2.0 - _LOOP_FLOOR_S)
+    left = r.remaining()
+    limit = max(1.0, left - 2.0 - _LOOP_FLOOR_S)
+    held = left - limit  # the share of the parts after Doctor (the Loop line, the late listing)
+    deadline = r.deadline
+    if limit < _DOCTOR_GRACE_S:  # B13 round 18 V4: a slow doctor gets the grace, the later parts keep theirs
+        r.deadline += _DOCTOR_GRACE_S - limit
+        limit = _DOCTOR_GRACE_S
+    r.last_call_limit = None
     try:
         lines = r.call(lambda: doctor_fn(config), timeout=limit)
     except TimeoutError:  # the Summary says cut off, not "not run" (U48)
-        r.facts.doctor_cut_off = max(0.0, min(limit, r.remaining()))
-        raise
+        # the wait the call was given, the number its own message names: one float in both places (V3, V49)
+        had = r.last_call_limit or 0.0
+        r.facts.doctor_cut_off = had if had > 0.2 else 0.0
+        if r.facts.doctor_cut_off == 0.0:
+            return [f"Not run: the report's time budget was used up before doctor started; {_IDLE_AGAIN}."]
+        return [
+            f"Cut off: the doctor call did not finish within {had:.1f}s, the report's time limit; "
+            f"{_IDLE_AGAIN}."
+        ]
+    finally:  # a doctor done within its first share moves nothing
+        r.deadline = max(deadline, time.monotonic() + held)
+        r.doctor_grace = r.deadline - deadline
     tags: Counter[str] = Counter()
     ok_names: list[str] = []
     shown: list[str] = []
@@ -7340,8 +7374,7 @@ def _evidence_line(r: _Run) -> str:
         return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
     return (
         f"- evidence: {_plural(count, 'line')} at the end of Status {'says' if count == 1 else 'say'} "
-        '"not measured": write the report again when '
-        f"this Mac is idle (`{INSTALL_SH} --report-only`) before sending it"
+        f'"not measured": {_IDLE_AGAIN}'
     )
 
 
@@ -8610,9 +8643,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None and r.facts.doctor_cut_off is not None:
         # B13 round 17 U48: the report's time limit cut it off; install.sh's own doctor, in install.out, does
-        # not depend on this run's
+        # not depend on this run's. The seconds are the wait the call was given, as Doctor says (round 18 V3)
         line = (
             f"- doctor: cut off by the report's time limit after {r.facts.doctor_cut_off:.1f}s (see Doctor)"
+            if r.facts.doctor_cut_off
+            else "- doctor: not started: the report's time budget was used up (see Doctor)"
         )
         gone = _install_doctor_only(r, runs)
         if gone is not None:
@@ -8623,7 +8658,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
                 f" · install.sh's doctor before its first sync (run {run.display_id}): {counts}: "
                 + ", ".join(name for _tag, name in named)
             )
-        return line
+        return f"{line} · {_IDLE_AGAIN}"  # B13 round 18 V4: a report written when idle has the section
     if d is None:
         return "- doctor: not run (see Doctor)"
     installed = agents_installed(r.install_runs)
@@ -8634,7 +8669,13 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
     not_on_disk = _gone_folder_fails(r, runs) - signed_out
     refusing = _refusing_checks(r.config) if r.config is not None else frozenset()
-    remote = r.config is not None and _remote_refused(r.config)
+    # read only when doctor printed the FAIL it sorts, and never against the budget: the Summary is built
+    # after the Loop line, which can spend it, and a remote FAIL the budget hid would read as unexpected (V55)
+    remote = (
+        r.config is not None
+        and any(t == "FAIL" and n == "governance.remote" for t, n, _ in r.facts.doctor_problems)
+        and _remote_refused(r.config)
+    )
     from_stop: list[str] = []
     from_gone: list[str] = []
     from_config: list[str] = []
@@ -10468,7 +10509,8 @@ def build_report(
         r.loop_line = _loop_line(r)
     except Exception as exc:
         r.loop_line = f"- Loop: not read ({_why_not_read(exc)})"
-    header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s)")
+    grace = f", {r.doctor_grace:.1f}s more for a slow doctor" if r.doctor_grace >= 0.05 else ""  # V4
+    header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s{grace})")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
     # the friction section is built first: it says the Summary's F<n> ids are its line numbers only when the
     # Summary cites one (B13 round 6 G10)

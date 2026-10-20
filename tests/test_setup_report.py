@@ -795,7 +795,11 @@ def test_a_broken_section_is_recorded_not_raised(fake_mac: dict[str, Path], tmp_
 
 
 @pytest.mark.timing
-def test_a_crashing_or_hanging_hook_never_takes_the_report_down(fake_mac: dict[str, Path]) -> None:
+def test_a_crashing_or_hanging_hook_never_takes_the_report_down(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)  # the bound itself, not the slow doctor's grace
+
     def crash(config: object) -> list[str]:
         raise RuntimeError("doctor exploded")
 
@@ -809,7 +813,7 @@ def test_a_crashing_or_hanging_hook_never_takes_the_report_down(fake_mac: dict[s
     )
     assert time.monotonic() - t0 < 6, "the hung doctor was abandoned at the time limit"
     assert "This section failed: RuntimeError: doctor exploded" in section(text, "Status")
-    assert "This section failed: TimeoutError" in section(text, "Doctor")
+    assert "Cut off: the doctor call did not finish within " in section(text, "Doctor")
 
 
 def test_missing_config_is_a_finding(tmp_path: Path) -> None:
@@ -6069,11 +6073,13 @@ def test_the_reports_pandoc_line_is_the_doctors_check_and_never_starves_doctor(
 
 
 def test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code(
-    fake_mac: dict[str, Path], tmp_path: Path
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B13 round 17 U48: a doctor the report's time limit cut off read ``doctor: not run (see Doctor)`` and
     dropped install.sh's own doctor line, which does not depend on this run's; with no doctor hook, a
-    pandoc that took past 5 s read ``exited 124: timed out after 5.0s``."""
+    pandoc that took past 5 s read ``exited 124: timed out after 5.0s``. Round 18 V81: a configured pandoc's
+    reason is a busy Mac's, never the wheel's slow first start (round 15 S29)."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
     write_install_log(fake_mac)
     (fake_mac["setup"] / "install.out").write_text(
         "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
@@ -6098,9 +6104,125 @@ def test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exi
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
     [pandoc] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- pandoc: ")]
     assert re.search(
-        r"did not answer within \d+\.\ds \(a new copy's first start can take a minute", pandoc
+        r"did not answer within \d+\.\ds \(any start can take a minute on a busy Mac\)", pandoc
     ), pandoc
-    assert "exited 124" not in pandoc, pandoc
+    assert "first start" not in pandoc and "exited 124" not in pandoc, pandoc
+
+
+@pytest.mark.parametrize(
+    ("kind", "which", "why"),
+    [
+        ("native", " (native arm64 copy)", "any start can take a minute on a busy Mac"),
+        ("wheel", "", "a new copy's first start can take a minute, and any start can on a busy Mac"),
+    ],
+)
+def test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bundled_copy_only(
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    which: str,
+    why: str,
+) -> None:
+    """B13 round 18 V81: with no doctor hook the Environment's own pandoc start gave Rosetta's first-start
+    reason for every kind, a native arm64 copy too; doctor gives it for the wheel's bundled Intel binary only
+    (doctor.py's ``_PANDOC_SLOW_START if kind == "wheel"``), as §16.132 U104 keeps it."""
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
+
+    exe = tmp_path / "bin" / "pandoc"
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_text("#!/bin/sh\nsleep 30\n", encoding="utf-8")
+    exe.chmod(0o755)
+    monkeypatch.setattr(pandoc_mod, "resolved_pandoc", lambda _path: (exe, kind))
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), budget_s=2.5)
+    [pandoc] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- pandoc: ")]
+    assert re.search(
+        rf"/bin/pandoc{re.escape(which)} did not answer within \d+\.\ds \({re.escape(why)}\)$", pandoc
+    ), pandoc
+    assert ("first start" in pandoc) is (kind == "wheel"), pandoc
+
+
+def _seconds(pattern: str, text: str) -> float:
+    found = re.search(pattern, text)
+    assert found is not None, (pattern, text)
+    return float(found.group(1))
+
+
+@pytest.mark.timing
+def test_the_summarys_doctor_cut_off_seconds_are_the_limit_the_doctor_section_names(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V3, V49: the Summary's ``cut off ... after N s`` was what was left after the cut (about
+    3.0 s whatever the budget: the Loop floor and the reserve), while Doctor said ``did not finish within
+    5.2s``. Both are now the wait the call was given, one float; a doctor the budget never started says so."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+
+    def hung(config: object) -> list[str]:
+        time.sleep(30)
+        return []
+
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung), budget_s=8.0
+    )
+    summary = _seconds(r"- doctor: cut off by the report's time limit after (\d+\.\d)s \(see Doctor\)", text)
+    doctor = _seconds(r"did not finish within (\d+\.\d)s", section(text, "Doctor"))
+    assert summary == doctor and summary > 3.5, (summary, doctor)
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(doctor=hung), 0.5)
+    assert setup_report._doctor(r) == [
+        f"Not run: the report's time budget was used up before doctor started; {setup_report._IDLE_AGAIN}."
+    ]
+    r.facts.doctor = None
+    assert setup_report._doctor_line(r, []).startswith(
+        "- doctor: not started: the report's time budget was used up (see Doctor)"
+    )
+
+
+@pytest.mark.timing
+def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V4: on a busy Mac the setup's last report (load ~260) lost its Doctor section and the
+    pandoc line, and nothing asked for it again; the same command 3 minutes later had both. The doctor gets
+    at least ``_DOCTOR_GRACE_S``, the deadline moving by the difference so the Loop line keeps its share,
+    ``took`` says so, and a doctor cut off past the grace says to write the report again when idle."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 6.0)
+
+    def slow(config: object) -> list[str]:
+        time.sleep(4.0)
+        return ["[ok] pandoc — pandoc 3.9 at /opt/pandoc", "[warn] logs — something odd"]
+
+    def loop(config: object) -> list[str]:
+        return ["NEXT: draft the baseline questions: run `~/.local/bin/agentsync sync`"]
+
+    t0 = time.monotonic()
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=slow, loop_next=loop), budget_s=4.0
+    )
+    assert time.monotonic() - t0 < 12
+    assert "[warn] logs — something odd" in section(text, "Doctor")
+    assert "- pandoc: pandoc 3.9 at /opt/pandoc\n" in section(text, "Environment")
+    assert re.search(r"^- took: [0-9.]+s \(time limit 4s, [0-9.]+s more for a slow doctor\)$", text, re.M), (
+        text
+    )
+    assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
+
+    def hung(config: object) -> list[str]:
+        time.sleep(60)
+        return []
+
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung, loop_next=loop), budget_s=4.0
+    )
+    assert section(text, "Doctor").strip() == (
+        f"Cut off: the doctor call did not finish within 6.0s, the report's time limit; "
+        f"{setup_report._IDLE_AGAIN}."
+    )
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert line == (
+        f"- doctor: cut off by the report's time limit after 6.0s (see Doctor) · {setup_report._IDLE_AGAIN}"
+    ), line
+    assert "--report-only" in line
+    assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
 
 
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:
@@ -12871,6 +12993,33 @@ def test_a_docs_repo_remote_governance_does_not_allow_has_the_persons_doctor_buc
     )
     subprocess.run(["git", "-C", str(docs), "remote", "remove", "origin"], check=True)
     assert "docs-repo remote" not in doctor_line()
+
+
+def test_the_docs_repo_remote_is_read_only_for_doctors_remote_fail_and_never_against_the_budget(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V55: the Summary ran ``governance.remote_policy_findings`` (git remote, then get-url per
+    remote) for every report with a config, before it knew doctor printed a ``governance.remote`` FAIL. It is
+    read only for that FAIL, and not through the budget: the Summary is built after the Loop line, which can
+    spend it, and a real remote FAIL must still land in its own bucket then."""
+    asked: list[object] = []
+
+    def refused(c: object) -> bool:
+        asked.append(c)
+        return True
+
+    monkeypatch.setattr(setup_report, "_remote_refused", refused)
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 0.0)  # the deadline already passed
+    r.facts.doctor = Counter({"ok": 3, "warn": 1})
+    r.facts.doctor_problems = [("warn", "logs", "something odd")]
+    assert "docs-repo remote" not in setup_report._doctor_line(r, []) and asked == []
+    r.facts.doctor = Counter({"ok": 3, "FAIL": 1})
+    r.facts.doctor_problems = [("FAIL", "governance.remote", "remote origin (<remote>) exists but ...")]
+    line = setup_report._doctor_line(r, [])
+    assert len(asked) == 1, asked
+    assert "from a docs-repo remote [governance] does not allow" in line and line.endswith(
+        " · unexpected 0"
+    ), line
 
 
 @pytest.mark.usefixtures("clean_doctor")
