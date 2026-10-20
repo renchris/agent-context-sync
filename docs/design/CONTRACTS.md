@@ -24726,6 +24726,17 @@ where a flag-`i` pair's placeholder is in the body (round 11 M3's rule), and alw
 `test_the_folder_legend_names_a_project_folder_only_where_one_is_shown` (a configured `~/Projects` folder, and a
 cloud one alone).
 
+**The shell's install source line says a URL rewrite as the agentsync report does** (W7, W23: one defect from two
+finders). `fallback_install_source_line` printed the configured origin's label alone; `_checkout_facts` adds
+` (a URL rewrite sends it elsewhere)` when `remote get-url` gives another label. The shell still runs no git: the
+new `git_rewrite_pairs` reads every `insteadOf` value and its `[url "<base>"]` from `git_config_files` (not
+`pushInsteadOf`), the longest value that starts the URL (case-sensitive) is applied, and the clause is added only
+when the label is not `none` and the rewritten URL's label differs. W23's finder fix (the clause for any matching
+rule) would say "elsewhere" for a rewrite to `git@github.com:`, which the agentsync report does not; the label
+comparison is the verifier's fix. `[include]` files are not followed, as for `git_rewrite_bases`. Test:
+`test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror rewrite, one to
+`git@github.com:`, the longest of two, and a `pushInsteadOf` alone; the mirror's host never shows).
+
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
 The B13 round 19 items of lane P (specs `round19/items/W<n>.md`, the verifier's corrected fix built unless a

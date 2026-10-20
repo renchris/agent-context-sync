@@ -2192,20 +2192,47 @@ def test_the_shell_reports_origin_label_is_the_agentsync_reports() -> None:
         assert shell == setup_report.origin_label(url), url
 
 
-@pytest.mark.parametrize("origin", ["mirror", "github", "no-url", "no-checkout"])
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "mirror",
+        "github",
+        "no-url",
+        "no-checkout",
+        "rewrite-mirror",
+        "rewrite-same",
+        "rewrite-longest",
+        "push-rewrite",
+    ],
+)
 def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
     env: dict[str, str], origin: str
 ) -> None:
     """B13 round 18 V29 (probes am, remsh): the setup prompt's git quote says the report's install source line
     says ``origin: other`` when the checkout's remote is not GitHub, and only the agentsync report had that
     line: on a new Mac with a mirror checkout and no agentsync, the shell report said nothing of it. It now
-    has the line, read from the checkout's own config files (no git process), never the URL."""
+    has the line, read from the checkout's own config files (no git process), never the URL.
+
+    B13 round 19 W7, W23: a URL rewrite (insteadOf) that sends a GitHub origin to a mirror is said beside the
+    label, as the agentsync report says it; one that keeps the label (git@github.com:) or only rewrites a
+    push says nothing; the mirror's host never shows."""
     home = Path(env["HOME"])
     dot = home / "src" / "agent-context-sync" / ".git"
     url = {
         "mirror": "https://git.contoso-mirror.invalid/contoso/agent-context-sync.git",
         "github": "git@github.com:renchris/agent-context-sync.git",
     }.get(origin, "")
+    if origin.startswith("rewrite") or origin == "push-rewrite":
+        url = "https://github.com/renchris/agent-context-sync.git"
+        rules = {
+            "rewrite-mirror": '[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf = https://github.com/\n',
+            "rewrite-same": '[url "git@github.com:"]\n\tinsteadOf = https://github.com/\n',
+            # git takes the longest insteadOf value that starts the URL: here the one that keeps GitHub
+            "rewrite-longest": '[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf = https://github.com/\n'
+            '[url "git@github.com:renchris/"]\n\tinsteadOf = https://github.com/renchris/\n',
+            "push-rewrite": '[url "https://git.contoso-mirror.invalid/"]\n\tpushInsteadOf = https://github.com/\n',
+        }[origin]
+        (home / ".gitconfig").write_text(rules, encoding="utf-8")
     if origin != "no-checkout":
         dot.mkdir(parents=True)
         remote = f'[remote "origin"]\n\turl = {url}\n' if url else ""
@@ -2216,8 +2243,10 @@ def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
     text = report_path(env).read_text(encoding="utf-8")
     summary = text.split("\n## Summary\n", 1)[1].split("\n## ", 1)[0]
     label = {"mirror": "other (redacted)", "github": "github.com/renchris/agent-context-sync"}.get(
-        origin, "none"
+        origin, "github.com/renchris/agent-context-sync" if url else "none"
     )
+    if origin == "rewrite-mirror":
+        label += " (a URL rewrite sends it elsewhere)"
     if origin == "no-checkout":
         assert "- install source: no checkout at ~/src/agent-context-sync\n" in summary, text
     else:

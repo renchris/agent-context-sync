@@ -385,6 +385,28 @@ git_rewrite_bases() {
 		' "$g" || true
 	done 2>/dev/null | LC_ALL=C awk '!seen[$0]++'
 }
+# Each URL rewrite as "<insteadOf value> TAB <base>", one a line, from the same files: a [url "<base>"] section
+# can hold several insteadOf lines. fallback_install_source_line applies them as `git remote get-url` does,
+# with no git process (B13 round 19 W7, W23); pushInsteadOf is left out.
+git_rewrite_pairs() {
+	local g
+	git_config_files | while IFS= read -r g; do
+		[ ! -f "$g" ] || LC_ALL=C awk '
+			/^[ \t]*\[/ {
+				base = ""
+				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
+					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+				}
+				next
+			}
+			base != "" && tolower($0) ~ /^[ \t]*insteadof[ \t]*=/ {
+				v = $0; sub(/^[^=]*=[ \t]*/, "", v); sub(/[ \t]+[#;].*$/, "", v); sub(/[ \t\r]*$/, "", v)
+				gsub(/^"|"$/, "", v)
+				if (v != "") print v "\t" base
+			}
+		' "$g" || true
+	done 2>/dev/null
+}
 # The hosts of the git remotes' URLs ([remote "<name>"] with a url key), one a line, from the same files, as
 # setup_report._git_remotes reads them (B13 round 16 T88): a 403 or a TLS error names the host of a
 # hand-set origin, and step 1 tells the agent to log it. Only a URL with "://" (not file://) or git's
@@ -2972,7 +2994,19 @@ fallback_install_source_line() {
 		' "$g" 2>/dev/null || true)"
 		[ -z "$v" ] || url="$v"
 	done < <(checkout_git_configs "$dir")
-	say "- install source: checkout ~/src/agent-context-sync · origin: $(origin_label "$url")"
+	# a URL rewrite is said beside the label, as setup_report._checkout_facts says it, never its host: git's
+	# longest insteadOf value that starts the URL, case-sensitive, and only when the rewritten URL's label
+	# differs (a rewrite to git@github.com: is the same repository; B13 round 19 W7, W23)
+	local label best="" base="" iv b said=""
+	label="$(origin_label "$url")"
+	if [ "$label" != none ]; then
+		while IFS=$'\t' read -r iv b; do
+			case "$url" in "$iv"*) [ "${#iv}" -le "${#best}" ] || best="$iv" base="$b" ;; esac
+		done < <(git_rewrite_pairs)
+		[ -z "$best" ] || [ "$(origin_label "$base${url#"$best"}")" = "$label" ] ||
+			said=" (a URL rewrite sends it elsewhere)"
+	fi
+	say "- install source: checkout ~/src/agent-context-sync · origin: $label$said"
 }
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 # The sha REF names in the checkout GIT, read from its ref files with no git process: the loose file first, else
