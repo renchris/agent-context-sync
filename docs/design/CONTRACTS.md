@@ -10632,6 +10632,9 @@ build tree, passed to both swift steps, instead of the real `~/Library` ones.
   Amended 2026-10-19, §16.138 V68: the `failed` refusal names the installer by its path (`skill.INSTALL_SH`):
   `the speech helper is not built from FluidAudio 04e363c or later; ~/src/agent-context-sync/scripts/install.sh
   rebuilds it`.
+  Amended 2026-10-20, §16.144 W67: the refusal names the pin, `the speech helper is not built from FluidAudio
+  04e363c, the commit this agentsync pins; ~/src/agent-context-sync/scripts/install.sh rebuilds it`
+  (`speech._PIN_REFUSAL`, from `FLUIDAUDIO_PIN`): probe's check is an exact match, not "or later".
 - **Doctor** (`ops.doctor`, check `speech`, right after `media`, through the private `doctor._speech_status`;
   never a FAIL): `ready`, `off` ok `speech: <state> (<detail>)`; `not-built` not-ok INFO `speech: not-built
   (<detail>; scripts/install.sh builds it[ once the Command Line Tools are installed (xcode-select --install)])`;
@@ -24625,6 +24628,8 @@ path, which names no one, and takes out every other. "or later" stays in the flo
 (spec C3), which `FLUIDAUDIO_PIN` equals today. Tests: `test_speech.py::test_a_build_step_killed_by_a_signal_says_so_and_is_tried_again`,
 `test_ocr.py::test_a_helper_or_compiler_killed_by_a_signal_says_so` and `test_voice_naming.py`'s floor refusal,
 each against `skill.INSTALL_SH`.
+Amended 2026-10-20, §16.144 W67: "or later" is gone from the refusal, which names the pinned commit, since
+probe's check is the exact pin, not the floor.
 
 **U74's pronoun is pinned where the two counts disagree (V66; tests only).** Taking the pronoun from the formula
 count passed every test, since the pins were 1 of 1, 2 of 2 and 4 of 4. 1 of 4 (D2, D3 and B4 cached, C4 not) is
@@ -25096,6 +25101,19 @@ reason). Both now say "Its text holds no path but the installer's (``skill.INSTA
 names as its fix", and §16.34's `MediaError` stub comment says the same. §16.34's answer-check errors, which hold
 no path, are unchanged. Docstrings only. Test:
 `test_speech.py::test_the_helper_errors_say_the_one_path_their_text_holds`.
+
+**The pin refusal names the pin (W67; `agentsync.convert.speech`, `agentsync.ops.doctor`; amends §16.138 V68;
+dated line at §16.35).** `_FLOOR_REFUSAL` said "not built from FluidAudio 04e363c or later", but `_open` raises it
+whenever the helper's commit is not `FLUIDAUDIO_PIN`, an exact match; the floor (`merge-base --is-ancestor`) is
+checked only at build time. V68's reason for keeping "or later" (it states the floor, which the pin equals today)
+explained naming the floor, not the "or later". It is now `_PIN_REFUSAL`, built from the pin: `the speech helper
+is not built from FluidAudio <pin[:7]>, the commit this agentsync pins; <INSTALL_SH> rebuilds it`; the module,
+`probe` and doctor's `_check_speech` docstrings say the probe refuses any commit other than the pin. The case the
+finder named, a downgraded agentsync opening a newer pin's helper, cannot happen: `ocr._helper_path` keys the
+helper by the digest of `Package.swift`, which carries the `revision:`, so a different pin is a different path;
+only a foreign helper at that path reaches the refusal. No reader matches the words. Test:
+`test_voice_naming.py` (the refusal from the pin, and a helper reporting a later commit refused in the same
+words).
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

@@ -13,9 +13,10 @@ Speech is off until both folders are placed and each matches its pinned digest. 
 (the folders are there, the helper answers ``--version`` from a verified FluidAudio commit) and never takes a
 digest; :func:`engine` is the one place the digests are taken, once per cycle, and a mismatch is no engine.
 
-The build floor (C3): FluidAudio ``04e363c`` or later, the first build with the silence-aware FBank.  The
-build refuses a resolved checkout that does not descend from it, leaving the reason beside the helper; the
-helper reports the commit compiled into it, and probe refuses one that is not :data:`FLUIDAUDIO_PIN`.
+The build floor (C3): FluidAudio ``04e363c`` or later, the first build with the silence-aware FBank, is a
+build-time check: the build refuses a resolved checkout that does not descend from it, leaving the reason
+beside the helper.  The helper reports the commit compiled into it, and probe refuses any commit other than
+:data:`FLUIDAUDIO_PIN`, an exact match (B13 round 19 W67).
 
 Answers are checked strictly: integer milliseconds, start at or before end, no key and no field beyond the
 protocol's.  A voice embedding never leaves the helper; an answer that carries one is a :class:`SpeechError`.
@@ -101,8 +102,12 @@ _BUILD_TIMEOUT_S = 1200.0  # cold builds took 279 to 451 s; OCR's 300 s was size
 _VERSION_TIMEOUT_S = 5.0
 _COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 # the installer by its path, as doctor's texts name it: the prompt never runs from inside the checkout, so a
-# bare scripts/install.sh is not found (B13 round 18 V68, after round 17 U30)
-_FLOOR_REFUSAL = f"the speech helper is not built from FluidAudio 04e363c or later; {INSTALL_SH} rebuilds it"
+# bare scripts/install.sh is not found (B13 round 18 V68, after round 17 U30). Probe's check is an exact match
+# to the pin, so the refusal names the pin, never "or later" (B13 round 19 W67)
+_PIN_REFUSAL = (
+    f"the speech helper is not built from FluidAudio {FLUIDAUDIO_PIN[:7]}, the commit this agentsync pins; "
+    f"{INSTALL_SH} rebuilds it"
+)
 BUILD_TIMED_OUT = "the speech helper's build ran out of time"
 """How the reason of a build that ran out of its :data:`_BUILD_TIMEOUT_S` starts, in ``<helper>.failed`` and
 so in doctor's ``speech`` warn: doctor gives that warn its fix, and the setup report its own bucket, by these
@@ -289,7 +294,7 @@ class SpeechEngine:
 
 
 def _open(helper: Path) -> _Built:
-    """The build behind a helper that answers ``--version``; raises SpeechError, with :data:`_FLOOR_REFUSAL`
+    """The build behind a helper that answers ``--version``; raises SpeechError, with :data:`_PIN_REFUSAL`
     when the FluidAudio commit compiled into it is not the one a build verified."""
     answer = ocr._run_helper(helper, ["--version"], timeout=_VERSION_TIMEOUT_S, kind=SPEECH)
     try:
@@ -307,7 +312,7 @@ def _open(helper: Path) -> _Built:
             and _COMMIT_RE.fullmatch(commit)
         ):  # the commit goes into the recording converter's version, so into page front matter
             if commit != FLUIDAUDIO_PIN:
-                raise SpeechError(_FLOOR_REFUSAL)
+                raise SpeechError(_PIN_REFUSAL)
             return _Built(helper, name, version, commit)
     raise SpeechError("the speech helper's --version answer is not the expected JSON")
 
@@ -393,7 +398,7 @@ def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
     """(state, detail) for doctor and ``status``: ``ready``, ``off``, ``not-built`` or ``failed``.  Never
     compiles, never raises and takes no digest; ``off`` when the media helper is switched off or, with the
     helper built, a model folder is not placed (the detail then says the helper is built), ``failed`` with a
-    fixed wording naming ``04e363c`` when the helper was built from another FluidAudio commit."""
+    fixed wording naming the pinned commit when the helper was built from another FluidAudio commit."""
     state, detail, _ = _resolve(cfg, cache_dir)
     return state, detail
 

@@ -253,12 +253,22 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     place_models(helper.parent)
     ocr._marker(helper).unlink()
     # the installer by its path (B13 round 18 V68)
-    refusal = f"the speech helper is not built from FluidAudio 04e363c or later; {INSTALL_SH} rebuilds it"
+    # B13 round 19 W67: probe's check is an exact match to the pin, so the refusal names the pin
+    refusal = (
+        f"the speech helper is not built from FluidAudio {speech.FLUIDAUDIO_PIN[:7]}, the commit this "
+        f"agentsync pins; {INSTALL_SH} rebuilds it"
+    )
     assert speech.probe(sample_config.convert, cache) == ("failed", refusal)
     assert speech.engine(sample_config.convert, cache) is None
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
     (r,) = doctor._check_speech(sample_config)
     assert (r.ok, r.severity, r.detail) == (False, Severity.WARN, f"speech: failed ({refusal})")
+    # a helper that reports a commit after the floor is refused too: the check is the exact pin, so the
+    # refusal never says "or later" (W67)
+    later = json.dumps({"engine": "fluidaudio", "fluidaudio": "2" * 40, "helper": "0.1.0"})
+    fake_speech(helper.parent, version=later).replace(helper)
+    assert speech.probe(sample_config.convert, cache) == ("failed", refusal)
+    assert "or later" not in refusal and speech.FLUIDAUDIO_PIN[:7] in refusal
 
 
 def test_no_voice_vector_is_written_anywhere(

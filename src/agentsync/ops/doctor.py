@@ -787,9 +787,9 @@ def _check_speech(config: Config) -> list[CheckResult]:
     """The speech engine (words and voices of a recording), optional as the media helper is and checked the
     same way, one ``speech: <state> (<detail>)`` line: ok when ready or off (whatever switches the media
     helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
-    built; WARN with the reason when it failed, a FluidAudio build older than 04e363c among them, with a fix
-    only for missing developer tools or a build that ran out of time.  The probe takes no model digest and
-    never compiles.  Never a FAIL."""
+    built; WARN with the reason when it failed, a helper built from a FluidAudio commit other than the
+    pinned one among them, with a fix only for missing developer tools or a build that ran out of time.  The
+    probe takes no model digest and never compiles.  Never a FAIL."""
     try:
         state, detail = _speech_status(config)
     except Exception as exc:
