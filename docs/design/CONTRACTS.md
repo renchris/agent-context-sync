@@ -24717,6 +24717,15 @@ involved. Numbering parity holds for the vanished ids doctor's fix quotes: the P
 roots of the ids only the manifest still holds, which no fix names, so the shell never sees those. Test:
 `test_the_two_reports_number_a_vanished_sources_re_add_folders_in_one_order`.
 
+**The shell legend's `<folder-N>` names a project folder where one is shown** (W5, W22: one defect from two finders).
+Since round 18 V46 a configured folder outside CloudStorage and a removed source's re-add folder take a
+`<folder-N>` (`folder_value`, pair flag `i`), while the legend said every one is a folder under CloudStorage.
+`fallback_redaction` adds `; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds
+a removed source back from, from its first part that names something down, and that part alone, in any case` only
+where a flag-`i` pair's placeholder is in the body (round 11 M3's rule), and always with no body to read. Test:
+`test_the_folder_legend_names_a_project_folder_only_where_one_is_shown` (a configured `~/Projects` folder, and a
+cloud one alone).
+
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
 The B13 round 19 items of lane P (specs `round19/items/W<n>.md`, the verifier's corrected fix built unless a

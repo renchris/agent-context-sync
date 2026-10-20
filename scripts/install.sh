@@ -3314,7 +3314,7 @@ say_item() { # TEXT
 	}'
 }
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
-	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
+	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" proj="" v p fl
 	local low org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
 	local pairs generic=" "
@@ -3322,7 +3322,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
 	# round 10 L1 for the items): step 1's list where one of its folders was registered; the whole-word rule
 	# where a configured name every drive has (a pair of flag w) has its placeholder in the body; the list-only
-	# rule where a name step 1's list alone gave, and folder_parts skipped, is in the body as a whole word.
+	# rule where a name step 1's list alone gave, and folder_parts skipped, is in the body as a whole word; the
+	# project-folder clause where a folder outside CloudStorage (folder_value's pairs, flag i) has its
+	# placeholder in the body (B13 round 19 W5, W22).
 	if [ -n "${3:-}" ]; then
 		# the agent's own name is no folder: every whole-word copy of an Agent: header's value is left out of
 		# the list-only test (B13 round 13 O10), as setup_report._without_agents, longest first, so a name
@@ -3369,6 +3371,10 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		while IFS=$'\t' read -r v p fl; do
 			case "$p" in
 			"<folder-"*)
+				if [ "$fl" = i ]; then
+					! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || proj=1
+					continue
+				fi
 				if [ "$fl" != w ] || ! generic_folder "$v"; then continue; fi
 				! LC_ALL=C grep -qF -- "$p" "$3" 2>/dev/null || whole=1
 				;;
@@ -3396,7 +3402,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		[ -z "$inword" ] || inword_ex="$(LC_ALL=C grep -oE '[A-Za-z0-9]+<org-[0-9]+>[A-Za-z0-9]*|<org-[0-9]+>[A-Za-z0-9]+' "$3" 2>/dev/null |
 			LC_ALL=C awk 'length($0) <= 32' | LC_ALL=C sort -u | LC_ALL=C awk 'NR == 1')"
 	else # no body to read: every clause, as before
-		in_list=1 whole=1 skip_generic=1 skip_agent=1 email=1 inword=1 apps="OneDrive-<org-N>, Dropbox-<org-N>"
+		in_list=1 whole=1 skip_generic=1 skip_agent=1 email=1 inword=1 proj=1 apps="OneDrive-<org-N>, Dropbox-<org-N>"
 		inword_ex="<org-1>Drive"
 	fi
 	org_item="- <org-N>: the organization or team after the app's name in a CloudStorage folder (${apps:-OneDrive-<org-N>})"
@@ -3408,6 +3414,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	else
 		folder_item+=" or install.log name"
 	fi
+	[ -z "$proj" ] || folder_item+="; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed source back from, from its first part that names something down, and that part alone, in any case"
 	[ -z "$whole" ] || folder_item+="; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole word"
 	if [ -n "$whole" ]; then
 		if [ -n "$skip_generic" ] && [ -n "$skip_agent" ]; then

@@ -13623,6 +13623,42 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
     assert ("Copilot" in item) == ("Copilot" in quoted), item
 
 
+@pytest.mark.parametrize("state", ["a project folder", "cloud only"])
+def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
+    env: dict[str, str], state: str
+) -> None:
+    """B13 round 19 W5, W22: since round 18 V46 the shell report also gives a configured folder outside
+    CloudStorage (and a removed source's re-add folder) a <folder-N>, while its legend still said every
+    <folder-N> is a folder under CloudStorage. The legend now says so too, only where the body shows such a
+    placeholder (round 11 M3's rule); a report with cloud folders alone keeps the item as it was."""
+    home = Path(env["HOME"])
+    cloud = _cloud(env) / "OneDrive-Contoso" / "Project Alpha"
+    cloud.mkdir(parents=True)
+    roadmap = home / "Projects" / "Contoso Roadmap"
+    roadmap.mkdir(parents=True)
+    config = home / "agent-context" / "sources.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    picked = roadmap if state == "a project folder" else cloud
+    config.write_text(f'[[source]]\nid = "picked"\nkind = "local"\npath = "{picked}"\n')
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | "
+        f"deviation | picked {picked.name} in {picked.parent.name} | -\n"
+    )
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    item = _folder_item(text)
+    clause = (
+        "; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed "
+        "source back from, from its first part that names something down, and that part alone, in any case"
+    )
+    assert item.startswith("- <folder-N>: the names of the folders under CloudStorage that "), item
+    assert (clause in item) == (state == "a project folder"), item
+    assert picked.name not in text
+    if state == "a project folder":
+        assert "<folder-1> in Projects" in text
+
+
 def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(env: dict[str, str]) -> None:
     """B13 round 14 Q49 (round 13 O10's twin): the shell took Agent: values out in the order it read them, so
     "Copilot" first left "GitHub" of a later "GitHub Copilot", and a list-only folder named GitHub then gave
