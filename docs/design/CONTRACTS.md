@@ -12729,6 +12729,8 @@ stored in `<helper>.failed` as "does not descend from the build floor", which wa
 Amended 2026-10-19, §16.138 V68: both build sites name the installer by its path (`skill.INSTALL_SH`), `...;
 ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run`, and `ocr._plain` keeps that one
 path when it reads the `<helper>.failed` marker back, where it takes every other path out.
+Amended 2026-10-20, §16.144 W50: a crash's line is shortened, with an ellipsis, so the whole reason fits the 200
+characters `ocr._plain` keeps when it reads the marker back (`ocr._signal_reason`).
 
 #### The speech build's proxy (`convert/speech.py`; amends section 16.35, which builds as section 16.25 does) (H10)
 
@@ -25043,6 +25045,18 @@ not an absolute file`) is unchanged: that one is the person's. A stub that carri
 W51's error line shows the current ones while pandoc still cannot start. Tests:
 `test_cli.py::test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length`,
 `test_cli.py::test_a_missing_bundled_pandocs_reason_names_the_re_run_and_not_the_persons_edit`.
+
+**A crash's long line no longer cuts the retry clause (W50; `agentsync.convert.ocr`, `agentsync.convert.speech`;
+dated line at §16.42).** A build step a signal stopped is stored as `<what> was stopped by SIGSEGV (signal 11):
+<the crash line>; <INSTALL_SH> tries the build again on its next run`, and `ocr._failure` reads the marker back
+through `_plain`, which keeps 200 characters: a crash line over about 49 characters (the OCR helper's swiftc) to
+78 (`git`) cut the clause, and past about 90 to 116 the installer's path, the only fix doctor gives such a
+failure. `ocr._signal_reason(head, returncode, stderr)`, used by `ocr._compile` and `speech._step`, gives
+`_ended` the room that is left (`room=`), and `_ended` cuts the crash line with `…`, or drops it when not even its
+start fits. The subject stays first, where doctor's `not working: <detail>` reads it; `_TIMED_OUT` and
+`BUILD_TIMED_OUT` are unchanged, and a SIGKILL or SIGTERM reason, which has no crash line, reads as before. Tests:
+`test_ocr.py::test_a_crashed_builds_long_line_leaves_the_retry_clause_whole`,
+`test_speech.py::test_a_crashed_build_steps_long_line_leaves_the_retry_clause_whole`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

@@ -963,6 +963,23 @@ def test_a_helper_or_compiler_killed_by_a_signal_says_so(tools: Path, tmp_path: 
     assert str(error.value) == reason and ocr.probe(CFG, cache) == ("failed", reason)
 
 
+def test_a_crashed_builds_long_line_leaves_the_retry_clause_whole(tools: Path, tmp_path: Path) -> None:
+    """B13 round 19 W50: a crash's own line went into the reason ahead of the retry clause, and the marker is
+    read back through ``_plain``'s 200 characters, so a long compiler line cut the clause, the only fix such
+    a failure has. The line is shortened instead; the subject stays first."""
+    cache = tmp_path / "cache"
+    script(tools / "swiftc", f'echo "error: {"stack frame " * 15}end" >&2\nkill -SEGV $$')
+    with pytest.raises(ocr.OcrError) as error:
+        ocr.build(cache)
+    state, detail = ocr.probe(CFG, cache)
+    assert state == "failed" and detail == str(error.value) and len(detail) <= 200, detail
+    assert detail.startswith(
+        "swiftc, building the OCR helper, was stopped by SIGSEGV (signal 11): error: stack"
+    )
+    assert detail.endswith(f"…; {INSTALL_SH} tries the build again on its next run"), detail
+    assert ocr._ended(-11, b"x" * 300, room=10) == "stopped by SIGSEGV (signal 11)", "no room: no line"
+
+
 def test_a_failed_build_leaves_its_reason_until_a_build_works(tools: Path, tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     home = Path.home()

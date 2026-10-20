@@ -175,6 +175,10 @@ def _env() -> dict[str, str]:
     return env
 
 
+_REASON_ROOM = 200
+"""How many characters :func:`_plain` keeps of a line."""
+
+
 def _plain(text: str | bytes) -> str:
     """The line of a tool's output that says what went wrong, with every file path taken out but the
     installer's (``skill.INSTALL_SH``).
@@ -191,7 +195,7 @@ def _plain(text: str | bytes) -> str:
     def cut(part: str) -> str:
         return _PATH_RE.sub(lambda m: f"{m['quote'] or ''}<path>{m['quote'] or ''}", part)
 
-    return INSTALL_SH.join(cut(part) for part in line.split(INSTALL_SH))[:200]
+    return INSTALL_SH.join(cut(part) for part in line.split(INSTALL_SH))[:_REASON_ROOM]
 
 
 def _strerror(exc: OSError) -> str:
@@ -205,16 +209,30 @@ def _strerror(exc: OSError) -> str:
 _CRASHES = frozenset({"SIGILL", "SIGTRAP", "SIGABRT", "SIGFPE", "SIGBUS", "SIGSEGV", "SIGSYS"})
 
 
-def _ended(returncode: int, stderr: bytes = b"") -> str:
+def _ended(returncode: int, stderr: bytes = b"", *, room: int | None = None) -> str:
     """How a run a signal stopped ended, after "was": ``stopped by SIGKILL (signal 9)``.  ``returncode`` is
     subprocess's negative signal number.  A crash (:data:`_CRASHES`) also gives the line of ``stderr`` that
-    says why (:func:`_plain`), when it printed one."""
+    says why (:func:`_plain`), when it printed one, cut with an ellipsis so the whole is at most ``room``
+    characters (none when not even the start of the line fits)."""
     try:
         name = signal.Signals(-returncode).name
     except ValueError:
         return f"stopped by signal {-returncode}"
+    ended = f"stopped by {name} (signal {-returncode})"
     said = f": {_plain(stderr)}" if name in _CRASHES and stderr.strip() else ""
-    return f"stopped by {name} (signal {-returncode}){said}"
+    if room is not None and len(ended) + len(said) > room:
+        keep = room - len(ended) - 1  # the ellipsis
+        said = said[:keep].rstrip() + "…" if keep > len(": ") else ""
+    return f"{ended}{said}"
+
+
+def _signal_reason(head: str, returncode: int, stderr: bytes = b"") -> str:
+    """A build step a signal stopped, ``<head><how it ended>; <INSTALL_SH> tries the build again on its next
+    run``, at most :data:`_REASON_ROOM` characters: :func:`_plain` keeps that many of a reason read back from
+    the ``.failed`` marker, and a crash line it ran past cut the retry clause, the only fix such a failure
+    has (B13 round 19 W50).  Only the crash line is shortened, so the subject stays first."""
+    tail = f"; {INSTALL_SH} tries the build again on its next run"  # by its path (B13 round 18 V68)
+    return f"{head}{_ended(returncode, stderr, room=_REASON_ROOM - len(head) - len(tail))}{tail}"
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -691,8 +709,7 @@ def _compile(helper: Path, kind: Helper = _OCR) -> None:
             raise kind.error(f"swiftc ran out of time building the {kind.name}") from None
         if cp.returncode < 0:
             raise kind.error(
-                f"swiftc, building the {kind.name}, was {_ended(cp.returncode, cp.stderr)}; "
-                f"{INSTALL_SH} tries the build again on its next run"  # by its path (B13 round 18 V68)
+                _signal_reason(f"swiftc, building the {kind.name}, was ", cp.returncode, cp.stderr)
             )
         if cp.returncode != 0 or not built.is_file():
             raise kind.error(

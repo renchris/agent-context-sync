@@ -202,6 +202,23 @@ def test_a_build_that_fails_leaves_its_reason_and_names_no_path(tools: Path, tmp
         speech.build(cache)
 
 
+def test_a_crashed_build_steps_long_line_leaves_the_retry_clause_whole(tools: Path, tmp_path: Path) -> None:
+    """B13 round 19 W50: the crash line went ahead of the retry clause, so a line over about 70 characters cut
+    it from the 200 that ``ocr._failure`` reads back; the line is shortened instead."""
+    cache = tmp_path / "cache"
+    script(
+        tools / "swift",
+        'case "$1" in package) mkdir -p .build/checkouts/FluidAudio ;; '
+        f'build) echo "error: {"stack frame " * 15}end" >&2; kill -SEGV $$ ;; esac',
+    )
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    state, detail = speech.probe(CFG, cache)
+    assert state == "failed" and detail == str(error.value) and len(detail) <= 200, detail
+    assert detail.startswith("swift build was stopped by SIGSEGV (signal 11): error: stack frame"), detail
+    assert detail.endswith(f"…; {INSTALL_SH} tries the build again on its next run"), detail
+
+
 def test_a_build_step_killed_by_a_signal_says_so_and_is_tried_again(tools: Path, tmp_path: Path) -> None:
     """A step a signal stopped (subprocess's negative return code) is not "exit -9" with whatever the
     compiler printed last, and a killed floor check is not the floor refusal."""

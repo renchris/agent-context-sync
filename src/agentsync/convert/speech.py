@@ -574,10 +574,7 @@ def _step(
     except OSError as exc:
         raise SpeechError(f"{what} does not run: {ocr._strerror(exc)}") from None
     if cp.returncode < 0:  # a signal; only a crash's own stderr says why (stdout is progress)
-        raise SpeechError(
-            f"{what} was {ocr._ended(cp.returncode, cp.stderr)}; "
-            f"{INSTALL_SH} tries the build again on its next run"
-        )
+        raise SpeechError(ocr._signal_reason(f"{what} was ", cp.returncode, cp.stderr))
     if cp.returncode != 0:
         raise SpeechError(f"{what} failed (exit {cp.returncode}): {ocr._plain(cp.stderr or cp.stdout)}")
     return cp.stdout.decode("utf-8", errors="replace").strip()
