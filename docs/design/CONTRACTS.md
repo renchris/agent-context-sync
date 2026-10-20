@@ -13555,6 +13555,9 @@ prompt that does not match this installer`; a newer copy's NEXT says `, which is
 Amended 2026-10-13, §16.70 H18: the bring-back bracket stands after "bring it back", before the fix, and reads
 `(<path> was not touched and still holds the report of the last attempt that was not stopped)`; no bracket follows
 the fix.
+Amended 2026-10-20, §16.147 X19: any run that writes a report after such an attempt, with no `--log-start`
+since, routes it the same way (its own file, no bring-back file, no `bring back:` or issue link line), keeping
+its own NEXT with one clause added.
 
 #### Step 2's reinstall (R34, R114, R125)
 
@@ -25819,6 +25822,31 @@ blanks; another `\uXXXX` or `\UXXXXXXXX` is its UTF-8 bytes. Both readers of the
 placeholder), so `emit_pair` also turns a TAB or newline in any value into a space, for a raw one install.out's
 folder list could carry. Test: `test_a_folder_name_holding_a_tab_is_redacted_alike_in_both_reports` (two TAB names
 and one holding a backslash and a `t`: the shell's line equals the agentsync report's).
+
+**A run after a stopped copy does not make that attempt "fully one command"** (X19; amends §16.47). Only
+`--report-only` routed a stopped copy's report (`[ "$REPORT_ONLY" -eq 1 ] && tell="$(friction_attempt_stopped)"`),
+so a plain install.sh after the stop, which the stopped copy's own Doctor may ask for (`run ... install.sh again`
+for a helper), took the normal branch: it removed `stopped-copy-report.md`, rewrote `bring-back.md`, and printed
+`bring back:` and an issue link titled `Fully one command · ... · v26` with the old copy's agent. The report
+agreed: `runs_for_attempt` gives the last attempt every later run, and `stopping_error` let any run that ended 0
+after a step 1 error resolve it. Both halves are fixed, scoped to an attempt the installer's own prompt stop
+closed (`_PROMPT_STOP_RE`, the shell's `friction_attempt_stopped`) with no `--log-start` since.
+- `setup_report.stopping_error`: for such an error, only a run started at or before the attempt's end line can
+  resolve it, so the outcome stays `failed at step 1` with its stop note. Every other attempt keeps judging the
+  runs after its end line with it (round 5 F37, the operator's own `--confirm-install-agent` re-run).
+- install.sh `on_exit`: every report-writing run checks `friction_attempt_stopped`. `--report-only` keeps its
+  routing word for word; any other run writes `stopped-copy-report.md` with the same note, leaves `bring-back.md`
+  and `setup-report.md` as they are, prints no `bring back:` or issue link line, and keeps its own NEXT (its work,
+  a rebuilt helper or an added folder, is real, and a later stand-alone run is legitimate) with `; the last setup
+  attempt was a copy of the prompt this installer stopped at step 1; its report is not to be sent, so paste the
+  current prompt into a new session to report a setup` added. The finder's "copy the prompt again" alone was
+  not built: `friction_attempt_stopped` has no time limit, so a re-run days later would tell someone whose setup
+  works to start over.
+Tests: `test_an_install_run_after_a_stopped_copy_invites_no_bring_back` (a v28 attempt and its report, a stopped
+older copy, its `--report-only`, then a plain install.sh: no invite line, both files' bytes kept, the side file
+not for sending, the clause in the NEXT; then a new attempt is reported as before),
+`test_a_run_after_a_stopped_copys_end_line_does_not_resolve_the_stop` and
+`test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it` (tests/test_setup_report.py).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 

@@ -14550,3 +14550,56 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
     (common / "logs" / "refs" / "remotes" / "origin" / "main").write_bytes(latin)
     repo(common, branch_at="d", main="e")
     assert both() is None
+
+
+def _x19_outcome(tmp_path: Path, friction: str) -> setup_report.Outcome:
+    """The outcome of ``friction``'s last attempt, judged on one install run that started at 10:05 and
+    ended 0, five minutes after that attempt's end line (B13 round 20 X19)."""
+    run = "20261020T100500Z-4242"
+    log = tmp_path / "install.log"
+    log.write_text(
+        f"2026-10-20T10:05:00Z run={run} start install.sh compat=28 commit=0123456789ab kind=checkout "
+        "source=- args=\n"
+        f"2026-10-20T10:05:30Z run={run} step=agentsync seconds=30 rc=0 result=done\n"
+        f"2026-10-20T10:06:00Z run={run} end rc=0 seconds=60\n",
+        encoding="utf-8",
+    )
+    fr = setup_report.parse_friction(friction)
+    runs = setup_report.runs_for_attempt(fr, len(fr.attempts) - 1, setup_report.read_install_runs(log))
+    assert len(runs) == 1, "the run after the end line is the attempt's"
+    return setup_report.compute_outcome(fr.attempts[-1], runs)
+
+
+def test_a_run_after_a_stopped_copys_end_line_does_not_resolve_the_stop(tmp_path: Path) -> None:
+    """B13 round 20 X19: a plain install.sh after an attempt the installer stopped at step 1 (an older copy
+    of the prompt) is a stand-alone run, which the stopped copy's own Doctor may ask for. stopping_error let
+    any later run that ended 0 resolve a step 1 error, so the stopped attempt read "fully one command" and
+    its report offered an issue link titled for the old copy. A run after the stop's end line no longer
+    resolves it: the outcome stays failed at step 1."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    assert setup_report._PROMPT_STOP_RE.match(stop)
+    outcome = _x19_outcome(
+        tmp_path,
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:00:00Z | end | finished\n",
+    )
+    assert (outcome.kind, outcome.step) == ("failed", 1), outcome
+
+
+def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_path: Path) -> None:
+    """B13 round 20 X19's limit: every other attempt keeps judging the runs after its end line with it (the
+    operator's own --confirm-install-agent re-run, round 5 F37), a step 1 error such a run resolves
+    included."""
+    head = "Attempt: 2026-10-20T10:00:00Z\nPrompt: v28\nAgent: Contoso Agent (model-1)\n"
+    plain = _x19_outcome(tmp_path, head + "2026-10-20T10:00:00Z | end | finished\n")
+    assert plain.kind == "fully one command", plain
+    resolved = _x19_outcome(
+        tmp_path,
+        head + "2026-10-20T10:00:00Z | step 1 | error | git pull exited 1 | -\n"
+        "2026-10-20T10:00:00Z | end | finished\n",
+    )
+    assert resolved.kind != "failed", resolved

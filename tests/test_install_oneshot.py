@@ -9294,6 +9294,49 @@ def test_the_report_of_a_stopped_copy_invites_no_bring_back(env: dict[str, str])
     )
 
 
+def test_an_install_run_after_a_stopped_copy_invites_no_bring_back(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 20 X19: only ``--report-only`` routed a stopped copy's report, so a plain install.sh after
+    the stop (its Doctor tells the person to run it again for a helper) judged the stopped attempt by its own
+    exit 0: "fully one command", bring-back.md rewritten, the stopped copy's report removed, and an issue link
+    titled for the old copy. Any run that writes a report after such an attempt, with no --log-start since,
+    routes it as the stopped copy's: no "bring back:" or link line, bring-back.md and setup-report.md keep
+    their bytes, and the run's own NEXT stays, with one clause on why nothing is to be sent."""
+    back = report_path(env).parent / "bring-back.md"
+    side = report_path(env).parent / "setup" / "stopped-copy-report.md"
+    assert install_sh(env, "--log-start", f"prompt v{COMPAT}, Contoso Agent (model-1)").returncode == 0
+    assert install_sh(env, str(wheel), "--source-local", str(folder)).returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    kept, kept_report = back.read_bytes(), report_path(env).read_bytes()
+    assert install_sh(env, "--log-start", f"prompt v{COMPAT - 2}, Old Agent (model-0)").returncode == 2
+    assert install_sh(env, "--report-only").returncode == 0 and side.exists()
+    cp = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert not [ln for ln in cp.stdout.splitlines() if ln.startswith(("bring back:", "issue link"))], (
+        cp.stdout
+    )
+    assert "issues/new" not in cp.stdout and f"prompt_version=v{COMPAT - 2}" not in cp.stdout
+    assert back.read_bytes() == kept and report_path(env).read_bytes() == kept_report
+    assert side.read_text().startswith(
+        "> This report is of an attempt started by a copy of the setup prompt that does not match this "
+        "installer"
+    )
+    text = side.read_text()  # the stub agentsync wrote it: no legend to check, as _sends_nothing does
+    assert "issues/new" not in text and text.endswith(
+        "\n\nNot for sending: see the note at the top of this report.\n"
+    )
+    clause = (
+        "; the last setup attempt was a copy of the prompt this installer stopped at step 1; its report is "
+        "not to be sent, so paste the current prompt into a new session to report a setup"
+    )
+    assert last_line(cp).startswith("NEXT: ") and f"{clause} [setup report: {side}]" in last_line(cp)
+    # a new attempt of the current prompt is reported as before
+    assert install_sh(env, "--log-start", f"prompt v{COMPAT}, Contoso Agent (model-1)").returncode == 0
+    again = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert again.returncode == 0 and clause not in last_line(again) and not side.exists(), again.stdout
+
+
 def _sends_nothing(side: Path) -> None:
     """A stopped copy's report ends saying it is not for sending: no "Send it:" line and no issue link,
     whichever writer wrote it (B13 round 4 Q10, Q18), not even an earlier run's quoted in it, and its legend

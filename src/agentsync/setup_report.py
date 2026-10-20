@@ -2471,7 +2471,11 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
     starts). For an error of the install step, it is any install run of the attempt, whenever the line was
     logged. The install step is the one install.sh command in v6 as in v7 (with v6's
     ``--confirm-install-agent`` it ends 0 only once the background job runs), and an agent logs after the
-    command returns."""
+    command returns. The installer's own stop of a copy of the prompt (:data:`_PROMPT_STOP_RE`) closes its
+    attempt, so only a run started before the attempt's end line can resolve it: a plain install.sh run after
+    it (a stopped copy's Doctor says to run it again for a helper) is a stand-alone run, which made that
+    stopped attempt "fully one command" (B13 round 20 X19). Every other attempt keeps judging the runs after
+    its end line with it, the operator's own ``--confirm-install-agent`` re-run among them."""
     layout = attempt.layout
     events = _run_events(attempt)
     last_step = layout.report_step
@@ -2489,6 +2493,9 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
             if e.step < layout.install_step:
                 at = e.at
                 done = [r for r in done if at is not None and r.started is not None and r.started >= at]
+                end = _attempt_end(attempt)
+                if end is not None and _PROMPT_STOP_RE.match(e.what):
+                    done = [r for r in done if r.started is not None and r.started <= end]
             resolved = resolved or bool(done)
         if not resolved and not went_on:
             return e

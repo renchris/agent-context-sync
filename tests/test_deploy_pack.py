@@ -5738,9 +5738,11 @@ _ROUND_20_RB_PARAGRAPH_AMENDS = (
         "- `with_progress` counts its first interval from `$PROGRESS_SINCE` when that is set",
         "§16.147 X36",
     ),
+    ("16.47", "`--report-only` for an attempt `--log-start` stopped writes", "§16.147 X19"),
 )
 """Round 20 lane RB's dated lines at sections its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: X36's at §16.32's `with_progress` clock bullet."""
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: X36's at §16.32's `with_progress` clock bullet, X19's at §16.47's stopped
+copy's report (its R17 and R18 are in the heading alone)."""
 
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
@@ -5777,7 +5779,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48, and
     §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22. Round 19's §16.145 (lane D) one: W72's at
     §16.14. Round 20's §16.151 (lane D) three: X56's two in §9 and X64's at §16.28, and §16.147 (lane RB)
-    one: X36's at §16.32's `with_progress` clock bullet.
+    two: X36's at §16.32's `with_progress` clock bullet and X19's at §16.47's stopped copy's report.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5792,7 +5794,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_19_E_PARAGRAPH_AMENDS)) == len(_ROUND_19_E_PARAGRAPH_AMENDS) == 5
     assert len(_pinned_dated_lines(_ROUND_19_B_PARAGRAPH_AMENDS)) == len(_ROUND_19_B_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_20_D_PARAGRAPH_AMENDS)) == len(_ROUND_20_D_PARAGRAPH_AMENDS) == 3
-    assert len(_pinned_dated_lines(_ROUND_20_RB_PARAGRAPH_AMENDS)) == len(_ROUND_20_RB_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_20_RB_PARAGRAPH_AMENDS)) == len(_ROUND_20_RB_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:

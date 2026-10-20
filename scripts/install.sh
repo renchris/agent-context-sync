@@ -5324,15 +5324,23 @@ on_exit() {
 		# stopped it). Its own text may still end at this report: the NEXT says what to do instead, and
 		# nothing invites sending it: the report goes to its own file (stopped_report_note), no bring-back
 		# file is written (the last one stays as it is), and no "bring back:" or issue link line is printed.
-		if [ "$REPORT_ONLY" -eq 1 ] && tell="$(friction_attempt_stopped)"; then
+		# So for any other run that writes a report after such an attempt, with no --log-start since (a plain
+		# install.sh the stopped copy's Doctor asked for): it was reported "fully one command" with an issue
+		# link titled for the old copy (B13 round 20 X19). Its own NEXT stays, since its work is real and a
+		# later stand-alone run is legitimate; one clause says why nothing is to be sent (stopped=2).
+		if tell="$(friction_attempt_stopped)"; then
 			stopped=1
+			[ "$REPORT_ONLY" -eq 1 ] || stopped=2
 			REPORT_PATH="$SETUP_DIR/stopped-copy-report.md"
 		fi
 		write_report "$rc"
 		case $? in
 		0)
 			suffix=" [setup report: $REPORT_PATH]"
-			if [ "$stopped" -eq 1 ]; then
+			if [ "$stopped" -eq 2 ]; then
+				stopped_report_note "$kept" || warn "could not mark $REPORT_PATH as not to be sent"
+				NEXT_MSG="${NEXT_MSG:+$NEXT_MSG; }the last setup attempt was a copy of the prompt this installer stopped at step 1; its report is not to be sent, so paste the current prompt into a new session to report a setup"
+			elif [ "$stopped" -eq 1 ]; then
 				stopped_report_note "$kept" || warn "could not mark $REPORT_PATH as not to be sent"
 				# What to do instead is the fix the stop logged: copy the prompt again, or, for a copy newer
 				# than a checkout that does not follow main, point the checkout there (B13 round 5 F17, F18).
