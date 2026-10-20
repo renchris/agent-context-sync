@@ -1079,8 +1079,14 @@ def _cmd_exclude_empty(args: argparse.Namespace) -> int:
         # by the count (B13 round 14 Q42, Q57). The gone folders' files are summed: theirs may differ.
         kept = [d for d, n in below.items() if n]
         n_files = sum(below[d] for d in kept)
-        # one file is one page (B13 round 17 U51); "its" stays the folder's, never "their"
-        retires = f"(excluding such a folder retires {'its page' if n_files == 1 else 'its pages'} at once, "
+        # one file is one page (B13 round 17 U51); "its" stays the folder's, never "their"; two or more kept
+        # folders are "them" and "those pages", whatever each held (B13 round 18 V43)
+        if len(kept) == 1:
+            retires = (
+                f"(excluding such a folder retires {'its page' if n_files == 1 else 'its pages'} at once, "
+            )
+        else:
+            retires = "(excluding them retires those pages at once, "
         retires += "with no deletion check)"
         parts: list[str] = []
         if kept and collides:

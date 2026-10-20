@@ -1208,9 +1208,17 @@ def next_step(
                 f"{'the file was' if one_file else 'the files were'} removed on purpose, remove the empty "
                 f"{'folder' if one else 'folders'} from the cloud drive too, and later syncs take "
                 f"{'its page' if one_file else 'the pages'} out with the usual deletion check; "
-                # one file is one page (B13 round 17 U51); "its" stays the folder's, never "their"
-                f"excluding such a folder instead retires {'its page' if one_file else 'its pages'} at once, "
-                "with no deletion check and no purge queued; " + points + gone_tail(src.id, missed, size)
+                # one file is one page (B13 round 17 U51); "its" stays the folder's, never "their". Two or
+                # more folders are "them" and "those pages": each may hold one file (B13 round 18 V43)
+                + (
+                    "excluding such a folder instead retires "
+                    f"{'its page' if one_file else 'its pages'} at once, "
+                    if one
+                    else "excluding them instead retires those pages at once, "
+                )
+                + "with no deletion check and no purge queued; "
+                + points
+                + gone_tail(src.id, missed, size)
             )
             names_source(src.id)
 

@@ -67,6 +67,34 @@ def test_every_empty_folder_is_excluded_once_and_the_listing_completes(
         assert manifest.get_source("work").enumeration_complete  # type: ignore[union-attr]
 
 
+@pytest.mark.parametrize("files", [(1, 1), (2, 1)], ids=["one-each", "two-and-one"])
+def test_two_emptied_folders_are_them_and_those_pages_whatever_each_held(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], files: tuple[int, int]
+) -> None:
+    """B13 round 18 V43: two emptied folders that each held one mirrored file read "excluding such a folder
+    retires its pages", in exclude-empty and in the sync's wait. Two or more folders are "them" and "those
+    pages"; one folder keeps "such a folder" and its page or pages."""
+    root = _root()
+    for name, n in zip(("Held A", "Held B"), files, strict=True):
+        for i in range(n):
+            (root / name).mkdir(exist_ok=True)
+            (root / name / f"Note {i}.txt").write_text("Contoso notes.\n", encoding="utf-8")
+    cfg = _setup(tmp_path, local_source_table("work", root))
+    run_cycle(load_config(cfg), mode=None)
+    for name, n in zip(("Held A", "Held B"), files, strict=True):
+        for i in range(n):
+            (root / name / f"Note {i}.txt").unlink()
+    run_cycle(load_config(cfg), mode=None)
+    waits = [ln for ln in loop.next_lines(load_config(cfg)) if ln.startswith("WAITING ON YOU")]
+    [held] = [ln for ln in waits if " held " in ln]
+    assert "excluding them instead retires those pages at once, with no deletion check" in held, held
+    assert "such a folder" not in held and "its pages" not in held, held
+    rc, out = _exclude_empty(cfg, "work", capsys)
+    assert rc == cli.EXIT_OK, out
+    assert "(excluding them retires those pages at once, with no deletion check)" in out, out
+    assert "such a folder" not in out and "its pages" not in out, out
+
+
 def test_a_folder_that_held_mirrored_files_is_left_and_named_as_a_count(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -246,7 +274,7 @@ def test_folders_left_for_two_causes_are_said_apart(
     # B13 round 17 U50: one head with the total, then each cause with its own count (the head said twice)
     assert (
         "; 4 empty cloud folders in work were left as they are: 2 held 3 files the mirror still has "
-        "(excluding such a folder retires its pages at once, with no deletion check); 2 have a [ in the "
+        "(excluding them retires those pages at once, with no deletion check); 2 have a [ in the "
         "name, so an exclude of one would also match a folder whose files are mirrored: rename or remove "
         "them in the cloud drive; "
     ) in out, out

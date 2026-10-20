@@ -6287,7 +6287,11 @@ or empty for this case (a source sat incomplete for 900 passes):
     A folder usually became empty because its files were removed upstream, and an exclude edit is a scope
     change: §9 retires what left scope as `retired:scope-change`, past the deletion breaker and with no purge;
     **amended 2026-10-11, §16.39 N26:** the source's last line of the two ends with the count of the mirrored
-    files its last walk did not list, when there are any;
+    files its last walk did not list, when there are any.
+    Amended 2026-10-19, §16.137 V43: with two or more such folders the clause reads `excluding them instead
+    retires those pages at once` (each folder may hold one file, so "such a folder ... its pages" was wrong), and
+    exclude-empty's left-folder bracket `(excluding them retires those pages at once, with no deletion check)`;
+    one folder keeps `excluding such a folder ... its page` or `its pages` by its file count;
   - every stored folder is excluded by now (the line was pasted, no sync ran yet): the source is "not fully
     listed" under rule 3, whose step is to sync again;
   - nothing stored (no access, a missing folder or sentinel): the sources share one line, `a folder in <ids>
