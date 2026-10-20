@@ -32,6 +32,7 @@ from agentsync.config import ConvertConfig
 from agentsync.convert import ocr
 from agentsync.convert.cache import ConverterCache
 from agentsync.ops import doctor
+from agentsync.skill import INSTALL_SH
 from test_launcher import _have_devtools
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -955,7 +956,7 @@ def test_a_helper_or_compiler_killed_by_a_signal_says_so(tools: Path, tmp_path: 
     script(tools / "swiftc", 'echo "error: an earlier line" >&2\nkill -TERM $$')
     reason = (
         "swiftc, building the OCR helper, was stopped by SIGTERM (signal 15); "
-        "scripts/install.sh tries the build again on its next run"
+        f"{INSTALL_SH} tries the build again on its next run"  # by its path (B13 round 18 V68)
     )
     with pytest.raises(ocr.OcrError) as error:
         ocr.build(cache)

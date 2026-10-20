@@ -20,6 +20,7 @@ from agentsync.convert.naming import Naming, Voice, name_voices, vetoed, voice_t
 from agentsync.convert.speech import SpeechError
 from agentsync.ops import doctor
 from agentsync.ops.doctor import Severity
+from agentsync.skill import INSTALL_SH
 from speech_kit import fake_speech, pcm, place_models
 from test_ocr import script
 from test_recording_grammar import INDEX_ONLY_NOTES, VOICE_FORMS, WINDOW_NOTES
@@ -251,9 +252,8 @@ def test_an_older_fluidaudio_pin_is_refused_by_install_and_doctor(
     fake_speech(helper.parent, version=old).replace(helper)
     place_models(helper.parent)
     ocr._marker(helper).unlink()
-    refusal = (
-        "the speech helper is not built from FluidAudio 04e363c or later; scripts/install.sh rebuilds it"
-    )
+    # the installer by its path (B13 round 18 V68)
+    refusal = f"the speech helper is not built from FluidAudio 04e363c or later; {INSTALL_SH} rebuilds it"
     assert speech.probe(sample_config.convert, cache) == ("failed", refusal)
     assert speech.engine(sample_config.convert, cache) is None
     monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)

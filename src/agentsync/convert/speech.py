@@ -46,6 +46,7 @@ from pathlib import Path
 from agentsync.config import ConvertConfig
 from agentsync.convert import media, ocr
 from agentsync.convert.ocr import OcrError
+from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
 
@@ -99,9 +100,9 @@ _SWIFTPM = "swiftpm"  # SwiftPM's cache, configuration and security folders, bes
 _BUILD_TIMEOUT_S = 1200.0  # cold builds took 279 to 451 s; OCR's 300 s was sized for one swiftc file
 _VERSION_TIMEOUT_S = 5.0
 _COMMIT_RE = re.compile(r"[0-9a-f]{40}")
-_FLOOR_REFUSAL = (
-    "the speech helper is not built from FluidAudio 04e363c or later; scripts/install.sh rebuilds it"
-)
+# the installer by its path, as doctor's texts name it: the prompt never runs from inside the checkout, so a
+# bare scripts/install.sh is not found (B13 round 18 V68, after round 17 U30)
+_FLOOR_REFUSAL = f"the speech helper is not built from FluidAudio 04e363c or later; {INSTALL_SH} rebuilds it"
 _clock = time.monotonic
 
 
@@ -559,7 +560,7 @@ def _step(
     if cp.returncode < 0:  # a signal; only a crash's own stderr says why (stdout is progress)
         raise SpeechError(
             f"{what} was {ocr._ended(cp.returncode, cp.stderr)}; "
-            "scripts/install.sh tries the build again on its next run"
+            f"{INSTALL_SH} tries the build again on its next run"
         )
     if cp.returncode != 0:
         raise SpeechError(f"{what} failed (exit {cp.returncode}): {ocr._plain(cp.stderr or cp.stdout)}")

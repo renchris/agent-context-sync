@@ -26,6 +26,7 @@ import pytest
 from agentsync.config import ConvertConfig
 from agentsync.convert import ocr, speech
 from agentsync.convert.speech import Segment, SpeechEngine, SpeechError, Word
+from agentsync.skill import INSTALL_SH
 from speech_kit import FAKE_PIN, calls, fake_speech, pcm, place_models
 from test_ocr import compiler_pid, compiling, gone, loose_umask, mode, script
 
@@ -205,7 +206,7 @@ def test_a_build_step_killed_by_a_signal_says_so_and_is_tried_again(tools: Path,
     """A step a signal stopped (subprocess's negative return code) is not "exit -9" with whatever the
     compiler printed last, and a killed floor check is not the floor refusal."""
     cache = tmp_path / "cache"
-    later = "scripts/install.sh tries the build again on its next run"
+    later = f"{INSTALL_SH} tries the build again on its next run"  # by its path (B13 round 18 V68)
     script(
         tools / "swift",
         'case "$1" in package) mkdir -p .build/checkouts/FluidAudio ;; '

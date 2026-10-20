@@ -50,6 +50,7 @@ from typing import Protocol, TypeVar
 from agentsync.config import ConvertConfig, load_config
 from agentsync.errors import ConfigError, ConversionError
 from agentsync.paths import default_cache_dir, default_config_path, expand
+from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
 
@@ -175,7 +176,8 @@ def _env() -> dict[str, str]:
 
 
 def _plain(text: str | bytes) -> str:
-    """The line of a tool's output that says what went wrong, with every file path taken out.
+    """The line of a tool's output that says what went wrong, with every file path taken out but the
+    installer's (``skill.INSTALL_SH``).
 
     A path may hold spaces, so nothing says where an unquoted one ends: the rest of the line goes with it,
     but for what follows a compiler's ``:line:column:``.  A quoted one goes through its closing quote."""
@@ -183,7 +185,13 @@ def _plain(text: str | bytes) -> str:
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     line = next((ln for ln in lines if "error:" in ln), lines[0] if lines else "no message")
     line = line.replace(str(Path.home()), "~")
-    return _PATH_RE.sub(lambda m: f"{m['quote'] or ''}<path>{m['quote'] or ''}", line)[:200]
+
+    # The installer's path names no one and is the fix a build failure's own text gives (a signal's, read back
+    # from the .failed marker): kept, where any other path goes (B13 round 18 V68)
+    def cut(part: str) -> str:
+        return _PATH_RE.sub(lambda m: f"{m['quote'] or ''}<path>{m['quote'] or ''}", part)
+
+    return INSTALL_SH.join(cut(part) for part in line.split(INSTALL_SH))[:200]
 
 
 def _strerror(exc: OSError) -> str:
@@ -684,7 +692,7 @@ def _compile(helper: Path, kind: Helper = _OCR) -> None:
         if cp.returncode < 0:
             raise kind.error(
                 f"swiftc, building the {kind.name}, was {_ended(cp.returncode, cp.stderr)}; "
-                "scripts/install.sh tries the build again on its next run"
+                f"{INSTALL_SH} tries the build again on its next run"  # by its path (B13 round 18 V68)
             )
         if cp.returncode != 0 or not built.is_file():
             raise kind.error(
