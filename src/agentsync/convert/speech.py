@@ -791,8 +791,8 @@ def build(cache_dir: Path) -> Path:
 
 def _main() -> int:
     """``python -m agentsync.convert.speech``: what scripts/install.sh runs to build the helper.  Prints one
-    ``speech: ...`` line; exit 0 when ready or off, 1 when it is not built, 78 when the config cannot be
-    read."""
+    ``speech: ...`` line; exit 0 when ready or off, 1 when it is not built or is built and fails its probe
+    (the line says which), 78 when the config cannot be read."""
     return ocr._entry(SPEECH, _switched_off, build, probe, label="speech")
 
 

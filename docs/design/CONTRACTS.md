@@ -6736,6 +6736,8 @@ the defaults), prints one line and exits 0 when OCR is ready or switched off, 1 
 Amended 2026-10-15, §16.93 M8: a config that cannot be read prints `OCR helper: not checked (the config cannot be
 read)` (exit 78, §16.96 M25), not `not built`: the helper is not looked at, and may be built. Media and speech
 share the entry.
+Amended 2026-10-20, §16.150 X57: exit 1 also covers a helper that is built and fails its probe (its line then reads
+`OCR helper: failed (<reason>)`); the module docstrings say so now.
 
 **Where.** `<cache_dir>/ocr/agentsync-ocr-<digest>`: the first 16 hex digits of sha256 over the Swift source
 and the build flags, so a new source gets a new name. The file is 0700 in a 0700 folder under any umask
@@ -10372,6 +10374,8 @@ AVFoundation; nothing leaves the Mac.
 Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that cannot be read exits 78 (EX_CONFIG) with
 `media helper: not checked (the config cannot be read)`; scripts/install.sh, after OCR's 78, does not run this
 module and prints that line itself.
+Amended 2026-10-20, §16.150 X57: exit 1 also covers a helper that is built and fails its probe (its line then reads
+`media helper: failed (<reason>)`); the module docstring says so now.
 
 - **Protocol** (pinned by `tests/media_kit.py`). `--version`; `info FILE`; `scan FILE --out DIR [--step-ms]
   [--first-tick K] [--max-ticks N]` writing `grids.bin`, one 320x180 box-averaged luma grid (57,600 bytes) per
@@ -10617,6 +10621,8 @@ Amended 2026-10-19, §16.138 V68: the step names the installer by its path, `swi
 Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that cannot be read exits 78 (EX_CONFIG) with
 `speech: not checked (the config cannot be read)`; scripts/install.sh, after OCR's 78, does not run this module and
 prints that line itself.
+Amended 2026-10-20, §16.150 X57: exit 1 also covers a helper that is built and fails its probe (its line then reads
+`speech: failed (<reason>)`); the module docstring says so now.
 
 Amended 2026-10-11 by §16.48 (R90): SwiftPM's cache, configuration and security folders are `swiftpm/` beside the
 build tree, passed to both swift steps, instead of the real `~/Library` ones.
@@ -25052,6 +25058,8 @@ the token is unchanged, so older install.logs still read, and older_report_rewri
 built: the ...)` cell into the same words. The convert modules' docstrings ("1 when not built") are lane E's files
 and are left. Test: `test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer` (both renderers and
 a round 18 copy).
+Amended 2026-10-20, §16.150 X57, X84: the four convert docstrings (`ocr._entry`, `ocr._main`, `media._main`,
+`speech._main`) now say exit 1 is a helper not built or built and failing its probe; they are no longer left.
 
 **The shell's `<value>` cut keeps the words after a [governance] value** (W69; amends §16.135 V44). `gov_value_sed`
 cut a type error's value to the first ` (fix: ` or the line's end, so a second refusal joined with `; ` and a
@@ -26257,6 +26265,13 @@ migration. Tests: `test_cycle.py::test_the_upgrades_retry_note_counts_a_source_t
 (a paused source's failure: counted, not tried, then tried twice in that source's later syncs, no note again),
 `test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once` and
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the words).
+
+**The helper modules' docstrings say what exit 1 means (X57, X84; `agentsync.convert.ocr`,
+`agentsync.convert.media`, `agentsync.convert.speech`; dated lines at §16.25, §16.34, §16.35 and §16.141
+W38).** `ocr._entry`, `ocr._main`, `media._main` and `speech._main` said exit 1 means not built, but `_entry`
+also exits 1 when the probe after a good build answers `failed` (V6); install.sh already says `not built, or
+built and failing its probe`. The four now say so. Two finders, one defect, built once. Docstrings only, with no
+test that could fail.
 
 
 ### 16.151 Round 20: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 20 lane D)
