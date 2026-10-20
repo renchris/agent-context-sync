@@ -253,7 +253,10 @@ def test_the_build_gets_twenty_minutes_of_its_own(
         return now[0]
 
     monkeypatch.setattr(speech, "_clock", clock)
-    with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
+    with pytest.raises(
+        SpeechError,
+        match=rf"^{re.escape(speech._TIMED_OUT)}$",
+    ):
         speech.build(tmp_path / "cache")
 
 
@@ -274,7 +277,10 @@ def test_a_speech_build_out_of_time_leaves_no_compiler_running(
     )
     monkeypatch.setattr(speech, "_BUILD_TIMEOUT_S", 2.0)
     monkeypatch.setattr(speech, "_clock", lambda: 0.0)
-    with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
+    with pytest.raises(
+        SpeechError,
+        match=rf"^{re.escape(speech._TIMED_OUT)}$",
+    ):
         speech.build(tmp_path / "cache")
     assert gone(compiler_pid(pidfile)), "swift build's compiler outlived the build's time limit"
 
@@ -294,7 +300,10 @@ def test_a_speech_build_whose_compiler_starts_after_the_time_limit_is_stopped_to
     )
     monkeypatch.setattr(speech, "_BUILD_TIMEOUT_S", 2.0)
     monkeypatch.setattr(speech, "_clock", lambda: 0.0)
-    with pytest.raises(SpeechError, match=r"^the speech helper's build ran out of time$"):
+    with pytest.raises(
+        SpeechError,
+        match=rf"^{re.escape(speech._TIMED_OUT)}$",
+    ):
         speech.build(tmp_path / "cache")
     assert gone(compiler_pid(pidfile)), "swift build's compiler outlived the build's time limit"
 

@@ -2963,6 +2963,38 @@ def test_speech_failed_is_a_warn_never_a_fail(sample_config: Config, monkeypatch
     assert errors(results) == []
 
 
+def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V5, V28: a speech helper build that ran out of time left a warn with no fix. Its marker's
+    reason (an older build's, without the retry clause, too) now gets install.sh again, worded as
+    ``_again_fix`` is under install.sh, naming no cause; any other failed build keeps no fix."""
+    _real_speech(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    marker = ocr._marker(ocr._helper_path(sample_config.cache_dir, speech.SPEECH))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    for reason in (speech._TIMED_OUT, speech.BUILD_TIMED_OUT):
+        marker.write_text(reason, encoding="utf-8")
+        assert speech.build_timed_out(sample_config.cache_dir)
+        monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
+        r = by_name(run_checks(sample_config))["speech"]
+        assert (r.ok, r.severity) == (False, Severity.WARN)
+        assert r.detail == f"speech: failed ({reason})"
+        assert r.fix == (
+            f"run {INSTALL_SH} again: it builds the speech helper again, within 20 minutes; if it runs out "
+            "of time again, run it when the Mac and the network are less busy"
+        )
+        monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+        r = by_name(run_checks(sample_config))["speech"]
+        assert r.fix is not None and r.fix.startswith(
+            f"run the same {INSTALL_SH} command again as it is (its NEXT line names it): it builds"
+        ), r.fix
+    marker.write_text("swift package resolve failed (exit 1): could not reach github.com", encoding="utf-8")
+    assert not speech.build_timed_out(sample_config.cache_dir)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert (r.severity, r.fix) == (Severity.WARN, None), r
+
+
 def test_devtools_missing_asks_xcode_select_by_full_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

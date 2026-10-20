@@ -8212,6 +8212,31 @@ def test_ocr_not_built_is_an_info_line_and_an_ocr_warn_is_unexpected(fake_mac: d
     assert outcome(text) == built
 
 
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 18 V5, V28: a speech helper build that ran out of time was "unexpected 1" with nothing to do.
+    Speech is missing, so it is no expected warn; it gets a bucket of its own, keyed on the report's own read
+    of the build's marker, never on doctor's words. Any other failed speech build stays unexpected."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    config = load_config(fake_mac["config"])
+    marker = ocr._marker(ocr._helper_path(config.cache_dir, speech.SPEECH))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    warn = f"[warn] speech — speech: failed ({speech._TIMED_OUT}) (fix: run install.sh again)"
+    marker.write_text(speech._TIMED_OUT, encoding="utf-8")
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
+    assert (
+        "- doctor: 0 FAIL, 1 warn (2 checks) · from the speech helper's build that ran out of time "
+        "(1 check): speech warn (install.sh builds it again) · unexpected 0" in summary
+    ), summary
+    assert "expected 1" not in summary
+    marker.write_text("swift package resolve failed (exit 1): could not reach the host", encoding="utf-8")
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
+    assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: speech warn" in summary, summary
+
+
 def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

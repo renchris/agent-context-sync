@@ -103,6 +103,12 @@ _COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 # the installer by its path, as doctor's texts name it: the prompt never runs from inside the checkout, so a
 # bare scripts/install.sh is not found (B13 round 18 V68, after round 17 U30)
 _FLOOR_REFUSAL = f"the speech helper is not built from FluidAudio 04e363c or later; {INSTALL_SH} rebuilds it"
+BUILD_TIMED_OUT = "the speech helper's build ran out of time"
+"""How the reason of a build that ran out of its :data:`_BUILD_TIMEOUT_S` starts, in ``<helper>.failed`` and
+so in doctor's ``speech`` warn: doctor gives that warn its fix, and the setup report its own bucket, by these
+words (B13 round 18 V5, V28). The time covers the FluidAudio fetch as well as the compile, so the words name
+no cause."""
+_TIMED_OUT = f"{BUILD_TIMED_OUT}; {INSTALL_SH} tries the build again on its next run"  # by its path (V68)
 _clock = time.monotonic
 
 
@@ -391,6 +397,16 @@ def probe(cfg: ConvertConfig, cache_dir: Path) -> tuple[str, str]:
     return state, detail
 
 
+def build_timed_out(cache_dir: Path) -> bool:
+    """Whether the last build of the speech helper under ``cache_dir`` ran out of time: its marker's reason
+    starts with :data:`BUILD_TIMED_OUT` (a marker an older build wrote, without the retry clause, too).
+    Never raises."""
+    try:
+        return ocr._failure(ocr._helper_path(cache_dir, SPEECH), SPEECH).startswith(BUILD_TIMED_OUT)
+    except Exception:  # a cache that cannot be looked at says nothing about the build
+        return False
+
+
 def engine(cfg: ConvertConfig, cache_dir: Path) -> SpeechEngine | None:
     """The engine a cycle should use, or None (logged): :func:`probe` is not ``ready``, or a model folder
     does not match its pinned digest.  The one place the digests are taken.  Never compiles, never raises.
@@ -550,11 +566,11 @@ def _step(
     its stdout, or SpeechError."""
     left = deadline - _clock()
     if left <= 0:
-        raise SpeechError("the speech helper's build ran out of time")
+        raise SpeechError(_TIMED_OUT)
     try:
         cp = ocr._run_build(argv, cwd=cwd, timeout=left, env=_build_env() if env is None else env)
     except subprocess.TimeoutExpired:
-        raise SpeechError("the speech helper's build ran out of time") from None
+        raise SpeechError(_TIMED_OUT) from None
     except OSError as exc:
         raise SpeechError(f"{what} does not run: {ocr._strerror(exc)}") from None
     if cp.returncode < 0:  # a signal; only a crash's own stderr says why (stdout is progress)

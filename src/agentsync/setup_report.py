@@ -8852,6 +8852,17 @@ def _state_unreadable(c: Config, read_error: BaseException | None = None) -> boo
         return False
 
 
+def _speech_timed_out(c: Config) -> bool:
+    """Whether the speech helper's last build ran out of time, from its own marker (``convert.speech.
+    build_timed_out``; B13 round 18 V5, V28). False when convert cannot be imported."""
+    try:
+        from agentsync.convert import speech  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        return speech.build_timed_out(c.cache_dir)
+    except Exception:
+        return False
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None and r.facts.doctor_cut_off is not None:
@@ -8896,6 +8907,8 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
     unreadable = r.config is not None and _state_unreadable(r.config, read_error)
     from_state: list[str] = []
+    timed_out = r.config is not None and _speech_timed_out(r.config)
+    from_speech: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
@@ -8927,6 +8940,12 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             and not r.facts.loop_checks
         ):
             from_state.append(f"{name} warn (not judged: the loop cannot read the state)")
+            continue
+        # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
+        # never expected, and not unexpected either: install.sh builds it again. Keyed on the report's own
+        # read of the build's marker, never on doctor's words or fix
+        if tag == "warn" and name == "speech" and timed_out:
+            from_speech.append(name)
             continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
@@ -8978,6 +8997,12 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(
             f"from the state file that cannot be read ({_plural(len(from_state), 'check')}): "
             + ", ".join(from_state)
+        )
+    if from_speech:
+        parts.append(
+            f"from the speech helper's build that ran out of time ({_plural(len(from_speech), 'check')}): "
+            + ", ".join(f"{n} warn" for n in from_speech)
+            + " (install.sh builds it again)"
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)

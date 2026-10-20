@@ -779,8 +779,9 @@ def _check_speech(config: Config) -> list[CheckResult]:
     """The speech engine (words and voices of a recording), optional as the media helper is and checked the
     same way, one ``speech: <state> (<detail>)`` line: ok when ready or off (whatever switches the media
     helper off, or a model folder the operator has not placed); a not-ok INFO line when the helper is not
-    built; WARN with the reason when it failed, a FluidAudio build older than 04e363c among them.  The probe
-    takes no model digest and never compiles.  Never a FAIL."""
+    built; WARN with the reason when it failed, a FluidAudio build older than 04e363c among them, with a fix
+    only for missing developer tools or a build that ran out of time.  The probe takes no model digest and
+    never compiles.  Never a FAIL."""
     try:
         state, detail = _speech_status(config)
     except Exception as exc:
@@ -791,8 +792,29 @@ def _check_speech(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("speech", f"speech: {state} ({detail}; {how})", Severity.INFO)]
-    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _speech_again_fix(detail)
     return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
+
+
+def _speech_again_fix(detail: str) -> str | None:
+    """The fix of a speech helper build that ran out of time (its reason starts with
+    ``speech.BUILD_TIMED_OUT``): install.sh again, which builds it again; any other failed build keeps no fix,
+    as its reason is the news (B13 round 18 V5, V28). The time covers the FluidAudio fetch too, so no cause is
+    named: the Mac and the network. Under install.sh the run is the one its NEXT line names, as
+    :func:`_again_fix` says it."""
+    from agentsync.convert import speech  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+
+    if not detail.startswith(speech.BUILD_TIMED_OUT):
+        return None
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        again = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
+    else:
+        again = f"run {INSTALL_SH} again"
+    minutes = int(speech._BUILD_TIMEOUT_S // 60)
+    return (
+        f"{again}: it builds the speech helper again, within {minutes} minutes; if it runs out of time "
+        "again, run it when the Mac and the network are less busy"
+    )
 
 
 def _check_config(config: Config) -> list[CheckResult]:
