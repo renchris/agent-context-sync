@@ -8136,6 +8136,60 @@ def test_a_stopped_run_logs_its_end_and_names_the_rerun(
     assert stdout.rstrip("\n").splitlines()[-1] in install_out(env).read_text(), "install.out has the end too"
 
 
+@pytest.mark.parametrize("group", [False, True])
+def test_a_signal_inside_add_source_keeps_its_held_error(
+    env: dict[str, str], folder: Path, wheel: Path, tmp_path: Path, group: bool
+) -> None:
+    """B13 round 19 W39: add-source's stderr is held in a file until its pipeline ends (round 18 V26), and a
+    signal there (a coding tool's time-out) ran on_signal's exit before the loop printed it: the error was in
+    none of stderr, install.out or the report, and the file, with the error in it, stayed in TMPDIR beside
+    the mark. on_exit prints what is held, after the stopped-by-a-signal error, and removes both. The SIGTERM
+    goes to the installer's pid alone (bash runs the trap once the call ends) or to its whole group."""
+    stub = _write_exe(
+        tmp_path / "agentsync-slow-add",
+        "#!/bin/bash\n"
+        'if [ "$1" = add-source ]; then\n'
+        '  echo "agentsync $*" >> "$STUB_LOG"\n'
+        '  echo "configuration error: a made-up Contoso value (stub)" >&2\n'
+        '  : > "$STUB_LOG.adding"\n'
+        "  sleep 2\n"
+        "  exit 78\n"
+        "fi\n"
+        f'exec "{env["STUB_AGENTSYNC"]}" "$@"\n',
+    )
+    tmp = tmp_path / "tmpdir"
+    tmp.mkdir()
+    e = {**env, "STUB_AGENTSYNC": str(stub), "TMPDIR": str(tmp)}
+    proc = subprocess.Popen(
+        [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder)],
+        env=e,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not Path(env["STUB_LOG"] + ".adding").exists():
+            assert proc.poll() is None and time.monotonic() < deadline, "add-source never started"
+            time.sleep(0.05)
+        if group:
+            os.killpg(proc.pid, signal.SIGTERM)
+        else:
+            os.kill(proc.pid, signal.SIGTERM)
+        stdout, stderr = proc.communicate(timeout=30)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    assert proc.returncode == 143, stdout + stderr
+    error = "configuration error: a made-up Contoso value (stub)\n"
+    assert stderr.count(error) == 1, stderr
+    assert stderr.index("error: install.sh was stopped by a signal") < stderr.index(error), stderr
+    assert error in install_out(env).read_text(encoding="utf-8"), "the report reads install.out for it"
+    assert [p.name for p in tmp.iterdir()] == [], "the held stderr and the mark are removed"
+
+
 # ---- the report's issue link before NEXT (K3) --------------------------------------------------------------
 
 

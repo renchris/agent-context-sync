@@ -24317,6 +24317,8 @@ folders after the refused one (V26's verifier). Tests:
 `test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle` (add-source: the block stays, the log
 line, the cause, no `add-source ... failed`), `test_a_folder_added_before_agentsync_refuses_the_config_is_no_failed_add`
 (the new error words; in one stream, the block, then the configuration error, then the error line).
+Amended 2026-10-20, §16.142 W39: a signal inside the call no longer loses the held stderr: on_exit prints it and
+removes the file and the mark.
 
 **Both reports' install source line reads the configured origin** (V29, V70; amends §16.130 U32). v26's git quote
 says the report's install source line says `origin: other` for a checkout whose remote is not GitHub, and only the
@@ -24720,6 +24722,18 @@ to copy back` (`N patch files ... them`). The path is the one `write_bring_back`
 as it is, where "sent" reads as "carried in this file". Test:
 `test_step_2_says_a_patch_this_account_cannot_read_is_the_persons` (one patch at the default path, and two under a
 report path of their own).
+
+**A signal inside add-source keeps its held error** (W39; amends §16.136 V26). V26 holds add-source's stderr in
+`ERRF` and prints it once the pipeline ends. Bash runs a trap only when the foreground pipeline ends, and
+`on_signal` exits at once, so a run a signal ended inside the call (a coding tool's time-out sends SIGTERM) never
+reached the `cat`: its `configuration error:` line was in none of stderr, install.out or the report (which reads
+install.out for it), and the file, holding the error, stayed in TMPDIR beside the empty `MARK` file. `on_exit` now
+prints a held `ERRF` that is not empty to stderr, right after the `PARSED` check, so before `step_end`, the report
+and `stop_capture`, and removes `ERRF` and `MARK` (`${ERRF:-}`, `${MARK:-}`: both are unset when no folder is
+given, under `set -u`). The loop empties `ERRF` once it has printed it, so a signal later in the iteration (inside
+`synced_count` or `docs_remotes_refused`) prints nothing twice. The line follows `on_signal`'s `error: install.sh was
+stopped by a signal ...`. Test: `test_a_signal_inside_add_source_keeps_its_held_error` (SIGTERM to the installer's
+pid, and to its whole group: the error once, after the signal's error, in install.out, and TMPDIR empty).
 
 ### 16.143 Round 19: table damage, the lock-wait words and the speech fix (2026-10-20, wave B13 round 19 lane B)
 

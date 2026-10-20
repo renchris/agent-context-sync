@@ -5030,6 +5030,11 @@ on_exit() {
 	trap - EXIT
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
+	# add-source's held stderr, when a signal ended the run inside the call: bash runs the trap once the
+	# pipeline ends, and on_signal's exit came before the loop printed it, so its error was lost and the file
+	# was left in TMPDIR. Printed here, before the report reads install.out for it (B13 round 19 W39).
+	[ -z "${ERRF:-}" ] || { [ ! -s "$ERRF" ] || cat "$ERRF" >&2; rm -f "$ERRF"; }
+	[ -z "${MARK:-}" ] || rm -f "$MARK"
 	[ -z "$TICKER" ] || kill "$TICKER" 2>/dev/null
 	[ -z "$WAIT_TICKER" ] || kill "$WAIT_TICKER" 2>/dev/null
 	[ -z "$WAIT_WATCHDOG" ] || kill "$WAIT_WATCHDOG" 2>/dev/null
@@ -6520,6 +6525,7 @@ if [ "${#FOLDERS[@]}" -gt 0 ]; then
 		HELD_RC=0
 		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null 2>"$ERRF" | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || HELD_RC=$?
 		cat "$ERRF" >&2
+		: >"$ERRF" # printed: on_exit prints only what a signal kept from this line
 		[ "$HELD_RC" -ne 0 ] || continue
 		[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
 		WHY="agentsync add-source $f failed (see the error above)"
