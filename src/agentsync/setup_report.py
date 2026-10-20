@@ -6195,17 +6195,32 @@ class _Labels:
         return self._shown[text]
 
 
+_CANNOT_OPEN_CODES = frozenset({14, 23, 8})
+"""sqlite's SQLITE_CANTOPEN, SQLITE_PERM and SQLITE_READONLY: a state file this account cannot open or write,
+by its owner, its mode or its folder's, never a damaged one (B13 round 19 W64)."""
+_STATE_SHUT = "the state file cannot be opened by this account: see Doctor's state_dir lines"
+""":func:`_why_not_read`'s words for it: doctor's state_dir (the folder) or state_dir.files (the file) says
+which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W64)."""
+
+
 def _why_not_read(exc: BaseException) -> str:
     """Why a part of the report was not read, in words, for a ``not read (...)``, ``not measured (...)`` or
     ``cannot read: ...`` line: never the exception's message (it can hold a path or a label) and, for the
     failures a setup meets, never its class name, which is no word of the person's (B13 round 17 U21; round
     16 T15's rule, everywhere). A refused config points at Configuration, an unreadable state file at
-    Doctor's state_dir.manifest; an exception no setup should meet keeps a short marker with its class, so
-    a report still says what to look for."""
+    Doctor's state_dir.manifest, and one this account cannot open (sqlite's CANTOPEN, PERM or READONLY, or
+    lane B's ``ManifestOpenError``) at Doctor's state_dir lines, where its owner, its mode or its folder
+    fails (B13 round 19 W64: state_dir.manifest judges only a file that is no database or a damaged one, so
+    no such line was printed); an exception no setup should meet keeps a short marker with its class, so a
+    report still says what to look for."""
+    from agentsync import errors  # noqa: PLC0415
     from agentsync.errors import ConfigError  # noqa: PLC0415 - lazy, as the doctor reads are
 
     if isinstance(exc, ConfigError):
         return "the configuration is refused: see Configuration"
+    opening = getattr(errors, "ManifestOpenError", None)  # lane B's W65; absent before it lands
+    if isinstance(opening, type) and isinstance(exc, opening):
+        return _STATE_SHUT
     if isinstance(exc, sqlite3.Error):
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
@@ -6213,6 +6228,9 @@ def _why_not_read(exc: BaseException) -> str:
         # status's test (``doctor.contended``, B13 round 18 V60), and the words for an error with no code
         if doctor.contended(exc) or "locked" in said or "busy" in said:
             return "the state file is busy: a sync holds it"
+        code = getattr(exc, "sqlite_errorcode", None)
+        if isinstance(code, int) and code & 0xFF in _CANNOT_OPEN_CODES:
+            return _STATE_SHUT
         return "the state file cannot be read: see Doctor's state_dir.manifest line"
     if isinstance(exc, (TimeoutError, CallTimedOutError)):
         return "it did not finish in time"
@@ -7794,6 +7812,7 @@ def _evidence_line(r: _Run) -> str:
     if retry == count:
         return f"{head}: {_IDLE_AGAIN}"
     state = sum(n for w, n in why.items() if w.startswith("the state file cannot be read"))
+    shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
     clauses = [
         (
@@ -7802,10 +7821,15 @@ def _evidence_line(r: _Run) -> str:
             "state_dir.manifest line)",
         ),
         (
+            shut,
+            "the state file cannot be opened by this account: a report written after it is fixed measures "
+            "them (see Doctor's state_dir lines)",
+        ),
+        (
             config,
             "the configuration is refused: a report written after it loads measures them (see Configuration)",
         ),
-        (count - retry - state - config, "of another cause: see those lines"),
+        (count - retry - state - shut - config, "of another cause: see those lines"),
     ]
     said = [(n, f"because {words}") for n, words in clauses if n]
     if retry:

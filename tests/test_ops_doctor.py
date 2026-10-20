@@ -1169,6 +1169,34 @@ def test_state_db_modes(sample_config: Config) -> None:
     assert r.ok and "manifest.sqlite" in r.detail
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_state_files_this_account_cannot_open_fail_by_their_cause(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 19 W64: the check flagged only group and other bits, so mode 0000, 0400 and another
+    account's file all read "are 0600". This account's own file it cannot read and write fails with
+    ``chmod 600``; another account's with the folder's ``sudo chown -R`` (a per-file chown leaves the sudo
+    sync's other files); "are 0600" is said only of mode 0600."""
+    db = sample_config.state_paths.db
+    db.write_bytes(b"")
+    for mode in (0o000, 0o400):
+        db.chmod(mode)
+        r = by_name(run_checks(sample_config))["state_dir.files"]
+        assert (
+            not r.ok and f"this account cannot read and write them: manifest.sqlite ({mode:04o})" in r.detail
+        )
+        assert (r.fix or "").startswith("chmod 600 "), r.fix
+    db.chmod(0o700)
+    r = by_name(run_checks(sample_config))["state_dir.files"]
+    assert r.ok and "are 0600" not in r.detail and "manifest.sqlite (0700)" in r.detail, r.detail
+    db.chmod(0o600)
+    me = os.getuid()
+    monkeypatch.setattr(doctor.os, "getuid", lambda: me + 1)
+    r = by_name(run_checks(sample_config))["state_dir.files"]
+    assert not r.ok and "owned by another account" in r.detail and f"(owner uid {me}, mode 0600)" in r.detail
+    assert r.fix == f"sudo chown -R {me + 1} {doctor._shell_path(sample_config.state_paths.db.parent)}", r.fix
+
+
 # ------------------------------------------------------------------------------------------------ sources
 
 

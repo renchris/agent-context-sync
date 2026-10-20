@@ -23348,6 +23348,7 @@ sqlite's own plain words; `the configuration is refused (the governance.config o
 Kept: `loads: no: ConfigError: ...` (round 12 N11's pin, the prompt's finish key), a section's `This section failed:
 <type>: <message>` and the friction log's and install source's failure lines, which only an unexpected error
 reaches. Test: `test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name`.
+Amended 2026-10-20, §16.140 W64: a state file this account cannot open (sqlite's CANTOPEN, PERM or READONLY, or `errors.ManifestOpenError`) reads `the state file cannot be opened by this account: see Doctor's state_dir lines`; `state_dir.manifest` is named only for a file that is no database or a damaged one.
 Amended 2026-10-19, §16.134 V11: status's words carry no bracket of their own: `the state file cannot be read: file is not a database`, and in status's guard `the configuration is refused: the governance.config [FAIL] line says why` (the NEXT guard keeps `governance.config or policy`).
 
 **The first report keeps its Doctor section: pandoc starts once, in Doctor** (U48; amends §16.114 Q60). All four
@@ -24852,6 +24853,25 @@ same. No Loop clause is added: `loop.next_step` already gives the newest run's w
 `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`,
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache`,
 `test_first_sync_clause_carries_the_read_again_count`.
+
+**A manifest this account cannot open fails a Doctor line, and the report points at it** (W64; amends §16.128 U21).
+With manifest.sqlite at mode 0000 (or another account's, after a sudo sync) status exited 0 with `[ok]
+state_dir.files — manifest.sqlite are 0600` and no state_dir.manifest line, since that check judges only sqlite's
+NOTADB and CORRUPT, while the report said `the state file cannot be read: see Doctor's state_dir.manifest line`.
+Doctor's `state_dir.files` checks each present file's owner and this account's access too: another account's file
+fails `owned by another account, so this one cannot open them: <file> (owner uid U, mode M)` with the folder's own
+fix, `sudo chown -R <uid> <state_dir>` (a per-file chown leaves the sudo sync's heartbeat, lock and staging files);
+this account's own file it cannot read and write fails `this account cannot read and write them: <file> (M)` with
+`chmod 600 <files>`; the loose-mode FAIL and its fix stay; and the ok line says `are 0600` only of mode 0600 (else
+each file with its mode, `: this account's alone`). Status then exits 1 and rule 1's NEXT names the check. The
+report's `_why_not_read` gives sqlite's CANTOPEN, PERM and READONLY (and lane B's `errors.ManifestOpenError`, read
+by name so the report works before it lands) `the state file cannot be opened by this account: see Doctor's
+state_dir lines`, since the folder (`state_dir`) can be the cause as well as the file; the evidence line has a
+clause of its own for it; cli's `_unread_words` says `the state file cannot be opened: <sqlite's words>; the
+state_dir lines say why` and adds `; the state_dir lines say why` to an EACCES or EPERM OSError. Lane B's W65 makes
+sync and curate print one line for the same file (§16.143). Tests:
+`test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it` (tests/test_cli.py),
+`test_state_files_this_account_cannot_open_fail_by_their_cause` (tests/test_ops_doctor.py).
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 

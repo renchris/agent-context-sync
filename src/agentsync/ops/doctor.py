@@ -1015,6 +1015,9 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
 
     loose: list[str] = []
     present: list[str] = []
+    modes: list[str] = []
+    others: list[str] = []  # another account's (a sudo sync): only the whole folder's chown leaves none
+    shut: list[str] = []  # this account's, with no read or no write for it (chmod 000, 0400)
     for p in (
         sp.db,
         sp.db.with_name(sp.db.name + "-wal"),
@@ -1022,19 +1025,46 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         sp.token_cache_fallback,
     ):
         try:
-            m = stat.S_IMODE(p.lstat().st_mode)
+            fst = p.lstat()
         except FileNotFoundError:
             continue
+        m = stat.S_IMODE(fst.st_mode)
         present.append(p.name)
-        if m & 0o077:
+        modes.append(f"{p.name} ({m:04o})")
+        # B13 round 19 W64: a manifest this account cannot open read "are 0600" and no FAIL, while every
+        # read of the state failed (sqlite's CANTOPEN, which state_dir.manifest does not judge)
+        if fst.st_uid != os.getuid():
+            others.append(f"{p.name} (owner uid {fst.st_uid}, mode {m:04o})")
+        elif not os.access(p, os.R_OK | os.W_OK):
+            shut.append(f"{p.name} ({m:04o})")
+        elif m & 0o077:
             loose.append(f"{p.name} ({m:04o})")
-    if loose:
+    if others:
+        out.append(
+            _bad(
+                "state_dir.files",
+                f"owned by another account, so this one cannot open them: {', '.join(others)}",
+                fix=f"sudo chown -R {os.getuid()} {_shell_path(root)}",
+            )
+        )
+    elif shut:
+        paths = " ".join(_shell_path(root / n.split(" ")[0]) for n in shut)
+        out.append(
+            _bad(
+                "state_dir.files",
+                f"this account cannot read and write them: {', '.join(shut)}",
+                fix=f"chmod 600 {paths}",
+            )
+        )
+    elif loose:
         paths = " ".join(_shell_path(root / n.split(" ")[0]) for n in loose)
         out.append(
             _bad("state_dir.files", f"readable by others: {', '.join(loose)}", fix=f"chmod 600 {paths}")
         )
-    elif present:
+    elif present and len(modes) == sum(1 for x in modes if x.endswith("(0600)")):
         out.append(_ok("state_dir.files", f"{', '.join(present)} are 0600"))
+    elif present:  # "are 0600" only when they are: 0700 is not (W64)
+        out.append(_ok("state_dir.files", f"{', '.join(modes)}: this account's alone"))
     else:
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
     if sp.db.name in present:

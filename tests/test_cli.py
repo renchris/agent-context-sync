@@ -2947,6 +2947,42 @@ def test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line
         assert line in err.splitlines() and "Traceback" not in err, (argv, err)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 19 W64: with manifest.sqlite at mode 0000 status exited 0 with ``[ok] state_dir.files —
+    manifest.sqlite are 0600`` and no state_dir.manifest line (it judges only a file that is no database or a
+    damaged one), while the setup report sent the person to "Doctor's state_dir.manifest line". The file
+    check fails on this account's access, status exits 1 and its NEXT names that check, and the report's
+    pointer names lines status printed."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    for name in ("-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.chmod(0)
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+        assert rc == cli.EXIT_FAILED and len(fails) == 1, out
+        assert fails[0].startswith("[FAIL] state_dir.files "), fails
+        assert "this account cannot read and write them: manifest.sqlite (0000)" in fails[0], fails
+        assert fails[0].endswith(f"(fix: chmod 600 {doctor._shell_path(db)})"), fails
+        assert "state_dir.files" in out[0] and out[0].startswith("NEXT: "), out[0]
+        assert not any("are 0600" in ln for ln in out), out
+        printed = {m.group(1) for ln in out if (m := re.match(r"\[(?:ok  |FAIL|warn|info)\] (\S+)", ln))}
+        text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
+        pointers = re.findall(r"see Doctor's (state_dir(?:\.\w+)?) lines?\b", text)
+        assert pointers and "state_dir.manifest" not in pointers, pointers
+        assert all(any(name.startswith(p) for name in printed) for p in pointers), (pointers, printed)
+    finally:
+        db.chmod(0o600)
+    rc, out = _status(cfg, capsys)
+    assert any(re.match(r"\[ok  \] state_dir\.files +— manifest\.sqlite are 0600", ln) for ln in out), out
+
+
 def test_the_manifest_fix_says_legal_holds_are_kept(initialised: Config) -> None:
     """B13 round 17 U73: MANIFEST_FIX said moving the manifest aside forgets "the deletions, holds and archive
     it recorded", but legal holds live in governance/holds.json, outside the manifest, and survive a new one;

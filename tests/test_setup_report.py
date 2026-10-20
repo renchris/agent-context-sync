@@ -13774,6 +13774,7 @@ _NEVER_PRINTED_CAMELCASE = frozenset(
         "IOPlatformExpertDevice",
         "IOPlatformSerialNumber",
         "FrictionEvent",  # a type name in a cast
+        "ManifestOpenError",  # lane B's class, looked up by name (B13 round 19 W64), never printed
         "CFBundleIdentifier",  # the environment variable whose value the Environment line prints
         "WarpTerminal",  # a TERM_PROGRAM the Environment line prints as Warp (_TERMINAL_APPS)
         # the speech engine's build names, which no report line prints

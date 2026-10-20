@@ -31,6 +31,7 @@ if _ssl.SSLContext is not _truststore.SSLContext:  # same effect as agentsync.ne
 import argparse
 import contextlib
 import dataclasses
+import errno
 import json
 import logging
 import os
@@ -1470,10 +1471,15 @@ def _unread_words(exc: Exception, *, refused: str = "governance.config or policy
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
         return "the state file is busy: another agentsync run holds it; try again when it ends"
+    if isinstance(exc, sqlite3.Error) and (getattr(exc, "sqlite_errorcode", None) or 0) & 0xFF in (8, 14, 23):
+        # CANTOPEN, PERM, READONLY: no damage; the file's owner or mode, or its folder's (B13 round 19 W64)
+        return f"the state file cannot be opened: {exc}; the state_dir lines say why"
     if isinstance(exc, sqlite3.Error):
         return f"the state file cannot be read: {exc}"
     if isinstance(exc, OSError):
-        return f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
+        said = f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
+        # this account's access, which doctor's state_dir lines judge (B13 round 19 W64)
+        return f"{said}; the state_dir lines say why" if exc.errno in (errno.EACCES, errno.EPERM) else said
     return f"{type(exc).__name__}: {exc}"
 
 
