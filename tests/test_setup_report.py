@@ -1182,6 +1182,18 @@ def test_an_unconfigured_id_the_redactor_does_not_know_keeps_its_fallback_label(
     assert setup_report._NOT_IN_CONFIG_LEGEND not in "\n".join(setup_report._redaction_section(red, []))
 
 
+def test_neither_report_says_its_source_ids_number_as_the_others() -> None:
+    """B13 round 18 V51: ``_unconfigured_ids`` said the shared ids "number alike in both reports" (U62), and
+    install.sh that it registers them "as the Python report" does; the shell numbers ids by their table's
+    place, the always-present inbox's too, which the Python report skips, so one vanished id is <source-1>
+    there and <source-2> here. Neither claims a parity the code does not have."""
+    report = Path(setup_report.__file__).read_text(encoding="utf-8")
+    shell = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert "number alike in both reports" not in report and "as the shell registers them" not in report
+    assert "as the Python report\n\t# registers the manifest's ids" not in shell
+    assert "so a number is this report's own (round 18 V51)" in shell
+
+
 def test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_stays_a_word(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:

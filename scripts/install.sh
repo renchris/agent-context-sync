@@ -1835,8 +1835,8 @@ redaction_pairs() {
 	fi
 	# A source still mirrored whose [[source]] block is gone is in no table above, yet doctor's
 	# config.vanished_sources [FAIL] and the sync's refusal quote its id ("source 'x' (3 files) is mirrored but
-	# no longer in sources.toml"): the ids those lines quote, numbered after the tables, as the Python report
-	# registers the manifest's ids after the configured ones (B13 round 16 T42).
+	# no longer in sources.toml"): the ids those lines quote, registered after the configured ones (B13 round
+	# 16 T42). Numbered by table place, the inbox's too, so a number is this report's own (round 18 V51).
 	while IFS= read -r v; do
 		case "$ids" in *" $v "*) continue ;; esac
 		case " $GENERIC_SOURCE_IDS " in *" $v "*) continue ;; esac

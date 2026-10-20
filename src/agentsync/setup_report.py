@@ -3560,9 +3560,10 @@ def _unconfigured_ids(config: Config) -> tuple[list[str], list[str]]:
     """The source ids the manifest's rows (any state) and the purge queue hold that ``config`` does not have,
     in two sorted groups: those ``cycle.vanished_from`` reports (present file rows: the ids doctor's
     config.vanished_sources [FAIL] and the sync's refusal quote, which the shell fallback report registers
-    too), then the rest (a retired source's tombstones, a hand-edited queue), so the shared ids number alike
-    in both reports (B13 round 17 U62). The manifest is opened read-only, as every other read of the
-    report's."""
+    too), then the rest (a retired source's tombstones, a hand-edited queue), so in this report the ids a
+    vanished line quotes number before the retired-only ones (B13 round 17 U62). The shell report numbers its
+    ids by their table's place, the inbox's too, so its numbers are its own (round 18 V51). The manifest is
+    opened read-only, as every other read of the report's."""
     from agentsync import governance  # noqa: PLC0415 - lazy, as in _purge_part
     from agentsync.cycle import vanished_from  # noqa: PLC0415
     from agentsync.manifest import present_counts_on  # noqa: PLC0415
@@ -3811,8 +3812,8 @@ def _build_redactor(r: _Run) -> Redactor:
     # configured ones so their numbers stay: doctor's config.vanished_sources [FAIL] and the sync's refusal
     # quote such an id, in Doctor, the install.out tail and Recent errors, where the report showed it in clear
     # (B13 round 16 T42, T53, T66). An unreadable manifest or queue leaves the redactor as it was. The ids
-    # those two lines quote first, as the shell registers them, then the rest; a word the report prints only
-    # when such a line quotes it, so a retired "setup" does not cut "the setup report" (round 17 U62).
+    # those two lines quote first, then the rest; a word the report prints only when such a line quotes it,
+    # so a retired "setup" does not cut "the setup report" (round 17 U62).
     if r.config is not None:
         config = r.config
         with contextlib.suppress(Exception):
