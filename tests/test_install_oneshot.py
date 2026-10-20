@@ -13151,6 +13151,71 @@ def test_a_policy_or_governance_value_is_redacted_alike_in_both_readers(
         report = report_path(env).read_text()
         assert "\n- <value>: any other value a [governance] error quotes\n" in report
         assert "Fabrikam" not in report and "Contoso Legal" not in report
+    # B13 round 19 W69: the shell cut to " (fix: " or the line's end, so the words after a value (a second
+    # refusal, a friction line's " | " fix column) were lost where the Python report keeps them; it now ends a
+    # value at its repr's shape too, one level of brackets deep, and both readers print the same
+    for folder, said, want in (
+        (
+            "Orbit",
+            "[governance].history_days: expected an integer >= 1, got 'thirty' (exit 78) | fix the value |",
+            "[governance].history_days: expected an integer >= 1, got <value> (exit 78) | fix the value |",
+        ),
+        (
+            "Quill",
+            "[governance].hold_owner: expected a non-empty string, got ['Jane Fabrikam']; [governance].hold: "
+            "expected true/false, got 3 | fix col",
+            "[governance].hold_owner: expected a non-empty string, got <value>; [governance].hold: expected "
+            "true/false, got <value> | fix col",
+        ),
+        (
+            "Rivet",
+            "[governance].hold_reason: expected a non-empty string, got 'Fabrikam | b; c' | fix col",
+            "[governance].hold_reason: expected a non-empty string, got <value> | fix col",
+        ),
+        (
+            "Sable",
+            "[governance].history_days: expected an integer >= 1, got 1.5; [governance].archive: expected "
+            "true/false, got {\"k\": 'Fabrikam', 2: None}. (fix: set it)",
+            "[governance].history_days: expected an integer >= 1, got <value>; [governance].archive: "
+            "expected true/false, got <value>. (fix: set it)",
+        ),
+    ):
+        shell, python = _fuzzy_report(env, monkeypatch, [folder], said)
+        assert shell == python == want, (shell, python)
+    # deeper than one level of brackets: the shell's wide cut, more than Python's, never less
+    said = "[governance].hold_owner: expected a non-empty string, got [['Fabrikam']] | fix col"
+    shell, python = _fuzzy_report(env, monkeypatch, ["Tamarack"], said)
+    assert python == "[governance].hold_owner: expected a non-empty string, got <value> | fix col"
+    assert shell == "[governance].hold_owner: expected a non-empty string, got <value>", shell
+
+
+def test_the_shell_governance_value_program_stays_under_bsd_seds_limit() -> None:
+    """B13 round 19 W69: macOS sed rejects a substitute pattern over about 2048 bytes ("unterminated
+    substitute pattern") and the whole `sed -E -f` program then prints nothing, which would empty the shell
+    report below the redaction stage. Python's two-level repr shape is about 3800 bytes; the shell's one-level
+    rules stay well under the limit, and a run of blanks inside brackets is cut at once."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    funcs = "\n".join(
+        [
+            *(ln for ln in script.splitlines() if ln.startswith("GOVERNANCE_TYPED_KEYS=")),
+            *re.findall(r"(?ms)^gov_value_sed\(\) \{\n.*?^\}$", script),
+        ]
+    )
+    prog = subprocess.run(
+        [BASH32, "-c", funcs + "\ngov_value_sed"], capture_output=True, check=True
+    ).stdout.splitlines()
+    assert len(prog) > 10 and max(len(ln) for ln in prog) < 2000, max(len(ln) for ln in prog)
+    line = "[governance].hold: expected true/false, got [" + " " * 9000 + "1] | fix col\n"
+    start = time.monotonic()
+    cp = subprocess.run(
+        [BASH32, "-c", funcs + "\nLC_ALL=C sed -E -f <(gov_value_sed)"],
+        input=line.encode(),
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    assert cp.stdout == b"[governance].hold: expected true/false, got <value> | fix col\n", cp.stdout[:200]
+    assert time.monotonic() - start < 10
 
 
 def test_the_shell_generic_home_dirs_are_the_reports() -> None:

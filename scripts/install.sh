@@ -2310,14 +2310,29 @@ pacv=\1/p' || true
 GOVERNANCE_TYPED_KEYS="history_days|compaction_slack_days|allow_remote|hold|hold_reason|hold_owner|purge_on_upstream_delete|archive"
 gov_value_sed() {
 	# The value a [governance] type error quotes ("got ['Jane Contoso']") is <value>, as the Python report's
-	# _GOVERNANCE_VALUE_RE writes it (B13 round 17 U103; round 18 V44, V72): it ends at the first " (fix: " or
-	# at the end of the line. sed -E has no lazy match, so each " (fix: " is a byte no report text carries
-	# (\001) while the value is cut, and is put back after.
-	local soh
-	soh="$(printf '\001')"
+	# _GOVERNANCE_VALUE_RE writes it (B13 round 17 U103; round 18 V44, V72): a Python repr's own shape when one
+	# ends at a blank, ";", ",", ".", ")", "|", " (fix: " or the line's end, so the words after it stay (a
+	# second refusal, a friction line's " | " fix column); else up to the first " (fix: " or the line's end.
+	# sed -E has no lazy match and no lookahead, so each " (fix: " is a byte no report text carries (\001)
+	# while the value is cut, each value's start is marked (\003), and the shape is tried once per delimiter,
+	# which is put back, "." last ("1.5;" is 1.5, not 1); a value the shape does not cover takes the wide cut.
+	# The shape is _repr_shape(1), one level of brackets, not Python's two: two levels make a pattern over
+	# BSD sed's 2048 bytes, which then prints nothing at all; a deeper value takes the wide cut, which covers
+	# more, never less (B13 round 19 W69).
+	local soh stx a items d1 c
+	soh="$(printf '\001')" stx="$(printf '\003')"
+	a='('"'"'([^'"'"'\\]|\\.)*'"'"'|"([^"\\]|\\.)*"|-?[0-9]+(\.[0-9]+)?|True|False|None)'
+	items="($a( *[,:] *$a)*( *,)?)?"
+	d1="($a|\\[ *$items *\\]|\\{ *$items *\\}|\\( *$items *\\))"
 	printf 's/ \\(fix: /%s/g\n' "$soh"
-	printf 's/(\\[governance\\]\\.(%s): expected (a non-empty string|true\\/false|an integer >= [0-9]), got )[^%s]+/\\1<value>/g\n' \
-		"$GOVERNANCE_TYPED_KEYS" "$soh"
+	printf 's/(\\[governance\\]\\.(%s): expected (a non-empty string|true\\/false|an integer >= [0-9]), got )/\\1%s/g\n' \
+		"$GOVERNANCE_TYPED_KEYS" "$stx"
+	printf 's/%s%s$/<value>/g\n' "$stx" "$d1"
+	for c in ' ' "$(printf '\t')" ';' ',' ')' '|' "$soh" '.'; do
+		printf 's/%s%s[%s]/<value>%s/g\n' "$stx" "$d1" "$c" "$c"
+	done
+	printf 's/%s[^%s]+/<value>/g\n' "$stx" "$soh"
+	printf 's/%s//g\n' "$stx"
 	printf 's/%s/ (fix: /g\n' "$soh"
 	cat <<'SED'
 s/\(([^()]+)\) (exists but \[governance\] allow_remote|is not under a tenant-owned prefix|is not tenant-owned per remote_url_prefixes)/(<remote>) \2/g

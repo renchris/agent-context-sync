@@ -24221,6 +24221,8 @@ U54). `gov_value_sed` cuts the value after `[governance].<typed key>: expected <
 V45 lets the Python value stop at the end of its repr when text follows; the shell keeps the wider match, which can
 cut more of such a line and never less. Tests: `test_a_policy_or_governance_value_is_redacted_alike_in_both_readers`,
 `test_the_shell_governance_keys_are_the_reports`.
+Amended 2026-10-20, §16.141 W69: the shell also ends a value at its repr's shape, one level of brackets deep; only
+a deeper value keeps the wider cut.
 
 **The shell report redacts a project folder and a vanished source's re-add folder** (V46; dated line at §16.14).
 `redaction_pairs` registers a configured folder outside CloudStorage, and the folder doctor's `config.vanished_sources`
@@ -24765,6 +24767,22 @@ the token is unchanged, so older install.logs still read, and older_report_rewri
 built: the ...)` cell into the same words. The convert modules' docstrings ("1 when not built") are lane E's files
 and are left. Test: `test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer` (both renderers and
 a round 18 copy).
+
+**The shell's `<value>` cut keeps the words after a [governance] value** (W69; amends §16.135 V44). `gov_value_sed`
+cut a type error's value to the first ` (fix: ` or the line's end, so a second refusal joined with `; ` and a
+friction line's ` | ` fix column were lost where the Python report keeps them (V45's repr shape). The finder's fix,
+Python's two-level shape as one alternation, makes things worse as written: BSD sed rejects a substitute pattern
+over about 2048 bytes (measured: 2049 works, 2069 fails), the shape is about 3800, and the whole `sed -E -f` program
+then prints nothing, which empties the report downstream; ERE's leftmost-longest alternation would also always take
+the wide branch. Built instead: each value's start is marked (`\003`), then `_repr_shape(1)` (a quote-aware string,
+a number, True, False, None, or one `[...]`, `{...}` or `(...)` of those, about 590 bytes a rule) is tried at the
+line's end and before each delimiter in turn (a blank, a tab, `;`, `,`, `)`, `|`, the ` (fix: ` sentinel, and `.`
+last, so `1.5;` is not cut at `1.`), the delimiter put back; a value still marked takes the old wide cut. A value
+nested two levels or more (`[['x']]`) is the one divergence left: the shell cuts it to the line's end, more than
+Python, never less. Tests: `test_a_policy_or_governance_value_is_redacted_alike_in_both_readers` (`; `, ` | `, a
+string holding both, a number before `;`, a dict, and a two-level list),
+`test_the_shell_governance_value_program_stays_under_bsd_seds_limit` (every rule under 2000 bytes; 9000 blanks
+inside brackets cut at once).
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
