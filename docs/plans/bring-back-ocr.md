@@ -1223,6 +1223,39 @@ copy in the report and a test pinning them equal, after which P's and E's new ki
 Round 18: the round 17 workflow with prompt v26 on this section's landed tip, BASE `e5c5b0e2` (ids V<n>, outputs
 `round18/`); scenario C plays the v25 and v24 blocks.
 
+### B13 round 18: v26 rehearsal, cross-lane review, harvest (2026-10-19)
+
+Run `wf_38924dc9-d24` on `4a55fe0f` (111 agents, 0 errors, 56 minutes). The new sandbox rule (small single-purpose
+setup commands) held: no agent waited on a permission prompt. All six scenarios pass their EXPECTED with no turn: the
+new Mac and the field Mac are "fully one command", every v25 and v24 copy is refused in step 1 with exit 2, the git
+stop and the reinstall during a sync run as the prompt says, and the empty-folder alarm holds at every count. 100
+findings, 91 confirmed (0 turn, 24 wrong, 67 small), 9 refused (V2, V23, V83, V92, V94, V96, V98, V99, V100: the
+round 17 not-built reasons for U34's shim and U63 hold); 7 need prompt text, so the next prompt is v27.
+The 24 wrongs are 17 defects, again from probes and review rather than the rehearsed paths: the report's own doctor
+never runs lane B's table-damage check, so status FAILs a damaged manifest and the report does not (V14, V52, V56,
+V71); the doctor cut-off seconds are the time left, not the time doctor ran (V3, V49); a word the reports print decides
+redaction both ways, leaving an organization named like a report word in clear (V1, V84, V85) and redacting a printed
+word that names nothing (V86); the shell fallback prints a [governance] type error's value (V44, V72) and a vanished
+source's re-add folder (V46); the `<value>` match swallows U58's refusal (V45); the Summary's evidence line misleads
+twice (V15, V35); a later sync is labelled "first sync" (V48); add-source's "failed" after a valid block is back on
+exit 1 (V47); the older build's step 1 stop, git stop and finished-attempt reports (V16, V30, V31); v26's git quote
+promises an `origin: other` the shell report never prints (V29); and U3's retry record (V57, V65).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91 over rounds 2 and 4 to 18; turns
+0 for five rounds; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22, 25, 24 (17 distinct). The total fell
+for the first time in three rounds, but each round's builds still open seams the next round's review reaches.
+
+Lanes (`--account auto`, CONTRACTS §16.134 to §16.139, brief `lanes/COMMON17.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r18-land.lock`; scratch under `round18/`): RA 24
+(setup_report.py: the cut-off seconds, the report-word rule, the `<value>` match, the evidence and first-sync words),
+RB 13 (install.sh: report_word, the shell fallback's governance value and re-add folder, the older build's rewrite),
+P 16 (prompt v27, step 1's folder tails, the config step's order, add-source's exit 1), B 16 (the report's doctor
+hook, the speech helper's fix, the lock-wait line, the CLI's words, a mid-table damage test), E 12 (U3's retry record
+and its texts, the gate's scanners; lands last if it changes the gate), D 8 (docs/deploy and CONTRACTS
+cross-references). Lead: V95 (round 17's /tmp leftovers, removed by exact name) and V97 (no flake recurrence; U101
+closed, reopen if either test fails on an attempt-1 ci run); V42's method (damage a manifest in place with
+`python3 -I`, not `dd`) goes into round 19's script.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

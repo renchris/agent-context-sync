@@ -23901,3 +23901,27 @@ the wait, and the job's 30-minute `timeout-minutes`, which tells a reader when a
 
 All nine are built; none was recorded as making things worse. U83's verifier measured that its finder's fix (two
 unheld dated lines) turns the dated-line test red, so each line here has a claim or a pin.
+
+### 16.134 Round 18: setup report (2026-10-19, wave B13 round 18 lane RA)
+
+Reserved for round 18 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 18").
+
+### 16.135 Round 18: installer, the shell report's redaction and the older build's copies (2026-10-19, wave B13 round 18 lane RB)
+
+Reserved for round 18 lane RB of B13.
+
+### 16.136 Round 18: setup prompt v27, step 1's folder tails and the config step (2026-10-19, wave B13 round 18 lane P)
+
+Reserved for round 18 lane P of B13.
+
+### 16.137 Round 18: the report's doctor hook, the CLI's words and the lock wait (2026-10-19, wave B13 round 18 lane B)
+
+Reserved for round 18 lane B of B13.
+
+### 16.138 Round 18: the convert-retry record, converters and the gate (2026-10-19, wave B13 round 18 lane E)
+
+Reserved for round 18 lane E of B13.
+
+### 16.139 Round 18: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 18 lane D)
+
+Reserved for round 18 lane D of B13.
