@@ -10380,7 +10380,7 @@ GRID_W, GRID_H = 320, 180
 JPEG_QUALITY = 0.7
 Rect = tuple[float, float, float, float]    # x0, y0, x1, y1 in fractions of the frame, origin top-left
 
-class MediaError(OcrError): ...             # its text never holds a path
+class MediaError(OcrError): ...             # its text holds no path but the installer's (skill.INSTALL_SH)
 MEDIA: ocr.Helper                            # Helper("media helper", "media", "agentsync-media", <source>, MediaError,
                                              #        "the media helper needs macOS")
 
@@ -25088,6 +25088,14 @@ again, run it when the Mac and the network are less busy`. The marker's reason (
 it is the only hint on the surfaces that read it without doctor, and tests pin it as a V68 promise. The `<again>`
 head (`run <install.sh> again`, or under install.sh `_again_fix`'s words) is lane B's (W19, W48). Test:
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
+
+**The helper errors' docstrings name the one path they hold (W55; `agentsync.convert.speech`,
+`agentsync.convert.media`).** `SpeechError` and `MediaError` said "Its text never holds a path", which V68 made
+false: a build failure's text names `skill.INSTALL_SH` as its fix (the pin refusal, `_TIMED_OUT`, a signal's
+reason). Both now say "Its text holds no path but the installer's (``skill.INSTALL_SH``), which a build failure
+names as its fix", and §16.34's `MediaError` stub comment says the same. §16.34's answer-check errors, which hold
+no path, are unchanged. Docstrings only. Test:
+`test_speech.py::test_the_helper_errors_say_the_one_path_their_text_holds`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

@@ -1161,3 +1161,14 @@ def test_a_fetch_cut_off_mid_way_leaves_no_temporary_file_past_the_next_build(
     assert speech.build(cache).is_file()
     assert sorted(artifacts.glob(".seed-*")) == []
     assert curl.with_name("curl.calls").exists() == (state == "fetches")
+
+
+def test_the_helper_errors_say_the_one_path_their_text_holds() -> None:
+    """B13 round 19 W55: ``SpeechError`` and ``MediaError`` said their text never holds a path, which V68 made
+    false: a build failure's text names the installer by its path, the one path it keeps."""
+    from agentsync.convert import media  # noqa: PLC0415
+
+    for error in (SpeechError, media.MediaError):
+        doc = " ".join((error.__doc__ or "").split())
+        assert "never holds a path" not in doc and "holds no path but the installer's" in doc, error
+    assert INSTALL_SH in speech._TIMED_OUT, "the path the docstrings name"

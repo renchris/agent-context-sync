@@ -50,7 +50,8 @@ _CREATED_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 
 class MediaError(OcrError):
     """The media helper could not be built, may not be run, failed, ran out of time, or answered with
-    something that is not the expected JSON.  Its text never holds a path."""
+    something that is not the expected JSON.  Its text holds no path but the installer's
+    (``skill.INSTALL_SH``), which a build failure names as its fix (B13 round 19 W55)."""
 
 
 MEDIA = ocr.Helper(
