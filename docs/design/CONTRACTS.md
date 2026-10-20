@@ -24253,7 +24253,8 @@ time again, run it when the Mac and the network are less busy` (under install.sh
 <install.sh> command again as it is (its NEXT line names it)`): the 20 minutes cover the FluidAudio fetch too, so
 no cause is named. Any other failed build keeps no fix. The Summary's own bucket, `from the speech helper's build
 that ran out of time (1 check): speech warn (install.sh builds it again)`, is keyed on the report's read of the
-marker; V5's verifier over V28's: never `expected`, since speech is missing. Tests:
+marker and the warn's own reason (both, so a stale marker beside another failure stays unexpected); V5's verifier
+over V28's: never `expected`, since speech is missing. Tests:
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`,
 `test_setup_report.py::test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected`.
 
@@ -24265,8 +24266,11 @@ tail of doctor's `config.vanished_sources` fix, of the sync's exit-78 `configura
 `VANISHED_ADVICE`, so `VANISHED_WORDS` matching is unchanged) and of the report's live loads line, whose folder is
 redacted as U46 registers it. Under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the command is `<install.sh>
 --source-local "<folder>"`, one run for every folder, each as `shown_arg` shows it (`cycle._shown_arg`); elsewhere
-`~/.local/bin/agentsync add-source '<folder>'`. The report's install.out fallback cuts the tail before the ids are
-labelled and ends `; or add its folder again, under the same id (see Doctor)`, so no folder path is labelled a
+`~/.local/bin/agentsync add-source "<folder>"`, quoted the same way (review: `shlex.quote` split a name holding a
+`'` into pieces no redacted value matched; the report also cuts an `add-source` word's unknown components to
+`<path>`, as it does a `--source-local` one). The report looks at the recorded folders under its time limit, and
+its install.out fallback cuts the tail before the ids are labelled and ends `; or add its folder again, under the
+same id` (no Doctor pointer: with the manifest unread Doctor has no such line), so no folder path is labelled a
 source. Tests: the `default-id` and other cases of
 `test_cli.py::test_the_vanished_sources_fix_names_the_re_add_only_where_it_adds_the_same_id`,
 `test_cli.py::test_under_install_sh_the_vanished_sources_add_back_is_one_source_local_run`,

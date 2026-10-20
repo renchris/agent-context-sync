@@ -3207,9 +3207,8 @@ def test_a_mirrored_source_whose_block_is_deleted_fails_status_as_the_persons(
     assert rc == cli.EXIT_FAILED and len(fails) == 1, out
     assert f"source '{beta}' (1 file) is mirrored but no longer in sources.toml" in fails[0], fails
     # B13 round 17 U9, U25, U46: its folder is still here and add-source derives the same id for it
-    add_back = (
-        f"; or add its folder again, under the same id: {loop.BIN} add-source {canonical_source_root(second)}"
-    )
+    root = canonical_source_root(second)
+    add_back = f'; or add its folder again, under the same id: {loop.BIN} add-source "{root}"'
     assert fails[0].endswith(f"(fix: {cycle_mod.VANISHED_FIX}{add_back})"), fails
     assert out[0] == f"NEXT: the config.vanished_sources check failed: {PERSONS_STEP}", out[0]
     assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
@@ -3274,7 +3273,7 @@ def test_the_vanished_sources_fix_names_the_re_add_only_where_it_adds_the_same_i
         assert fix == f"{cycle_mod.VANISHED_FIX})" and "add-source" not in fix, fail
         return
     assert sid == "project-delta"
-    cmd = f"{loop.BIN} add-source {shlex.quote(str(canonical_source_root(folder)))}"
+    cmd = f'{loop.BIN} add-source "{canonical_source_root(folder)}"'
     assert fix == f"{cycle_mod.VANISHED_FIX}; or add its folder again, under the same id: {cmd})", fail
     assert err.endswith(f"or restore it; or add its folder again, under the same id: {cmd}"), err
     # the command it names clears the refusal: the same id comes back, and the sync runs
@@ -3291,8 +3290,8 @@ def test_the_vanished_sources_fix_offers_each_folder_and_says_which_when_not_all
     a, b = Path("/Users/x/Project Delta"), Path("/Users/x/Gamma")
     both = doctor.vanished_fix([a, b], every=True)
     assert both.endswith(
-        f"; or add their folders again, under the same id: {loop.BIN} add-source '{a}', "
-        f"then {loop.BIN} add-source {b}"
+        f'; or add their folders again, under the same id: {loop.BIN} add-source "{a}", '
+        f'then {loop.BIN} add-source "{b}"'
     ), both
     assert doctor.vanished_fix([a], every=False).startswith(
         f"{cycle_mod.VANISHED_FIX}; or add the folder still here again, under the same id: "
@@ -3313,7 +3312,7 @@ def test_under_install_sh_the_vanished_sources_add_back_is_one_source_local_run(
         f'--source-local "{a}" --source-local "{b}"'
     )
     monkeypatch.delenv(cli.NO_NEXT_HINT_ENV)
-    assert f"{loop.BIN} add-source '{a}'" in doctor.vanished_fix([a], every=True)
+    assert f'{loop.BIN} add-source "{a}"' in doctor.vanished_fix([a], every=True)
 
 
 @pytest.mark.parametrize(

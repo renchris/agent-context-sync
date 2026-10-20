@@ -408,13 +408,16 @@ def vanished_add_back_tail(roots: Sequence[Path], *, every: bool) -> str:
     none. ``every``: every vanished source has one. Under install.sh (``AGENTSYNC_NO_NEXT_HINT=1``, which it
     exports for every agentsync call) the command is install.sh's own ``--source-local``, as step 1's NEXT
     names it, so the step's NEXT and the [FAIL] line beside it agree; elsewhere the CLI's own verb by its full
-    path, the operator's re-add (B13 round 17 U9, U25, U46; round 18 V7, V8)."""
+    path, the operator's re-add (B13 round 17 U9, U25, U46; round 18 V7, V8); both quote the folder as
+    :func:`_shown_arg` does."""
     if not roots:
         return ""
     if os.environ.get("AGENTSYNC_NO_NEXT_HINT", "").strip() == "1":  # loop.NO_NEXT_HINT_ENV
         cmds = f"{skill.INSTALL_SH} " + " ".join(f"--source-local {_shown_arg(str(r))}" for r in roots)
     else:
-        cmds = ", then ".join(f"{skill.AGENTSYNC_BIN} add-source {shlex.quote(str(r))}" for r in roots)
+        # double-quoted as the loop's own `add-source "<folder>"` is: a ' in a name stays whole, where
+        # shlex.quote's '"'"' pieces left it to no redaction in the setup report (V7's review)
+        cmds = ", then ".join(f"{skill.AGENTSYNC_BIN} add-source {_shown_arg(str(r))}" for r in roots)
     if every:
         what = "its folder" if len(roots) == 1 else "their folders"
     else:

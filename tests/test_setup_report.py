@@ -13,7 +13,6 @@ import logging
 import os
 import plistlib
 import re
-import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -917,7 +916,7 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     # B13 round 18 V18: the folder add-source adds back under the same id, as Doctor's fix names it
     add_back = (
         "; or add its folder again, under the same id: ~/.local/bin/agentsync add-source "
-        "'~/Library/CloudStorage/OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>'"
+        '"~/Library/CloudStorage/OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>"'
     )
     assert line == (
         "- loads: yes, but a sync refuses it: a source (<folder-3>, not in the config; 1 file) is "
@@ -926,7 +925,7 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
     ), line
     tail = doctor.vanished_add_back_tail([Path("/x")], every=True)
     assert doctor.vanished_fix([Path("/x")], every=True).endswith(tail), "Doctor's fix ends with it"
-    assert add_back.startswith(tail.removesuffix(" /x") + " '~/"), "the loads line's tail is Doctor's"
+    assert add_back.startswith(tail.removesuffix(' "/x"') + ' "~/'), "the loads line's tail is Doctor's"
     # a root that is gone has no add-back, as in Doctor
     fake_mac["two"].rename(tmp_path / "moved away")
     assert loads().endswith(f"{RETIRE_ADVICE}, or restore it")
@@ -1006,9 +1005,7 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
         encoding="utf-8",
     )
     line = loads()
-    assert line.endswith(
-        f"{cycle.VANISHED_ADVICE}; or add its folder again, under the same id (see Doctor)"
-    ), line
+    assert line.endswith(f"{cycle.VANISHED_ADVICE}; or add its folder again, under the same id"), line
     assert line.count("not in the config") == 1, line
     assert not any(w in line for w in (*FOLDERS, gone, str(fake_mac["home"]))), line
     write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
@@ -1245,7 +1242,7 @@ def test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_st
 
 @pytest.mark.usefixtures("roomy_calls")
 @pytest.mark.parametrize("under", [False, True], ids=["cli", "install-sh"])
-@pytest.mark.parametrize("where", ["cloud", "local", "deep-cloud"])
+@pytest.mark.parametrize("where", ["cloud", "local", "deep-cloud", "apostrophe"])
 def test_a_vanished_sources_add_back_folder_is_never_in_the_report(
     fake_mac: dict[str, Path],
     tmp_path: Path,
@@ -1266,8 +1263,9 @@ def test_a_vanished_sources_add_back_folder_is_never_in_the_report(
         folder = fake_mac["one"] / "Zeta Deep" / "Specs Ledger"
         folder.mkdir(parents=True)
         assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
-    else:
-        folder = fake_mac["home"] / "Projects" / "Zeta Ledger Notes"
+    else:  # V7's review: a ' in the name broke shlex.quote's form into pieces no value matched
+        name = "Zeta's Ledger Notes" if where == "apostrophe" else "Zeta Ledger Notes"
+        folder = fake_mac["home"] / "Projects" / name
         folder.mkdir(parents=True)
         assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
     (folder / "notes.txt").write_text("notes\n", encoding="utf-8")
@@ -1280,11 +1278,11 @@ def test_a_vanished_sources_add_back_folder_is_never_in_the_report(
         monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     assert cli.main(["status", "--config", str(cfg)]) == 1
     [fail] = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[FAIL] config.vanished")]
-    said = f'--source-local "{folder}")' if under else f"add-source {shlex.quote(str(folder))})"
+    said = f'--source-local "{folder}")' if under else f'add-source "{folder}")'
     assert said in fail, fail  # the leak this test guards
     rc, text, _ = report(tmp_path, cfg)
     assert rc == 0
-    words = [*folder.name.split(), *(["Zeta"] if where == "deep-cloud" else []), gone]
+    words = [*folder.name.split(), *(["Zeta"] if where in ("deep-cloud", "apostrophe") else []), gone]
     leaked = [ln for ln in text.splitlines() if any(w.lower() in ln.lower() for w in words)]
     assert not leaked, leaked
     [shown] = [ln for ln in section(text, "Doctor").splitlines() if ln.startswith("[FAIL] config.vanished")]
@@ -8263,6 +8261,10 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
         "(1 check): speech warn (install.sh builds it again) · unexpected 0" in summary
     ), summary
     assert "expected 1" not in summary
+    # V5's review: a marker that ran out of time beside a warn with another reason (an untrusted helper)
+    other = "[warn] speech — speech: failed (the speech helper is not owned by this user)"
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", other])
+    assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: speech warn" in summary, summary
     marker.write_text("swift package resolve failed (exit 1): could not reach the host", encoding="utf-8")
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
     assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: speech warn" in summary, summary

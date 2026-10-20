@@ -5155,14 +5155,18 @@ def _table_refusal(exc: Exception, file: str, path: Path | None = None, red: Red
     )
 
 
-def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], bool]:
+def _sync_refusals(
+    c: Config, red: Redactor, look: Callable[[Callable[[], list[Path]]], list[Path]] | None = None
+) -> tuple[list[tuple[str, str]], bool]:
     """([(doctor check, why a sync refuses ``c``)], whether the vanished-source check read the manifest):
     the sync's own read-only checks before it writes anything, each read on its own, in its order: the policy
     (``Publisher``), the ``[governance]`` table (``Cycle.__init__``), then the manifest's present rows against
     the configured ids (``cycle._refuse_vanished_sources``, in ``Cycle.run``), so the first is the refusal
     ``agentsync sync`` prints. A source the config does not have is named as :class:`_Labels` names it, never
     by its id. The one reading the loads line and the Summary's doctor bucket share, so the bucket's "see
-    Configuration" holds for every check in it (B13 round 17 U58)."""
+    Configuration" holds for every check in it (B13 round 17 U58). ``look`` runs the add-back's look at the
+    recorded folders (a cloud one can hang) under the report's time limit; without it the refusal has no
+    add-back tail (the doctor bucket reads the checks alone; B13 round 18 V7's review)."""
     from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
     from agentsync.cycle import VANISHED_ADVICE, VANISHED_WORDS, vanished_from  # noqa: PLC0415
     from agentsync.manifest import present_counts_on  # noqa: PLC0415
@@ -5195,12 +5199,20 @@ def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], boo
             try:
                 counts = present_counts_on(conn)
                 vanished = sorted(vanished_from((s.id for s in c.sources), counts).items())
-                with contextlib.suppress(Exception):  # a failed read drops the tail, never the refusal
-                    back = _add_backs(c, conn, [sid for sid, _n in vanished])
+                roots = {key: _meta_on(conn, key) for key in (f"scope_root:{sid}" for sid, _n in vanished)}
             finally:
                 conn.close()
         except (OSError, sqlite3.Error):
             read = False
+        else:
+            # the add-back the sync's refusal ends with, from the folders recorded on the same read; the
+            # folders are registered for redaction with the vanished ids (B13 round 18 V7; U46)
+            if vanished and look is not None:
+                ids = [sid for sid, _n in vanished]
+                try:
+                    back = look(lambda: _add_backs(c, roots.get, ids))
+                except Exception:  # a folder that does not answer in time: the refusal without its tail
+                    back = []
     if vanished:
         labels = _Labels(c, red)
         # the count inside the label's own bracket, one bracket a source (B13 round 16 T7, T15)
@@ -5216,21 +5228,23 @@ def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], boo
     return found, read
 
 
-def _add_backs(c: Config, conn: sqlite3.Connection, vanished: list[str]) -> list[Path]:
-    """``cycle.vanished_add_backs`` (doctor's, moved there by B13 round 18 V7) over the report's read-only
-    connection, never a Manifest (which opens read-write); [] when it cannot be imported."""
+def _add_backs(c: Config, meta: Callable[[str], str | None], vanished: list[str]) -> list[Path]:
+    """``cycle.vanished_add_backs`` (doctor's, moved there by B13 round 18 V7) over ``meta``, the meta values
+    read on the report's read-only connection, never a Manifest (which opens read-write); [] when it cannot be
+    imported. It looks at each folder, so the report runs it under its time limit (V7's review)."""
     if not vanished:
         return []
     try:
         from agentsync import cycle  # noqa: PLC0415 - lazy: the report must import even if it is broken
     except Exception:
         return []
-
-    def meta(key: str) -> str | None:
-        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
-        return None if row is None else str(row[0])
-
     return list(cycle.vanished_add_backs(c, meta, vanished))
+
+
+def _meta_on(conn: sqlite3.Connection, key: str) -> str | None:
+    """The manifest meta value ``key`` on the report's own read-only connection ``conn``, or None."""
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return None if row is None else str(row[0])
 
 
 def _add_back_tail(roots: list[Path], *, every: bool) -> str:
@@ -5246,7 +5260,7 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
     """(why every sync refuses ``c``, a config that loads, or None; whether the vanished-source check could
     read the manifest), from :func:`_sync_refusals`: the first refusal, the one ``agentsync sync`` prints,
     then the others it would print once that is fixed (B13 round 17 U58)."""
-    found, read = _sync_refusals(c, r.red)
+    found, read = _sync_refusals(c, r.red, lambda fn: r.call(fn, timeout=_UNCONFIGURED_IDS_S))
     if not found:
         return None, read
     first, *rest = (why for _check, why in found)
@@ -5306,9 +5320,9 @@ def _sync_refusal(r: _Run, c: Config) -> str | None:
     from agentsync.cycle import VANISHED_WORDS  # noqa: PLC0415 - lazy, as in _live_refusal
 
     if said is not None and VANISHED_WORDS in said:  # the manifest could not be read: ids by place only
-        # the add-back after the advice names a folder, never a source: cut before the ids are labelled, and
-        # point at Doctor's line, whose folder is registered for redaction (B13 round 18 V7)
-        said = _READD_TAIL_RE.sub(r"; or add \1 again, under the same id (see Doctor)", said)
+        # the add-back after the advice names a folder, never a source: cut before the ids are labelled. No
+        # pointer: with the manifest unread, Doctor has no vanished-source line either (B13 round 18 V7)
+        said = _READD_TAIL_RE.sub(r"; or add \1 again, under the same id", said)
         labels = _Labels(c, r.red)
         # an id and its count, "'x' (3 files)" or an older build's "'x' (1 file(s))", as one bracket (T7)
         said = _QUOTED_COUNT_RE.sub(lambda m: _with_count(labels.of(m.group(1)), m.group(2)), said)
@@ -8921,6 +8935,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     unreadable = r.config is not None and _state_unreadable(r.config, read_error)
     from_state: list[str] = []
     timed_out = r.config is not None and _speech_timed_out(r.config)
+    speech_words = "the speech helper's build ran out of time"  # speech.BUILD_TIMED_OUT, in the warn too
     from_speech: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
@@ -8957,7 +8972,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
         # never expected, and not unexpected either: install.sh builds it again. Keyed on the report's own
         # read of the build's marker, never on doctor's words or fix
-        if tag == "warn" and name == "speech" and timed_out:
+        if tag == "warn" and name == "speech" and timed_out and speech_words in detail:
             from_speech.append(name)
             continue
         why = (
@@ -10390,11 +10405,13 @@ and ``/private/tmp/...`` are both ``~``): it reads as a contradiction, so it is 
 round 6 G41). A note whose forms still differ (``~/OneDrive/...`` stored as ``~/Library/CloudStorage/...``)
 stays."""
 _SOURCE_LOCAL_RE = re.compile(
-    r"""(--source-local[ =])(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
+    r"""(--source-local[ =]|\badd-source )"""
+    r"""(\$'(?:[^'\\]|\\.)*'?|"(?:[^"\\]|\\.)*"?|'[^']*'?|(?:\\.|[^\s\\'"])+)"""
 )
 """``--source-local`` and the shell word after it: ``$'...'``, ``"..."``, ``'...'`` or a bare word with
 backslash escapes (install.log's ``args=``, install.out's run header and re-run lines, an agent's own
-text)."""
+text). ``add-source`` too: the vanished-source add-back names its folder after it, so a folder no value
+registered matches is cut to ``<path>`` there as well (B13 round 18 V7's review)."""
 _ANSI_C_RE = re.compile(r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|(.))", re.DOTALL)
 _ANSI_C_LETTERS = {
     "a": "\a",
@@ -10502,7 +10519,9 @@ def _redact_lines(red: Redactor, lines: list[str]) -> str:
             line = _SAME_STORED_RE.sub(r"(\1)", line)
         if _DOCTOR_TAG_RE.match(line):
             line = re.sub(r" {2,}— ", " — ", line, count=1)
-        return _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line else line
+        return (
+            _SOURCE_LOCAL_RE.sub(shown, line) if "--source-local" in line or "add-source " in line else line
+        )
 
     return "\n".join(ln if ln in keep else one(ln) for ln in lines)
 
