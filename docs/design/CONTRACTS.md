@@ -24203,6 +24203,7 @@ renderer's `stopping_error` reads it, and leaves V30 and V31 off. Tests:
 `test_a_step_1_stop_of_the_older_build_names_the_earlier_first_sync`,
 `test_a_git_stop_with_no_end_line_rendered_by_the_older_build_is_not_called_stale`,
 `test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item`.
+Amended 2026-10-20, §16.141 W74: the one-timestamp count starts at the attempt `parse_friction` splits off.
 
 **The older build's attempt lines are rewritten** (V22). Round 17 U27's three attempt-line rules sat behind
 `## Friction log`, a heading no renderer writes; they read `## Agent friction log` now (their temporaries renamed, as
@@ -24783,6 +24784,17 @@ Python, never less. Tests: `test_a_policy_or_governance_value_is_redacted_alike_
 string holding both, a number before `;`, a dict, and a two-level list),
 `test_the_shell_governance_value_program_stays_under_bsd_seds_limit` (every rule under 2000 bytes; 9000 blanks
 inside brackets cut at once).
+
+**The git stop's one timestamp counts the attempt the renderer splits off** (W74; amends §16.135 V30).
+`step1_cmd_stop_facts` counted event lines from the last `Attempt:` line, while `parse_friction` also splits at a
+stated step 1 error that opens a header-less attempt (`track()`'s return) and at one past the gap after an end line,
+and `late_run` moves the run of step 1 lines dated after that end line into the new attempt. An earlier session's
+step 2 line before its end line therefore kept the older build's session span beside an attempt that is the error
+alone, and a step 1 line moved before a bare `Attempt:` line claimed one timestamp where the renderer has two lines.
+The awk now resets its count at those splits and carries the moved run, as the verifier's prototype (all six of its
+cases agree with `parse_friction`). Test: `test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits`
+(a step 2 line before the end line: one timestamp; a step 1 line after it, and one moved before a bare `Attempt:`
+line: the span kept).
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 

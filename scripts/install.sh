@@ -5023,18 +5023,26 @@ friction_attempt_errors() {
 # renderer names no cause beside "step 1 logged an error". The attempt split and its note are not shimmed.
 # S1_CMD=1 marks this stop for older_report_rewrite (B13 round 18 V30, V31), with S1_AT, the error line's stamp,
 # S1_FLINE, its line number (the report's F<n>), and S1_ONE=1 when it is the only event line, an end line aside,
-# after the last Attempt: line (the renderer's attempt is then that line alone: one timestamp).
+# of the attempt parse_friction splits off: counted from the last Attempt: line, a stated step 1 error that
+# opens a header-less attempt (track()), or one past the gap after an end line, each with the unbroken run of
+# step 1 lines dated at or after the open attempt's end line, which late_run moves with it (the renderer's
+# attempt is then that line alone: one timestamp; B13 round 19 W74).
 step1_cmd_stop_facts() {
 	local f at
 	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM="" S1_CMD="" S1_AT="" S1_FLINE="" S1_ONE=""
 	f="$(friction_file)"
 	[ -f "$f" ] && [ -f "$SETUP_LOG" ] || return 1
 	at="$(LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
-		{ track($0) }
-		/^Attempt:/ { ev = 0 }
-		NH { NH = 0; last = ""; next }
+		{ q = track($0) }
+		/^Attempt:/ { ev = (endat != "" ? run : 0); endat = ""; run = 0 }
+		NH { NH = 0; last = ""; ev = 0; endat = ""; run = 0; next }
 		/^Attempt:/ || /^[-* ]*(Prompt|Agent|Outcome|Run):/ { last = ""; next }
-		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/ && !/[|] end [|] finished[[:space:]]*$/ { last = $0; nr = NR; ev++ }
+		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/ {
+			if (/[|] end [|] finished[[:space:]]*$/) { endat = substr($0, 1, 20); run = 0; next }
+			if (q || (endat != "" && $0 ~ s1 && secs($0) - secs(endat) > gap)) { ev = (endat != "" ? run : 0); endat = ""; run = 0 }
+			if (endat != "" && $0 ~ /^[0-9TZ:-]+ [|] step 1 [|]/ && substr($0, 1, 20) >= endat) run++; else run = 0
+			last = $0; nr = NR; ev++
+		}
 		END { if (last ~ s1 && stated(last)) print substr(last, 1, 20) "|" nr "|" (ev == 1) }' "$f" 2>/dev/null)"
 	[ -n "$at" ] || return 1
 	S1_FLINE="${at#*|}" S1_ONE="${at##*|}"

@@ -10501,6 +10501,39 @@ def test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item(
     )
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        "a step 2 line before the end line",
+        "a step 1 line after the end line",
+        "a step 1 line moved before a bare Attempt: line",
+    ],
+)
+def test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits(
+    env: dict[str, str], tmp_path: Path, state: str
+) -> None:
+    """B13 round 19 W74: the shim counted the attempt's event lines from its last Attempt: line, while
+    parse_friction splits a stated step 1 error after an end line into an attempt of its own, with the run
+    of step 1 lines dated after that end line that late_run moves along. An earlier session's step 2 line
+    before its end line kept the older build's session span beside an attempt that is the error alone; a
+    step 1 line logged after the end line goes with the error, so that attempt has two lines, no one
+    timestamp; and a step 1 line moved before a bare Attempt: line is that attempt's too."""
+    friction = {
+        "a step 2 line before the end line": "2026-10-18T09:02:00Z | step 2 | deviation | slow | -\n"
+        "2026-10-18T09:05:00Z | end | finished\n",
+        "a step 1 line after the end line": "2026-10-18T09:05:00Z | end | finished\n"
+        "2026-10-18T10:00:10Z | step 1 | deviation | retried the pull | -\n",
+        "a step 1 line moved before a bare Attempt: line": "2026-10-18T09:05:00Z | end | finished\n"
+        "2026-10-18T10:00:10Z | step 1 | deviation | retried the pull | -\nAttempt:\n",
+    }[state]
+    report = "\n".join([*_GIT_STOP_REPORT[:7], _V10_TIME, *_GIT_STOP_REPORT[7:]])
+    summary = _summary(_git_stop_report(env, tmp_path, friction + _GIT_ERROR, _EARLIER_LIST, report))
+    if state == "a step 2 line before the end line":
+        assert _ONE_STAMP in summary and _V10_TIME not in summary, summary
+    else:
+        assert _V10_TIME in summary and _ONE_STAMP not in summary, summary
+
+
 def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync(
     env: dict[str, str], tmp_path: Path
 ) -> None:
