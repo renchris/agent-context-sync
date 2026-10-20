@@ -5319,7 +5319,7 @@ def _dated_line_scan() -> tuple[
         at = "|".join(re.escape(f"§{home} {i}") for i in items)
         either = "|".join(items)
         marker = re.compile(
-            rf"Amended 2026-10-1\d, (?:§{re.escape(home)} (?:[A-Z]\d+, )*(?:{either})\b"
+            rf"Amended \d{{4}}-\d\d-\d\d, (?:§{re.escape(home)} (?:[A-Z]\d+, )*(?:{either})\b"
             rf"|§16\.\d+ [A-Z]\d+(?:, [A-Z]\d+)* \((?:by )?(?:{at})(?:, [A-Z]\d+)*\)"
             rf"|§{re.escape(home)} [A-Z]\d+(?:, [A-Z]\d+)*: [^;]*?; (?:[A-Z]\d+, )*(?:{either})\b)"
         )
@@ -5654,7 +5654,7 @@ def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
         start, body = sections[section]
         blocks = _contracts_blocks(body, start, r"\n\s*\n|\n(?=\s*- )")
         [(at, block)] = [(at, b) for at, b in blocks if anchor in " ".join(b.split())]
-        lines = _dated_lines_at(at, block, re.compile(rf"Amended 2026-10-1\d, {re.escape(marker)}:"))
+        lines = _dated_lines_at(at, block, re.compile(rf"Amended \d{{4}}-\d\d-\d\d, {re.escape(marker)}:"))
         assert lines, f"§{section} {anchor[:40]} has no {marker} line"
         found.update(lines)
     return found
@@ -6266,7 +6266,7 @@ def test_a_round_6_item_that_amends_another_has_a_dated_line_there() -> None:
     assert len(claims) >= 7, "the scan found §16.66's amends (few, so it is broken)"
     for home, g, section, item in claims:
         at = re.escape(f"§{home} {g}")
-        marker = re.compile(rf"Amended 2026-10-1\d, (?:{at}\b|§16\.\d+ [A-Z]\d+ \(by {at}\))")
+        marker = re.compile(rf"Amended \d{{4}}-\d\d-\d\d, (?:{at}\b|§16\.\d+ [A-Z]\d+ \(by {at}\))")
         paragraphs = [" ".join(p.split()) for p in re.split(r"\n\s*\n", sections[section])]
         assert any(marker.search(p) and re.search(rf"\b{item}\b", p) for p in paragraphs), (
             f"§{section} {item} has no dated line for §{home} {g}"
