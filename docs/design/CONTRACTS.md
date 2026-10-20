@@ -24846,6 +24846,18 @@ line's end) is replaced, its fix kept; on V31's path `s1item` is, never `mvline`
 compares exactly. Test: `test_the_older_builds_cut_git_error_item_takes_the_renderers_cut` (oldr's and oldr2's
 states against `setup_report._item_what`, a row holding ` | `, and an error that was not cut).
 
+**A census test runs where gitleaks is missing, on a Mac that has it** (W78). Round 18's census passed here only
+because this Mac has gitleaks; CI has none, printed `not found (builtin patterns only)`, and went red. The census
+is now a helper, `_unknown_report_words`, and a second test runs install.sh alone (a new `wrap` argument of
+`install_sh` and `_fuzzy_report`) under `sandbox-exec` with every absolute `lints._GITLEAKS_CANDIDATES` path and any
+gitleaks on the run's PATH unreadable, which install.sh's `[ -x ]` reads as missing. It first asserts the report's
+line is `- gitleaks: not found (builtin patterns only)`, so it cannot test the wrong branch, then the census. pytest
+and the in-process Python report never run sandboxed: there a denied path raises EPERM (lane B's W66 makes
+`lints._executable` answer no to it). It skips where `sandbox-exec` is missing or cannot start (a run already inside
+a sandbox). Measured: with the `${v:-word}` reading of round 18's fix switched off, the old census passes on this
+Mac and the new test fails on `builtin` and `patterns`. Test:
+`test_the_shell_report_words_hold_where_gitleaks_is_missing`.
+
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
 The B13 round 19 items of lane P (specs `round19/items/W<n>.md`, the verifier's corrected fix built unless a

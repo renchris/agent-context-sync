@@ -351,13 +351,18 @@ def wheel(tmp_path: Path) -> Path:
 
 
 def install_sh(
-    env: dict[str, str], *args: str, timeout: float = 120, script: Path = INSTALL_SH
+    env: dict[str, str],
+    *args: str,
+    timeout: float = 120,
+    script: Path = INSTALL_SH,
+    wrap: Sequence[str] = (),
 ) -> subprocess.CompletedProcess[str]:
-    """One install.sh run (``script``: a copy in another checkout). Its NEXT says of the [FAIL] lines above it
-    that "each names its fix", so every run of every test is held to that: the real agentsync's lines, and the
-    stub's, which are written as the real ones are."""
+    """One install.sh run (``script``: a copy in another checkout; ``wrap``: the argv it runs under, such as
+    ``sandbox-exec -p <profile>``). Its NEXT says of the [FAIL] lines above it that "each names its fix", so
+    every run of every test is held to that: the real agentsync's lines, and the stub's, which are written as
+    the real ones are."""
     cp = subprocess.run(
-        [BASH32, str(script), *args],
+        [*wrap, BASH32, str(script), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -12869,10 +12874,12 @@ def _fuzzy_report(
     *,
     links: Sequence[str] = (),
     others: Sequence[str] = (),
+    wrap: Sequence[str] = (),
 ) -> tuple[str, str]:
     """The friction line ``said`` as the shell report and the Python report redact it, with ``folders``
     configured under OneDrive-<org> (B13 round 10 L66), and in CloudStorage ``links``, symlinks to it, and
-    ``others``, folders of their own."""
+    ``others``, folders of their own; install.sh runs under ``wrap`` (:func:`install_sh`), the Python report
+    in this process."""
     lib = _cloud(env) / f"OneDrive-{org}"
     lib.mkdir(parents=True, exist_ok=True)
     for name in links:
@@ -12887,7 +12894,7 @@ def _fuzzy_report(
     line = f"2026-10-10T00:00:01Z | step 1 | deviation | saw {said} | -"
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
     friction_path(env).write_text(f"Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\n{line}\n")
-    assert install_sh(env, "--report-only").returncode == 0
+    assert install_sh(env, "--report-only", wrap=wrap).returncode == 0
     [shell] = [ln for ln in report_path(env).read_text().splitlines() if " | step 1 | deviation | saw " in ln]
     monkeypatch.setenv("HOME", env["HOME"])
     red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
@@ -13143,10 +13150,16 @@ def test_every_lower_case_word_the_shell_report_prints_is_a_report_word(
     outside the embedded logs, paths, URLs, placeholders and code spans is report_word's, output_word's or
     joined_word's: a new uname, profiles or doctor wording fails here instead of leaking."""
     _fuzzy_report(env, monkeypatch, ["Plans"], "nothing", org="Contoso")
+    assert _unknown_report_words(report_path(env).read_text(encoding="utf-8")) == {}
+
+
+def _unknown_report_words(text: str) -> dict[str, str]:
+    """The lower-case words of 3 or more letters a shell report prints outside its embedded logs, paths, URLs,
+    placeholders and code spans that no word list of install.sh holds, each with a line that prints it."""
     known = _shell_report_words() | _shell_case_words("output_word") | _shell_case_words("joined_word")
     missing: dict[str, str] = {}
     section, fence = "", False
-    for line in report_path(env).read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if line.startswith("~~~"):
             fence = not fence
         if fence or line.startswith("~~~"):
@@ -13161,7 +13174,33 @@ def test_every_lower_case_word_the_shell_report_prints_is_a_report_word(
         for word in re.findall(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])", bare):
             if word not in known:
                 missing.setdefault(word, line)
-    assert missing == {}, missing
+    return missing
+
+
+def test_the_shell_report_words_hold_where_gitleaks_is_missing(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 19 W78: a Mac with gitleaks always renders the "found" branch of the report's gitleaks line,
+    so the census above passed here while CI, which has none, printed "not found (builtin patterns only)" and
+    went red (round 18). install.sh alone runs under sandbox-exec with every place it looks for gitleaks
+    unreadable, which reads as missing to its `[ -x ]`; the run must take CI's branch, and the census holds
+    there too. Never pytest or the in-process Python report: there a denied path raises EPERM, which CI never
+    sees."""
+    sandbox = shutil.which("sandbox-exec")
+    if sandbox is None:
+        pytest.skip("no sandbox-exec: not macOS")
+    if subprocess.run([sandbox, "-p", "(version 1)(allow default)", "/usr/bin/true"], check=False).returncode:
+        pytest.skip("sandbox-exec cannot start here (already inside a sandbox)")
+    hidden = {str(p) for p in lints._GITLEAKS_CANDIDATES if p.is_absolute()}
+    found = shutil.which("gitleaks", path=env.get("PATH"))
+    hidden |= {found, os.path.realpath(found)} if found else set()
+    profile = "(version 1)(allow default)" + "".join(
+        f'(deny file-read* (literal "{p}"))' for p in sorted(hidden)
+    )
+    _fuzzy_report(env, monkeypatch, ["Plans"], "nothing", org="Contoso", wrap=[sandbox, "-p", profile])
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "- gitleaks: not found (builtin patterns only)" in text.splitlines(), "CI's branch, or no test"
+    assert _unknown_report_words(text) == {}
 
 
 def test_a_cloudstorage_symlink_is_a_link_in_both_readers(
