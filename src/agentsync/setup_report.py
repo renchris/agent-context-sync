@@ -434,7 +434,9 @@ _PROXY_S = 4.0  # the LaunchAgent job's proxy read
 _STATUS_S = 4.0  # the offline Status build the report reads its lines from
 _LOOP_FLOOR_S = 1.0  # held back from Doctor's share, so the hook gets at least 2 s past a slow doctor
 _IDLE_AGAIN = f"write the report again when this Mac is idle (`{INSTALL_SH} --report-only`) before sending it"
-"""The advice for a part the report's time limit cut off: the Summary's evidence and doctor lines; Doctor."""
+"""The advice for a part the report's time limit cut off, or a state file a sync held (``_RETRY_WHYS``): the
+Summary's evidence and doctor lines; Doctor. install.sh's ``--report-only`` NEXT keys on it (B13 round 20
+X37)."""
 _DOCTOR_GRACE_S = 20.0
 """The least the doctor call is given (B13 round 18 V4): on a busy Mac its pandoc start alone can take longer
 than what is left of :data:`TIME_BUDGET_S`, which cut the last report of a setup off with no Doctor section.

@@ -5316,11 +5316,13 @@ on_exit() {
 				# B13 round 19 W3: a part the report's time limit cut off (its doctor on a busy Mac) asked for the
 				# report again only inside the report. The NEXT the agent relays says so too, as advice beside the
 				# review, never a step before it: a doctor that is always slow would hold the bring-back or loop an
-				# agent. The marker is setup_report._IDLE_AGAIN, which every cut-off part writes; an older installed
-				# agentsync without it adds nothing. Before the remedy for an unreadable patch, which keeps its words
+				# agent. The marker is setup_report._IDLE_AGAIN, which every cut-off part writes, and so does an
+				# evidence line whose only gap is a state file a sync held (B13 round 20 X37): the words name no
+				# cause, the Summary does. An older installed agentsync without it adds nothing. Before the remedy
+				# for an unreadable patch, which keeps its words
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ -f "$REPORT_PATH" ] &&
 					LC_ALL=C grep -qF 'write the report again when this Mac is idle' "$REPORT_PATH"; then
-					NEXT_MSG="the report's time limit cut part of it off (its Summary says which): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle; either way, $NEXT_MSG"
+					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle; either way, $NEXT_MSG"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier

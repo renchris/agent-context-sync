@@ -3116,21 +3116,42 @@ def test_an_unreadable_patch_leaves_the_rest_of_section_3_right(env: dict[str, s
         assert text.count(fence + "\n") == 1 and "~" * 40 + "\n" in text
 
 
+def _busy_evidence_line() -> str:
+    """The Summary's evidence line when its one gap is a state file a sync held (B13 round 20 X37)."""
+    r = setup_report._Run.__new__(setup_report._Run)
+    r.facts = setup_report._Facts()
+    r.facts.evidence = 1
+    r.facts.evidence_why["the state file is busy: a sync holds it"] += 1
+    return setup_report._evidence_line(r)
+
+
+@pytest.mark.parametrize("cause", ["slow doctor", "busy state file"])
 @pytest.mark.parametrize("locked", [False, True])
 def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review(
-    env: dict[str, str], tmp_path: Path, locked: bool
+    env: dict[str, str], tmp_path: Path, locked: bool, cause: str
 ) -> None:
     """B13 round 19 W3: a report whose doctor call the time limit cut off asked for the report again only
     inside it (``setup_report._IDLE_AGAIN``), while the NEXT the agent relays was the plain review line.
     The NEXT says so too, as advice beside the review (a doctor that is always slow must not hold the
-    bring-back), naming the command; with an unreadable kept patch it comes before that remedy's words."""
+    bring-back), naming the command; with an unreadable kept patch it comes before that remedy's words.
+
+    B13 round 20 X37: the NEXT said "the report's time limit cut part of it off", but the marker is also in
+    an evidence line whose only gap is a state file a sync held, and round 19 W4 calls a slow doctor's cut
+    "the wait the report gives a slow doctor", not the time limit. The clause names no cause; the Summary
+    does. Keying on the cut-off words alone would drop the advice a busy state file needs."""
     home = Path(env["HOME"])
     (home / ".local" / "bin").mkdir(parents=True)
     shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
     old = tmp_path / "report.md"
+    summary = (
+        "- doctor: cut off after 20.0s, the wait the report gives "
+        f"a slow doctor (see Doctor) · {setup_report._IDLE_AGAIN}"
+        if cause == "slow doctor"
+        else _busy_evidence_line()
+    )
+    assert setup_report._IDLE_AGAIN in summary and "time" not in summary.replace("this Mac", ""), summary
     old.write_text(
-        "# agentsync setup report\n\n## Summary\n\n- doctor: cut off after 20.0s, the wait the report gives "
-        f"a slow doctor (see Doctor) · {setup_report._IDLE_AGAIN}\n\n## Redaction\n\n"
+        f"# agentsync setup report\n\n## Summary\n\n{summary}\n\n## Redaction\n\n"
         "Private only: one of your folder, library or organization names is ...\n"
     )
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
@@ -3146,17 +3167,19 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
             patch.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     head = (
-        "NEXT: the report's time limit cut part of it off (its Summary says which): if this Mac was busy, "
-        "run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle; either way, "
+        "NEXT: part of the report was cut off or not measured (its Summary says which, and why): if this Mac "
+        "was busy, run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle; "
+        "either way, "
     )
     rest = (
         f"{back} does not hold 1 kept patch file" if locked else f"review {back} and copy that one file back"
     )
     assert last_line(cp).startswith(head + rest), last_line(cp)
     assert " (nothing is sent for you)" in last_line(cp), last_line(cp)
+    assert "time limit" not in last_line(cp), last_line(cp)
     old.write_text(old.read_text().replace(setup_report._IDLE_AGAIN, "nothing cut off"))
     cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
-    assert "time limit" not in last_line(cp), "a report nothing cut off keeps its NEXT"
+    assert "cut off or not measured" not in last_line(cp), "a report nothing cut off keeps its NEXT"
 
 
 def test_two_unreadable_patches_are_counted_by_their_number(env: dict[str, str]) -> None:

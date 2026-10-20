@@ -24942,6 +24942,9 @@ Amended 2026-10-20, §16.148 X3: the finish did not relay this NEXT (it relays t
 could-not-write and unreadable-patch cases, and the report is the last command the agent runs), so "still matches"
 was false; prompt v29's finish relays it in its own clause, keyed on lane RB's X37 opening, "part of the report was
 cut off or not measured".
+Amended 2026-10-20, §16.147 X37: the clause reads `part of the report was cut off or not measured (its Summary
+says which, and why): if this Mac was busy, run ... again once it is idle; either way, ...`, since a busy state
+file writes the marker too.
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
@@ -25700,6 +25703,19 @@ older installed agentsync shows a new token as it is. Tests:
 body: the W31 words and the new note), `test_the_reinstall_names_who_started_the_sync_it_waits_for` (the run-out
 note of each holder), `test_the_install_line_says_what_the_agentsync_steps_seconds_held` and
 `test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side`.
+
+**W3's NEXT names no cause the report did not give** (X37; amends §16.140 W3). install.sh's `--report-only` NEXT
+added `the report's time limit cut part of it off (its Summary says which)` wherever the report holds
+`setup_report._IDLE_AGAIN`, but `_evidence_line` writes that phrase also when every "not measured" line says `the
+state file is busy: a sync holds it` (a reason in `_RETRY_WHYS`), and round 19 W4 calls a slow doctor's cut `the
+wait the report gives a slow doctor`, not the time limit. The trigger stays; the clause now reads `part of the
+report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run
+~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle; either way, <the NEXT as
+before>`. Keying on the cut-off words alone was not built: a busy state file, which waiting clears, would lose the
+advice. Prompt v29 relays this clause (lane P's X3, which has these words). Test:
+`test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review` (a W4 slow-doctor line and a
+busy-only evidence line from `_evidence_line`, each with and without an unreadable patch; no NEXT says "time
+limit").
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
