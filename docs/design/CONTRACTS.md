@@ -24767,6 +24767,20 @@ budget was used up before doctor started (see Doctor)`, as Doctor and the Summar
 `test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again`,
 `test_the_summarys_doctor_cut_off_seconds_are_the_limit_the_doctor_section_names`.
 
+**The speech bucket reads `speech.BUILD_TIMED_OUT` itself, and a docstring says what the code does** (W54, W45).
+The Summary's bucket for a speech helper build that ran out of time matched doctor's warn against a copy of
+`speech.BUILD_TIMED_OUT`, under a comment that said it never read doctor's words. Lane E's round 19 W49 (8a1abd2c,
+§16.144) landed first and rebuilt that bucket for all three helpers: `_helpers_timed_out` takes each helper's words
+from `doctor.helper_timed_out_words`, which reads the constants when it runs, and its comment says it is keyed on the
+markers, never on doctor's fix. That is W54's fix, so this lane built only its test: a reworded `BUILD_TIMED_OUT`
+still lands in the bucket. W45: `_STATUS_UNREAD`'s
+docstring said no `last runs:` line follows status's unread line; since round 18 V10 `cli._status_lines` writes it
+for a refused [governance] and the manifest's line still follows, which `_status` already reads. The docstring names
+both writers. W45 changes no behaviour, so no test can fail without it; the behaviour it describes is pinned by
+`test_a_loop_stage_status_could_not_read_is_not_read_not_installed` and tests/test_cli.py's
+`test_status_prints_every_check_when_its_state_cannot_be_read`. Test (W54):
+`test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected`.
+
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
 Lane RB's items of B13 round 19 (`docs/plans/bring-back-ocr.md`, "B13 round 19"): the shell report's re-add

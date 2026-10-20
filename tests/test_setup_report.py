@@ -8254,11 +8254,13 @@ def test_ocr_not_built_is_an_info_line_and_an_ocr_warn_is_unexpected(fake_mac: d
 
 @pytest.mark.usefixtures("roomy_calls")
 def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
-    fake_mac: dict[str, Path],
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """B13 round 18 V5, V28: a speech helper build that ran out of time was "unexpected 1" with nothing to do.
     Speech is missing, so it is no expected warn; it gets a bucket of its own, keyed on the report's own read
-    of the build's marker, never on doctor's words. Any other failed speech build stays unexpected."""
+    of the build's marker together with the warn's own reason, never on the fix. Any other failed speech
+    build stays unexpected. Round 19 W54: the reason is ``speech.BUILD_TIMED_OUT`` itself, not a copy, so a
+    reworded constant still lands in the bucket."""
     v6_install_log(fake_mac)
     write_friction(fake_mac, V6_HAPPY)
     config = load_config(fake_mac["config"])
@@ -8279,6 +8281,12 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
     marker.write_text("swift package resolve failed (exit 1): could not reach the host", encoding="utf-8")
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
     assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: speech warn" in summary, summary
+    reworded = "the speech helper took too long to build"
+    monkeypatch.setattr(speech, "BUILD_TIMED_OUT", reworded)
+    marker.write_text(f"{reworded}; install.sh tries the build again on its next run", encoding="utf-8")
+    warn = f"[warn] speech — speech: failed ({reworded}; ...) (fix: run install.sh again)"
+    _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
+    assert "from a helper build that ran out of time (1 check): speech warn" in summary, summary
 
 
 @pytest.mark.usefixtures("roomy_calls")

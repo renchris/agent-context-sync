@@ -5540,8 +5540,11 @@ def _with_evidence_damage(r: _Run, config: Config, lines: list[str]) -> list[str
 
 
 _STATUS_UNREAD = "status: cannot read the state:"
-"""How status's detail part starts when it cannot read the state (``cli._guarded``): no ``last runs:`` line
-follows, so the report cannot say whether a sync ran."""
+"""How status's detail part starts when it cannot read the state. Two places write it: ``cli._guarded``,
+when the whole of status raises (a manifest it cannot read), and then no ``last runs:`` line follows, so the
+report cannot say whether a sync ran; and ``cli._status_lines``, when only [governance] is refused (B13 round
+18 V10), and then the manifest's ``last runs:`` line (or ``manifest: none yet``) still follows, so the report
+reads whether a sync ran from that line (round 19 W45)."""
 
 
 def _status(r: _Run) -> list[str]:
