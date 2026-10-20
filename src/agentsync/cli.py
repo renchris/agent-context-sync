@@ -91,6 +91,7 @@ from agentsync.errors import (
     AuthRequiredError,
     ConfigError,
     LockHeldError,
+    ManifestOpenError,
     ManifestSchemaError,
 )
 from agentsync.graph.auth import TokenProvider
@@ -121,6 +122,11 @@ EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; says "skipped:
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
 EXIT_STATE = 65  # EX_DATAERR: the manifest is no database or a damaged one (doctor's state_dir.manifest)
+MANIFEST_OPEN_FIX = (
+    "give this account read and write access to the file and its folder, e.g. owner and mode 600; the file "
+    "itself is not damaged"
+)
+"""The fix of a manifest this account cannot open (``ManifestOpenError``; B13 round 19 W65)."""
 EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher that wraps a LaunchAgent run
 
 # Commands by their full path, which works with ~/.local/bin off PATH (B13 round 6 G79, as §16.51 Q49); the
@@ -2744,6 +2750,12 @@ def _main(argv: Sequence[str] | None) -> int:
         return EXIT_FAILED
     except AuthError as exc:
         _err(f"sign-in failed: {exc}")
+        return EXIT_FAILED
+    except ManifestOpenError as exc:
+        # not 65: the file is not damaged, and MANIFEST_FIX's move-aside would throw good state away; exit 1,
+        # as V59 treats a file sqlite will not open (B13 round 19 W65)
+        _log.debug("state: %s", exc, exc_info=True)
+        _err(f"error: state: {exc} (fix: {MANIFEST_OPEN_FIX})")
         return EXIT_FAILED
     except AgentSyncError as exc:
         _err(f"error: {exc}")

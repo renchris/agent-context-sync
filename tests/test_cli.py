@@ -3219,6 +3219,47 @@ def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_stat
     assert warn.endswith(f"({doctor.LISTING_STATE_UNREADABLE_NOTE})"), warn
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("what", ["file", "folder"])
+def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 19 W65: a manifest this account cannot open (a root-owned file one sudo run left, a folder
+    made read-only) ended ``sync`` and ``curate`` on a raw PermissionError traceback from ``os.open``, exit 1:
+    V59 covered only sqlite's errors. It is one ``error: state:`` line naming the file and an owner-and-mode
+    fix, exit 1: not 65, whose move-aside fix would throw away a manifest that is not damaged."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    before = db.read_bytes()
+    target = db
+    if what == "folder":  # no file yet, in a folder this account cannot write: the open that creates it fails
+        db.rename(db.with_name("kept.sqlite"))
+        for side in db.parent.glob(db.name + "-*"):
+            side.unlink()
+        target = db.parent
+    target.chmod(0o500 if what == "folder" else 0o000)
+    try:
+        # curate opens no manifest that is not there yet
+        for argv in (["sync"], ["sync", "--mode", "poll"], *([["curate"]] if what == "file" else [])):
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+            err = capsys.readouterr().err
+            assert "Traceback" not in err and "PermissionError" not in err, err
+            (line,) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
+            assert (
+                line
+                == f"error: state: {db} cannot be opened: Permission denied (fix: {cli.MANIFEST_OPEN_FIX})"
+            )
+            assert doctor.MANIFEST_FIX not in err, err
+    finally:
+        target.chmod(0o700 if what == "folder" else 0o600)
+    if what == "folder":
+        assert not db.exists()
+        db.with_name("kept.sqlite").rename(db)
+    assert db.read_bytes() == before
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read

@@ -31,7 +31,7 @@ from typing import Any, NamedTuple
 
 from agentsync import tm_exclude
 from agentsync.config import SourceConfig, always_excluded
-from agentsync.errors import ConfigError, ManifestSchemaError
+from agentsync.errors import ConfigError, ManifestOpenError, ManifestSchemaError
 from agentsync.model import (
     PRESENT_STATES,
     ChangeOp,
@@ -786,11 +786,16 @@ def _source_from_row(r: sqlite3.Row) -> SourceRow:
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
-    """Create the db file 0600 if needed, connect in autocommit mode and apply the connection pragmas."""
-    db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)
-    os.close(fd)
-    db_path.chmod(0o600)
+    """Create the db file 0600 if needed, connect in autocommit mode and apply the connection pragmas. A file
+    or folder this account cannot open raises :class:`ManifestOpenError`, never a raw PermissionError (B13
+    round 19 W65)."""
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)
+        os.close(fd)
+        db_path.chmod(0o600)
+    except OSError as exc:
+        raise ManifestOpenError(f"{db_path} cannot be opened: {exc.strerror or exc}", exc.errno) from exc
     conn = sqlite3.connect(str(db_path), isolation_level=None, timeout=30.0)
     conn.row_factory = sqlite3.Row
     mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]

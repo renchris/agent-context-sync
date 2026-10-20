@@ -16,6 +16,17 @@ class ManifestSchemaError(AgentSyncError):
     an older one, so this means a newer build wrote it: upgrade this install."""
 
 
+class ManifestOpenError(AgentSyncError, OSError):
+    """The manifest or its folder will not open for this account (EACCES, EPERM, EROFS: a root-owned file left
+    by one sudo run, a folder made read-only). The file itself is not damaged, so it is no exit 65 and its
+    move-aside fix would throw good state away: the CLI says one line and exits 1 (B13 round 19 W65). An
+    ``OSError`` too, so a caller that caught the raw error still does."""
+
+    def __init__(self, message: str, errno_: int | None = None) -> None:
+        super().__init__(message)
+        self.errno = errno_
+
+
 class LockHeldError(AgentSyncError):
     """Another live agentsync process holds the single-writer lock (CLI exit 75, logged as skipped)."""
 

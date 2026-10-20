@@ -25065,6 +25065,19 @@ Summary's buckets, keyed on the detail and the report's read, are unchanged; a r
 Test: both cases of
 `test_cli.py::test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does`.
 
+**W65: a manifest this account cannot open is one line, exit 1 (`agentsync.manifest`, `agentsync.errors`,
+`agentsync.cli`).** `sync` and `curate` on a manifest this account cannot open (a root-owned file one sudo run
+left, mode 000, a folder it cannot write when the file is not there yet) ended on a raw PermissionError traceback
+from `manifest._connect`'s `os.open`: §16.137 V59 covered only sqlite's errors. `_connect` wraps its mkdir, open
+and chmod and raises `ManifestOpenError` (an `AgentSyncError` and an `OSError`, so a caller that caught the raw
+error still does; `errno` kept), and `cli._main` prints `error: state: <db> cannot be opened: <strerror> (fix:
+give this account read and write access to the file and its folder, e.g. owner and mode 600; the file itself is
+not damaged)` (`cli.MANIFEST_OPEN_FIX`), the traceback at `-vv`, and exits 1. Not 65 and not `MANIFEST_FIX`: those
+mean a damaged database, and moving an intact manifest aside throws its history away; V59 already gives a file
+sqlite will not open exit 1. Handled where it happens, not with a broad `OSError` arm that would hide code
+defects. Status's owner and mode FAIL is lane RA's W64 (§16.140), which this line's words were sent to. Test:
+`test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (file and folder; skipped as root).
+
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
 Round 19's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 19"; specs `round19/items/W<n>.md`, the
