@@ -25051,6 +25051,20 @@ as not executable: the lookup goes on to PATH, the next place or none, as for a 
 identity re-screens as designed. Test:
 `test_lints.py::test_a_gitleaks_in_a_folder_this_account_cannot_search_is_none` (skipped as root).
 
+**W11: a listing warn over a state file the loop cannot read points at no WAITING ON YOU line (`agentsync.cli`,
+`agentsync.ops.doctor`).** With the manifest damaged, the report's Doctor listing warn read `(as of its last walk:
+the Summary's Loop line says whether a WAITING ON YOU line still names it)` under install.sh, and by hand `(fix:
+each WAITING ON YOU line about <source> says ...)`, while the Loop line held only the state_dir.manifest FAIL's
+NEXT and the Summary filed the warn as not judged. `cli._listings_unread`, run by the report's Doctor hook and by
+status, gives each incomplete-listing heartbeat warn (`heartbeat.<id>` whose detail starts
+`doctor.LISTING_INCOMPLETE`) the note `doctor.LISTING_STATE_UNREADABLE_NOTE`, `as of its last walk: the loop
+cannot read the state file, so no line here says what keeps it incomplete; the state_dir.manifest [FAIL] line
+says what to do first`, and drops its fix, when the loop's read raised SQLITE_NOTADB or SQLITE_CORRUPT or the
+read-only probe finds the file so, the Summary's own test (a locked or busy manifest is not). A note, so the
+Summary's buckets, keyed on the detail and the report's read, are unchanged; a readable state changes nothing.
+Test: both cases of
+`test_cli.py::test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does`.
+
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
 Round 19's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 19"; specs `round19/items/W<n>.md`, the

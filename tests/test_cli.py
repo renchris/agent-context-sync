@@ -3162,18 +3162,27 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
         assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
 
 
+@pytest.mark.parametrize("hint", ["by hand", "install.sh"])
 def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does(
     initialised: Config,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    hint: str,
 ) -> None:
     """B13 round 18 V14, V52, V56, V71: on the manifest U64's test damages, status FAILed state_dir.manifest
     and the setup report said "doctor: 0 FAIL" and "NEXT: none", and its "see Doctor's state_dir.manifest
     line" pointers named a line Doctor never printed. The report's Doctor hook reads the loop first, as status
     does: one FAIL, filed under the state file that cannot be read (with the listing warn beside it, not
-    judged), and the Loop NEXT is rule 1's, the one status prints."""
+    judged), and the Loop NEXT is rule 1's, the one status prints. B13 round 19 W11: that listing warn pointed
+    at the Loop line for a WAITING ON YOU line (under install.sh) or at the WAITING ON YOU lines (by hand),
+    which a state the loop cannot read never has; it says so, in the report and in status."""
     from agentsync import setup_report  # noqa: PLC0415
+
+    if hint == "install.sh":
+        monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    else:
+        monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
 
     monkeypatch.setattr(setup_report, "_launchctl_print", lambda run, label: (113, "not loaded"))
     cfg = str(initialised.config_path)
@@ -3200,6 +3209,14 @@ def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_stat
     (loop_line,) = [ln for ln in text.splitlines() if ln.startswith("- Loop: ")]
     assert "NEXT: the state_dir.manifest check failed: " in loop_line, loop_line
     assert "NEXT: none" not in loop_line, loop_line
+    assert "WAITING ON YOU:" not in loop_line, loop_line
+    (warn,) = [ln for ln in text.splitlines() if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert warn.endswith(f"({doctor.LISTING_STATE_UNREADABLE_NOTE})"), warn
+    pointing = [ln for ln in text.splitlines() if "WAITING ON YOU line" in ln and ln != summary]
+    assert pointing == [], pointing
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_FAILED
+    (warn,) = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith(f"[warn] heartbeat.{sid} ")]
+    assert warn.endswith(f"({doctor.LISTING_STATE_UNREADABLE_NOTE})"), warn
 
 
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:

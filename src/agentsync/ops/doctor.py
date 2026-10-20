@@ -130,6 +130,16 @@ _LISTING_SKIPPED_NOTE = (
 LISTING_YOURS_REPORT_NOTE = (
     "as of its last walk: the Summary's Loop line says whether a WAITING ON YOU line still names it"
 )
+# The note on an incomplete listing when the loop cannot read the state file (a damaged manifest): no WAITING
+# ON YOU line can name it then, so the line does not point at one (B13 round 19 W11: the report's note sent
+# the reader to its Loop line, and the fix by hand to WAITING ON YOU lines, while the Loop line held only the
+# state_dir.manifest FAIL's NEXT). A note, not a fix, with no parentheses, as the notes above.
+LISTING_STATE_UNREADABLE_NOTE = (
+    "as of its last walk: the loop cannot read the state file, so no line here says what keeps it "
+    "incomplete; the state_dir.manifest [FAIL] line says what to do first"
+)
+LISTING_INCOMPLETE = "enumeration incomplete for "
+"""How the heartbeat warn of a listing that stays incomplete starts its detail."""
 
 # The bundled pandoc is an Intel (x86_64) program, in the Apple silicon wheel of pypandoc_binary too, so
 # macOS runs it through Rosetta, and Rosetta translates a file it has not seen once, at its first start. A
@@ -2142,7 +2152,7 @@ def _check_heartbeat(
             # one bracket on the line, the fix's or the note's: what it holds follows a "; " (B13 round 11
             # M44's second half, built in round 12 N17, N34, N74; install.sh's cleared_listings finds the line
             # by "deletions held", with or without the bracket an older build printed)
-            detail = f"enumeration incomplete for {incomplete} consecutive passes; {_held(src)}"
+            detail = f"{LISTING_INCOMPLETE}{incomplete} consecutive passes; {_held(src)}"
             # status passes the loop's own checks (R151): a wait the loop prints decides. Without them (the
             # setup report), an inbox held by empty cloud folders gets the loop's pointer too, read from the
             # manifest's stored state (B13 round 3 R53).

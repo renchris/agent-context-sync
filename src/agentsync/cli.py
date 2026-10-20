@@ -1534,6 +1534,24 @@ def _with_damaged_manifest(
     return [*checks[:at], doctor.manifest_damaged(expand(config.state_paths.db), exc), *checks[at:]]
 
 
+def _listings_unread(checks: list[doctor.CheckResult], exc: Exception | None) -> list[doctor.CheckResult]:
+    """``checks`` with each incomplete-listing heartbeat warn worded for a state file the loop cannot read
+    (``doctor.LISTING_STATE_UNREADABLE_NOTE``, its fix dropped): no WAITING ON YOU line can name the source
+    then, and the report's note pointed at its Loop line for one and the fix by hand at those lines (B13 round
+    19 W11). Unreadable as the setup report's Summary keys it: the loop's read raised SQLITE_NOTADB or
+    SQLITE_CORRUPT, or doctor's read-only probe FAILed state_dir.manifest (only that FAILs it); a locked or
+    busy manifest is not."""
+    read = isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)
+    if not read and not any(r.name == "state_dir.manifest" and not r.ok for r in checks):
+        return checks
+    return [
+        dataclasses.replace(r, note=doctor.LISTING_STATE_UNREADABLE_NOTE, fix=None)
+        if r.name.startswith("heartbeat.") and not r.ok and r.detail.startswith(doctor.LISTING_INCOMPLETE)
+        else r
+        for r in checks
+    ]
+
+
 def _loop_read(config: Config) -> tuple[loop.NextStep | None, Exception | None]:
     """The loop's step without rule 9's count of the curation queue, or the error its read raised: status
     and the setup report's doctor read it before the checks, so a manifest damaged under a table FAILs in
@@ -1560,7 +1578,7 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         loop_checks=None if step is None else step.checks,
         loop_waits=None if step is None else step.wait_counts,
     )
-    checks = _with_damaged_manifest(config, checks, state_exc)
+    checks = _listings_unread(_with_damaged_manifest(config, checks, state_exc), state_exc)
     fixes = _fail_steps(checks)
     if hint_off and any(_blocks_install(r) for r in checks):  # install.sh runs no sync (B13 round 14 Q10)
         checks = [
@@ -2078,6 +2096,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         step, state_exc = _loop_read(config)
         read[:] = [(step, state_exc)]
         results = _with_damaged_manifest(config, _status_checks(config, offline=True), state_exc)
+        results = _listings_unread(results, state_exc)
         fixes[:] = _fail_steps(results)
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
