@@ -6063,10 +6063,13 @@ def test_the_guides_placeholder_rows_follow_round_17s_redaction() -> None:
         "the evidence parts and the Configuration section's loads line included, as `(<source-N>, not in the "
         "config)` there (by place only where the report cannot read it, below)"
     ) in folder
-    # in both reports since B13 round 18 V46: the shell fallback reads it from doctor's fix
+    # in both reports since B13 round 18 V46: the shell fallback reads it from doctor's fix, in the forms
+    # cycle.vanished_add_back_tail writes (round 19 W34)
     assert (
         "since 2026-10-19, the folder each such source's walk recorded (the agentsync report, B13 round 17 "
-        "U46; the shell fallback report reads it from doctor's fix, `add-source '<folder>'`, round 18 V46)"
+        "U46; the shell fallback report reads it from doctor's fix and the sync's refusal, "
+        '`--source-local "<folder>"` or `add-source "<folder>"`, single-quoted for a name holding `!`, '
+        "round 18 V46, round 19 W34)"
     ) in folder
     [place] = [ln for ln in rows if ln.startswith("| `(source N)`, `(not in the config, N)` |")]
     assert (

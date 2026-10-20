@@ -60,7 +60,8 @@ from agentsync.config import (
     local_source_table,
 )
 from agentsync.convert import pandoc as pandoc_converter
-from agentsync.cycle import VANISHED_FIX
+from agentsync.cycle import VANISHED_ADVICE, VANISHED_FIX
+from agentsync.cycle import vanished_add_back_tail as cycle_vanished_add_back_tail
 from agentsync.cycle import vanished_detail as cycle_vanished_detail
 from agentsync.manifest import Manifest
 from agentsync.ops import doctor
@@ -12040,12 +12041,22 @@ def test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone(tmp_pat
     ), cp.stdout + cp.stderr
 
 
-def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder(tmp_path: Path) -> None:
+@pytest.mark.parametrize("form", ["install", "cli", "round17"])
+def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
     """B13 round 18 V46: doctor's config.vanished_sources fix names the folder add-source adds back (round 17
     U46), and the shell fallback registered only the id, so the folder printed in clear; a configured folder
     outside CloudStorage did too. Both are registered as setup_report._project_values does (the path from
     its first part that names something, and that part, in any case, whole words), a vanished cloud folder by
-    its parts; a container such as "Projects" and agentsync's own inbox stay in clear."""
+    its parts; a container such as "Projects" and agentsync's own inbox stay in clear.
+
+    Round 19 W34: the fix and the sync's refusal end with cycle.vanished_add_back_tail, which writes
+    ``install.sh --source-local "<folder>"`` under install.sh (``AGENTSYNC_NO_NEXT_HINT=1``, which install.sh
+    exports for the status run and the sync) and ``add-source "<folder>"`` elsewhere, double-quoted with its
+    escapes, single-quoted for a name holding "!"; the parser read only round 17's single-quoted add-source,
+    so the folder printed in clear. Each line is built by the writer itself; "round17" keeps the older
+    form."""
     text = INSTALL_SH.read_text()
     funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
     helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
@@ -12059,19 +12070,43 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
     )
     bids = home / "Projects" / "Contoso Bids" / "Q3"
     cloud = home / "Library" / "CloudStorage" / "OneDrive-Fabrikam" / "Launch Plans"
-    doctor_log = tmp_path / "doctor.log"
-    doctor_log.write_text(
+    # a name holding " $ and ' (the escapes), and one holding ! (shlex.quote's single quotes)
+    odd = home / "Projects" / 'Delta "Q4" $plan\'s'
+    bang = home / "Projects" / "Wow! Bids"
+    if form == "round17":
+        fix = (
+            "put the [[source]] block back; or add their folders again, under the same id: "
+            f"~/.local/bin/agentsync add-source {shlex.quote(str(bids))}, then "
+            f"~/.local/bin/agentsync add-source {shlex.quote(str(cloud))}"
+        )
+        tail = (
+            "; or add their folders again, under the same id: ~/.local/bin/agentsync add-source "
+            f"{shlex.quote(str(odd))}, then ~/.local/bin/agentsync add-source {shlex.quote(str(bang))}"
+        )
+    else:
+        if form == "install":
+            monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
+        else:
+            monkeypatch.delenv("AGENTSYNC_NO_NEXT_HINT", raising=False)
+        fix = doctor.vanished_fix([bids, cloud], every=True)
+        tail = cycle_vanished_add_back_tail([odd, bang], every=True)
+        assert (" --source-local " if form == "install" else " add-source ") in fix + tail
+    doctor_line = (
         "[FAIL] config.vanished_sources \u2014 sources 'bids-q3' (3 files), 'launch-plans' (1 file) are "
-        "mirrored but no longer in sources.toml (fix: put the [[source]] block back; or add their folders "
-        "again, under "
-        f"the same id: ~/.local/bin/agentsync add-source '{bids}', then ~/.local/bin/agentsync add-source "
-        f"'{cloud}')\n"
+        f"mirrored but no longer in sources.toml (fix: {fix})"
     )
+    doctor_log = tmp_path / "doctor.log"
+    doctor_log.write_text(doctor_line + "\n")
+    detail = cycle_vanished_detail({"delta-q4": 1, "wow-bids": 2})
+    out_line = f"configuration error: {detail}; {VANISHED_ADVICE}{tail}"
+    out = tmp_path / "install.out"
+    out.write_text(out_line + "\n")
     said = tmp_path / "lines.txt"
     said.write_text(
         f"add-source '{bids}' and '{cloud}'\n"
         "configured: ~/Projects/Contoso Live; contoso live; CONTOSO BIDS/Q3; launch plans\n"
         "Projects, Contoso and the inbox stay: ~/agent-context/inbox\n"
+        f"{odd.name} | {bang.name}\n" + doctor_line + "\n" + out_line + "\n"
     )
     harness = "\n".join(
         [
@@ -12080,6 +12115,97 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
             'id() { case "$1" in -un) echo jdoe ;; -F) echo "Jane Doe" ;; esac; }',
             *(ln for ln in text.splitlines() if ln.startswith(("GENERIC_SOURCE_IDS=", "GOVERNANCE_TYPED"))),
             f"FOLDERS=() CONFIG={config} SETUP_LOG=/nonexistent DOCTOR_LOG={doctor_log}",
+            f"INSTALL_OUT={out}",
+            f"SELF_FILE={INSTALL_SH}",
+            helpers,
+            *(
+                m.group(0)
+                for m in re.finditer(r"(?ms)^(?:gov_value_sed|report_word|joined_word)\(\) \{\n.*?^\}$", text)
+            ),
+            funcs,
+            f"redact_stream <{said}",
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+    )
+    assert cp.returncode == 0, cp.stderr
+    # numbered as the Python report numbers them: the configured one, then the vanished roots in byte order
+    shown = cp.stdout.splitlines()
+    assert shown[:4] == [
+        "add-source '~/Projects/<folder-3>' and '~/Library/CloudStorage/OneDrive-Fabrikam/<folder-2>'",
+        "configured: ~/Projects/<folder-1>; <folder-1>; <folder-3>; <folder-2>",
+        "Projects, Contoso and the inbox stay: ~/agent-context/inbox",
+        "<folder-5> | <folder-6>",
+    ], cp.stdout + cp.stderr
+    # the writer's own lines: every folder registered, in each quoting, so none shows
+    assert "~/Projects/<folder-3>" in shown[4] and "/OneDrive-Fabrikam/<folder-2>" in shown[4], shown[4]
+    assert "~/Projects/<folder-5>" in shown[5] and "~/Projects/<folder-6>" in shown[5], shown[5]
+    for clear in ("Bids", "Launch", "Plans", "Delta", "Q4", "plan", "Wow"):
+        assert clear not in "\n".join(shown[4:]), cp.stdout
+    # docs_repo is read from its [agentsync] table: an inbox beside a hand-set docs repo is agentsync's own
+    (home / "Documents" / "inbox").mkdir(parents=True)
+    config.write_text(
+        '[agentsync]\ndocs_repo = "~/Documents/agent-docs"\n\n'
+        f'[[source]]\nid = "inbox"\nkind = "local"\npath = "{home / "Documents" / "inbox"}"\n'
+    )
+    doctor_log.write_text("")
+    said.write_text("the inbox stays: ~/Documents/inbox\n")
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+    )
+    assert cp.stdout == "the inbox stays: ~/Documents/inbox\n", cp.stdout + cp.stderr
+
+
+def test_the_two_reports_number_a_vanished_sources_re_add_folders_in_one_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 19 W73: the shell report numbers the re-add folders doctor's fix names in byte order
+    (``LC_ALL=C sort -u``), and the Python report numbered the manifest's roots in Path order, which puts
+    "Contoso/Q1" before "Contoso Bids/Q3" and "a/b" before "a-b": the two reports swapped <folder-N>. Python
+    now sorts the strings, which is byte order, so each root gets the same number in both."""
+    text = INSTALL_SH.read_text()
+    funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    home = Path.home()
+    (home / "notes").mkdir(parents=True, exist_ok=True)
+    cfg = home / "agent-context" / "sources.toml"
+    assert cli.main(["add-source", str(home / "notes"), "--config", str(cfg)]) == 0
+    rels = ["Tabs/a/b", "Contoso Bids/Q3", "Tabs/a-b", "Contoso/Q1"]
+    roots = {f"gone-{i}": home / "Projects" / rel for i, rel in enumerate(rels)}
+    db = paths.expand(load_config(cfg).state_paths.db)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db)
+    with contextlib.closing(conn), conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        for sid, root in roots.items():
+            conn.execute("INSERT INTO meta VALUES (?, ?)", (f"scope_root:{sid}", f"3:{root}"))
+    python_order = setup_report._unconfigured_roots(load_config(cfg), list(roots))
+    assert python_order == sorted(roots.values(), key=str)
+    assert python_order != sorted(roots.values())  # the case Path order numbered differently
+    monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
+    doctor_log = tmp_path / "doctor.log"
+    doctor_log.write_text(
+        "[FAIL] config.vanished_sources \u2014 sources 'gone-0' (1 file), 'gone-1' (1 file) are mirrored but "
+        f"no longer in sources.toml (fix: {doctor.vanished_fix(list(roots.values()), every=True)})\n"
+    )
+    said = tmp_path / "lines.txt"
+    said.write_text("".join(f"{root.relative_to(home / 'Projects')}\n" for root in python_order))
+    harness = "\n".join(
+        [
+            "with_timeout() { return 0; }",
+            "repo_slug() { echo contoso/agentsync; }",
+            'id() { case "$1" in -un) echo jdoe ;; -F) echo "Jane Doe" ;; esac; }',
+            *(ln for ln in text.splitlines() if ln.startswith(("GENERIC_SOURCE_IDS=", "GOVERNANCE_TYPED"))),
+            f"FOLDERS=() CONFIG={cfg} SETUP_LOG=/nonexistent DOCTOR_LOG={doctor_log}",
             "INSTALL_OUT=/nonexistent",
             f"SELF_FILE={INSTALL_SH}",
             helpers,
@@ -12099,28 +12225,9 @@ def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder
         env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
     )
     assert cp.returncode == 0, cp.stderr
-    # numbered as the Python report numbers them: the configured one, then the vanished roots in sorted order
-    assert cp.stdout == (
-        "add-source '~/Projects/<folder-3>' and '~/Library/CloudStorage/OneDrive-Fabrikam/<folder-2>'\n"
-        "configured: ~/Projects/<folder-1>; <folder-1>; <folder-3>; <folder-2>\n"
-        "Projects, Contoso and the inbox stay: ~/agent-context/inbox\n"
-    ), cp.stdout + cp.stderr
-    # docs_repo is read from its [agentsync] table: an inbox beside a hand-set docs repo is agentsync's own
-    (home / "Documents" / "inbox").mkdir(parents=True)
-    config.write_text(
-        '[agentsync]\ndocs_repo = "~/Documents/agent-docs"\n\n'
-        f'[[source]]\nid = "inbox"\nkind = "local"\npath = "{home / "Documents" / "inbox"}"\n'
-    )
-    doctor_log.write_text("")
-    said.write_text("the inbox stays: ~/Documents/inbox\n")
-    cp = subprocess.run(
-        [BASH32, "-c", harness],
-        capture_output=True,
-        text=True,
-        check=False,
-        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
-    )
-    assert cp.stdout == "the inbox stays: ~/Documents/inbox\n", cp.stdout + cp.stderr
+    numbers = [int(m) for m in re.findall(r"^<folder-(\d+)>$", cp.stdout, re.M)]
+    # each root's whole path is one placeholder, numbered up in the Python report's order
+    assert len(numbers) == len(rels) and numbers == sorted(numbers), cp.stdout + cp.stderr
 
 
 # ---- the shell report redacts a value in either Unicode form (N7) ------------------------------------------

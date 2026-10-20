@@ -24222,6 +24222,9 @@ fix adds a vanished source back from, as `setup_report._project_values` does (`g
 `_GENERIC_HOME_DIRS`; pair flag `i`, any case, whole words); a vanished CloudStorage folder by its parts. Tests:
 `test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder`,
 `test_the_shell_generic_home_dirs_are_the_reports`.
+Amended 2026-10-20, §16.141 W34, W40, W56, W63: the fix and the sync's refusal end with
+`cycle.vanished_add_back_tail`, `install.sh --source-local "<folder>"` under install.sh and `add-source "<folder>"`
+elsewhere (double-quoted, `shlex.quote` for a name holding `!`); the parser reads both words in each quoting.
 
 **The header lists the person's kinds as PERSONS_FAILS does** (V53). Test:
 `test_doctors_persons_fix_words_are_install_shs` (the `--help` text).
@@ -24689,7 +24692,30 @@ Reserved for round 19 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
-Reserved for round 19 lane RB of B13.
+Lane RB's items of B13 round 19 (`docs/plans/bring-back-ocr.md`, "B13 round 19"): the shell report's re-add
+folders, the older build's copies and the installer's own lines.
+
+**The shell report reads the re-add folder in the words the writer uses** (W34, W40, W56, W63: one defect from four
+finders; amends §16.135 V46). Round 18 V7 moved the add-back into `cycle.vanished_add_back_tail`, which writes
+`install.sh --source-local "<folder>"` under `AGENTSYNC_NO_NEXT_HINT=1` (install.sh exports it, so doctor.log and
+install.out always hold this form) and `add-source "<folder>"` elsewhere, the folder double-quoted with `\`, `"`,
+`$` and a backquote escaped (`cycle._shown_arg`), `shlex.quote`d for a name holding `!` or a character that does
+not print. The parser read only ` add-source ` with a single-quoted or bare word, so the folder printed in clear
+(and the bare branch registered a `"/…/Contoso` fragment). `redaction_pairs`' awk now reads each ` add-source ` and
+` --source-local `, whichever comes first, and a double-quoted word up to its first unescaped `"` with the escapes
+undone; the single-quoted branch stays for `shlex.quote` and older logs, the bare one for older logs.
+`folder_value` also registers a value as those two quotings print it (escaped, or with each `'` as `'"'"'`) at the
+same `<folder-N>`, where the Python report cuts the argument by structure (`_source_local_shown`). Test:
+`test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder`, its lines built by
+`doctor.vanished_fix` and `cycle.vanished_add_back_tail` with the variable set and unset, plus round 17's
+single-quoted form, a name holding `"`, `$` and `'`, and one holding `!`.
+
+**The two reports number the re-add folders in one order** (W73). The shell sorts them with `LC_ALL=C sort -u`;
+`setup_report._unconfigured_roots` sorted `Path`s, which puts `a/b` before `a-b` and `Contoso/Q1` before
+`Contoso Bids/Q3`. It now sorts the strings, which is byte order, so no shell sort changes and no locale is
+involved. Numbering parity holds for the vanished ids doctor's fix quotes: the Python report also registers the
+roots of the ids only the manifest still holds, which no fix names, so the shell never sees those. Test:
+`test_the_two_reports_number_a_vanished_sources_re_add_folders_in_one_order`.
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 

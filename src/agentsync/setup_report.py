@@ -3610,7 +3610,9 @@ def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
     finally:
         conn.close()
     roots = {str(value).partition(":")[2] for key, value in rows if key in wanted}
-    return sorted(Path(root) for root in roots if root)
+    # in byte order, as the shell report's `LC_ALL=C sort -u` numbers them (B13 round 19 W73): Path order puts
+    # "/x/a/b" before "/x/a-b", and "Contoso/Q1" before "Contoso Bids/Q3"
+    return [Path(root) for root in sorted(roots) if root]
 
 
 def _build_redactor(r: _Run) -> Redactor:

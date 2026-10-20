@@ -1907,6 +1907,17 @@ redaction_pairs() {
 			;;
 		esac
 		add_pair "$1" "<folder-$m>" i
+		# and as a double-quoted word shows it, \ " $ and ` escaped (shown_arg, cycle._shown_arg), and as
+		# shlex.quote's single-quoted one does, each ' written '"'"' (a name holding !): a vanished source's
+		# re-add folder is printed so, which the Python report cuts by structure (B13 round 19 W34)
+		case "$1" in
+		*[\\\"\$\`]*)
+			fe="$1" fe="${fe//\\/\\\\}" fe="${fe//\"/\\\"}" fe="${fe//\$/\\\$}" fe="${fe//\`/\\\`}"
+			add_pair "$fe" "<folder-$m>" i
+			;;
+		esac
+		fe="'\"'\"'" # in a variable: bash 3.2 keeps a replacement's backslashes
+		case "$1" in *\'*) add_pair "${1//\'/$fe}" "<folder-$m>" i ;; esac
 	}
 	project_values() { # PATH
 		local rel first rest
@@ -1993,10 +2004,14 @@ redaction_pairs() {
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
 	} 2>/dev/null | LC_ALL=C sed 's/ mirrored but no longer in sources\.toml.*//' |
 		LC_ALL=C grep -oE "'[a-z0-9][a-z0-9-]*' \([0-9]+ file(s|\(s\))?\)" | LC_ALL=C sed "s/^'//; s/' .*//" | LC_ALL=C sort -u)
-	# and the folder each one is added back from: doctor's fix ends "... add-source <folder>[, then ...
-	# add-source <folder>]" (doctor.vanished_fix, shlex-quoted), as the Python report registers each vanished
-	# id's scope_root (B13 round 17 U46; round 18 V46): one in CloudStorage by its parts, any other as a
-	# project folder
+	# and the folder each one is added back from: doctor's fix and the sync's refusal end with
+	# cycle.vanished_add_back_tail, "... install.sh --source-local "<folder>" [--source-local ...]" under
+	# install.sh and "... add-source "<folder>"[, then ... add-source "<folder>"]" elsewhere, each folder
+	# double-quoted with \ " $ and ` escaped (cycle._shown_arg), single-quoted by shlex.quote for a name holding
+	# ! or a character that does not print, and bare or single-quoted in an older build's log (B13 round 19 W34),
+	# as the Python report registers each vanished id's scope_root (B13 round 17 U46; round 18 V46): one in
+	# CloudStorage by its parts, any other as a project folder. Numbered in byte order, as the Python report
+	# numbers them (round 19 W73).
 	while IFS= read -r v; do
 		case "$v" in
 		\~/Library/CloudStorage/*) folder_parts "" "$cs/${v#\~/Library/CloudStorage/}" ;;
@@ -2008,9 +2023,20 @@ redaction_pairs() {
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
 	} 2>/dev/null | LC_ALL=C awk -v q="'" '{
 		s = $0
-		while ((i = index(s, " add-source ")) > 0) {
-			s = substr(s, i + 12); v = ""
-			if (substr(s, 1, 1) == q) { # a quoted one, with each of its own quotes written as q "\"" q "\"" q
+		for (;;) {
+			i = index(s, " add-source "); k = index(s, " --source-local ")
+			if (i == 0 && k == 0) break
+			if (k > 0 && (i == 0 || k < i)) s = substr(s, k + 16); else s = substr(s, i + 12)
+			v = ""
+			if (substr(s, 1, 1) == "\"") { # double-quoted, each \\ \" \$ and \` its own character
+				s = substr(s, 2)
+				while (s != "") {
+					c = substr(s, 1, 1); s = substr(s, 2)
+					if (c == "\"") break
+					if (c == "\\" && s != "" && index("\\\"$`", substr(s, 1, 1)) > 0) { c = substr(s, 1, 1); s = substr(s, 2) }
+					v = v c
+				}
+			} else if (substr(s, 1, 1) == q) { # a quoted one, with each of its own quotes written as q "\"" q "\"" q
 				s = substr(s, 2)
 				while ((j = index(s, q)) > 0) {
 					v = v substr(s, 1, j - 1); s = substr(s, j + 1)
