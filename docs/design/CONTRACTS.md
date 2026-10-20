@@ -24984,6 +24984,8 @@ matches every URL; only the global files and the checkout's own config, never th
 `test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror rewrite, one on one line, an
 empty value, one to `git@github.com:`, the longest of two, and a `pushInsteadOf` alone; the mirror's host never
 shows).
+Amended 2026-10-20, §16.147 X8: `git_rewrite_bases` reads the one-line form too, and both readers cut the rest
+of the line after the matched header, so a base holding `]` keeps its key.
 
 **The reinstall's wait names an empty-body holder as agentsync does** (W31; amends §16.93 M43 and §16.41 H33). A
 lock held with an empty body (only blanks, as `ops/lock.py` reads `body.strip()`) is held by no sync:
@@ -25647,7 +25649,19 @@ All fourteen are built; none was recorded as making things worse.
 
 ### 16.147 Round 20: installer, the shell report's redaction and the stopped copy's outcome (2026-10-20, wave B13 round 20 lane RB)
 
-Reserved for round 20 lane RB of B13.
+Lane RB's items of B13 round 20 (`docs/plans/bring-back-ocr.md`, "B13 round 20"): the installer's own lines,
+the shell report's redaction and legend, and the outcome of a stopped copy's attempt.
+
+**The shell reads a URL rewrite written on its header line** (X8; amends §16.141 W23). Git applies
+`[url "<base>"] insteadOf = <url>` on one line, and round 19 W23 taught only `git_rewrite_pairs` to read it:
+`git_rewrite_bases` ran `next` on every header line, so the shell report said `URL rewrite in git's config: not
+set` while git's error named the rewrite's host and its organization path in clear (neither was registered as a
+`<proxy-N>`). Both functions now find the header with `match()` and read the rest of that line, cut at
+`RSTART + RLENGTH`, as a key line: the old `sub(/^[^]]*\]/, ...)` cut a base holding `]` (an IPv6 host) at its
+first `]`. A one-line `pushInsteadOf` is still no rewrite. The agentsync report's reader is lane RA's (X41).
+Test: `test_the_shell_report_reads_a_url_rewrite_written_on_its_header_line` (a one-line mirror rewrite, a
+one-line `pushInsteadOf`, a base with `[fd00::1]` and no blank before its key: `set (2)`, the host and path as
+`<proxy-1>` and `<proxy-2>`).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 

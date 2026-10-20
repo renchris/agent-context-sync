@@ -12918,6 +12918,32 @@ def test_the_shell_report_redacts_a_git_url_rewrite_host_and_path(env: dict[str,
     assert "- URL rewrite in git's config: not set\n" in report_path(env).read_text()
 
 
+def test_the_shell_report_reads_a_url_rewrite_written_on_its_header_line(env: dict[str, str]) -> None:
+    """B13 round 20 X8: git applies ``[url "<base>"] insteadOf = <url>`` written on one line, and
+    git_rewrite_bases ran ``next`` on the header line, so the report said "not set" beside a git error that
+    named the rewrite's host and path in clear. The rest of the header line is read as a key line, cut after
+    the matched header (a base holding "]" keeps it); a one-line pushInsteadOf is still no rewrite."""
+    home = Path(env["HOME"])
+    (home / ".gitconfig").write_text(
+        '[url "https://proxy.contoso.invalid/fabrikam-zeta/mirror/"] insteadOf = https://github.com/\n'
+        '[url "https://push.contoso-two.invalid/fabrikam-push/"] pushInsteadOf = https://github.com/\n'
+        '[url "https://[fd00::1]/fabrikam-six/"]insteadOf=https://github.com/v6/\n'
+    )
+    said = (
+        "git clone https://proxy.contoso.invalid/fabrikam-zeta/mirror/someone/agent-context-sync.git/: "
+        "Could not resolve host: proxy.contoso.invalid"
+    )
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    assert "fabrikam-zeta" not in text and "proxy.contoso.invalid" not in text, text
+    assert (
+        "git clone https://<proxy-1>/<proxy-2>/someone/agent-context-sync.git/: Could not resolve host: "
+        "<proxy-1> |" in text
+    ), text
+    assert "- URL rewrite in git's config: set (2)\n" in text, text
+
+
 def test_a_rewrite_paths_placeholder_keeps_its_separator_in_both_reports(env: dict[str, str]) -> None:
     """B13 round 9 K2, K27: a rewrite path was matched with its leading "/" or ":" and replaced with it, so
     host and path ran together (``https://<proxy-1><proxy-2>/...``). The separator is still matched, which

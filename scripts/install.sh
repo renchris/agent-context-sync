@@ -376,8 +376,12 @@ git_rewrite_bases() {
 		[ ! -f "$g" ] || LC_ALL=C awk '
 			/^[ \t]*\[/ {
 				base = ""
-				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
+				if (match($0, /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/)) {
 					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+					# [url "<base>"] insteadOf = <url> on one line, which git applies (B13 round 20 X8): the rest
+					# is cut after the matched header, so a base holding "]" (an IPv6 host) keeps its key
+					rest = substr($0, RSTART + RLENGTH)
+					if (tolower(rest) ~ /^[ \t]*insteadof[ \t]*(=|$)/) print base
 				}
 				next
 			}
@@ -400,9 +404,10 @@ git_rewrite_pairs() {
 			}
 			/^[ \t]*\[/ {
 				base = ""
-				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
+				if (match($0, /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/)) {
 					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
-					rest = $0; sub(/^[^]]*\]/, "", rest); pair(rest) # [url "<base>"] insteadOf = <value> on one line
+					# [url "<base>"] insteadOf = <value> on one line, cut after the matched header (B13 round 20 X8)
+					pair(substr($0, RSTART + RLENGTH))
 				}
 				next
 			}
