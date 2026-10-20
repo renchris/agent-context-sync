@@ -1312,6 +1312,32 @@ CONTRACTS cross-references, the launcher's exit 71, CLAUDE.md's CI time). Lead: 
 (`cddd3689`: the dated-line scans read a line of any date, so lines dated 2026-10-20 are held), and W81 (round 17 to
 19 /tmp leftovers removed by exact name; `lp-verify`, not ours, left alone).
 
+### B13 round 19 landed (2026-10-20)
+
+All six lanes landed; CI green on `17f85136` (ci `39464216658`, diagrams `39464216858`; prompt v28). Notes
+`lanes/r19-<lane>.md`, lead notes `round19/lead-notes.md`; the round's worktrees and branches are removed. Every item is
+built; none carries a not-built reason. W54's code came with lane E's W49 (RA landed its test), and W45 is a docstring
+with no test that could fail.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `11c6774b..454b8bad`, 4 commits (CI's limit raised to 40 minutes) |
+| P | `019d4e21..64c64ba4`, 4 commits (v28) |
+| RB | `3f27c70d..c3e4e407`, 14 commits |
+| E | `cdc79b01..5df8ac8d`, 11 commits |
+| B | `1c9ac010..d361f452`, 7 commits |
+| RA | `9bf7f9b4..17f85136`, 9 commits |
+
+Learnings: landing W71 before the fire let every lane date its lines 2026-10-20 without touching the scans. Three
+seams were settled by message rather than by the next round: lane D's W62 and lane B's W41 both reworded the
+table-damage lines (B, landing second, added the dated lines); lane RA's W64 edited lane B's doctor.py and lane D's
+guide (both told to rebase onto it); lane P told B which step 1 tails keep their table word. Lane B's W66 landed after
+lane RB had retired, so RB's census guard (W78) never saw it; round 20's harvest checks it. Land to land took about
+three hours, half of round 18's, at a load of about 70.
+
+Round 20: the round 19 workflow with prompt v28 on this section's landed tip, BASE `fba3908a` (ids X<n>, outputs
+`round20/`); scenario C plays the v27 and v26 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
