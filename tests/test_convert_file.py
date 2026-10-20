@@ -275,8 +275,9 @@ def test_what_the_converter_without_ocr_decides_is_the_result(src: Path, cache: 
 def test_an_ocr_failure_on_a_file_only_the_engine_reads_is_the_refusal_of_a_mac_without_one(
     src: Path, cache: ConverterCache, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """An image has no converter without an engine.  A failed conversion would be settled by the next
-    cycle and never read again; the ``no converter`` refusal is what a re-read looks for.  Nothing the
+    """An image has no converter without an engine.  A failed conversion is tried again in only a bounded
+    number of later runs, engine or not, and then settled; the ``no converter`` refusal is what a re-read
+    looks for.  Nothing the
     engine said is in it, and it is not cached, so the next read asks the engine again."""
     reading = Fake(_ocr_fails, version=lambda: WITH_OCR)
     with caplog.at_level(logging.INFO, logger="agentsync.convert"):

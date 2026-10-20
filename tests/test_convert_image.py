@@ -514,7 +514,7 @@ def test_an_unreadable_image_is_cached_and_a_helper_failure_is_not(
     plan = picture(tmp_path / "Contoso Site Plan.png", "Loading dock")
     for attempt in (1, 2):
         # What the image has on a Mac without an engine, which is what a later re-read looks for: a failed
-        # conversion would be settled and never read again.
+        # conversion is tried again in only a bounded number of later runs, engine or not, then settled.
         failed = convert(plan, plan.name, broken, cache)
         assert (failed.status, failed.reason) == (ConversionStatus.REFUSED, "no converter for .png")
         assert (failed.converter_id, failed.converter_version, failed.from_cache) == ("none", "0", False)

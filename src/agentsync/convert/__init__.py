@@ -133,9 +133,10 @@ def convert_file(
     ``registry.without_ocr`` and that result is the one returned. For a document it is the page, the version
     and the action key of a Mac without an engine, cached under that key. For a file only the engine can
     read (an image) it is the ``no converter`` refusal such a Mac gives it. Either way nothing the engine
-    said reaches the result, and the result is one a later re-read picks up: a failed conversion would be
-    settled and never read again. A registry with no ``without_ocr``, or one that routes the name to
-    another converter, fails as any other does.
+    said reaches the result, and the result is one a later re-read picks up: a failed conversion is tried
+    again in only ``cycle._CONVERT_RETRIES`` later runs and then settled, whether or not the engine works by
+    then (B13 round 18 V67, after round 17 U3). A registry with no ``without_ocr``, or one that routes the
+    name to another converter, fails as any other does.
 
     The speech engine never costs a recording its screens: a SpeechError (an OcrError) is converted again
     through ``registry.without_speech`` first, when there is one, and the page is cached under a version
