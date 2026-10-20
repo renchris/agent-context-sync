@@ -23427,6 +23427,8 @@ header wrote `1 expected warn ends in (expected: <why>) instead of their fix`. I
 merge of a newer header's count, always two or more, turns `its` into `their`. Tests:
 `test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected` (`_new_note`; a newer header's `1 ... its fix`
 merged into `2 ... their fix`), `test_setup_report.py::test_a_stopped_copys_install_commit_warn_is_expected`.
+Amended 2026-10-19, §16.135 V27: the copy also turns the `their fix` of a one-warn note an older renderer wrote itself
+into `its fix`, in copy and step 1 mode, whatever it counted.
 
 **A git stop the older build rendered takes this checkout's words** (U34; dated line at §16.123 T11). A stop of step
 1's own command (git or Xcode) before `--log-start` starts no install.log run, so `step1_stop_facts`, keyed on a failed
@@ -23480,6 +23482,8 @@ the patterns. Built by lane RA's U93 (`gov_value_sed` in redact_stream, `label|r
 9c3b0954, §16.128), one stage for both defects. RB adds the parity cases RA's test left out: the password-carrying
 prefix and a message with no value (`expected a list of non-empty strings`), which stays as written. Test:
 `test_a_policy_or_governance_value_is_redacted_alike_in_both_readers`.
+Amended 2026-10-19, §16.135 V44, V72: a [governance] type error's `got <repr>` is `<value>` in the shell report too,
+held, in its legend and counted, so the two readers now redact all three kinds alike.
 
 ### 16.130 Round 17: setup prompt v26 and the config step's NEXT (2026-10-19, wave B13 round 17 lane P)
 
@@ -24116,7 +24120,77 @@ converter still cannot start, no run reads or counts it. Both say so. Test:
 
 ### 16.135 Round 18: installer, the shell report's redaction and the older build's copies (2026-10-19, wave B13 round 18 lane RB)
 
-Reserved for round 18 lane RB of B13.
+Installer and shell-report items from the v26 rehearsal, the cross-lane review and the harvest
+(`docs/plans/bring-back-ocr.md`, "B13 round 18"; specs `round18/items/V<n>.md`, the verifier's corrected fix built).
+The V ids are round 18's. A dated line this round writes reads `Amended 2026-10-19, §16.135 V<n>`.
+
+**A helper that was not built is named in the helpers row** (V6). A speech build that ran out of time logged
+`step=helpers ... result=done` with no note, so the report's Installer row read a bare `done`. Each build's exit is
+kept: non-zero is not built, the step stays `done` (an optional helper is never a failed step) and its note is
+`not-built-<names>`, joined by `+` (`not-built-speech`, `not-built-ocr+speech`). `setup_report._helpers_note` words it
+`not built: the speech helper; its "speech:" line in install.out says why`; older_report_rewrite's `not_built` gives
+an older renderer's table the same words. Tests: the three `test_helpers_step_builds_*` tests,
+`test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer`.
+
+**The older build's step 1 and git-stop reports take the renderer's words** (V16, V30, V31). In step 1 mode the
+rewrite now also gives a list stop's first-sync line the renderer's `this attempt ran only install.sh --list-folders,
+no first sync (install.log)`, with install.out's counts tagged `the install run of <start>, before this attempt`
+(V16); replaces v10's `WARNING: attempt N has no "end | finished" line ... Run agentsync setup-report again` after a
+git stop with a note on why that session has no end line, and its time line with `session: one timestamp (<t>), no
+duration` when the error is the attempt's only event line (V30); and, after a finished attempt, says the stopping
+error `F<n> stopped the run (the outcome says so)` and moves it from the `Agent friction (...; it does not change the
+outcome by itself)` block to the Items list (V31). An rc-0 `--list-folders` run after the error resolves it, as the
+renderer's `stopping_error` reads it, and leaves V30 and V31 off. Tests:
+`test_a_step_1_stop_of_the_older_build_names_the_earlier_first_sync`,
+`test_a_git_stop_with_no_end_line_rendered_by_the_older_build_is_not_called_stale`,
+`test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item`.
+
+**The older build's attempt lines are rewritten** (V22). Round 17 U27's three attempt-line rules sat behind
+`## Friction log`, a heading no renderer writes; they read `## Agent friction log` now (their temporaries renamed, as
+one of them was the left-out line count). Test: `test_a_step_1_stop_of_the_older_build_takes_the_current_friction_and_checkout_words`.
+
+**An older renderer's own one-warn note says its fix** (V27; amends §16.129 U31). Builds e5c5b0e2 and dd5d55d5 mark
+the install.commit warn expected themselves and write `instead of their fix` for one warn, so U31's rewrite never ran.
+The final print path turns it into `its fix` in both modes. Tests:
+`test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected`,
+`test_a_step_1_stop_of_the_older_build_says_its_fix_for_one_expected_warn`.
+
+**The shell report cuts a [governance] type error's value** (V44, V72: one defect from two finders; amends §16.129
+U54). `gov_value_sed` cuts the value after `[governance].<typed key>: expected <form>, got ` to the first ` (fix: `
+(a `\001` sentinel stands in for sed's missing lazy match) or the end of the line, as `_GOVERNANCE_VALUE_RE` does;
+`<value>` is held and has its legend line. `GOVERNANCE_TYPED_KEYS` is pinned to `_GOVERNANCE_TYPED_KEYS`. Lane RA's
+V45 lets the Python value stop at the end of its repr when text follows; the shell keeps the wider match, which can
+cut more of such a line and never less. Tests: `test_a_policy_or_governance_value_is_redacted_alike_in_both_readers`,
+`test_the_shell_governance_keys_are_the_reports`.
+
+**The shell report redacts a project folder and a vanished source's re-add folder** (V46; dated line at §16.14).
+`redaction_pairs` registers a configured folder outside CloudStorage, and the folder doctor's `config.vanished_sources`
+fix adds a vanished source back from, as `setup_report._project_values` does (`generic_home_dir` pinned to
+`_GENERIC_HOME_DIRS`; pair flag `i`, any case, whole words); a vanished CloudStorage folder by its parts. Tests:
+`test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder`,
+`test_the_shell_generic_home_dirs_are_the_reports`.
+
+**The header lists the person's kinds as PERSONS_FAILS does** (V53). Test:
+`test_doctors_persons_fix_words_are_install_shs` (the `--help` text).
+
+**The report-word rule, one with lane RA** (V84, V85, and the shell halves of RA's V1 and V86). report_word lexes each
+line (outside, `"..."`, `'...'`, `$(` depth), so a string nested in `$( ... )` no longer pairs with the quotes around
+it and an awk comment is no printed text (V85: echo, dev, null, gap, index, token out; `designated requirement:` in).
+`output_word`, equal to `setup_report._OUTPUT_WORDS`, lists the words the report prints from command or agent output
+(uname, profiles, the doctor lines, the PAC sentence, the agent's name); it decides only the private-only rule (V84,
+V86). Every one-word organisation is cut out of a longer word; only joined names and context organisations stay
+whole-word (V1). Measured against V84's fix (2), reading setup_report.py's literals at run time: not built, because
+it would read docstrings (`janedoe`) and needs a Python a Mac without the developer tools does not have (the
+verifier's reason). Tests: `test_the_shell_report_words_are_its_printed_text`,
+`test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_python`,
+`test_the_shell_output_words_are_the_reports`,
+`test_an_organisation_named_like_a_commands_output_word_makes_the_shell_report_private`,
+`test_an_organisation_that_is_a_report_word_is_cut_out_of_a_longer_word_in_the_shell_report`,
+`test_every_lower_case_word_the_shell_report_prints_is_a_report_word`.
+
+**The older build's fetch date is the named checkout's** (V91). `older_report_facts DIR` dates the checkout the
+undated `(as of the checkout's last fetch)` line names (`checkout <dir> @ `), when that folder is here; a redacted or
+missing path keeps the undated words. Test: `test_a_step_1_stop_of_the_older_build_takes_the_current_friction_and_checkout_words`.
 
 ### 16.136 Round 18: setup prompt v27, step 1's folder tails and the config step (2026-10-19, wave B13 round 18 lane P)
 
