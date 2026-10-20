@@ -7800,8 +7800,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         out += [
             "",
             f"- tried again after an upgrade: {each}. An older build had given up on these conversions; this "
-            "build tries each again from the same bytes in up to 2 runs from that one on, so an old "
-            "conversion error can show in those runs",
+            "build tries each again from the same bytes in up to 2 runs of its source from that one on, so "
+            "an old conversion error can show in those runs",
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)

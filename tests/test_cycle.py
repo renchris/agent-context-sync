@@ -4086,8 +4086,8 @@ def test_the_upgrades_retry_of_an_older_builds_failure_says_so_once(
     monkeypatch.setattr(MarkdownConverter, "convert", convert)
     cfg = str(sample_config.config_path)
     note = (
-        "  note: 1 conversion an older build gave up on is tried again, up to 2 times from this sync on; its "
-        "error may show again until then"
+        "  note: 1 conversion an older build gave up on is tried again, up to 2 times in the syncs of its "
+        "source from this one on; its error may show again until then"
     )
     rel = "projects/Contoso flaky.md"
     (local_source_dir / rel).write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
@@ -4109,6 +4109,62 @@ def test_the_upgrades_retry_of_an_older_builds_failure_says_so_once(
     assert all("an older build gave up on" not in out for out in outs[1:]), outs[1:]
     assert "legacy_retried" not in _run_record(sample_config)
     assert len(tries) == cycle_mod._CONVERT_RETRIES, "up to 2 times, as the note says"
+
+
+def test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_own_syncs(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 20 X53: the upgrade's move takes the settled failures of every source, once per manifest, so
+    a failure of a source the sync does not read (paused here; ``reconcile --source``, no Graph client or the
+    time limit do the same) is counted in its note but not tried in it, and "up to 2 times from this sync on"
+    was false for it. The note counts the tries in the syncs of each file's own source; a later sync of that
+    source makes the first try, and no sync says it again."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+    tries: list[str] = []
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso flaky"):
+            tries.append(name)
+            raise RuntimeError("pandoc timed out after 60 s")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", convert)
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "Contoso flaky.md").write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    config = two_source_config(tmp_path, local_source_dir, other)
+    cfg = str(config.config_path)
+    cli.main(["sync", "--config", cfg])
+    capsys.readouterr()
+    with Manifest(config.state_paths.db) as m:
+        row = m.item_by_path("second", "Contoso flaky.md")
+        assert row is not None
+        m.set_verdict("second", row.stable_id, Verdict.TOUCHED_NOT_CHANGED)
+        m.set_meta(cycle_mod._RETRY_META + "second", "{}")
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+    tries.clear()
+    live = config.config_path.read_text(encoding="utf-8")
+    config.config_path.write_text(live + 'state = "paused"\n', encoding="utf-8")  # the second source's block
+    cli.main(["sync", "--config", cfg])
+    config.config_path.write_text(live, encoding="utf-8")
+    out = capsys.readouterr().out
+    assert (
+        "  note: 1 conversion an older build gave up on is tried again, up to 2 times in the syncs of its "
+        "source from this one on; its error may show again until then"
+    ) in out.splitlines(), out
+    assert "from this sync on" not in out
+    assert tries == [], "the sync that says so does not read that file's source"
+    outs = []
+    for _ in range(cycle_mod._CONVERT_RETRIES + 1):
+        cli.main(["sync", "--config", cfg])
+        outs.append(capsys.readouterr().out)
+    assert len(tries) == cycle_mod._CONVERT_RETRIES, "up to 2 times, in the syncs of its own source"
+    assert all("an older build gave up on" not in o for o in outs), outs
 
 
 def test_an_unreadable_conversion_is_counted_apart_from_a_failed_one(

@@ -529,12 +529,15 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     _print_checkpoint(report)
     if n := report.legacy_retried:
         # the one-time retry after an upgrade, which only -v logged, so the same old error came back with
-        # nothing saying why (B13 round 19 W18); no bare "converted" for install.sh's awk
+        # nothing saying why (B13 round 19 W18); no bare "converted" for install.sh's awk. The move takes
+        # every source's failures, and one this sync does not read (--source, paused, out of time) is tried
+        # in its own source's syncs, so the tries are counted in those, not "from this sync on" (round 20 X53)
         tries = plural(_CONVERT_RETRIES, "time")
+        whose = "its source" if n == 1 else "their sources"
         _out(
             f"  note: {plural(n, 'conversion')} an older build gave up on {'is' if n == 1 else 'are'} tried "
-            f"again, up to {tries} from this sync on; {'its error' if n == 1 else 'their errors'} may show "
-            "again until then"
+            f"again, up to {tries} in the syncs of {whose} from this one on; "
+            f"{'its error' if n == 1 else 'their errors'} may show again until then"
         )
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)

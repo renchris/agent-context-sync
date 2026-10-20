@@ -10129,8 +10129,8 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
     part = status_parts(fake_mac)[1]["Repeat conversions"]
     assert (
         "- tried again after an upgrade: run 4, 3 files. An older build had given up on these conversions; "
-        f"this build tries each again from the same bytes in up to {cycle._CONVERT_RETRIES} runs from that "
-        "one on, so an old conversion error can show in those runs" in " ".join(part.split())
+        f"this build tries each again from the same bytes in up to {cycle._CONVERT_RETRIES} runs of its "
+        "source from that one on, so an old conversion error can show in those runs" in " ".join(part.split())
     ), part
     assert part.count("tried again after an upgrade") == 1
 

@@ -25405,6 +25405,10 @@ not used, as its logger prefix reads as an alarm. Tests:
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`.
 Amended 2026-10-20, §16.147 X85: install.sh's first sync shows the note too, after its summary line and with the
 step's label (`sync: note: ...`); the Repeat conversions line stays for the cycles nobody watches.
+Amended 2026-10-20, §16.150 X53: the note reads `tried again, up to 2 times in the syncs of its source from this one
+on` (`of their sources` for more than one) and the report's bullet `in up to 2 runs of its source from that one on`:
+the move takes every source's failures, and a source this sync does not read (paused, `reconcile --source`, no Graph
+client, the time limit) tries its files in its own later syncs.
 
 **The run tally's docstring names the wait (W53; `agentsync.cycle`).** `_Cycle._run_tally` still said "a later run
 with none converted the file or gave it up", the sentence V75 corrected in the run record bullet, the report and
@@ -26199,7 +26203,27 @@ misses and status's loop read hits. Tests: the `last leaf` case of
 
 ### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
 
-Reserved for round 20 lane E of B13.
+Round 20's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 20"; specs `round20/items/X<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-20, §16.150 X<n>`.
+
+**The upgrade's retry note in install.sh's first sync (X11).** One defect with X85: on a field Mac the upgrade's
+move runs in step 2's first sync, whose screen showed only the summary line. Built once, by lane RB in
+`show_first_sync` (§16.147, X85, `ecd5c001`); its words are X53's below.
+
+**The upgrade's retry note counts tries in each file's own source (X53; `agentsync.cli`,
+`agentsync.setup_report`; dated line at §16.144 W18).** `retry_settled_failures` moves the settled failures of
+every source once per manifest, so a source the sync does not read (paused, `reconcile --source`, no Graph
+client, the time limit) had its files counted in `up to 2 times from this sync on` but not tried in it. The note
+now reads `  note: N conversion(s) an older build gave up on is/are tried again, up to 2 times in the syncs of
+its source / their sources from this one on; its error / their errors may show again until then` (the phrase
+`an older build gave up on`, which X85 greps, is kept), and the report's bullet `in up to 2 runs of its source
+from that one on`. Not the per-source move the verifier also offered: the time limit, which no sync knows
+before it reads, would still leave the count wrong, and a per-source flag beside the global one would need a
+migration. Tests: `test_cycle.py::test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_own_syncs`
+(a paused source's failure: counted, not tried, then tried twice in that source's later syncs, no note again),
+`test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once` and
+`test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the words).
+
 
 ### 16.151 Round 20: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 20 lane D)
 
