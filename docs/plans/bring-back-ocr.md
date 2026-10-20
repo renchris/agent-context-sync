@@ -1330,8 +1330,10 @@ with no test that could fail.
 
 Learnings: landing W71 before the fire let every lane date its lines 2026-10-20 without touching the scans. Three
 seams were settled by message rather than by the next round: lane D's W62 and lane B's W41 both reworded the
-table-damage lines (B, landing second, added the dated lines); lane RA's W64 edited lane B's doctor.py and lane D's
-guide (both told to rebase onto it); lane P told B which step 1 tails keep their table word. Lane B's W66 landed after
+table-damage lines (B, landing second, added the dated lines); lane RA's W64 edited lane B's doctor.py (and
+CONTRACTS.md, which lane D also edited), and lane RA's W52/W68 (`49e03a64`) edited the table in lane D's
+setup-feedback.md that lane D's W57/W58 (`11c6774b`) had edited (both told to rebase; corrected 2026-10-20 by round
+20's X77: W64 itself does not touch the guide); lane P told B which step 1 tails keep their table word. Lane B's W66 landed after
 lane RB had retired, so RB's census guard (W78) never saw it; round 20's harvest checks it. Land to land took about
 three hours, half of round 18's, at a load of about 70.
 
