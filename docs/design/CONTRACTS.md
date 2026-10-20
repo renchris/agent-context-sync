@@ -12289,6 +12289,8 @@ engine).`, and the kinds of file a re-read looks at are said in the table's lead
     a note of what the script saw of the lock: `waited-for-a-background-sync`, `wait-ran-out-after-<N>s` or
     `lock-not-taken-rc<N>`; a run with no wait keeps the line byte for byte. The Summary's install.sh line
     shows the agentsync step's note.)
+    Amended 2026-10-20, §16.147 X43: a lock held with an empty body notes `waited-for-an-unrecorded-holder` or
+    `lock-wait-ran-out-after-<N>s` instead, since no sync need hold it.
   - Why: with `--force`, uv removes and recreates the tool environment (uv 0.12.17, measured 2026-10-11:
     `bin/python`, the package and the bundled pandoc missing for 0.26 to 0.66 s of a 1.3 s reinstall, then a
     new build under any cycle still running) while a job may run from it (2026-10-08 U7; v10 E3).
@@ -18602,6 +18604,8 @@ still running` and `lock-not-taken-rc<N>` as `could not take the sync lock, lock
 waiting`, by full-match patterns, in the Installer table and the Summary alike; no parenthesis, since the Summary
 puts the note in one. install.log keeps its tokens; any other note is shown as it is. Test:
 `test_the_install_line_says_what_the_agentsync_steps_seconds_held`.
+Amended 2026-10-20, §16.147 X43: `waited-for-an-unrecorded-holder` reads `waited for the sync lock to be free` and
+`lock-wait-ran-out-after-<N>s` reads `waited <N>s for the sync lock, then reinstalled while it was still held`.
 Amended 2026-10-16, §16.92 M40: the first-sync step's notes read as words too (`_first_sync_note`), in the Installer
 table and the Summary alike.
 
@@ -25681,6 +25685,21 @@ line reads, to `..., pass poll, pid <pid>, active <N>s ago`; `holder_words` kept
 poll`, so the two foreground wait lines named one holder two ways. It now writes `, pass <pass>`. `its pass:`
 stays in `_describe_holder` and in the skip warning, doctor and the report, which already differed from the wait
 line. Test: `test_the_reinstall_names_who_started_the_sync_it_waits_for` (`... background job, pass poll`).
+
+**The reinstall's note for a lock with an empty body names no sync** (X43; amends §16.41 H33 and §16.86 L35).
+Round 19 W31 reworded the screen lines for a lock held with an empty body, which no sync need hold
+(`ops.lock.EMPTY_BODY_HOLDER`: another install.sh's lockf, a status or doctor check, a cycle starting), but the
+install.log note did not follow: `waited-for-a-background-sync` and `wait-ran-out-after-<N>s`, which the report
+prints as `waited for another sync to end` and `waited <N>s for another sync, then reinstalled while it was still
+running`, under the run's own `the lock is still held` line. With an empty body the note is now
+`waited-for-an-unrecorded-holder` or `lock-wait-ran-out-after-<N>s`, which `setup_report._agentsync_note` reads as
+`waited for the sync lock to be free` and `waited <N>s for the sync lock, then reinstalled while it was still
+held`. `waited-for-the-lock` was not taken: the first sync's notes already use it with the other-sync words. An
+older installed agentsync shows a new token as it is. Tests:
+`test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock[True]` (a lock held by flock with no
+body: the W31 words and the new note), `test_the_reinstall_names_who_started_the_sync_it_waits_for` (the run-out
+note of each holder), `test_the_install_line_says_what_the_agentsync_steps_seconds_held` and
+`test_no_summary_clause_nests_a_bracket_or_puts_two_side_by_side`.
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 

@@ -14542,17 +14542,37 @@ def _lock_log(env: dict[str, str]) -> list[str]:
     return Path(env["STUB_LOG"] + ".lock").read_text().splitlines()
 
 
+@pytest.mark.parametrize("bare", [False, True])
 def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
-    env: dict[str, str], folder: Path, wheel: Path
+    env: dict[str, str], folder: Path, wheel: Path, bare: bool
 ) -> None:
     """With --force uv rebuilds the tool environment the background sync runs from (2026-10-08 U7): the
     reinstall waits for a running sync, with progress lines, and holds the sync's lock while uv runs, so a
     sync starting then is skipped (exit 75).  The lock's body stays empty: the next sync breaks no stale lock.
-    The test lets go once the first progress line is out, not after a fixed sleep."""
+    The test lets go once the first progress line is out, not after a fixed sleep.
+
+    B13 round 20 X43: a lock held with an empty body (lockf, a probe, a cycle starting) need not be a sync's,
+    and round 19 W31 said so on screen while install.log still noted waited-for-a-background-sync, which the
+    report reads as "waited for another sync to end"; that wait notes waited-for-an-unrecorded-holder."""
     e, lock = _held_sync(env)
     e = {**e, "AGENTSYNC_PROGRESS_SECONDS": "1", "AGENTSYNC_REINSTALL_WAIT_SECONDS": "60"}
-    held = SingleWriterLock(lock, "poll")
-    held.acquire()
+    waits, tick = REINSTALL_WAITS.format(60), REINSTALL_TICK
+    if bare:  # round 19 W31's words for a lock with an empty body
+        waits = (
+            "agentsync: another sync is running (or install.sh, a status or doctor check, or a cycle "
+            "starting holds the lock); the reinstall waits for it to be free (at most 60s)"
+        )
+        tick = r"agentsync: reinstalling after the lock is free, still running, \d+s"
+    if bare:  # held with no body, as lockf holds it
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+        def release() -> None:
+            os.close(fd)
+    else:
+        held = SingleWriterLock(lock, "poll")
+        held.acquire()
+        release = held.release
     early: list[str] = []
     proc: subprocess.Popen[str] | None = None
     try:
@@ -14569,11 +14589,11 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
             deadline = time.monotonic() + 50
             for raw in proc.stdout:
                 early.append(raw.rstrip("\n"))
-                if re.fullmatch(REINSTALL_TICK, early[-1]) or time.monotonic() > deadline:
+                if re.fullmatch(tick, early[-1]) or time.monotonic() > deadline:
                     break
             Path(f"{lock}.released").touch()  # before the release: uv can only start after it
         finally:
-            held.release()
+            release()
         # The rest is read through the same text wrapper (communicate would read the raw fd and drop what
         # the wrapper already buffered); the timer keeps communicate's 120 s bound.
         killer = threading.Timer(120, proc.kill)
@@ -14590,15 +14610,16 @@ def test_the_reinstall_waits_for_a_running_background_sync_and_holds_its_lock(
     lines = early + rest.splitlines()
     out = "\n".join(lines)
     assert proc.returncode == 0, out
-    assert REINSTALL_WAITS.format(60) in lines
+    assert waits in lines, out
     ticks = [ln for ln in lines if ln.startswith("agentsync: reinstalling")]
-    assert ticks and all(re.fullmatch(REINSTALL_TICK, t) for t in ticks), out
+    assert ticks and all(re.fullmatch(tick, t) for t in ticks), out
     assert "still running after" not in out
     assert _lock_log(e) == ["released=yes", "held=True"]
     assert sum(c.startswith("uv tool install") for c in calls(e)) == 1
     assert _step_seconds(e, "agentsync") >= 1
     # install.log says why the step took its seconds (B13 round 2 R34).
-    assert ("agentsync", "done", "0", "waited-for-a-background-sync") in steps(install_log(e))
+    note = "waited-for-an-unrecorded-holder" if bare else "waited-for-a-background-sync"
+    assert ("agentsync", "done", "0", note) in steps(install_log(e))
     assert lock.read_text() == "" and lock.stat().st_mode & 0o777 == 0o600
 
 
@@ -14766,6 +14787,9 @@ def test_the_reinstall_names_who_started_the_sync_it_waits_for(
         assert not [ln for ln in lines if ln.startswith("agentsync:") and "the other sync" in ln], cp.stdout
         assert "the background job" not in cp.stdout
     assert host not in cp.stdout + cp.stderr
+    # B13 round 20 X43: install.log's note for an empty body names no sync either
+    note = "wait-ran-out-after-1s" if words else "lock-wait-ran-out-after-1s"
+    assert ("agentsync", "done", "0", note) in steps(install_log(e))
 
 
 def test_the_reinstall_waits_once_however_many_locks_are_busy(

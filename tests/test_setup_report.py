@@ -3041,6 +3041,12 @@ def test_the_install_line_says_what_the_agentsync_steps_seconds_held(tmp_path: P
             "waited 120s for another sync, then reinstalled while it was still running",
         ),
         ("lock-not-taken-rc73", "could not take the sync lock, lockf exit 73; reinstalled without waiting"),
+        # B13 round 20 X43: a lock held with an empty body need not be another sync's
+        ("waited-for-an-unrecorded-holder", "waited for the sync lock to be free"),
+        (
+            "lock-wait-ran-out-after-120s",
+            "waited 120s for the sync lock, then reinstalled while it was still held",
+        ),
     ):
         noted = log.read_text(encoding="utf-8").replace("note=waited-for-a-background-sync", f"note={token}")
         log.write_text(noted, encoding="utf-8")
@@ -14195,6 +14201,7 @@ def test_the_ocr_part_calls_a_first_read_a_first_read(fake_mac: dict[str, Path])
         *setup_report._FIRST_SYNC_NOTE_WORDS,
         *(f"agentsync:{n}" for n in setup_report._AGENTSYNC_NOTE_WORDS),
         "agentsync:wait-ran-out-after-600s",
+        "agentsync:lock-wait-ran-out-after-600s",
         "agentsync:lock-not-taken-rc75",
     ],
 )

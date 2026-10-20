@@ -732,7 +732,9 @@ shows it as "waited for another sync to end": the note does not say who started 
 names it when the sidecar says),
 `wait-ran-out-after-<N>s` (the reinstall then ran without the lock; the report says "waited <N>s for another sync,
 then reinstalled while it was still running") or `lock-not-taken-rc<N>` ("could not take the sync lock, lockf exit
-<N>; reinstalled without waiting"); with no note, the
+<N>; reinstalled without waiting"). A lock held with an empty body, which no sync need hold, notes
+`waited-for-an-unrecorded-holder` ("waited for the sync lock to be free") or `lock-wait-ran-out-after-<N>s` ("waited
+<N>s for the sync lock, then reinstalled while it was still held") instead (B13 round 20 X43). With no note, the
 step's seconds are uv's own (or a sync that started after the probe). A launchd run that ends in the launcher's
 `SPAWN_FAILED` (exit 71) or an import error at that time started while uv recreated the tool environment; the
 next interval runs normally.

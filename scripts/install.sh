@@ -128,7 +128,8 @@
 #      for. A run killed with SIGKILL during the wait leaves lockf to run the reinstall once the lock frees,
 #      still under the lock. install.log's step=agentsync line notes what the script saw:
 #      waited-for-a-background-sync, wait-ran-out-after-<N>s or lock-not-taken-rc<N> (a sync that starts
-#      after the probe is waited for too, with no note)
+#      after the probe is waited for too, with no note); a lock with an empty body, which no sync need hold,
+#      notes waited-for-an-unrecorded-holder or lock-wait-ran-out-after-<N>s instead (B13 round 20 X43)
 #   3. with --confirm-install-agent only: the signed launcher at ~/Applications/AgentSyncLauncher.app, built
 #      with launcher/build.sh when developer tools exist (SIGN_IDENTITY passes through for a Developer ID
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
@@ -6467,9 +6468,16 @@ uv_tool_install_pinned() {
 		kill "$TICKER" 2>/dev/null || true
 		TICKER=""
 		case "$rc" in
-		0) [ "$busy" -ne 75 ] || AGENTSYNC_NOTE="waited-for-a-background-sync" ;;
+		0)
+			if [ "$busy" -ne 75 ]; then :
+			elif [ "$bare" -eq 1 ]; then AGENTSYNC_NOTE="waited-for-an-unrecorded-holder"
+			else AGENTSYNC_NOTE="waited-for-a-background-sync"; fi
+			;;
 		64 | 69 | 71 | 73) AGENTSYNC_NOTE="lock-not-taken-rc$rc" ;;
-		75) AGENTSYNC_NOTE="wait-ran-out-after-${REINSTALL_WAIT}s" ;;
+		75)
+			if [ "$bare" -eq 1 ]; then AGENTSYNC_NOTE="lock-wait-ran-out-after-${REINSTALL_WAIT}s"
+			else AGENTSYNC_NOTE="wait-ran-out-after-${REINSTALL_WAIT}s"; fi
+			;;
 		esac
 		case "$rc" in
 		64 | 69 | 71 | 73 | 75) ;;

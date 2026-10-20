@@ -4521,11 +4521,15 @@ def _install_runs(log: Path) -> list[tuple[str, dict[str, dict[str, str]], list[
 
 _AGENTSYNC_NOTE_WORDS = {
     "waited-for-a-background-sync": "waited for another sync to end",
+    "waited-for-an-unrecorded-holder": "waited for the sync lock to be free",  # B13 round 20 X43
     "current": "already current, not reinstalled",  # B13 round 12 N33: "agentsync 0s, current" read as code
 }
 """install.log's agentsync-step note -> the report's words (B13 round 9 K35): the note does not say who
 started the sync step 2 waited for (H33; install.sh's wait line names it only when the holder's sidecar says,
-B13 round 11 M43), so "background" claimed one. The token stays, in install.log and for its readers."""
+B13 round 11 M43), so "background" claimed one. The token stays, in install.log and for its readers. A lock
+held with an empty body need not be held by a sync at all (``ops.lock.EMPTY_BODY_HOLDER``: install.sh's own
+lockf, a status or doctor check, a cycle starting), so its note, ``waited-for-an-unrecorded-holder``, names
+the lock and no sync (B13 round 20 X43)."""
 
 
 def _agentsync_note(note: str) -> str:
@@ -4533,7 +4537,10 @@ def _agentsync_note(note: str) -> str:
     (:data:`_AGENTSYNC_NOTE_WORDS`), ``wait-ran-out-after-<N>s`` and ``lock-not-taken-rc<N>``, the two that
     carry a number (B13 round 10 L35: shown as their raw tokens). No parenthesis: the Installer table puts
     the note in one, and the Summary's step list puts it after a comma (B13 round 12 N33). A note none of
-    these is shown as it is."""
+    these is shown as it is. ``lock-wait-ran-out-after-<N>s`` is the run-out of a lock held with an empty
+    body, which no sync need hold, so its words name the lock, not another sync (B13 round 20 X43)."""
+    if (bare := re.fullmatch(r"lock-wait-ran-out-after-(\d+)s", note)) is not None:
+        return f"waited {bare.group(1)}s for the sync lock, then reinstalled while it was still held"
     if (ran_out := re.fullmatch(r"wait-ran-out-after-(\d+)s", note)) is not None:
         return f"waited {ran_out.group(1)}s for another sync, then reinstalled while it was still running"
     if (untaken := re.fullmatch(r"lock-not-taken-rc(\d+)", note)) is not None:
