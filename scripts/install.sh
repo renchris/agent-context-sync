@@ -4810,6 +4810,12 @@ older_report_rewrite() { # MODE
 			$0 = substr($0, 1, j + length(nextstep) - 3) "; " fixline " " substr($0, j + length(nextstep))
 		}
 		cp && sec == "## Summary" { $0 = prompt_line($0) }
+		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
+		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)
+		!det && !fence && sec == "## Environment" && index($0, "- macOS: macOS ") == 1 {
+			$0 = "- macOS: " substr($0, 16)
+			if (substr($0, 10, 1) == "(") $0 = "- macOS: ? " substr($0, 10)
+		}
 		# after a finished attempt (V31): the renderer notes, right after the prompt line, that the stop was logged
 		# after that attempt finished, which the older build\047s one attempt hides; s1mv is 0 on a second pass
 		# (the friction line then says "stopped the run"), so it is added once (B13 round 19 W24)

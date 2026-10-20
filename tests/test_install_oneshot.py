@@ -10200,6 +10200,30 @@ def test_the_older_builds_line_numbers_line_names_f_ids_only_when_the_summary_ci
         assert "Each line is shown with its line number." in lines and "F<n> ids" not in text, text
 
 
+@pytest.mark.parametrize("mode", ["step1", "copy"])
+def test_the_older_builds_macos_line_gives_the_version_and_build(
+    env: dict[str, str], tmp_path: Path, mode: str
+) -> None:
+    """B13 round 19 W16 (rehearsal B, M1o and SC): a renderer from before round 12 N26 wrote
+    "- macOS: macOS 15.7.9 (24G830)", the product name under a label that says it already, and the rewrite
+    passed it on. Both modes give the version and build, as the current renderer and the shell report do,
+    "?" for a version the old build did not read; a line in the current words passes unchanged."""
+
+    def environment(*lines: str) -> str:
+        tail = [*_V10_TAIL, "## Environment", "", *lines, "- Python: 3.11.9", ""]
+        report = _v10_step1_report(_V10_SUMMARY, tail)
+        text = (
+            _stopped_copy_of(env, tmp_path, report)
+            if mode == "copy"
+            else _step1_stop_home(env, tmp_path, report)
+        )
+        return text.split("\n## Environment\n\n", 1)[1].split("\n\n", 1)[0].rstrip("\n")
+
+    assert environment("- macOS: macOS 15.5 (24F74)") == "- macOS: 15.5 (24F74)\n- Python: 3.11.9"
+    assert environment("- macOS: macOS (24F74)") == "- macOS: ? (24F74)\n- Python: 3.11.9"
+    assert environment("- macOS: 15.5 (24F74)") == "- macOS: 15.5 (24F74)\n- Python: 3.11.9"
+
+
 def test_a_step_1_stop_of_the_older_build_says_its_fix_for_one_expected_warn(
     env: dict[str, str], tmp_path: Path
 ) -> None:
