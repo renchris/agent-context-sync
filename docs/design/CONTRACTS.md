@@ -12234,6 +12234,9 @@ engine).`, and the kinds of file a re-read looks at are said in the table's lead
   - Amended 2026-10-15, §16.93 M43, M60: the first line reads `another sync is running (<who>)`, `<who>` from the
     holder sidecar for the lock body's pid (`the background job, its pass: poll`, `a sync not started by the
     background job, its pass: poll`), else `the background job, or a sync started another way`; no `terminal`.
+  - Amended 2026-10-20, §16.141 W31: a lock held with an empty body reads `another sync is running (or install.sh,
+    a status or doctor check, or a cycle starting holds the lock); the reinstall waits for it to be free (at most
+    <N>s)`, `reinstalling after the lock is free` and `the lock is still held after <N>s`.
   - lockf writes no body, keeps the file and its mode and never creates one, so the next sync breaks no stale
     lock that lockf left. A crashed cycle's body is kept as it was (the next sync still breaks it and runs
     FULL passes); while the reinstall holds the lock, a job, status or doctor then names that dead pid as
@@ -19390,6 +19393,7 @@ M43's verifier built the sidecar read and M60's the rewording alone; both are he
 The header's step 2 paragraph, the comments, setup-feedback.md and `setup_report._AGENTSYNC_NOTE_WORDS`'s docstring
 say so. Tests: `test_the_reinstall_names_who_started_the_sync_it_waits_for` (other, launchd, no `started_by`, another
 pid, an empty body; the host never printed), the `REINSTALL_WAITS` pins.
+Amended 2026-10-20, §16.141 W31: an empty body no longer gets the either-or words; it has three lines of its own.
 
 **The shell report computes a stopped copy's failure** (M14; amends §16.87 L2 and §16.81 K8). A copy `--log-start`
 stopped writes a header (`Attempt:`, `Prompt: vN`, `Agent:`) and a stop line whose words state nothing, so
@@ -24736,6 +24740,19 @@ rule) would say "elsewhere" for a rewrite to `git@github.com:`, which the agents
 comparison is the verifier's fix. `[include]` files are not followed, as for `git_rewrite_bases`. Test:
 `test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror rewrite, one to
 `git@github.com:`, the longest of two, and a `pushInsteadOf` alone; the mirror's host never shows).
+
+**The reinstall's wait names an empty-body holder as agentsync does** (W31; amends §16.93 M43 and §16.41 H33). A
+lock held with an empty body (only blanks, as `ops/lock.py` reads `body.strip()`) is held by no sync:
+`EMPTY_BODY_HOLDER` names install.sh, a status or doctor check, or a cycle starting, and round 18 V40 kept "another
+sync" out of agentsync's own line. install.sh's wait, ticker and run-out line still said "another sync (the
+background job, or a sync started another way)" and "the other sync". For that body they now read `agentsync:
+another sync is running (or install.sh, a status or doctor check, or a cycle starting holds the lock); the reinstall
+waits for it to be free (at most <N>s)`, `agentsync: reinstalling after the lock is free, still running, <N>s` and
+`agentsync: the lock is still held after <N>s; reinstalling without waiting longer`. The opening "another sync is
+running" stays, as V40's `UNRECORDED_LOCK_WAIT_QUIET` keeps it: README step 2 calls a wait with that opening and
+"still running" lines expected, so no prompt words change. A body with a pid, or one that cannot be read, keeps the
+three lines it had; `AGENTSYNC_NOTE` is unchanged. Test: `test_the_reinstall_names_who_started_the_sync_it_waits_for`
+(an empty body: the three words, no "the other sync", no "the background job").
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 

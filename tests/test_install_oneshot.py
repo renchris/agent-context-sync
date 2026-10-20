@@ -14138,7 +14138,7 @@ def test_the_reinstall_holds_the_lock_of_the_config_a_job_runs_with(
         ("launchd", "the background job, its pass: poll"),
         ("no started_by", "the background job, or a sync started another way"),
         ("another pid", "the background job, or a sync started another way"),
-        ("an empty body", "the background job, or a sync started another way"),
+        ("an empty body", ""),
     ],
 )
 def test_the_reinstall_names_who_started_the_sync_it_waits_for(
@@ -14147,7 +14147,12 @@ def test_the_reinstall_names_who_started_the_sync_it_waits_for(
     """B13 round 11 M43, M60: since B13 round 10 L73 the holder sidecar records who started a cycle, and
     agentsync's own lines name it, but the reinstall's wait line still said the lock cannot tell and offered
     "one started in a terminal". It names the starter when the sidecar says so for the lock body's own pid,
-    in agentsync's words, and never the sidecar's host; any other holder gets the either-or words."""
+    in agentsync's words, and never the sidecar's host; any other holder gets the either-or words.
+
+    B13 round 19 W31: an empty body is held by no sync (install.sh's lockf, a status or doctor check, a cycle
+    starting: ops/lock.py's EMPTY_BODY_HOLDER), as round 18 V40 says in agentsync's own wait, yet the wait,
+    its ticker and its run-out line said "another sync" and "the other sync". They now name those holders,
+    keeping the opening step 2 of the prompt quotes."""
     e, lock = _held_sync(env)
     e["AGENTSYNC_REINSTALL_WAIT_SECONDS"] = "1"
     started_by = {"other": "other", "launchd": "launchd"}.get(holder)
@@ -14168,10 +14173,20 @@ def test_the_reinstall_names_who_started_the_sync_it_waits_for(
         host = json.loads(Path(f"{lock}.json").read_text())["host"]
         cp = install_sh(e, str(wheel), "--source-local", str(folder))
     assert cp.returncode == 0, cp.stdout + cp.stderr
-    assert (
-        f"agentsync: another sync is running ({words}); the reinstall waits for it to end (at most 1s)"
-        in cp.stdout.splitlines()
-    ), cp.stdout
+    lines = cp.stdout.splitlines()
+    if words:
+        assert (
+            f"agentsync: another sync is running ({words}); the reinstall waits for it to end (at most 1s)"
+            in lines
+        ), cp.stdout
+    else:
+        assert (
+            "agentsync: another sync is running (or install.sh, a status or doctor check, or a cycle "
+            "starting holds the lock); the reinstall waits for it to be free (at most 1s)"
+        ) in lines, cp.stdout
+        assert "agentsync: the lock is still held after 1s; reinstalling without waiting longer" in lines
+        assert not [ln for ln in lines if ln.startswith("agentsync:") and "the other sync" in ln], cp.stdout
+        assert "the background job" not in cp.stdout
     assert host not in cp.stdout + cp.stderr
 
 

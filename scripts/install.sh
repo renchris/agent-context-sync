@@ -6189,8 +6189,8 @@ hold_locks() { # LOCKS: sets the caller's held to the nested holds, with one dea
 # with its pass as _describe_holder adds it). The lock body ("<pid> <boot_time> <iso> <label>") names no
 # starter; the holder sidecar <lock>.json does since B13 round 10 L73, for the body's own pid only. A holder
 # from an older build (the usual one during a reinstall: the installed build is the older one), a sidecar of
-# another pid, an empty body (lockf, a probe, a cycle starting) or anything unreadable gets the either-or
-# words. The environment cannot tell a terminal from cron or an agent's shell, so no line says "terminal".
+# another pid or anything unreadable gets the either-or words; an empty body (lockf, a probe, a cycle starting)
+# gets none of them, the caller says it (B13 round 19 W31). The environment cannot tell a terminal from cron or an agent's shell, so no line says "terminal".
 # The sidecar's host (the Mac's name) is never read. Nothing is imported: sed over the sidecar's fixed layout
 # (sorted keys, 2-space indent), LC_ALL=C (B13 round 11 M43, M60).
 holder_words() { # LOCK
@@ -6238,7 +6238,7 @@ uv_tool_install() {
 }
 uv_tool_install_pinned() {
 	local args=(tool install --force --reinstall-package agentsync --python 3.11) locks l
-	local held=() busy=0 rc=0 busy_lock=""
+	local held=() busy=0 rc=0 busy_lock="" bare=0 grc
 	[ -z "$AGENTSYNC_PINS" ] || args+=(-c "$AGENTSYNC_PINS")
 	args+=("$SOURCE")
 	AGENTSYNC_NOTE=""
@@ -6252,7 +6252,19 @@ uv_tool_install_pinned() {
 			[ "$busy" -eq 75 ] || { "$LOCKF" -k -n -s -t 0 "$l" /usr/bin/true 2>/dev/null || { busy=$? && busy_lock="$l"; }; }
 		done <<<"$locks"
 		[ "$busy" -eq 75 ] || busy=0
-		if [ "$busy" -eq 75 ]; then
+		# A busy lock with an empty body (only blanks, as ops/lock.py's body.strip() reads it) is held by no
+		# sync: install.sh's lockf, a status or doctor check, or a cycle starting, as agentsync's
+		# EMPTY_BODY_HOLDER says. Its lines do not say "the other sync", and keep the opening step 2 of the
+		# prompt quotes, as cycle.UNRECORDED_LOCK_WAIT_QUIET does (B13 round 18 V40; round 19 W31).
+		if [ "$busy" -eq 75 ] && [ -f "$busy_lock" ]; then
+			grc=0
+			LC_ALL=C grep -q '[^[:space:]]' "$busy_lock" 2>/dev/null || grc=$?
+			[ "$grc" -ne 1 ] || bare=1
+		fi
+		if [ "$busy" -eq 75 ] && [ "$bare" -eq 1 ]; then
+			say "agentsync: another sync is running (or install.sh, a status or doctor check, or a cycle starting holds the lock); the reinstall waits for it to be free (at most ${REINSTALL_WAIT}s)"
+			ticker "agentsync: reinstalling after the lock is free" &
+		elif [ "$busy" -eq 75 ]; then
 			# Who started the holder, of the lock that is busy, when its sidecar says (holder_words; B13 round 7
 			# H33, round 11 M43, M60). AGENTSYNC_NOTE keeps its machine word below.
 			say "agentsync: another sync is running ($(holder_words "$busy_lock")); the reinstall waits for it to end (at most ${REINSTALL_WAIT}s)"
@@ -6283,8 +6295,11 @@ uv_tool_install_pinned() {
 		64 | 69 | 71 | 73 | 75) ;;
 		*) return "$rc" ;;
 		esac
-		[ "$rc" -ne 75 ] ||
+		if [ "$rc" -eq 75 ] && [ "$bare" -eq 1 ]; then
+			say "agentsync: the lock is still held after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
+		elif [ "$rc" -eq 75 ]; then
 			say "agentsync: the other sync is still running after ${REINSTALL_WAIT}s; reinstalling without waiting longer"
+		fi
 	fi
 	uv_run "$UV" "${args[@]}"
 }
