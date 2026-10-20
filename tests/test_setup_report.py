@@ -11289,11 +11289,15 @@ def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: di
     """Whether the folder named like the agent's product is only listed or also a source's folder decides
     whether the Agent: line is readable. The count says which, with no name."""
     line = "- folders whose name is made only of coding-agent product words: "
+    # B13 round 20 X18: the count says it leaves out a configured folder
+    under = (
+        "under ~/Library/CloudStorage that no source is configured to sync, which this report does not redact"
+    )
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
     conf = section(text, "Configuration")
     # no such folder: nothing follows from it (B13 round 11 M2)
     assert (
-        line + "0 under ~/Library/CloudStorage, which this report does not redact; 0 of the configured "
+        line + f"0 {under}; 0 of the configured "
         "source folders, which are redacted to <folder-N> like any other\n"
     ) in conf, conf
     assert "keeps its name" not in conf and "a placeholder like any other" not in conf
@@ -11311,12 +11315,8 @@ def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: di
         return section(text, "Configuration")
 
     # a listed folder "Copilot": the clause only when the Agent: line has its word
-    assert line + "1 under ~/Library/CloudStorage, which this report does not redact; " in conf_for(
-        "Claude Code claude-opus-5-5"
-    )
-    assert line + f"1 under ~/Library/CloudStorage, which this report does not redact{so}; " in conf_for(
-        "GitHub Copilot model-x1"
-    )
+    assert line + f"1 {under}; " in conf_for("Claude Code claude-opus-5-5")
+    assert line + f"1 {under}{so}; " in conf_for("GitHub Copilot model-x1")
     # an earlier attempt's Agent: line is in the report too
     write_friction(
         fake_mac,
@@ -11324,18 +11324,34 @@ def test_configuration_counts_the_folders_named_like_a_coding_agent(fake_mac: di
         + V11_HAPPY.replace("2026-09-29T", "2026-09-30T"),
     )
     text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
-    assert line + f"1 under ~/Library/CloudStorage, which this report does not redact{so}; " in text
+    assert line + f"1 {under}{so}; " in text
     # A configured "GitHub Copilot" is redacted: it is not counted as unredacted, and its words never decide
     # the clause, which would say a redacted folder is named like the agent.
     (cloud / "GitHub Copilot").mkdir()
     assert cli.main(["add-source", str(cloud / "GitHub Copilot"), "--config", str(fake_mac["config"])]) == 0
     conf = conf_for("GitHub model-x1")
-    assert (
-        line + "1 under ~/Library/CloudStorage, which this report does not redact; 1 of the configured"
-        in conf
-    )
+    assert line + f"1 {under}; 1 of the configured" in conf
     conf = conf_for("Copilot model-x1")
-    assert line + f"1 under ~/Library/CloudStorage, which this report does not redact{so}; 1 of the" in conf
+    assert line + f"1 {under}{so}; 1 of the" in conf
+
+
+def test_the_coding_agent_folder_count_says_it_leaves_out_a_configured_folder(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 20 X18: with the only product-word folder configured (Documents/Copilot), the line read "0
+    under ~/Library/CloudStorage, which this report does not redact; 1 of the configured source folders",
+    which says no such folder is there, though the configured one is under it. The count says what it leaves
+    out."""
+    folder = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Documents" / "Copilot"
+    folder.mkdir(parents=True)
+    assert cli.main(["add-source", str(folder), "--config", str(fake_mac["config"])]) == 0
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks())
+    conf = section(text, "Configuration")
+    assert (
+        "- folders whose name is made only of coding-agent product words: 0 under ~/Library/CloudStorage that"
+        " no source is configured to sync, which this report does not redact; 1 of the configured source"
+    ) in conf, conf
+    assert "0 under ~/Library/CloudStorage, which" not in text
 
 
 def test_a_source_is_never_named_by_an_id_the_redactor_does_not_know(fake_mac: dict[str, Path]) -> None:

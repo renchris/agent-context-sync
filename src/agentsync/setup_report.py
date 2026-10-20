@@ -5221,7 +5221,9 @@ def _configuration(r: _Run) -> list[str]:
             + (
                 "could not list ~/Library/CloudStorage"
                 if listed is None
-                else f"{listed} under ~/Library/CloudStorage, which this report does not redact{so}"
+                # B13 round 20 X18: the count leaves out a configured folder, which is under CloudStorage too
+                else f"{listed} under ~/Library/CloudStorage that no source is configured to sync, which this"
+                f" report does not redact{so}"
             )
             + f"; {configured} of the configured source folders, which are redacted to <folder-N> like any "
             "other"
