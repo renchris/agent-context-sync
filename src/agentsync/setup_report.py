@@ -57,14 +57,16 @@ repeating the app's, such as ``Box-Box``), and in ``OneDrive - <org>`` (``<org-N
 (``<library-N>``), every folder name under ``~/Library/CloudStorage`` at depth 2-3 (what the setup prompt's
 folder listing shows, configured or not; kept when only listed: a few generic names such as ``Documents``,
 and a name made only of coding-agent product words such as ``Copilot``, so the agent's own name stays
-readable) and every configured source folder path component (``<folder-N>``), a configured source folder
-elsewhere under the home folder from its project folder down, and that project folder's name (``<folder-N>``
-too; the inbox kept beside the docs repo is agentsync's own, and so is every folder beside it unless that
-parent is itself a generic folder such as ``~/Documents``), every configured source id but agentsync's own
-words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs (``<guid-N>``),
-hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo commit ids
-(``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names (``<host>``), the
-MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches inside it),
+readable) and every configured source folder path component (``<folder-N>``; a configured one made only of
+product words is kept as a word of the agent's name, where the report prints that name), a configured source
+folder elsewhere under the home folder from its project folder down, and that project folder's name
+(``<folder-N>`` too; the inbox kept beside the docs repo is agentsync's own, and so is every folder beside it
+unless that parent is itself a generic folder such as ``~/Documents``), every configured source id but
+agentsync's own words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs
+(``<guid-N>``), hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo
+commit ids (``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names
+(``<host>``), the MDM server's host when it has a dot (``<mdmhost>``, one word, so no shorter value matches
+inside it),
 proxy hosts, those in git's config files included, and the LaunchAgent's own (``launchctl setenv``) proxy,
 the host of each git URL rewrite (``insteadOf``; github.com kept) and its path when a company word is in it,
 and the system PAC URL after its scheme (``<proxy-N>``) and this account's temporary folder (``$TMPDIR``, any
@@ -555,7 +557,8 @@ _AGENT_WORDS = frozenset({"claude", "codex", "copilot", "cursor", "gemini", "git
 these words is not registered, in any case: registered, "Copilot" would turn the ``Agent:`` line's "GitHub
 Copilot CLI" into ``GitHub <folder-N> CLI`` in the Summary and the issue link (field report 2026-10-06). A
 configured folder or source id with such a name is registered like any other (several of the words are also
-first names and project codenames), and :func:`residue` still lists the word."""
+first names and project codenames), and :func:`residue` still lists the word; only the agent's own name, where
+the report prints it, keeps such a word standing alone (:meth:`Redactor.redact_agent`, B13 round 19 W17)."""
 _SHORT_WORDS = frozenset(
     {
         *("am", "an", "as", "at", "be", "by", "do", "go", "he", "hi", "if", "in", "is", "it", "me", "my"),
@@ -1092,6 +1095,13 @@ def _short_word(form: str) -> bool:
     return low in _SHORT_WORDS or (form.isupper() and low in _SHORT_CAPS)
 
 
+def _a_whole_word(m: re.Match[str]) -> bool:
+    """Whether ``m`` stands as a word of its own: what is on each side of it is the text's edge, a space or
+    sentence punctuation, never a path separator, a ``~`` or another word character (B13 round 19 W17)."""
+    edges = (m.string[m.start() - 1 : m.start()], m.string[m.end() : m.end() + 1])
+    return all(c == "" or c.isspace() or c in ",;:()[]'\"`." for c in edges)
+
+
 def _agent_words(name: str) -> bool:
     """Whether ``name`` is made of :data:`_AGENT_WORDS` only ("Copilot", "github-copilot")."""
     words = [w for w in _SEP_RE.split(name.casefold()) if w]
@@ -1140,6 +1150,11 @@ class Redactor:
         self._used: set[str] = set()
         self._regex: re.Pattern[str] | None = None
         self._counting = True
+        self._agent_mode = (
+            False  # :meth:`redact_agent`: a product-word folder or id stays in the agent's name
+        )
+        # a configured folder's product word stayed as written in the agent's name (B13 round 19 W17)
+        self.agent_kept = False
         # the CloudStorage listing for redaction did not finish and no list of step 1 named the folders in its
         # place, so a folder name may show in clear (B13 round 8 J69): the report is for a private copy only
         self.listing_unread = False
@@ -1455,6 +1470,15 @@ class Redactor:
                 or self._url_hosts.get(_bare(text).lower())
                 or text
             )
+            if (
+                self._agent_mode
+                and placeholder != text
+                and self._kind_of.get(placeholder) in ("folder", "source")
+                and _agent_words(text)
+                and _a_whole_word(m)
+            ):
+                self.agent_kept = self.agent_kept or self._counting
+                return text
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1
             self._used.add(placeholder)
@@ -1479,6 +1503,28 @@ class Redactor:
             self._kind_of.setdefault(placeholder, kind)
             self.counts[kind] += 1
             self._used.add(placeholder)
+
+    def redact_agent(self, text: str) -> str:
+        """``text``, an agent's name (a friction log ``Agent:`` value), redacted but for a configured folder
+        or source id made only of coding-agent product words where it stands as a word of its own: "GitHub
+        Copilot CLI" stays readable beside a configured ``Copilot`` folder, which reads ``<folder-N>``
+        everywhere else, and its placeholder is not decoded by the name around it. A product word inside a
+        path (``~/Development/Gemini``) or a longer token is still replaced, as every other value is (B13
+        round 19 W17)."""
+        self._agent_mode = True
+        try:
+            return self.redact(text)
+        finally:
+            self._agent_mode = False
+
+    def scrub_agent(self, text: str) -> str:
+        """:meth:`redact_agent` as :meth:`scrub` does it: even when disabled, without counting (the issue
+        link's ``agent`` field)."""
+        self._agent_mode = True
+        try:
+            return self.scrub(text)
+        finally:
+            self._agent_mode = False
 
     def scrub(self, text: str) -> str:
         """``text`` redacted even when this redactor is disabled, without counting (for the issue link: it is
@@ -5165,6 +5211,12 @@ def _configuration(r: _Run) -> list[str]:
             )
             + f"; {configured} of the configured source folders, which are redacted to <folder-N> like any "
             "other"
+            # B13 round 19 W17: the agent's name keeps a configured folder's product word (redact_agent)
+            + (
+                ", except as a word of the agent's name in the friction log's Agent: line"
+                if configured
+                else ""
+            )
         )
     return out
 
@@ -10455,6 +10507,10 @@ def _legend_item(red: Redactor, kind: str, body: str) -> str:
             else _KEPT_AGENT
         )
         item = f"{item[:-1]}; not {which}, where only a folder listing names it)"
+    if red.agent_kept:  # B13 round 19 W17: a configured one's product word stayed in the agent's name
+        item = (
+            f"{item[:-1]}; a configured one's coding-agent product word stays as written in the agent's name)"
+        )
     return item
 
 
@@ -10633,18 +10689,41 @@ def _source_local_shown(red: Redactor, m: re.Match[str]) -> str:
     return m.group(1) + opened + text + closed + tail
 
 
-def _redact_lines(red: Redactor, lines: list[str]) -> str:
+_AGENT_AT = r"(?:^ *\d+  \s*(?:[-*]\s+)?\**(?i:agent)\**\s*:\s*\**\s*| · agent: |; agent )"
+"""Where the report prints an attempt's agent name (``Attempt.said("Agent")``): the embedded friction log's
+numbered ``Agent:`` header line in any form :data:`_FRICTION_KEY_RE` reads (``**Agent**:``, ``- agent:``), the
+Summary's ``· agent:`` field and an attempt line's ``; agent`` (B13 round 19 W17)."""
+
+
+def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -> str:
     """Redact every line but the report's own headings (a folder named like a section must not break it).
     An exclude line's globs become ``<path>`` first: they are folder names from inside a source. Each
     ``--source-local`` argument is then settled by structure (:func:`_source_local_shown`). A doctor line
     loses the padding after its check's name: doctor pads every name to the longest real one, so the
-    padding left beside a placeholder gave the length of the id it replaced."""
+    padding left beside a placeholder gave the length of the id it replaced. Where a line prints one of
+    ``agents`` (:data:`_AGENT_AT`), that name is redacted by :meth:`Redactor.redact_agent`, the rest of the
+    line as usual."""
     keep = {REPORT_TITLE, *(f"## {t}" for t in SECTION_TITLES)}
     if not red.enabled:
         return "\n".join(lines)
     shown = functools.partial(_source_local_shown, red)
+    names = sorted({a for a in agents if a.strip()}, key=len, reverse=True)
+    at = (
+        re.compile(rf"{_AGENT_AT}(?P<agent>{'|'.join(map(re.escape, names))})(?=[ \t]*(?:$|[);]| ·))")
+        if names
+        else None
+    )
 
     def one(line: str) -> str:
+        if at is None or at.search(line) is None:
+            return plain(line)
+        out, pos = [], 0
+        for m in at.finditer(line):
+            out += [plain(line[pos : m.start("agent")]), red.redact_agent(m.group("agent"))]
+            pos = m.end("agent")
+        return "".join([*out, plain(line[pos:])])
+
+    def plain(line: str) -> str:
         line = red.redact(_EXCLUDE_LIST_RE.sub(_exclude_placeholder, line))
         if ", stored as " in line:
             line = _SAME_STORED_RE.sub(r"(\1)", line)
@@ -10684,7 +10763,7 @@ def _issue_link(r: _Run, red: Redactor) -> str:
     fr = r.friction
     att = fr.latest if fr is not None else None
     agent = att.said("Agent") if att is not None else ""
-    agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub(" ".join(agent.split())))[:100].strip()
+    agent = re.sub(r"[^\w .:/()+,@<>-]", "", red.scrub_agent(" ".join(agent.split())))[:100].strip()
     outcome = r.outcome or compute_outcome(att, _latest_runs(r))  # the Summary's, else by the same runs
     return build_issue_url(
         outcome=outcome.form_label,
@@ -10956,7 +11035,7 @@ def build_report(
     lines = [REPORT_TITLE]
     for title in SECTION_TITLES[:-1]:
         lines += bodies[title]
-    main = _redact_lines(red, lines)
+    main = _redact_lines(red, lines, [a.said("Agent") for a in (r.friction.attempts if r.friction else ())])
     red.recount(main)
     counts = f"{_plural(red.total, 'replacement')} of {_plural(red.values, 'value')} (legend under Redaction)"
     main = main.replace(_REDACTION_MARK, counts)

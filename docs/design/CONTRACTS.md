@@ -15188,6 +15188,7 @@ example product word: such a word is a folder name a source can have, and the re
 Amended 2026-10-16, §16.92 M2: `, so the product name ... stays as written` follows only when an Agent: line of the
 friction log has a word of a listed folder's name that is not configured, and N counts only those folders (a
 configured one is redacted, and never decides the clause).
+Amended 2026-10-20, §16.140 W17: when M is not 0 the clause ends `, except as a word of the agent's name in the friction log's Agent: line`.
 
 **F31: one wording for the label rule.** The OCR part's line is `- [policy] label rule: on (no image is read under
 one)`, `off` or `not read (<Exc>)`, the Configuration line's words (Q31), with the OCR part's own suffix kept.
@@ -24814,6 +24815,23 @@ alone (it would cut ordinary words), an id that is `slugify` of its folder's nam
 of the folder's own path value (`Redactor.alias`), unless the id is a generic one. An id of its own
 (`nw-client-alpha-mail`) stays a `<source-N>`. Test:
 `test_a_project_sources_id_that_is_its_folders_slug_reads_as_that_folder`.
+
+**The agent's name keeps a configured folder's product word** (W17; amends §16.58 F4). A configured
+`.../Documents/Copilot` turned the agent's `GitHub Copilot CLI gpt-5` into `GitHub <folder-4> CLI gpt-5` in the
+Summary, every attempt line, the friction log and the issue link: the name around the placeholder decoded it
+everywhere else, and the report's own residue check listed GitHub and CLI. `Redactor.redact_agent` (and
+`scrub_agent` for the link) redacts an agent's name as usual but leaves a registered folder or source value made
+only of coding-agent product words (`_agent_words`) where it stands as a word of its own, never inside a path
+(`~/Development/Gemini`) or a longer token. `_redact_lines` uses it for each attempt's `Agent` value where the
+report prints it, and only there (`_AGENT_AT`: the friction log's numbered `Agent:` header line, the Summary's
+`· agent:` field, an attempt line's `; agent`); the rest of the friction log stays fully redacted. The
+Configuration line's configured clause adds `, except as a word of the agent's name in the friction log's Agent:
+line` when it counts one, and when a word was kept the legend's folder item adds `; a configured one's
+coding-agent product word stays as written in the agent's name`. This ends the limit §16.22's field fix stated
+("the agent's name then shows the placeholder"). The shell fallback report's redaction is install.sh's and
+unchanged here. Tests:
+`test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_it_is_shown`,
+`test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder`.
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 

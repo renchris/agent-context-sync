@@ -2495,12 +2495,69 @@ def test_a_listed_folder_named_like_a_coding_agent_does_not_redact_the_agent_nam
     assert FOLDERS[1] not in text
 
 
+def test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_it_is_shown(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 19 W17 (a rehearsal's GA report): a configured ``.../Documents/Copilot`` turned an earlier
+    and the latest attempt's ``GitHub Copilot CLI gpt-5`` into ``GitHub <folder-4> CLI gpt-5`` in the
+    Summary, the attempt lines, the friction log and the issue link, and the report's own residue check then
+    listed GitHub and CLI. The name keeps the product word where it stands alone; the folder's path stays
+    ``<folder-N>``, and a product word inside a path in the name is still replaced."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Documents" / "Copilot"
+    gem = fake_mac["home"] / "Development" / "Gemini"
+    for d in (cloud, gem):
+        d.mkdir(parents=True)
+    for d in (cloud, gem):
+        assert cli.main(["add-source", str(d), "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    agent = "GitHub Copilot CLI gpt-5"
+    first = V7_HAPPY.replace("Claude Code, claude-opus-5-5", agent)
+    write_friction(fake_mac, first + first.replace("2026-09-29T", "2026-09-30T"))
+    sid = load_config(fake_mac["config"]).sources[-2].id
+
+    def doctor(config: object) -> list[str]:
+        return [f"[warn] source.{sid}.listable — cannot list {cloud}"]
+
+    text, summary = summary_of(fake_mac)
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["agent"] == [agent], link
+    text, summary = summary_of(fake_mac, doctor=doctor)
+    assert f"· agent: {agent}\n" in summary, summary
+    assert section(text, "Agent friction log").count(f"; agent {agent})") == 2
+    assert section(text, "Agent friction log").count(f"Agent: {agent}\n") == 2
+    assert re.search(
+        r"source\.<(?:folder|source)-\d+>\.listable — cannot list "
+        r"~/Library/CloudStorage/OneDrive-<org-1>/<folder-\d+>/<folder-\d+>\n",
+        section(text, "Doctor"),
+    ), section(text, "Doctor")
+    assert "Copilot" not in text.replace(agent, ""), "only the agent's name keeps the word"
+    hits = setup_report.residue(text)
+    assert "GitHub" not in hits and "CLI" not in hits, hits
+    assert "a configured one's coding-agent product word stays as written in the agent's name" in _line(
+        section(text, "Redaction"), "Placeholders used"
+    )
+    # any header form the friction parser reads (the review of W17: ``**Agent**:`` kept the placeholder)
+    write_friction(fake_mac, V7_HAPPY.replace("Agent: Claude Code, claude-opus-5-5", f"**Agent**: {agent}"))
+    text, summary = summary_of(fake_mac)
+    assert f"**Agent**: {agent}\n" in section(text, "Agent friction log"), section(text, "Agent friction log")
+    assert "<folder-" not in _line(section(text, "Agent friction log"), "  3  "), text
+    # a product word in a path in the name is a folder's, still replaced
+    write_friction(
+        fake_mac, V7_HAPPY.replace("Claude Code, claude-opus-5-5", "Claude Code in ~/Development/Gemini")
+    )
+    text, summary = summary_of(fake_mac)
+    assert re.search(r"· agent: Claude Code in ~/Development/<folder-\d+>\n", summary), summary
+    assert "Gemini" not in text
+
+
 def test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder(
     fake_mac: dict[str, Path],
 ) -> None:
     """Gemini, Codex, Cursor and Claude are also project codenames and first names. A configured folder with
     such a name is redacted like any other, and so is its source id; the residue check still lists the word
-    next to a placeholder. The agent's name then shows the placeholder too: that is the stated limit."""
+    next to a placeholder. B13 round 19 W17: the agent's name showed the placeholder too (``GitHub <folder-4>
+    CLI``), which decoded it everywhere else and was itself residue; the name keeps the product word, in the
+    Summary, the attempt line, the friction log's Agent: line and the issue link, and only there."""
     configured = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Programs" / "Gemini"
     configured.mkdir(parents=True)
     assert cli.main(["add-source", str(configured), "--config", str(fake_mac["config"])]) == 0
@@ -2516,12 +2573,21 @@ def test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder(
     v6_install_log(fake_mac)
     write_friction(fake_mac, V7_HAPPY.replace("Claude Code, claude-opus-5-5", "Gemini CLI x"))
     text, summary = summary_of(fake_mac, doctor=doctor, status=status)
-    assert "gemini" not in text.lower() and "Programs" not in text
+    kept = ("· agent: Gemini CLI x\n", "; agent Gemini CLI x)", "Agent: Gemini CLI x\n")
+    assert all(k in text for k in kept), text
+    rest = text
+    for k in kept:
+        rest = rest.replace(k, "")
+    assert "gemini" not in rest.lower() and "Programs" not in text
     shown = re.search(r"source\.(<folder-\d+>)\.listable — cannot list (\S+)\n", section(text, "Doctor"))
     assert shown, "the id is the folder's name: one value, one placeholder"
     assert shown.group(2) == f"~/Library/CloudStorage/OneDrive-<org-1>/<folder-4>/{shown.group(1)}"
     assert f"  {shown.group(1)} (local, live): baseline complete" in section(text, "Status")
-    assert re.search(r"· agent: <folder-\d+> CLI x\n", summary)
+    assert "· agent: Gemini CLI x\n" in summary, summary
+    assert (
+        "1 of the configured source folders, which are redacted to <folder-N> like any other, except as a "
+        "word of the agent's name in the friction log's Agent: line" in section(text, "Configuration")
+    )
     assert setup_report.residue("<folder-1> Gemini <org-1> Codex <name>") == ["Gemini", "Codex"], (
         "a product word next to a placeholder is residue like any other"
     )
