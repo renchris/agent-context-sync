@@ -4566,6 +4566,43 @@ older_report_rewrite() { # MODE
 		function fill(x, w,    i) { for (i = ulen(x); i < w; i++) x = x " "; return x }
 		function lfill(x, w,    i, p) { p = ""; for (i = ulen(x); i < w; i++) p = p " "; return p x }
 		function dashes(w,    x) { x = ""; while (w-- > 0) x = x "-"; return x }
+		# setup_report._item_what for a step 1 error\047s what-text, by characters as Python counts them (B13
+		# round 19 W25): the older build cut it to 220 with its "prompt vN, <agent>: " prefix, before git\047s reason
+		function upre(s, n,    i, k) { # the first n characters of s
+			k = 0
+			for (i = 1; i <= length(s); i++) if (substr(s, i, 1) !~ /[\200-\277]/) { if (k == n) return substr(s, 1, i - 1); k++ }
+			return s
+		}
+		function shorten(s, lim,    cut) { # setup_report._shorten
+			gsub(/[ \t]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s)
+			if (ulen(s) <= lim) return s
+			cut = upre(s, lim - 1)
+			if (substr(s, length(cut) + 1, 1) != " " && index(cut, " ")) sub(/ [^ ]*$/, "", cut)
+			sub(/ +$/, "", cut)
+			return cut "\342\200\246"
+		}
+		function item_what(w,    p, head) {
+			gsub(/[ \t]+/, " ", w); sub(/^ /, "", w); sub(/ $/, "", w)
+			if (!match(w, /failed \(exit [0-9]+\):/) || (RSTART > 1 && substr(w, RSTART - 1, 1) ~ /[A-Za-z0-9_]/)) return shorten(w, 220)
+			if (ulen(w) <= 320) return w
+			p = RSTART; head = shorten(substr(w, 1, p - 1), 80)
+			if (head == "") return shorten(w, 320)
+			return head " " shorten(substr(w, p), 319 - ulen(head))
+		}
+		function row_what(row,    n, f, w) { # the report\047s own (redacted) friction row: "", unless it splits in five
+			n = split(row, f, / [|] /)
+			if (n != 5 || f[2] != "step 1" || f[3] != "error") return ""
+			w = f[4]; sub(/^prompt v[0-9]+, [^:]*: /, "", w)
+			return item_what(w)
+		}
+		function cut_item(line,    pre, j, tail) { # an Items line the older build cut before " → ", whole
+			pre = "- F" s1fline " \302\267 step 1 \302\267 error \302\267 "
+			if (s1what == "" || index(line, pre) != 1) return line
+			if ((j = index(line, "\342\200\246 \342\206\222 "))) tail = substr(line, j + 3)
+			else if (ends(line, "\342\200\246")) tail = ""
+			else return line
+			return pre s1what tail
+		}
 		# the helpers step note not-built-<names> as setup_report._helpers_note words it (a test keeps them
 		# equal), "" for any other token (B13 round 18 V6)
 		function not_built(tok,    n, a, i, what, head, ws, hs) {
@@ -4776,6 +4813,7 @@ older_report_rewrite() { # MODE
 			if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
 			if (inside && $0 == "</details>") inside = 0
 			if (inside && left($0)) k++
+			if (s1cmd && s1fline != "" && sec == "## Agent friction log" && match($0, "^ *" s1fline "  [0-9][0-9][0-9][0-9]-")) s1row = substr($0, RLENGTH - 4)
 			# a git stop after a finished attempt (B13 round 18 V31): the older build files the stopping error
 			# F<n> under "Agent friction (...; it does not change the outcome by itself)" beside "failed at step
 			# 1"; read here whether that is the whole block and the friction line names F<n> alone
@@ -4790,6 +4828,7 @@ older_report_rewrite() { # MODE
 			next
 		}
 		FNR == 1 && s1out && s1fr && mvline != "" && !afother { s1mv = 1; if (s1item == "") s1item = mvline }
+		FNR == 1 && s1row != "" { s1what = row_what(s1row); if (s1mv) s1item = cut_item(s1item) }
 		cp && FNR == at {
 			n = length($0) - length(saw)
 			if (noout && n > 0 && substr($0, n + 1) == saw)
@@ -4895,6 +4934,7 @@ older_report_rewrite() { # MODE
 		}
 		s1mv && sec == "## Summary" && $0 ~ /^Agent friction \(attempt [0-9]+; it does not change the outcome by itself\):$/ { blank = 0; afdrop = 1; next }
 		afdrop && $0 == mvline { blank = 0; afdrop = 0; next }
+		s1what != "" && sec == "## Summary" { $0 = cut_item($0) }
 		# v10\047s friction words, in both modes (B13 round 17 U27): the rerun the header names, the attempt\047s bits
 		# joined by "; ", "line N" for one line, and no "finished" tail beside a count of it
 		!det && !fence && (j = index($0, "(a line written after that is not in this report: run setup-report again)")) {

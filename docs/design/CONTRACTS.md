@@ -24834,6 +24834,18 @@ outside a fence, that starts `- macOS: macOS ` loses the second word; with no ve
 it reads `- macOS: ? (<build>)`, as `setup_report.sw_vers` writes it. A line in the current words passes unchanged.
 Test: `test_the_older_builds_macos_line_gives_the_version_and_build` (both modes).
 
+**The older build's cut git-error item is rebuilt as the renderer cuts it** (W25). Round 18 V34 gave the renderer's
+Items error line 320 characters, the command cut to 80, so git's reason stays; the v10 renderer cut it at 220 with
+the `prompt vN, <agent>: ` prefix still on it, before the reason, and the rewrite placed that line as it was (on
+V31's path, as `s1item`). Under a git stop the first pass now reads the report's own friction row for F<n> (the
+redacted `~~~text` row, never friction.md), splits it on ` | ` (exactly five fields, or the line is left), drops the
+stated prefix and applies `_item_what`'s rule by characters, as Python counts them: whole up to 320 when a `failed
+(exit N):` follows the command, else the command cut to 80 and the rest to the room left, each at a word's end with
+`…`; with no such match, `_shorten` at 220. Only an Items line whose what-text ends in `…` before ` → ` (or at the
+line's end) is replaced, its fix kept; on V31's path `s1item` is, never `mvline`, which the friction block's drop
+compares exactly. Test: `test_the_older_builds_cut_git_error_item_takes_the_renderers_cut` (oldr's and oldr2's
+states against `setup_report._item_what`, a row holding ` | `, and an error that was not cut).
+
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
 The B13 round 19 items of lane P (specs `round19/items/W<n>.md`, the verifier's corrected fix built unless a

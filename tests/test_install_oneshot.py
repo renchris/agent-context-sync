@@ -10638,6 +10638,80 @@ def test_a_git_stop_of_the_older_build_names_the_earlier_first_sync(
     assert _git_stop_report(env, tmp_path, friction, log, report).count("before this attempt") == 2, text
 
 
+_LONG_GIT_WHAT = (
+    "git -C ~/src/agent-context-sync pull --ff-only failed (exit 1): fatal: unable to access "
+    "'https://github.com/contoso/agent-context-sync.git/': Failed to connect to github.com port 443 after 1 "
+    "ms: Couldn't connect to server"
+)
+"""rehearsal D's git error, longer than the 220 characters the older build cut its Items line to."""
+
+
+@pytest.mark.parametrize(
+    "state", ["no end line", "after a finished attempt", "a what-text holding a bar", "a short error"]
+)
+def test_the_older_builds_cut_git_error_item_takes_the_renderers_cut(
+    env: dict[str, str], tmp_path: Path, state: str
+) -> None:
+    """B13 round 19 W25 (rehearsal D, oldr and oldr2): round 18 V34 gave the renderer's Items line room for
+    git's reason (320 characters, the command cut to 80), but the older build cut the line at 220 with its
+    "prompt vN, <agent>: " prefix, before the reason, and the rewrite placed that cut line as it was. The
+    line is rebuilt from the report's own friction row as setup_report._item_what words it, keeping its fix;
+    a row whose what-text holds " | " cannot be split and is left, and so is a line that was not cut."""
+    what = _LONG_GIT_WHAT if state != "a short error" else "git pull failed (exit 1): fatal: no route"
+    if state == "a what-text holding a bar":
+        what = what.replace("Failed to connect", "a | b Failed to connect")
+    stated = f"prompt v{COMPAT}, Claude Code test-agent: {what}"
+    fix = "a terminal that can reach GitHub (the network, or a proxy setting for git)"
+    finished = state == "after a finished attempt"
+    n = 5 if finished else 4
+    error = f"2026-10-18T10:00:30Z | step 1 | error | {stated} | {fix}"
+    rows = ["Attempt: 2026-10-18T09:00:00Z", f"Prompt: v{COMPAT}", "Agent: x"]
+    rows += [*(["2026-10-18T09:05:00Z | end | finished"] if finished else []), error]
+    old = f"- F{n} \u00b7 step 1 \u00b7 error \u00b7 {setup_report._shorten(stated)} \u2192 {fix}"
+    now = f"- F{n} \u00b7 step 1 \u00b7 error \u00b7 {setup_report._item_what(what, 'error')} \u2192 {fix}"
+    if finished:  # V31's shape: the older build files it under agent friction
+        summary = [
+            *_GIT_STOP_REPORT[4:6],
+            f"- agent friction: 0 deviation, 0 prompt, 1 error (F{n}); none of these changes the outcome by "
+            "itself",
+            _V10_TIME,
+            _GIT_STOP_REPORT[7],
+            "",
+            "Items that were not one command (attempt 1):",
+            "",
+            "- none",
+            "",
+            "Agent friction (attempt 1; it does not change the outcome by itself):",
+            "",
+            old,
+        ]
+    else:
+        summary = [*_GIT_STOP_REPORT[4:8], "", "Items that were not one command (attempt 1):", "", old]
+    report = "\n".join(
+        [
+            *_GIT_STOP_REPORT[:4],
+            *summary,
+            *_GIT_STOP_REPORT[8:],
+            "",
+            "## Agent friction log",
+            "",
+            "~~~text",
+            *(f"{i:3d}  {row}" for i, row in enumerate(rows, 1)),
+            "~~~",
+            "",
+        ]
+    )
+    friction = "\n".join(rows[3:]) + "\n"
+    text = _git_stop_report(env, tmp_path, friction, _EARLIER_LIST, report)
+    items = [ln for ln in _summary(text) + text.split("\n\n") if ln.startswith(f"- F{n} ")]
+    if state in ("a what-text holding a bar", "a short error"):
+        assert old in text.splitlines(), text
+        return
+    assert now != old and "Couldn't connect to server" in now
+    assert now in text.splitlines() and old not in text.splitlines(), (items, text)
+    assert _git_stop_report(env, tmp_path, friction, _EARLIER_LIST, text) == text, "a second pass"
+
+
 def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync(
     env: dict[str, str], tmp_path: Path
 ) -> None:
