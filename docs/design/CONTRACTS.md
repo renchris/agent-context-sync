@@ -24873,6 +24873,20 @@ sync and curate print one line for the same file (§16.143). Tests:
 `test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it` (tests/test_cli.py),
 `test_state_files_this_account_cannot_open_fail_by_their_cause` (tests/test_ops_doctor.py).
 
+**A report the time limit cut off says so in the NEXT the agent relays** (W3). A report whose doctor call (or an
+evidence part) the time limit cut off wrote `write the report again when this Mac is idle (...) before sending
+it` (`setup_report._IDLE_AGAIN`) in Doctor, the Summary and the evidence line, while install.sh's `--report-only`
+NEXT was the plain review line: nothing in the relayed line asked for it. install.sh reads the written report for
+that phrase (`LC_ALL=C grep -qF`, so an older installed agentsync without it adds nothing) and puts an advisory
+clause before the NEXT it would print, the unreadable-patch remedy's included: `the report's time limit cut part of
+it off (its Summary says which): if this Mac was busy, run ~/src/agent-context-sync/scripts/install.sh
+--report-only again once it is idle; either way, <the NEXT as before>`. The finder's `run --report-only again ...
+before reviewing` was not built: a doctor that is always slow (a hung pandoc, which the probe simulated) would hold
+the bring-back or loop an agent. The setup prompt's finish step still matches (it names bring-back.md, and keys
+the patch remedy on `does not hold a kept patch`, which the NEXT still says), and it is still one NEXT line. Test:
+`test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review` (tests/test_install_oneshot.py,
+with the stub's report, as the unreadable-patch NEXT tests).
+
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
 Lane RB's items of B13 round 19 (`docs/plans/bring-back-ocr.md`, "B13 round 19"): the shell report's re-add
