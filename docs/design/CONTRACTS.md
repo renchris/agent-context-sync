@@ -12270,6 +12270,8 @@ engine).`, and the kinds of file a re-read looks at are said in the table's lead
   - Amended 2026-10-20, §16.141 W31: a lock held with an empty body reads `another sync is running (or install.sh,
     a status or doctor check, or a cycle starting holds the lock); the reinstall waits for it to be free (at most
     <N>s)`, `reinstalling after the lock is free` and `the lock is still held after <N>s`.
+  - Amended 2026-10-20, §16.147 X32: `<who>` names the pass as the cycle's wait line does (`the background job,
+    pass poll`, `a sync not started by the background job, pass poll`).
   - lockf writes no body, keeps the file and its mode and never creates one, so the next sync breaks no stale
     lock that lockf left. A crashed cycle's body is kept as it was (the next sync still breaks it and runs
     FULL passes); while the reinstall holds the lock, a job, status or doctor then names that dead pid as
@@ -25672,6 +25674,13 @@ both lines nested two deep (`... (stopped by SIGTERM (a tool timeout?)) before i
 SIG<NAME> (signal N)` is R81's phrase shared with `ocr._ended`, doctor and the report, so both stay. Tests:
 `test_a_stopped_run_logs_its_end_and_names_the_rerun` (no line of a SIGTERM-stopped run nests brackets deeper than
 one, by a depth count) and `test_a_signal_inside_add_source_keeps_its_held_error`'s `rc_meaning` list.
+
+**The reinstall's wait names the holder's pass as the cycle's wait does** (X32; amends §16.41 H33). Round 19 W29
+changed `ops/lock.py`'s `_wait_words`, which the cycle's `another sync is running (...); waiting for it to finish`
+line reads, to `..., pass poll, pid <pid>, active <N>s ago`; `holder_words` kept `_describe_holder`'s `its pass:
+poll`, so the two foreground wait lines named one holder two ways. It now writes `, pass <pass>`. `its pass:`
+stays in `_describe_holder` and in the skip warning, doctor and the report, which already differed from the wait
+line. Test: `test_the_reinstall_names_who_started_the_sync_it_waits_for` (`... background job, pass poll`).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 

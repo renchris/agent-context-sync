@@ -6366,7 +6366,7 @@ hold_locks() { # LOCKS: sets the caller's held to the nested holds, with one dea
 	done <<<"$1"
 }
 # Who started the sync that holds the lock $1, in the words of agentsync's own lines (ops/lock.py _STARTED_BY,
-# with its pass as _describe_holder adds it). The lock body ("<pid> <boot_time> <iso> <label>") names no
+# with its pass worded as _wait_words gives it, the cycle's wait line: B13 round 19 W29, round 20 X32). The lock body ("<pid> <boot_time> <iso> <label>") names no
 # starter; the holder sidecar <lock>.json does since B13 round 10 L73, for the body's own pid only. A holder
 # from an older build (the usual one during a reinstall: the installed build is the older one), a sidecar of
 # another pid or anything unreadable gets the either-or words; an empty body (lockf, a probe, a cycle starting)
@@ -6387,7 +6387,7 @@ holder_words() { # LOCK
 	other) who="a sync not started by the background job" ;;
 	*) pass="" ;;
 	esac
-	case "$pass" in poll | reconcile | dry_run) who="$who, its pass: $pass" ;; esac
+	case "$pass" in poll | reconcile | dry_run) who="$who, pass $pass" ;; esac
 	printf '%s' "$who"
 }
 # uv.lock's versions of agentsync's dependencies as a constraints file for `uv tool install` (its path, none

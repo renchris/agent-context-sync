@@ -719,8 +719,8 @@ On a re-run, step 2 waits for a running sync before it reinstalls agentsync, at 
 ([CONTRACTS §16.41](../design/CONTRACTS.md), "The reinstall holds the background sync's lock"). The lines are
 `agentsync: another sync is running (<who>); ...` and
 `agentsync: reinstalling after the other sync ends, still running, <N>s`. `<who>` is what the lock's holder sidecar
-says for the lock body's own pid, in doctor's words: `the background job, its pass: poll` or `a sync not started by
-the background job, its pass: poll` (a build since B13 round 10 L73 records it). For a holder that records nothing,
+says for the lock body's own pid, in the words of agentsync's own wait line: `the background job, pass poll` or `a sync
+not started by the background job, pass poll` (a build since B13 round 10 L73 records it; B13 round 20 X32). For a holder that records nothing,
 usually the older installed build that is being replaced, it reads `the background job, or a sync started another
 way`: the environment cannot tell a terminal from cron or an agent's shell (B13 round 7 H33, round 11 M43, M60). A lock held with an empty body is held by no sync (install.sh, a status or doctor check, or a cycle starting), and its lines say so: `agentsync: another sync is running (or install.sh, a status or doctor check, or a cycle starting holds the lock); the reinstall waits for it to be free (at most <N>s)`, `agentsync: reinstalling after the lock is free, still running, <N>s` and `agentsync: the lock is still held after <N>s; reinstalling without waiting longer` (B13 round 19 W31). A poll that exits 75 at that
 time was skipped on purpose: the reinstall held its lock, and launchd starts the next at its interval. The
