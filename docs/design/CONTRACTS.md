@@ -25667,6 +25667,35 @@ X50 every damaged root stops step 2 at its config step, which is where the claus
 config step's clause and never "at its status or its first sync"; the logged word is `state` when this build's
 probe reads the damaged index, else `state-table`, so the test holds before and after X50 lands).
 
+**Step 1 names a state file this account cannot open, and whose fix it is** (X9, X29, X26). A manifest at mode 0000
+made `manifest_unreadable` and the `state-table` probe both fail to open it (CANTOPEN, which neither reads as damage),
+so step 1's NEXT ended `(none is needed)`, while step 2's init then exited 1 at its config step (`cannot be opened:
+Permission denied`, W65). `config_errors` now first reads the state folder, the manifest, its `-wal` and its `-shm`
+as doctor's `state_dir` lines judge them (`os.getuid`, `os.access`): `state-owner` when another account owns one,
+`state-access` when this account lacks read and write on one (and search, for the folder) or is refused a stat of it; then
+no other read of the file is made. Their clauses have no reinstall form, since no build can open the file either, and
+are never worded as damage: `; step 2 stops at its config step on agentsync's state file, which another account
+owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo),
+and ~/.local/bin/agentsync status prints it on its state_dir lines`, and `; step 2 stops at its config step on
+agentsync's state file, which this account cannot open (a mode, not damage): the chmod that fixes it is the agent's
+to run, and ~/.local/bin/agentsync status prints it on its state_dir lines`. Not a widened `manifest_unreadable`
+(X29's verifier): its callers would file a permission problem as damage, whose fix moves an intact file aside.
+Step 2: `config_failed` gives exit 1 the person's NEXT when `state_owned_elsewhere`, a read of the config's state path
+by the agentsync step 2 installed, finds another account's owner (`agentsync's state file or its folder is owned by
+another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the
+sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a
+step for the agent, ...`),
+keyed on that probe, never on exit 1 or the error's words. This account's own file keeps fail's `fix the error above`
+(X26's verifier, "makes things worse" for the other reading): its fix is a chmod of the person's own file, which the
+agent can run and step 2's error names, and the exit-65 NEXT would put an intact manifest under the damaged-file
+story whose remedy moves it aside, the loss W65 exit 1 was built to avoid. Tests:
+`test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open` (a 0000 manifest, a 0400 `-wal`, a
+0000 state folder, another account's owner by a stubbed uid, and a manifest put back at 0600, which ends `(none is
+needed)`), `test_a_state_file_another_account_owns_is_the_persons_to_fix` (another account's owner gets the
+person's NEXT; this account's own keeps `fix the error above`) and, with the real agentsync,
+`test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says` (step 1's clause, step 2's exit 1 at its
+config step with `cannot be opened: Permission denied`, and a pass after the chmod).
+
 ### 16.149 Round 20: an unopenable manifest, index-root damage and staging's exclusion (2026-10-20, wave B13 round 20 lane B)
 
 Reserved for round 20 lane B of B13.

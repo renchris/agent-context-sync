@@ -6848,6 +6848,81 @@ def test_list_folders_names_the_config_step_2_stops_on_when_the_build_is_this_ch
     assert cp.returncode == 0 and last_line(cp).endswith("(none is needed)"), last_line(cp)
 
 
+def _tool_python_as_another_account(env: dict[str, str]) -> Path:
+    """:func:`_tool_python` whose ``os.getuid`` answers another account's uid when install.sh's ``-c`` code
+    runs, so every file the test made reads as another account's (a test cannot chown)."""
+    py = _tool_python(env)
+    run = 'exec(compile(sys.argv.pop(1), "<string>", "exec"))'
+    shim = f"import os, sys\n_uid = os.getuid() + 1\nos.getuid = lambda: _uid\n{run}\n"
+    return _write_exe(
+        py,
+        "#!/bin/bash\n"
+        '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+        'code="$3"\nshift 3\n'
+        f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+    )
+
+
+STATE_OPEN_TAIL = {
+    "state-access": (
+        "; step 2 stops at its config step on agentsync's state file, which this account cannot open (a "
+        "mode, not damage): the chmod that fixes it is the agent's to run, and ~/.local/bin/agentsync status "
+        "prints it on its state_dir lines"
+    ),
+    "state-owner": (
+        "; step 2 stops at its config step on agentsync's state file, which another account owns, so this "
+        "one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no "
+        "sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines"
+    ),
+}
+"""Step 1's tails for a state file this account cannot open (B13 round 20 X9, X29)."""
+
+
+@pytest.mark.parametrize("state", ["PM", "PM-wal", "PM-folder", "PM-owner", "PM-fixed"])
+def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
+    env: dict[str, str], state: str
+) -> None:
+    """B13 round 20 X9, X29 (probes PM, 51): with manifest.sqlite at mode 0000, step 1's manifest probes
+    failed to open it (CANTOPEN, which neither reads as damage) and the NEXT ended "(none is needed)", while
+    step 2 then stopped at its config step ("cannot be opened: Permission denied"). Step 1 now reads the
+    owner and modes of the state folder, the manifest, its -wal and its -shm, as doctor's state_dir lines
+    do, and names that stop: this account's own file is a chmod the agent runs (X26), another account's a
+    sudo chown, the person's. Neither is worded as damage. Put back at 0600, the clause is gone."""
+    _config_step_2_stops_on(env, "clean-real")
+    db = _state_db(env)
+    wal = db.with_name(db.name + "-wal")
+    word = "state-owner" if state == "PM-owner" else "state-access"
+    try:
+        if state == "PM-owner":
+            _tool_python_as_another_account(env)
+        else:
+            _tool_python(env)
+        if state in ("PM", "PM-fixed"):
+            db.chmod(0)
+        elif state == "PM-wal":
+            wal.write_bytes(b"")
+            wal.chmod(0o400)
+        elif state == "PM-folder":
+            db.parent.chmod(0)
+        if state == "PM-fixed":
+            db.chmod(0o600)
+        cp = install_sh(env, "--list-folders")
+    finally:
+        db.parent.chmod(0o700)
+        for f in (db, wal):
+            if f.exists():
+                f.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    logged = install_log(env)[-2]
+    if state == "PM-fixed":
+        assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
+        return
+    assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
+    assert "(none is needed)" not in last_line(cp) and "reinstalls" not in last_line(cp), last_line(cp)
+    assert "damaged" not in last_line(cp) and "cannot be read" not in last_line(cp), last_line(cp)
+    assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
+
+
 def test_list_folders_names_a_mirrored_source_that_is_no_listed_folder_without_its_id(
     env: dict[str, str],
 ) -> None:
@@ -7591,6 +7666,69 @@ def test_a_state_file_that_cannot_be_read_is_the_persons_to_fix(
     )
     assert " " in folder.name and f"{rerun} [setup report: " in last_line(cp), last_line(cp)
     assert "\\ " not in last_line(cp), last_line(cp)
+
+
+@pytest.mark.parametrize("owner", ["another account", "this account"])
+def test_a_state_file_another_account_owns_is_the_persons_to_fix(
+    env: dict[str, str], wheel: Path, owner: str
+) -> None:
+    """B13 round 20 X9, X26: a state file this account cannot open makes init and add-source exit 1
+    ("cannot be opened: Permission denied"), and config_failed had no NEXT for it, so fail's "fix the error
+    above" handed the agent a sudo chown when another account owned it, though the agent runs no sudo. That
+    one is the person's now, keyed on the installed agentsync finding the owner, never on exit 1 or the
+    error's words. This account's own file keeps "fix the error above": its fix is a chmod the agent runs,
+    and the damaged-file NEXT would put an intact manifest under a fix that moves it aside (X26)."""
+    if owner == "another account":
+        _tool_python_as_another_account(env)
+    else:
+        _tool_python(env)
+    _write_config(env, _inbox(env))
+    db = _state_db(env)
+    db.parent.mkdir(parents=True)
+    db.write_bytes(b"")
+    cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert one_next(cp)
+    if owner == "this account":
+        assert last_line(cp).startswith("NEXT: fix the error above, then re-run: "), last_line(cp)
+        return
+    assert last_line(cp).startswith(
+        "NEXT: agentsync's state file or its folder is owned by another account, so this one cannot open "
+        "it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes "
+        "it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for "
+        "the agent, so show them the error and go on to the report; once it is fixed, the next run is: "
+        f"{INSTALL_SH} {wheel}"
+    ), last_line(cp)
+
+
+def test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 20 X9, X26, X29 (probes PM, 51, 53), with the real agentsync: a manifest at mode 0000.
+    Step 1 says step 2 stops at its config step on it, a chmod the agent runs; step 2 stops there with the
+    error's own fix and fail's "fix the error above"; after the chmod, step 2 passes."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    db.chmod(0)
+    try:
+        listed = install_sh(env, "--list-folders")
+        assert listed.returncode == 0, listed.stdout + listed.stderr
+        assert last_line(listed).endswith(STATE_OPEN_TAIL["state-access"]), last_line(listed)
+        cp = install_sh(env, str(wheel))
+    finally:
+        db.chmod(0o600)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert "cannot be opened: Permission denied" in cp.stderr, cp.stderr
+    assert last_line(cp).startswith("NEXT: fix the error above, then re-run: "), last_line(cp)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
 
 
 def test_no_next_names_the_percent_q_args() -> None:

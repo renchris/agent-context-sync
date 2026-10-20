@@ -6084,9 +6084,16 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     for _, said in words:
         assert f"`{said.replace('$CONFIG', '<config>')}`" in section, said
     assert "Since v29 that word gives the same `agentsync's state file, which cannot be read`" in section
+    # B13 round 20 X9, X29: a state file this account cannot open has its own tails, by owner
+    opened = re.findall(
+        r'^\t\tcase ",\$cerr," in \*",(state-\w+),"\*\) stail="(; [^"]*)" ;; esac$', script, re.M
+    )
+    assert [w for w, _ in opened] == ["state-owner", "state-access"]
+    for word, said in opened:
+        assert f"`{word}`, `{said}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
-        "`state`, `remote` and `state-table`" in section
+        "`state`, `remote`, `state-table`, `state-access` and `state-owner`" in section
     )
     [row] = [
         ln for ln in _feedback_page().splitlines() if ln.startswith("| `~/agent-context/setup/install.log`")

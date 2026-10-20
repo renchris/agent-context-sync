@@ -587,12 +587,21 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   Since v29 that word gives the same `agentsync's state file, which cannot be read`: this checkout's agentsync reads
   each root page too (round 19 W41, round 20 X50), so step 2's config step stops on it, and only an older installed
   build reads `state-table`, which step 2 reinstalls first. Its v27 tail, `(at its status or its first sync)`, was
-  false for an index: a status and a sync with nothing new read none, and step 2 passed (round 20 X72). When step 2 would reinstall agentsync first
+  false for an index: a status and a sync with nothing new read none, and step 2 passed (round 20 X72). Since v29 a
+  state folder, `manifest.sqlite` or its `manifest.sqlite-wal` or `manifest.sqlite-shm` this account cannot open, which no probe can read, adds a tail of its
+  own, with no reinstall form, since any build stops at its config step on it (round 20 X9, X29): logged
+  `state-owner`, `; step 2 stops at its config step on agentsync's state file, which another account owns, so this
+  one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
+  ~/.local/bin/agentsync status prints it on its state_dir lines`, or, for this account's own, `state-access`, `;
+  step 2 stops at its config step on agentsync's state file, which this account cannot open (a mode, not damage):
+  the chmod that fixes it is the agent's to run, and ~/.local/bin/agentsync status prints it on its state_dir
+  lines`. When step 2 would reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it
   too, step 2 stops at its config step on <what>: ...`. The tail is on every list whose `NEXT:` points to step 2,
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
-  `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote` and `state-table`,
+  `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
+  `state-access` and `state-owner`,
   never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`

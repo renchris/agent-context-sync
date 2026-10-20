@@ -5661,7 +5661,10 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # INDEXED BY) skips that one b-tree. This checkout's manifest_unreadable reads every table's (round 19 W41) and
 # every index's (round 20 X50) root page the same way, so an installed build of it says "state", and
 # "state-table" comes only from an older one, whose damage step 2's reinstalled build stops on at its config
-# step (round 20 X72). Fixed words only,
+# step (round 20 X72). "state-owner" when another account owns the state folder, the manifest, its -wal or its
+# -shm, and "state-access" when this account lacks read and write on one (and search on the folder), as doctor's
+# state_dir lines judge them: the manifest probes, whose open fails as CANTOPEN, said nothing, and step 2 then
+# stopped at its config step (round 20 X9, X29); then no other read of the file is made. Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
 # its own, after synced_folders and allowed to fail: a name an older agentsync lacks reads nothing for that
 # check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
@@ -5669,7 +5672,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # this runs in is imported.
 config_errors() { # PYTHON
 	with_timeout 5 "$1" -I -c '
-import sqlite3, sys
+import os, sqlite3, sys
 from pathlib import Path
 from agentsync.config import ConfigError, load_config
 from agentsync.paths import expand
@@ -5704,7 +5707,26 @@ if load_governance is not None:
         except Exception:
             pass
 db = expand(config.state_paths.db)
-if db.is_file():
+# a state folder, manifest, -wal or -shm this account cannot open: another account owns one, or it lacks read
+# and write (and search, for the folder) for this one; its probes below could not open it either
+access = None
+for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+    try:
+        st = p.stat()
+    except PermissionError:
+        access = "state-access"
+        break
+    except OSError:
+        continue
+    if st.st_uid != os.getuid():
+        access = "state-owner"
+        break
+    if not os.access(p, os.R_OK | os.W_OK | (os.X_OK if p == db.parent else 0)):
+        access = "state-access"
+        break
+if access:
+    words.append(access)
+elif db.is_file():
     try:
         from agentsync.ops.doctor import manifest_unreadable
     except ImportError:
@@ -5854,7 +5876,7 @@ list_folders() {
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
-				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 			fi
 		fi
@@ -5970,7 +5992,13 @@ list_folders() {
 		# status and a sync with nothing new read none, and step 2 passed (round 20 X1, X25, X71, X72).
 		case ",$cerr," in *",state,"* | *",state-table,"*) ctail="${ctail:+$ctail and }agentsync's state file, which cannot be read" ;; esac
 		case ",$cerr," in *",remote,"*) ctail="${ctail:+$ctail and }a git remote on the docs repo that [governance] does not allow" ;; esac
+		# A state file this account cannot open is no damage, and its stop is the config step's whatever build
+		# step 2 installs (it cannot open the file either), so these clauses have no reinstall hedge. Another
+		# account's file or folder needs a sudo chown, the person's; this account's own needs a chmod, which
+		# the agent runs as it fixes any error step 2 stops on (round 20 X9, X26, X29).
 		stail=""
+		case ",$cerr," in *",state-owner,"*) stail="; step 2 stops at its config step on agentsync's state file, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
+		case ",$cerr," in *",state-access,"*) stail="; step 2 stops at its config step on agentsync's state file, which this account cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
 			:
@@ -6659,6 +6687,32 @@ print(len(governance.remote_policy_findings(repo, gov)) if (repo / ".git").exist
 	esac
 	printf '%s' "$n"
 }
+# Whether another account owns agentsync's state folder, manifest, -wal or -shm, as the agentsync step 2
+# installed reads the config's state path (doctor's state_dir lines judge the same owners): init and
+# add-source then exit 1 ("cannot be opened: Permission denied"), and the fix, a sudo chown, is the person's
+# (B13 round 20 X9). A file of this account's own that it cannot open is not: its chmod is the agent's (X26).
+# False when it cannot say. -I: nothing from the folder this runs in is imported.
+state_owned_elsewhere() {
+	local n=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import os, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.paths import expand
+
+db = expand(load_config(Path(sys.argv[1])).state_paths.db)
+owned = 0
+for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+    try:
+        owned = owned or int(p.stat().st_uid != os.getuid())
+    except OSError:
+        pass
+print(owned)
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	[ "$n" = 1 ]
+}
 # A config agentsync refuses (exit 78, EX_CONFIG: "configuration error: ...") is the person's to fix: a re-run
 # fails the same way, and the agent's own mistakes here (a folder that is not there, one inside the docs repo)
 # exit 2, which keeps fail's "fix the error above". So the NEXT names the owner and leads with what the agent
@@ -6676,7 +6730,10 @@ print(len(governance.remote_policy_findings(repo, gov)) if (repo / ".git").exist
 # 1 for it (EXIT_FAILED) after the "governance: remote ..." line, whose removal or allowing is theirs, and fail's
 # "fix the error above" sent the agent to remove the remote. Exit 1 alone is any failure, so the NEXT is keyed on
 # the installed agentsync finding such a remote (docs_remotes_refused), never on the code or the error's words
-# (B13 round 17 U2, U16). Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
+# (B13 round 17 U2, U16). So is a state folder or file another account owns, which init and add-source exit 1
+# on too (state_owned_elsewhere; round 20 X9); this account's own, which they also exit 1 on, keeps fail's "fix
+# the error above": the error's fix is a chmod the agent runs, and moving the file aside loses history (X26).
+# Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
 # 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
 # before the switch to $BASE_ARGS below.
 config_failed() { # MESSAGE (the failed agentsync call's status is $?)
@@ -6690,6 +6747,9 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	fi
 	if [ "$rc" -eq 1 ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
 		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
+	fi
+	if [ "$rc" -eq 1 ] && state_owned_elsewhere; then
+		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	fi
 	[ "$rc" -ne 65 ] ||
 		FAIL_NEXT="agentsync's state file cannot be read (the error above, with its fix; ~/.local/bin/agentsync status prints it again): fixing it is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
