@@ -711,6 +711,37 @@ def _org_edges(form: str, lead: str, trail: str) -> tuple[str, str]:
     return lead, trail
 
 
+_OUTPUT_WORDS = frozenset(
+    {
+        "arm",
+        "auto",
+        "claude",
+        "dep",
+        "enrolled",
+        "enrollment",
+        "env",
+        "evaluate",
+        "info",
+        "launchagent",
+        "microsoft",
+        "pac",
+        "reachable",
+        "resolves",
+        "returns",
+        "unsupported",
+        "via",
+    }
+)
+"""Words the report prints from command or agent output, not from its own literals (B13 round 18 V84, V86):
+``uname -m``'s arm, ``profiles status -type enrollment``'s fixed words, the embedded agentsync doctor lines'
+env, info and resolves, the agent's name, and the words of ``net.PAC_UNSUPPORTED``'s sentence that
+:func:`report_words` lacks (a test holds them in). A one-word organisation, folder or library named like one
+makes the report private only, as a report word does: the text around its placeholder gives it back. It
+changes nothing else (the value is still cut out of a longer word, and the source-id, path and proxy rules
+keep reading :func:`report_words`). scripts/install.sh's ``output_word`` holds the same list (a test keeps
+them equal). Its literals are not report words (:func:`report_words` leaves this assignment out)."""
+
+
 @functools.cache
 def report_words() -> frozenset[str]:
     """The lower-case words of 3 or more letters the report prints: :data:`_JOINED_WORDS` and every such word
@@ -734,7 +765,8 @@ def report_words() -> frozenset[str]:
             for node in ast.walk(tree)
             if isinstance(node, ast.Assign)
             and any(
-                isinstance(t, ast.Name) and t.id in ("_SIGN_IN_APPS", "_TERMINAL_APPS") for t in node.targets
+                isinstance(t, ast.Name) and t.id in ("_SIGN_IN_APPS", "_TERMINAL_APPS", "_OUTPUT_WORDS")
+                for t in node.targets
             )
             for leaf in ast.walk(node.value)
         }
@@ -1202,6 +1234,7 @@ class Redactor:
         if joined and _norm(value) in self._joined:
             return
         word = len(_tokens(value)) == 1 and _norm(value) in report_words()
+        printed = word or (len(_tokens(value)) == 1 and _norm(value) in _OUTPUT_WORDS)  # V86: private only
         context = word and fuzzy and kind == "org" and _norm(value) in _CONTEXT_ORG_WORDS  # B13 round 6 G46
         if context and _norm(value) in self._context:
             return
@@ -1218,7 +1251,7 @@ class Redactor:
         self._kind_of.setdefault(placeholder, kind)
         # a name every OneDrive or Google Drive has ("Documents") reads back as nothing private (round 6 G48)
         generic = kind in ("folder", "library") and value in _GENERIC_FOLDERS
-        if word and kind in ("folder", "library", "org") and not context and not generic:
+        if printed and kind in ("folder", "library", "org") and not context and not generic:
             self._word_named.add(placeholder)
         if joined:  # matched with a separator or a CamelCase boundary only (report_words)
             self._joined[_norm(value)] = placeholder
@@ -1229,10 +1262,11 @@ class Redactor:
         elif fuzzy and len(_norm(value)) >= 3 and _tokens(value):
             self._fuzzy.setdefault(_norm(value), placeholder)
             # an organisation is also matched inside a longer word at a CamelCase, digit or leading-capital
-            # boundary ("ContosoGroup", "Contoso2026", "AcmeContoso"), unless it spells a report word (B13
-            # round 11 M50); folders and libraries stay whole-word
-            org = kind == "org" and _norm(value) not in report_words()
-            self._literals.append((value, "org" if org else "fuzzy"))
+            # boundary ("ContosoGroup", "Contoso2026", "AcmeContoso"; B13 round 11 M50), one that spells a
+            # report word too: "MyGatewayTeam" stayed in clear in a section said to be redacted, while the
+            # word itself already makes the report private only (round 18 V1). Folders and libraries stay
+            # whole-word; joined names and context organisations branch off above
+            self._literals.append((value, "org" if kind == "org" else "fuzzy"))
         elif url:
             self._url_hosts[_bare(value).lower()] = placeholder
             self._literals.append((value, "url"))

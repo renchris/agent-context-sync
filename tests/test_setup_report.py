@@ -531,6 +531,45 @@ def test_a_one_word_organisation_that_is_a_report_word_is_matched_only_in_folder
     )
 
 
+@pytest.mark.parametrize("org", ["Gateway", "Status", "Arm"])
+def test_an_organisation_named_like_a_report_word_is_cut_out_of_a_longer_word_too(org: str) -> None:
+    """B13 round 18 V1: an organisation that spells a report word fell back to whole-word matching, so
+    "MyGatewayTeam", "Gateway2026" and "AcmeGateway" stayed in clear in a section said to be redacted. It is
+    cut out of a longer word as any other one-word organisation is (M50); the word itself still makes the
+    report private only. agentsync's own CamelCase names stay whole."""
+    red = setup_report.Redactor()
+    red.add("org", org, fuzzy=True)
+    said = f"My{org}Team, {org}2026, Acme{org}; {org}; OneDrive, LaunchAgent, ~/agent-context"
+    assert red.redact(said) == (
+        "My<org-1>Team, <org-1>2026, Acme<org-1>; <org-1>; OneDrive, LaunchAgent, ~/agent-context"
+    )
+    assert red.private_only
+
+
+def test_an_organisation_named_like_a_word_of_command_output_makes_the_report_private_only() -> None:
+    """B13 round 18 V86 (with lane RB's V84): the report prints ``profiles status``' "Enrolled via DEP: No",
+    ``uname -m``'s arm64 and net.PAC_UNSUPPORTED's sentence, words in none of its literals, so an organisation
+    named Via read "Enrolled <org-1> DEP" in a report still offered for the public issue form. Those words
+    (``_OUTPUT_WORDS``, install.sh's ``output_word``) make it private only, and change nothing else: the value
+    is still cut out of a longer word, and they are no report words."""
+    red = setup_report.Redactor()
+    red.add("org", "Via", fuzzy=True)
+    assert red.redact("- MDM enrollment: Enrolled via DEP: No; ViaGroup, AcmeVia") == (
+        "- MDM enrollment: Enrolled <org-1> DEP: No; <org-1>Group, Acme<org-1>"
+    )
+    assert red.private_only
+    pac = setup_report.Redactor()
+    pac.add("org", "Unsupported", fuzzy=True)
+    assert "<org-1>" in pac.redact(f"[warn] network.proxy — {net.PAC_UNSUPPORTED}") and pac.private_only
+    control = setup_report.Redactor()
+    control.add("org", "Contoso", fuzzy=True)
+    assert control.redact("Enrolled via DEP: No") == "Enrolled via DEP: No" and not control.private_only
+    words = setup_report.report_words()
+    assert not ({"via", "dep", "enrolled", "unsupported"} & words), "no report words: only private only"
+    printed = set(re.findall(r"[a-z]{3,}", net.PAC_UNSUPPORTED.lower()))
+    assert printed - words <= setup_report._OUTPUT_WORDS, printed - words - setup_report._OUTPUT_WORDS
+
+
 @pytest.mark.parametrize("link", [True, False], ids=["symlink", "folder"])
 def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
     fake_mac: dict[str, Path], link: bool
