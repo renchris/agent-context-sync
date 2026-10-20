@@ -6429,37 +6429,53 @@ add_source_filter() { # I N HELD MARK
 # with nothing written) says the folder was added, not that add-source failed, and the step's log line counts
 # the add (note=added-then-refused, with kept= and added= when the installed agentsync can count them), which
 # the report reads as an add (B13 round 17 U40). Every later folder is not added: the loop stops at the first
-# refusal, each would be refused the same way, and the re-run names them.
+# refusal, each would be refused the same way, and the re-run names them. The same holds for exit 1 after the
+# block (a docs-repo remote [governance] does not allow: cli._ensure_setup's _refuse_remotes), and for any
+# other failure after it: the mark, not the code, says the folder was added; the code and docs_remotes_refused
+# only word the cause, and the log line carries the real code (B13 round 18 V47). The call's stderr is held in
+# ERRF and printed once the pipeline ends, before the held lines and the error: printed as it came, its
+# "configuration error:" line overtook the "added source" block, which awk's piped stdout holds in a buffer
+# until it exits, so the error read as if the folder had not been added (B13 round 18 V26). add-source writes
+# only short lines to stderr (an error, a governance: line), and no ticker, so holding them delays nothing.
 if [ "${#FOLDERS[@]}" -gt 0 ]; then
 	nth=0
 	HELD=""
 	[ "${#FOLDERS[@]}" -eq 1 ] || HELD="$(mktemp)"
 	MARK="$(mktemp)"
+	ERRF="$(mktemp)"
 	for f in "${FOLDERS[@]}"; do
 		nth=$((nth + 1))
 		: >"$MARK"
-		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || {
-			HELD_RC=$?
-			[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
-			WHY="agentsync add-source $f failed (see the error above)"
-			if [ "$HELD_RC" -eq 78 ] && [ -s "$MARK" ]; then
-				WHY="the folder $f was added to $CONFIG, but agentsync refuses the config (see the error above)"
-				left=$((${#FOLDERS[@]} - nth))
-				[ "$left" -ne 1 ] || WHY="$WHY; the 1 folder after it was not added"
-				[ "$left" -le 1 ] || WHY="$WHY; the $left folders after it were not added"
-				NOW="$(synced_count)"
-				if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -gt "$KEPT" ]; then
-					step_end failed 78 "added-then-refused kept=$KEPT added=$((NOW - KEPT))"
-				else
-					step_end failed 78 "added-then-refused"
-				fi
+		: >"$ERRF"
+		HELD_RC=0
+		run "$AGENTSYNC" add-source "$f" --config "$CONFIG" </dev/null 2>"$ERRF" | add_source_filter "$nth" "${#FOLDERS[@]}" "$HELD" "$MARK" || HELD_RC=$?
+		cat "$ERRF" >&2
+		[ "$HELD_RC" -ne 0 ] || continue
+		[ -z "$HELD" ] || { cat "$HELD" && rm -f "$HELD"; }
+		WHY="agentsync add-source $f failed (see the error above)"
+		if [ -s "$MARK" ]; then
+			if [ "$HELD_RC" -eq 78 ]; then
+				WHY="the folder $f was added to $CONFIG, but agentsync refuses the config (the configuration error just above)"
+			elif [ "$HELD_RC" -eq 1 ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
+				WHY="the folder $f was added to $CONFIG, but the docs repo has a git remote [governance] does not allow (the governance: line above)"
+			else
+				WHY="the folder $f was added to $CONFIG, but agentsync add-source failed after adding it (see the error above)"
 			fi
-			rm -f "$MARK"
-			(exit "$HELD_RC") || config_failed "$WHY"
-		}
+			left=$((${#FOLDERS[@]} - nth))
+			[ "$left" -ne 1 ] || WHY="$WHY; the 1 folder after it was not added"
+			[ "$left" -le 1 ] || WHY="$WHY; the $left folders after it were not added"
+			NOW="$(synced_count)"
+			if [ -n "$KEPT" ] && [ -n "$NOW" ] && [ "$NOW" -gt "$KEPT" ]; then
+				step_end failed "$HELD_RC" "added-then-refused kept=$KEPT added=$((NOW - KEPT))"
+			else
+				step_end failed "$HELD_RC" "added-then-refused"
+			fi
+		fi
+		rm -f "$MARK" "$ERRF"
+		(exit "$HELD_RC") || config_failed "$WHY"
 	done
 	[ -z "$HELD" ] || rm -f "$HELD"
-	rm -f "$MARK"
+	rm -f "$MARK" "$ERRF"
 	RERUN_ARGS="$BASE_ARGS" # every add-source that failed stopped the run: each folder is in the config now
 else
 	run "$AGENTSYNC" init --config "$CONFIG" </dev/null || config_failed "agentsync init failed (see the error above)"

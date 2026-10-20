@@ -7185,12 +7185,14 @@ def test_a_folder_added_before_agentsync_refuses_the_config_is_no_failed_add(
     beta.mkdir()
     gamma.mkdir()
     args = [str(wheel), "--source-local", str(beta)] + (["--source-local", str(gamma)] if more else [])
+    refused = cfg.read_text(encoding="utf-8")
     cp = install_sh(env, *args)
     out = cp.stdout + cp.stderr
     assert cp.returncode == 1, out
     assert "added source 'beta'" in cp.stdout and "configuration error: " in cp.stderr, out
     said = (
-        f"error: the folder {beta} was added to {cfg}, but agentsync refuses the config (see the error above)"
+        f"error: the folder {beta} was added to {cfg}, but agentsync refuses the config (the configuration "
+        "error just above)"
     )
     assert said + ("; the 1 folder after it was not added" if more else "") + "\n" in cp.stderr, out
     assert "failed (see the error above)" not in out and "folder(s)" not in out, out
@@ -7199,6 +7201,22 @@ def test_a_folder_added_before_agentsync_refuses_the_config_is_no_failed_add(
     assert logged.endswith(" note=added-then-refused kept=1 added=1"), logged
     assert last_line(cp).startswith(f"NEXT: the config {cfg} loads, but agentsync refuses a value in it"), out
     assert f'path = "{beta}"' in cfg.read_text(encoding="utf-8") and str(gamma) not in cfg.read_text("utf-8")
+    # B13 round 18 V26: in one stream, as a terminal shows it, the error came before the "added source" block
+    # (awk's piped stdout is buffered until it exits); the call's stderr is now printed after the block
+    after = cfg.read_text(encoding="utf-8")
+    cfg.write_text(refused, encoding="utf-8")
+    one = subprocess.run(
+        [BASH32, str(INSTALL_SH), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+        stdin=subprocess.DEVNULL,
+    ).stdout
+    assert one.index("added source 'beta'") < one.index("configuration error: ") < one.index(said), one
+    assert cfg.read_text(encoding="utf-8") == after
     if more:
         return
     # the person fixes the value; the same command keeps the block (the report's count of that add:
@@ -7237,7 +7255,19 @@ def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_to_settle(
     out = cp.stdout + cp.stderr
     assert cp.returncode == 1, out
     assert "governance: remote origin (" in cp.stderr and "the person removes it (git -C " in cp.stderr, out
-    assert ("config", "failed", "1", "") in steps(install_log(env))
+    if call == "init":
+        assert ("config", "failed", "1", "") in steps(install_log(env))
+    else:
+        # B13 round 18 V47: add-source wrote Beta's block, then exited 1 on the remote; U40's branch read
+        # only exit 78, so this said "add-source <folder> failed" and logged no add, which the report dropped
+        assert f'path = "{other}"' in (home / "agent-context" / "sources.toml").read_text(encoding="utf-8")
+        [logged] = [ln for ln in install_log(env) if "step=config " in ln and "rc=1 " in ln]
+        assert logged.endswith(" result=failed note=added-then-refused kept=1 added=1"), logged
+        assert "add-source" not in cp.stderr.replace("added source", ""), cp.stderr
+        assert (
+            f"error: the folder {other} was added to {home / 'agent-context' / 'sources.toml'}, but the docs "
+            "repo has a git remote [governance] does not allow (the governance: line above)\n"
+        ) in cp.stderr, cp.stderr
     assert one_next(cp) and last_line(cp).startswith(
         "NEXT: the docs repo has a git remote the [governance] policy does not allow (the governance: line "
         "above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] "
