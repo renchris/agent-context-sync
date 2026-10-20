@@ -4671,6 +4671,16 @@ def test_first_sync_clause_carries_the_read_again_count(fake_mac: dict[str, Path
             "converted 4, deferred 0 online-only; 2 withheld unread by the label rule; 5 refused without a "
             "read (install.log; the withheld-unread count and the refused-without-a-read count: install.out)",
         ),
+        (  # B13 round 19 W52: the files whose converter could not start, before the unread clauses as on the
+            # CLI's line, without its bracket
+            "note=converted-4-deferred-0",
+            "first sync: converted 4, deferred 0 online-only; 2 waiting for their converter (it could not "
+            "start; read once it does); 5 refused without a read (no converter for the type, or a rule that "
+            "needs no bytes)",
+            "converted 4, deferred 0 online-only; 2 waiting for their converter; 5 refused without a read "
+            "(install.log; the waiting-for-its-converter count and the refused-without-a-read count: "
+            "install.out)",
+        ),
         (  # the count alone, with no split
             "note=converted-4-deferred-0",
             "first sync: converted 4, deferred 0 online-only; 5 refused without a read (no converter for the "
@@ -10037,15 +10047,17 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
     note = "- a conversion that failed is counted in each run it failed in and is tried again from the same"
     assert note in part and 'Quarantine by reason, class "conversion failed"\n' in part
     assert f" bytes in up to {cycle._CONVERT_RETRIES} later runs, or, when its converter could not " in part
-    # B13 round 18 V75: while its converter still cannot start, no run reads or counts the file
+    # B13 round 18 V75: while its converter still cannot start, no run reads the file; since round 19 W52,
+    # W68 each such run counts it as waiting, never in a column
     assert (
-        "converted it, gave it up, or (its converter still not starting) did not read it at all, which "
-        in (part)
+        "converted it, gave it up, or (its converter still not starting) left it waiting, which that run "
+        "counts as waiting for its converter, never as converted or failed, and " in part
     )
     guide = " ".join(
         (Path(__file__).parents[1] / "docs" / "deploy" / "setup-feedback.md").read_text().split()
     )
-    assert "converted it, gave it up, or, while its converter still cannot start, left it unread and" in guide
+    assert "converted it, gave it up, or, while its converter still cannot start, left it waiting" in guide
+    assert "waiting for a converter that could not start" not in part, "no run shown has a waiting file"
     assert "converted it or gave it up" not in part + guide
     seed = Seed(fake_mac["config"])
     seed.m._db.execute(
@@ -10066,6 +10078,40 @@ def test_repeat_conversions_part_reads_the_run_records_and_the_cache(fake_mac: d
         "the converter's options, so a file re-screened for a label-rule change is a new conversion and is "
         "not in the 'same bytes' column; one re-screened for a secret rule is\n" in part + "\n"
     ), part
+
+
+def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 19 W52, W68: a file whose converter could not start is counted in the run record's
+    ``converter_waiting`` (and a re-read's in ``reread_waits``), never in converted or failed, and the report
+    read neither key: such a run was a row of zeros with no note, and the OCR table's "left to read again"
+    read 0. A note names the waiting files per run, the follow-on note shows for a run with only waiting
+    files, and the OCR cell names them apart from ``reread_left``; a run without the keys reads as before."""
+    seed = Seed(fake_mac["config"])
+    seed.run(1, {"converted": 3})
+    seed.run(2, {"converted": 0, "converter_waiting": 2})
+    seed.run(3, {"converted": 0, "converter_waiting": 1, "reread_for": 1, "reread_waits": 1})
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    part = parts["Repeat conversions"]
+    assert "| 3 | poll | ok | 2026-10-06T10:00:00Z | 0 | 0 | 0 | 0 | 0 |" in part, "no column is added"
+    assert (
+        "- waiting for a converter that could not start: run 3, 1 file; run 2, 2 files. Nothing read them, "
+        'so they are in no column above; their stubs are in Quarantine by reason, class "conversion failed"'
+        in part
+    ), part
+    assert "- a conversion that failed is counted in each run it failed in" in part, "no run has a failure"
+    rows = {ln.split(" | ")[0]: ln for ln in parts["OCR"].splitlines() if re.match(r"\| \d", ln)}
+    assert rows["| 3"].endswith(" | 0 + 1 waiting for a converter |"), rows
+    assert rows["| 1"].endswith(" | - |") and rows["| 2"].endswith(" | - |"), (
+        "no re-read: no count, as before"
+    )
+    seed = Seed(fake_mac["config"])
+    seed.m._db.execute("DELETE FROM runs WHERE run_id IN (2, 3)")
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    assert "waiting for a converter" not in part and "a conversion that failed" not in part, part
 
 
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(

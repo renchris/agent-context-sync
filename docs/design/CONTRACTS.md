@@ -24209,6 +24209,7 @@ go from `setup_report._unconfigured_ids`, the registration comment and install.s
 conversions note and the guide said a later run with no failure converted a failed file or gave it up; while its
 converter still cannot start, no run reads or counts it. Both say so. Test:
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache`.
+Amended 2026-10-20, §16.140 W52, W68: such a run counts the file in `converter_waiting` (lane E's §16.144 makes it every run in which the converter still cannot start), so the note says the run counts it as waiting for its converter, never as converted or failed, and a line under the table names those files per run.
 
 ### 16.135 Round 18: installer, the shell report's redaction and the older build's copies (2026-10-19, wave B13 round 18 lane RB)
 
@@ -24832,6 +24833,25 @@ coding-agent product word stays as written in the agent's name`. This ends the l
 unchanged here. Tests:
 `test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_it_is_shown`,
 `test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder`.
+
+**The report reads the files waiting for a converter that could not start** (W52, W68; amends §16.134 V75). A file
+whose first conversion fails because its converter could not start is counted in the run record's
+`converter_waiting` (a re-read's in `reread_waits`), never in `converted` or `converted_failed`, and the sync's
+line says `; W waiting for its/their converter (...)`; the report read none of it, so such a run was a row of zeros
+in Repeat conversions with no note, the OCR table's `left to read again` read 0, and the Summary's first-sync line
+dropped the clause. Built once for both finders, in W68's shape (no new column, which would reshape a table the
+tests pin): under the Repeat conversions table, `- waiting for a converter that could not start: run N, F files;
+... Nothing read them, so they are in no column above; their stubs are in Quarantine by reason, class "conversion
+failed", and a later run converts them once the converter starts`; the follow-on note shows for a run with
+`converter_waiting` as for one with `converted_failed`, and says such a run counts the file as waiting, not that no
+run counts it; the OCR cell reads `L + W waiting for a converter` when `reread_waits` is not 0. From W52 the
+Summary's first-sync line copies `; W waiting for its/their converter` from install.out's line of the same sync
+(`_CONVERTER_WAITING_RE`, `first_sync_converter_waiting`), after the split and before the unread clauses as the
+CLI orders them, without its bracket; an older line has none. The guide (docs/deploy/setup-feedback.md) says the
+same. No Loop clause is added: `loop.next_step` already gives the newest run's waiting re-read. Tests:
+`test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`,
+`test_repeat_conversions_part_reads_the_run_records_and_the_cache`,
+`test_first_sync_clause_carries_the_read_again_count`.
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 

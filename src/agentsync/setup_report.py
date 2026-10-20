@@ -978,6 +978,9 @@ _SPLIT_RE = re.compile(  # K, of the refused, withheld by the label rule: the CL
 _UNREAD_RE = re.compile(r"\b(\d+) refused without a read\b")
 # and since B13 round 8 J29 "; W withheld unread by the label rule (...)" before it (B13 round 8 J39)
 _WITHHELD_UNREAD_RE = re.compile(r"\b(\d+) withheld unread by the label rule\b")
+# and since B13 round 18 V13 "; W waiting for its/their converter (...)", files whose converter could not
+# start, after the split and before the two above (B13 round 19 W52)
+_CONVERTER_WAITING_RE = re.compile(r"\b(\d+) waiting for (?:its|their) converter\b")
 _BASELINE_RE = re.compile(r"^\s+\S+ \([^)]*\): baseline (complete|INCOMPLETE)\b")
 _LOOP_BASELINE_RE = re.compile(r"\bbaseline (\w+)")  # status's ``loop:`` line (loop.status_line)
 _LOOP_TOPICS_RE = re.compile(r"\btopics (\d+)")
@@ -3068,6 +3071,8 @@ class _Facts:
     first_sync_refused_unread: tuple[int, int] | None = None
     # its "W withheld unread by the label rule" as (N, W); None: the line has none
     first_sync_withheld_unread: tuple[int, int] | None = None
+    # its "W waiting for its/their converter" as (N, W); None: the line has none (B13 round 19 W52)
+    first_sync_converter_waiting: tuple[int, int] | None = None
     # the run whose output holds that line, the id of the last "# run=<id> " header above it: "" when
     # install.out has no header at all (an older install.sh), None when the line is above the first header
     # read (the tail starts inside an earlier run)
@@ -4949,6 +4954,9 @@ def _installer_output(r: _Run) -> list[str]:
         withheld = _WITHHELD_UNREAD_RE.search(last.group("tail"))
         if withheld is not None:
             r.facts.first_sync_withheld_unread = (converted, int(withheld.group(1)))
+        waiting = _CONVERTER_WAITING_RE.search(last.group("tail"))
+        if waiting is not None:
+            r.facts.first_sync_converter_waiting = (converted, int(waiting.group(1)))
         read_first = _FIRST_READ_RE.search(last.group("tail")) if again else None
         if last.group("r1") is not None:  # the head says every one was a first read (B13 round 10 L34)
             r.facts.first_sync_first_read = (converted, again, again)
@@ -6801,6 +6809,14 @@ finishes, and crash recovery closes a run with ``{}`` (``cycle``).  Only a finis
 ``converted`` is an earlier build's (B13 round 10 L42)."""
 
 
+def _left_cell(left: int, waits: int) -> str:
+    """The OCR time table's "left to read again": ``reread_left``, and apart from it the files the re-read
+    left waiting for a converter that could not start (``reread_waits``, which ``reread_left`` leaves out by
+    design: cycle.py), so a run with one such file reads ``0 + 1 waiting for a converter``, not 0 (B13 round
+    19 W68)."""
+    return f"{left} + {waits} waiting for a converter" if waits else str(left)
+
+
 def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
     """OCR's time and what it left, from the run records (``runs.counts_json``; CONTRACTS 16.28). The last
     column is the files each run's re-read left (``reread_left``): read down the runs, it is how many syncs
@@ -6881,7 +6897,8 @@ def _ocr_time(r: _Run, m: _Mirror) -> list[str]:
                 _reread_cell(x.n("reread"), x.n("reread_first"), x.n("reread_kept")),
                 # A run that looked says what it left (0 is left out of its record); one that did not look
                 # (an earlier build's, a ``materialise PATH`` run) has no count to give.
-                x.n("reread_left") if "reread_for" in x.counts else "-",
+                # B13 round 19 W68: reread_left leaves out the files whose converter could not start
+                _left_cell(x.n("reread_left"), x.n("reread_waits")) if "reread_for" in x.counts else "-",
             )
         )
     header = (
@@ -7607,17 +7624,30 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         "",
         *_table(header, rows),
     ]
-    if any(x.n("converted_failed") for x in runs[:_RUNS_SHOWN]):
+    # B13 round 19 W52, W68: a file whose converter could not start is read in no run, so it is in no column
+    # (``converter_waiting``, cycle.py; counted in each run in which it still cannot start), but the record
+    # holds the count: a run with only such files showed a row of zeros and no note
+    waiting = [x for x in runs[:_RUNS_SHOWN] if x.n("converter_waiting")]
+    if waiting:
+        each = "; ".join(f"run {x.run_id}, {_plural(x.n('converter_waiting'), 'file')}" for x in waiting)
+        out += [
+            "",
+            f"- waiting for a converter that could not start: {each}. Nothing read them, so they are in no "
+            'column above; their stubs are in Quarantine by reason, class "conversion failed", and a later '
+            "run converts them once the converter starts",
+        ]
+    if any(x.n("converted_failed") or x.n("converter_waiting") for x in runs[:_RUNS_SHOWN]):
         # A run with failures followed by runs with none: a retry that worked, one given up, or a file whose
-        # converter still cannot start, which no run reads or counts (B13 round 18 V75). Since B13 round 17
-        # U3 a failed conversion is tried again (cycle._CONVERT_RETRIES; a test pins the count).
+        # converter still cannot start (B13 round 18 V75), which each such run counts as waiting, never in a
+        # column (round 19 W52, W68). Since B13 round 17 U3 a failed conversion is tried again
+        # (cycle._CONVERT_RETRIES; a test pins the count).
         out += [
             "",
             "- a conversion that failed is counted in each run it failed in and is tried again from the same "
             "bytes in up to 2 later runs, or, when its converter could not start, once it starts: a later "
-            "run with no failure converted it, gave it up, or (its converter still not starting) did not "
-            "read it at all, which is counted in no run, and the files still without a page are in "
-            'Quarantine by reason, class "conversion failed"',
+            "run with no failure converted it, gave it up, or (its converter still not starting) left it "
+            "waiting, which that run counts as waiting for its converter, never as converted or failed, and "
+            'the files still without a page are in Quarantine by reason, class "conversion failed"',
         ]
     rescreened = [x for x in runs[:_RUNS_SHOWN] if x.n("rescreened")]
     if rescreened:
@@ -9424,6 +9454,12 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             reread += f"; of the converted: {split[1]} unreadable, {split[2]} failed{refused}"
             # the tag names refused only when its count was printed (B13 round 7 H46)
             named.append("the unreadable/failed/refused split" if split[3] else "the unreadable/failed split")
+        # the files whose converter could not start, after the split as on the CLI's line (its ``waits``
+        # comes before the unread clauses), without its bracket (B13 round 19 W52)
+        waits = r.facts.first_sync_converter_waiting
+        if waits is not None and waits[0] == converted and waits[1]:
+            reread += f"; {waits[1]} waiting for {'its' if waits[1] == 1 else 'their'} converter"
+            named.append("the waiting-for-its-converter count")
         # the files refused with no conversion, after the split as on the CLI's line, without its bracket: the
         # Summary's refused count disagreed with the per-source stub totals (B13 round 8 J39)
         for counted, words, tag in (
