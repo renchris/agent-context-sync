@@ -24983,6 +24983,10 @@ a removed source back from, from its first part that names something down, and t
 where a flag-`i` pair's placeholder is in the body (round 11 M3's rule), and always with no body to read. Test:
 `test_the_folder_legend_names_a_project_folder_only_where_one_is_shown` (a configured `~/Projects` folder, and a
 cloud one alone).
+Amended 2026-10-20, §16.147 X6, X23: the clause now reads `...: inside the home folder, its path from the first
+folder that is not a common container (such as Projects, Documents or a dot folder) down, and that folder's name on
+its own (...); outside the home folder, its whole path; each as a whole word, in any letter case; a later folder's
+name on its own, such as notes, is not replaced`.
 
 **The shell's install source line says a URL rewrite as the agentsync report does** (W7, W23: one defect from two
 finders). `fallback_install_source_line` printed the configured origin's label alone; `_checkout_facts` adds
@@ -25778,6 +25782,29 @@ the fix column, where `parse_friction` cuts the fix at the last `|` and states n
 too. The finder's `[A-Za-z0-9_]` guard was not added: the required run already rejects `prompt v12_, ...`, so it
 would be dead code. Test: `test_the_shells_stated_words_are_the_reports` (six what-texts, `friction_latest_said`
 against `Attempt.stated`).
+
+**The shell legend's project-folder clause can be read, and claims no more than the body shows** (X6, X23: one
+defect from two finders; amends §16.141 W5). Round 19 W5's clause, `... from its first part that names something
+down, and that part alone, in any case`, was the code comment shortened: no subject, "names something" as
+shorthand, "in any case" read as "anyway", no whole-word rule and nothing on a path outside the home folder. The
+two verifiers' corrections are merged: X23's rule (the path from the first folder that is not a common container
+such as Projects, Documents or a dot folder, that folder's name on its own, the whole path outside the home folder,
+each as a whole word in any letter case) and X6's example and limit (`in ~/Projects/Harborview/notes, both
+"Harborview/notes" and "Harborview"`; `a later folder's name on its own, such as notes, is not replaced`). X6's
+finder wording, "its own name and the names below it", was not built: it promises that `notes` and
+`notes/plan.md` are hidden, which `project_values` does not do, a privacy overclaim worse than the hard words. The
+clause still prints only where a flag-`i` placeholder is in the body (round 11 M3). Test:
+`test_the_folder_legend_names_a_project_folder_only_where_one_is_shown` (a nested `~/Projects/<name>/notes`: the
+clause, `<folder-N>` for the path and for its first folder, `notes` and `notes/plan.md` as written).
+
+**The shell legend says a number can be missing** (X22). The `<folder-N>` item numbers every configured and listed
+part, and `folder_value` numbers a project path and its first part, none of which the body need show, so a report
+can read `<folder-3>` and `<folder-5>` alone; the agentsync report's `_LEGEND["folder"]` and the shell's own
+`<proxy-N>` item say a number can be missing, the shell's folder item did not. It now ends `; a number can be
+missing (one given to a name this report does not show)` in every report ("a name", since not every number is a
+folder's), and the `<source-N>` item, whose cloud id can take a `<folder-N>` instead, ends `; a number can be
+missing`. Tests: `test_the_folder_legend_explains_only_the_names_the_report_shows` (every exact item) and
+`test_the_folder_legend_names_a_project_folder_only_where_one_is_shown` (both items).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 

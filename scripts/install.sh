@@ -3492,7 +3492,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	else
 		folder_item+=" or install.log name"
 	fi
-	[ -z "$proj" ] || folder_item+="; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed source back from, from its first part that names something down, and that part alone, in any case"
+	# what project_values registers, in words a reader can apply (B13 round 20 X6, X23): the path from its first
+	# folder that is not a common container, that folder alone, the whole path outside home; never a later part
+	[ -z "$proj" ] || folder_item+="; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed source back from: inside the home folder, its path from the first folder that is not a common container (such as Projects, Documents or a dot folder) down, and that folder's name on its own (in ~/Projects/Harborview/notes, both \"Harborview/notes\" and \"Harborview\"); outside the home folder, its whole path; each as a whole word, in any letter case; a later folder's name on its own, such as notes, is not replaced"
 	[ -z "$whole" ] || folder_item+="; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole word"
 	if [ -n "$whole" ]; then
 		if [ -n "$skip_generic" ] && [ -n "$skip_agent" ]; then
@@ -3509,6 +3511,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	elif [ -n "$skip_agent" ]; then
 		folder_item+="; not $ag, where only step 1's list names it"
 	fi
+	# numbers are given to names the body need not show (folder_value numbers a project path and its first
+	# part), as setup_report._LEGEND["folder"] says (B13 round 20 X22)
+	folder_item+="; a number can be missing (one given to a name this report does not show)"
 	say "## Redaction"
 	say ""
 	# One placeholder kind a list item, continued on lines indented by two spaces; no blank line inside, so the
@@ -3535,7 +3540,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <source-[0-9] "*)
 		say "- <source-N>: a configured source id, or its folder's <folder-N> where it is that name in slug form; one of"
 		say "  agentsync's own words, such as docs or inbox, only for a cloud folder; also the id of a source still mirrored"
-		say "  whose [[source]] block is gone, as doctor's config.vanished_sources line and the sync's refusal quote it"
+		say "  whose [[source]] block is gone, as doctor's config.vanished_sources line and the sync's refusal quote it; a"
+		say "  number can be missing"
 		;;
 	esac
 	case "$used" in *" <path> "*)

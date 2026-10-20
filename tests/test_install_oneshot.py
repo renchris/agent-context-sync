@@ -14347,44 +14347,69 @@ def test_the_folder_legend_explains_only_the_names_the_report_shows(env: dict[st
         + whole
         + f", and not {agent} where only step 1's list names it",
     }[state]
+    # B13 round 20 X22: every item ends on the note the agentsync report's legend has
+    want += "; a number can be missing (one given to a name this report does not show)"
     assert item == want, item
     assert ("Copilot" in item) == ("Copilot" in quoted), item
 
 
-@pytest.mark.parametrize("state", ["a project folder", "cloud only"])
+@pytest.mark.parametrize("state", ["a project folder", "a nested project folder", "cloud only"])
 def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
     env: dict[str, str], state: str
 ) -> None:
     """B13 round 19 W5, W22: since round 18 V46 the shell report also gives a configured folder outside
     CloudStorage (and a removed source's re-add folder) a <folder-N>, while its legend still said every
     <folder-N> is a folder under CloudStorage. The legend now says so too, only where the body shows such a
-    placeholder (round 11 M3's rule); a report with cloud folders alone keeps the item as it was."""
+    placeholder (round 11 M3's rule); a report with cloud folders alone keeps the item as it was.
+
+    B13 round 20 X6, X23: that clause ("from its first part that names something down") could not be parsed.
+    It now says what project_values replaces, and no more: a nested configured path's whole path below its
+    first folder that is no common container and that folder alone are <folder-N>, while a later part on its
+    own ("notes") stays as written, as the legend says. X22: the item ends on "a number can be missing", and
+    so does the <source-N> item."""
     home = Path(env["HOME"])
     cloud = _cloud(env) / "OneDrive-Contoso" / "Project Alpha"
     cloud.mkdir(parents=True)
     roadmap = home / "Projects" / "Contoso Roadmap"
     roadmap.mkdir(parents=True)
+    (roadmap / "notes").mkdir()
     config = home / "agent-context" / "sources.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
-    picked = roadmap if state == "a project folder" else cloud
+    picked = {"a project folder": roadmap, "a nested project folder": roadmap / "notes"}.get(state, cloud)
     config.write_text(f'[[source]]\nid = "picked"\nkind = "local"\npath = "{picked}"\n')
     friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    said = (
+        "picked notes in Contoso Roadmap; full Contoso Roadmap/notes; file notes/plan.md"
+        if state == "a nested project folder"
+        else f"picked {picked.name} in {picked.parent.name}"
+    )
     friction_path(env).write_text(
         "Attempt: 2026-10-10T00:00:00Z\nPrompt: v15\nAgent: x\n2026-10-10T00:00:01Z | step 1 | "
-        f"deviation | picked {picked.name} in {picked.parent.name} | -\n"
+        f"deviation | {said} | -\n"
     )
     assert install_sh(env, "--report-only").returncode == 0
     text = report_path(env).read_text()
     item = _folder_item(text)
     clause = (
         "; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed "
-        "source back from, from its first part that names something down, and that part alone, in any case"
+        "source back from: inside the home folder, its path from the first folder that is not a common "
+        "container (such as Projects, Documents or a dot folder) down, and that folder's name on its own (in "
+        '~/Projects/Harborview/notes, both "Harborview/notes" and "Harborview"); outside the home folder, '
+        "its whole path; each as a whole word, in any letter case; a later folder's name on its own, such as "
+        "notes, is not replaced"
     )
     assert item.startswith("- <folder-N>: the names of the folders under CloudStorage that "), item
-    assert (clause in item) == (state == "a project folder"), item
-    assert picked.name not in text
+    assert (clause in item) == (state != "cloud only"), item
+    assert item.endswith("; a number can be missing (one given to a name this report does not show)"), item
+    assert "Contoso Roadmap" not in text and "Project Alpha" not in text
     if state == "a project folder":
         assert "<folder-1> in Projects" in text
+    if state == "a nested project folder":
+        # the legend promises no more than the body shows: the path and its first folder are replaced, "notes"
+        # on its own is not
+        assert re.search(r" notes in <folder-(\d+)>; full <folder-\d+>; file notes/plan\.md \|", text), text
+    source = text.split("\n- <source-N>: ", 1)[1].split("\n- ", 1)[0].split("\nRead the report", 1)[0]
+    assert " ".join(source.split()).endswith("the sync's refusal quote it; a number can be missing"), source
 
 
 def test_an_agent_name_inside_another_leaves_no_part_for_the_folder_legend(env: dict[str, str]) -> None:
