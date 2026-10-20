@@ -1133,29 +1133,47 @@ def cannot_open(exc: BaseException) -> bool:
     return _code(exc) in CANNOT_OPEN_CODES
 
 
+def _sql_name(name: object) -> str:
+    """``name`` as a quoted SQL identifier, ``"`` doubled."""
+    return '"' + str(name).replace('"', '""') + '"'
+
+
 def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
-    open (no file is created, nothing is written) of its schema, which every open of the manifest reads
-    first (a header alone can be intact over a damaged schema page), and of each table's first row, ``SELECT *
-    FROM "<table>" NOT INDEXED LIMIT 1``: one page per table, its root and the leaf the first row is on (B13
-    round 19 W41: damage under the cache or outputs table, which no status read touches, passed status while
-    the sync failed; a plain ``SELECT 1``, ``rowid`` or ``count(*)`` is answered from an index and misses it).
-    None when it reads, is missing, or is only locked, busy or not openable now. Damage deeper in a table
-    shows when a command reads it (``cli._state_readable``); status's own read of the loop's state is one
-    such read, and its error FAILs through :func:`manifest_damaged` (B13 round 17 U64, U95), and a sync's is
-    kept for status by :func:`record_unreadable`."""
+    open (nothing is written; a WAL database's -wal and -shm are created if absent, with the file's own mode,
+    so status does not probe a file this account cannot write: B13 round 20 X78) of its schema, which every
+    open of the manifest reads first (a header alone can be intact over a damaged schema page), and of each
+    b-tree's first entry: a table's row, ``SELECT * FROM "<table>" NOT INDEXED LIMIT 1``, one page per
+    table, its root and the leaf the first row is on (B13 round 19 W41: damage under the cache or outputs
+    table, which no status read touches, passed status while the sync failed; a plain ``SELECT 1``,
+    ``rowid`` or ``count(*)`` is answered from an index and misses it), and an index's, ``SELECT 1 FROM
+    "<table>" INDEXED BY "<index>" LIMIT 1``, as install.sh's step 1 reads them (B13 round 20 X50: damage
+    under an index root passed status until a sync stopped on it). None when it reads, is missing, or is
+    only locked, busy or not openable now. Damage deeper in a b-tree shows when a command reads it
+    (``cli._state_readable``); status's own read of the loop's state is one such read, and its error FAILs
+    through :func:`manifest_damaged` (B13 round 17 U64, U95), and a sync's is kept for status by
+    :func:`record_unreadable`."""
     try:
         conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
         try:
-            tables = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
-            for (name,) in tables:
-                quoted = '"' + str(name).replace('"', '""') + '"'
+            trees = conn.execute(
+                "SELECT type, name, tbl_name FROM sqlite_master"
+                " WHERE rootpage > 0 AND type IN ('table', 'index')"
+            ).fetchall()
+            for kind, name, table in trees:
+                quoted = _sql_name(name)
+                read = (
+                    f"SELECT * FROM {quoted} NOT INDEXED LIMIT 1"
+                    if kind == "table"
+                    else f"SELECT 1 FROM {_sql_name(table)} INDEXED BY {quoted} LIMIT 1"
+                )
                 try:
-                    conn.execute(f"SELECT * FROM {quoted} NOT INDEXED LIMIT 1").fetchone()
+                    conn.execute(read).fetchone()
                 except sqlite3.DatabaseError as exc:
-                    if unreadable_code(exc) or environmental(exc):  # damaged; or held, so is every table
+                    if unreadable_code(exc) or environmental(exc):  # damaged; or held, so is every b-tree
                         raise
-                    # a table this read cannot take (a virtual one): the others are still read
+                    # a b-tree this read cannot take (a virtual table, an index a partial WHERE keeps the
+                    # planner from using): the others are still read
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:

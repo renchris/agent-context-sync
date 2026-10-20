@@ -6781,6 +6781,10 @@ CONFIG_STOP = {
     # damaged table page is the config step's stop; an older installed build still says "state-table"
     "TD": "agentsync's state file, which cannot be read",
     "TD-items": "agentsync's state file, which cannot be read",
+    # B13 round 20 X50: the probe reads each index's first entry too (INDEXED BY), so a damaged index root is
+    # the config step's stop as well
+    "TD-canonical": "agentsync's state file, which cannot be read",
+    "TD-path": "agentsync's state file, which cannot be read",
     "GR": "a git remote on the docs repo that [governance] does not allow",
 }
 

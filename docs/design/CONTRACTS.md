@@ -25337,6 +25337,8 @@ of cache and outputs, with the report before and after the sync), and the probe 
 Amended 2026-10-20, §16.146 X80: the Loop line keeps the loop's NEXT and, when the FAIL came from the evidence
 read alone, says beside it `(the loop's own read; the report's read of the state file found it damaged: the
 state_dir.manifest [FAIL] line under Doctor says what to do first)`.
+Amended 2026-10-20, §16.149 X50: the probe reads each index's first entry as well (`INDEXED BY`), so damage
+under an index root FAILs status and stops the sync before it runs, as install.sh's step 1 already read it.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
@@ -25990,6 +25992,20 @@ one-line `error: state:` must not print, so the system's words are the error's o
 with no fix line: not an `OSError` left raw, which no arm of `cli._main` catches and would be a traceback again.
 Tests: `test_cli.py::test_a_manifest_this_account_cannot_open_keeps_its_reason` and
 `test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix` (both layouts).
+
+**X50: damage under an index root fails status before any sync (`agentsync.ops.doctor`; amends §16.143 W41).**
+`doctor.manifest_unreadable` read each table's first row `NOT INDEXED` and never an index b-tree, while install.sh's
+step 1 reads every b-tree, so after damage under items_by_path or items_by_canonical status exited 0 with no FAIL,
+the next sync exited 65, and only that sync's record made status FAIL. The probe reads every b-tree with a root
+page, as install.sh does: a table by its first row, as before, and an index by its first entry, `SELECT 1 FROM
+"<table>" INDEXED BY "<index>" LIMIT 1` (the `sqlite_autoindex_*` ones included; names quoted with `"` doubled),
+with the same filter: damage or a held file raises, any other error (an index the planner will not use) is
+skipped. About one page per index, 21 on this schema. Status then FAILs state_dir.manifest at once and
+`cli._state_readable` stops the sync before it runs (exit 65), and step 1's config tail names the state file for an
+index root as for a table root (lane P's §16.148 X72 words that tail). Tests:
+`test_cli.py::test_damage_under_an_index_root_fails_status_before_any_sync` (every index of the schema, held to it
+by `test_the_index_list_is_the_manifests`) and the TD-canonical and TD-path cases of
+`test_install_oneshot.py::test_list_folders_says_step_2_stops_on_a_config_it_refuses`.
 
 ### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
 

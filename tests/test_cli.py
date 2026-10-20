@@ -3298,6 +3298,74 @@ def test_damage_under_any_table_fails_status_and_stops_the_sync(
         assert [ln for ln in text if ln.startswith("[FAIL] state_dir.manifest ")], text
 
 
+_MANIFEST_INDEXES = (
+    "sqlite_autoindex_meta_1",
+    "sqlite_autoindex_sources_1",
+    "sqlite_autoindex_items_1",
+    "items_by_path",
+    "items_by_parent",
+    "items_by_canonical",
+    "items_by_verdict",
+    "sqlite_autoindex_cursors_1",
+    "sqlite_autoindex_cache_1",
+    "sqlite_autoindex_outputs_1",
+    "sqlite_autoindex_outputs_2",
+    "outputs_by_item",
+    "outputs_by_key",
+    "sqlite_autoindex_tombstones_1",
+    "sqlite_autoindex_run_sources_1",
+    "sqlite_autoindex_depends_1",
+    "depends_by_source",
+    "sqlite_autoindex_item_aliases_1",
+    "item_aliases_by_item",
+    "sqlite_autoindex_redacted_items_1",
+    "sqlite_autoindex_run_changes_1",
+)
+
+
+def test_the_index_list_is_the_manifests(tmp_path: Path) -> None:
+    """Every index of a new manifest is in :data:`_MANIFEST_INDEXES`, so a new one is damaged below too."""
+    Manifest(tmp_path / "m.sqlite").close()
+    conn = sqlite3.connect(tmp_path / "m.sqlite")
+    try:
+        found = {
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index' AND rootpage > 0")
+        }
+    finally:
+        conn.close()
+    assert found == set(_MANIFEST_INDEXES)
+
+
+@pytest.mark.parametrize("index", _MANIFEST_INDEXES)
+def test_damage_under_an_index_root_fails_status_before_any_sync(
+    initialised: Config, capsys: pytest.CaptureFixture[str], index: str
+) -> None:
+    """B13 round 20 X50: damage under an index root (items_by_path, items_by_canonical, ...) passed status,
+    exit 0 with no FAIL, while install.sh's step 1 read it and the next sync exited 65; only that sync's
+    record then made status FAIL. The read-only probe reads each index's first entry (``INDEXED BY``) as
+    install.sh does: status FAILs state_dir.manifest at once, and the sync stops before it runs, exit 65."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    _damage_table_root(db, index)
+    assert doctor.manifest_unreadable(db) is not None
+    assert doctor.recorded_unreadable(db) is None  # no sync has read it
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1 and fails[0].startswith("[FAIL] state_dir.manifest "), (
+        out
+    )
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+    err = capsys.readouterr().err
+    assert "Traceback" not in err, err
+    (state,) = [ln for ln in err.splitlines() if ln.startswith("state: ")]
+    assert state.startswith(f"state: {db} cannot be read: ") and state.endswith(
+        f"(fix: {doctor.MANIFEST_FIX})"
+    )
+
+
 @pytest.mark.parametrize("hint", ["by hand", "install.sh"])
 def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does(
     initialised: Config,
