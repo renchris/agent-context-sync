@@ -46,6 +46,27 @@ from test_recording_grammar import index_errors, window_errors
 CFG = ConvertConfig()
 
 
+@pytest.fixture(autouse=True)
+def _wide_limit(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A recording's time limit is wall time, from ``_BASE_S`` (60 s), and the fake helpers are Python
+    subprocesses: a test process starved of CPU (a busy land gate) ran out of it reading nothing (B13 round 19
+    W70, lead note 3). Every test gets 600 s, ten times the field's, which still bounds a hung fake helper
+    well under CI's 30 minutes; a test whose subject is the limit is marked ``real_limit`` and keeps 60 s.
+    Not the ``timing`` marker, which skips a test when the Mac is busy."""
+    if request.node.get_closest_marker("real_limit") is None:
+        monkeypatch.setattr(rec, "_BASE_S", 600.0)
+
+
+def test_a_recording_test_reads_under_the_wide_limit_unless_its_subject_is_the_limit() -> None:
+    """B13 round 19 W70: the file's tests read under a limit a starved test process does not reach."""
+    assert rec._BASE_S == 600.0
+
+
+@pytest.mark.real_limit
+def test_a_test_marked_real_limit_keeps_the_fields_limit() -> None:
+    assert rec._BASE_S == 60.0
+
+
 def converter(
     tmp_path: Path,
     *,
@@ -496,6 +517,7 @@ def test_a_second_cold_conversion_is_byte_identical(tmp_path: Path) -> None:
     assert first == pages(tmp_path / "four", script)
 
 
+@pytest.mark.real_limit  # its subject is the limit (W70)
 def test_running_out_of_time_gives_no_page_and_the_refusal_a_reread_looks_for(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -828,6 +850,7 @@ def test_candidates_past_the_limit_are_counted_not_read_and_the_page_says_so(
     assert "screen text read to 00:00:18; 3 later changes not read (limit)" in units[0].body
 
 
+@pytest.mark.real_limit  # its subject is the limit (W70)
 def test_the_time_limit_is_fixed_from_counts_before_the_frames_are_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -848,6 +871,7 @@ def test_the_time_limit_is_fixed_from_counts_before_the_frames_are_read(
     assert [deadline for _ticks, deadline in seen[1:]] == [limit] * (len(seen) - 1)
 
 
+@pytest.mark.real_limit  # its subject is the limit (W70)
 def test_three_reads_share_one_deadline_and_merge_by_tick(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1486,6 +1510,7 @@ def test_a_speech_failure_keeps_the_screens_and_is_read_again_once_speech_works(
     assert len(scans) == 1, "the picture pieces the failed read stored are read back, not read again"
 
 
+@pytest.mark.real_limit  # its subject is the limit (W70)
 def test_a_speech_piece_past_its_deadline_waits_and_stores_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -97,4 +97,5 @@ markers = [
   "network: talks to a real network service; never run by default",
   "fileprovider: touches the live OneDrive File Provider mount (agentsync-e2e/ only)",
   "timing: asserts a time bound that is the contract; a run whose load is above 4 per core skips it (AGENTSYNC_TIMING=1 runs it anyway)",
+  "real_limit: test_convert_recording.py keeps the recording's field time limit (_BASE_S) for this test; the others get a wider one",
 ]

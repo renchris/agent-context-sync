@@ -25115,6 +25115,19 @@ only a foreign helper at that path reaches the refusal. No reader matches the wo
 `test_voice_naming.py` (the refusal from the pin, and a helper reporting a later commit refused in the same
 words).
 
+**The recording tests' time limit holds under load (W70; tests only).** A recording's limit is wall time from
+`recording._BASE_S` (60 s), and `media_kit.fake_media` runs each helper as a Python subprocess, so under a starved
+land gate 3 of 3 runs of a state test read `0 of 60000 ms` and failed on a limit that is not their subject. A
+file-level autouse fixture in `tests/test_convert_recording.py` sets `_BASE_S` to 600 s (ten times the field's,
+which still bounds a hung fake helper well under CI's 30 minutes), unless the test carries the new `real_limit`
+marker (registered in `pyproject.toml`, not read by conftest's load guard): the two that measurably need the
+field's 60 s (`test_the_time_limit_is_fixed_from_counts_before_the_frames_are_read`,
+`test_a_speech_piece_past_its_deadline_waits_and_stores_nothing`, which relies on `_BASE_S + _SPEECH_S * 400 <
+0`) and two more whose subject is the limit. Not the `timing` marker, which would skip them in every busy land
+gate. Other files that drive recordings through `fake_media` keep the field's limit. Tests:
+`test_convert_recording.py::test_a_recording_test_reads_under_the_wide_limit_unless_its_subject_is_the_limit`,
+`test_convert_recording.py::test_a_test_marked_real_limit_keeps_the_fields_limit`.
+
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
 **V7's add-back is named where it is defined, and the older lines say what V7 changed** (W44, W59, W60, one
