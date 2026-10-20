@@ -2908,6 +2908,30 @@ def _stamp(text: str) -> float:
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
 
 
+def test_step_2_says_a_patch_this_account_cannot_read_is_the_persons(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 18 V25 (probe O25b): step 2's run writes bring-back.md too, and printed the report's
+    ``warning: 1 patch file ... could not be read`` line, a form the setup prompt's step 2 does not place. It
+    is a WAITING ON YOU: line there, the person's, with its fix and no file name; step 2's NEXT, which drives
+    the setup, is as without it. The report's run keeps the warning its NEXT points to."""
+    before = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert before.returncode == 0, before.stdout + before.stderr
+    patch = _keep_patch(env, "2026-10-07T16:00:00Z", body="+def contoso(): ...\n", name="0002-x.patch")
+    patch.chmod(0)
+    try:
+        cp = install_sh(env, str(wheel))
+    finally:
+        patch.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (
+        "WAITING ON YOU: 1 patch file in ~/agent-context/setup/local-work cannot be read by this account; "
+        "make it readable (chmod u+r), and the setup report at the end of this setup sends it\n"
+    ) in cp.stdout, cp.stdout
+    assert "could not be read" not in cp.stderr and "0002-x" not in cp.stdout + cp.stderr, cp.stderr
+    assert last_line(cp) == last_line(install_sh(env, str(wheel))), "the NEXT is step 2's own"
+
+
 @pytest.mark.parametrize(("readable", "locked_n"), [(False, 1), (True, 1), (False, 2), (True, 2)])
 def test_a_patch_this_account_cannot_read_is_counted_not_sent(
     env: dict[str, str], readable: bool, locked_n: int
@@ -3088,9 +3112,12 @@ def test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert last_line(cp).startswith(
         f"NEXT: {back} does not hold 1 kept patch file this account cannot read (see the warning above): "
-        f"make it readable (chmod u+r on the file in {setup}/local-work) and run this command again, then "
-        f"review {back} and copy that one file back privately{link} (nothing is sent for you)"
+        f"make it readable (chmod u+r on the file in {setup}/local-work) and run "
+        f"~/src/agent-context-sync/scripts/install.sh --report-only again, then review {back} and copy that "
+        f"one file back privately{link} (nothing is sent for you)"
     ), last_line(cp)
+    # B13 round 18 V17, V79: relayed, "this command" named none; still no file name (it carries a subject)
+    assert patch.name not in cp.stdout + cp.stderr and "this command" not in last_line(cp)
     # that report's own time, and its attempt's end, as if it ran a day before this one: every run here is
     # in one second, and the record and the end are compared by the second
     notsent = setup / "local-work" / ".not-sent"

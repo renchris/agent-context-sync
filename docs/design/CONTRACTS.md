@@ -21309,6 +21309,9 @@ attempt reports, so the time rule then lists the patch by its hash.
 Amended 2026-10-18, §16.117 S21: `local-work/.sent` keeps each embedded patch and the first report that embedded it,
 so a later attempt's report lists the patch by its hash even when the attempt that sent it had no header and so no
 end line.
+Amended 2026-10-19, §16.136 V17, V79: the `--report-only` NEXT ends `... (chmod u+r on the file(s) in
+<setup>/local-work) and run ~/src/agent-context-sync/scripts/install.sh --report-only again, then review ...`, not
+`run this command again`, and still names no file; V25: step 2's run says the same as a `WAITING ON YOU:` line.
 
 **The first sync's config refusal is the person's** (Q22). An exit 78 at the first sync is a config that loads but the
 sync cycle refuses (`cycle._refuse_vanished_sources`: a source still mirrored, gone from sources.toml), so the config
@@ -21924,6 +21927,10 @@ README's keeps. The terminal NEXT lines, which are the command's own output, kee
 `test_the_shell_report_says_step_1_kept_local_work_in_counts_only`,
 `test_section_3s_branch_remedy_names_a_commit_as_the_keep_does` (the remedy install.sh prints, run on a real branch),
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+
+Amended 2026-10-19, §16.136 V17, V79: one terminal NEXT names the command too, the `--report-only` NEXT for a kept
+patch this account cannot read (`... and run ~/src/agent-context-sync/scripts/install.sh --report-only again, then
+review ...`): an agent relays it to the person, where `this command` names none.
 
 **The header's unread-patch sentence is two sentences, the second counted** (S24; amends §16.105 O25). With a patch
 unread and the others listed by their hash it read `... could not be read: make them readable (chmod u+r) and run the
@@ -24219,7 +24226,27 @@ missing path keeps the undated words. Test: `test_a_step_1_stop_of_the_older_bui
 
 ### 16.136 Round 18: setup prompt v27, step 1's folder tails and the config step (2026-10-19, wave B13 round 18 lane P)
 
-Reserved for round 18 lane P of B13.
+The B13 round 18 items of lane P (specs `round18/items/V<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): V8, V9, V12, V17, V21, V24, V25, V26, V29, V32, V33, V36, V39, V47, V70, V79. V9 and
+V36 are one defect, built once (V21 is that defect plus a damaged table page); V12, V17, V32 and V79 are one, built
+once; V24 and V39 are one, built once. V8 is built by lane B, in the shared vanished-source tail of its V7 (§16.137).
+
+**A kept patch this account cannot read: step 2 says it as the person's, and the report's NEXT names the command**
+(V25, V17, V79; amends §16.111 Q20 and §16.117 S23). Step 2's run writes bring-back.md too and printed the report's
+`warning: N patch file(s) in <setup>/local-work could not be read, so <file> does not hold it`, a form the setup
+prompt's step 2 does not place (`[warn]` and `WAITING ON YOU:` are the person's). Under step 2 (no `--report-only`)
+it is now `WAITING ON YOU: 1 patch file in ~/agent-context/setup/local-work cannot be read by this account; make it
+readable (chmod u+r), and the setup report at the end of this setup sends it` (`N patch files ... them`), on stdout;
+step 2's NEXT, which drives the setup, is left alone (the verifier: carrying it in that NEXT, as the report's does,
+would wipe the NEXT that drives the folder choice and the sync). The report's run keeps the `warning:` line, which its
+NEXT's `(see the warning above)` points to. That NEXT said `... and run this command again`, which names nothing once
+an agent relays it; it ends `run ~/src/agent-context-sync/scripts/install.sh --report-only again` (`LOCAL_WORK_AGAIN`),
+as section 3's `not sent:` line does since S23. No line names the file: a patch's file name carries its commit's
+subject, and both lines reach install.out, which the report copies (V12's and V32's verifiers: naming it makes things
+worse). The guide quotes section 3's `not sent:` form beside its two `not repeated:` forms. Tests:
+`test_step_2_says_a_patch_this_account_cannot_read_is_the_persons`,
+`test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable` (the whole NEXT, no file name, no `this command`),
+`test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 
 ### 16.137 Round 18: the report's doctor hook, the CLI's words and the lock wait (2026-10-19, wave B13 round 18 lane B)
 

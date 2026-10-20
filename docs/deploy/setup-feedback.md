@@ -210,7 +210,13 @@ words) is yours to remove. The CLI always redacts.
   no remedy for a patch an earlier report carried, and the command works only where their account owns the file)
   and to run
   `~/src/agent-context-sync/scripts/install.sh --report-only` again: that rerun sends nothing new, since an earlier
-  report carried the patch, but its line then gives the line count and the hash, and you go on as above. The header's sentence on each patch's author is there only
+  report carried the patch, but its line then gives the line count and the hash, and you go on as above. A patch
+  no report sent yet that this account cannot read has a third line, `not sent: 1 patch file in
+  ~/agent-context/setup/local-work this account cannot read; make it readable (chmod u+r) and run
+  ~/src/agent-context-sync/scripts/install.sh --report-only again` (`N patch files ... make them readable` for more):
+  the patch is not in the file, and the line names no file, for the same reason. Ask the person for that chmod and
+  that rerun, which works only where their account owns the file; the readable report sends the patch once
+  (B13 round 18 V25). The header's sentence on each patch's author is there only
   when section 3 sends a patch; when it sends none because each was in an earlier report, the header says so (`its one patch` when there is one).
   Whoever looks after agentsync for your team triages it there with this page, exactly like an issue; that needs
   no contact with the agentsync maintainer.

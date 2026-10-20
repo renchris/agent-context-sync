@@ -4108,7 +4108,14 @@ write_bring_back() {
 	fi
 	say "bring back: $out (one file: report, fix request, local work)"
 	BACK_UNREAD="$unread"
-	[ "$unread" -eq 0 ] || warn "$up in $SETUP_DIR/local-work could not be read, so $out does not hold $uthem"
+	# Step 2's run (no --report-only) says it as the person's, a WAITING ON YOU: line, the form the setup
+	# prompt's step 2 shows the person and does not act on; its NEXT, which drives the setup, is left alone.
+	# The report's run keeps the warning its NEXT points to ("see the warning above") (B13 round 18 V25).
+	if [ "$unread" -ne 0 ] && [ "$REPORT_ONLY" -eq 0 ]; then
+		say "WAITING ON YOU: $up in $shown/local-work cannot be read by this account; make $uthem readable (chmod u+r), and the setup report at the end of this setup sends $uthem"
+	elif [ "$unread" -ne 0 ]; then
+		warn "$up in $SETUP_DIR/local-work could not be read, so $out does not hold $uthem"
+	fi
 }
 write_report() { # RC: write the setup report at $REPORT_PATH; 0 when written, 2 in a dry run
 	local rc="$1" bin out src=0 why="agentsync is not installed"
@@ -5080,11 +5087,12 @@ on_exit() {
 					say "$ISSUE_LINK_PREFIX$link" # the last line before NEXT (step 3 of the setup prompt names it)
 				fi
 				# not "that one file" while it lacks a kept patch: the remedy first, with a link or without one (B13
-				# round 14 Q20, Q29)
+				# round 14 Q20, Q29); the command by name, since an agent relays this line where "this command" is
+				# none (B13 round 18 V17, V79, as round 15 S23 for section 3's line); still no file name
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ "$BACK_UNREAD" -gt 0 ]; then
 					up="$BACK_UNREAD kept patch files" uthem="them readable (chmod u+r on the files"
 					[ "$BACK_UNREAD" != 1 ] || { up="1 kept patch file" uthem="it readable (chmod u+r on the file"; }
-					NEXT_MSG="$back does not hold $up this account cannot read (see the warning above): make $uthem in $SETUP_DIR/local-work) and run this command again, then review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
+					NEXT_MSG="$back does not hold $up this account cannot read (see the warning above): make $uthem in $SETUP_DIR/local-work) and run $LOCAL_WORK_AGAIN again, then review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier

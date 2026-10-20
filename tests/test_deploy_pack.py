@@ -6491,6 +6491,11 @@ def test_the_guide_names_the_late_listing_and_the_local_work_line() -> None:
     assert f"then run {setup_report.LOCAL_WORK_AGAIN} again" in page and "run this command again`" not in page
     # B13 round 15 S21: the line for a patch an earlier attempt's report embedded, by local-work/.sent
     assert "`not repeated: a patch file an earlier attempt's report held (<time>)`" in page
+    # B13 round 18 V25: section 3's third form, a patch this account cannot read, which the guide left out
+    assert (
+        "`not sent: 1 patch file in ~/agent-context/setup/local-work this account cannot read; make it "
+        f"readable (chmod u+r) and run {setup_report.LOCAL_WORK_AGAIN} again`" in page
+    )
     # B13 round 14 Q29: the clause for patches this account cannot read
     assert (
         "`, U of them unreadable and not in bring-back.md (chmod u+r, then run "
