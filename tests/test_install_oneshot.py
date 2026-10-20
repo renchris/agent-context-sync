@@ -2158,6 +2158,71 @@ def test_report_only_runs_just_the_report(env: dict[str, str]) -> None:
     )
 
 
+ORIGIN_URLS = (
+    "https://github.com/renchris/agent-context-sync.git",
+    "https://github.com/renchris/agent-context-sync",
+    "https://github.com/renchris/agent-context-sync/",
+    "git@github.com:renchris/agent-context-sync",
+    "git@github.com:renchris/agent-context-sync.git",
+    "ssh://git@github.com/Renchris/Agent-Context-Sync/",
+    "git://github.com/renchris/agent-context-sync.git",
+    "https://github.com/someone/agent-context-sync.git",
+    "https://GitHub.com/renchris/agent-context-sync.git",
+    "https://git.contoso-mirror.invalid/contoso/agent-context-sync.git",
+    "github.com:renchris/agent-context-sync",
+    "",
+)
+
+
+def test_the_shell_reports_origin_label_is_the_agentsync_reports() -> None:
+    """B13 round 18 V29: install.sh's origin_label gives the label setup_report.origin_label gives, URL for
+    URL (https, ssh and scp forms, a fork, a mirror, a host in capitals, no URL)."""
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    func = re.search(r"^origin_label\(\) \{.*?^\}\n", text, re.M | re.S)
+    assert func
+    for url in ORIGIN_URLS:
+        shell = subprocess.run(
+            [BASH32, "-c", func.group(0) + 'origin_label "$1"', "-", url],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        assert shell == setup_report.origin_label(url), url
+
+
+@pytest.mark.parametrize("origin", ["mirror", "github", "no-url", "no-checkout"])
+def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
+    env: dict[str, str], origin: str
+) -> None:
+    """B13 round 18 V29 (probes am, remsh): the setup prompt's git quote says the report's install source line
+    says ``origin: other`` when the checkout's remote is not GitHub, and only the agentsync report had that
+    line: on a new Mac with a mirror checkout and no agentsync, the shell report said nothing of it. It now
+    has the line, read from the checkout's own config files (no git process), never the URL."""
+    home = Path(env["HOME"])
+    dot = home / "src" / "agent-context-sync" / ".git"
+    url = {
+        "mirror": "https://git.contoso-mirror.invalid/contoso/agent-context-sync.git",
+        "github": "git@github.com:renchris/agent-context-sync.git",
+    }.get(origin, "")
+    if origin != "no-checkout":
+        dot.mkdir(parents=True)
+        remote = f'[remote "origin"]\n\turl = {url}\n' if url else ""
+        (dot / "config").write_text(f"[core]\n\tbare = false\n{remote}", encoding="utf-8")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert "(shell fallback: agentsync is not installed)" in cp.stdout
+    text = report_path(env).read_text(encoding="utf-8")
+    summary = text.split("\n## Summary\n", 1)[1].split("\n## ", 1)[0]
+    label = {"mirror": "other (redacted)", "github": "github.com/renchris/agent-context-sync"}.get(
+        origin, "none"
+    )
+    if origin == "no-checkout":
+        assert "- install source: no checkout at ~/src/agent-context-sync\n" in summary, text
+    else:
+        assert f"- install source: checkout ~/src/agent-context-sync · origin: {label}\n" in summary, text
+    assert "contoso-mirror" not in text
+
+
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     env: dict[str, str], folder: Path
 ) -> None:
@@ -8473,6 +8538,7 @@ def _checkout_following(tmp_path: Path, origin: str | None, upstream: bool | str
         ("https://example.invalid/contoso/agent-context-sync.git", "detached", "checkout"),
         (None, False, "both"),
         ("https://example.invalid/contoso/agent-context-sync.git", "upstream", "copy-again"),
+        ("rewrite", True, "copy-again"),
     ],
 )
 def test_a_copy_newer_than_the_checkout_is_told_what_fixes_it(
@@ -8483,8 +8549,25 @@ def test_a_copy_newer_than_the_checkout_is_told_what_fixes_it(
     fresh copy is the same newer one and stops here again. The installer reads its own checkout's origin
     and upstream, read-only: following main there, the copy came from another branch or a fork, and copying
     it again fixes it; following anything else, the checkout is the cause and is named; when git cannot say,
-    both. The stderr, the friction line's fix and the stopped report's NEXT say the same."""
+    both. The stderr, the friction line's fix and the stopped report's NEXT say the same. B13 round 18 V70:
+    "rewrite" is GitHub's origin under a URL rewrite (insteadOf), which ``remote get-url`` applies: it read as
+    a checkout that follows another remote; the configured URL is read now."""
+    rewrite = origin == "rewrite"
+    if rewrite:
+        origin = "https://github.com/renchris/agent-context-sync.git"
     script = _checkout_following(tmp_path, origin, upstream)
+    if rewrite:
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(script.parents[1]),
+                "config",
+                "url.https://example.invalid/mirror/.insteadOf",
+                "https://github.com/renchris/",
+            ],
+            check=True,
+        )
 
     def run(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(

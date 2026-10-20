@@ -543,7 +543,9 @@ newer_copy_fix() {
 		git_ro_resolve
 		u="$(git_ro -C "$src" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 		[ -z "$u" ] || r="${u%%/*}"
-		url="$(git_ro -C "$src" remote get-url "$r" 2>/dev/null || true)"
+		# the configured URL, not `remote get-url`, which a URL rewrite (insteadOf) changes: a rewrite alone
+		# read as a checkout that follows another remote (B13 round 18 V70)
+		url="$(git_ro -C "$src" config --get "remote.$r.url" 2>/dev/null || true)"
 		b="$(git_ro -C "$src" symbolic-ref -q --short HEAD 2>/dev/null || true)"
 		[ -z "$b" ] || m="$(git_ro -C "$src" config --get "branch.$b.merge" 2>/dev/null || true)"
 	fi
@@ -2904,6 +2906,47 @@ fallback_install_line() { # RC
 		say "$head; the last install run (started $at$label) $what"
 	fi
 }
+# The label setup_report.origin_label gives URL: github.com/renchris/agent-context-sync for that repository's
+# https, ssh or scp URL (with or without .git or a trailing /, its owner and name in any case), else "other
+# (redacted)", or "none" for no URL. Never the URL itself: a fork or mirror URL may name a person or a company.
+origin_label() { # URL
+	local u="$1" s re='^((https?|ssh|git)://([^@/]+@)?|[^@/]+@)github\.com[:/]+([^/]+)/([^/]+)$'
+	if [ -z "$u" ]; then
+		printf 'none'
+		return 0
+	fi
+	s="${u%/}"
+	s="${s%.git}"
+	if [[ "$s" =~ $re ]] && [ "$(printf '%s/%s' "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" | LC_ALL=C tr '[:upper:]' '[:lower:]')" = renchris/agent-context-sync ]; then
+		printf 'github.com/renchris/agent-context-sync'
+	else
+		printf 'other (redacted)'
+	fi
+}
+# The shell report's install source line, which the setup prompt's git quote promises (B13 round 18 V29):
+# ~/src/agent-context-sync's origin as it is configured, read from its own config files the way
+# git_remote_entries reads them (the last url of [remote "origin"]; config.worktree last, as git reads it), as
+# the agentsync report reads `git config --get remote.origin.url` (V70). No git process: without the developer
+# tools /usr/bin/git offers to install them.
+fallback_install_source_line() {
+	local dir="$HOME/src/agent-context-sync" g v url=""
+	if [ ! -e "$dir/.git" ]; then
+		say "- install source: no checkout at ~/src/agent-context-sync"
+		return 0
+	fi
+	while IFS= read -r g; do
+		[ -f "$g" ] || continue
+		v="$(LC_ALL=C awk '
+			/^[ \t]*\[/ { o = ($0 ~ /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"origin"[ \t]*\]/); next }
+			o && tolower($0) ~ /^[ \t]*url[ \t]*=/ {
+				u = $0; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u); last = u
+			}
+			END { if (last != "") print last }
+		' "$g" 2>/dev/null || true)"
+		[ -z "$v" ] || url="$v"
+	done < <(checkout_git_configs "$dir")
+	say "- install source: checkout ~/src/agent-context-sync · origin: $(origin_label "$url")"
+}
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 # The sha REF names in the checkout GIT, read from its ref files with no git process: the loose file first, else
 # its packed-refs line; empty when neither holds it.
@@ -3010,6 +3053,7 @@ fallback_body() {
 	fi
 	[ -z "$LAST_ERROR" ] || say "- last error: $LAST_ERROR"
 	fallback_local_work_line
+	fallback_install_source_line # last, as the agentsync report's install source line is in its Summary's last block
 	say ""
 	say "## Agent friction log"
 	say ""

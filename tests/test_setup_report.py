@@ -8331,6 +8331,46 @@ def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
     assert setup_report.residue("OneDrive-<org-1> at https://<org-1>-my.sharepoint.com, see <folder-1>") == []
 
 
+@pytest.mark.parametrize("origin", ["github", "mirror"])
+def test_install_source_reads_the_configured_origin_and_says_a_rewrite_changes_it(
+    tmp_path: Path, origin: str
+) -> None:
+    """B13 round 18 V70: ``remote get-url`` applies a URL rewrite (insteadOf; CONTRACTS §16.72 H21), so a
+    checkout whose origin is GitHub read ``origin: other (redacted)`` under a rewrite alone, and the person
+    could not tell a mirror remote from a rewrite. The label is the configured URL's; a rewrite that sends it
+    elsewhere is said beside it, never its host. A mirror origin stays ``other``."""
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (repo / "a.txt").write_text("one\n", encoding="utf-8")
+    git("add", "a.txt")
+    git("commit", "-q", "-m", "one")
+    url = {
+        "github": "https://github.com/renchris/agent-context-sync.git",
+        "mirror": "https://git.contoso.example/mirror/agent-context-sync.git",
+    }[origin]
+    git("remote", "add", "origin", url)
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    label = "github.com/renchris/agent-context-sync" if origin == "github" else "other (redacted)"
+    assert f" · origin: {label} · " in setup_report._checkout_facts(run, repo)
+    git("config", "url.https://git.contoso.example/mirror/.insteadOf", "https://github.com/renchris/")
+    facts = setup_report._checkout_facts(run, repo)
+    if origin == "github":
+        assert f" · origin: {label} (a URL rewrite sends it elsewhere) · " in facts, facts
+    else:
+        assert f" · origin: {label} · " in facts, facts
+    assert "contoso" not in facts
+
+
 def test_install_source_names_origin_main_and_the_tree(tmp_path: Path) -> None:
     """L10: which code ran. A checkout's origin (this repository, or "other" without its URL), whether its
     HEAD is on origin/main, and the dirty tree's fingerprint as install.sh computes it."""
