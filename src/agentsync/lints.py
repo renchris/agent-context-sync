@@ -477,7 +477,15 @@ def lint_no_tokens(
 
 
 def _executable(path: Path) -> bool:
-    return path.is_absolute() and path.is_file() and os.access(path, os.X_OK)
+    """An absolute path to an executable file. A path this account cannot reach counts as none: 3.11's
+    ``is_file`` raises EACCES and EPERM for a file in a folder it cannot search, where install.sh's ``[ -x ]``
+    answers no, and the lookup goes on to the next place (B13 round 19 W66)."""
+    if not path.is_absolute():
+        return False
+    try:
+        return path.is_file() and os.access(path, os.X_OK)
+    except OSError:
+        return False
 
 
 def _gitleaks_record() -> Path:

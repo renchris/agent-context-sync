@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import unicodedata
 from collections.abc import Callable
@@ -593,6 +594,32 @@ def test_a_launchd_run_records_nothing_and_a_stale_record_is_passed_over(
     exe.unlink()
     monkeypatch.setenv("PATH", LAUNCHD_PATH)
     assert lints.recorded_gitleaks() is None and lints._gitleaks() is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_gitleaks_in_a_folder_this_account_cannot_search_is_none(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 19 W66: ``_executable`` used ``Path.is_file``, which in 3.11 raises PermissionError for a
+    file in a folder this account cannot search, so a recorded or fixed gitleaks there broke the lookup, the
+    rules identity and ``lint_secrets`` (a sync failed rather than falling back to the builtin patterns);
+    install.sh's ``[ -x ]`` answers no. It counts as no gitleaks, and the lookup goes on."""
+    exe = _shell_only_gitleaks(tmp_path, monkeypatch)
+    lints.remember_gitleaks()
+    assert lints.recorded_gitleaks() == exe
+    monkeypatch.setattr(lints, "_GITLEAKS_CANDIDATES", (exe,))
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    exe.parent.chmod(0o000)
+    try:
+        assert lints.recorded_gitleaks() is None and lints.gitleaks_lookup() is None
+        assert lints.secret_rules_identity()["gitleaks"] == ""
+        write(repo, "mirror/src/leak.md", page(f"# creds\n\n{AWS_KEY}\n"))
+        [finding] = lints.lint_secrets(repo, ["mirror/src/leak.md"])
+        assert "builtin" in finding.message
+    finally:
+        exe.parent.chmod(0o755)
 
 
 def test_a_go_install_gitleaks_is_found_on_launchds_path(monkeypatch: pytest.MonkeyPatch) -> None:

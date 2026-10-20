@@ -25042,6 +25042,15 @@ and W the line's refusals add up to the sources'"): read as the converter-waitin
 files are never refused. It is C; no output changes. Test:
 `test_cli.py::test_the_run_lines_docstring_gives_each_count_its_own_letter`.
 
+**W66: a gitleaks this account cannot reach is no gitleaks (`agentsync.lints`).** `_executable` called
+`Path.is_file`, which in Python 3.11 raises PermissionError (EACCES, EPERM) for a file in a folder this account
+cannot search or a sandbox hides, where install.sh's `[ -x ]` answers no. A recorded or fixed gitleaks there broke
+`recorded_gitleaks`, `gitleaks_lookup`, `secret_rules_identity` (called outside any try in the cycle) and
+`lint_secrets`, so a sync failed rather than falling back to the builtin patterns. An `OSError` there now counts
+as not executable: the lookup goes on to PATH, the next place or none, as for a missing gitleaks, and a changed
+identity re-screens as designed. Test:
+`test_lints.py::test_a_gitleaks_in_a_folder_this_account_cannot_search_is_none` (skipped as root).
+
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
 Round 19's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 19"; specs `round19/items/W<n>.md`, the
