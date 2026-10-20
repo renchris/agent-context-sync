@@ -1395,22 +1395,81 @@ report_word() {
 	# printed text counts, as setup_report.report_words reads only string literals: double-quoted strings with
 	# their expansions removed, and the single-quoted format of a printf or say. A code word (a variable, a
 	# case label, an awk or Python name) is no report word, so an organisation named so is cut out of a longer
-	# word and makes no private-only report, as in the Python report (B13 round 17 U4, U94)
-	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '/^[[:space:]]*#/ { next }
+	# word and makes no private-only report, as in the Python report (B13 round 17 U4, U94). Each line is read
+	# by a shell lexer (outside, inside "...", inside '...', and the depth of $( ), so the quotes of a string
+	# nested in $( ... ) pair with each other, never with the quotes around it (B13 round 18 V85: the text
+	# between two strings read as one gave echo, dev, null, gap, index). A single-quoted program other than a
+	# printf or say format gives its own double-quoted strings and a sed s/// replacement ("designated
+	# requirement:"), never an awk # comment (token).
+	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '
 		function words(t,    n, a, i) {
 			gsub(/\$\([^)]*\)|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*/, " ", t)
 			n = split(t, a, /[^A-Za-z]+/)
 			for (i = 1; i <= n; i++) if (a[i] ~ /^[a-z][a-z][a-z]+$/) w[a[i]] = 1
 		}
+		function prog(t, before,    q, c, i, n, s) {
+			if (before ~ /(printf|say)[ \t]+$/) { words(t); return }
+			n = length(t)
+			for (i = 1; i <= n; i++) {
+				c = substr(t, i, 1)
+				if (c == "\"") {
+					s = ""
+					for (i++; i <= n && (c = substr(t, i, 1)) != "\""; i++) { if (c == "\\") { s = s c substr(t, i + 1, 1); i++ } else s = s c }
+					words(s)
+					continue
+				}
+				if (c == "#" && (i == 1 || substr(t, i - 1, 1) ~ /[ \t{;]/)) { t = substr(t, 1, i - 1); break }
+			}
+			q = t
+			while (match(q, /(^|[^A-Za-z0-9_])s\/([^\/\\]|\\.)*\/([^\/\\]|\\.)*\//)) {
+				s = substr(q, RSTART, RLENGTH); q = substr(q, RSTART + RLENGTH)
+				sub(/^[^s]*s\/([^\/\\]|\\.)*\//, "", s); sub(/\/$/, "", s); words(s)
+			}
+		}
+		/^[[:space:]]*#/ { next }
 		{
-			gsub(/[A-Za-z]+:\/\/[^ \t"\047]*|github\.com[:\/][^ \t"\047]*/, " ")
-			t = $0
-			while (match(t, /"([^"\\]|\\.)*"/)) { words(substr(t, RSTART + 1, RLENGTH - 2)); t = substr(t, RSTART + RLENGTH) }
-			t = $0
-			while (match(t, /(printf|say)[ \t]+\047[^\047]*\047/)) { q = substr(t, RSTART, RLENGTH); t = substr(t, RSTART + RLENGTH); sub(/^[^\047]*\047/, "", q); words(q) }
+			line = $0
+			gsub(/[A-Za-z]+:\/\/[^ \t"\047]*|github\.com[:\/][^ \t"\047]*/, " ", line)
+			n = length(line); buf = ""; d = 0; stk[0] = "o"
+			for (i = 1; i <= n; i++) {
+				c = substr(line, i, 1); top = stk[d]
+				if (top == "d") { # inside "...": its text, a nested $( ) aside
+					if (c == "\\") { buf = buf c substr(line, i + 1, 1); i++; continue }
+					if (c == "\"") { words(buf); buf = ""; d--; continue }
+					if (c == "$" && substr(line, i + 1, 1) == "(") { words(buf); buf = ""; stk[++d] = "c"; i++; continue }
+					if (c == "$" && substr(line, i + 1, 1) == "{" && (j = index(substr(line, i), "}"))) { i += j - 1; buf = buf " "; continue }
+					if (c == "$" && substr(line, i + 1, 1) ~ /[A-Za-z_0-9@#?*!-]/) { i++; while (substr(line, i + 1, 1) ~ /[A-Za-z0-9_]/) i++; buf = buf " "; continue }
+					buf = buf c
+					continue
+				}
+				if (c == "\\") { i++; continue }
+				if (c == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t;]/)) break
+				if (c == "\"") { stk[++d] = "d"; buf = ""; continue }
+				if (c == "\047") {
+					j = index(substr(line, i + 1), "\047")
+					if (!j) { prog(substr(line, i + 1), substr(line, 1, i - 1)); break }
+					prog(substr(line, i + 1, j - 1), substr(line, 1, i - 1)); i += j
+					continue
+				}
+				if (c == "$" && substr(line, i + 1, 1) == "(") { stk[++d] = "c"; i++; continue }
+				if (c == "(" && top == "c") { stk[++d] = "c"; continue }
+				if (c == ")" && top == "c") d--
+			}
 		}
 		END { for (k in w) printf "%s ", k }' "$SELF_FILE" 2>/dev/null || true) "
 	case "$REPORT_WORDS" in *" $1 "*) return 0 ;; esac
+	return 1
+}
+# WORD (lower case): a word the report prints from a command's or the agent's output, which no scan of this
+# script's printed text sees: uname -m's arm, profiles status's enrolled, via, dep and enrollment, the embedded
+# doctor lines' env, info and resolves, the PAC sentence's words, the agent's name. setup_report._OUTPUT_WORDS (a
+# test keeps them equal). It decides only the private-only rule, never how a value is matched (B13 round 18 V84,
+# V86: an organisation Arm cut "arm64" to "<org-1>64" and the report still offered the public issue link).
+output_word() {
+	case "$1" in
+	arm | auto | claude | dep | enrolled | enrollment | env | evaluate | info | launchagent | microsoft | pac) return 0 ;;
+	reachable | resolves | returns | unsupported | via) return 0 ;;
+	esac
 	return 1
 }
 # WORD (lower case): a generic word a one-word organisation is registered for only in each entry's own name and
@@ -1741,9 +1800,10 @@ redaction_pairs() {
 			orgs_seen+="$org"$'\n'"$k$x"$'\n'
 			fuzzy_flag "$org"
 			# flag o: an organisation matched everywhere is also cut out of a longer word at a CamelCase, digit or
-			# leading-capital boundary (ContosoGroup, Contoso2026, AcmeContoso), as setup_report's org mode; one
-			# whose words spell a report word stays whole-word (B13 round 11 M50)
-			[ "$FUZZY" != f ] || report_word "$(id_key "$org")" || FUZZY=o
+			# leading-capital boundary (ContosoGroup, Contoso2026, AcmeContoso), as setup_report's org mode (B13
+			# round 11 M50); a report word too, which then makes the report private only (round 18 V1: one left
+			# whole-word printed in clear inside a longer word, MyStatusTeam). A joined name (flag j) stays as it is
+			[ "$FUZZY" != f ] || FUZZY=o
 			add_pair "$org" "<org-$x>" "$FUZZY"
 		done
 		# a link named as an organisation is that organisation's (OneDrive-Contoso (1) beside OneDrive-Contoso): a
@@ -3179,7 +3239,7 @@ say_item() { # TEXT
 }
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
-	local org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
+	local low org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
 	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
@@ -3344,7 +3404,8 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac
 		case "$v" in "" | *[!A-Za-z]*) continue ;; esac
 		case "$generic" in *" $p "*) continue ;; esac
-		report_word "$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')" || continue
+		low="$(printf '%s' "$v" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+		report_word "$low" || output_word "$low" || continue
 		say "Private only: one of your folder or organization names is also a word this report prints, so where its"
 		say "placeholder stands in the report's own text it can be read back."
 		say "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a public issue. Nothing is sent automatically."

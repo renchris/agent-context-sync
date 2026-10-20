@@ -12333,6 +12333,10 @@ def test_the_shell_reports_fuzzy_match_is_the_python_reports_past_ascii_and_held
         # an install.sh code word ("target=", a variable) is no report word: cut out as in Python (B13 round
         # 17 U4)
         ("Target", "MyTargetTeam, Target2026, AcmeTarget", "My<org-1>Team, <org-1>2026, Acme<org-1>"),
+        # a report word too, a Python-only one (Gateway) or one both print (Status): cut out alike, the report
+        # then private only (B13 round 18 V1)
+        ("Gateway", "MyGatewayTeam, Gateway2026, AcmeGateway", "My<org-1>Team, <org-1>2026, Acme<org-1>"),
+        ("Status", "MyStatusTeam, Status2026, AcmeStatus", "My<org-1>Team, <org-1>2026, Acme<org-1>"),
     ],
 )
 def test_an_organisation_is_redacted_inside_a_longer_word(
@@ -12346,14 +12350,16 @@ def test_an_organisation_is_redacted_inside_a_longer_word(
     assert shell == want and python == want, (shell, python)
 
 
-@pytest.mark.parametrize("org", ["Target", "Core", "Ghostty", "Contoso"])
+@pytest.mark.parametrize("org", ["Target", "Core", "Ghostty", "Echo", "Gap", "Index", "Token", "Contoso"])
 def test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_python(
     env: dict[str, str], monkeypatch: pytest.MonkeyPatch, org: str
 ) -> None:
     """B13 round 17 U94 (U4 one defect): report_word read every lower-case word on every line of install.sh,
     code too (``target=``, ``local ... core``, the ``ghostty)`` case label), so an organisation named so
     stayed in clear inside longer words in the shell report, and made it private only and dropped its link,
-    where the Python report, whose words are its string literals, cut it out. Contoso is the control."""
+    where the Python report, whose words are its string literals, cut it out. Contoso is the control. B13
+    round 18 V85: Echo, Gap, Index and Token came in from the text between two strings when a string nested
+    in $( ... ) put the quote pairing out of step, and from an awk comment."""
     said = f"{org}Group, {org}2026, Acme{org}, {org}Corp.com, {org.lower()} ran"
     shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said, org=org)
     assert shell == python == "<org-1>Group, <org-1>2026, Acme<org-1>, <org-1>Corp.com, <org-1> ran", (
@@ -12364,10 +12370,8 @@ def test_an_organisation_named_like_an_install_sh_code_word_is_redacted_as_in_py
     assert "Private only:" not in text and "issues/new" in text, text[-800:]
 
 
-def test_the_shell_report_words_are_its_printed_text() -> None:
-    """B13 round 17 U94: the shell's report words are the words install.sh prints (double-quoted strings,
-    their expansions removed, and printf or say formats), never a code word, a case label or a pattern
-    fragment; every word joined_word holds is one."""
+def _shell_report_words() -> set[str]:
+    """The shell's report words: report_word's scan of install.sh."""
     script = INSTALL_SH.read_text(encoding="utf-8")
     fns = "".join(re.findall(r"(?ms)^(?:joined_word|report_word)\(\) \{\n.*?^\}\n", script))
     cp = subprocess.run(
@@ -12383,7 +12387,23 @@ def test_the_shell_report_words_are_its_printed_text() -> None:
         check=False,
         env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
     )
-    words = set(cp.stdout.split())
+    return set(cp.stdout.split())
+
+
+def _shell_case_words(name: str) -> set[str]:
+    """The words of install.sh's case-list function ``name`` (joined_word, output_word)."""
+    [body] = re.findall(rf"(?ms)^{name}\(\) \{{\n(.*?)^\}}$", INSTALL_SH.read_text(encoding="utf-8"))
+    return {w.strip() for ln in re.findall(r"(?m)^\t(\S.*?)\) return 0 ;;$", body) for w in ln.split("|")}
+
+
+def test_the_shell_report_words_are_its_printed_text() -> None:
+    """B13 round 17 U94: the shell's report words are the words install.sh prints (double-quoted strings,
+    their expansions removed, and printf or say formats), never a code word, a case label or a pattern
+    fragment; every word joined_word holds is one. B13 round 18 V85: each line is lexed, so a string nested
+    in $( ... ) does not pair with the quotes around it (echo, dev, null, gap, index) and an awk comment is
+    no printed text (token); a single-quoted program's own strings and a sed replacement are (designated
+    requirement:, printed only on the launcher path)."""
+    words = _shell_report_words()
     assert len(words) > 500, "the scan is broken"
     for code in (
         "target",
@@ -12396,10 +12416,89 @@ def test_the_shell_report_words_are_its_printed_text() -> None:
         "usiness",
         "ork",
         "box",
+        "echo",
+        "dev",
+        "null",
+        "gap",
+        "index",
+        "token",
     ):
         assert code not in words, code
-    for printed in ("folder", "report", "redacted", "private", "organization", "installer"):
+    for printed in (
+        "folder",
+        "report",
+        "redacted",
+        "private",
+        "organization",
+        "installer",
+        "designated",
+        "requirement",
+    ):
         assert printed in words, printed
+
+
+def test_the_shell_output_words_are_the_reports() -> None:
+    """B13 round 18 V84, V86: output_word lists the words the report prints from a command's or the agent's
+    output, setup_report._OUTPUT_WORDS (lane RA's half)."""
+    words = _shell_case_words("output_word")
+    assert {"arm", "enrolled", "via", "dep", "enrollment", "env", "info", "resolves", "claude"} <= words
+    assert words == set(setup_report._OUTPUT_WORDS)
+
+
+@pytest.mark.parametrize("org", ["Arm", "Via"])
+def test_an_organisation_named_like_a_commands_output_word_makes_the_shell_report_private(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, org: str
+) -> None:
+    """B13 round 18 V84, V86: the shell report prints uname -m's "arm64" and profiles' "Enrolled via DEP",
+    which no scan of install.sh's printed text sees, so an organisation Arm cut "arm64" to "<org-1>64" and the
+    report kept the public issue link, from which a reader turns it back into the name. Such a word makes the
+    report private only (output_word), as the Python report does; how the value is matched is unchanged."""
+    _fuzzy_report(env, monkeypatch, ["Plans"], f"{org}Group and {org.lower()}", org=org)
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "Private only:" in text and "issues/new" not in text, text[-800:]
+
+
+def test_an_organisation_that_is_a_report_word_is_cut_out_of_a_longer_word_in_the_shell_report(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V1 (the shell half; lane RA builds the Python one): an organisation named like a word the
+    report prints (Status) was matched whole-word only, so "MyStatusTeam" printed it in clear. It is cut out
+    of a longer word like any organisation, and the report is private only."""
+    shell, python = _fuzzy_report(
+        env, monkeypatch, ["Plans"], "MyStatusTeam, Status2026, AcmeStatus", org="Status"
+    )
+    assert shell == python == "My<org-1>Team, <org-1>2026, Acme<org-1>", (shell, python)
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "Private only:" in text and "issues/new" not in text, text[-800:]
+
+
+def test_every_lower_case_word_the_shell_report_prints_is_a_report_word(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V84: a word the report prints that its word list lacks is a word an organisation can be
+    named after and be read back from. Every lower-case word of 3 or more letters the shell report prints
+    outside the embedded logs, paths, URLs, placeholders and code spans is report_word's, output_word's or
+    joined_word's: a new uname, profiles or doctor wording fails here instead of leaking."""
+    _fuzzy_report(env, monkeypatch, ["Plans"], "nothing", org="Contoso")
+    known = _shell_report_words() | _shell_case_words("output_word") | _shell_case_words("joined_word")
+    missing: dict[str, str] = {}
+    section, fence = "", False
+    for line in report_path(env).read_text(encoding="utf-8").splitlines():
+        if line.startswith("~~~"):
+            fence = not fence
+        if fence or line.startswith("~~~"):
+            continue
+        section = line if line.startswith("## ") else section
+        if section == "## Agent friction log":
+            continue
+        # and a commit or tree id (hex with a digit)
+        bare = re.sub(
+            r"https?://\S+|\S*[/~]\S*|<[^<>]+>|`[^`]*`|\S+\.\S+|\b(?=[0-9a-f]*\d)[0-9a-f]{7,}\b", " ", line
+        )
+        for word in re.findall(r"(?<![A-Za-z])[a-z]{3,}(?![A-Za-z])", bare):
+            if word not in known:
+                missing.setdefault(word, line)
+    assert missing == {}, missing
 
 
 def test_a_cloudstorage_symlink_is_a_link_in_both_readers(
