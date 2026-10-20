@@ -6198,9 +6198,10 @@ class _Labels:
         return self._shown[text]
 
 
-_CANNOT_OPEN_CODES = frozenset({14, 23, 8})
+_CANNOT_OPEN_CODES = frozenset({sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_PERM, sqlite3.SQLITE_READONLY})
 """sqlite's SQLITE_CANTOPEN, SQLITE_PERM and SQLITE_READONLY: a state file this account cannot open or write,
-by its owner, its mode or its folder's, never a damaged one (B13 round 19 W64)."""
+by its owner, its mode or its folder's, never a damaged one (B13 round 19 W64). Named, never numbered: the
+numbers once held 23, SQLITE_AUTH, where PERM is 3 (B13 round 20 X42, X60)."""
 _STATE_SHUT = "the state file cannot be opened by this account: see Doctor's state_dir lines"
 """:func:`_why_not_read`'s words for it: doctor's state_dir (the folder) or state_dir.files (the file) says
 which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W64)."""
@@ -6212,17 +6213,15 @@ def _why_not_read(exc: BaseException) -> str:
     failures a setup meets, never its class name, which is no word of the person's (B13 round 17 U21; round
     16 T15's rule, everywhere). A refused config points at Configuration, an unreadable state file at
     Doctor's state_dir.manifest, and one this account cannot open (sqlite's CANTOPEN, PERM or READONLY, or
-    lane B's ``ManifestOpenError``) at Doctor's state_dir lines, where its owner, its mode or its folder
+    a ``ManifestOpenError``) at Doctor's state_dir lines, where its owner, its mode or its folder
     fails (B13 round 19 W64: state_dir.manifest judges only a file that is no database or a damaged one, so
     no such line was printed); an exception no setup should meet keeps a short marker with its class, so a
     report still says what to look for."""
-    from agentsync import errors  # noqa: PLC0415
-    from agentsync.errors import ConfigError  # noqa: PLC0415 - lazy, as the doctor reads are
+    from agentsync.errors import ConfigError, ManifestOpenError  # noqa: PLC0415 - lazy
 
     if isinstance(exc, ConfigError):
         return "the configuration is refused: see Configuration"
-    opening = getattr(errors, "ManifestOpenError", None)  # lane B's W65; absent before it lands
-    if isinstance(opening, type) and isinstance(exc, opening):
+    if isinstance(exc, ManifestOpenError):
         return _STATE_SHUT
     if isinstance(exc, sqlite3.Error):
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are

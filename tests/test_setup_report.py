@@ -6450,6 +6450,33 @@ def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(
     assert setup_report._why_not_read(RuntimeError("/Users/jdoe/x")) == "an unexpected error: RuntimeError"
 
 
+@pytest.mark.parametrize(
+    "code",
+    [
+        sqlite3.SQLITE_CANTOPEN,
+        sqlite3.SQLITE_PERM,
+        sqlite3.SQLITE_READONLY,
+        sqlite3.SQLITE_PERM | 256,
+        sqlite3.SQLITE_AUTH,
+    ],
+)
+def test_a_state_file_this_account_cannot_open_is_told_by_sqlites_named_codes(code: int) -> None:
+    """B13 round 20 X42, X60: the cannot-open set held 23, SQLITE_AUTH, where its words say PERM, which is 3:
+    a PERM error was pointed at state_dir.manifest, a line that does not judge it. AUTH comes only from an
+    authorizer, which agentsync never installs, so it keeps the generic words. X45: a ManifestOpenError is
+    told the same way, by its class, not by a lookup by name."""
+    from agentsync.errors import ManifestOpenError  # noqa: PLC0415
+
+    exc = sqlite3.OperationalError("x")
+    exc.sqlite_errorcode = code  # type: ignore[attr-defined]
+    said = setup_report._why_not_read(exc)
+    if code == sqlite3.SQLITE_AUTH:
+        assert said == "the state file cannot be read: see Doctor's state_dir.manifest line", said
+    else:
+        assert said == setup_report._STATE_SHUT, said
+    assert setup_report._why_not_read(ManifestOpenError("/x", 13)) == setup_report._STATE_SHUT
+
+
 def _slow_pandoc(tmp_path: Path, cfg: Path, seconds: int) -> Path:
     """A ``[convert] pandoc_path`` that takes ``seconds`` to answer ``--version``."""
     exe = tmp_path / "bin" / "pandoc"
@@ -13774,7 +13801,6 @@ _NEVER_PRINTED_CAMELCASE = frozenset(
         "IOPlatformExpertDevice",
         "IOPlatformSerialNumber",
         "FrictionEvent",  # a type name in a cast
-        "ManifestOpenError",  # lane B's class, looked up by name (B13 round 19 W64), never printed
         "CFBundleIdentifier",  # the environment variable whose value the Environment line prints
         "WarpTerminal",  # a TERM_PROGRAM the Environment line prints as Warp (_TERMINAL_APPS)
         # the speech engine's build names, which no report line prints
