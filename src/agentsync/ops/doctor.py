@@ -973,6 +973,92 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
     return out
 
 
+def _persons_chown(root: Path) -> str:
+    """The fix of a state folder or file another account owns (a first ``sudo agentsync sync``): a sudo, which
+    the person runs, as the setup prompt's "no sudo" rule says, so ``is_persons_fix`` reads it as theirs and
+    no NEXT hands it to the agent (B13 round 20 X74)."""
+    return f"the person runs sudo chown -R {os.getuid()} {_shell_path(root)} (the agent runs no sudo)"
+
+
+def _search_fix(root: Path) -> str:
+    """The fix of a state folder this account owns at 0700 that still refuses it a look inside."""
+    return (
+        f"give this account read, write and search access to the folder {_shell_path(root)} (its owner "
+        f"and mode are right, so an ACL or a privacy setting refuses it: ls -led {_shell_path(root)} shows "
+        f"an ACL)"
+    )
+
+
+def state_folder_fix(root: Path) -> str:
+    """The fix of a state folder this account cannot look inside, as state_dir's lines give it: the person's
+    chown when another account owns it, ``chmod 700`` when its mode refuses it, else the access fix (B13
+    round 20 X73: W65's "owner and mode 600" still refuses a folder a search)."""
+    try:
+        st = root.stat()
+    except OSError:
+        return f"make {_shell_path(root)} this account's folder at mode 700, then run again"
+    if st.st_uid != os.getuid():
+        return _persons_chown(root)
+    if stat.S_IMODE(st.st_mode) != 0o700:
+        return f"chmod 700 {_shell_path(root)}"
+    return _search_fix(root)
+
+
+def state_path_fix(root: Path, path: Path) -> str:
+    """The fix of ``path``, in the state folder ``root``, that this account was refused: the first of the
+    folder, a folder below it, or the file itself that refuses it, with that one's fix (another account's:
+    the person's chown of the folder; this account's: ``chmod 700`` a folder, ``chmod 600`` a file), else
+    :func:`state_folder_fix` (B13 round 20 X73: a lock at 0000 in a healthy folder was given the folder's ACL
+    fix)."""
+    try:
+        below = path.relative_to(root).parts
+    except ValueError:
+        return state_folder_fix(root)
+    chain = [root] + [root.joinpath(*below[: i + 1]) for i in range(len(below))]
+    for at in chain:
+        try:
+            st = at.lstat()
+        except PermissionError:  # its folder refuses a search, and that folder's own check passed
+            break
+        except OSError:
+            return state_folder_fix(root)
+        if st.st_uid != os.getuid():
+            return _persons_chown(root)
+        if stat.S_ISDIR(st.st_mode):
+            if not os.access(at, os.R_OK | os.W_OK | os.X_OK):
+                return state_folder_fix(root) if at == root else f"chmod 700 {_shell_path(at)}"
+        elif not os.access(at, os.R_OK | os.W_OK):
+            return f"chmod 600 {_shell_path(at)}"
+    return state_folder_fix(root)
+
+
+def _them(names: Sequence[str], one: str, many: str) -> str:
+    """``one`` for a single file, ``many`` for more (B13 round 20 X17: "them: manifest.sqlite (0000)")."""
+    return one if len(names) == 1 else many
+
+
+def state_folder_shut(config: Config) -> bool:
+    """Whether this account is refused a look inside the state folder (no search for it: a mode, another
+    owner, an ACL or a sandbox), so the checks that read the files there cannot answer: they say not checked,
+    and the state_dir lines say why (B13 round 20 X73: each was a generic FAIL to report, and governance's a
+    crash). A missing folder, or one that is a file, is not that: state_dir says so, and those checks run."""
+    sp = config.state_paths
+    try:
+        (expand(sp.root) / sp.db.name).lstat()
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
+STATE_FOLDER_UNCHECKED = (
+    "not checked: this account cannot look inside the state folder; the state_dir lines say why"
+)
+"""The [info] line of a check that reads the state folder, when :func:`state_folder_shut` (B13 round 20
+X73)."""
+
+
 def _check_state_dir(config: Config) -> list[CheckResult]:
     """state_dir exists with mode 0700 (owned by this user); the db and token fallback are 0600."""
     sp = config.state_paths
@@ -999,7 +1085,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             _bad(
                 "state_dir",
                 f"{root} is owned by uid {st.st_uid}, not {os.getuid()}",
-                fix=f"sudo chown -R {os.getuid()} {_shell_path(root)}",
+                fix=_persons_chown(root),
             )
         )
     elif mode != 0o700:
@@ -1028,6 +1114,18 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             fst = p.lstat()
         except FileNotFoundError:
             continue
+        except (
+            PermissionError
+        ) as exc:  # no search of the folder: no file in it can be judged (B13 round 20 X73)
+            if out[-1].ok:  # a folder this account owns at 0700 that still refuses it: an ACL, a sandbox
+                out.append(
+                    _bad(
+                        "state_dir.files",
+                        f"cannot look inside {root}: {exc.strerror or exc}",
+                        fix=_search_fix(root),
+                    )
+                )
+            return out  # else state_dir's owner or mode FAIL above is the answer, with its fix
         m = stat.S_IMODE(fst.st_mode)
         present.append(p.name)
         modes.append(f"{p.name} ({m:04o})")
@@ -1043,8 +1141,9 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         out.append(
             _bad(
                 "state_dir.files",
-                f"owned by another account, so this one cannot open them: {', '.join(others)}",
-                fix=f"sudo chown -R {os.getuid()} {_shell_path(root)}",
+                f"owned by another account, so this one cannot open {_them(others, 'it', 'them')}: "
+                f"{', '.join(others)}",
+                fix=_persons_chown(root),
             )
         )
     elif shut:
@@ -1052,7 +1151,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         out.append(
             _bad(
                 "state_dir.files",
-                f"this account cannot read and write them: {', '.join(shut)}",
+                f"this account cannot read and write {_them(shut, 'it', 'them')}: {', '.join(shut)}",
                 fix=f"chmod 600 {paths}",
             )
         )
@@ -1062,12 +1161,16 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             _bad("state_dir.files", f"readable by others: {', '.join(loose)}", fix=f"chmod 600 {paths}")
         )
     elif present and len(modes) == sum(1 for x in modes if x.endswith("(0600)")):
-        out.append(_ok("state_dir.files", f"{', '.join(present)} are 0600"))
+        out.append(_ok("state_dir.files", f"{', '.join(present)} {_them(present, 'is', 'are')} 0600"))
     elif present:  # "are 0600" only when they are: 0700 is not (W64)
         out.append(_ok("state_dir.files", f"{', '.join(modes)}: this account's alone"))
     else:
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
-    if sp.db.name in present:
+    # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
+    # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
+    # named left two more to fix; after it, the next status probes and any side file is created 0600
+    blocked = {n.split(" ")[0] for n in others + shut}
+    if sp.db.name in present and sp.db.name not in blocked:
         out += _check_manifest_readable(expand(sp.db))
     return out
 
@@ -1154,6 +1257,11 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     through :func:`manifest_damaged` (B13 round 17 U64, U95), and a sync's is kept for status by
     :func:`record_unreadable`."""
     try:
+        # a file this account cannot read and write is not opened: a read-only open would make its -wal and
+        # -shm with its own mode (0400), and every caller, a sync's state check included, would leave them so
+        # (B13 round 20 X78); state_dir.files FAILs it, and the damage check waits for the chmod
+        if db.exists() and not os.access(db, os.R_OK | os.W_OK):
+            return None
         conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
         try:
             trees = conn.execute(
@@ -2545,7 +2653,11 @@ def run_checks(
     with ``loop_waits`` (``loop.NextStep.wait_counts``) saying how many lines.
     """
     results: list[CheckResult] = []
+    shut = state_folder_shut(config)
     for group, check in _CHECKS:
+        if shut and group in _STATE_FOLDER_GROUPS:  # each would stop on the folder (B13 round 20 X73)
+            results.append(_bad(group, STATE_FOLDER_UNCHECKED, Severity.INFO))
+            continue
         run = _tcc_canary_skipped if group == "tcc" and not tcc_canary else check
         if group == "heartbeat" and loop_checks is not None:
             run = functools.partial(_check_heartbeat, loop_checks=loop_checks, loop_waits=loop_waits)
@@ -2555,6 +2667,10 @@ def run_checks(
             results.append(unfinished(group, exc))
     return results
 
+
+_STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat"})
+"""The checks that read files in the state folder (the manifest, the lock, the heartbeat): over a folder this
+account cannot search each says :data:`STATE_FOLDER_UNCHECKED` (B13 round 20 X73)."""
 
 _TAGS = {Severity.ERROR: "FAIL", Severity.WARN: "warn", Severity.INFO: "info"}
 

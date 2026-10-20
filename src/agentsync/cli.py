@@ -1860,6 +1860,55 @@ REMOTE_FIX = (
 )
 
 
+def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.CheckResult:
+    """``name``'s FAIL for a governance file in the state folder this account cannot open (``exc`` caused by
+    a PermissionError), with the fix of what refused it; any other error is raised (B13 round 20 X73: the
+    whole governance check crashed on holds.json at 0000)."""
+    cause = exc.__cause__
+    if not isinstance(cause, PermissionError) or cause.filename is None:
+        raise exc
+    root = Path(os.path.realpath(expand(config.state_paths.root)))
+    path = Path(os.path.realpath(os.fsdecode(cause.filename)))
+    detail = f"{path} cannot be opened: {cause.strerror or cause}"
+    return _check(name, False, detail, doctor.Severity.ERROR, fix=doctor.state_path_fix(root, path))
+
+
+def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
+    """``governance.time_machine``: a warn for each tenant-data path not excluded from Time Machine, and an
+    [info] line, no warn, for one this account cannot read the exclusion of (a file it cannot open, a folder
+    it cannot look inside): it was excluded, and the sync the warn named could not fix a mode; the state_dir
+    lines give that fix when the path is in the state folder (B13 round 20 X12, X27)."""
+    transient = ("-wal", "-shm")
+    status = [(p, ok) for p, ok in governance.time_machine_status(config) if not p.name.endswith(transient)]
+    missing = [p for p, ok in status if ok is False]
+    unchecked = [(p, ok) for p, ok in status if isinstance(ok, str)]
+    out: list[doctor.CheckResult] = []
+    if missing:
+        out.append(
+            _check(
+                "governance.time_machine",
+                False,
+                "not excluded from Time Machine: " + ", ".join(str(p) for p in missing),
+                doctor.Severity.WARN,
+                fix=f"{loop.BIN} sync (or: tmutil addexclusion " + " ".join(map(str, missing)) + ")",
+            )
+        )
+    if unchecked:
+        root = expand(config.state_paths.root)
+        theirs = "its" if len(unchecked) == 1 else "their"
+        detail = f"not checked: this account cannot read {theirs} exclusion: " + ", ".join(
+            f"{p} ({why})" for p, why in unchecked
+        )
+        if any(p == root or p.is_relative_to(root) for p, _why in unchecked):
+            detail += "; the state_dir lines say why"
+        out.append(_check("governance.time_machine", False, detail, doctor.Severity.INFO))
+    if not out:
+        out.append(
+            _check("governance.time_machine", True, "tenant-data paths excluded", doctor.Severity.INFO)
+        )
+    return out
+
+
 def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     try:
         gov = governance.load_governance(config.config_path)
@@ -1875,25 +1924,20 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         out.append(
             _check("governance.remote", True, "no disallowed remote on the docs repo", doctor.Severity.INFO)
         )
-    holds = governance.active_holds(config.state_paths.root, gov)
-    out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
-    if sys.platform == "darwin" and os.environ.get("AGENTSYNC_TM_EXCLUDE", "1") != "0":
-        status = governance.time_machine_status(config)
-        missing = [p for p, ok in status if ok is False and not p.name.endswith(("-wal", "-shm"))]
-        if missing:
-            out.append(
-                _check(
-                    "governance.time_machine",
-                    False,
-                    "not excluded from Time Machine: " + ", ".join(str(p) for p in missing),
-                    doctor.Severity.WARN,
-                    fix=f"{loop.BIN} sync (or: tmutil addexclusion " + " ".join(map(str, missing)) + ")",
-                )
-            )
+    # a state folder this account cannot look inside: the holds and the purge queue are files in it, so they
+    # are not checked, never a crash of the whole check (B13 round 20 X73)
+    shut = doctor.state_folder_shut(config)
+    if shut:
+        out.append(_check("governance.hold", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO))
+    else:
+        try:
+            holds = governance.active_holds(config.state_paths.root, gov)
+        except AgentSyncError as exc:  # holds.json this account cannot open: one FAIL, not a crash (X73)
+            out.append(_refused_check(config, "governance.hold", exc))
         else:
-            out.append(
-                _check("governance.time_machine", True, "tenant-data paths excluded", doctor.Severity.INFO)
-            )
+            out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
+    if sys.platform == "darwin" and os.environ.get("AGENTSYNC_TM_EXCLUDE", "1") != "0":
+        out += _time_machine_checks(config)
     try:
         state, detail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
@@ -1904,7 +1948,16 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     compact_fix = f"{loop.BIN} sync (its next full pass compacts); release any hold"
     fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
-    queued, kept = governance.partition_purges(config.state_paths)
+    if shut:
+        out.append(
+            _check("governance.purge_queue", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO)
+        )
+        return out
+    try:
+        queued, kept = governance.partition_purges(config.state_paths)
+    except AgentSyncError as exc:
+        out.append(_refused_check(config, "governance.purge_queue", exc))
+        return out
     kept_text = "; ".join(governance.kept_lines(kept))
     also = f"; {kept_text}" if kept else ""
     if not queued and kept:
@@ -2674,6 +2727,35 @@ def _in_job(args: argparse.Namespace) -> bool:
         return True
 
 
+def _state_root(args: argparse.Namespace) -> Path:
+    """The state folder of a command's config, or the default one when the config does not load."""
+    try:
+        return expand(_config(args).state_paths.root)
+    except Exception:  # the error path: never a second error over the first
+        return StatePaths(default_state_dir()).root
+
+
+def _state_refused(args: argparse.Namespace, exc: PermissionError) -> str | None:
+    """The one ``error: state:`` line for ``exc`` when its path is in the state folder, with the fix of the
+    folder or file that refused it (``doctor.state_path_fix``), else None (B13 round 20 X73)."""
+    root = _state_root(args)
+    where = _in_folder(exc.filename, root)
+    if where is None:
+        return None
+    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
+    return f"error: state: {where} cannot be opened: {exc.strerror or exc} (fix: {fix})"
+
+
+def _in_folder(filename: object, root: Path) -> Path | None:
+    """``filename`` (an ``OSError``'s) as a path when it is ``root`` or lies under it, else None (both read
+    through their links, so /var and /private/var are one folder)."""
+    if not isinstance(filename, str | bytes | os.PathLike):
+        return None
+    path = Path(os.fsdecode(filename))
+    real, folder = Path(os.path.realpath(path)), Path(os.path.realpath(root))
+    return path if real == folder or real.is_relative_to(folder) else None
+
+
 def _state_db(args: argparse.Namespace) -> Path:
     """The manifest a command's database error came from: its config's, or the default state dir's when the
     config does not load."""
@@ -2775,8 +2857,20 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("state: %s", exc, exc_info=True)
         _err(f"error: state: {exc} (fix: {MANIFEST_OPEN_FIX})")
         return EXIT_FAILED
+    except PermissionError as exc:
+        # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read
+        # ended sync, poll and curate on a raw traceback, one call site each (B13 round 20 X73). Only a path
+        # in the state folder: any other keeps its traceback
+        said = _state_refused(args, exc)
+        if said is None:
+            raise
+        _log.debug("state: %s", exc, exc_info=True)
+        _err(said)
+        return EXIT_FAILED
     except AgentSyncError as exc:
-        _err(f"error: {exc}")
+        # a governance file in the state folder this account cannot open (holds.json): the same line
+        said = _state_refused(args, exc.__cause__) if isinstance(exc.__cause__, PermissionError) else None
+        _err(said or f"error: {exc}")
         return EXIT_FAILED
     except sqlite3.DatabaseError as exc:
         # the manifest is the one database agentsync opens: a command no _state_readable wraps (exclude-empty,

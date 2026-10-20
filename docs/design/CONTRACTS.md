@@ -24932,6 +24932,9 @@ where PERM is 3), and `ManifestOpenError` is imported, not read by name.
 Amended 2026-10-20, §16.146 X28: the Summary files that state_dir.files FAIL (and state_dir's, for a folder it
 cannot search) and the listing warn beside it under `from the state file this account cannot open`, not
 `unexpected`.
+Amended 2026-10-20, §16.149 X17, X74: one file is `it` and `is` (`this account cannot read and write it:
+manifest.sqlite (0000)`, `manifest.sqlite is 0600`), and both owner fixes read `the person runs sudo chown -R <uid>
+<state_dir> (the agent runs no sudo)`, the person's.
 
 **A report the time limit cut off says so in the NEXT the agent relays** (W3). A report whose doctor call (or an
 evidence part) the time limit cut off wrote `write the report again when this Mac is idle (...) before sending
@@ -26006,6 +26009,72 @@ index root as for a table root (lane P's §16.148 X72 words that tail). Tests:
 `test_cli.py::test_damage_under_an_index_root_fails_status_before_any_sync` (every index of the schema, held to it
 by `test_the_index_list_is_the_manifests`) and the TD-canonical and TD-path cases of
 `test_install_oneshot.py::test_list_folders_says_step_2_stops_on_a_config_it_refuses`.
+
+**X17, X74: the state_dir lines say it of one file, and a sudo chown is the person's (`agentsync.ops.doctor`;
+amends §16.140 W64).** The files lines said `this account cannot read and write them: manifest.sqlite (0000)`, `so
+this one cannot open them:` and `manifest.sqlite are 0600` of one file; one file is `it` and `is`, more are `them`
+and `are`. And the two owner fixes, state_dir's and state_dir.files', were `sudo chown -R <uid> <state_dir>`,
+which `doctor.is_persons_fix` and install.sh's `persons_fails` read as the agent's: status's rule-1 NEXT and
+install.sh's NEXT handed a sudo to the agent, whose prompt says no sudo. Both are `the person runs sudo chown -R
+<uid> <state_dir> (the agent runs no sudo)` (`doctor._persons_chown`), the person's by PERSONS_FIX_RE's existing
+`the person ` alternative, so the NEXT names the owner; `doctor.PERSONS_KINDS` is unchanged (lane P's §16.148 X26
+words it). The chmod fixes stay the agent's. Tests: `test_ops_doctor.py::test_state_files_say_it_of_one_file_and_them_of_more`,
+`test_state_files_this_account_cannot_open_fail_by_their_cause`, and the `state-owner` case of
+`test_install_oneshot.py::_persons_fail_lines`, which install.sh's run reads as the person's
+(`test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report`).
+
+**X78: a manifest this account cannot write is not probed (`agentsync.ops.doctor`).** With a WAL manifest at 0400,
+status's read-only damage probe ran after the files check and created `-wal` and `-shm` at 0400 (sqlite gives side
+files the database's own mode), so after the one `chmod 600 <db>` the FAIL named the next status FAILed on two more
+files and a sync could not write until a second chmod. `_check_state_dir` runs `_check_manifest_readable` only when
+the manifest is neither another account's nor shut to this one, and `doctor.manifest_unreadable` itself opens no
+existing file this account cannot read and write (returns None), so a sync's state check and the report's read
+make no side files either; the FAIL already stands, the damage check waits for the next status, and the single
+chmod is the whole fix. `manifest_unreadable`'s docstring no longer says the read creates no file. Test: `test_ops_doctor.py::test_a_manifest_this_account_cannot_write_is_not_probed_so_one_chmod_fixes_it`.
+
+**X73: a state folder this account cannot look inside (`agentsync.ops.doctor`, `agentsync.cli`).** With the state
+folder at mode 0000 (or 0700 root's, after a first sudo sync under umask 077), the files loop's lstat raised
+PermissionError, so state_dir became the generic `could not read <db> ... report it` FAIL and dropped the folder's
+own mode line; config.vanished_sources, lock and heartbeat failed the same way, governance's check crashed on
+holds.json, and sync, `sync --mode poll` and curate ended on raw PermissionError tracebacks (the manifest's lstat in
+the cycle, the lock's open, curate's look for the manifest), none of which reach W65's guard in the manifest's open.
+Three parts: (1) `_check_state_dir` stops its files loop on that PermissionError: the folder's owner or mode FAIL,
+with its chown or `chmod 700`, is the answer; a folder this account owns at 0700 that still refuses a look inside
+(an ACL, a sandbox) gets `state_dir.files — cannot look inside <root>: Permission denied` with a fix naming the
+folder, never `chmod 600` on the files. (2) `doctor.state_folder_shut(config)` (a PermissionError on the manifest's
+lstat) makes the checks that read files there, config.vanished_sources, lock and heartbeat, and governance.hold and
+governance.purge_queue, each one [info] line, `doctor.STATE_FOLDER_UNCHECKED` (`not checked: this account cannot
+look inside the state folder; the state_dir lines say why`), which the report counts as no problem. (3) `cli._main`
+has one `except PermissionError` arm: a path in the state folder (both read through their links) prints `error:
+state: <path> cannot be opened: Permission denied (fix: <doctor.state_path_fix>)`, the fix of what refused it:
+the folder's as state_dir's line gives it (`doctor.state_folder_fix`: the person's chown when another account owns
+it, `chmod 700` when its mode refuses it, else the access fix), or a file's own (`chmod 600 <file>`, the person's
+chown when another account owns it: a lock left by a chown that was not recursive), exit 1, the traceback at
+`-vv`; any other PermissionError keeps its traceback. One arm, not a guard per call site, which had missed
+curate. A governance file there (holds.json at 0000) raised `GovernanceError` with Python's `[Errno 13] ...`
+and no cause: `governance._read_json` keeps the PermissionError as the cause (`<path> cannot be opened:
+Permission denied`), `cli._main`'s `AgentSyncError` arm says the same one line for it (`hold`, `offboard`), and
+status FAILs governance.hold or governance.purge_queue with that fix (`cli._refused_check`) instead of crashing
+the whole check. Tests:
+`test_ops_doctor.py::test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_the_rest_say_not_checked`,
+`test_cli.py::test_a_state_folder_this_account_cannot_look_inside_is_one_line_with_the_folders_fix` (status, sync,
+poll, curate), `test_a_file_in_the_state_folder_this_account_cannot_open_gets_its_own_fix`,
+`test_a_state_path_another_account_owns_gets_the_persons_chown` and
+`test_a_permission_error_outside_the_state_folder_keeps_its_traceback`.
+
+**X12, X27: a path whose exclusion this account cannot read is not checked, never not excluded
+(`agentsync.tm_exclude`, `agentsync.governance`, `agentsync.cli`).** `tm_exclude.has_xattr` read every getxattr
+failure as "no exclusion", EACCES on a manifest at 0000 included, so doctor warned `not excluded from Time Machine:
+<db>` with `agentsync sync` as the fix: the exclusion was there, the sync exits 1 on that file, and the report
+counted the warn unexpected. `tm_exclude.xattr_state` is three-state: True, False only for ENOATTR, else the system's
+words; `has_xattr` is `xattr_state(...) is True`. `governance.time_machine_status` gives those words (a str) for
+such a path, and for one whose `exists()` raises PermissionError, so `ensure_time_machine_exclusions` no longer
+re-excludes it every cycle (no setxattr, no tmutil). `cli._time_machine_checks` keeps the warn for a path that is
+not excluded and gives each unreadable one an [info] line, no warn and no fix: `not checked: this account cannot
+read its exclusion: <path> (<reason>)`, plus `; the state_dir lines say why` when the path is in the state folder;
+the `tenant-data paths excluded` line is printed only when neither applies. Lane RA's §16.146 X28 needs no
+time_machine case of its own. Test:
+`test_cli.py::test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded` (macOS).
 
 ### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
 

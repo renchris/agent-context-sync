@@ -1484,6 +1484,51 @@ def test_the_time_machine_fix_names_agentsync_by_its_full_path(
     assert tm.fix == f"~/.local/bin/agentsync sync (or: tmutil addexclusion {state})"
 
 
+@pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="getxattr(2) and file modes")
+def test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 20 X12, X27: getxattr on an excluded manifest at mode 0000 fails with EACCES, which read as
+    "no exclusion", so doctor warned "not excluded from Time Machine" with a sync as the fix: the exclusion
+    was there, and the sync exits 1 on that file. Such a path is not checked, an [info] line pointing at the
+    state_dir lines, never a warn or a sync; each cycle no longer re-excludes it; and a path with no
+    exclusion still warns."""
+    from agentsync import tm_exclude  # noqa: PLC0415
+
+    monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "1")
+    assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    paths = [p for p in governance.time_machine_exclusions(initialised) if p.exists()]
+    for p in paths:
+        assert tm_exclude.set_exclusion(p), p
+    db = expand(initialised.state_paths.db)
+    db.chmod(0)
+    calls: list[object] = []
+    monkeypatch.setattr(governance, "_set_tm_exclusion", lambda p: calls.append(p) or True)
+    monkeypatch.setattr(governance, "_run", lambda argv, **kw: calls.append(argv))
+    try:
+        assert tm_exclude.xattr_state(db, tm_exclude.TM_EXCLUDE_XATTR) == "Permission denied"
+        assert not tm_exclude.has_xattr(db, tm_exclude.TM_EXCLUDE_XATTR)
+        assert dict(governance.time_machine_status(initialised))[db] == "Permission denied"
+        checks = cli._time_machine_checks(initialised)
+        assert governance.ensure_time_machine_exclusions(initialised) == []
+    finally:
+        db.chmod(0o600)
+    assert calls == [], "a path this account cannot read was excluded again"
+    (tm,) = checks
+    assert not tm.ok and tm.severity is doctor.Severity.INFO and tm.fix is None, tm
+    assert tm.detail == (
+        f"not checked: this account cannot read its exclusion: {db} (Permission denied); "
+        "the state_dir lines say why"
+    ), tm.detail
+    assert "not excluded" not in tm.detail and "agentsync sync" not in tm.detail
+    plain = initialised.config_path.parent / "plain.txt"
+    plain.write_text("Contoso\n", encoding="utf-8")
+    assert tm_exclude.xattr_state(plain, tm_exclude.TM_EXCLUDE_XATTR) is False
+    monkeypatch.setattr(governance, "time_machine_status", lambda c: [(plain, False), (db, True)])
+    (warn,) = cli._time_machine_checks(initialised)
+    assert warn.severity is doctor.Severity.WARN and warn.detail == f"not excluded from Time Machine: {plain}"
+
+
 def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2969,10 +3014,10 @@ def test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_repor
         fails = [ln for ln in out if ln.startswith("[FAIL] ")]
         assert rc == cli.EXIT_FAILED and len(fails) == 1, out
         assert fails[0].startswith("[FAIL] state_dir.files "), fails
-        assert "this account cannot read and write them: manifest.sqlite (0000)" in fails[0], fails
+        assert "this account cannot read and write it: manifest.sqlite (0000)" in fails[0], fails
         assert fails[0].endswith(f"(fix: chmod 600 {doctor._shell_path(db)})"), fails
         assert "state_dir.files" in out[0] and out[0].startswith("NEXT: "), out[0]
-        assert not any("are 0600" in ln for ln in out), out
+        assert not any("are 0600" in ln or "is 0600" in ln for ln in out), out
         printed = {m.group(1) for ln in out if (m := re.match(r"\[(?:ok  |FAIL|warn|info)\] (\S+)", ln))}
         text, _red = setup_report.build_report(initialised.config_path, hooks=cli._report_hooks())
         pointers = re.findall(r"see Doctor's (state_dir(?:\.\w+)?) lines?\b", text)
@@ -2981,7 +3026,7 @@ def test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_repor
     finally:
         db.chmod(0o600)
     rc, out = _status(cfg, capsys)
-    assert any(re.match(r"\[ok  \] state_dir\.files +— manifest\.sqlite are 0600", ln) for ln in out), out
+    assert any(re.match(r"\[ok  \] state_dir\.files +— manifest\.sqlite is 0600", ln) for ln in out), out
 
 
 def test_the_manifest_fix_says_legal_holds_are_kept(initialised: Config) -> None:
@@ -3559,6 +3604,118 @@ def test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix(
         manifest_mod._connect(target)
     assert not isinstance(raised.value, ManifestOpenError)
     assert raised.value.errno in (errno.EISDIR, errno.EEXIST, errno.ENOTDIR), raised.value.errno
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_state_folder_this_account_cannot_look_inside_is_one_line_with_the_folders_fix(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 20 X73: with the state folder at mode 0000, status gave generic "could not read ... report
+    it" FAILs and a governance crash, and sync, poll and curate ended on raw PermissionError tracebacks (the
+    manifest's lstat, the lock's open, curate's look for the manifest): W65's guard is in the manifest's
+    open, which none reached. Status FAILs the folder's mode with its ``chmod 700``; the commands say one
+    ``error: state:`` line with the same fix and exit 1."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = initialised.state_paths.root
+    fix = f"chmod 700 {doctor._shell_path(root)}"
+    root.chmod(0)
+    try:
+        capsys.readouterr()
+        rc, out = _status(cfg, capsys)
+        fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+        assert rc == cli.EXIT_FAILED, out
+        assert fails and fails[0].startswith("[FAIL] state_dir ") and fails[0].endswith(f"(fix: {fix})"), (
+            fails
+        )
+        assert not any("check crashed" in ln for ln in out), out
+        stopped = [
+            ln for ln in fails if "could not read" in ln and not re.match(r"\[FAIL\] (logs|permissions) ", ln)
+        ]
+        assert stopped == [], stopped
+        assert any(
+            ln.startswith("[info] governance.hold ") and doctor.STATE_FOLDER_UNCHECKED in ln for ln in out
+        )
+        for argv in (["sync"], ["sync", "--mode", "poll"], ["curate"]):
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+            err = capsys.readouterr().err
+            assert "Traceback" not in err and "PermissionError" not in err, (argv, err)
+            (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
+            assert line.startswith("error: state: ") and line.endswith(
+                f"cannot be opened: Permission denied (fix: {fix})"
+            ), (argv, line)
+    finally:
+        root.chmod(0o700)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+
+
+def test_a_permission_error_outside_the_state_folder_keeps_its_traceback(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other side of X73: only a path in the state folder is the state's one line; any other
+    PermissionError is no state of agentsync's and keeps its traceback."""
+    root = tmp_path / "state"
+    assert cli._in_folder(str(root / "manifest.sqlite"), root) == root / "manifest.sqlite"
+    assert cli._in_folder(str(root), root) == root
+    assert cli._in_folder(str(tmp_path / "elsewhere"), root) is None
+    assert cli._in_folder(None, root) is None
+    elsewhere = PermissionError(errno.EACCES, "Permission denied", str(tmp_path / "elsewhere"))
+
+    def refused(*_a: object, **_k: object) -> list[str]:
+        raise elsewhere
+
+    monkeypatch.setattr(cli, "_status_lines", refused)
+    monkeypatch.setattr(cli, "_build_status", refused)
+    with pytest.raises(PermissionError):
+        cli.main(["status", "--config", str(initialised.config_path)])
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_file_in_the_state_folder_this_account_cannot_open_gets_its_own_fix(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """X73's reviewer: the PermissionError arm gave the folder's ACL fix ("its owner and mode are right") for
+    a refused file in a healthy folder, a lock at 0000. The fix names what refused it: ``chmod 600`` on the
+    file. And holds.json at 0000 crashed the whole governance check and ended a sync on a Python-style
+    "[Errno 13]" line: it FAILs governance.hold with the same fix, and the sync says one ``error: state:``
+    line."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    lock = expand(initialised.state_paths.lock)
+    holds = governance._holds_file(expand(initialised.state_paths.root))
+    holds.parent.mkdir(parents=True, exist_ok=True)
+    holds.write_text("[]\n", encoding="utf-8")
+    for target, argv in ((lock, ["sync"]), (holds, ["hold", "--list"])):
+        target.chmod(0)
+        try:
+            capsys.readouterr()
+            assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, target
+            err = capsys.readouterr().err
+            assert "Traceback" not in err and "[Errno" not in err, err
+            (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
+            fix = f"(fix: chmod 600 {doctor._shell_path(target)})"
+            assert line.endswith(f"cannot be opened: Permission denied {fix}"), line
+            if target == holds:
+                rc, out = _status(cfg, capsys)
+                assert rc == cli.EXIT_FAILED and not any("check crashed" in ln for ln in out), out
+                (hold,) = [ln for ln in out if ln.startswith("[FAIL] governance.hold ")]
+                assert hold.endswith(fix), hold
+        finally:
+            target.chmod(0o600)
+
+
+def test_a_state_path_another_account_owns_gets_the_persons_chown(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """X73's reviewer: a lock or heartbeat file still another account's after a chown that was not
+    recursive needs the person's ``sudo chown -R`` of the folder."""
+    root = expand(sample_config.state_paths.root)
+    lock = root / "agentsync.lock"
+    lock.write_text("", encoding="utf-8")
+    me = os.getuid()
+    monkeypatch.setattr(doctor.os, "getuid", lambda: me + 1)
+    assert doctor.state_path_fix(root, lock) == doctor.state_folder_fix(root) == doctor._persons_chown(root)
 
 
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:

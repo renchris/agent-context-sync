@@ -66,6 +66,7 @@ from agentsync.cycle import vanished_detail as cycle_vanished_detail
 from agentsync.manifest import Manifest
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
+from agentsync.paths import expand
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL_SH = REPO / "scripts" / "install.sh"
@@ -827,6 +828,18 @@ def _persons_fail_lines(cfg: Config) -> dict[str, list[str]]:
         "governance.remote", False, "remote origin (<url>) exists", doctor.Severity.ERROR, fix=cli.REMOTE_FIX
     )
     cases["remote"] = doctor.format_results([remote]).splitlines()
+    # B13 round 20 X74: a state folder and manifest another account owns (a first sudo sync): the chown is a
+    # sudo, the person's, never a step for the agent, whose prompt says no sudo
+    db = expand(cfg.state_paths.db)
+    made = not db.exists()
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.touch()
+    with patch.object(doctor.os, "getuid", return_value=os.getuid() + 1):
+        owned = [r for r in doctor._check_state_dir(cfg) if not r.ok]
+    if made:
+        db.unlink()
+    assert [r.name for r in owned] == ["state_dir", "state_dir.files"], owned
+    cases["state-owner"] = doctor.format_results(owned).splitlines()
     assert all(cases.values()), cases
     assert all(ln.startswith("[FAIL] ") for k in ("policy", "governance", "remote") for ln in cases[k]), cases
     return cases

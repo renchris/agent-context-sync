@@ -16,6 +16,7 @@ import plistlib
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -1182,19 +1183,139 @@ def test_state_files_this_account_cannot_open_fail_by_their_cause(
     for mode in (0o000, 0o400):
         db.chmod(mode)
         r = by_name(run_checks(sample_config))["state_dir.files"]
-        assert (
-            not r.ok and f"this account cannot read and write them: manifest.sqlite ({mode:04o})" in r.detail
-        )
+        assert not r.ok and f"this account cannot read and write it: manifest.sqlite ({mode:04o})" in r.detail
         assert (r.fix or "").startswith("chmod 600 "), r.fix
     db.chmod(0o700)
     r = by_name(run_checks(sample_config))["state_dir.files"]
-    assert r.ok and "are 0600" not in r.detail and "manifest.sqlite (0700)" in r.detail, r.detail
+    assert r.ok and "are 0600" not in r.detail and "is 0600" not in r.detail, r.detail
+    assert "manifest.sqlite (0700)" in r.detail, r.detail
     db.chmod(0o600)
     me = os.getuid()
     monkeypatch.setattr(doctor.os, "getuid", lambda: me + 1)
-    r = by_name(run_checks(sample_config))["state_dir.files"]
+    results = by_name(run_checks(sample_config))
+    r = results["state_dir.files"]
     assert not r.ok and "owned by another account" in r.detail and f"(owner uid {me}, mode 0600)" in r.detail
-    assert r.fix == f"sudo chown -R {me + 1} {doctor._shell_path(sample_config.state_paths.db.parent)}", r.fix
+    assert "so this one cannot open it: manifest.sqlite" in r.detail, r.detail
+    # B13 round 20 X74: the folder's chown is a sudo, the person's: the setup prompt bars the agent's
+    root = doctor._shell_path(sample_config.state_paths.db.parent)
+    assert r.fix == f"the person runs sudo chown -R {me + 1} {root} (the agent runs no sudo)", r.fix
+    assert results["state_dir"].fix == r.fix
+    assert doctor.is_persons_fix(r.fix) and doctor.is_persons_fix(results["state_dir"].fix)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_state_files_say_it_of_one_file_and_them_of_more(sample_config: Config) -> None:
+    """B13 round 20 X17: the state_dir.files lines said "them" of one file ("cannot read and write them:
+    manifest.sqlite (0000)") and "are 0600" of the manifest alone. One file is "it" and "is"; two are "them"
+    and "are"."""
+    db = sample_config.state_paths.db
+    tokens = sample_config.state_paths.token_cache_fallback
+    db.write_bytes(b"")
+    db.chmod(0o600)
+    r = by_name(run_checks(sample_config))["state_dir.files"]
+    assert r.ok and r.detail == "manifest.sqlite is 0600", r.detail
+    tokens.write_bytes(b"")
+    tokens.chmod(0o600)
+    r = by_name(run_checks(sample_config))["state_dir.files"]
+    assert r.ok and r.detail == f"manifest.sqlite, {tokens.name} are 0600", r.detail
+    db.chmod(0)
+    tokens.chmod(0)
+    try:
+        r = by_name(run_checks(sample_config))["state_dir.files"]
+    finally:
+        db.chmod(0o600)
+        tokens.chmod(0o600)
+    assert not r.ok and r.detail == (
+        f"this account cannot read and write them: manifest.sqlite (0000), {tokens.name} (0000)"
+    ), r.detail
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_manifest_this_account_cannot_write_is_not_probed_so_one_chmod_fixes_it(
+    sample_config: Config,
+) -> None:
+    """B13 round 20 X78: with a WAL manifest at 0400, status's read-only damage probe ran after the files
+    check and created manifest.sqlite-wal and -shm at 0400 (sqlite gives them the file's mode), so after the
+    one ``chmod 600`` the FAIL named, the next status FAILed on the two side files, and a sync could not write
+    until a second chmod. A manifest this account cannot write is not probed; one chmod is the whole fix."""
+    db = sample_config.state_paths.db
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE t (k TEXT)")
+    conn.commit()
+    conn.close()
+    sides = [db.with_name(db.name + s) for s in ("-wal", "-shm")]
+    assert not any(p.exists() for p in sides)
+    db.chmod(0o400)
+    try:
+        r = by_name(run_checks(sample_config))["state_dir.files"]
+        assert not r.ok and r.detail == "this account cannot read and write it: manifest.sqlite (0400)", (
+            r.detail
+        )
+        assert r.fix == f"chmod 600 {doctor._shell_path(db)}", r.fix
+        assert not any(p.exists() for p in sides), "the probe created side files"
+        # every caller of the probe, a sync's state check included, leaves them uncreated too
+        assert doctor.manifest_unreadable(db) is None and not any(p.exists() for p in sides)
+    finally:
+        db.chmod(0o600)
+    results = by_name(run_checks(sample_config))
+    assert results["state_dir.files"].ok, results["state_dir.files"]
+    assert "state_dir.manifest" not in results
+    writer = sqlite3.connect(db)
+    writer.execute("INSERT INTO t VALUES ('a')")
+    writer.commit()
+    writer.close()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_the_rest_say_not_checked(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 20 X73: with the state folder at mode 0000 the files loop's lstat raised PermissionError, so
+    the whole check became a generic "could not read <db> ... report it" FAIL that dropped the folder's own
+    ``chmod 700`` line, and the lock, heartbeat and vanished-sources checks each FAILed the same way. The
+    folder's mode FAIL is the answer; the checks that read files in it say not checked, an [info] line."""
+    root = sample_config.state_paths.root
+    sample_config.state_paths.db.write_bytes(b"")
+    root.chmod(0)
+    try:
+        results = run_checks(sample_config)
+        assert doctor.state_folder_fix(root) == f"chmod 700 {doctor._shell_path(root)}"
+    finally:
+        root.chmod(0o700)
+    named = by_name(results)
+    state = named["state_dir"]
+    assert (
+        not state.ok
+        and "has mode 0000" in state.detail
+        and state.fix == f"chmod 700 {doctor._shell_path(root)}"
+    )
+    assert "state_dir.files" not in named and "state_dir.manifest" not in named
+    # (the permissions and logs checks read the log folder, which this test's config puts in the state
+    # folder; its default is ~/Library/Logs/agentsync)
+    stopped = [r for r in results if "could not read" in r.detail and r.name not in ("permissions", "logs")]
+    assert stopped == [], stopped
+    for group in ("config.vanished_sources", "lock", "heartbeat"):
+        r = named[group]
+        assert (
+            not r.ok and r.severity is doctor.Severity.INFO and r.detail == doctor.STATE_FOLDER_UNCHECKED
+        ), r
+    # a folder this account owns at 0700 that still refuses a look inside (an ACL, a sandbox): one files FAIL
+    # naming the folder, never chmod 600 on the files
+    real_lstat = Path.lstat
+
+    def refused(self: Path) -> os.stat_result:
+        if self.parent == root:
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return real_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", refused)
+    named = by_name(run_checks(sample_config))
+    assert named["state_dir"].ok
+    files = named["state_dir.files"]
+    assert not files.ok and files.detail == f"cannot look inside {root}: Permission denied", files
+    assert files.fix is not None and "chmod 600" not in files.fix and doctor._shell_path(root) in files.fix
+    assert doctor.state_folder_fix(root) == files.fix
 
 
 # ------------------------------------------------------------------------------------------------ sources

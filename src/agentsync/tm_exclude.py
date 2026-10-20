@@ -6,10 +6,14 @@ without importing ``agentsync.governance``, which imports the manifest.
 
 from __future__ import annotations
 
+import errno
 import os
 import sys
 from pathlib import Path
 from typing import Any
+
+_ENOATTR = getattr(errno, "ENOATTR", 93)
+"""getxattr(2)'s "no such attribute" on macOS (93; the errno module names it only there)."""
 
 TM_EXCLUDE_XATTR = "com.apple.metadata:com_apple_backup_excludeItem"
 """The sticky Time Machine exclusion ``tmutil addexclusion`` sets on a path (no admin rights needed)."""
@@ -41,10 +45,23 @@ def _libc_xattr() -> Any:
     return libc
 
 
-def has_xattr(path: Path, name: str) -> bool:
+def xattr_state(path: Path, name: str) -> bool | str:
     """Whether ``path`` carries xattr ``name``, via getxattr(2) (``/usr/bin/xattr`` is a Python script that
-    costs ~1.8 s per call, measured 2026-09-29; that made every sync cycle ~11 s slower)."""
-    return int(_libc_xattr().getxattr(os.fsencode(path), name.encode(), None, 0, 0, 0x0001)) >= 0
+    costs ~1.8 s per call, measured 2026-09-29; that made every sync cycle ~11 s slower): True when it does,
+    False when getxattr says it has none (ENOATTR), else the system's words for why it could not be read
+    (EACCES on a file this account cannot open: B13 round 20 X12, X27, which read as "not excluded")."""
+    libc = _libc_xattr()
+    if int(libc.getxattr(os.fsencode(path), name.encode(), None, 0, 0, 0x0001)) >= 0:
+        return True
+    import ctypes  # noqa: PLC0415 — as in _libc_xattr
+
+    code = ctypes.get_errno()
+    return False if code == _ENOATTR else os.strerror(code)
+
+
+def has_xattr(path: Path, name: str) -> bool:
+    """Whether ``path`` carries xattr ``name`` (:func:`xattr_state` is True)."""
+    return xattr_state(path, name) is True
 
 
 def set_exclusion(path: Path) -> bool:

@@ -66,8 +66,8 @@ from agentsync.policy import POLICY_FILE_NAME
 from agentsync.skill import AGENTSYNC_BIN
 from agentsync.text import plural
 from agentsync.tm_exclude import TM_EXCLUDE_XATTR
-from agentsync.tm_exclude import has_xattr as _has_xattr
 from agentsync.tm_exclude import set_exclusion as _set_tm_exclusion
+from agentsync.tm_exclude import xattr_state as _xattr_state
 
 log = logging.getLogger(__name__)
 
@@ -305,6 +305,10 @@ def _read_json(path: Path, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return default
+    except (
+        PermissionError
+    ) as exc:  # its owner or mode, not its contents (B13 round 20 X73): kept as the cause
+        raise GovernanceError(f"{path} cannot be opened: {exc.strerror or exc}") from exc
     except (OSError, ValueError) as exc:
         raise GovernanceError(f"{path}: unreadable ({exc}); fix or remove it by hand") from None
 
@@ -3007,17 +3011,26 @@ def time_machine_exclusions(config: Config) -> tuple[Path, ...]:
 _TM_TRANSIENT = ("-wal", "-shm")
 
 
-def time_machine_status(config: Config, *, runner: Runner | None = None) -> list[tuple[Path, bool | None]]:
-    """(path, excluded?) per exclusion path; None when the path does not exist.
+def time_machine_status(
+    config: Config, *, runner: Runner | None = None
+) -> list[tuple[Path, bool | str | None]]:
+    """(path, excluded?) per exclusion path; None when the path does not exist, and the system's words (a
+    str) when this account cannot read whether it is excluded: a file it cannot open, a folder it cannot look
+    inside. Never False for that: the exclusion was there, and the sync the warn named could not fix a mode
+    (B13 round 20 X12, X27).
 
     Read with getxattr(2); an injected ``runner`` (tests) is asked ``xattr -p`` instead."""
-    out: list[tuple[Path, bool | None]] = []
+    out: list[tuple[Path, bool | str | None]] = []
     for p in time_machine_exclusions(config):
-        if not p.exists():
-            out.append((p, None))
+        try:
+            if not p.exists():
+                out.append((p, None))
+                continue
+        except PermissionError as exc:  # inside a folder this account cannot look in
+            out.append((p, exc.strerror or str(exc)))
             continue
         if runner is None:
-            out.append((p, _has_xattr(p, TM_EXCLUDE_XATTR)))
+            out.append((p, _xattr_state(p, TM_EXCLUDE_XATTR)))
             continue
         cp = runner(["/usr/bin/xattr", "-p", TM_EXCLUDE_XATTR, str(p)])
         out.append((p, cp.returncode == 0))
@@ -3029,7 +3042,8 @@ def ensure_time_machine_exclusions(config: Config, *, runner: Runner | None = No
     ``install-agent``: ``init``, the first ``sync``); an empty list when nothing needed doing.
 
     Skipped off macOS and when ``AGENTSYNC_TM_EXCLUDE=0``; ``-wal``/``-shm`` come and go with connections, so
-    they are applied when present but never re-checked (a ``tmutil`` call costs seconds)."""
+    they are applied when present but never re-checked (a ``tmutil`` call costs seconds). A path this account
+    cannot read is not missing: no setxattr or ``tmutil`` at every cycle for it (B13 round 20 X12)."""
     if os.environ.get("AGENTSYNC_TM_EXCLUDE", "1") == "0" or not Path(_TMUTIL).exists():
         return []
     run = runner or _run
