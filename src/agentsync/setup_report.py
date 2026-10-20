@@ -23,7 +23,8 @@ Everything the
 Summary judges is computed from facts, never taken from the agent: the outcome (from what the person saw and
 did: install.log's last install run exit, an install run that failed before the first one that ended 0
 (:func:`retried_runs`), questions beyond the folder question, clicks beyond the Allow
-clicks, approvals, unexpected doctor FAILs, and an error only when it stopped the run; the agent's deviation,
+clicks, approvals, doctor FAILs (called unexpected only when the Doctor line puts them in no bucket of a known
+cause, B13 round 20 X35), and an error only when it stopped the run; the agent's deviation,
 prompt and error lines are counted apart as "agent friction"), human turns (by kind), step and session times
 (from timestamps), the run type (install.log's ``launchd=simulated``, else a HOME under a temporary folder),
 what became of the folder choice (the ``folders:`` line, from the counts install.sh logs; on a Mac that
@@ -2530,7 +2531,10 @@ An error, a start, an end line or an untyped line keeps "failed"."""
 
 
 def compute_outcome(
-    attempt: Attempt | None, runs: Sequence[InstallRun], *, doctor_fails: Sequence[str] = ()
+    attempt: Attempt | None,
+    runs: Sequence[InstallRun],
+    *,
+    doctor_fails: Sequence[str | tuple[str, str | None]] = (),
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -2538,7 +2542,9 @@ def compute_outcome(
     - fully one command: the last install run ended rc 0, no install run failed before the first one that
       ended rc 0 (:func:`retried_runs`), and the attempt has no question beyond the folder question, no
       click beyond the Allow clicks, no approval, no error that stopped the run (:func:`stopping_error`) and
-      ``doctor_fails`` (unexpected doctor FAIL names) is empty;
+      ``doctor_fails`` (doctor FAIL names, each bare or with the Doctor line's bucket words, None for a FAIL
+      in no bucket) is empty: any FAIL prevents it, but only one in no bucket is called unexpected (B13
+      round 20 X35);
     - worked with help: the last install run ended rc 0 otherwise (also with no friction log, or an attempt
       with no v5 event line, whose human turns are unknown);
     - failed at step <n>: at the installer's step (3) when the last install run did not end rc 0; at the
@@ -2604,8 +2610,17 @@ def compute_outcome(
                     f"the folder question: step 1's list could not read the {_plural(unread, 'folder')} this "
                     "Mac already syncs"
                 )
-        if doctor_fails:
-            why.append(f"{_plural(len(doctor_fails), 'unexpected doctor FAIL')}: {', '.join(doctor_fails)}")
+        sorted_fails = [(f, None) if isinstance(f, str) else f for f in doctor_fails]
+        odd = [name for name, bucket in sorted_fails if bucket is None]
+        known: dict[str, list[str]] = {}
+        for name, bucket in sorted_fails:
+            if bucket is not None:
+                known.setdefault(bucket, []).append(name)
+        if odd:
+            why.append(f"{_plural(len(odd), 'unexpected doctor FAIL')}: {', '.join(odd)}")
+        if known:  # the Doctor line's own bucket: its cause is known, so it is no unexpected FAIL (X35)
+            each = "; ".join(f"{', '.join(names)} ({bucket})" for bucket, names in known.items())
+            why.append(f"{_plural(sum(map(len, known.values())), 'doctor FAIL')} with a known cause: {each}")
         if not why:
             return Outcome(
                 "fully one command",
@@ -3211,6 +3226,11 @@ class _Run:
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
         # their read's SQLITE_NOTADB or SQLITE_CORRUPT, which the Doctor section then FAILs (B13 round 19 W41)
         self.evidence_unreadable: sqlite3.DatabaseError | None = None
+        # _sort_doctor's, per attempt runs and doctor problems
+        self.doctor_sorted: (
+            tuple[tuple[tuple[int, ...], tuple[tuple[str, str, str], ...], tuple[str, ...]], _DoctorSort]
+            | None
+        ) = None
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
         self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
         self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
@@ -8541,11 +8561,15 @@ def _prompt_copy_note(attempt: Attempt | None) -> str:
     return f"{stated} (newer than {theirs}{changed})"  # no upstream, or an installer whose fix names no cause
 
 
-def _doctor_fails(r: _Run) -> list[str]:
-    """The doctor FAIL check names that the outcome counts: every FAIL, the sign-in stop's and the folders
-    step 1 found not on disk included (only warns are ever expected; the Doctor line alone sets those FAILs
-    apart, B13 round 13 O13, round 14 Q3, Q52)."""
-    return [name for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"]
+def _doctor_fails(r: _Run, runs: Sequence[InstallRun]) -> list[tuple[str, str | None]]:
+    """The doctor FAILs the outcome counts, each with the Doctor line's bucket words or None: every FAIL, the
+    sign-in stop's and the folders step 1 found not on disk included (only warns are ever expected, B13
+    round 13 O13, round 14 Q3, Q52). The bucket comes from the Doctor line's own sort (:func:`_sort_doctor`)
+    for ``runs``, the attempt's, so the outcome calls unexpected only what that line does (B13 round 20
+    X35). Empty when doctor did not run."""
+    if r.facts.doctor is None:
+        return [(name, None) for tag, name, _detail in r.facts.doctor_problems if tag == "FAIL"]
+    return _sort_doctor(r, runs).fails
 
 
 def _attempt_outcome(r: _Run, index: int) -> Outcome:
@@ -8555,7 +8579,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
     assert fr is not None
     latest = index == len(fr.attempts) - 1
     runs = runs_for_attempt(fr, index, r.install_runs)
-    outcome = compute_outcome(fr.attempts[index], runs, doctor_fails=_doctor_fails(r) if latest else ())
+    outcome = compute_outcome(fr.attempts[index], runs, doctor_fails=_doctor_fails(r, runs) if latest else ())
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
         kind, note = rerun
@@ -9176,6 +9200,213 @@ def _helpers_timed_out(c: Config) -> dict[str, str]:
         return {}
 
 
+_PERSONS = " (the person's; see Doctor)"
+_STOP_WORDS = "from the sign-in stop"
+_CONFIG_WORDS = "from the configuration a sync refuses"
+_REMOTE_WORDS = "from a docs-repo remote [governance] does not allow"
+_GONE = "gone"  # a mark for the not-on-disk bucket, whose words count its folders once all are sorted
+_STATE_UNREAD_WORDS = "from the state file that cannot be read"
+_STATE_SHUT_WORDS = "from the state file this account cannot open"
+"""The Doctor line's bucket for a state file :func:`_state_shut` finds this account cannot open (B13 round 20
+X28): apart from :data:`_STATE_UNREAD_WORDS`, a damaged one, whose fix differs."""
+
+
+@dataclasses.dataclass(frozen=True)
+class _DoctorSort:
+    """Doctor's problems sorted once (:func:`_sort_doctor`): the Doctor line's buckets, and each FAIL with the
+    bucket's words or None (an unexpected one), which the outcome reads, so the two lines cannot disagree on
+    whether a FAIL is unexpected (B13 round 20 X35)."""
+
+    expected: dict[str, list[str]]
+    yours: list[str]
+    unexpected: list[str]
+    from_stop: list[str]
+    from_gone: list[str]
+    gone_words: str
+    from_config: list[str]
+    from_remote: list[str]
+    from_state: list[str]
+    from_shut: list[str]
+    from_helpers: list[str]
+    fails: list[tuple[str, str | None]]
+
+
+def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
+    """``"file"`` or ``"folder"`` when the report's own read finds a state file this account cannot open,
+    else ``""`` (B13 round 20 X28): ``read_error`` (the Doctor hook's read of the loop's state, or the
+    evidence read's) is a ``ManifestOpenError`` or sqlite's CANTOPEN, PERM or READONLY
+    (:data:`_CANNOT_OPEN_CODES`), or the file (or its -wal or -shm) is another account's or fails
+    ``os.access`` for reading and writing (doctor's own test for state_dir.files); ``"folder"`` when its
+    folder cannot be searched. Keyed
+    on the file, never on doctor's words. A failed test says nothing: ``""``."""
+    from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
+
+    try:
+        db = expand(c.state_paths.db)
+        if db.parent.is_dir() and not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
+            return "folder"
+        code = getattr(read_error, "sqlite_errorcode", None)
+        if isinstance(read_error, ManifestOpenError) or (
+            isinstance(read_error, sqlite3.Error)
+            and isinstance(code, int)
+            and code & 0xFF in _CANNOT_OPEN_CODES
+        ):
+            return "file"
+        for name in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):  # doctor's files
+            if name.exists() and (
+                name.stat().st_uid != os.getuid() or not os.access(name, os.R_OK | os.W_OK)
+            ):
+                return "file"
+    except Exception:  # a test that fails says nothing about the file
+        return ""
+    return ""
+
+
+def _names_only_state(detail: str, c: Config | None) -> bool:
+    """Whether doctor's ``governance.time_machine`` warn lists only the state file (its -wal and -shm are left
+    out by doctor): each path after ``not excluded from Time Machine:`` ends in the manifest's name."""
+    head = "not excluded from Time Machine: "
+    if c is None or not detail.startswith(head):
+        return False
+    name = expand(c.state_paths.db).name
+    paths = [p.strip() for p in detail[len(head) :].split(", ") if p.strip()]
+    return bool(paths) and all(p == name or p.endswith("/" + name) for p in paths)
+
+
+def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
+    """Doctor's problems in the Doctor line's buckets, once per report and attempt runs: the Summary's
+    outcome (:func:`_doctor_fails`) and its doctor line (:func:`_doctor_line`) read the one sort."""
+    # the loop's checks too: the friction section's outcome sorts before the Loop line reads them, and only
+    # the warns (never a FAIL) depend on them
+    key = (tuple(id(x) for x in runs), tuple(r.facts.doctor_problems), r.facts.loop_checks)
+    if r.doctor_sorted is not None and r.doctor_sorted[0] == key:
+        return r.doctor_sorted[1]
+    installed = agents_installed(r.install_runs)
+    expected: dict[str, list[str]] = {}
+    yours: list[str] = []
+    unexpected: list[str] = []
+    fr = r.friction
+    signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
+    not_on_disk = _gone_folder_fails(r, runs) - signed_out
+    refusing = _refusing_checks(r.config) if r.config is not None else frozenset()
+    # read only when doctor printed the FAIL it sorts, and never against the budget: the Summary is built
+    # after the Loop line, which can spend it, and a remote FAIL the budget hid would read as unexpected (V55)
+    remote = (
+        r.config is not None
+        and any(t == "FAIL" and n == "governance.remote" for t, n, _ in r.facts.doctor_problems)
+        and _remote_refused(r.config)
+    )
+    from_stop: list[str] = []
+    from_gone: list[str] = []
+    from_config: list[str] = []
+    from_remote: list[str] = []
+    read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
+    read_error = read_error or r.evidence_unreadable  # damage only the evidence read reached (W41)
+    unreadable = r.config is not None and _state_unreadable(r.config, read_error)
+    shut = "" if unreadable or r.config is None else _state_shut(r.config, read_error)
+    from_state: list[str] = []
+    from_shut: list[str] = []
+    timed_out = _helpers_timed_out(r.config) if r.config is not None else {}
+    from_helpers: list[str] = []
+    fails: list[tuple[str, str | None]] = []
+    for tag, name, detail in r.facts.doctor_problems:
+        if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
+            from_stop.append(name)
+            fails.append((name, _STOP_WORDS))
+            continue
+        if tag == "FAIL" and name in not_on_disk:  # B13 round 14 Q3, Q18, Q36: step 1 announced them
+            from_gone.append(name)
+            fails.append((name, _GONE))
+            continue
+        # B13 round 16 T4, T14: the Configuration line names its cause. Keyed on the report's own reading,
+        # never on the fix text: a sign-in or folder FAIL whose fix is the person's that no step announced
+        # stays unexpected (O13, Q36)
+        if tag == "FAIL" and name in refusing:
+            from_config.append(name)
+            fails.append((name, _CONFIG_WORDS))
+            continue
+        if tag == "FAIL" and name == "governance.remote" and remote:  # B13 round 17 U2, U16
+            from_remote.append(name)
+            fails.append((name, _REMOTE_WORDS))
+            continue
+        # B13 round 17 U5, U24, U41: the state file no command can read is the stop's own FAIL, the person's
+        # (MANIFEST_FIX); the listing warn beside it cannot be judged, as the loop that says whose it is
+        # cannot read the state. Keyed on the report's own read of the file: a locked one is not it, and
+        # with a readable state a Loop hook that fails still leaves that warn unexpected
+        if unreadable and tag == "FAIL" and name == "state_dir.manifest":
+            from_state.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _STATE_UNREAD_WORDS))
+            continue
+        # B13 round 20 X28: one this account cannot open (its owner, its mode or its folder's) is no damage,
+        # and doctor FAILs state_dir.files (or state_dir, for a folder it cannot search) for it: the person's
+        # too, read from the report's own access test of the file, never from doctor's words. A
+        # state_dir.files FAIL for a file others can read leaves it open to this account: still unexpected
+        if shut and tag == "FAIL" and (name == "state_dir.files" or (name, shut) == ("state_dir", "folder")):
+            from_shut.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _STATE_SHUT_WORDS))
+            continue
+        if (
+            (unreadable or shut)
+            and tag == "warn"
+            and name.startswith("heartbeat.")
+            and detail.startswith(_LISTING_INCOMPLETE)
+            and not r.facts.loop_checks
+        ):
+            (from_state if unreadable else from_shut).append(
+                f"{name} warn (not judged: the loop cannot read the state)"
+            )
+            continue
+        # B13 round 20 X28: the Time Machine attribute of a file this account cannot open cannot be read, so
+        # doctor called it not excluded; only when every path it names is that file (lane B's X12 makes doctor
+        # say "not checked" for it, and then no such warn comes)
+        if (
+            shut
+            and tag == "warn"
+            and name == "governance.time_machine"
+            and _names_only_state(detail, r.config)
+        ):
+            from_shut.append(f"{name} warn (not judged: this account cannot read the state file)")
+            continue
+        # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
+        # never expected, and not unexpected either: install.sh builds it again; the OCR and media helpers'
+        # too (round 19 W49). Keyed on the report's own read of each build's marker, never on doctor's fix
+        if tag == "warn" and name in timed_out and timed_out[name] in detail:
+            from_helpers.append(name)
+            continue
+        why = (
+            expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
+            if tag == "warn"
+            else None
+        )
+        if why is not None:
+            expected.setdefault(why, []).append(name)
+        elif tag == "warn" and _yours_warn(name, detail, r.facts.loop_checks):
+            yours.append(name)
+        else:
+            unexpected.append(f"{name} {tag}")
+            if tag == "FAIL":
+                fails.append((name, None))
+    step = fr.latest.layout.folder_question_step if fr is not None and fr.latest is not None else 1
+    folders = len({name.rsplit(".", 1)[0] for name in from_gone})
+    gone_words = f"from the {_plural(folders, 'synced folder')} step {step} found not on disk"
+    sort = _DoctorSort(
+        expected,
+        yours,
+        unexpected,
+        from_stop,
+        from_gone,
+        gone_words,
+        from_config,
+        from_remote,
+        from_state,
+        from_shut,
+        from_helpers,
+        [(name, gone_words if why == _GONE else why) for name, why in fails],
+    )
+    r.doctor_sorted = (key, sort)
+    return sort
+
+
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     d = r.facts.doctor
     if d is None and r.facts.doctor_cut_off is not None:
@@ -9200,80 +9431,15 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         return f"{line} · {_IDLE_AGAIN}"  # B13 round 18 V4: a report written when idle has the section
     if d is None:
         return "- doctor: not run (see Doctor)"
-    installed = agents_installed(r.install_runs)
-    expected: dict[str, list[str]] = {}
-    yours: list[str] = []
-    unexpected: list[str] = []
-    fr = r.friction
-    signed_out = _sign_in_stop_fails(r, fr.latest if fr is not None else None, runs)
-    not_on_disk = _gone_folder_fails(r, runs) - signed_out
-    refusing = _refusing_checks(r.config) if r.config is not None else frozenset()
-    # read only when doctor printed the FAIL it sorts, and never against the budget: the Summary is built
-    # after the Loop line, which can spend it, and a remote FAIL the budget hid would read as unexpected (V55)
-    remote = (
-        r.config is not None
-        and any(t == "FAIL" and n == "governance.remote" for t, n, _ in r.facts.doctor_problems)
-        and _remote_refused(r.config)
+    sort = _sort_doctor(r, runs)
+    expected, yours, unexpected = sort.expected, sort.yours, sort.unexpected
+    from_stop, from_gone, from_config, from_remote = (
+        sort.from_stop,
+        sort.from_gone,
+        sort.from_config,
+        sort.from_remote,
     )
-    from_stop: list[str] = []
-    from_gone: list[str] = []
-    from_config: list[str] = []
-    from_remote: list[str] = []
-    read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
-    read_error = read_error or r.evidence_unreadable  # damage only the evidence read reached (W41)
-    unreadable = r.config is not None and _state_unreadable(r.config, read_error)
-    from_state: list[str] = []
-    timed_out = _helpers_timed_out(r.config) if r.config is not None else {}
-    from_helpers: list[str] = []
-    for tag, name, detail in r.facts.doctor_problems:
-        if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
-            from_stop.append(name)
-            continue
-        if tag == "FAIL" and name in not_on_disk:  # B13 round 14 Q3, Q18, Q36: step 1 announced them
-            from_gone.append(name)
-            continue
-        # B13 round 16 T4, T14: the Configuration line names its cause. Keyed on the report's own reading,
-        # never on the fix text: a sign-in or folder FAIL whose fix is the person's that no step announced
-        # stays unexpected (O13, Q36)
-        if tag == "FAIL" and name in refusing:
-            from_config.append(name)
-            continue
-        if tag == "FAIL" and name == "governance.remote" and remote:  # B13 round 17 U2, U16
-            from_remote.append(name)
-            continue
-        # B13 round 17 U5, U24, U41: the state file no command can read is the stop's own FAIL, the person's
-        # (MANIFEST_FIX); the listing warn beside it cannot be judged, as the loop that says whose it is
-        # cannot read the state. Keyed on the report's own read of the file: a locked one is not it, and
-        # with a readable state a Loop hook that fails still leaves that warn unexpected
-        if unreadable and tag == "FAIL" and name == "state_dir.manifest":
-            from_state.append(f"{name} FAIL (the person's; see Doctor)")
-            continue
-        if (
-            unreadable
-            and tag == "warn"
-            and name.startswith("heartbeat.")
-            and detail.startswith(_LISTING_INCOMPLETE)
-            and not r.facts.loop_checks
-        ):
-            from_state.append(f"{name} warn (not judged: the loop cannot read the state)")
-            continue
-        # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
-        # never expected, and not unexpected either: install.sh builds it again; the OCR and media helpers'
-        # too (round 19 W49). Keyed on the report's own read of each build's marker, never on doctor's fix
-        if tag == "warn" and name in timed_out and timed_out[name] in detail:
-            from_helpers.append(name)
-            continue
-        why = (
-            expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
-            if tag == "warn"
-            else None
-        )
-        if why is not None:
-            expected.setdefault(why, []).append(name)
-        elif tag == "warn" and _yours_warn(name, detail, r.facts.loop_checks):
-            yours.append(name)
-        else:
-            unexpected.append(f"{name} {tag}")
+    from_state, from_shut, from_helpers = sort.from_state, sort.from_shut, sort.from_helpers
     n_expected = sum(len(v) for v in expected.values())
     parts = [f"{d.get('FAIL', 0)} FAIL, {d.get('warn', 0)} warn ({sum(d.values())} checks)"]
     if n_expected:
@@ -9286,34 +9452,31 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     # as a name ("not on disk 2"; B13 round 16 T20, T34)
     if from_stop:
         parts.append(
-            f"from the sign-in stop ({_plural(len(from_stop), 'check')}): "
+            f"{_STOP_WORDS} ({_plural(len(from_stop), 'check')}): "
             + ", ".join(f"{n} FAIL" for n in from_stop)
         )
     if from_gone:
-        folders = len({name.rsplit(".", 1)[0] for name in from_gone})
-        step = fr.latest.layout.folder_question_step if fr is not None and fr.latest is not None else 1
         parts.append(
             # the number counts checks, as every other bucket's does; the folder count is in the words, as the
             # folders line says it (B13 round 15 S12, S27)
-            f"from the {_plural(folders, 'synced folder')} step {step} found not on disk "
-            f"({_plural(len(from_gone), 'check')}): " + ", ".join(f"{n} FAIL" for n in from_gone)
+            f"{sort.gone_words} ({_plural(len(from_gone), 'check')}): "
+            + ", ".join(f"{n} FAIL" for n in from_gone)
         )
     if from_config:
         parts.append(
-            f"from the configuration a sync refuses ({_plural(len(from_config), 'check')}): "
+            f"{_CONFIG_WORDS} ({_plural(len(from_config), 'check')}): "
             + ", ".join(f"{n} FAIL" for n in from_config)
             + " (see Configuration)"
         )
     if from_remote:
         parts.append(
-            "from a docs-repo remote [governance] does not allow, the person's to remove or allow "
+            f"{_REMOTE_WORDS}, the person's to remove or allow "
             f"({_plural(len(from_remote), 'check')}): " + ", ".join(f"{n} FAIL" for n in from_remote)
         )
     if from_state:
-        parts.append(
-            f"from the state file that cannot be read ({_plural(len(from_state), 'check')}): "
-            + ", ".join(from_state)
-        )
+        parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
+    if from_shut:  # B13 round 20 X28
+        parts.append(f"{_STATE_SHUT_WORDS} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
     if from_helpers:
         one = len(from_helpers) == 1
         parts.append(
@@ -10202,7 +10365,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     fr = r.friction
     att = fr.latest if fr is not None else None
     runs = _latest_runs(r)
-    outcome = compute_outcome(att, runs, doctor_fails=_doctor_fails(r))
+    outcome = compute_outcome(att, runs, doctor_fails=_doctor_fails(r, runs))
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type
     out: list[str] = [f"- **outcome: {outcome.text}** (computed: {'; '.join(outcome.why)})"]

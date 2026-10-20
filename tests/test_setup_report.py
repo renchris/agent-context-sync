@@ -2913,6 +2913,33 @@ def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path])
     assert summary_of(fake_mac)[1].strip().startswith("- **outcome: fully one command**")
 
 
+def test_the_outcome_calls_unexpected_only_a_doctor_fail_in_no_bucket(fake_mac: dict[str, Path]) -> None:
+    """B13 round 20 X35: the outcome named every doctor FAIL "unexpected", so a FAIL the doctor line files
+    under its cause (the sign-in stop, a folder not on disk, a refused config, a docs-repo remote, the state
+    file) was "unexpected" on one line and the person's on the next. Any FAIL still keeps the setup from
+    "fully one command"; the reason has the two parts, each FAIL in one of them."""
+    write_install_log(fake_mac)
+    att = setup_report.read_friction(write_friction(fake_mac)).latest
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    both = setup_report.compute_outcome(
+        att,
+        runs,
+        doctor_fails=[("tcc", None), ("state_dir.manifest", "from the state file that cannot be read")],
+    )
+    assert both.kind == "worked with help", both
+    assert both.why[-2:] == (
+        "1 unexpected doctor FAIL: tcc",
+        "1 doctor FAIL with a known cause: state_dir.manifest (from the state file that cannot be read)",
+    ), both
+    known = setup_report.compute_outcome(att, runs, doctor_fails=[("governance.remote", "from a remote")])
+    assert known.kind == "worked with help" and not any("unexpected" in w for w in known.why), known
+    assert (
+        setup_report.compute_outcome(att, runs, doctor_fails=["tcc"]).why[-1]
+        == "1 unexpected doctor FAIL: tcc"
+    )
+    assert setup_report.compute_outcome(att, runs).kind == "fully one command"
+
+
 def test_an_unexpected_doctor_fail_is_not_fully_one_command(fake_mac: dict[str, Path]) -> None:
     write_install_log(fake_mac)
     write_friction(fake_mac)
@@ -12050,12 +12077,19 @@ def test_a_wait_the_loop_names_is_yours_and_a_stopped_sync_stays_unexpected(
         "not a setup step)",
     ]
     hooks = setup_report.ReportHooks(doctor=lambda config: lines, loop_next=lambda config: _yours_step())
-    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
-    assert (
+    said = (
         "- doctor: 1 FAIL, 5 warn (7 checks) · yours 2: heartbeat.project-x, governance.purge_queue (see "
         "WAITING ON YOU) · unexpected 4: heartbeat.project-y warn, heartbeat.project-z warn, "
         "heartbeat.project-w FAIL, launchd.poll warn"
-    ) in section(text, "Summary")
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert said in section(text, "Summary")
+    # B13 round 20 X35 (review): with a friction log, the friction section's outcome sorts the problems
+    # before the Loop line reads its checks, and the Summary reused it: no "yours", each wait unexpected
+    write_friction(fake_mac, V7_HAPPY)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert said in section(text, "Summary"), section(text, "Summary")
+    assert "1 unexpected doctor FAIL: heartbeat.project-w" in _line(section(text, "Summary"), "- **outcome")
 
 
 def test_the_report_doctor_never_points_at_the_end_of_its_run(
@@ -13621,7 +13655,15 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     assert bucket.count(" FAIL") == 2 and "listable FAIL" in bucket and "volume FAIL" in bucket, line
     assert "FAIL" not in unexpected, line
     assert_buckets_add_up(line)
-    assert _line(got, "- **outcome") == _line(baseline, "- **outcome"), got  # the outcome is unchanged
+    outcome = _line(got, "- **outcome")
+    # the outcome is unchanged, and (B13 round 20 X35) its reason calls unexpected only what this line does
+    assert outcome.split(" (computed: ")[0] == _line(baseline, "- **outcome").split(" (computed: ")[0], got
+    assert "unexpected doctor FAIL" in _line(baseline, "- **outcome"), baseline
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    assert (
+        "; 2 doctor FAILs with a known cause: source.<folder-2>.listable, source.<folder-2>.volume (from the "
+        "1 synced folder step 1 found not on disk)" in outcome
+    ), outcome
     # a SharePoint library not synced beside its OneDrive-<org> is in install.sh's gone= count too
     shutil.rmtree(fake_mac["two"].parents[1])
     line = _line(summary(" synced=2 gone=2"), "- doctor: ")
@@ -13706,6 +13748,84 @@ def test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket(
     )
     assert bucket in line and "FAIL" not in unexpected(line) and "heartbeat" not in unexpected(line), line
     assert "yours" not in line, "no WAITING ON YOU line for a pointer to land on"
+    # B13 round 20 X35: the outcome called this FAIL "1 unexpected doctor FAIL" two lines above a doctor line
+    # that files it as the person's; it reads the doctor line's own sort
+    _rc, text, _ = report(tmp_path, cfg)
+    outcome = _line(section(text, "Summary"), "- **outcome: ")
+    assert outcome.startswith("- **outcome: worked with help**"), outcome
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    assert (
+        "1 doctor FAIL with a known cause: state_dir.manifest (from the state file that cannot be read)"
+        in (outcome)
+    ), outcome
+
+
+def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 20 X28: a manifest this account cannot open (mode 0000, or another account's) made doctor
+    FAIL state_dir.files, and the report filed that FAIL and the listing warn beside it as ``unexpected``:
+    its "state file that cannot be read" bucket took only a damaged file's state_dir.manifest FAIL. Keyed on
+    the report's own access test of the file: the FAIL and the warn have a bucket of their own, and a
+    state_dir.files FAIL for a file others can read (0644) stays unexpected. X35: the outcome agrees."""
+    real = cli._status_checks
+    listing = setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)"
+    heartbeat = doctor.CheckResult("heartbeat.x", False, listing, doctor.Severity.WARN)
+
+    extra: list[doctor.CheckResult] = []
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        found = real(config, offline=offline)
+        return [c for c in found if c.ok or c.name.startswith("state_dir")] + [heartbeat, *extra]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    added = re.compile(r"(?:expected|yours|unexpected) (\d+)\b|(?:be read|cannot open) \((\d+) checks?\)")
+
+    def summary() -> tuple[str, str]:
+        _rc, text, _ = report(tmp_path, cfg)
+        line = _line(section(text, "Summary"), "- doctor: ")
+        found = re.search(r"- doctor: (\d+) FAIL, (\d+) warn", line)
+        assert found is not None, line
+        assert sum(int(a or b) for a, b in added.findall(line)) == sum(map(int, found.groups())), line
+        return line, _line(section(text, "Summary"), "- **outcome: ")
+
+    # others can read it (the report's own open of the file makes it 0600 again, so doctor's FAIL is given):
+    # an exposure, not a file this account cannot open
+    extra.append(
+        doctor._bad("state_dir.files", "readable by others: manifest.sqlite (0644)", fix="chmod 600 x")
+    )
+    line, outcome = summary()
+    assert "state_dir.files FAIL" in line.split(" · unexpected ", 1)[1], line
+    assert "from the state file" not in line, line
+    assert "1 unexpected doctor FAIL: state_dir.files" in outcome, outcome
+    extra.clear()
+    # until lane B's X12 says "not checked", doctor calls the file it cannot read not excluded from Time
+    # Machine: that warn is the shut file's only when the state file is all it names
+    tm = "governance.time_machine"
+    extra.append(doctor.CheckResult(tm, False, f"not excluded from Time Machine: {db}", doctor.Severity.WARN))
+    db.chmod(0o000)
+    try:
+        line, outcome = summary()
+        extra[0] = doctor.CheckResult(
+            tm, False, f"not excluded from Time Machine: {db.parent}/x, {db}", doctor.Severity.WARN
+        )
+        more, _outcome = summary()
+    finally:
+        db.chmod(0o600)
+    bucket = (
+        " · from the state file this account cannot open (3 checks): state_dir.files FAIL (the person's; see "
+        "Doctor), heartbeat.x warn (not judged: the loop cannot read the state), governance.time_machine "
+        "warn (not judged: this account cannot read the state file) · unexpected 0"
+    )
+    assert line.endswith(bucket), line
+    assert more.endswith(" · unexpected 1: governance.time_machine warn"), more
+    assert "yours" not in line and "cannot be read" not in line, line
+    assert "unexpected doctor FAIL" not in outcome, outcome
+    assert "state_dir.files (from the state file this account cannot open)" in outcome, outcome
 
 
 @pytest.mark.usefixtures("roomy_calls")
@@ -13851,6 +13971,10 @@ def test_the_docs_repo_remote_is_read_only_for_doctors_remote_fail_and_never_aga
     assert "from a docs-repo remote [governance] does not allow" in line and line.endswith(
         " · unexpected 0"
     ), line
+    # B13 round 20 X35: the outcome reads the same sort, so it calls this FAIL no unexpected one
+    assert setup_report._doctor_fails(r, []) == [
+        ("governance.remote", "from a docs-repo remote [governance] does not allow")
+    ]
 
 
 @pytest.mark.usefixtures("clean_doctor")
