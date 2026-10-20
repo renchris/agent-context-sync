@@ -13488,8 +13488,9 @@ def test_the_shell_report_words_hold_where_gitleaks_is_missing(
     so the census above passed here while CI, which has none, printed "not found (builtin patterns only)" and
     went red (round 18). install.sh alone runs under sandbox-exec with every place it looks for gitleaks
     unreadable, which reads as missing to its `[ -x ]`; the run must take CI's branch, and the census holds
-    there too. Never pytest or the in-process Python report: there a denied path raises EPERM, which CI never
-    sees."""
+    there too. Only install.sh needs the sandbox, since the census reads only the shell's words, while the
+    Python report's words are its string literals. Since W66 the in-process lookup also reads a denied path
+    as missing (lints._executable), so wrapping it would add nothing (B13 round 20 X76)."""
     sandbox = shutil.which("sandbox-exec")
     if sandbox is None:
         pytest.skip("no sandbox-exec: not macOS")

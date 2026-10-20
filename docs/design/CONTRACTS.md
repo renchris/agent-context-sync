@@ -25760,6 +25760,14 @@ its longest stays at 591 bytes, under BSD sed's limit. Tests:
 `splitlines` breaks a report line at `\r`, `\v`, `\f` and `\034` to `\036`) and a no-break-space case in
 `test_a_policy_or_governance_value_is_redacted_alike_in_both_readers` (both readers alike).
 
+**The W78 guard's docstring gives the sandbox's real reason** (X76). `test_the_shell_report_words_hold_where_gitleaks_is_missing`
+said pytest and the in-process Python report must not run under its sandbox because "there a denied path raises
+EPERM": true when written, before W66 made `lints._executable` catch `OSError`, so `lints.gitleaks_lookup` now
+reads a denied path as missing (measured under the same deny profile: `None` at HEAD, `PermissionError [Errno 1]`
+from the pre-W66 `lints.py`). It now says only install.sh needs the sandbox, since the census reads the shell's
+words and the Python report's are its string literals. Docstring only: the test body, which asserts CI's branch
+(`- gitleaks: not found (builtin patterns only)`) directly, is unchanged, so no test can fail without it.
+
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
 The B13 round 20 items of lane P (specs `round20/items/X<n>.md`, the verifier's corrected fix built unless a
