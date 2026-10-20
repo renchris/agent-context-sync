@@ -134,7 +134,8 @@
 #      build), or copied from --launcher PATH; else a valid installed one is kept. An up-to-date one is never
 #      rebuilt, because an ad-hoc rebuild is a new TCC identity and macOS would ask again (the developer
 #      variable AGENTSYNC_REBUILD_LAUNCHER=1 rebuilds it anyway)
-#      Then, with or without that option, a step of its own, logged `helpers` (done when the modules ran;
+#      Then, with or without that option, a step of its own, logged `helpers` (done when the modules ran,
+#      note not-built-<names> such as not-built-speech or not-built-ocr+speech when a build exited non-zero;
 #      skipped, note no-devtools, without developer tools; skipped, note config-unreadable, when the config
 #      cannot be read: the media and speech lines then say so, unrun). When developer tools exist: the
 #      on-device OCR helper (python -I -m agentsync.convert.ocr with the tool's interpreter; nothing else ever
@@ -4225,6 +4226,22 @@ older_report_rewrite() { # MODE
 		function fill(x, w,    i) { for (i = ulen(x); i < w; i++) x = x " "; return x }
 		function lfill(x, w,    i, p) { p = ""; for (i = ulen(x); i < w; i++) p = p " "; return p x }
 		function dashes(w,    x) { x = ""; while (w-- > 0) x = x "-"; return x }
+		# the helpers step note not-built-<names> as setup_report._helpers_note words it (a test keeps them
+		# equal), "" for any other token (B13 round 18 V6)
+		function not_built(tok,    n, a, i, what, head, ws, hs) {
+			if (tok !~ /^not-built-[a-z]+(\+[a-z]+)*$/) return ""
+			n = split(substr(tok, 11), a, "+")
+			for (i = 1; i <= n; i++) {
+				if (a[i] == "ocr") { what = "the OCR helper"; head = "\"OCR helper:\"" }
+				else if (a[i] == "media") { what = "the media helper"; head = "\"media helper:\"" }
+				else if (a[i] == "speech") { what = "the speech helper"; head = "\"speech:\"" }
+				else return ""
+				ws = ws (i == 1 ? "" : i == n ? " and " : ", ") what
+				hs = hs (i == 1 ? "" : i == n ? " and " : ", ") head
+			}
+			if (n == 1) return "not built: " ws "; its " hs " line in install.out says why"
+			return "not built: " ws "; their " hs " lines in install.out say why"
+		}
 		function table(    i, k, c, ch, w1, w2, w3, tok, x) { # the Installer table buffered in tb[1..tn]
 			for (; blank > 0; blank--) print ""
 			ch = tn >= 3 && tb[2] ~ /^\|-+\|-+:\|-+\|$/
@@ -4235,6 +4252,7 @@ older_report_rewrite() { # MODE
 				if (i > 2 && match(R[i], / \([^()]*\)$/)) {
 					tok = substr(R[i], RSTART + 2, RLENGTH - 3)
 					if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
+					else if (S[i] == "helpers" && (x = not_built(tok)) != "") { R[i] = substr(R[i], 1, RSTART) "(" x ")"; ch = 2 }
 				}
 				# each cell: its "(s)" by its count, after the token lookup, which reads the token as written; the
 				# table is padded again (B13 round 14 Q39 "listed N folders", round 16 T23)
@@ -5976,10 +5994,15 @@ if have_devtools; then
 			say "${line:-$3}"
 			return "$rc"
 		}
-		if build_helper ocr "OCR helper" "OCR helper: not built (the build did not run)" || [ $? -ne 78 ]; then
-			build_helper media "media helper" "media helper: not built (the build did not run)" || true
-			build_helper speech "speech helper" "speech: not built (the build did not run)" || true
-			step_end "done"
+		# A helper whose build exits non-zero is not built: the step is still done (an optional helper is
+		# never a failed step), noted not-built-<names> joined by "+", so install.log and the report's
+		# Installer row name it beside the helper's own line, which says why (B13 round 18 V6).
+		nb=""
+		if build_helper ocr "OCR helper" "OCR helper: not built (the build did not run)"; then rc=0; else rc=$?; nb="ocr"; fi
+		if [ "$rc" -ne 78 ]; then
+			build_helper media "media helper" "media helper: not built (the build did not run)" || nb="$nb${nb:++}media"
+			build_helper speech "speech helper" "speech: not built (the build did not run)" || nb="$nb${nb:++}speech"
+			step_end "done" 0 "${nb:+not-built-$nb}"
 		else
 			say "media helper: not checked (the config cannot be read)"
 			say "speech: not checked (the config cannot be read)"

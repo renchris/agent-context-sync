@@ -4438,6 +4438,35 @@ _HELPERS_NOTE_WORDS = {
 ``skipped (config-unreadable)``; no-interpreter has no ``say`` line to explain it anywhere else). A note none
 of these is shown as it is; install.log keeps its tokens."""
 
+_HELPER_NAMES = {
+    "ocr": ("the OCR helper", "OCR helper:"),
+    "media": ("the media helper", "media helper:"),
+    "speech": ("the speech helper", "speech:"),
+}
+"""install.sh's helper names in a ``not-built-<names>`` note -> the helper, and its line's head in
+install.out."""
+
+
+def _helpers_note(note: str) -> str:
+    """The helpers step's note in the report's words: ``not-built-<names>`` (names joined by ``+``) names the
+    helpers whose build exited non-zero and the install.out lines that say why, the step still ``done``: an
+    optional helper is never a failed step (B13 round 18 V6: a speech build that ran out of time read as a
+    bare ``done``); else :data:`_HELPERS_NOTE_WORDS`. scripts/install.sh's older_report_rewrite words it the
+    same way (a test keeps them equal)."""
+    built = re.fullmatch(r"not-built-([a-z+]+)", note)
+    names = built.group(1).split("+") if built else []
+    if not names or any(name not in _HELPER_NAMES for name in names):
+        return _HELPERS_NOTE_WORDS.get(note, note)
+    whats = [_HELPER_NAMES[name][0] for name in names]
+    heads = [f'"{_HELPER_NAMES[name][1]}"' for name in names]
+    if len(names) == 1:
+        return f"not built: {whats[0]}; its {heads[0]} line in install.out says why"
+    return (
+        f"not built: {', '.join(whats[:-1])} and {whats[-1]}; their {', '.join(heads[:-1])} and {heads[-1]} "
+        "lines in install.out say why"
+    )
+
+
 _STATUS_NOTE_WORDS = {
     "fail-lines": "agentsync status reported [FAIL] lines",
     # the wait asks for the Allow only with --confirm-install-agent; an earlier install's LaunchAgents bring
@@ -4521,6 +4550,8 @@ def _step_table(steps: list[tuple[str, dict[str, str]]], *, sign_in: str | None 
             said = f"{_signed_out(v)[0]} on this Mac"
         elif name == "list-folders":
             said = _list_folders_note(said)
+        elif name == "helpers":
+            said = _helpers_note(said)
         elif name in _STEP_NOTE_WORDS:
             said = _STEP_NOTE_WORDS[name].get(said, said)
         note = ": ".join(part for part in (said, counts) if part)

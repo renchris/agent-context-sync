@@ -9108,6 +9108,39 @@ def test_a_stopped_copy_by_an_older_agentsync_words_its_table_and_its_held_listi
     assert new_held.replace("fy26-projects", "q3-launch") in lines
 
 
+_NOT_BUILT = [
+    "not-built-" + "+".join(names)
+    for n in (1, 2, 3)
+    for names in itertools.combinations(("ocr", "media", "speech"), n)
+]
+"""Every helpers-step note of a run with a helper not built (B13 round 18 V6)."""
+
+
+def test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 18 V6: a speech build that ran out of time logged a bare ``done``, and the Installer row read
+    ``done``. The step stays done (an optional helper is never a failed step), noted not-built-<names>: the
+    report names the helpers and the install.out lines that say why, and a stopped copy an older renderer
+    wrote, whose table shows the raw note, takes the same words (older_report_rewrite's not_built)."""
+    rows = [("helpers", {"result": "done", "note": note, "seconds": "1220"}) for note in _NOT_BUILT]
+    new = setup_report._step_table(rows)
+    assert new[2].split(" | ")[2].rstrip(" |") == (
+        'done (not built: the OCR helper; its "OCR helper:" line in install.out says why)'
+    )
+    assert "| done (not built: the OCR helper, the media helper and the speech helper; their " in new[-1]
+    assert '"OCR helper:", "media helper:" and "speech:" lines in install.out say why) |' in new[-1]
+    assert setup_report._helpers_note("not-built-wifi") == "not-built-wifi", "an unknown name stays a token"
+    old = [
+        "| step    | seconds | result |",
+        "|---------|--------:|--------|",
+        *(f"| helpers |    1220 | done ({note}) |" for note in _NOT_BUILT),
+    ]
+    report = "\n".join(["# agentsync setup report", "", "## Installer", "", *old, ""])
+    lines = _stopped_copy_of(env, tmp_path, report).splitlines()
+    assert [ln for ln in lines if ln.startswith("|")] == new
+
+
 _OLD_WAIT = (
     "WAITING ON YOU: {n} empty cloud folder(s) keep the listing of <folder-{k}> incomplete: an empty "
     "folder in a "
@@ -11062,6 +11095,13 @@ def _others(rows: list[tuple[str, str, str, str]]) -> list[tuple[str, str, str, 
     return [r for r in rows if r[0] != "helpers"]
 
 
+def _not_built(stub: dict[str, str]) -> str:
+    """The helpers step's note for a run whose builds exit by ``stub``'s STUB_<HELPER>_RC: the helpers that
+    exited non-zero, as ``not-built-<names>`` (B13 round 18 V6), else none."""
+    names = [n for n in ("ocr", "media", "speech") if stub.get(f"STUB_{n.upper()}_RC", "0") != "0"]
+    return f"not-built-{'+'.join(names)}" if names else ""
+
+
 def _helpers_row(rows: list[tuple[str, str, str, str]]) -> tuple[str, str, str, str]:
     [row] = [r for r in rows if r[0] == "helpers"]
     return row
@@ -11113,7 +11153,7 @@ def test_helpers_step_builds_the_ocr_helper_and_a_failure_is_only_a_line(
         assert _helpers_row(got) == (
             ("helpers", "skipped", "0", "no-devtools")
             if line == no_tools or not _have_git()
-            else ("helpers", "done", "0", "")
+            else ("helpers", "done", "0", _not_built(stub))
         )
         assert one_next(cp)
         # -m: the build. The config step also asks this interpreter how many folders are synced (-c).
@@ -11192,7 +11232,7 @@ def test_helpers_step_builds_the_media_helper_after_ocr_and_a_failure_is_only_a_
         assert _helpers_row(got) == (
             ("helpers", "skipped", "0", "no-devtools")
             if line == no_tools or not _have_git()
-            else ("helpers", "done", "0", "")
+            else ("helpers", "done", "0", _not_built(stub))
         )
         assert one_next(cp)
         ran = [c for c in calls(env) if c.startswith("python -I -m ")]
@@ -11277,7 +11317,7 @@ def test_helpers_step_builds_the_speech_helper_after_media_and_a_failure_is_only
         assert _helpers_row(got) == (
             ("helpers", "skipped", "0", "no-devtools")
             if line == no_tools or not _have_git()
-            else ("helpers", "done", "0", "")
+            else ("helpers", "done", "0", _not_built(stub))
         )
         if line == no_tools or not _have_git():
             assert said(cp) == [no_tools]
