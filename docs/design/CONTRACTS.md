@@ -1004,6 +1004,7 @@ class SourceReport:
     refused_unread: int = 0  # 2026-10-13 (§16.68 H32): refused with no byte read; never in ``converted``
     withheld_unread: int = 0  # 2026-10-14 (§16.77 J29): of those, the stubs that say a label rule withheld them
     new: int = 0  # 2026-10-16 (§16.102 N39): of the changed files, those new this run (``changed=N (K new)``)
+    converter_waiting: int = 0  # 2026-10-19 (§16.138 V13): files whose converter could not start, never in converted
 
 class CarriedLines(NamedTuple):  # 2026-10-13 (§16.68 H73): an unselected source's lines in STATE.md
     run_id: int  # the last run that selected the source
@@ -1031,6 +1032,7 @@ class CycleReport:
     rescreened: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
     rescreened_unchanged: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
     rescreen_left: int = 0  # 2026-10-18 (§16.125 T33; round 16 lane B)
+    converter_down: bool = False  # 2026-10-19 (§16.138 V57): a converter could not start for a file this run
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -8059,7 +8061,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | Key | What it counts |
 |---|---|
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
-| `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change |
+| `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change (**Amended 2026-10-19, §16.138 V62, V67 (by §16.132 U3):** the same bytes are converted again in up to `_CONVERT_RETRIES` (2) later runs and counted in each; one whose converter could not start is converted, uncounted against the retries, in the first run in which it starts; see the not-retried bullet below) |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -8133,6 +8135,9 @@ until the bytes change; what a run's re-read looked for, with and without an eng
 `materialise PATH` run; the limit marks are the converters' wording; the files a re-read left, against its
 time, past the OCR time and with pandoc missing) and
 `tests/test_manifest.py` (`cache_last_used`, `reread_count`, `last_reread_counts`).
+Amended 2026-10-19, §16.138 V74 (by §16.132 U3): the failed-conversion test is now
+`test_a_conversion_that_failed_is_tried_again_a_bounded_number_of_times`: the same bytes are converted again in up
+to `_CONVERT_RETRIES` (2) later runs, and new bytes count from zero.
 
 #### One round: `sync` says when to sync again (amends §16.20; `agentsync.loop`)
 
@@ -10566,6 +10571,8 @@ is not built`, left beside the helper for `probe`), then `Pin.swift` with the re
 refusal; a build step a signal stopped says so, `swift build was stopped by SIGKILL (signal 9); scripts/install.sh
 tries the build again on its next run`, and a check that a signal stopped or that does not run keeps its own
 reason.)
+Amended 2026-10-19, §16.138 V68: the step names the installer by its path, `swift build was stopped by SIGKILL
+(signal 9); ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run` (`skill.INSTALL_SH`).
 Amended 2026-10-16, §16.103 N58 (by §16.96 M25, §16.93 M8): a config that cannot be read exits 78 (EX_CONFIG) with
 `speech: not checked (the config cannot be read)`; scripts/install.sh, after OCR's 78, does not run this module and
 prints that line itself.
@@ -10606,6 +10613,9 @@ build tree, passed to both swift steps, instead of the real `~/Library` ones.
   (`fluidaudio, helper 0.1.0, FluidAudio 04e363c`). `engine(cfg, cache_dir)` is the one place the digests are
   taken: a `SpeechEngine` when `ready` and both folders match `MODEL_DIGESTS`, else None (a mismatch is logged as a
   WARNING naming the folder, never a path); it renews the helper's modification time.
+  Amended 2026-10-19, §16.138 V68: the `failed` refusal names the installer by its path (`skill.INSTALL_SH`):
+  `the speech helper is not built from FluidAudio 04e363c or later; ~/src/agent-context-sync/scripts/install.sh
+  rebuilds it`.
 - **Doctor** (`ops.doctor`, check `speech`, right after `media`, through the private `doctor._speech_status`;
   never a FAIL): `ready`, `off` ok `speech: <state> (<detail>)`; `not-built` not-ok INFO `speech: not-built
   (<detail>; scripts/install.sh builds it[ once the Command Line Tools are installed (xcode-select --install)])`;
@@ -12695,6 +12705,9 @@ build's floor check refuses only on the check's own non-zero answer (a reason th
 run: ...`) keeps its own reason. A non-negative exit keeps its wording byte for byte. Why: the v10 rehearsal read
 `speech: not built (swift build failed (exit -9): Building for production...)`, and a killed floor check was
 stored in `<helper>.failed` as "does not descend from the build floor", which was false.
+Amended 2026-10-19, §16.138 V68: both build sites name the installer by its path (`skill.INSTALL_SH`), `...;
+~/src/agent-context-sync/scripts/install.sh tries the build again on its next run`, and `ocr._plain` keeps that one
+path when it reads the `<helper>.failed` marker back, where it takes every other path out.
 
 #### The speech build's proxy (`convert/speech.py`; amends section 16.35, which builds as section 16.25 does) (H10)
 
@@ -13870,6 +13883,8 @@ Q71 built a hidden one, pinned in §16.10's Hidden line), so "the frozen CLI has
 longer a reason. The decision stands without it. With a marker, a one-off failure (a network drop, a signal, a
 timeout) would leave speech unbuilt until someone ran that command. Today's retry needs nothing from anyone, and the
 two install.sh messages ("tries the build again on its next run", "rebuilds it") stay true.
+Amended 2026-10-19, §16.138 V68: both messages now name the installer by its path,
+`~/src/agent-context-sync/scripts/install.sh` (`skill.INSTALL_SH`), and keep these words after it.
 
 #### PDF pictures and diagrams
 
@@ -13919,6 +13934,12 @@ drawing that converted before reads exactly as it did and a failed conversion is
 converter's version stays `1.0.0+python-<x.y.z>`. A drawing that failed this way keeps its stub until its
 file changes: a failed conversion is not retried (§16.28 "The run record"), and `diagram-stdlib` has no
 `outdated` rule.
+
+Amended 2026-10-19, §16.138 V74 (by §16.132 U3, §16.138 V65): a failed conversion is now tried again
+(`_retries`) in up to 2 later cycles while its row is ERROR, and the stub of one a build before U3 had settled is
+given the ERROR verdict once after the upgrade (`Manifest.retry_settled_failures`). So a drawing that failed this
+way is converted again in the first syncs after the upgrade, which part a's stack walk reads; one that fails every
+time keeps its stub until its file changes. `diagram-stdlib` still has no `outdated` rule.
 
 Tests: `tests/test_convert_formats.py` (`test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order`,
 groups 5000 deep with shapes before, inside and after each; §16.42's
@@ -23765,6 +23786,9 @@ path. Doctor's python, bundled pandoc, OCR, media, speech, launcher and Develope
 re-run, the cycle's OCR and media alarms and launchd's launcher error now build it from `skill.INSTALL_SH`, and the
 launcher's build script as `~/src/agent-context-sync/launcher/build.sh`. Tests: the pinned strings in
 `test_ops_doctor.py`.
+Amended 2026-10-19, §16.138 V68: the speech texts this listed were doctor's own; the three it relays from
+`agentsync.convert` (the speech floor refusal and the two build sites' signal texts) named a bare
+`scripts/install.sh`, and now build it from `skill.INSTALL_SH` too.
 
 **A time-out under install.sh does not name the same re-run twice (U78; `agentsync.ops.doctor`).** `_again_fix`
 gives `run the same <installer> command again ...; if this line comes back: <fallback>`, and the bundled pandoc's
@@ -23799,6 +23823,9 @@ an intact stub, whatever "retried next cycle" said. Now:
   re-read query include a `failed` stub of version `unavailable`, and `_reread_targets` and `_lacks` call it
   outdated while `_runs`. While it cannot start, the source's re-read record stays open (`_reread_waits`), so a
   later cycle with the same build and capabilities still looks.
+  Amended 2026-10-19, §16.138 V65: the stub of an ordinary failed conversion that an older build settled gets the
+  same bounded retries once, after the upgrade (`Manifest.retry_settled_failures`); a local online-only one
+  waits for new bytes.
 - A foreground sync whose cycle reported such an error, while the pandoc check fails, has rule 1's NEXT `the pandoc
   check failed (a file's converter could not start in this sync, so it is not converted yet): run
   ~/.local/bin/agentsync status, whose [FAIL] pandoc line names the fix` (`cli._unavailable_steps`). The convert
@@ -24098,7 +24125,105 @@ Reserved for round 18 lane B of B13.
 
 ### 16.138 Round 18: the convert-retry record, converters and the gate (2026-10-19, wave B13 round 18 lane E)
 
-Reserved for round 18 lane E of B13.
+Round 18's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 18"; specs `round18/items/V<n>.md`, the
+verifier's corrected fix built): U3's convert-retry record while a converter cannot start (V13, V57, V61, V64), an
+older build's settled stub (V65), entries for deleted files (V63), the texts that still said a failed conversion is
+never retried (V62, V67, V74), the installer's path in the texts `agentsync.convert` relays (V68), U74's pronoun pin
+(V66) and the land gate's scanners (V93, landed after the other five lanes). No item needs prompt words. A dated
+line this round writes reads `Amended 2026-10-19, §16.138 V<n>`, with `(by §16.132 U3)` where it records round
+17's change.
+
+**A file whose converter could not start is no conversion (V13; `agentsync.cycle`, `agentsync.model`,
+`agentsync.cli`).** Probe PD's sync printed `converted 1, ... (of the converted: 0 unreadable, 1 failed, 0
+refused)` beside its NEXT's "so it is not converted yet", and the sync in which pandoc came back counted the same
+file in `converted` again. A result whose converter version is `unavailable` now counts in
+`SourceReport.converter_waiting` and the run record's `converter_waiting`, never in `converted`,
+`conversion_failed` or `converted_failed`; its error line, stub and QUARANTINE row are as they were. The sync's
+last line adds `; W waiting for its converter (it could not start; read once it does)` after the re-screen clause,
+nothing at 0, with no bare "converted", "deferred" or "read again", so install.sh's awk and regex and setup_report's
+`_CONVERTED_LINE_RE` still read `converted N, deferred M online-only`. Test:
+`test_cycle.py::test_a_foreground_sync_whose_converter_could_not_start_names_the_pandoc_check` (the count line,
+the record, and `converted 1` once in the sync after).
+
+**A re-read that waits for its converter is no "sync again" (V57; `agentsync.cycle`, `agentsync.loop`,
+`agentsync.model`, `agentsync.cli`).** While a stub's converter could not start, `_reread_targets` left it out and
+kept the source's record open, so the run had no `reread_left` and `loop._reread_notes` took its "not left" branch:
+`sync again: ...` after every sync, which no sync cleared. `_reread_source` now counts those files
+(`Manifest.reread_count` over the targets `_reread_targets` set aside) into the run record's `reread_waits`, kept
+out of `reread_left`, and `_reread_notes` gives a run that read none and has `reread_waits` the `_REREAD_STUCK`
+words ("... a converter or on-device OCR that cannot run ...: another sync does not clear it"), whether or not its
+OCR time ran out. `CycleReport.converter_down` is True when a converter's version could not be read for a file in
+the run, and `cli._unavailable_steps` gives rule 1's pandoc-check NEXT on it as on a `converter unavailable` error
+line, so a stub an older build settled, which has no error line, points at the pandoc check too. Test:
+`test_cycle.py::test_a_re_read_that_waits_for_its_converter_is_no_sync_again`.
+
+**An unavailable stub's first read is a first read (V61; `agentsync.cycle`).** On the re-read path the stub of a
+conversion whose converter could not start was "the same bytes, converted once more" (`again`), so the sync whose
+pandoc came back read `converted 0, ..., read again 1` for a page no converter had read before, where the work
+queue counts the same event as converted. `_unavailable_stub` (a quarantined row whose reason starts
+`CONVERTER_UNAVAILABLE`) is now never `again` and is kept like a `no converter` stub: its first conversion is in N
+and in R as a first read, and a read that fails keeps the stub. Since V65 moves an older build's stubs to the work
+queue, this path is the one for a stub settled after the flag was written. Test:
+`test_cycle.py::test_a_stub_whose_converter_could_not_start_is_a_first_read_on_the_re_read_path`.
+
+**A converter that answers late is no OCR failure (V64; `agentsync.cycle`).** `_PandocRunner.version` keeps only a
+success, so `convert_file`'s call can time out on a busy Mac and the cycle's next one answer: `_lacks` then called
+the `unavailable` result one to read again, and `_tally_ocr` counted `ocr_failed` (or `ocr_without_budget` /
+`ocr_without_down`) for an engine that never ran. `_tally_ocr` now returns, after its two cap-mark counts, for a
+result of version `unavailable`; `_lacks` is unchanged, since the re-read's success test and its reopen need it.
+Test: `test_cycle.py::test_a_converter_that_answers_after_failing_to_start_counts_no_ocr_failure`.
+
+**The retry record forgets a file that is gone (V63; `agentsync.cycle`).** An entry of `convert-retry:<source>`
+left only on a conversion that worked or on new bytes, so a file given up and then deleted upstream kept its entry
+for good. `_retry_load`, which every source's run now calls once after its pass, keeps only the entries whose row
+exists, is quarantined and has a reason starting `CONVERSION_FAILED` (the test `_retries` and `_retried` use) and
+stores the record when it dropped one; a purge or `forget_item` is covered, their rows being gone. Not by LIVE
+rows: every entry is a quarantined stub's, so that would drop the count it bounds and convert the file in every
+cycle. Not built: the same prune for the re-read record's `failed` ids, which a new build or capability already
+replaces with a record of its own. Test: `test_cycle.py::test_the_retry_record_drops_a_file_that_is_gone_and_keeps_a_stub`.
+
+**An older build's settled failure is tried again once (V65; `agentsync.manifest`, `agentsync.cycle`; dated line
+at §16.132 U3).** A build before U3 settled an ordinary failed conversion's stub as unchanged after one cycle (a
+pandoc time-out under load), and the retry, reached only from the work queue's early cutoff, never saw it again,
+while §16.132, the report's Repeat conversions note and setup-feedback.md say a failed conversion is tried again.
+`Manifest.retry_settled_failures(reason_prefix, *, retried_meta, done_key) -> int` gives, once per manifest
+(meta `convert-retry-legacy:done`, `_RETRY_LEGACY_META`, written in the same transaction), the ERROR verdict to
+every quarantined file (not a folder) whose reason starts `CONVERSION_FAILED` and whose verdict is not ERROR, but
+for one its source's `convert-retry:` record holds (a build with the retry tried it) and a local online-only one
+(`dataless`), which waits for new bytes. A Graph file has no `dataless` flag: it is fetched again within the
+run's download budget, as the retry fetches a failure of this build. The cycle runs it after the stub re-render, before any source's pass; the classifier carries each row as
+pending and the early cutoff gives it the counted retries, or the uncounted wait-or-convert path for a `converter
+unavailable` one. Each costs at most `_CONVERT_RETRIES` conversions, the cost every new failure has. Tests:
+`test_cycle.py::test_a_failed_conversion_an_older_build_settled_gets_the_bounded_retries_once` (converter fixed:
+live, one conversion, no QUARANTINE.tsv line; still failing: tried exactly `_CONVERT_RETRIES` times, then
+settled).
+
+**The texts that said a failed conversion is never retried (V62, V67, V74; `agentsync.cycle`, `agentsync.convert`;
+dated lines at §16.28, §16.48 R86).** `_run_tally`'s docstring, `convert_file`'s ("would be settled and never read
+again", now "tried again in only `cycle._CONVERT_RETRIES` later runs and then settled, whether or not the engine
+works by then") and two test comments are reworded; §16.28's `converted_failed` row and its Tests paragraph, and
+§16.48 R86, carry dated lines. R86's says what V74's verifier measured, corrected by V65: a drawing that failed
+on a build before U3 is converted again in the first syncs after the upgrade. Not added: a second pointer after
+§16.28's not-retried bullet, which already carries U3's dated line. The `converted_unreadable` texts stay: an
+UNREADABLE result does wait for new bytes.
+
+**The installer by its path in the texts `agentsync.convert` relays (V68; `agentsync.convert.speech`,
+`agentsync.convert.ocr`; dated lines at §16.35, §16.42, §16.48, §16.132 U30).** Doctor's speech check named the
+installer two ways: `~/src/agent-context-sync/scripts/install.sh builds it` for no helper, `scripts/install.sh
+rebuilds it` for the floor refusal. `speech._FLOOR_REFUSAL` and the two build sites' signal texts (`speech._step`,
+`ocr`'s swiftc) now build it from `skill.INSTALL_SH` (skill imports only `agentsync.paths`, so no cycle). The
+signal texts reach doctor through the `<helper>.failed` marker, which `ocr._failure` reads through `ocr._plain`,
+which takes every path out: built alone, the fix would have read `...; <path>` with the rest of the line gone
+(measured by `test_ocr.py::test_a_helper_or_compiler_killed_by_a_signal_says_so`). `_plain` now keeps that one
+path, which names no one, and takes out every other. "or later" stays in the floor refusal: it states the floor
+(spec C3), which `FLUIDAUDIO_PIN` equals today. Tests: `test_speech.py::test_a_build_step_killed_by_a_signal_says_so_and_is_tried_again`,
+`test_ocr.py::test_a_helper_or_compiler_killed_by_a_signal_says_so` and `test_voice_naming.py`'s floor refusal,
+each against `skill.INSTALL_SH`.
+
+**U74's pronoun is pinned where the two counts disagree (V66; tests only).** Taking the pronoun from the formula
+count passed every test, since the pins were 1 of 1, 2 of 2 and 4 of 4. 1 of 4 (D2, D3 and B4 cached, C4 not) is
+the case where they differ; the full and the streamed call site are pinned on it. No code moved. Test:
+`test_convert_formats.py::test_xlsx_one_uncached_cell_of_four_takes_the_pronoun_of_one`.
 
 ### 16.139 Round 18: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 18 lane D)
 

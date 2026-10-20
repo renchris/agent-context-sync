@@ -5618,6 +5618,18 @@ _ROUND_18_PARAGRAPH_AMENDS = (
 V73's at §16.129 and §16.133, and V89's seven at the paragraphs that quote the swept `(s)` lines. Each
 records a round 16 or 17 item's change, so its marker names that item after "by"."""
 
+_ROUND_18_E_PARAGRAPH_AMENDS = (
+    ("16.28", "| `converted_failed` | of those, conversions that failed", "§16.138 V62, V67 (by §16.132 U3)"),
+    ("16.28", "(`cache_last_used`, `reread_count`, `last_reread_counts`).", "§16.138 V74 (by §16.132 U3)"),
+    ("16.35", "(B13 H12, 2026-10-11, §16.42: only the check's own non-zero answer", "§16.138 V68"),
+    ("16.35", "**Probe states** (`probe(cfg, cache_dir) -> (state, detail)`, never compiles", "§16.138 V68"),
+    ("16.42", 'stored in `<helper>.failed` as "does not descend from the build floor"', "§16.138 V68"),
+    ("16.48", '("tries the build again on its next run", "rebuilds it") stay true.', "§16.138 V68"),
+)
+"""Round 18 lane E's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: V62 and V67's at §16.28's `converted_failed` row, V74's at its Tests
+paragraph, and V68's four beside the installer texts it quotes in §16.35, §16.42 and §16.48."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5649,7 +5661,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     T17's and T54's in §16.32's out-of-time paragraph, and T62's at §16.24 and at four §16.26 blocks. Round
     17's §16.133 (lane D) two, U83's and U84's, and §16.132 (lane E) thirteen: U77's beside each of T62's
     lines, U3's at §16.28, U80's at §16.106 and three in §16.126 (U106's landed last). Round 18's §16.139
-    (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated).
+    (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated),
+    and §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5659,6 +5672,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
     assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 15
     assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 10
+    assert len(_pinned_dated_lines(_ROUND_18_E_PARAGRAPH_AMENDS)) == len(_ROUND_18_E_PARAGRAPH_AMENDS) == 6
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5677,6 +5691,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_16_PARAGRAPH_AMENDS,
         *_ROUND_17_PARAGRAPH_AMENDS,
         *_ROUND_18_PARAGRAPH_AMENDS,
+        *_ROUND_18_E_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
