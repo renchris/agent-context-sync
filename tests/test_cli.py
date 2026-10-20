@@ -2833,8 +2833,8 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
     "path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or "
-    "allow, a state file that cannot be read, a sign-in, a [convert] pandoc_path, Rosetta to install or a "
-    "native pandoc copy), not a step for the agent: show it to them"
+    "allow, a state file that is damaged or another account's, a sign-in, a [convert] pandoc_path, Rosetta "
+    "to install or a native pandoc copy), not a step for the agent: show it to them"
 )
 
 

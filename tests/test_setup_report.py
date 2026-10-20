@@ -3868,7 +3868,7 @@ def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
     assert counts == {"NEXT:": 1, setup_report.PERSONS_FIX: 2}, counts
     text = setup_report._instruction_text(counts, 4, 1)
     assert f"2 lines whose fix: is the person's ({doctor.PERSONS_KINDS}; not hints for the agent)" in text
-    assert "a [policy] or [governance] value" in text and "a state file that cannot be read" in text, text
+    assert "a [policy] or [governance] value" in text and "a state file that is damaged or" in text, text
 
 
 def test_a_persons_fix_on_an_error_line_is_not_a_hint_when_its_next_says_so() -> None:
@@ -5024,7 +5024,7 @@ V12_HAPPY = V11_HAPPY.replace("Prompt: v11", "Prompt: v12")
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 to v28 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v29 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
     versions = (
         0,
@@ -5053,13 +5053,14 @@ def test_prompt_layout_is_picked_by_explicit_version() -> None:
         26,
         27,
         28,
+        29,
         None,
         99,
     )
     read_as = [setup_report.prompt_layout(v).version for v in versions]
-    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
+    assert read_as == [5, 5, 5, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7]
     assert (
-        setup_report.PROMPT_VERSION == 28 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 29 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
     for version in (
         8,
@@ -5282,11 +5283,11 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
     other way round. The installer's version and its reason come from that line, never from the number of
-    the build that writes the report: here the installer was v8 or v29, whatever this build is. Only the
+    the build that writes the report: here the installer was v8 or v30, whatever this build is. Only the
     installer's fixed words are shown."""
     what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    assert setup_report.PROMPT_VERSION < 29
+    assert setup_report.PROMPT_VERSION < 30
     for header, installer, shown, why in (
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
@@ -5308,8 +5309,8 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ),
         (
             "v9",
-            29,
-            f"v9 (older than the installer's v29: the pasted copy was not the current README{CHANGED})",
+            30,
+            f"v9 (older than the installer's v30: the pasted copy was not the current README{CHANGED})",
             "the pasted copy is not the current one",
         ),
     ):

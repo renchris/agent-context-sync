@@ -24930,6 +24930,10 @@ the bring-back or loop an agent. The setup prompt's finish step still matches (i
 the patch remedy on `does not hold a kept patch`, which the NEXT still says), and it is still one NEXT line. Test:
 `test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review` (tests/test_install_oneshot.py,
 with the stub's report, as the unreadable-patch NEXT tests).
+Amended 2026-10-20, §16.148 X3: the finish did not relay this NEXT (it relays the report's NEXT only for the
+could-not-write and unreadable-patch cases, and the report is the last command the agent runs), so "still matches"
+was false; prompt v29's finish relays it in its own clause, keyed on lane RB's X37 opening, "part of the report was
+cut off or not measured".
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
@@ -25695,6 +25699,34 @@ needed)`), `test_a_state_file_another_account_owns_is_the_persons_to_fix` (anoth
 person's NEXT; this account's own keeps `fix the error above`) and, with the real agentsync,
 `test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says` (step 1's clause, step 2's exit 1 at its
 config step with `cannot be opened: Permission denied`, and a pass after the chmod).
+
+**Setup prompt v29** (X3, X24, X26, and X9 and X29's step 1 words; amends §16.140 W3). Version 29 everywhere the
+bump list names it (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, the form's placeholder, the
+version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback K53). No other lane
+sent words: lane B's changed words (X74's `the person runs sudo chown ...`, the listing note, X21's
+`AGAIN_UNDER_INSTALL_SH`) are none the prompt quotes, and lane RB's X37 confirmed the NEXT opening X3 keys on.
+- Step 1's log rule (X24): `(the report replaces the host of a proxy, of a URL rewrite, of a git remote and of a
+  "Could not resolve" or "Failed to connect to" message, but keeps a public host such as github.com; the role rule is
+  for your own words)`. `PUBLIC_HOSTS` in install.sh and `_PUBLIC_HOSTS` in setup_report.py keep them, a git
+  remote's included, so the exception closes the whole list (X24's verifier), not only the resolver messages.
+- Step 1's stop sentence (X9, X26, X29): `If it says step 2 stops on something, tell me what it names and whose fix
+  it says that is (mine, or the agent's: then it is yours once step 2 stops on it), and still go on to step 2.` v28
+  told the person every stop was theirs, but step 1's new `state-access` clause is a chmod the agent runs; and every
+  tail now names the config step (X72), so the bracket's "its status or its first sync" went.
+- Step 2's person's fixes (X26): `a state file that is damaged or another account's` in place of `a state file
+  that cannot be read`, which read as covering a file of this account's own at mode 0000, whose fix (doctor's
+  `chmod 600`, step 2's error's own) is the agent's. The same words in `doctor.PERSONS_KINDS`,
+  `setup_report._PERSONS_KINDS_COPY` and install.sh's `PERSONS_FAILS`, which tests pin equal; the routing is
+  unchanged, since `PERSONS_FIX_RE` keys on a fix's first words (lane B's X74 starts the owner fix `the person `).
+- The finish (X3): its own clause before `if no report ran this session`: `whenever the report's NEXT: line says
+  part of the report was cut off or not measured, tell me so in that line's words (its Summary says which, and why),
+  and that if this Mac was busy I may run ~/src/agent-context-sync/scripts/install.sh --report-only again once it is
+  idle, before I copy the file back; do not run it again yourself;`. After the patch case, not inside it (X3's
+  verifier), and advice only, as W3 built it.
+Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_is_one_command` (X24),
+`test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`CONFIG_STOP_TOLD`, `FAIL_IS_MINE`),
+`test_prompt_routes_changes_to_the_source_not_the_checkout` (`CUT_OFF_TOLD`),
+`test_the_persons_clause_names_every_kind_the_rule_reads`.
 
 ### 16.149 Round 20: an unopenable manifest, index-root damage and staging's exclusion (2026-10-20, wave B13 round 20 lane B)
 

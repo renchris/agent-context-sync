@@ -584,7 +584,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (28, "df3e47084b019a6cdfbdd3ec02c761b8a844374de38f0f6a607ec17d6c211822")
+PROMPT = (29, "633c0bc4d07e73f004532f54f1dfd827f0561652656d4f270f58291fe33582b8")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -1093,7 +1093,8 @@ def test_readme_step1_is_one_command() -> None:
         f'ends with "setup-prompt-compat {PROMPT[0]}", log the command that failed (git\'s pull or clone, or '
         "xcode-select -p; not step 1's whole command) and its error as the command printed it, host names "
         "included (the report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "
-        '"Could not resolve" or "Failed to connect to" message; the role rule is for your own words), as a '
+        '"Could not resolve" or "Failed to connect to" message, but keeps a public host such as github.com; '
+        "the role rule is for your own words), as a "
         "step 1 error, starting its "
         f"what-text with {START_AGENT} and a colon (the same words as in step 1's command; write no colon "
         "inside <agent>), and go to the report. If it exists and its output does not end so (or the command "
@@ -1224,7 +1225,7 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
         "it can be read); if the "
         "report's run printed that bring-back.md could not be written, say so, do not name "
         "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; "
-        f"{UNREAD_PATCH_TOLD} if no "
+        f"{UNREAD_PATCH_TOLD} {CUT_OFF_TOLD} if no "
         'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
         "and do not point me to an older bring-back.md."
     )
@@ -2984,6 +2985,20 @@ last command it runs. v26 asked which file, and no line names one, by design: a 
 its commit's subject; since v27 the count, the chmod and the report's command, no file (B13 round 18 V12,
 V17, V32, V79)."""
 
+CUT_OFF_TOLD = (
+    "whenever the report's NEXT: line says part of the report was cut off or not measured, tell me so in that"
+    " line's words (its Summary says which, and why), and that if this Mac was busy I may run"
+    " ~/src/agent-context-sync/scripts/install.sh --report-only again once it is idle, before I copy the file"
+    " back; do not run it again yourself;"
+)
+"""The finish's words, since v29, for a report part of which was cut off or not measured (B13 round 20 X3):
+round 19's W3 put that advice into the report's NEXT, but the finish relayed the report's NEXT only for the
+could-not-write and unreadable-patch cases, and the report is the last command the agent runs. Its own clause,
+after the patch case's "do not ... run the report again yourself", so it is not read as part of that case;
+advice only, since a doctor that is always slow must not hold the bring-back or loop the agent (W3's reason).
+The words it keys on are lane RB's X37 opening of the --report-only NEXT, which says "cut off or not measured"
+since a busy state file also triggers it."""
+
 MIRRORED_NO_BLOCK = (
     "If the list's NEXT: line says a folder or source is still mirrored but has no [[source]] block, tell"
     " me what it says (which folder, or how many sources) and the fix it names, and add that folder again"
@@ -2995,14 +3010,17 @@ status FAILed on it. Before the two exceptions, so both lists' tails reach it; t
 person's to choose, since deleting a block may have been a deliberate stop."""
 
 CONFIG_STOP_TOLD = (
-    "If it says step 2 stops on something (at its config step, its status or its first sync), tell me what it"
-    " names and that fixing it is mine, and still go on to step 2."
+    "If it says step 2 stops on something, tell me what it names and whose fix it says that is (mine, or the"
+    " agent's: then it is yours once step 2 stops on it), and still go on to step 2."
 )
 """Step 1's words, since v26, for the list's tail on a config step 2's config step will stop on: a policy.toml
 or [governance] value that does not load, or a state file that cannot be read (B13 round 17 U12). v25 had
 none, and the list said "(none is needed)" over it. Step 2 still runs: it stops at its config step with a
 NEXT that names the stop as the person's. Since v27 also at its status or first sync: a damaged table page
-passes the config step, and step 1's list now says so (B13 round 18 V21)."""
+passes the config step, and step 1's list now says so (B13 round 18 V21). Since v29 every tail names the
+config step (a damaged table or index root, round 20 X72), and a state file this account cannot open is a
+chmod the agent runs when step 2 stops on it, not the person's (round 20 X9, X26, X29): the words say whose
+the tail says it is, not "mine" for every stop."""
 
 PERSONS_NEXT = (
     "If it exits non-zero and its NEXT: line says it is not a step for you (the [FAIL] lines, the"
@@ -3023,7 +3041,8 @@ FAIL_IS_MINE = (
     " line or a"
     " [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, rename or"
     " sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to replace or"
-    " remove, a docs-repo remote to remove or allow, a state file that cannot be read) is mine too: show it"
+    " remove, a docs-repo remote to remove or allow, a state file that is damaged or another account's) is"
+    " mine too: show it"
     " to me and do not make that edit or"
     " run its command. Otherwise, re-running the install.sh command its fix names is yours, once, even when"
     " the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays mine: if the"
@@ -3037,7 +3056,9 @@ person's (B13 round 16 T70, with lane B's T5, T2 and T9 words): a [[source]] blo
 [policy] value, Rosetta to install and a native pandoc copy; and the re-run it leaves to the agent is an
 install.sh command, once, and only for a fix that is not the person's: never Rosetta's softwareupdate, a
 sign-in's ``agentsync status`` before the sign-in, or ``agentsync install-agent`` (B13 round 16 review).
-Lane B added a state file that cannot be read (its T12)."""
+Lane B added a state file that cannot be read (its T12). Since v29 a state file that is damaged or another
+account's (B13 round 20 X26): a file of this account's own that it cannot open is a chmod the agent runs, the
+fix doctor's state_dir.files line names, while "cannot be read" read as covering it."""
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
