@@ -757,10 +757,9 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   start followed by a status that waits was about 27 s with no line.
 - A check whose program does not answer in time says so:
   `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
-  wrong`. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again with the
-  options of the run that installed agentsync (not --report-only, which builds nothing)`, a step the prompt lets
-  the agent take. Run by hand, it starts `~/.local/bin/agentsync
-  status (run it again as it is)`.
+  wrong`. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again (it keeps
+  the folders already synced; not --report-only, which builds nothing)`, a step the prompt lets the agent take.
+  Run by hand, it starts `~/.local/bin/agentsync status (run it again as it is)`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
   which is the fix of the pandoc the line names (CONTRACTS §16.120, S29; §16.126, T54): for the bundled one

@@ -10003,6 +10003,8 @@ RECORD lists.
 Amended 2026-10-20, §16.143 W19, W48: under install.sh's status step `<run again>` is `run scripts/install.sh again
 with the options of the run that installed agentsync (not --report-only, which builds nothing)`
 (`doctor.AGAIN_UNDER_INSTALL_SH`); the row below no longer holds.
+Amended 2026-10-20, §16.149 X21: `run scripts/install.sh again (it keeps the folders already synced; not
+--report-only, which builds nothing)`, with no options repeated.
 
 | Where | `<run again>` |
 |---|---|
@@ -24527,6 +24529,9 @@ bucket, now `from a helper build that ran out of time (N checks): ...`.
 Amended 2026-10-20, §16.143 W19, W48: under install.sh the fix starts `run <install.sh> again with the options of
 the run that installed agentsync (not --report-only, which builds nothing)`, not `_again_fix`'s old `(its NEXT line
 names it)`, which no NEXT line made true for a warn.
+Amended 2026-10-20, §16.149 X20, X21: the line drops the marker's retry clause where the fix says the re-run, and
+under install.sh the fix starts `run <install.sh> again (it keeps the folders already synced; not --report-only,
+which builds nothing)`.
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
@@ -25245,6 +25250,8 @@ bracket, no stage, `since T` only when it is not the beat `active` already gives
 `LockHeldError.wait_words` (default: `holder`), and `cycle._wait_beat` reads it. `_describe_holder` and `holder`
 are unchanged: doctor, the skip line and the report keep pid, beat and stage. Test: the W29 lines of
 `test_cli.py::test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not_announce`.
+Amended 2026-10-20, §16.149 X55: a body that does not parse gives `lock.UNPARSEABLE_BODY_WAIT`, `an unidentified
+holder, its lock body unreadable`, not `_describe_holder`'s words.
 
 **W46: the quiet wait's DEBUG beats keep their elapsed time (`agentsync.cycle`).** Since §16.137 V40 every quiet
 beat was `...; waiting for it to end, at most 10 minutes`, so a `-vv` log of install.sh's first sync repeated one
@@ -25264,6 +25271,8 @@ changes. One defect from two finders, built once; W48's corrected fix (both fixe
 W19's (the speech fix alone, plain words in both modes), since the plain `run <install.sh> again` is as wrong
 under `--report-only`. Tests: `RUN_AGAIN_INSTALL` in `test_ops_doctor.py` and the W19 lines of
 `test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
+Amended 2026-10-20, §16.149 X21: `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again (it keeps the folders
+already synced; not --report-only, which builds nothing)`.
 
 **W47: the run line's docstring gives the converter-waiting count its own letter (`agentsync.cli`).** Round 18's
 V13 named it W in `_print_report`'s docstring, whose next sentences use W for the withheld-unread count ("with R
@@ -25346,6 +25355,8 @@ read alone, says beside it `(the loop's own read; the report's read of the state
 state_dir.manifest [FAIL] line under Doctor says what to do first)`.
 Amended 2026-10-20, §16.149 X50: the probe reads each index's first entry as well (`INDEXED BY`), so damage
 under an index root FAILs status and stops the sync before it runs, as install.sh's step 1 already read it.
+Amended 2026-10-20, §16.149 X33, X54: a command that reads the manifest whole removes a record that no longer
+matches it (never status), and the FAIL names the command whose read it was, `(an agentsync <command> read it)`.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
@@ -25471,6 +25482,8 @@ again, run it when the Mac and the network are less busy`. The marker's reason (
 it is the only hint on the surfaces that read it without doctor, and tests pin it as a V68 promise. The `<again>`
 head (`run <install.sh> again`, or under install.sh `_again_fix`'s words) is lane B's (W19, W48). Test:
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
+Amended 2026-10-20, §16.149 X20: doctor's line drops the marker's retry clause where the fix says the re-run, so
+the re-run is said once; the marker is unchanged.
 
 **The helper errors' docstrings name the one path they hold (W55; `agentsync.convert.speech`,
 `agentsync.convert.media`).** `SpeechError` and `MediaError` said "Its text never holds a path", which V68 made
@@ -26095,16 +26108,18 @@ it again until it can; the state_dir.manifest [FAIL] line says what to do first`
 be read ... (the person's; see Doctor)`, never unexpected. X14's first fix (drop the FAIL trigger and key the
 note on the loop read alone) is not built: X46's verifier measured it giving status `(fix: <BIN> sync; another
 full walk lists it)`, a sync that exits 65 there. And a loop read this account cannot open (a manifest at 0000:
-`errors.ManifestOpenError`, an EACCES, EPERM or EROFS `OSError`, or sqlite's CANTOPEN, PERM or READONLY,
-`doctor.state_unopenable`) left the warn's `each WAITING ON YOU line about <source> ...` fix (by hand) or
+`errors.ManifestOpenError`, sqlite's CANTOPEN, PERM or READONLY, or an EACCES, EPERM or EROFS `OSError` on a path in
+the state folder, never a docs repo the loop cannot search: `doctor.state_unopenable`) left the warn's `each WAITING ON YOU line about <source> ...` fix (by hand) or
 `... status names it` note (install.sh) under a status that prints no WAITING ON YOU line (X15). It gets
 `doctor.LISTING_STATE_SHUT_NOTE`, `as of its last walk: this account cannot open the state file, so no sync
 lists it again until it can; the state_dir [FAIL] lines say what to do first`, and no fix. Keyed on the read's
 error, never on a state_dir.files FAIL, which a loose mode the loop reads past also gives. The report's bucket
 for that FAIL is lane RA's §16.146 X28. Tests:
 `test_cli.py::test_a_listing_warn_over_damage_only_a_sync_read_makes_no_claim_about_the_loop`,
-`test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line` (0000 and 0644, by hand
-and under install.sh) and the W11 test's both cases.
+`test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line` (by hand and under
+install.sh, with a loose-mode control), `test_a_state_file_unopenable_is_one_in_the_state_folder` and the W11 test's
+both cases. The report's Summary bucket for that state_dir.files FAIL and the warn beside it is lane RA's §16.146
+X28, keyed on `doctor.state_unopenable`.
 
 **X16, X30: status logs no WARNING its own FAIL line already says (`agentsync.loop`, `agentsync.cli`).** On a
 manifest this account cannot open, status's stderr began with a timestamped `WARNING agentsync.loop: next step:
@@ -26117,6 +26132,63 @@ WARNING, which is a background job's only record in its err.log, and so does sta
 lines of `test_cli.py::test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it`,
 `test_a_failed_loop_read_with_no_fail_still_logs_its_warning` and
 `test_loop.py::test_next_lines_keeps_its_warning_unless_a_caller_says_a_fail_explains_it`.
+
+**X4, X13: staging keeps its Time Machine exclusion through every exit (`agentsync.cycle`).** Every cycle
+emptied staging by rmtree and mkdir, so the folder lost its exclusion xattr until `cli._run_report`'s
+`ensure_time_machine_exclusions`, which runs only after an exit 0 or 1: tenant downloads sat unexcluded through
+each cycle, and a sync that stopped on the state file (65, or any raise) left staging so, doctor warning `not
+excluded from Time Machine: <staging>` with a sync as the fix, which exits 65 again. `cycle._clear_staging`
+empties staging in place (its mode set to 0700 first, as rmtree-then-chmod repaired a folder left at 000 or
+0500; each child removed, one that will not go left as `ignore_errors` left it; a symlink, or a file where the
+folder belongs, unlinked as before), so the folder keeps its inode and its xattr, and sets the exclusion again at
+once
+(`tm_exclude.exclude_new_file`, a setxattr, best effort, skipped off macOS and under `AGENTSYNC_TM_EXCLUDE=0`).
+The end-of-run backstop stays. The governance.time_machine warn is not re-bucketed under the state file in the
+report: after this fix it means a real missing exclusion (X4's verifier). Tests:
+`test_cli.py::test_staging_keeps_its_time_machine_exclusion_through_a_sync_that_stops_on_the_state_file` (macOS)
+and `test_staging_left_at_a_bad_mode_is_repaired_not_a_failed_cycle`.
+
+**X20, X21: the helper time-out line says the re-run once, and under install.sh by the plain command
+(`agentsync.ops.doctor`; amends §16.144 W20, §16.143 W19, §16.137 V5 and §16.32 W19).** The ocr, media and speech
+warns of a build that ran out of time put the whole marker reason in the line, which ends `; <install.sh> tries
+the build again on its next run`, beside a fix that starts with the same re-run (X20). Doctor's line drops that
+exact suffix (`doctor._RETRY_CLAUSE`, `removesuffix`) when the fix is `_helper_again_fix`'s; the marker, which
+other readers and V68 keep, is unchanged, and a reason with the developer tools' fix, an older marker or other
+trailing words stays whole. And under install.sh the fix said `run <install.sh> again with the options of the
+run that installed agentsync`, options the person never saw (X21): `doctor.AGAIN_UNDER_INSTALL_SH` is `run
+<install.sh> again (it keeps the folders already synced; not --report-only, which builds nothing)`, since a run
+with no --source-local keeps the config's folders and background sync is the operator's flag, never repeated.
+Tests: `RUN_AGAIN_INSTALL` and the X20 lines of
+`test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one` and
+`test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
+
+**X55: the lock wait names a holder whose body does not parse in fixed words (`agentsync.ops.lock`; amends §16.143
+W29).** `_wait_words` gave such a body `_describe_holder`'s words, so the line nested its bracket and printed the
+body raw and unbounded (`another sync is running ('<body>' (unparseable lock body)); ...`). A non-empty body that
+does not parse gives `lock.UNPARSEABLE_BODY_WAIT`, `an unidentified holder, its lock body unreadable`; an empty
+one is unchanged (the cycle words it itself), and doctor, `LockHeldError`'s message and the stale-break log keep
+the body. Test: `test_ops_lock.py::test_the_lock_wait_names_a_holder_whose_body_does_not_parse_in_fixed_words`.
+
+**X33, X54: the record of damage goes once a command reads the manifest whole, and its FAIL names that command
+(`agentsync.ops.doctor`, `agentsync.cli`; amends §16.143 W41).** `manifest-unreadable.json` stayed beside a
+manifest restored or written since, its name saying the manifest is unreadable (X33). `cli._state_readable`
+(sync, init, add-source), after a command read the manifest without error, calls
+`doctor.clear_stale_unreadable`, which removes a record that no longer matches the file; one that still matches
+stays (damage that command never read). Not status: it writes nothing, and a status that read an old record
+while a sync wrote a new one would remove the new one (X33's verifier). And the recorded FAIL said `(a sync read
+it)` of a purge's, curate's or exclude-empty's read too (X54): `record_unreadable` keeps the subcommand
+(`args.command`) and the FAIL reads `(an agentsync <command> read it)`, or `(an agentsync command read it)` for an
+older build's record with none. `recorded_unreadable` still returns the error alone. Tests:
+`test_cli.py::test_a_record_of_damage_goes_once_a_command_reads_the_manifest_written_since` and
+`test_the_recorded_fail_names_the_command_that_read_the_damage`.
+
+**X51: the loop read's own FAIL has a test again (tests only).** Since §16.143 W41's probe reads each table's
+first row, the U64, V42 and V14 tests damage pages the probe already FAILs, so `cli._with_damaged_manifest` never
+added its FAIL in any test (a mutant returning `checks` passed them all). The last leaf of items is one the probe
+misses and status's loop read hits. Tests: the `last leaf` case of
+`test_cli.py::test_a_manifest_damaged_under_a_table_status_reads_fails_status` (no probe and no record says it),
+`test_the_setup_reports_doctor_fails_damage_only_its_loop_read_reaches` and
+`test_the_loop_reads_damage_fail_goes_after_the_state_dir_checks_once`.
 
 ### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
 

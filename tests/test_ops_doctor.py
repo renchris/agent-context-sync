@@ -511,9 +511,9 @@ def test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv(
 RUN_AGAIN = "~/.local/bin/agentsync status (run it again as it is)"
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 # B13 round 19 W19, W48: by what it is; no NEXT line names it under a warn, and --report-only builds nothing
+# B13 round 20 X21: the plain command, which keeps the folders; no options the person never saw
 RUN_AGAIN_INSTALL = (
-    f"run {INSTALL_SH} again with the options of the run that installed agentsync (not --report-only, which "
-    "builds nothing)"
+    f"run {INSTALL_SH} again (it keeps the folders already synced; not --report-only, which builds nothing)"
 )
 COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
@@ -3132,7 +3132,8 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
         monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
         r = by_name(run_checks(sample_config))["speech"]
         assert (r.ok, r.severity) == (False, Severity.WARN)
-        assert r.detail == f"speech: failed ({reason})"
+        # B13 round 20 X20: the marker's retry clause is dropped where the fix says the re-run
+        assert r.detail == f"speech: failed ({speech.BUILD_TIMED_OUT})", r.detail
         # B13 round 19 W20: the re-run said once (the marker's clause says it too), the 20 minutes a limit
         assert r.fix == (
             f"run {INSTALL_SH} again; the build stops after 20 minutes, and if it stops again, run it "
@@ -3147,6 +3148,12 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
         ), r.fix
         assert r.fix.startswith(f"{RUN_AGAIN_INSTALL}; the build stops"), r.fix  # B13 round 19 W19, W48
         assert "NEXT line" not in r.fix and "--report-only" in r.fix, r.fix
+    # without the developer tools the fix is theirs, and the marker's clause is the only word of the re-run
+    marker.write_text(speech._TIMED_OUT, encoding="utf-8")
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: True)
+    r = by_name(run_checks(sample_config))["speech"]
+    assert r.fix == doctor._OCR_DEVTOOLS_FIX and r.detail == f"speech: failed ({speech._TIMED_OUT})", r
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
     marker.write_text("swift package resolve failed (exit 1): could not reach github.com", encoding="utf-8")
     assert not speech.build_timed_out(sample_config.cache_dir)
     r = by_name(run_checks(sample_config))["speech"]
@@ -3181,7 +3188,8 @@ def test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failu
         assert ocr.build_timed_out(sample_config.cache_dir, kind)
         r = by_name(run_checks(sample_config))[helper]
         assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, fix), r
-        assert reason in r.detail
+        # B13 round 20 X20: the re-run is said once, by the fix
+        assert reason.removesuffix(retry) in r.detail and "tries the build again" not in r.detail, r.detail
     marker.write_text(
         f"swiftc did not build the {kind.name} (exit 1): error: no such module", encoding="utf-8"
     )

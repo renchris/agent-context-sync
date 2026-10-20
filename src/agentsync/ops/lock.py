@@ -298,17 +298,23 @@ def _describe_holder(body: str, holder: Mapping[str, object] | None) -> str:
     return out
 
 
+UNPARSEABLE_BODY_WAIT = "an unidentified holder, its lock body unreadable"
+"""The foreground lock wait's words for a holder whose lock body does not parse (B13 round 20 X55)."""
+
+
 def _wait_words(body: str, holder: Mapping[str, object] | None) -> str:
     """The holder as the foreground lock wait's line names it, inside its one bracket: ``a sync not started by
     the background job, pass poll, pid N, since <time>, active Ns ago``, with no inner bracket and no stage
     (B13 round 19 W29: :func:`_describe_holder`'s ``pid N (a sync ..., its pass: poll) since ..., last beat
     ... (0s ago), stage 'acquired'`` nested its brackets inside the line's). ``active`` needs the same pid's
-    sidecar; ``since`` is left out when it is the beat ``active`` already gives. An empty or unparseable body
-    keeps :func:`_describe_holder`'s words. Doctor, the skip line and the report keep that function's
-    pid, beat and stage."""
+    sidecar; ``since`` is left out when it is the beat ``active`` already gives. An empty body keeps
+    :func:`_describe_holder`'s words (the cycle's wait line words that case itself); one that does not parse
+    gives :data:`UNPARSEABLE_BODY_WAIT`, with no inner bracket and no copy of the body, which came out raw and
+    unbounded (B13 round 20 X55). Doctor, the skip line and the report keep that function's pid, beat and
+    stage, and the raw body."""
     info = LockInfo.parse(body)
     if info is None:
-        return _describe_holder(body, holder)
+        return _describe_holder(body, holder) if not body.strip() else UNPARSEABLE_BODY_WAIT
     parts = [info.label]
     if info.label in {m.value for m in CycleMode}:
         same = holder is not None and holder.get("pid") == info.pid

@@ -12,6 +12,7 @@ import re
 import shlex
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -1527,6 +1528,44 @@ def test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded
     monkeypatch.setattr(governance, "time_machine_status", lambda c: [(plain, False), (db, True)])
     (warn,) = cli._time_machine_checks(initialised)
     assert warn.severity is doctor.Severity.WARN and warn.detail == f"not excluded from Time Machine: {plain}"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="setxattr(2)")
+def test_staging_keeps_its_time_machine_exclusion_through_a_sync_that_stops_on_the_state_file(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 20 X4, X13: every cycle emptied staging by rmtree and mkdir, so the folder lost its Time
+    Machine exclusion until the end of a run that exited 0 or 1; a sync that stopped on the state file (65)
+    left tenant downloads' folder unexcluded and doctor warned with a sync as the fix, which exits 65 again.
+    Staging is emptied in place and excluded at once."""
+    from agentsync import tm_exclude  # noqa: PLC0415
+
+    monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "1")
+    staging = expand(initialised.state_paths.staging)
+    cycle_mod._clear_staging(staging)  # a new folder: excluded at once
+    assert tm_exclude.has_xattr(staging, tm_exclude.TM_EXCLUDE_XATTR)
+    (staging / "left").mkdir()
+    (staging / "left" / "page.pdf").write_bytes(b"x")
+    (staging / "loose.txt").write_text("x\n", encoding="utf-8")
+    cycle_mod._clear_staging(staging)
+    assert list(staging.iterdir()) == [] and tm_exclude.has_xattr(staging, tm_exclude.TM_EXCLUDE_XATTR)
+    cfg = str(initialised.config_path)
+    [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
+    assert src.path is not None
+    bulk = expand(src.path) / "bulk"
+    bulk.mkdir()
+    for i in range(160):
+        (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    _damage_table_leaf(db, "outputs", last=True)
+    for i in range(160):
+        (bulk / f"note-{i:03d}.txt").write_text(f"Contoso {i} v2.\n", encoding="utf-8")
+    monkeypatch.setattr(governance, "ensure_time_machine_exclusions", lambda *a, **k: [])  # no backstop
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+    assert tm_exclude.has_xattr(staging, tm_exclude.TM_EXCLUDE_XATTR)
+    assert dict(governance.time_machine_status(initialised))[staging] is True
 
 
 def test_interactive_syncs_keep_compaction_ok_without_a_launch_agent(
@@ -3279,7 +3318,7 @@ def _damage_table_leaf(db: Path, table: str, *, last: bool = False) -> int:
     return page
 
 
-@pytest.mark.parametrize("where", ["root", "leaf"])
+@pytest.mark.parametrize("where", ["root", "leaf", "last leaf"])
 def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], where: str
 ) -> None:
@@ -3288,9 +3327,12 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     image is malformed", and so did install.sh's doctor, while the sync then exited 65. Status's own read of
     the loop's state hits the damage: its SQLITE_CORRUPT now FAILs state_dir.manifest, the person's, once.
     Round 18 V42: the same for a leaf page below an interior root (enough files that items needs one), which
-    the root-page case never reached; the sync exits 65 on it too."""
+    the root-page case never reached; the sync exits 65 on it too. B13 round 20 X51: since round 19 W41's
+    probe reads each table's first row, those two pages FAIL through the probe, and the loop read's own FAIL
+    (``cli._with_damaged_manifest``) had no test: the last leaf is one the probe misses and status's loop read
+    hits, with no sync run between, so that FAIL is the loop read's alone."""
     cfg = str(initialised.config_path)
-    if where == "leaf":
+    if where != "root":
         [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
         assert src.path is not None
         bulk = expand(src.path) / "bulk"
@@ -3299,12 +3341,14 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
             (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     db = initialised.state_paths.db
-    if where == "leaf":
-        _damage_table_leaf(db, "items")
+    if where != "root":
+        _damage_table_leaf(db, "items", last=where == "last leaf")
     else:
         assert _damage_table_root(db, "items") > 1
-    # B13 round 19 W41: the probe reads each table's first row, so it no longer reads past either page
-    assert doctor.manifest_unreadable(db) is not None
+    if where == "last leaf":  # only the loop read can find it: no probe and no record says it
+        assert doctor.manifest_unreadable(db) is None and doctor.recorded_unreadable(db) is None
+    else:  # B13 round 19 W41: the probe reads each table's first row, so it no longer reads past either page
+        assert doctor.manifest_unreadable(db) is not None
     capsys.readouterr()
     rc, out = _status(cfg, capsys)
     fails = [ln for ln in out if ln.startswith("[FAIL] ")]
@@ -3321,8 +3365,65 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     assert cli.main(["doctor", "--config", cfg]) == cli.EXIT_FAILED
     out = capsys.readouterr().out.splitlines()
     assert len([ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, out
-    if where == "leaf":
+    if where != "root":
         assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+
+
+def test_the_setup_reports_doctor_fails_damage_only_its_loop_read_reaches(
+    initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 20 X51: the report's Doctor hook goes through ``_with_damaged_manifest`` too; on the last
+    leaf of items, which the probe misses, its one FAIL and the Loop NEXT are that read's."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda run, label: (113, "not loaded"))
+    cfg = str(initialised.config_path)
+    [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
+    assert src.path is not None
+    bulk = expand(src.path) / "bulk"
+    bulk.mkdir()
+    for i in range(160):
+        (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    _damage_table_leaf(db, "items", last=True)
+    assert doctor.manifest_unreadable(db) is None and doctor.recorded_unreadable(db) is None
+    out = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(out), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    text = out.read_text(encoding="utf-8").splitlines()
+    (summary,) = [ln for ln in text if ln.startswith("- doctor: ")]
+    assert summary.startswith("- doctor: 1 FAIL"), summary
+    (loop_line,) = [ln for ln in text if ln.startswith("- Loop: ")]
+    assert "NEXT: the state_dir.manifest check failed" in loop_line, loop_line
+
+
+def test_the_loop_reads_damage_fail_goes_after_the_state_dir_checks_once(initialised: Config) -> None:
+    """B13 round 20 X51: ``_with_damaged_manifest`` itself: a coded SQLITE_CORRUPT with no state_dir.manifest
+    entry inserts exactly one FAIL after the last state_dir check; SQLITE_BUSY, or a FAIL already there,
+    adds nothing."""
+    cfg = initialised
+    checks = [
+        doctor.CheckResult("python", True, "3.11"),
+        doctor.CheckResult("state_dir", True, "ok"),
+        doctor.CheckResult("state_dir.files", True, "ok"),
+        doctor.CheckResult("sources", True, "ok"),
+    ]
+    corrupt = sqlite3.DatabaseError("database disk image is malformed")
+    corrupt.sqlite_errorcode = sqlite3.SQLITE_CORRUPT  # type: ignore[attr-defined]
+    got = cli._with_damaged_manifest(cfg, checks, corrupt)
+    assert [r.name for r in got] == [
+        "python",
+        "state_dir",
+        "state_dir.files",
+        "state_dir.manifest",
+        "sources",
+    ]
+    assert cli._with_damaged_manifest(cfg, got, corrupt) == got
+    busy = sqlite3.OperationalError("database is locked")
+    busy.sqlite_errorcode = sqlite3.SQLITE_BUSY  # type: ignore[attr-defined]
+    assert cli._with_damaged_manifest(cfg, checks, busy) == checks
+    assert cli._with_damaged_manifest(cfg, checks, None) == checks
 
 
 _MANIFEST_TABLES = (
@@ -3417,6 +3518,33 @@ def test_damage_under_any_table_fails_status_and_stops_the_sync(
     assert summary.startswith("- doctor: 1 FAIL"), summary
     if any("see Doctor's state_dir.manifest line" in ln for ln in text):
         assert [ln for ln in text if ln.startswith("[FAIL] state_dir.manifest ")], text
+
+
+def test_a_state_file_unopenable_is_one_in_the_state_folder(tmp_path: Path) -> None:
+    """X15's reviewer: a permission error from any path read as "this account cannot open the state file", a
+    docs repo the loop cannot search included. Only the manifest's open error or a path in the state folder
+    is."""
+    root = tmp_path / "state"
+    inside = PermissionError(errno.EACCES, "Permission denied", str(root / "manifest.sqlite"))
+    outside = PermissionError(errno.EACCES, "Permission denied", str(tmp_path / "docs" / ".git"))
+    assert doctor.state_unopenable(inside, root) and not doctor.state_unopenable(outside, root)
+    assert not doctor.state_unopenable(inside) and not doctor.state_unopenable(None)
+    assert doctor.state_unopenable(ManifestOpenError("x cannot be opened", errno.EACCES))
+    assert not doctor.state_unopenable(ManifestPathError("x cannot be opened", errno.EISDIR))
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a folder of any mode")
+@pytest.mark.parametrize("mode", [0o000, 0o500, 0o400])
+def test_staging_left_at_a_bad_mode_is_repaired_not_a_failed_cycle(tmp_path: Path, mode: int) -> None:
+    """X4's reviewer: emptying staging in place listed it before its chmod, so a staging folder left at 000,
+    0500 or 0400 failed every cycle where rmtree-then-chmod had repaired it. The mode is set first and a child
+    that will not go is left, never a failed cycle."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "left.pdf").write_bytes(b"x")
+    staging.chmod(mode)
+    cycle_mod._clear_staging(staging)
+    assert stat.S_IMODE(staging.stat().st_mode) == 0o700 and list(staging.iterdir()) == []
 
 
 def test_a_listing_warn_over_damage_only_a_sync_read_makes_no_claim_about_the_loop(
@@ -3534,6 +3662,66 @@ def test_damage_under_an_index_root_fails_status_before_any_sync(
     assert state.startswith(f"state: {db} cannot be read: ") and state.endswith(
         f"(fix: {doctor.MANIFEST_FIX})"
     )
+
+
+def _record_beside(db: Path) -> Path:
+    return db.with_name(doctor._UNREADABLE_RECORD)
+
+
+def test_a_record_of_damage_goes_once_a_command_reads_the_manifest_written_since(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 20 X33: manifest-unreadable.json stayed beside a manifest restored or written since, its
+    name saying the manifest is unreadable. A command that reads the manifest whole removes a record that no
+    longer matches it; status, which writes nothing, never does; a record that still matches stays."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    doctor.record_unreadable(db, sqlite3.DatabaseError("database disk image is malformed"), "sync")
+    assert doctor.recorded_unreadable(db) is not None
+    with cli._state_readable(initialised):  # (c) the same file read whole: the record still matches, stays
+        pass
+    assert _record_beside(db).exists()
+    conn = sqlite3.connect(db)  # the file is written since: the record is stale
+    conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('x33', '1')")
+    conn.commit()
+    conn.close()
+    assert doctor.recorded_unreadable(db) is None
+    capsys.readouterr()
+    rc, _out = _status(cfg, capsys)  # (b) status writes nothing
+    assert rc == cli.EXIT_OK and _record_beside(db).exists()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK  # (a) a sync that reads it removes it
+    assert not _record_beside(db).exists()
+
+
+def test_the_recorded_fail_names_the_command_that_read_the_damage(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 20 X54: the recorded state_dir.manifest FAIL always said "(a sync read it)", though purge,
+    curate and exclude-empty write the record too. It names the command, and a record from an older build,
+    with none, says "an agentsync command"."""
+    cfg = str(initialised.config_path)
+    [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
+    assert src.path is not None
+    bulk = expand(src.path) / "bulk"
+    bulk.mkdir()
+    for i in range(160):
+        (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    _damage_table_leaf(db, "items", last=True)
+    assert doctor.manifest_unreadable(db) is None
+    capsys.readouterr()
+    assert cli.main(["purge", "path=bulk/*", "--dry-run", "--config", cfg]) == cli.EXIT_STATE
+    rc, out = _status(cfg, capsys)
+    (fail,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert rc == cli.EXIT_FAILED and "(an agentsync purge read it)" in fail and "a sync" not in fail, fail
+    record = json.loads(_record_beside(db).read_text(encoding="utf-8"))
+    del record["command"]  # an older build's record
+    _record_beside(db).write_text(json.dumps(record), encoding="utf-8")
+    rc, out = _status(cfg, capsys)
+    (fail,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert "(an agentsync command read it)" in fail, fail
 
 
 @pytest.mark.parametrize("hint", ["by hand", "install.sh"])

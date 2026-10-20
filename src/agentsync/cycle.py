@@ -50,7 +50,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill
+from agentsync import __version__, curate, gitops, governance, lints, materialise, net, skill, tm_exclude
 from agentsync import policy as content_policy
 from agentsync.arm_local import (
     UNKNOWN_EMPTY,
@@ -967,12 +967,29 @@ def _gc_paused() -> Iterator[None]:
 
 
 def _clear_staging(staging: Path) -> None:
-    if staging.is_symlink():
+    """Empty staging/ for a cycle, in place: the folder keeps its inode, so its Time Machine exclusion xattr
+    holds through every exit, a stop on the state file (65), a sign-in stop, a crash or a kill included (B13
+    round 20 X4, X13: rmtree and mkdir made a folder with no exclusion, which only an exit 0 or 1 put back,
+    so tenant downloads sat unexcluded through every cycle and stayed so after an exit 65). A symlink is
+    removed, as before; the exclusion is set again at once, best effort (a setxattr, about no time), so a
+    folder this makes, or one an older build made, is excluded before any download lands in it."""
+    if staging.is_symlink() or (staging.exists() and not staging.is_dir()):
         staging.unlink()
-    elif staging.exists():
-        shutil.rmtree(staging, ignore_errors=True)
+    if staging.is_dir():
+        # the mode first, as rmtree-then-chmod repaired a folder left at 000 or 0500; a child that will not go
+        # is left, as rmtree's ignore_errors left it, never a failed cycle (B13 round 20 X4's reviewer)
+        with contextlib.suppress(OSError):
+            staging.chmod(0o700)
+        with contextlib.suppress(OSError):
+            for child in list(staging.iterdir()):
+                with contextlib.suppress(OSError):
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.rmtree(child, ignore_errors=True)
+                    else:
+                        child.unlink(missing_ok=True)
     staging.mkdir(parents=True, exist_ok=True)
     staging.chmod(0o700)
+    tm_exclude.exclude_new_file(staging)
 
 
 _AGENT_TREES = ("_eval", "topics")  # docs-repo folders a coding agent writes, under its own umask

@@ -586,13 +586,16 @@ def _quoted(text: str) -> str:
 
 
 AGAIN_UNDER_INSTALL_SH = (
-    f"run {INSTALL_SH} again with the options of the run that installed agentsync (not --report-only, which "
-    "builds nothing)"
+    f"run {INSTALL_SH} again (it keeps the folders already synced; not --report-only, which builds nothing)"
 )
 """How a fix under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) says to run it again: by what the command is.
 It said ``run the same <install.sh> command again as it is (its NEXT line names it)``, but a warn makes no
 NEXT line name install.sh, and the same command under ``--report-only``, which sets the variable too and
-writes this fix into the report, builds nothing (B13 round 19 W19, W48). ``--list-folders`` runs no doctor."""
+writes this fix into the report, builds nothing (B13 round 19 W19, W48). ``--list-folders`` runs no doctor.
+No options are repeated: "the options of the run that installed agentsync" named options the person never
+saw, and a plain run does the same job, since a run with no --source-local keeps the config's folders
+(install.sh's header; its own re-run drops them too) and background sync is the operator's flag, which a
+setup agent never passes (B13 round 20 X21)."""
 
 
 def _again_fix(fallback: str | None = None) -> str:
@@ -812,6 +815,7 @@ def _check_ocr(config: Config) -> list[CheckResult]:
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("ocr", f"{detail}; {how}", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "ocr")
+    detail = _helper_detail(detail, fix)
     return [_bad("ocr", f"on-device OCR is not working: {detail}", Severity.WARN, fix=fix)]
 
 
@@ -832,6 +836,7 @@ def _check_media(config: Config) -> list[CheckResult]:
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("media", f"{detail}; {how}", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "media")
+    detail = _helper_detail(detail, fix)
     return [_bad("media", f"media helper: not working ({detail})", Severity.WARN, fix=fix)]
 
 
@@ -853,7 +858,23 @@ def _check_speech(config: Config) -> list[CheckResult]:
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("speech", f"speech: {state} ({detail}; {how})", Severity.INFO)]
     fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "speech")
+    detail = _helper_detail(detail, fix)
     return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
+
+
+_RETRY_CLAUSE = f"; {INSTALL_SH} tries the build again on its next run"
+"""How a helper's marker reason ends when its build ran out of time (``convert.speech._TIMED_OUT``,
+``convert.ocr``'s): doctor's line drops it when its fix says the re-run, so the re-run is said once (B13 round
+20 X20)."""
+
+
+def _helper_detail(detail: str, fix: str | None) -> str:
+    """``detail`` without :data:`_RETRY_CLAUSE` when ``fix`` is :func:`_helper_again_fix`'s, which says the
+    re-run; an exact suffix, so an older marker without it, other trailing words, or a reason with the
+    developer tools' fix is left whole (B13 round 20 X20)."""
+    if fix is None or fix == _OCR_DEVTOOLS_FIX:
+        return detail
+    return detail.removesuffix(_RETRY_CLAUSE)
 
 
 def _helper_again_fix(detail: str, helper: str) -> str | None:
@@ -1331,29 +1352,55 @@ def _manifest_key(db: Path) -> list[int]:
     return [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns]
 
 
-def record_unreadable(db: Path, error: BaseException) -> None:
+def record_unreadable(db: Path, error: BaseException, command: str | None = None) -> None:
     """Keep ``error``, the SQLITE_NOTADB or SQLITE_CORRUPT a command's read of the manifest at ``db`` exited
     65 on, for status: damage deeper in a table than :func:`manifest_unreadable` reads shows only to the read
     that reaches it, so status said healthy after a sync stopped on it (B13 round 19 W41). Keyed to the
     file's device, inode, size and mtime, so a manifest moved aside, restored or written since drops it.
-    Best effort: a record that cannot be written leaves status as it was."""
+    ``command``: the subcommand whose read it was, which status names (B13 round 20 X54: it said "a sync" of
+    a purge's read too). Best effort: a record that cannot be written leaves status as it was."""
     try:
-        record = {"key": _manifest_key(db), "error": " ".join(str(error).split())[:300]}
+        record = {"key": _manifest_key(db), "error": " ".join(str(error).split())[:300], "command": command}
         db.with_name(_UNREADABLE_RECORD).write_text(json.dumps(record), encoding="utf-8")
     except (OSError, ValueError):
         pass
 
 
-def recorded_unreadable(db: Path) -> str | None:
-    """The error :func:`record_unreadable` kept for the manifest at ``db`` while it is still the same file,
-    else None."""
+def _recorded(db: Path) -> tuple[str, str | None] | None:
+    """The error and the command :func:`record_unreadable` kept for the manifest at ``db`` while it is still
+    the same file, else None; a record from an older build has no command."""
     try:
         record = json.loads(db.with_name(_UNREADABLE_RECORD).read_text(encoding="utf-8"))
         same = isinstance(record, dict) and record.get("key") == _manifest_key(db)
     except (OSError, ValueError):
         return None
     error = record.get("error") if same else None
-    return error if isinstance(error, str) and error else None
+    if not (isinstance(error, str) and error):
+        return None
+    command = record.get("command")
+    return error, command if isinstance(command, str) and command else None
+
+
+def recorded_unreadable(db: Path) -> str | None:
+    """The error :func:`record_unreadable` kept for the manifest at ``db`` while it is still the same file,
+    else None."""
+    found = _recorded(db)
+    return None if found is None else found[0]
+
+
+def clear_stale_unreadable(db: Path) -> None:
+    """Remove the record beside the manifest at ``db`` once it no longer matches the file (restored, moved
+    aside, written since): a command that just read the manifest whole calls this, so the record's name
+    does not say the manifest is unreadable beside one that reads (B13 round 20 X33). A record that still
+    matches stays, as damage that command never read is still there. Never status's: status writes nothing,
+    and a status that read an old record while a sync wrote a new one would remove the new one. Best
+    effort."""
+    record = db.with_name(_UNREADABLE_RECORD)
+    try:
+        if record.exists() and recorded_unreadable(db) is None:
+            record.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _check_manifest_readable(db: Path) -> list[CheckResult]:
@@ -1366,10 +1413,13 @@ def _check_manifest_readable(db: Path) -> list[CheckResult]:
     exc = manifest_unreadable(db)
     if exc is not None:
         return [manifest_damaged(db, exc)]
-    recorded = recorded_unreadable(db)
-    if recorded is None:
+    found = _recorded(db)
+    if found is None:
         return []
-    return [_bad("state_dir.manifest", f"{db} cannot be read: {recorded} (a sync read it)", fix=MANIFEST_FIX)]
+    recorded, command = found
+    # the command that read it, never "a sync" for a purge's or curate's read (B13 round 20 X54)
+    who = f"an agentsync {command}" if command else "an agentsync command"
+    return [_bad("state_dir.manifest", f"{db} cannot be read: {recorded} ({who} read it)", fix=MANIFEST_FIX)]
 
 
 def manifest_damaged(db: Path, exc: sqlite3.DatabaseError) -> CheckResult:

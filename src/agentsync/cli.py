@@ -717,6 +717,9 @@ def _state_readable(config: Config) -> Iterator[None]:
         if not doctor.unreadable_code(exc) and doctor.manifest_unreadable(db) is None:
             raise
         raise StateUnreadableError(f"{db} cannot be read: {exc}") from exc
+    # the command read the manifest whole: a record of damage on a file since restored or written goes (B13
+    # round 20 X33); status never removes it, as it writes nothing
+    doctor.clear_stale_unreadable(db)
 
 
 LOCK_WAITED_MARK = "lock wait: this sync waited for another sync's lock"
@@ -2850,7 +2853,8 @@ def _main(argv: Sequence[str] | None) -> int:
         _err(f"configuration error: {exc}")
         return EXIT_CONFIG
     except StateUnreadableError as exc:
-        doctor.record_unreadable(_state_db(args), exc.__cause__ or exc)  # for status (B13 round 19 W41)
+        # for status (B13 round 19 W41), with the command whose read it was (B13 round 20 X54)
+        doctor.record_unreadable(_state_db(args), exc.__cause__ or exc, getattr(args, "command", None))
         _err(f"state: {exc} (fix: {doctor.MANIFEST_FIX})")
         return EXIT_STATE
     except AuthBlockedError as exc:
@@ -2891,7 +2895,7 @@ def _main(argv: Sequence[str] | None) -> int:
         # curate, purge) says the same one line and exits 65, as --help says (B13 round 17 U66)
         db = _state_db(args)
         if doctor.unreadable_code(exc) or doctor.manifest_unreadable(db) is not None:
-            doctor.record_unreadable(db, exc)
+            doctor.record_unreadable(db, exc, getattr(args, "command", None))
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
         if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its

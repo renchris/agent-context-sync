@@ -224,6 +224,31 @@ def test_a_holder_with_no_lock_body_yet_is_named_as_unidentified(tmp_path: Path)
         os.close(fd)
 
 
+def test_the_lock_wait_names_a_holder_whose_body_does_not_parse_in_fixed_words(tmp_path: Path) -> None:
+    """B13 round 20 X55: a body that does not parse gave the wait line _describe_holder's words, a nested
+    bracket and the raw body (``another sync is running ('contoso garbage' (unparseable lock body));
+    ...``), unbounded. It gets fixed words with no bracket and no copy of the body; doctor and the skip line
+    keep it."""
+    from agentsync import cycle  # noqa: PLC0415
+
+    path = tmp_path / "agentsync.lock"
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        os.pwrite(fd, b"contoso garbage\n" * 40, 0)
+        with pytest.raises(LockHeldError) as ei:
+            SingleWriterLock(path, "poll").acquire()
+    finally:
+        os.close(fd)
+    assert ei.value.wait_words == lockmod.UNPARSEABLE_BODY_WAIT
+    assert "(" not in ei.value.wait_words and "contoso" not in ei.value.wait_words
+    assert "contoso garbage" in ei.value.holder  # doctor's and the skip line's words keep the body
+    for quiet in (False, True):
+        line = cycle._wait_beat(ei.value, 5, 600, quiet=quiet)
+        assert f"({lockmod.UNPARSEABLE_BODY_WAIT})" in line and "contoso" not in line, line
+    assert lockmod._wait_words("", None) == EMPTY_BODY_HOLDER  # the empty case keeps its own line
+
+
 def test_double_acquire_on_one_instance_raises(tmp_path: Path) -> None:
     lk = SingleWriterLock(tmp_path / "agentsync.lock", "poll")
     lk.acquire()
