@@ -5704,9 +5704,11 @@ W27's at §16.42's diagram page bullet, W50's at its signal paragraph, W67's at 
 _ROUND_20_D_PARAGRAPH_AMENDS = (
     ("9", "`SingleWriterLock(state_paths.lock, label).acquire()`", "§16.151 X56 (by §16.143 W13, W14)"),
     ("9", "For each live source (errors isolated per source;", "§16.151 X56 (by §16.143 W41)"),
+    ("16.28", "**Configuration.** One line: how many folders listed under", "§16.151 X64 (by §16.140 W17)"),
 )
 """Round 20 lane D's dated lines at sections its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: X56's two in §9's steps 2 and 5. Each records a round 19 item's change, so its marker names that item after "by"."""
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: X56's two in §9's steps 2 and 5, and X64's at §16.28's Configuration
+paragraph. Each records a round 19 item's change, so its marker names that item after "by"."""
 
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
@@ -5742,7 +5744,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated),
     §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48, and
     §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22. Round 19's §16.145 (lane D) one: W72's at
-    §16.14. Round 20's §16.151 (lane D) two: X56's two in §9.
+    §16.14. Round 20's §16.151 (lane D) three: X56's two in §9 and X64's at §16.28.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5756,7 +5758,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_19_D_PARAGRAPH_AMENDS)) == len(_ROUND_19_D_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_19_E_PARAGRAPH_AMENDS)) == len(_ROUND_19_E_PARAGRAPH_AMENDS) == 5
     assert len(_pinned_dated_lines(_ROUND_19_B_PARAGRAPH_AMENDS)) == len(_ROUND_19_B_PARAGRAPH_AMENDS) == 1
-    assert len(_pinned_dated_lines(_ROUND_20_D_PARAGRAPH_AMENDS)) == len(_ROUND_20_D_PARAGRAPH_AMENDS) == 2
+    assert len(_pinned_dated_lines(_ROUND_20_D_PARAGRAPH_AMENDS)) == len(_ROUND_20_D_PARAGRAPH_AMENDS) == 3
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -7545,6 +7547,79 @@ def test_a_round_19_or_later_citation_names_a_section_that_holds_its_item() -> N
     assert read >= 60, "the scan is broken"
     assert wrong == []
     assert "§16.134 V4 gives a slow doctor at least `_DOCTOR_GRACE_S`" in " ".join(sections["16.145"].split())
+
+
+def _guide_line(name: str) -> str:
+    """The whole line of the setup-feedback guide's row ``| <name> |``."""
+    text = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    [line] = [ln for ln in text.splitlines() if ln.startswith(f"| {name} |")]
+    return line
+
+
+def test_the_agent_named_folders_row_says_the_agents_name_keeps_it() -> None:
+    """B13 round 20 X64: the row said a configured agent-named folder is a placeholder, while since round 19
+    W17 the agent's name keeps it as written and the report's Configuration line says so beside the counts."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    assert ", except as a word of the agent's name in the friction log's Agent: line" in source
+    assert "def redact_agent(" in source and "def scrub_agent(" in source
+    row = _guide_line("Configuration: agent-named folders")
+    assert "A configured one is a placeholder, except as a word of the agent's name, which keeps it as" in row
+    assert "the friction log's `Agent:` line and the issue link; the line then says so" in row
+    assert "; a configured one is a placeholder. |" not in row
+
+
+def test_the_folder_placeholder_row_names_a_project_folders_slug_id() -> None:
+    """B13 round 20 X65: the redaction table said an id is a folder's `<folder-N>` only when it is a cloud
+    folder's name in slug form; since round 19 W6 a project folder's slug id is too, in the agentsync report
+    (its name registered fuzzy, or `Redactor.alias` for a nested one). install.sh's report is unchanged."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    build = inspect.getsource(setup_report._build_redactor)
+    assert 'fuzzy="/" not in value and not joined' in build and "red.alias(src.id," in build
+    row = _guide_line("`<library-N>`, `<folder-N>`, `<source-N>`")
+    assert (
+        "an id that is its cloud folder's name in slug form is that folder's `<folder-N>`, as, in the"
+        " agentsync report since 2026-10-20 (B13 round 19 W6), is an id that is a project folder's name in"
+        " slug form"
+    ) in row
+
+
+def test_the_ocr_row_says_a_deleted_files_count_goes_at_the_next_sync() -> None:
+    """B13 round 20 X66: the OCR row said a finished scan's count stays in the record; since round 19 W75 the
+    next sync drops a deleted file's (or one with no row), as the report's own lead says, and `deleted` and
+    `with no row` show only until then or in an older build's record."""
+    from agentsync import cycle, setup_report  # noqa: PLC0415
+
+    assert "RowState.TOMBSTONE" in inspect.getsource(cycle._Cycle._reread_load)
+    assert "the record keeps its count, a deleted file's only until the next sync" in inspect.getsource(
+        setup_report
+    )
+    row = _guide_line("OCR")
+    assert (
+        "under a finished scan the count stays in the record, a deleted file's (or one with no row) only"
+        in row
+    )
+    assert "and, until that sync or in a record an older build left, `deleted` or `with no row`)" in row
+
+
+def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
+    """B13 round 20 X67: the row named the re-screen note and the converter-waiting line but not round 19
+    W18's `tried again after an upgrade:` note, so an old conversion error back in the runs after an
+    upgrade had no word in the guide, whose ordinary retry reads as ruling it out. The label is read from
+    the report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    note = re.search(r'f"- (tried again after an upgrade): \{each\}', inspect.getsource(setup_report))
+    assert note is not None
+    row = _guide_line("Repeat conversions")
+    assert f"a `{note.group(1)}:` note under the table gives their count per run" in row
+    assert "possibly in a background cycle nobody watched" in row and "§16.144, W18). |" in row
+    # the upgrade's run makes the first try (`retry_settled_failures` runs before its sources)
+    assert "up to 2 times, the first in that run" in row
+    # the note sits beside the other notes, before the Quarantine sentence
+    assert row.index(f"`{note.group(1)}:`") < row.index("Quarantine by reason counts")
 
 
 def test_u78s_line_quotes_the_again_fix_head() -> None:

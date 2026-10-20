@@ -8635,6 +8635,10 @@ install.sh's own words.
 **Configuration.** One line: how many folders listed under `~/Library/CloudStorage` are named only with a
 coding agent's product words, and how many configured source folders are (§16.22: a listed one keeps its
 name, a configured one is a placeholder).
+Amended 2026-10-20, §16.151 X64 (by §16.140 W17): a configured one keeps its product word as a word of the
+agent's name (the Summary, the attempt lines and the friction log's `Agent:` line through `Redactor.redact_agent`,
+the issue link through `scrub_agent`), and the line then ends `, except as a word of the agent's name
+in the friction log's Agent: line`.
 
 Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
 `_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
@@ -25563,6 +25567,20 @@ step's 23:32 and 20:23; those jobs took 24:00 and 20:59, and round 19's took 20:
 view --json jobs`, and 21:17 for 34818253), so CLAUDE.md's "19 to 24", which mixed the two, named no job. It gives
 21 to 25 and the same 40-minute limit, ci.yml's note gives the job times with pytest's beside them, and the test
 holds the limit 10 minutes above 25. Test: `test_claude_md_gives_cis_time_and_its_limit`.
+
+**The guide's rows give round 19's report** (X64, X65, X66, X67; dated line at §16.28). The setup-feedback guide
+said a configured agent-named folder is always a placeholder (since §16.140 W17 a word of the agent's name keeps
+it), that an id is a folder's `<folder-N>` only for a cloud folder (since W6 a project folder's too, in the
+agentsync report; the shell report is unchanged), that a finished scan's re-read count stays in the record
+(since §16.144 W75 a deleted file's only until the next sync, while `deleted` and `with no row` still show in that
+window and in an older build's record), and had no word for W18's `tried again after an upgrade:` note. Each row
+says so; the Repeat conversions row's sentence gives the first try as that run's and leaves out which sources a
+run skips, which lane E's round 20 X53 rewords. §16.28's Configuration paragraph gets W17's line. Tests:
+`test_the_agent_named_folders_row_says_the_agents_name_keeps_it`,
+`test_the_folder_placeholder_row_names_a_project_folders_slug_id`,
+`test_the_ocr_row_says_a_deleted_files_count_goes_at_the_next_sync` and
+`test_the_repeat_conversions_row_names_the_upgrade_retry_note`, each reading the report's words from
+`setup_report`, and a row of `_ROUND_20_D_PARAGRAPH_AMENDS`.
 
 **U78's fix head is the one install.sh gets since W48** (X68; dated line at §16.132 U78). U78 quoted `_again_fix`
 as `run the same <installer> command again ...`; under install.sh it starts `doctor.AGAIN_UNDER_INSTALL_SH` since
