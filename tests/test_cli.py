@@ -2865,6 +2865,46 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     assert len([ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, out
 
 
+def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does(
+    initialised: Config,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 18 V14, V52, V56, V71: on the manifest U64's test damages, status FAILed state_dir.manifest
+    and the setup report said "doctor: 0 FAIL" and "NEXT: none", and its "see Doctor's state_dir.manifest
+    line" pointers named a line Doctor never printed. The report's Doctor hook reads the loop first, as status
+    does: one FAIL, filed under the state file that cannot be read (with the listing warn beside it, not
+    judged), and the Loop NEXT is rule 1's, the one status prints."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda run, label: (113, "not loaded"))
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    beats = initialised.state_paths.heartbeat
+    data = json.loads(beats.read_text(encoding="utf-8"))
+    sid = _local_id(initialised)
+    data[sid]["consecutive_incomplete"] = 3  # the listing warn of an emptied folder (TD's)
+    beats.write_text(json.dumps(data), encoding="utf-8")
+    _damage_table_root(initialised.state_paths.db, "items")
+    out = tmp_path / "r.md"
+    assert cli.main(["setup-report", "--out", str(out), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    text = out.read_text(encoding="utf-8")
+    fails = [ln for ln in text.splitlines() if ln.startswith("[FAIL] ")]
+    assert len(fails) == 1 and fails[0].startswith("[FAIL] state_dir.manifest "), fails
+    (summary,) = [ln for ln in text.splitlines() if ln.startswith("- doctor: ")]
+    assert summary.startswith("- doctor: 1 FAIL, 1 warn "), summary
+    assert (
+        "from the state file that cannot be read (2 checks): state_dir.manifest FAIL (the person's; see "
+        f"Doctor), heartbeat.{sid} warn (not judged: the loop cannot read the state)" in summary
+    ), summary
+    assert "unexpected 0" in summary, summary
+    (loop_line,) = [ln for ln in text.splitlines() if ln.startswith("- Loop: ")]
+    assert "NEXT: the state_dir.manifest check failed: " in loop_line, loop_line
+    assert "NEXT: none" not in loop_line, loop_line
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read

@@ -1497,6 +1497,16 @@ def _with_damaged_manifest(
     return [*checks[:at], doctor.manifest_damaged(expand(config.state_paths.db), exc), *checks[at:]]
 
 
+def _loop_read(config: Config) -> tuple[loop.NextStep | None, Exception | None]:
+    """The loop's step without rule 9's count of the curation queue, or the error its read raised: status
+    and the setup report's doctor read it before the checks, so a manifest damaged under a table FAILs in
+    both (:func:`_with_damaged_manifest`; B13 round 18 V14, V52, V56, V71)."""
+    try:
+        return loop.next_step(config, count_queue=False), None
+    except Exception as exc:  # the NEXT read names the error; the checks keep their default wording
+        return None, exc
+
+
 def _build_status(config: Config, *, brief: bool = False) -> _Status:
     """``status``'s output. ``brief`` (the ``doctor`` alias, or AGENTSYNC_NO_NEXT_HINT=1, both install.sh's):
     no detail and no policy lines, so install.sh's output (and setup-report's tail of it) holds what the old
@@ -1507,12 +1517,7 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
     changes). Its NEXT is that read's when no check failed and the step came before rule 9, which is all
     the count changes; otherwise the loop is read again as before, with the FAILs' fixes."""
     hint_off = os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1"
-    state_exc: Exception | None = None
-    try:
-        step: loop.NextStep | None = loop.next_step(config, count_queue=False)
-    except Exception as exc:  # the NEXT read below names the error; the checks keep their default wording
-        step = None
-        state_exc = exc
+    step, state_exc = _loop_read(config)
     checks = _status_checks(
         config,
         loop_checks=None if step is None else step.checks,
@@ -2021,11 +2026,21 @@ def _report_hooks() -> setup_report.ReportHooks:
     the rest of the report's budget), the Status section only the cheap loop line and detail lines (under its
     own 4 s). No policy detail (label names stay out of a report meant for sharing). The Summary's Loop line
     (KISS K16b) takes the loop's NEXT from ``loop_next``, with the doctor checks' FAILs as rule 1's fixes and
-    without rule 9's mirror walk; the Status section still prints no NEXT line."""
+    without rule 9's mirror walk; the Status section still prints no NEXT line.
+
+    The Doctor hook reads the loop first, as status does, so a manifest damaged under a table gives the same
+    state_dir.manifest FAIL there (B13 round 18 V14, V52, V56, V71: the report said 0 FAIL, NEXT none, and
+    pointed at a Doctor line it never printed); ``state_error`` hands that read's error to the report, whose
+    Summary files the FAIL under the state file that cannot be read. The checks still get no
+    ``loop_checks``: the heartbeat check's report path is the one without them (B13 round 9 K75, round 10
+    L49), so a read that succeeds changes no line."""
     fixes: list[str] = []
+    read: list[tuple[loop.NextStep | None, Exception | None]] = []
 
     def checks(config: Config) -> list[str]:
-        results = _status_checks(config, offline=True)
+        step, state_exc = _loop_read(config)
+        read[:] = [(step, state_exc)]
+        results = _with_damaged_manifest(config, _status_checks(config, offline=True), state_exc)
         fixes[:] = _fail_steps(results)
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
         # carries _LISTING_SKIPPED_NOTE: only _build_status swaps it in (B13 round 15 S43).
@@ -2040,7 +2055,10 @@ def _report_hooks() -> setup_report.ReportHooks:
     def loop_next(config: Config) -> loop.NextStep | list[str]:
         """The loop's NextStep (its ``checks`` group doctor's warns); when the state cannot be read (a
         damaged manifest raises sqlite3.DatabaseError too), the NEXT ``agentsync status`` prints then:
-        rule 1's from the first FAIL's fix, or [] (B13 round 17 U7)."""
+        rule 1's from the first FAIL's fix, or [] (B13 round 17 U7). With no FAIL, the Doctor hook's own
+        read is that step: it is not read twice."""
+        if read and read[0][0] is not None and not fixes:
+            return read[0][0]
         try:
             return loop.next_step(config, fixes=fixes, count_queue=False)
         except Exception as exc:
@@ -2058,6 +2076,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         ],
         loop_next=loop_next,
         job_proxy=_job_proxy_urls,
+        state_error=lambda: read[0][1] if read else None,
     )
 
 

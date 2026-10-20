@@ -1005,6 +1005,10 @@ class ReportHooks:
     # the proxy URLs a LaunchAgent run of the config gets (``launchctl getenv``, the plist): registered for
     # redaction, since doctor's network.proxy.job line prints them
     job_proxy: Callable[[Config | None], list[str]] | None = None
+    # the error the ``doctor`` hook's own read of the loop's state raised (None: it read, or the hook has not
+    # run): a manifest damaged under a table, which the schema probe reads past, is unreadable state too
+    # (B13 round 18 V14, V52, V56, V71)
+    state_error: Callable[[], BaseException | None] | None = None
 
 
 def _tokens(value: str) -> list[str]:
@@ -8832,12 +8836,16 @@ def _remote_refused(c: Config) -> bool:
         return False
 
 
-def _state_unreadable(c: Config) -> bool:
+def _state_unreadable(c: Config, read_error: BaseException | None = None) -> bool:
     """Whether the report's own read finds the manifest no command can read: doctor's ``manifest_unreadable``,
     which opens it read-only and names only a file that is no database or a damaged one, never a locked or
-    busy one (B13 round 17 U5, U24, U41). Keyed on the file, never on doctor's words."""
+    busy one (B13 round 17 U5, U24, U41); or ``read_error``, the Doctor hook's read of the loop's state, has
+    the same codes: damage under a table, which the schema probe reads past and that read FAILs state_dir.
+    manifest for (B13 round 18 V14, V52, V56, V71). Keyed on the file, never on doctor's words."""
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
+    if isinstance(read_error, sqlite3.DatabaseError) and doctor.unreadable_code(read_error):
+        return True
     try:
         return doctor.manifest_unreadable(expand(c.state_paths.db)) is not None
     except Exception:  # a reader that fails says nothing about the file
@@ -8885,7 +8893,8 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     from_gone: list[str] = []
     from_config: list[str] = []
     from_remote: list[str] = []
-    unreadable = r.config is not None and _state_unreadable(r.config)
+    read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
+    unreadable = r.config is not None and _state_unreadable(r.config, read_error)
     from_state: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
