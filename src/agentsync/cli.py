@@ -1444,6 +1444,8 @@ def _unread_words(exc: Exception, *, refused: str = "governance.config or policy
         return f"the configuration is refused: the {refused} [FAIL] line says why"
     if isinstance(exc, StateUnreadableError):
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
+    if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
+        return "the state file is busy: another agentsync run holds it; try again when it ends"
     if isinstance(exc, sqlite3.Error):
         return f"the state file cannot be read: {exc}"
     if isinstance(exc, OSError):
@@ -2608,12 +2610,6 @@ def _state_db(args: argparse.Namespace) -> Path:
         return StatePaths(default_state_dir()).db
 
 
-def _contended(exc: sqlite3.DatabaseError) -> bool:
-    """Whether ``exc`` is SQLITE_BUSY or SQLITE_LOCKED, an extended code (BUSY_SNAPSHOT, ...) included."""
-    code = getattr(exc, "sqlite_errorcode", None)
-    return isinstance(code, int) and code & 0xFF in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
-
-
 class _Formatter(logging.Formatter):
     """The stderr handler's format; a live progress notice (:data:`arm_local.PROGRESS`, the inbox's settle
     wait) is a plain indented line instead, with no time, level or logger name (B13 round 17 U18)."""
@@ -2705,10 +2701,12 @@ def _main(argv: Sequence[str] | None) -> int:
         if doctor.unreadable_code(exc) or doctor.manifest_unreadable(db) is not None:
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
-        if not _contended(exc):  # a code defect (IntegrityError, a missing column) keeps its traceback (U72)
-            raise
-        # a locked or busy database: one line, its traceback at -vv (B13 round 16 T12)
-        _log.debug("database busy or locked", exc_info=True)
+        if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its
+            raise  # traceback (U72); so does any code no one listed (B13 round 18 V59: an allowlist)
+        # a locked or busy database, a full disk, a read-only or failing volume, a file that will not
+        # open: one line, its traceback at -vv (B13 round 16 T12; round 18 V59: U72 had made the
+        # others tracebacks)
+        _log.debug("database: %s", exc, exc_info=True)
         _err(f"error: {type(exc).__name__}: {exc}")
         return EXIT_FAILED
     except KeyboardInterrupt:

@@ -2906,6 +2906,66 @@ def test_only_a_locked_or_busy_database_is_one_line_other_sqlite_errors_keep_the
             cli.main(argv)
 
 
+@pytest.mark.parametrize(
+    ("code", "said"),
+    [
+        (sqlite3.SQLITE_FULL, "database or disk is full"),
+        (sqlite3.SQLITE_READONLY, "attempt to write a readonly database"),
+        (sqlite3.SQLITE_IOERR, "disk I/O error"),
+        (sqlite3.SQLITE_CANTOPEN, "unable to open database file"),
+        (sqlite3.SQLITE_IOERR | (13 << 8), "disk I/O error"),  # an extended code: IOERR_FSYNC
+    ],
+    ids=["full", "readonly", "ioerr", "cantopen", "ioerr-extended"],
+)
+def test_a_full_read_only_or_failing_disk_is_one_line_with_no_traceback(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    code: int,
+    said: str,
+) -> None:
+    """B13 round 18 V59: U72 kept every sqlite3 error but a locked or busy one as a traceback, so a full disk,
+    a read-only or failing volume, or a file that will not open escaped main as a raw traceback. Those codes
+    (the Mac's, not the code's: an allowlist, extended codes included) are one ``error:`` line and exit 1,
+    the traceback at -vv; a code no one listed still raises (the integrity and missing-column cases above)."""
+
+    def handler(_args: object) -> int:
+        exc = sqlite3.OperationalError(said)
+        exc.sqlite_errorcode = code  # type: ignore[attr-defined]
+        raise exc
+
+    monkeypatch.setattr(cli, "_cmd_curate", handler)
+    assert cli.main(["curate", "--config", str(initialised.config_path)]) == cli.EXIT_FAILED
+    err = capsys.readouterr().err.splitlines()
+    assert err == [f"error: OperationalError: {said}"], err
+    assert doctor.environmental(sqlite3.OperationalError()) is False
+    misuse = sqlite3.OperationalError("bad parameter or other API misuse")
+    misuse.sqlite_errorcode = sqlite3.SQLITE_MISUSE  # type: ignore[attr-defined]
+    assert not doctor.environmental(misuse), "a code no one listed keeps its traceback"
+
+
+def test_status_calls_a_locked_state_file_busy_as_the_report_does(tmp_path: Path) -> None:
+    """B13 round 18 V60: status's words for a locked manifest were "the state file cannot be read (database is
+    locked)" while the report said busy. Both test the code (``doctor.contended``), and status names no sync:
+    the holder can be another status migrating the schema."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    scratch = tmp_path / "scratch.sqlite"
+    with pytest.raises(sqlite3.OperationalError) as locked:
+        _raise_sqlite("locked", scratch)
+    assert locked.value.sqlite_errorcode == sqlite3.SQLITE_BUSY
+    assert cli._unread_words(locked.value) == (
+        "the state file is busy: another agentsync run holds it; try again when it ends"
+    )
+    coded = sqlite3.OperationalError("a message that names no lock")
+    coded.sqlite_errorcode = sqlite3.SQLITE_LOCKED  # type: ignore[attr-defined]
+    assert cli._unread_words(coded).startswith("the state file is busy: ")
+    assert setup_report._why_not_read(coded).startswith("the state file is busy")
+    malformed = sqlite3.DatabaseError("database disk image is malformed")
+    malformed.sqlite_errorcode = sqlite3.SQLITE_CORRUPT  # type: ignore[attr-defined]
+    assert cli._unread_words(malformed) == "the state file cannot be read: database disk image is malformed"
+
+
 def _damage_table_root(db: Path, table: str) -> int:
     """Overwrite the first 64 bytes of ``table``'s root page with 0xff, after a checkpoint, leaving the header
     and the schema intact; returns the page number."""

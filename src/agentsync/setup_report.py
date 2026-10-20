@@ -6028,8 +6028,11 @@ def _why_not_read(exc: BaseException) -> str:
     if isinstance(exc, ConfigError):
         return "the configuration is refused: see Configuration"
     if isinstance(exc, sqlite3.Error):
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
         said = str(exc).lower()
-        if "locked" in said or "busy" in said:
+        # status's test (``doctor.contended``, B13 round 18 V60), and the words for an error with no code
+        if doctor.contended(exc) or "locked" in said or "busy" in said:
             return "the state file is busy: a sync holds it"
         return "the state file cannot be read: see Doctor's state_dir.manifest line"
     if isinstance(exc, (TimeoutError, CallTimedOutError)):

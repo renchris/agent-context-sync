@@ -23705,6 +23705,10 @@ legal holds, which live outside the manifest). Tests:
 cases of `test_cli.py::test_a_manifest_that_is_no_database_fails_status_and_stops_setup_on_one_line`,
 `test_cli.py::test_only_a_locked_or_busy_database_is_one_line_other_sqlite_errors_keep_their_traceback`,
 `test_cli.py::test_the_manifest_fix_says_legal_holds_are_kept`.
+Amended 2026-10-19, §16.137 V59: the one-line codes are an allowlist of the Mac's, `doctor.ENVIRONMENT_CODES`:
+SQLITE_BUSY and SQLITE_LOCKED, and also SQLITE_FULL, SQLITE_READONLY, SQLITE_IOERR, SQLITE_CANTOPEN and SQLITE_PERM
+(extended codes included), which U72 had turned into raw tracebacks; any other code (SQLITE_ERROR, MISUSE, an
+IntegrityError) still propagates with its traceback.
 
 **U70: two tests prove what they claim (tests only).** `test_a_manifest_a_sync_holds_is_no_fail` held its lock on
 the WAL-mode manifest, where a writer never blocks the probe's read; a rollback-journal copy under the same lock now

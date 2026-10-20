@@ -1026,6 +1026,36 @@ def unreadable_code(exc: sqlite3.Error) -> bool:
     return isinstance(code, int) and code & 0xFF in MANIFEST_UNREADABLE_CODES
 
 
+CONTENDED_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+"""SQLite's result codes for a database another connection holds now: no fault of the file or of the code."""
+ENVIRONMENT_CODES = CONTENDED_CODES | {
+    sqlite3.SQLITE_FULL,
+    sqlite3.SQLITE_READONLY,
+    sqlite3.SQLITE_IOERR,
+    sqlite3.SQLITE_CANTOPEN,
+    sqlite3.SQLITE_PERM,
+}
+"""The codes the Mac gives, not the code: held, a full disk, a read-only or failing volume, a file that will
+not open or is not permitted. The CLI says them in one line; every other code keeps its traceback (B13 round
+18 V59, an allowlist, so a code nobody listed still shows its stack)."""
+
+
+def _code(exc: BaseException) -> int | None:
+    code = getattr(exc, "sqlite_errorcode", None)
+    return code & 0xFF if isinstance(code, int) else None
+
+
+def contended(exc: BaseException) -> bool:
+    """Whether ``exc`` is SQLITE_BUSY or SQLITE_LOCKED, an extended code (BUSY_SNAPSHOT, ...) included: the
+    one test status's words and the setup report's make for a busy state file (B13 round 18 V60)."""
+    return _code(exc) in CONTENDED_CODES
+
+
+def environmental(exc: BaseException) -> bool:
+    """Whether ``exc`` has one of :data:`ENVIRONMENT_CODES`, an extended code included (B13 round 18 V59)."""
+    return _code(exc) in ENVIRONMENT_CODES
+
+
 def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
     open (no file is created, nothing is written) of its schema, which every open of the manifest reads
