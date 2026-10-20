@@ -189,7 +189,7 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 27
+PROMPT_VERSION = 28
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
 whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
@@ -300,14 +300,14 @@ own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v
 constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
 report while a note says so), and neither did v9 (a Mac that already syncs folders is not asked for them
 again), v10 (three sentences reworded), v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24,
-v25, v26 or v27 (wording only), so they have no entry: :func:`prompt_layout` reads them as v7."""
+v25, v26, v27 or v28 (wording only), so they have no entry: :func:`prompt_layout` reads them as v7."""
 
 
 def prompt_layout(version: int | None) -> PromptLayout:
     """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
     :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
     is not stated. The prompt's version moves with every change of its text and a layout only when a step
-    moves, so v8 to v27, and every later version until one adds an entry, is read with v7's rules."""
+    moves, so v8 to v28, and every later version until one adds an entry, is read with v7's rules."""
     if version is None:
         return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]

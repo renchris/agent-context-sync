@@ -577,7 +577,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (27, "43c814dc40a700374a3ba4d07684411e548f7e2f0398f230a4e862df344c8ec4")
+PROMPT = (28, "df3e47084b019a6cdfbdd3ec02c761b8a844374de38f0f6a607ec17d6c211822")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -736,7 +736,10 @@ GIT_REMOTE_QUERY = "git -C ~/src/agent-context-sync config --get remote.origin.u
 which a company mirror changes (B13 round 17 U32; the report's install source line says `origin: other`).
 Since v27 by its configured URL: `remote get-url` applies a URL rewrite, which the quote's next way names, so
 a rewrite alone read as a mirror remote (B13 round 18 V70); and only once there is a checkout: a clone that
-failed leaves no folder, and the query then fails (V33)."""
+failed leaves no folder, and the query then fails (V33). Since v28 "if ~/src/agent-context-sync/.git
+exists": a clone that failed leaves no checkout, but it keeps a folder that existed before it, and the query,
+run in the person's terminal with no GIT_CEILING_DIRECTORIES, then reads any repository above it, such as a
+dotfiles repo in ~, and prints that one's remote (B13 round 19 W26)."""
 
 GIT_REWRITE_QUERY = "git config --get-regexp '^url\\..*\\.insteadof$'"
 GIT_PROXY_QUERY = "git config --get-urlmatch http.proxy https://github.com"
@@ -1013,9 +1016,9 @@ def test_readme_step1_is_one_command() -> None:
         'If git failed any other way, show me its error and tell me: "A corporate proxy may need HTTPS_PROXY '
         "set in your terminal. If git's error names a host other than github.com, git was told to use that "
         "host in one of four ways, and any of them may point at a network this Mac is not on: this "
-        f"checkout's own remote, if ~/src/agent-context-sync exists, which `{GIT_REMOTE_QUERY}` prints and "
-        "which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the cause "
-        "after a clone that failed, since that leaves no folder; a URL "
+        f"checkout's own remote, if ~/src/agent-context-sync/.git exists, which `{GIT_REMOTE_QUERY}` prints "
+        "and which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the "
+        "cause after a clone that failed, since that leaves no checkout; a URL "
         f"rewrite, which `{GIT_REWRITE_QUERY}` prints; git's own proxy setting, which `{GIT_PROXY_QUERY}` "
         "prints and which wins over the terminal's; or the terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or "
         "all_proxy, which `env | grep -i proxy` shows. Once git can reach GitHub, or the remote this "
@@ -2948,6 +2951,18 @@ name" is wrong for a library that was never synced (B13 round 14 Q15, Q73: one d
 branch also syncs the folder to this Mac in its app: a folder unticked in a signed-in app's folder choice is
 gone from disk too, and doctor's fix and the wait name that (B13 round 16 T72)."""
 
+KEPT_UNASKED = (
+    "Whether or not that line names such a folder, if you cannot ask me whether to add one, add none and go"
+    " on to step 2, and still tell me in your final message any folder that line says is not on disk and its"
+    " fix."
+)
+"""The first exception's no-answer rule, since v28. v27's "If you cannot ask me then, add none and go on to
+step 2" came right after :data:`GONE_FOLDER`, so "then" could bind it to that sentence, and a Mac whose kept
+folders are all on disk would have no such rule and fall back to the new Mac's: a logged deviation and a stop
+(B13 round 19 W28). Kept in place, not moved before the gone-folder sentence: there an unattended agent could
+go on to step 2 before it told the person which folders are off disk; the final message keeps them (W28's
+verifier)."""
+
 UNREAD_PATCH_TOLD = (
     "if the report's NEXT: line says bring-back.md does not hold a kept patch, name"
     " ~/agent-context/bring-back.md and then tell me, in that line's words, how many kept patch files in"
@@ -3041,9 +3056,8 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
         f'"{ALREADY_SYNCED}", I chose those folders before and they are kept (each has [synced] before its '
         f"path in the list). {SIGNED_OUT} {SIGNED_OUT_UNASKED} If the list's NEXT: line does not ask me to "
         "sign in and then re-run, tell me which they are and ask only whether to add any unmarked folder. "
-        f"{GONE_FOLDER} If "
-        "you cannot ask me then, add none and go on to step 2. That is not a deviation: do not log it or "
-        "stop, and say in your final message that I gave no answer, so no folder was added."
+        f"{GONE_FOLDER} {KEPT_UNASKED} That is not a deviation: do not log it or stop, and say in your final "
+        "message that I gave no answer, so no folder was added."
     )
     assert step1.endswith(f"{kept} {UNREAD_CONFIG}"), "the rule for a new Mac, then its exceptions, last"
     # B13 round 16 T6, T30: the mirrored-folder tail's words, which say neither "on disk" nor "not signed in"
@@ -3059,7 +3073,14 @@ def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
     # "[synced]" lines for folders that are not on disk, and the exception sent an unattended agent on to a
     # step 2 that fails. The list now exits 3 with a NEXT: that asks the person to sign in; the exception
     # waits for that as for a click, before its "add none and go on", and reads the list again.
-    assert step1.index(SIGNED_OUT) < step1.index("If you cannot ask me then, add none")
+    assert step1.index(SIGNED_OUT) < step1.index(KEPT_UNASKED)
+    # B13 round 19 W28: right after the gone-folder sentence, "If you cannot ask me then" could be read as
+    # bound to it, and a Mac whose kept folders are all on disk would fall back to the rule for a new Mac (a
+    # logged deviation, a stop); the sentence says it holds either way, and keeps the gone folders' fixes
+    assert (
+        KEPT_UNASKED.startswith("Whether or not that line names such a folder, ")
+        and "then," not in KEPT_UNASKED
+    )
     # B13 round 13 O30: the list's words the first exception's gone-folder sentence answers, both counts
     script = SCRIPTS[0].read_text(encoding="utf-8")
     # B13 round 15 S36: "1 of them", or "it" when it is the one synced folder, by one variable

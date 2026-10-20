@@ -24382,6 +24382,9 @@ Tests: `test_the_prompt_text_changes_only_with_its_version` (`PROMPT` 27), `test
 pin with `UNREAD_PATCH_TOLD`, `test_step_3_calls_a_syncs_waits_expected_and_retries_a_lock_skip` (`SYNC_WAITS`, and
 the code that prints each opening it can today), and the version lists in `test_setup_report.py` and
 `test_install_oneshot.py`; register `docs/deploy/setup-feedback.md` K51.
+Amended 2026-10-20, §16.142 W26, W28: setup prompt v28; the quote's first way holds `if
+~/src/agent-context-sync/.git exists` and `since that leaves no checkout`, and the first exception's no-answer
+sentence holds either way.
 
 ### 16.137 Round 18: the report's doctor hook, the CLI's words and the lock wait (2026-10-19, wave B13 round 18 lane B)
 
@@ -24734,6 +24737,36 @@ given, under `set -u`). The loop empties `ERRF` once it has printed it, so a sig
 `synced_count` or `docs_remotes_refused`) prints nothing twice. The line follows `on_signal`'s `error: install.sh was
 stopped by a signal ...`. Test: `test_a_signal_inside_add_source_keeps_its_held_error` (SIGTERM to the installer's
 pid, and to its whole group: the error once, after the signal's error, in install.out, and TMPDIR empty).
+
+**Setup prompt v28** (W26, W28; amends §16.136 V33). W26 and W28 need prompt text, so the prompt is **setup prompt
+v28**: `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, step 1's `prompt v28` and `setup-prompt-compat 28`, the issue form's
+placeholder, setup-feedback.md's version lists and the block's digest move together, and a saved v27 copy is stopped
+at step 1 like every older copy. v28 moves no step, so it has no `PROMPT_LAYOUTS` entry; it adds no agentsync
+command, installer flag, config key or friction kind. Lanes that sent words: none (lanes RA, RB, B, E and D).
+- Step 1's other-git-failure quote (W26): the first way's condition was `if ~/src/agent-context-sync exists` and its
+  reason `since that leaves no folder`. Step 1 clones whenever `.git/HEAD` and `.git` are both missing, so into a
+  folder that already exists and is empty too, and a clone that fails there (exit 128) leaves the folder; the
+  person's query, run in their own terminal with no `GIT_CEILING_DIRECTORIES`, then reads any repository above it (a
+  dotfiles repo in ~) and prints its remote, a host that misdirects them to the mirror remote the quote rules out
+  (probes b2, b3). It now reads `this checkout's own remote, if ~/src/agent-context-sync/.git exists, which `git -C
+  ~/src/agent-context-sync config --get remote.origin.url` prints and which this setup expects to be
+  https://github.com/renchris/agent-context-sync.git, never the cause after a clone that failed, since that leaves
+  no checkout`: a failed clone leaves no `.git`, so the person skips the query; on the pull path the checkout's own
+  config wins over any repository above it; a `.git` file (a second worktree) counts as existing. The query keeps no
+  `GIT_CEILING_DIRECTORIES=` prefix (the verifier's optional hardening): the condition already keeps it from running
+  where it would misread, and the pinned query and the person's command list stay as they are.
+- Step 1's first exception (W28): `If you cannot ask me then, add none and go on to step 2.` came right after the
+  not-on-disk sentence, so "then" could bind it to that case, and a Mac whose kept folders are all on disk would fall
+  back to the rule for a new Mac (a logged deviation, a stop). Rounds 14 to 19's roles all read it the right way, so
+  this is the wording's risk, not an observed misread. In place, not moved (W28's verifier: before the not-on-disk
+  sentence, an unattended agent could go on to step 2 without telling the person which folders are off disk), it
+  reads `Whether or not that line names such a folder, if you cannot ask me whether to add one, add none and go on to
+  step 2, and still tell me in your final message any folder that line says is not on disk and its fix.`; the
+  sentence after it is unchanged.
+Tests: `test_the_prompt_text_changes_only_with_its_version` (`PROMPT` 28), `test_readme_step1_is_one_command`
+(`GIT_REMOTE_QUERY`'s quote), `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` (`KEPT_UNASKED`, which
+starts `Whether or not that line names such a folder, `), and the version lists in `test_setup_report.py` and
+`test_install_oneshot.py`; register `docs/deploy/setup-feedback.md` K52.
 
 ### 16.143 Round 19: table damage, the lock-wait words and the speech fix (2026-10-20, wave B13 round 19 lane B)
 

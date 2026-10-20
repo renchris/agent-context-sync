@@ -318,7 +318,7 @@ first; once you say you have, it lists the folders again. When it cannot ask you
 left unanswered), it does not wait for that sign-in and logs nothing for it: it goes to step 3's report (since v21).
 
 ```text
-Set up agentsync on this Mac (setup prompt v27). agentsync keeps a local, agent-readable git repo
+Set up agentsync on this Mac (setup prompt v28). agentsync keeps a local, agent-readable git repo
 (~/agent-context/docs) in sync with the OneDrive and SharePoint folders this Mac syncs. Source:
 https://github.com/renchris/agent-context-sync (docs/deploy/README.md there explains every step). Run each command
 yourself and show me its output. Rules: no sudo; never push, upload or email anything; do not edit my shell profile;
@@ -356,7 +356,7 @@ the name in fix-request.md.
 
 1. Preflight, code and folders, in one command (replace <agent> with your tool and model id; its first part, which
    each git recovery below repeats, keeps git from using a repository above ~/src):
-   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v27, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
+   `export GIT_CEILING_DIRECTORIES="$HOME/src" && sw_vers -productVersion && xcode-select -p && { if [ -f ~/src/agent-context-sync/.git/HEAD ] || [ -f ~/src/agent-context-sync/.git ]; then git -C ~/src/agent-context-sync pull --ff-only; else git clone https://github.com/renchris/agent-context-sync.git ~/src/agent-context-sync; fi; } && ~/src/agent-context-sync/scripts/install.sh --version && ~/src/agent-context-sync/scripts/install.sh --log-start 'prompt v28, <agent>' && ~/src/agent-context-sync/scripts/install.sh --list-folders`
    Before running it, tell me macOS may ask whether this terminal app can access files managed by OneDrive, and
    that I should click Allow. If xcode-select printed no path, tell me: "Install the Xcode Command Line Tools with
    `xcode-select --install`, or request them from IT through Self Service if that asks for an admin password; then
@@ -405,9 +405,9 @@ the name in fix-request.md.
    "Finish with". If git failed any other way, show me its error and tell me: "A corporate proxy may need
    HTTPS_PROXY set in your terminal. If git's error names a host other than github.com, git was told to use that host
    in one of four ways, and any of them may point at a network this Mac is not on: this checkout's own remote, if
-   ~/src/agent-context-sync exists, which `git -C ~/src/agent-context-sync config --get remote.origin.url` prints
-   and which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the cause after a
-   clone that failed, since that leaves no folder; a URL rewrite, which
+   ~/src/agent-context-sync/.git exists, which `git -C ~/src/agent-context-sync config --get remote.origin.url`
+   prints and which this setup expects to be https://github.com/renchris/agent-context-sync.git, never the cause
+   after a clone that failed, since that leaves no checkout; a URL rewrite, which
    `git config --get-regexp '^url\..*\.insteadof$'` prints; git's own proxy setting, which
    `git config --get-urlmatch http.proxy https://github.com` prints and which wins over the terminal's; or the
    terminal's HTTPS_PROXY, https_proxy, ALL_PROXY or all_proxy, which `env | grep -i proxy` shows. Once git can reach
@@ -419,11 +419,11 @@ the name in fix-request.md.
    step 3's report. Before going to the report from the Xcode stop or the other-git-failure stop above, if
    ~/src/agent-context-sync/scripts/install.sh exists, run `~/src/agent-context-sync/scripts/install.sh --version`:
    step 1 did not update that copy (its pull did not run, or failed), so it may be older than this prompt. If
-   it exists and its output ends with "setup-prompt-compat 27", log the command that failed (git's pull or clone, or
+   it exists and its output ends with "setup-prompt-compat 28", log the command that failed (git's pull or clone, or
    xcode-select -p; not step 1's whole command) and its error as the command printed it, host names included (the
    report replaces the host of a proxy, of a URL rewrite, of a git remote and of a "Could not resolve" or "Failed to
    connect to" message; the role rule is for your own words), as a step 1 error, starting its what-text with prompt
-   v27, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
+   v28, <agent> and a colon (the same words as in step 1's command; write no colon inside <agent>), and go to the
    report. If it exists and its output does not end so (or the command fails), that stop has no report either: tell
    me that the code on this Mac is not this prompt's version and that setup stopped before it could be updated, and
    that this asks nothing more of me: once the cause of this stop is fixed, the next paste of this prompt tries to
@@ -432,9 +432,9 @@ the name in fix-request.md.
    (step 3's last no-report case): tell me that setup stopped before the code was downloaded, and that once the cause
    of this stop is fixed, the next paste of this prompt downloads it (say only this stop's cause: at the Xcode stop,
    the Command Line Tools installed; at the other-git-failure stop, git able to reach GitHub). If the --version
-   inside step 1's one command does not end with "setup-prompt-compat 27", or the command says the pasted prompt is
-   not the installer's, stop and run no other step: this prompt is v27, and a copy that does not match the installer
-   must not be used. But if the error says this installer is for v27, this prompt's own number, the copy matches and
+   inside step 1's one command does not end with "setup-prompt-compat 28", or the command says the pasted prompt is
+   not the installer's, stop and run no other step: this prompt is v28, and a copy that does not match the installer
+   must not be used. But if the error says this installer is for v28, this prompt's own number, the copy matches and
    only step 1's command was changed: run it again once, exactly as written here, and stop as above if it stops the
    same way again. When step 1 stops here, if the command's error says what to
    tell me, tell me that, in its words; otherwise (--version printed another number and no such error), tell me to
@@ -461,8 +461,10 @@ the name in fix-request.md.
    says was renamed, moved or deleted, put it back under its name, sync it to this Mac in its app, or fix its
    [[source]] path; otherwise the fix that line names in parentheses (a sign-in with the account it belongs to, which
    is no sign-in to wait for, or Sync on its SharePoint page, or the [[source]] path). Do not add another folder in
-   its place unless I name it. If you cannot ask me then, add none and go on to step 2. That is not a deviation: do
-   not log it or stop, and say in your final message that I gave no answer, so no folder was added.
+   its place unless I name it. Whether or not that line names such a folder, if you cannot ask me whether to add
+   one, add none and go on to step 2, and still tell me in your final message any folder that line says is not on
+   disk and its fix. That is not a deviation: do not log it or stop, and say in your final message that I gave no
+   answer, so no folder was added.
    Second, if the list's NEXT: line says this Mac has a config whose folders could not be read, the list marks
    none. If that line also says to re-run --list-folders to mark them, run
    `~/src/agent-context-sync/scripts/install.sh --list-folders` once and go by what it prints: if the re-run's NEXT:
