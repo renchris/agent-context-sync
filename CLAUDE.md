@@ -26,7 +26,9 @@ make -C probes CFLAGS='-O2 -Wall -Wextra -Werror' && make -C probes check
 weekly, so the network, not a commit, decides its result.
 
 `scripts/gate.sh` runs exactly this list and is the land gate: the same checks and the same full test set
-(`tests/test_deploy_pack.py` first, then the rest, after a check that the two parts collect the full set), ending
+(the whole-tree scanners `tests/test_contracts.py` and `tests/test_lints.py` first, so a red one stops it in seconds,
+then `tests/test_deploy_pack.py`, then the rest, after a check that the three parts collect the full set, each test
+once), ending
 `GATE GREEN at <sha>`. It never reads the journal below. Lanes pre-gate with `scripts/gate.sh --affected`: every
 static step, then the test files the diff from `origin/main` can turn red (the files it touches, their direct
 importers, the readers of a touched doc, and the whole-tree scanners); a change to `tests/conftest.py`,

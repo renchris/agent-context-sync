@@ -24576,6 +24576,21 @@ count passed every test, since the pins were 1 of 1, 2 of 2 and 4 of 4. 1 of 4 (
 the case where they differ; the full and the streamed call site are pinned on it. No code moved. Test:
 `test_convert_formats.py::test_xlsx_one_uncached_cell_of_four_takes_the_pronoun_of_one`.
 
+**The land gate runs its scanners first, and a killed gate is no green verdict (V93; `scripts/gate.sh`; landed
+after the other five lanes).** All three red land gates of round 17 failed in `tests/test_contracts.py`, which ran
+in the last part, after about 25 minutes of the rest, so each held the shared land lock 25 to 33 minutes.
+`full_set` now runs a first part `scan` (`tests/test_contracts.py` and `tests/test_lints.py`, about 4 s together)
+before `deploy_pack` and `rest`; the land gate's `set -e` stops at a red part, so a red scanner ends it in seconds.
+`test_governance.py` (about a minute alone) stays in `rest`. `union_check` collects four sets: the ids of scan,
+deploy_pack and rest must union to the full set's and their counts add up to its count, so no test runs twice or
+not at all. CLAUDE.md's gate paragraph says so. And `gate.sh` traps HUP, INT and TERM to exit 129, 130 and 143:
+under /bin/bash 3.2 a gate a SIGTERM ended while a pipeline ran entered its EXIT trap with `$?` 0, so
+`gate-verdicts.log` recorded a killed run as `rc=0` (lane B's round 17 pre-gate of a73574af: rc=0 over a journal
+with no summary line and a failed test). Not built: ship-land refusing a HEAD with no green `--affected` verdict,
+which trusted that log. Tests: `test_gate_journal.py::test_a_gate_a_signal_ends_logs_a_failed_verdict`,
+`test_gate_journal.py::test_the_scanners_run_first_and_every_test_runs_in_one_part` (gate.sh's own functions, over
+a stand-in `uv`).
+
 ### 16.139 Round 18: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 18 lane D)
 
 Docs and dated lines that lagged round 17's code (`docs/plans/bring-back-ocr.md`, "B13 round 18"; specs

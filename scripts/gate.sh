@@ -29,6 +29,11 @@ finish() {
   rm -rf "$tmp"
 }
 trap finish EXIT
+# A signal exits with its own status, so the verdict line is not rc=0: bash 3.2 enters the EXIT trap with $?=0
+# when a SIGTERM kills it while a pipeline runs, and the log read a killed run as green (B13 round 18 V93)
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 step() {
   echo "== $*"
@@ -70,23 +75,36 @@ count_timing_skips() {
 }
 journal_cli() { uv run --locked python tests/_gate_journal.py "$@"; }
 
-# Every test runs in exactly one of the two parts: the parts' nodeids must union to the full set's.
+# The whole-tree scanners that run first, so a red one stops the land gate in seconds, before the 20-odd
+# minutes of the rest: all three red land gates of round 17 were tests/test_contracts.py (B13 round 18 V93).
+# test_governance.py, about a minute alone, stays in the rest.
+SCAN=(tests/test_contracts.py tests/test_lints.py)
+SCAN_IGNORE=(--ignore=tests/test_contracts.py --ignore=tests/test_lints.py)
+
+# Every test runs in exactly one of the three parts: the parts' nodeids must union to the full set's, and their
+# counts add up to its count, so no test runs in two.
 union_check() {
   local part pids=""
-  for part in full pack rest; do
+  for part in full scan pack rest; do
     case $part in
       full) set -- ;;
+      scan) set -- "${SCAN[@]}" ;;
       pack) set -- tests/test_deploy_pack.py ;;
-      rest) set -- --ignore=tests/test_deploy_pack.py ;;
+      rest) set -- --ignore=tests/test_deploy_pack.py "${SCAN_IGNORE[@]}" ;;
     esac
     { pytest_q --collect-only "$@" | LC_ALL=C grep '::' | LC_ALL=C sort >"$tmp/$part.ids"; } &
     pids="$pids $!"
   done
   for part in $pids; do wait "$part"; done
-  LC_ALL=C sort -u "$tmp/pack.ids" "$tmp/rest.ids" >"$tmp/union.ids"
-  echo "== collect: full $(wc -l <"$tmp/full.ids"), deploy_pack $(wc -l <"$tmp/pack.ids"), rest $(wc -l <"$tmp/rest.ids")"
-  if ! cmp -s "$tmp/full.ids" "$tmp/union.ids"; then
-    echo "GATE RED: deploy_pack + rest does not collect the full set:" >&2
+  LC_ALL=C sort -u "$tmp/scan.ids" "$tmp/pack.ids" "$tmp/rest.ids" >"$tmp/union.ids"
+  local full scan pack rest
+  full=$(wc -l <"$tmp/full.ids" | tr -d ' ')
+  scan=$(wc -l <"$tmp/scan.ids" | tr -d ' ')
+  pack=$(wc -l <"$tmp/pack.ids" | tr -d ' ')
+  rest=$(wc -l <"$tmp/rest.ids" | tr -d ' ')
+  echo "== collect: full $full, scan $scan, deploy_pack $pack, rest $rest"
+  if ! cmp -s "$tmp/full.ids" "$tmp/union.ids" || [ $((scan + pack + rest)) != "$full" ]; then
+    echo "GATE RED: scan + deploy_pack + rest does not collect the full set, each test once:" >&2
     diff "$tmp/full.ids" "$tmp/union.ids" | head -20 >&2
     exit 1
   fi
@@ -144,8 +162,9 @@ run_part() {
 
 full_set() {
   union_check
+  run_part scan -n 2 "${SCAN[@]}"
   run_part deploy_pack -n 4 tests/test_deploy_pack.py
-  run_part rest -n auto --ignore=tests/test_deploy_pack.py
+  run_part rest -n auto --ignore=tests/test_deploy_pack.py "${SCAN_IGNORE[@]}"
 }
 
 if [ "$mode" = affected ]; then

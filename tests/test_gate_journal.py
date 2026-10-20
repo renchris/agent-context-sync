@@ -131,3 +131,103 @@ def test_a_lane_part_that_fails_keeps_its_whole_output_beside_its_journal(tmp_pa
     assert rc == 1 and again.startswith(text) and "== resumed by " in again, "a resume keeps the killed run's"
     rc, out = _lane_part(tmp_path, 0)
     assert rc == 0 and not out.exists(), "a green part leaves no log"
+
+
+def _gate_functions(*names: str) -> str:
+    """The named functions of scripts/gate.sh, and its top-level ``trap`` and ``SCAN`` lines, as text."""
+    script = (Path(__file__).parents[1] / "scripts" / "gate.sh").read_text(encoding="utf-8")
+    parts = [ln for ln in script.splitlines() if ln.startswith(("trap ", "SCAN=", "SCAN_IGNORE="))]
+    for name in names:
+        found = re.search(rf"(?ms)^{name}\(\) \{{.*?^\}}$", script)
+        assert found is not None, f"gate.sh's {name}"
+        parts.append(found.group(0))
+    return "\n".join(parts)
+
+
+def test_a_gate_a_signal_ends_logs_a_failed_verdict(tmp_path: Path) -> None:
+    """B13 round 18 V93: under /bin/bash 3.2 a gate.sh that SIGTERM ended while a pipeline ran entered its
+    EXIT trap with ``$?`` 0, so gate-verdicts.log read a killed run as green (lane B's pre-gate of round 17:
+    rc=0 over a journal with no summary line and a failed test). A signal now exits with its own status."""
+    harness = (
+        "set -euo pipefail\n"
+        f"mode=lane tree=t0 salt=s0 skipped_timing=0 resumed=0 common='{tmp_path}' tmp='{tmp_path}/tmp'\n"
+        f"mkdir -p '{tmp_path}/tmp'\n"
+        f"{_gate_functions('finish')}\n"
+        f"echo started > '{tmp_path}/started'\n"
+        "sleep 30 | cat\n"
+    )
+    bash = "/bin/bash" if Path("/bin/bash").exists() else "bash"
+    proc = subprocess.Popen([bash, "-c", harness], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        for _ in range(200):
+            if (tmp_path / "started").exists():
+                break
+            subprocess.run(["sleep", "0.05"], check=True)
+        proc.terminate()
+        proc.wait(timeout=60)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    [verdict] = (tmp_path / "gate-verdicts.log").read_text(encoding="utf-8").splitlines()
+    assert " rc=143 " in verdict, verdict
+
+
+FAKE_COLLECT = """#!/bin/sh
+# a stand-in `uv run --locked pytest -q -p no:cacheprovider --collect-only ARGS`: ids by what ARGS select
+shift 6
+all="tests/test_contracts.py::a tests/test_lints.py::b tests/test_deploy_pack.py::c tests/test_cycle.py::d"
+for id in $all; do
+  file=${id%%::*}
+  if [ $# -eq 0 ]; then echo "$id"; continue; fi
+  picked=no named=no
+  for a in "$@"; do
+    case $a in
+      --ignore=*) [ "${a#--ignore=}" = "$file" ] && picked=out ;;
+      tests/*) named=yes; [ "$a" = "$file" ] && [ "$picked" != out ] && picked=yes ;;
+    esac
+  done
+  if [ "$named" = yes ]; then [ "$picked" = yes ] && echo "$id"; else [ "$picked" != out ] && echo "$id"; fi
+done
+[ -n "${FAKE_TWICE:-}" ] && [ "$*" = "${FAKE_TWICE}" ] && echo "tests/test_cycle.py::d"
+exit 0
+"""
+
+
+def test_the_scanners_run_first_and_every_test_runs_in_one_part(tmp_path: Path) -> None:
+    """B13 round 18 V93: all three red land gates of round 17 failed in tests/test_contracts.py, which ran in
+    the last part, after about 25 minutes of the rest, so each held the shared land lock that long. The
+    cheap whole-tree scanners now run first, and the union check takes three parts: their ids union to the
+    full set's and their counts add up to its count, so no test is run twice or not at all."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text(FAKE_COLLECT, encoding="utf-8")
+    (bin_dir / "uv").chmod(0o755)
+    (tmp_path / "tmp").mkdir()
+    harness = (
+        "set -euo pipefail\n"
+        f"tmp='{tmp_path}/tmp'\n"
+        'pytest_q() { uv run --locked pytest -q -p no:cacheprovider "$@"; }\n'
+        'run_part() { echo "PART $*"; }\n'
+        "finish() { :; }\n"
+        f"{_gate_functions('union_check', 'full_set')}\n"
+        "full_set\n"
+    )
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
+
+    def gate(**extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", "-c", harness],
+            env={**env, **extra},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
+    done = gate()
+    assert done.returncode == 0, done.stderr
+    parts = [ln.split()[1] for ln in done.stdout.splitlines() if ln.startswith("PART ")]
+    assert parts == ["scan", "deploy_pack", "rest"], done.stdout
+    assert "== collect: full 4, scan 2, deploy_pack 1, rest 1" in done.stdout
+    twice = gate(FAKE_TWICE="--collect-only tests/test_contracts.py tests/test_lints.py")
+    assert twice.returncode == 1 and "each test once" in twice.stderr, (twice.stdout, twice.stderr)
