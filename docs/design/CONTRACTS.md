@@ -23410,6 +23410,8 @@ loop's read of its state hits the damage (the items or runs table, measured). Da
 not touch (the cursors table, measured) still passes status with no FAIL; its detail read of the sources
 (`source_statuses`, through `get_cursor`) hits the damage and prints only `status: cannot read the state: ...`, so
 pointing at sync stays right.
+Amended 2026-10-20, §16.143 W41: status's own probe now reads each table's first row (`doctor.manifest_unreadable`),
+so damage under the cursors table FAILs `state_dir.manifest` too, and the first sync stops on it at exit 65.
 
 **The bash 3.2 comment lint reads a braced substitution** (U108). `substitution_comment_apostrophes` opened a block
 only at a line ending `$(` or `<(`, so a comment inside `done < <({ ... }` or `"$({ ... })"` (four such blocks in
@@ -23764,6 +23766,9 @@ Amended 2026-10-19, §16.137 V59: the one-line codes are an allowlist of the Mac
 SQLITE_BUSY and SQLITE_LOCKED, and also SQLITE_FULL, SQLITE_READONLY, SQLITE_IOERR, SQLITE_CANTOPEN and SQLITE_PERM
 (extended codes included), which U72 had turned into raw tracebacks; any other code (SQLITE_ERROR, MISUSE, an
 IntegrityError) still propagates with its traceback.
+Amended 2026-10-20, §16.143 W41: status's probe reads each table's first row too, and the damage a command
+stopped on is kept for status while the file is the same, so damage under a table no status read touches no longer
+shows only at a sync; the sync stops on it at exit 65, not as a failed source.
 
 **U70: two tests prove what they claim (tests only).** `test_a_manifest_a_sync_holds_is_no_fail` held its lock on
 the WAL-mode manifest, where a writer never blocks the probe's read; a rollback-journal copy under the same lock now
@@ -24001,6 +24006,8 @@ Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status prints that `sta
 loop's read hits the damage. Damage under a table the loop's read does not touch (the cursors table, measured) has
 no `state_dir.manifest` line, though status's detail read of the sources prints `status: cannot read the state:
 ...`.
+Amended 2026-10-20, §16.143 W41: status's own probe now reads each table's first row, so damage under the cursors
+table has the `state_dir.manifest` FAIL too.
 
 **The guides say a git remote's host is redacted and kept** (U85). Since §16.123 T88 both readers redact the host of
 a git remote's URL as a `<proxy-N>`, and `--log-start` and `--log` write it to `setup/proxy-hosts`
@@ -25077,6 +25084,33 @@ mean a damaged database, and moving an intact manifest aside throws its history 
 sqlite will not open exit 1. Handled where it happens, not with a broad `OSError` arm that would hide code
 defects. Status's owner and mode FAIL is lane RA's W64 (§16.140), which this line's words were sent to. Test:
 `test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (file and folder; skipped as root).
+
+**W41: damage under any table fails status and stops the sync (`agentsync.cycle`, `agentsync.ops.doctor`,
+`agentsync.cli`, `agentsync.setup_report`; amends §16.131 U64, §16.129 U55 and §16.133 U84).** Damage under the cache or outputs table left
+status at exit 0 with no FAIL while the report's evidence lines said `see Doctor's state_dir.manifest line`, and
+the sync failed the source (exit 1, a traceback, `BLOCKING CYCLE -: cycle failed`, `NEXT: ... run sync again`):
+`_run_source`'s and `run()`'s `except Exception` turned SQLITE_CORRUPT into a source's or the cycle's failure, so
+`cli._state_readable` never saw it. Measured by the test below on the pre-fix source: 13 of the 14 tables (all but
+meta, items and runs, which status's loop read already reached) and both last-leaf cases failed. Five parts:
+(1) `cycle._manifest_unreadable` (`doctor.unreadable_code` on a `sqlite3.DatabaseError`) re-raises out of
+`_run_source`'s isolation; (2) `run()`'s handler, for the same error, discards pending and writes the run's end
+best effort (logged at debug), then re-raises with no stack, so the CLI says `state: <db> cannot be read: ...
+(fix: <MANIFEST_FIX>)` and exits 65; (3) `doctor.manifest_unreadable` reads each table's first row, `SELECT * FROM
+"<table>" NOT INDEXED LIMIT 1` (one page per table: an index answers `SELECT 1`, `rowid` and `count(*)` and misses
+a damaged cache root), and `cli._state_readable` runs it before the command, so damage under a table a sync never
+reads (tombstones, depends) stops the sync as it FAILs status; (4) damage deeper than a first row, which only the
+read that reaches it sees: an exit 65 writes `manifest-unreadable.json` beside the manifest
+(`doctor.record_unreadable`), keyed to its device, inode, size and mtime, and `state_dir.manifest` FAILs from it
+(`... (a sync read it)`, read by `doctor.recorded_unreadable`) while the file is the same; one moved aside, restored or written since drops it; (5) the setup
+report keeps its evidence read's SQLITE_NOTADB or SQLITE_CORRUPT (`_Mirror.unreadable`), and its Doctor section
+adds `doctor.manifest_damaged`'s FAIL when doctor printed none (`_with_evidence_damage`), so its `see Doctor's
+state_dir.manifest line` names a line that is there, and the Summary files it as the state file that cannot be
+read. The report's Loop line still reads the loop as it is (a read the damage does not reach). Lane D's round 19
+W62 (§16.145, landed first) reworded round 18's V73 dated lines at §16.129 and §16.133, which say damage under the
+cursors table passes status; it now FAILs status, and each has W41's dated line. Test:
+`test_cli.py::test_damage_under_any_table_fails_status_and_stops_the_sync` (every table's root, and the last leaf
+of cache and outputs, with the report before and after the sync), and the probe line of
+`test_a_manifest_damaged_under_a_table_status_reads_fails_status`.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 

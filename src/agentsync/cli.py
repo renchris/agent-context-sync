@@ -699,13 +699,18 @@ def _state_readable(config: Config) -> Iterator[None]:
     """A database error whose cause is the manifest itself, no database or a damaged one, becomes one line
     naming the file and the person's fix (exit 65), never a traceback; init and add-source then stop where
     install.sh names the owner, not "fix the error above, then re-run" (B13 round 16 T12). A locked or busy
-    database is raised as it was."""
+    database is raised as it was. The read-only probe runs first, so damage under a table this command never
+    reads stops it as it FAILs status (B13 round 19 W41: a sync passed over a damaged table that status, which
+    probes each table, then called damaged)."""
+    db = expand(config.state_paths.db)
+    found = doctor.manifest_unreadable(db)
+    if found is not None:
+        raise StateUnreadableError(f"{db} cannot be read: {found}") from found
     try:
         yield
     except sqlite3.DatabaseError as exc:
         # the manifest is the one database these commands open: its own NOTADB or CORRUPT, or one the
         # read-only probe finds, names it (damage under a table shows only when a command reads that table)
-        db = expand(config.state_paths.db)
         if not doctor.unreadable_code(exc) and doctor.manifest_unreadable(db) is None:
             raise
         raise StateUnreadableError(f"{db} cannot be read: {exc}") from exc
@@ -2737,6 +2742,7 @@ def _main(argv: Sequence[str] | None) -> int:
         _err(f"configuration error: {exc}")
         return EXIT_CONFIG
     except StateUnreadableError as exc:
+        doctor.record_unreadable(_state_db(args), exc.__cause__ or exc)  # for status (B13 round 19 W41)
         _err(f"state: {exc} (fix: {doctor.MANIFEST_FIX})")
         return EXIT_STATE
     except AuthBlockedError as exc:
@@ -2765,6 +2771,7 @@ def _main(argv: Sequence[str] | None) -> int:
         # curate, purge) says the same one line and exits 65, as --help says (B13 round 17 U66)
         db = _state_db(args)
         if doctor.unreadable_code(exc) or doctor.manifest_unreadable(db) is not None:
+            doctor.record_unreadable(db, exc)
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
         if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its

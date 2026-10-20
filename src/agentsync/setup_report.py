@@ -3100,6 +3100,8 @@ class _Run:
         self.agent_named: tuple[int | None, int, frozenset[str]] | None = None
         self.evidence_steps = 0  # the evidence parts' looks at the clock while SQLite worked (_Mirror.steps)
         self.evidence_statements: tuple[str, ...] = ()  # the statements they ran
+        # their read's SQLITE_NOTADB or SQLITE_CORRUPT, which the Doctor section then FAILs (B13 round 19 W41)
+        self.evidence_unreadable: sqlite3.DatabaseError | None = None
         self.now = datetime.now(UTC)  # the report's moment (build_report sets it)
         self.git: Path | None = None  # what /usr/bin/git runs, looked up once per report (_git_ro_err)
         self.provider_states: dict[Path, str] = {}  # doctor.provider_state per provider folder, read once
@@ -5446,6 +5448,7 @@ def _doctor(r: _Run) -> list[str]:
     finally:  # a doctor done within its first share moves nothing
         r.deadline = max(deadline, time.monotonic() + held)
         r.doctor_grace = r.deadline - deadline
+    lines = _with_evidence_damage(r, config, lines)
     tags: Counter[str] = Counter()
     ok_names: list[str] = []
     shown: list[str] = []
@@ -5499,6 +5502,22 @@ def _doctor(r: _Run) -> list[str]:
         "",
         f"{len(ok_names)} ok: {', '.join(ok_names) or 'none'}",
     ]
+
+
+def _with_evidence_damage(r: _Run, config: Config, lines: list[str]) -> list[str]:
+    """Doctor's ``lines`` with its state_dir.manifest FAIL, after the other state_dir lines, when the evidence
+    parts' read of the manifest raised SQLITE_NOTADB or SQLITE_CORRUPT and doctor printed none: damage deeper
+    in a table than doctor's probe reads, which the evidence's ``see Doctor's state_dir.manifest line`` named
+    (B13 round 19 W41: Doctor said 0 FAIL under that pointer)."""
+    exc = r.evidence_unreadable
+    names = [m.group(2) if (m := _DOCTOR_TAG_RE.match(ln)) else None for ln in lines]
+    if exc is None or "state_dir.manifest" in names:
+        return lines
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    failed = doctor.format_results([doctor.manifest_damaged(expand(config.state_paths.db), exc)]).splitlines()
+    at = max((i + 1 for i, n in enumerate(names) if n is not None and n.startswith("state_dir.")), default=0)
+    return [*lines[:at], *failed, *lines[at:]]
 
 
 _STATUS_UNREAD = "status: cannot read the state:"
@@ -5879,6 +5898,7 @@ class _Mirror:
         self.latest = latest
         self.steps = 0
         self.statements: list[str] = []
+        self.unreadable: sqlite3.DatabaseError | None = None  # the first SQLITE_NOTADB or SQLITE_CORRUPT read
         self.kept: dict[str, object] = {}
         self._conn: sqlite3.Connection | None = None
 
@@ -5990,6 +6010,12 @@ class _Mirror:
         except sqlite3.OperationalError:
             if self.left() <= 0:
                 raise _OutOfTimeError from None
+            raise
+        except sqlite3.DatabaseError as exc:
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+            if self.unreadable is None and doctor.unreadable_code(exc):
+                self.unreadable = exc
             raise
 
     def close(self) -> None:
@@ -7586,6 +7612,7 @@ def _evidence(r: _Run) -> list[str]:
     finally:
         r.evidence_steps = mirror.steps
         r.evidence_statements = tuple(mirror.statements)
+        r.evidence_unreadable = mirror.unreadable
         mirror.close()
     unmeasured = [line for line in out if "not measured" in line]
     r.facts.evidence = len(unmeasured)
@@ -8968,6 +8995,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     from_config: list[str] = []
     from_remote: list[str] = []
     read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
+    read_error = read_error or r.evidence_unreadable  # damage only the evidence read reached (W41)
     unreadable = r.config is not None and _state_unreadable(r.config, read_error)
     from_state: list[str] = []
     timed_out = _helpers_timed_out(r.config) if r.config is not None else {}

@@ -3086,11 +3086,12 @@ def _damage_table_root(db: Path, table: str) -> int:
     return int(root)
 
 
-def _damage_table_leaf(db: Path, table: str) -> int:
+def _damage_table_leaf(db: Path, table: str, *, last: bool = False) -> int:
     """Write junk over a leaf page of ``table`` that is not its root, after a checkpoint, leaving the header,
     the schema and the root intact; returns the page number. The root must be an interior page (enough
     rows); its first child is found by reading the b-tree page itself, as the macOS sqlite3 has no dbstat
-    (B13 round 18 V42: the root-page damage above never reached a leaf below an interior page)."""
+    (B13 round 18 V42: the root-page damage above never reached a leaf below an interior page). ``last``:
+    the right-most leaf instead, which a read of the table's first row never reaches (B13 round 19 W41)."""
     conn = sqlite3.connect(db)
     try:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -3108,6 +3109,9 @@ def _damage_table_leaf(db: Path, table: str) -> int:
         if kind == 0x0D:  # a table leaf
             break
         assert kind == 0x05, f"page {page}: not a table b-tree page ({kind:#x})"
+        if last:  # the interior header's right-most pointer
+            page = int.from_bytes(data[at + 8 : at + 12], "big")
+            continue
         first = int.from_bytes(data[at + 12 : at + 14], "big")  # the first cell's offset in its page
         page = int.from_bytes(data[(page - 1) * size + first : (page - 1) * size + first + 4], "big")
     assert page != root, "the table fits on its root page: no leaf below it"
@@ -3141,7 +3145,8 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
         _damage_table_leaf(db, "items")
     else:
         assert _damage_table_root(db, "items") > 1
-    assert doctor.manifest_unreadable(db) is None  # the schema probe reads past it
+    # B13 round 19 W41: the probe reads each table's first row, so it no longer reads past either page
+    assert doctor.manifest_unreadable(db) is not None
     capsys.readouterr()
     rc, out = _status(cfg, capsys)
     fails = [ln for ln in out if ln.startswith("[FAIL] ")]
@@ -3160,6 +3165,93 @@ def test_a_manifest_damaged_under_a_table_status_reads_fails_status(
     assert len([ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, out
     if where == "leaf":
         assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+
+
+_MANIFEST_TABLES = (
+    "meta",
+    "sources",
+    "items",
+    "runs",
+    "run_sources",
+    "cache",
+    "outputs",
+    "cursors",
+    "depends",
+    "item_aliases",
+    "redacted_items",
+    "run_changes",
+    "schema_migrations",
+    "tombstones",
+)
+
+
+@pytest.mark.parametrize(
+    "table, where",
+    [(t, "root") for t in _MANIFEST_TABLES] + [("cache", "last leaf"), ("outputs", "last leaf")],
+)
+def test_damage_under_any_table_fails_status_and_stops_the_sync(
+    initialised: Config,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    table: str,
+    where: str,
+) -> None:
+    """B13 round 19 W41: damage under the cache or outputs table passed status (exit 0, no FAIL), the report
+    pointed at a Doctor state_dir.manifest line it never printed, and the sync failed the source, exit 1,
+    with a traceback and "run sync again": the cycle's catches made SQLITE_CORRUPT a source's failure. Status
+    now reads each table's first row (``NOT INDEXED``: an index answers ``count(*)``), every command a
+    damaged table stops says the one state line and exits 65, and damage deeper in a table that only a sync
+    reaches is kept for status while the file is the same."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    monkeypatch.setattr(setup_report, "_launchctl_print", lambda run, label: (113, "not loaded"))
+    cfg = str(initialised.config_path)
+    [src] = [s for s in initialised.sources if s.kind is SourceKind.LOCAL]
+    assert src.path is not None
+    if where != "root":
+        bulk = expand(src.path) / "bulk"
+        bulk.mkdir()
+        for i in range(160):
+            (bulk / f"note-{i:03d}.txt").write_text(f"Contoso note {i}.\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    report = tmp_path / "r.md"
+    if where == "root":
+        _damage_table_root(db, table)
+    else:
+        _damage_table_leaf(db, table, last=True)
+        assert doctor.manifest_unreadable(db) is None  # a first-row read misses the last leaf
+        # before any sync reaches it, the report's evidence read does: its Doctor FAILs for the pointer
+        assert cli.main(["setup-report", "--out", str(report), "--config", cfg]) == cli.EXIT_OK
+        text = report.read_text(encoding="utf-8").splitlines()
+        assert [ln for ln in text if "see Doctor's state_dir.manifest line" in ln], text
+        assert len([ln for ln in text if ln.startswith("[FAIL] state_dir.manifest ")]) == 1, text
+        assert [ln for ln in text if ln.startswith("- doctor: 1 FAIL")], text
+        for i in range(160):  # every file changes, so the sync reads every row
+            (expand(src.path) / "bulk" / f"note-{i:03d}.txt").write_text(
+                f"Contoso {i} v2.\n", encoding="utf-8"
+            )
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_STATE
+    err = capsys.readouterr().err
+    assert "Traceback" not in err and "BLOCKING CYCLE" not in err and "sync again" not in err, err
+    (state,) = [ln for ln in err.splitlines() if ln.startswith("state: ")]
+    assert state.startswith(f"state: {db} cannot be read: ") and state.endswith(
+        f"(fix: {doctor.MANIFEST_FIX})"
+    )
+    rc, out = _status(cfg, capsys)
+    fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1 and fails[0].startswith("[FAIL] state_dir.manifest "), (
+        out
+    )
+    assert cli.main(["setup-report", "--out", str(report), "--config", cfg]) == cli.EXIT_OK
+    capsys.readouterr()
+    text = report.read_text(encoding="utf-8").splitlines()
+    (summary,) = [ln for ln in text if ln.startswith("- doctor: ")]
+    assert summary.startswith("- doctor: 1 FAIL"), summary
+    if any("see Doctor's state_dir.manifest line" in ln for ln in text):
+        assert [ln for ln in text if ln.startswith("[FAIL] state_dir.manifest ")], text
 
 
 @pytest.mark.parametrize("hint", ["by hand", "install.sh"])

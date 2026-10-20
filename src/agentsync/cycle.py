@@ -1952,6 +1952,14 @@ class _Cycle:
                     self.lock.beat(LockStage.RETENTION)
                     commit_sha = self._retention(commit_sha)
         except Exception as exc:  # a cycle-level failure: nothing is promoted, the report says why
+            if _manifest_unreadable(exc):  # the CLI's state line and exit 65, no stack (B13 round 19 W41)
+                log.debug("cycle %d: the manifest cannot be read", self.run_id, exc_info=True)
+                try:  # best effort: the same file may refuse these too; the runs row then stays running
+                    self.manifest.discard_pending(self.run_id)
+                    self._after(self._report(commit_sha, promoted=False), "failed", ok_cycle=False)
+                except Exception:
+                    log.debug("cycle %d: not recorded", self.run_id, exc_info=True)
+                raise
             log.exception("cycle %d failed", self.run_id)
             self.manifest.discard_pending(self.run_id)
             self.findings.append(
@@ -3116,6 +3124,8 @@ class _Cycle:
             self.manifest.stage_cursor(src.id, None, self.run_id)
             self._record_error(src, acc, "throttled")
         except Exception as exc:  # isolate: this source fails, the others continue
+            if _manifest_unreadable(exc):  # every later write hits the same file (B13 round 19 W41)
+                raise
             log.exception("source %s failed", src.id)
             acc.failed = True
             acc.errors.append(_one_line(f"{type(exc).__name__}: {exc}"))
@@ -5599,6 +5609,16 @@ _STATE_LINES_META = "state_md_lines"
 """Manifest meta: ``{source id: [run id, [alarm, ...], [error, ...]]}``, each configured source's lines from
 the last run that selected it, which STATE.md shows under a source a later run did not select (B13 round 7
 H73)."""
+
+
+def _manifest_unreadable(exc: BaseException) -> bool:
+    """Whether ``exc`` is the manifest's SQLITE_NOTADB or SQLITE_CORRUPT (``doctor.unreadable_code``): the one
+    database a cycle opens is damaged, so it is no source's failure and no cycle's to report, but the CLI's
+    one line and exit 65 (B13 round 19 W41: damage under the cache or outputs table was a failed source, exit
+    1 and "run sync again")."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy: doctor imports this module
+
+    return isinstance(exc, sqlite3.DatabaseError) and doctor.unreadable_code(exc)
 
 
 def _carried_entry(entry: object) -> CarriedLines | None:

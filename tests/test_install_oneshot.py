@@ -6690,6 +6690,10 @@ CONFIG_STOP = {
     "PT": "an invalid [policy] in policy.toml",
     "GV": "an invalid [governance] value in {cfg}",
     "MF": "agentsync's state file, which cannot be read",
+    # B13 round 19 W41: this build's probe reads each table's first row and add-source stops on it, so a
+    # damaged table page is the config step's stop; an older installed build still says "state-table"
+    "TD": "agentsync's state file, which cannot be read",
+    "TD-items": "agentsync's state file, which cannot be read",
     "GR": "a git remote on the docs repo that [governance] does not allow",
 }
 
@@ -6743,7 +6747,10 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     if state in ("clean", "clean-real", "GR-allowed"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
-    if state.startswith("TD"):
+    # B13 round 19 W41: damage under an index root, which no NOT INDEXED table read touches, still stops
+    # step 2 at its status or first sync, and so does a table root under an older build (no table probe);
+    # under a table root, this build stops it at the config step
+    if state in ("TD-canonical", "TD-path", "TD-items-older"):
         assert last_line(cp).endswith(
             "; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its "
             "first sync): fixing that is the person's, and the step that stops prints the error"
@@ -6757,7 +6764,14 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
         "prints the error"
     ), last_line(cp)
     assert "(none is needed)" not in last_line(cp)
-    word = {"PT": "policy", "GV": "governance", "MF": "state", "GR": "remote"}[state]
+    word = {
+        "PT": "policy",
+        "GV": "governance",
+        "MF": "state",
+        "TD": "state",
+        "TD-items": "state",
+        "GR": "remote",
+    }[state]
     assert logged.endswith(f" note=listed-2 synced=1 config_err={word}"), logged
     for text in (last_line(cp), "\n".join(install_log(env))):
         assert "contoso.invalid" not in text and "refuse_unlabelled" not in text and "junk" not in text

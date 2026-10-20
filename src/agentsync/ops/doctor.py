@@ -14,6 +14,7 @@ import ctypes
 import enum
 import errno
 import functools
+import json
 import logging
 import os
 import plistlib
@@ -1094,15 +1095,26 @@ def environmental(exc: BaseException) -> bool:
 def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
     open (no file is created, nothing is written) of its schema, which every open of the manifest reads
-    first (a header alone can be intact over a damaged schema page); None when it reads, is missing, or is
-    only locked, busy or not openable now. Damage further in, under a table, shows when a command reads it
-    (``cli._state_readable``); status's own read of the loop's state is one such read, and its error FAILs
-    through :func:`manifest_damaged` (B13 round 17 U64, U95). Status does not scan the whole file, so damage
-    under a table no status read touches still shows only at a sync (B13 round 16 T12)."""
+    first (a header alone can be intact over a damaged schema page), and of each table's first row, ``SELECT *
+    FROM "<table>" NOT INDEXED LIMIT 1``: one page per table, its root and the leaf the first row is on (B13
+    round 19 W41: damage under the cache or outputs table, which no status read touches, passed status while
+    the sync failed; a plain ``SELECT 1``, ``rowid`` or ``count(*)`` is answered from an index and misses it).
+    None when it reads, is missing, or is only locked, busy or not openable now. Damage deeper in a table
+    shows when a command reads it (``cli._state_readable``); status's own read of the loop's state is one
+    such read, and its error FAILs through :func:`manifest_damaged` (B13 round 17 U64, U95), and a sync's is
+    kept for status by :func:`record_unreadable`."""
     try:
         conn = sqlite3.connect(f"file:{quote(str(db))}?mode=ro", uri=True, timeout=0.5)
         try:
-            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+            for (name,) in tables:
+                quoted = '"' + str(name).replace('"', '""') + '"'
+                try:
+                    conn.execute(f"SELECT * FROM {quoted} NOT INDEXED LIMIT 1").fetchone()
+                except sqlite3.DatabaseError as exc:
+                    if unreadable_code(exc) or environmental(exc):  # damaged; or held, so is every table
+                        raise
+                    # a table this read cannot take (a virtual one): the others are still read
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
@@ -1111,15 +1123,55 @@ def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     return None
 
 
+_UNREADABLE_RECORD = "manifest-unreadable.json"
+"""Beside the manifest: the error a command's read of it raised and exited 65 on, keyed to the file it read
+(:func:`record_unreadable`)."""
+
+
+def _manifest_key(db: Path) -> list[int]:
+    st = db.stat()
+    return [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns]
+
+
+def record_unreadable(db: Path, error: BaseException) -> None:
+    """Keep ``error``, the SQLITE_NOTADB or SQLITE_CORRUPT a command's read of the manifest at ``db`` exited
+    65 on, for status: damage deeper in a table than :func:`manifest_unreadable` reads shows only to the read
+    that reaches it, so status said healthy after a sync stopped on it (B13 round 19 W41). Keyed to the
+    file's device, inode, size and mtime, so a manifest moved aside, restored or written since drops it.
+    Best effort: a record that cannot be written leaves status as it was."""
+    try:
+        record = {"key": _manifest_key(db), "error": " ".join(str(error).split())[:300]}
+        db.with_name(_UNREADABLE_RECORD).write_text(json.dumps(record), encoding="utf-8")
+    except (OSError, ValueError):
+        pass
+
+
+def recorded_unreadable(db: Path) -> str | None:
+    """The error :func:`record_unreadable` kept for the manifest at ``db`` while it is still the same file,
+    else None."""
+    try:
+        record = json.loads(db.with_name(_UNREADABLE_RECORD).read_text(encoding="utf-8"))
+        same = isinstance(record, dict) and record.get("key") == _manifest_key(db)
+    except (OSError, ValueError):
+        return None
+    error = record.get("error") if same else None
+    return error if isinstance(error, str) and error else None
+
+
 def _check_manifest_readable(db: Path) -> list[CheckResult]:
     """``state_dir.manifest``: a FAIL, the person's, when the manifest is no database or a damaged one. Every
     other check reads past it ("cannot read the state"), and every sync and add-source stops on it, so
-    status exits 1 with the one check that says why (B13 round 16 T12). Nothing when its schema reads:
-    damage under a table that status's loop read hits FAILs through :func:`manifest_damaged`."""
+    status exits 1 with the one check that says why (B13 round 16 T12). Nothing when its schema and each
+    table's first row read: damage under a table that status's loop read hits FAILs through
+    :func:`manifest_damaged`, and damage a sync stopped on, while the file is the same, through
+    :func:`recorded_unreadable` (B13 round 19 W41)."""
     exc = manifest_unreadable(db)
-    if exc is None:
+    if exc is not None:
+        return [manifest_damaged(db, exc)]
+    recorded = recorded_unreadable(db)
+    if recorded is None:
         return []
-    return [manifest_damaged(db, exc)]
+    return [_bad("state_dir.manifest", f"{db} cannot be read: {recorded} (a sync read it)", fix=MANIFEST_FIX)]
 
 
 def manifest_damaged(db: Path, exc: sqlite3.DatabaseError) -> CheckResult:
