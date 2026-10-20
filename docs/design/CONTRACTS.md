@@ -25768,6 +25768,17 @@ from the pre-W66 `lints.py`). It now says only install.sh needs the sandbox, sin
 words and the Python report's are its string literals. Docstring only: the test body, which asserts CI's branch
 (`- gitleaks: not found (builtin patterns only)`) directly, is unchanged, so no test can fail without it.
 
+**The shell reads a stated step 1 prefix as the report does** (X83). `FRICTION_AWK`'s `stated()`, which
+`friction_latest_said`, `friction_step1_stated` and the attempt split read, took the separator run after
+`prompt vN` greedily and then needed an agent and a colon, so `prompt v27,,: Xcode stopped` stated nothing where
+`_STEP1_STATED_RE` backtracks to agent `,` (the renderer's `unstate()` already loops back). It now tries each
+shorter run, longest first, as `unstate()` does. The verifier found a second divergence in the same function: it
+read the what-text up to the line's end, so `prompt v27, Contoso Agent stopped | run: x` stated an agent ending in
+the fix column, where `parse_friction` cuts the fix at the last `|` and states nothing; the text is now cut there
+too. The finder's `[A-Za-z0-9_]` guard was not added: the required run already rejects `prompt v12_, ...`, so it
+would be dead code. Test: `test_the_shells_stated_words_are_the_reports` (six what-texts, `friction_latest_said`
+against `Attempt.stated`).
+
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
 The B13 round 20 items of lane P (specs `round20/items/X<n>.md`, the verifier's corrected fix built unless a

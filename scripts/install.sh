@@ -792,19 +792,26 @@ FRICTION_AWK='
 			return (365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + substr(t, 9, 2)) * 86400 \
 				+ substr(t, 12, 2) * 3600 + substr(t, 15, 2) * 60 + substr(t, 18, 2)
 		}
-		function stated(line,    w, a, c) { # sets SV and SR (the agent as written) from "prompt vN, <agent>:" at the start of the what-text
+		function stated(line,    w, a, c, l, y, p) { # sets SV and SR (the agent as written) from "prompt vN, <agent>:" at the start of the what-text
 			w = line; sub("^[^|]*[|][^|]*[|][^|]*[|][ \t]*", "", w)
+			# the what-text ends at the last "|", as parse_friction\047s rpartition cuts the fix column off (B13 round 20 X83)
+			if ((p = match(w, "[|][^|]*$"))) w = substr(w, 1, p - 1)
 			while (match(w, "^([\"\047 \t]|\342\200[\230\231])")) w = substr(w, RLENGTH + 1)
 			if (tolower(substr(w, 1, 8)) != "prompt v" || !match(substr(w, 9), "^[0-9][0-9]?[0-9]?")) return 0
 			SV = substr(w, 9, RLENGTH) + 0; w = substr(w, 9 + RLENGTH)
 			if (!match(w, "^[ ,:;-]+")) return 0
-			w = substr(w, RLENGTH + 1)
-			if (!match(w, "^[^: \t][^:]*:")) return 0
-			a = substr(w, 1, RLENGTH - 1); sub("[ \t]+$", "", a)
-			# _STEP1_STATED_RE reads at most 100 characters of agent: UTF-8 ones, so continuation bytes do not count
-			c = a; gsub("[\200-\277]", "", c)
-			if (length(c) > 100) return 0
-			SR = a; gsub("[ \t]+", " ", SR); return 1
+			# the agent may start inside that run, as _STEP1_STATED_RE backtracks: "prompt v27,,:" is agent ","
+			# (unstate() reads it so too, B13 round 20 X83); a shorter run only gives a longer agent
+			for (l = RLENGTH; l > 0; l--) {
+				y = substr(w, l + 1)
+				if (!match(y, "^[^: \t][^:]*:")) continue
+				a = substr(y, 1, RLENGTH - 1); sub("[ \t]+$", "", a)
+				# _STEP1_STATED_RE reads at most 100 characters of agent: UTF-8 ones, so continuation bytes do not count
+				c = a; gsub("[\200-\277]", "", c)
+				if (length(c) > 100) return 0
+				SR = a; gsub("[ \t]+", " ", SR); return 1
+			}
+			return 0
 		}
 		function restate(line) { HD = 0; PS = 0; W = stated(line) }
 		function track(line,    new) {

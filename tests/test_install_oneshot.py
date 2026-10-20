@@ -7979,6 +7979,43 @@ def test_a_slow_first_start_of_pandoc_is_the_installers_wait_and_not_the_status_
     assert any(ln.startswith("[ok  ] pandoc ") for ln in again.stdout.splitlines())
 
 
+@pytest.mark.parametrize(
+    ("what", "said"),
+    [
+        ("prompt v27,,: Xcode stopped | -", ("v27", ",")),
+        ("prompt v27,,: Xcode stopped | run: xcode-select --install", ("v27", ",")),
+        ("prompt v27, Contoso Agent stopped | run: xcode-select --install", None),
+        ("prompt v27, Contoso Agent: git pull exited 1 | -", ("v27", "Contoso Agent")),
+        ("prompt v1234, Contoso: x | -", None),
+        ("prompt v12_, Contoso: x | -", None),
+    ],
+)
+def test_the_shells_stated_words_are_the_reports(what: str, said: tuple[str, str] | None) -> None:
+    """B13 round 20 X83: FRICTION_AWK's stated() took the separator run after the version greedily, so
+    ``prompt v27,,: x`` stated nothing where _STEP1_STATED_RE backtracks to agent ","; and it read the
+    what-text up to the fix column, so ``prompt v27, Contoso Agent stopped | run: x`` stated an agent ending
+    in the fix where parse_friction, which cuts the fix at the last "|", states nothing. friction_latest_said
+    gives what the report's Attempt.stated gives, for a header-less attempt that one step 1 error opens."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [body] = re.findall(r"^FRICTION_AWK='(.*?)'$", script, re.MULTILINE | re.DOTALL)
+    [s1] = re.findall(r"^STEP1_ERROR_RE='([^']*)'$", script, re.MULTILINE)
+    shell = "\n".join(
+        [
+            f"FRICTION_AWK={shlex.quote(body)}",
+            f"STEP1_ERROR_RE={shlex.quote(s1)}",
+            "NEW_SESSION_GAP=600",
+            _shell_function("friction_latest_said"),
+            "friction_latest_said",
+        ]
+    )
+    log = f"2026-10-20T10:00:00Z | step 1 | error | {what}\n"
+    cp = subprocess.run([BASH32, "-c", shell], input=log, capture_output=True, text=True, check=True)
+    stated = setup_report.parse_friction(log).attempts[-1].stated
+    want = {"Prompt": said[0], "Agent": said[1]} if said else {}
+    assert stated == want, stated
+    assert cp.stdout == ("\t".join(said) if said else "\t") + "\n", cp.stdout
+
+
 def _shell_function(name: str) -> str:
     """install.sh's function ``name`` as the script has it: from ``name() {`` to the brace that closes it."""
     found = re.search(rf"(?ms)^{name}\(\) \{{(?: #[^\n]*)?$.*?^\}}$", INSTALL_SH.read_text(encoding="utf-8"))
