@@ -8101,6 +8101,8 @@ other key that would be 0 is left out. No reader depended on the old content.
   (`conversion failed: converter unavailable`) is not counted, is not read while it still cannot start, and is
   converted in the first run in which it starts. `converted_failed` still counts a conversion in each run it
   failed in, so a later run with none converted the file or gave it up.
+  Amended 2026-10-19, §16.134 V75: or, while its converter still cannot start, left it unread, a
+  wait no run counts.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `reread_for` lets the report tell a current re-read record from a stale one. A record in manifest meta
   `reread:<source id>` says what it was written `for` (§16.27: the build, the suffixes with a converter, the
@@ -19421,6 +19423,7 @@ finder's "a capital next" alone was not built: it turned `OneDrive` into `<org-1
 Folders, libraries, generic pairs, context organisations and joined (`j`) pairs stay whole-word. Tests:
 `test_an_organisation_is_redacted_inside_a_longer_word` (both readers: Contoso, Storage, Box),
 `test_both_readers_hold_the_same_identifiers_whole`, and L66's tests.
+Amended 2026-10-19, §16.134 V1: an organisation that spells a report word is cut out of a longer word too; only joined names and context organisations stay whole-word.
 
 **A proxy host an earlier line names stays redacted once the proxy is unset** (M29; amends §16.75 J78). Both readers
 registered only the proxies in force when the report ran, so a friction line from an attempt whose git stop named a
@@ -21741,6 +21744,7 @@ last run's, with `(last run; install.log)`. One counted run, or a last run after
 not-on-disk clause (`_gone_clause`) keeps the list run right before the last install run. Test:
 `test_the_folders_line_counts_what_was_kept_added_and_named` (RT's two runs, a same-options retry, a run after the
 end line, counts that do not chain).
+Amended 2026-10-19, §16.134 V37: a last run after the end line whose config step added nothing (a retry confirming what an earlier run wrote) joins the chain; one that added a folder is still the last run's alone.
 
 Amended 2026-10-18, §16.122 T44: only for an attempt with a begin time, as the install line scopes; with no friction log, or an attempt
 with no begin time, the runs are the whole install.log, and the line is the last run's.
@@ -22546,6 +22550,7 @@ person's" (the loop's `background sync: ...;` form holds it); a run with no NEXT
 keeps the [FAIL]-only rule, since a NEXT required there would undo §16.116 S5 for the commonest report. Tests:
 `test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next`,
 `test_a_persons_fail_fix_is_not_counted_as_a_hint_for_the_agent`.
+Amended 2026-10-19, §16.134 V87: in a run with no NEXT yet, the state file's fix (`doctor.MANIFEST_FIX`) on any line is the person's too: every install.sh exit-65 NEXT gives that stop to the person.
 
 **The report's TCC_PENDING pattern is install.sh's** (T48). `_TCC_PENDING_FAIL_RE` and `blocking_fails`' grep
 were tied by a docstring only. Test:
@@ -23177,6 +23182,7 @@ report". It returns two groups: the ids `cycle.vanished_from` reports (present r
 hand-edited queue), each sorted; a report word in the second group is not registered. Every retired id is still
 registered otherwise, so an older log line quoting one stays redacted. Test:
 `test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_stays_a_word`.
+Amended 2026-10-19, §16.134 V51: the two reports do not number ids alike: the shell numbers by table place, the inbox's too, which this report skips; the claim is gone from both files' comments.
 
 **A state file no command can read has its own doctor bucket** (U5, U24, U41, one defect from three finders). With a
 damaged manifest.sqlite, step 2's NEXT and status call `state_dir.manifest`'s FAIL the person's, while the
@@ -23201,6 +23207,7 @@ whole). The pointer comes before the words, since a value pattern runs to the li
 needs it to fix the file.
 Tests: `test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted`,
 `test_a_config_the_sync_refuses_loads_but_says_so`.
+Amended 2026-10-19, §16.134 V19: the clause `(a value in the error is a placeholder here; ...)` is said only when the words hold a placeholder (an unknown key, a TOML error or a policy type error hold none, nor does a report with redaction off).
 
 **Every check the refused-configuration bucket holds is on the loads line** (U58; amends §16.122 T14). With a
 vanished source and a bad policy.toml at once, `_refusing_checks` put both FAILs under `(see Configuration)` while
@@ -23210,6 +23217,7 @@ check names, and the loads line the first refusal, the one `agentsync sync` prin
 sync also refuses it: <the rest>`, each worded as before (`_table_refusal`, `_Labels`). Its start is unchanged,
 so the prompt's finish keys ("loads: no", "loads: not") are unaffected. Test:
 `test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket` (the combined case).
+Amended 2026-10-19, §16.134 V45: a [governance] type error's value is `<value>` where its exception ends, before the refusals are joined, so `; once that is fixed, a sync also refuses it: ...` and its advice stay.
 
 **An earlier attempt that only listed the folders stopped** (U35). An attempt with an `Attempt:` line and nothing
 else (no event, no `end | finished`, no v4 line), whose only runs are `--list-folders` and whose last listed the
@@ -23230,6 +23238,7 @@ step` for a run that was killed), then `the newest earlier run's sync: <its word
 `_newer_sync` words it; that run's counts are tagged with its name, and install.out's sync line is not read as the
 last run's. The label (`sync` or `first sync`) comes from the last run's config note. Test:
 `test_the_sync_clause_names_an_earlier_runs_sync_when_the_last_run_stopped_before_its_own`.
+Amended 2026-10-19, §16.134 V48: the label (`sync` or `first sync`) comes from the config note of the run whose sync the line shows, not the last run's, whose failed config step logs no note.
 
 **A `--source-local` argument keeps its quotes in the install.out embed** (U10). `_source_local_shown` unquoted every
 argument and returned the redacted text bare, so the embed labelled "what the agent saw" showed installer guidance
@@ -23250,6 +23259,7 @@ leaves the field out. The report's `loop_next` hook caught only `OSError` and `A
 manifest's `sqlite3.DatabaseError` left the Loop line no NEXT; on any error it now gives what `agentsync status`
 prints then (`_next_or_fix`: rule 1's NEXT from the first FAIL's fix, here state_dir.manifest's, the person's).
 Test: `test_a_loop_stage_status_could_not_read_is_not_read_not_installed`.
+Amended 2026-10-19, §16.134 V10, V54: a [governance] value that does not load no longer hides `last runs:` (status hides only its HOLD and `retention:` lines), so such a home reads its stage from the manifest, `synced` on a Mac that synced; the line reads `- Loop: not read: status says <its words>; ...`, in no second bracket.
 
 **A part the report could not read says why in words** (U21; amends §16.40 N29 and §16.122 T15). T15 dropped the
 class name from a table's refusal and the loads line only: a damaged state file and a policy.toml that does not pass
@@ -23265,6 +23275,7 @@ sqlite's own plain words; `the configuration is refused (the governance.config o
 Kept: `loads: no: ConfigError: ...` (round 12 N11's pin, the prompt's finish key), a section's `This section failed:
 <type>: <message>` and the friction log's and install source's failure lines, which only an unexpected error
 reaches. Test: `test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name`.
+Amended 2026-10-19, §16.134 V11: status's words carry no bracket of their own: `the state file cannot be read: file is not a database`, and in status's guard `the configuration is refused: the governance.config [FAIL] line says why` (the NEXT guard keeps `governance.config or policy`).
 
 **The first report keeps its Doctor section: pandoc starts once, in Doctor** (U48; amends §16.114 Q60). All four
 reports of a session's first act said `- pandoc: ... exited 124: timed out after 5.0s`, `Doctor: _This section
@@ -23281,6 +23292,7 @@ still names install.sh's own doctor's warns and FAILs from install.out, which do
 `test_the_reports_pandoc_line_is_the_doctors_check_and_never_starves_doctor`,
 `test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code`,
 `test_the_pandoc_line_is_the_pandoc_the_converters_run`.
+Amended 2026-10-19, §16.134 V3, V49, V4, V81: the cut-off seconds are the wait the doctor call was given, the one float Doctor's own line names (`did not finish within N s`), not what was left after the cut; the doctor gets at least `_DOCTOR_GRACE_S` (20 s), and one still cut off says so in Doctor and in the Summary with the advice to write the report again when the Mac is idle; with no doctor hook a start past its limit gives `_PANDOC_SLOW_START` for the bundled pandoc only and `_PANDOC_BUSY_START` for a native or configured one, as §16.132 U104 does.
 
 ### 16.129 Round 17: installer, the shell report and the older build's copies (2026-10-19, wave B13 round 17 lane RB)
 
@@ -23630,6 +23642,7 @@ command it names clears the refusal; custom id; root gone),
 `test_cli.py::test_the_vanished_sources_fix_offers_each_folder_and_says_which_when_not_all_have_one`,
 `test_setup_report.py::test_a_vanished_sources_add_back_folder_is_never_in_the_report`, the `vanished-add-back` case
 of `test_install_oneshot.py::_persons_fail_lines`.
+Amended 2026-10-19, §16.134 V18: the report's Configuration line now ends with the same add-back as Doctor's fix (`doctor.vanished_add_back_tail`, from `doctor.vanished_add_backs` read over the report's read-only connection); `cycle.VANISHED_ADVICE` itself, the sync's refusal, is unchanged.
 
 **U14, U17: the docs-repo line names the remotes git has (`agentsync.cli`).** init and add-source printed `docs
 repo <path> (exists, no remote; ...)` from a fixed string, one line above the governance refusal of that repo's
@@ -23924,7 +23937,152 @@ unheld dated lines) turns the dated-line test red, so each line here has a claim
 
 ### 16.134 Round 18: setup report (2026-10-19, wave B13 round 18 lane RA)
 
-Reserved for round 18 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 18").
+Lane RA's round 18 items (`docs/plans/bring-back-ocr.md`, "B13 round 18"; specs `round18/items/V<n>.md`, the
+verifier's corrected fix built unless said): V1, V3, V4, V10, V11, V15, V18, V19, V34, V35, V37, V38, V45, V48, V49,
+V50, V51, V54, V55, V75, V81, V86, V87 and V88, all built; none was recorded as making things worse. One defect from
+several finders is built once: V3 and V49; V15 and V35; V11 and V54 (V11's fix at the words' source, which also
+drops the report's second bracket that V54 asked for). V1 and V86 are this report's half of the report-word rule
+agreed with lane RB, which builds install.sh's half (V84, V85). No item needs prompt words. Where an item changes
+what an older section states, that section has a dated line (`Amended 2026-10-19, §16.134 V<n>`).
+
+**The doctor's cut-off seconds are the limit it had, and a slow doctor gets a grace** (V3, V49, V4, V81; amends
+§16.128 U48). The Summary's `cut off by the report's time limit after N s` was `min(limit, remaining)` read after
+the cut, about 3.0 s whatever the budget (the Loop floor and the reserve), while Doctor's section named the call's
+limit (`did not finish within 5.2s`). `_Run.call` records the wait it gave (`last_call_limit`), and both lines
+format that one float; a doctor the budget never started reads `- doctor: not started: the report's time budget
+was used up (see Doctor)`. On a busy Mac the setup's last report lost its Doctor section and the pandoc line (the
+doctor's pandoc start alone can outlast what is left of `TIME_BUDGET_S`, 12 s): the doctor now gets at least
+`_DOCTOR_GRACE_S` (20 s), the deadline moving by the difference so the Loop line and the late listing after it keep
+their share, which makes the report at most about 35 s, inside install.sh's 120 s bound on it; `took` adds `, N s
+more for a slow doctor`. A doctor still cut off has its own section, `Cut off: the doctor call did not finish within
+N s, the report's time limit; write the report again when this Mac is idle (...) before sending it.`, and the
+Summary's line ends with the same advice. V81: with no doctor hook the Environment's own pandoc start gave the
+bundled copy's first-start reason for every kind; `_slow_start(kind)` gives `_PANDOC_SLOW_START` for the wheel's
+copy only and `_PANDOC_BUSY_START` for a native or configured one, as doctor does. Tests:
+`test_the_summarys_doctor_cut_off_seconds_are_the_limit_the_doctor_section_names`,
+`test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again`,
+`test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bundled_copy_only`,
+`test_a_doctor_the_time_limit_cuts_off_is_said_so_and_a_slow_pandoc_is_no_exit_code`.
+
+**The docs-repo remote is read only for doctor's remote FAIL** (V55). The Summary ran
+`governance.remote_policy_findings` (git remote, then get-url per remote, each with an hour's timeout) for every
+report with a config, before it knew doctor printed a `governance.remote` FAIL. It runs only when doctor did, and
+not against the budget: the Summary is built after the Loop line, which can spend it, and a real remote FAIL must
+still land in its own bucket. Test:
+`test_the_docs_repo_remote_is_read_only_for_doctors_remote_fail_and_never_against_the_budget`.
+
+**A refused [governance] hides only what needs it, and the Loop line quotes status once** (V10, V54; amends §16.128
+U7). Status stopped at a [governance] value that does not load, so it printed no `last runs:` line and the report
+read `Loop: not read (...)` on a Mac that had synced. `cli._status_lines` loads governance in its own guard (one
+`status: cannot read the state: ...` line) and leaves out only the HOLD and `retention:` lines; the manifest's lines
+still print, so the stage is read (`Loop: synced`, `loop_stage=synced` in the link). A damaged manifest still has
+no `last runs:` line and stays `not read`. The line reads `- Loop: not read: status says <its words>; NEXT: ...`;
+when status said no words, `not read (status cannot read the state)`. Tests:
+`test_a_loop_stage_status_could_not_read_is_not_read_not_installed`,
+`test_cli.py::test_status_prints_every_check_when_its_state_cannot_be_read`.
+
+**Status's reasons carry no bracket of their own** (V11; amends §16.128 U21). `_unread_words` wrote `the state file
+cannot be read (file is not a database)`, which the report put inside its own bracket. Each reason follows a colon:
+`the state file cannot be read: <sqlite's words>`, `a file cannot be opened: <strerror>`, and `the configuration is
+refused: the <check> [FAIL] line says why`, where the check is `governance.config` in status's guard (the only
+check there whose failure raises a ConfigError) and stays `governance.config or policy` in the NEXT guard. Tests:
+as above.
+
+**The evidence line says where a cause waiting cannot fix is fixed** (V15, V35). Every `not measured` line counted
+alike, so a state file that cannot be read got `write the report again when this Mac is idle`, which never helps.
+`_evidence` keeps each line's reason (`_Facts.evidence_why`, the words in its bracket; a bare one is the time
+limit's). The time limit, `it did not finish in time` and a busy state file keep today's line; a state file that
+cannot be read reads `because the state file cannot be read: a report written after it is fixed measures them (see
+Doctor's state_dir.manifest line)`, a refused configuration points at Configuration, any other cause `see those
+lines`; mixed causes get a clause each, the count first, so a time-out beside a damaged manifest keeps its idle
+advice. Lane B's V14 makes Doctor print the `state_dir.manifest` FAIL the pointer names. Tests:
+`test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed`,
+`test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name`.
+
+**The loads line ends as Doctor's fix does** (V18; amends §16.131 U9). The vanished-source refusal on the
+Configuration line stopped at `or restore it` while Doctor's fix went on `; or add its folder again, under the same
+id: ~/.local/bin/agentsync add-source <folder>`. `doctor.vanished_add_backs(config, get_meta, vanished)` is the rule
+with the meta read passed in (`_vanished_add_backs` reads it through a Manifest), the report reads it over its own
+read-only connection, and both end with `doctor.vanished_add_back_tail`; the folder is the vanished root's
+placeholder (U46). A custom id or a root that is gone gets no tail; step 2's own line from install.out keeps the
+sync's words. Test: `test_a_config_the_sync_refuses_loads_but_says_so`.
+
+**The placeholder clause is said only of a placeholder** (V19; amends §16.128 U22). `_table_refusal` takes the
+report's redactor and says `(a value in the error is a placeholder here; ...)` only when its words hold one. Test:
+`test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted`.
+
+**A governance value's redaction keeps the words after it** (V45; amends §16.128 U58). The `<value>` match ran to
+`(fix:` or the line's end, so a governance type error first ate U58's `; once that is fixed, a sync also refuses
+it: ...` and its advice, and a friction line's ` | ` fix column. `_table_refusal` replaces the value where its
+exception ends (`_GOVERNANCE_TAIL_RE`), before the refusals are joined; in free text `_GOVERNANCE_VALUE_RE` matches
+the value's repr shape first (a quote-aware string, a number, True, False or None, or a list, dict or tuple of those
+two deep, blanks only inside it) when a blank, `;`, `,`, `.`, `)`, `|` or the end follows, and falls back to the old run, so it never
+covers less than before; it never cuts at the first `; ` or ` | `, which a string or list can hold. Test:
+`test_a_governance_values_redaction_never_swallows_the_words_after_it`.
+
+**The sync label is the shown run's** (V48; amends §16.128 U42). Since U42 the label came from the last run's config
+step, which, stopped at that step, logs no note, so a run that was not the first read `first sync`. It comes from
+the run whose sync the line shows. Test:
+`test_the_sync_clause_names_an_earlier_runs_sync_when_the_last_run_stopped_before_its_own`.
+
+**Exit 65's first-sync note is in words** (V50). `state-unreadable` printed as its token in the Installer table and
+the sync clause; it reads `agentsync's state file, manifest.sqlite, cannot be read: the person's to fix`, with no
+bracket. install.log keeps its token. Test: `test_the_first_sync_steps_note_is_in_words_in_the_table_and_the_summary`.
+
+**The state file's fix is the person's in a run with no NEXT yet** (V87; amends §16.122 T47). The first sync's
+`state: ... cannot be read: ... (fix: <MANIFEST_FIX>)` line is no [FAIL] line, so the run writing the report,
+whose exit-65 NEXT comes after it, counted it as an agent's `fix:`. `instruction_counts` counts a line whose fix is
+`doctor.MANIFEST_FIX` as the person's in a run with no `NEXT:` line; a run whose NEXT says something else keeps
+`fix:` (T47). Test: `test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_runs_next`.
+
+**An Items error line keeps its reason** (V34). A 221-character git error was cut at 220, inside its last clause,
+the reason (`Couldn't connect to server`). An error line whose command's failure `_FAILED_EXIT_RE` finds has
+`_ERROR_WHAT_MAX` (320) characters, the URL and its host whole (the host names a mirror); past that the old cut
+applies within the bound; every other line keeps 220. Test: `test_a_logged_command_keeps_its_bars_and_its_error`.
+
+**A retry after the end line that added nothing joins the folders count** (V37; amends §16.116 S9). A run that
+added a folder and exited 1, then the same command after the person's fix, logged after the attempt's end line,
+read `kept the 3 already synced (none added)`. The last run after the end line joins the chain when its config step
+added nothing, so the line names the run that added it; a late run that added a folder is still the last run's
+alone. Test: `test_the_folders_line_counts_what_was_kept_added_and_named`.
+
+**An attempt that stopped before any folder list asked no folder question** (V38). `--log-start`, then step 2
+straight away, stopped at its config step: the report counted the folder question as asked. An attempt whose every
+run is an install run that stopped at or before its config step (rc not 0), with no list and no logged count,
+counts none, as an attempt with no run does (R15's rule otherwise stands). Test:
+`test_an_attempt_with_no_installer_run_is_given_no_folder_question`.
+
+**An organisation named like a report word is cut out of a longer word too** (V1; amends §16.93 M50). A one-word
+organisation that spells a report word (Gateway, Status) fell back to whole-word matching, so `MyGatewayTeam` stayed
+in clear in a section said to be redacted. `Redactor.add` gives every one-word organisation the `org` mode; the
+word still makes the report private only. Joined names and context organisations keep their modes. Test:
+`test_an_organisation_named_like_a_report_word_is_cut_out_of_a_longer_word_too`.
+
+**A word the report prints from command output makes it private only** (V86, with lane RB's V84). The report prints
+`profiles status`' `Enrolled via DEP: No`, `uname -m`'s `arm64` and `net.PAC_UNSUPPORTED`'s sentence, words in none
+of its literals, so an organisation named Via read `Enrolled <org-1> DEP` in a report still offered to the public
+issue form. `setup_report._OUTPUT_WORDS` (arm, auto, claude, dep, enrolled, enrollment, env, evaluate, info,
+launchagent, microsoft, pac, reachable, resolves, returns, unsupported, via) makes a one-word organisation, folder
+or library named so private only, and changes nothing else: the value's mode, the source-id, path and proxy rules
+still read `report_words()`, which leaves this assignment out. install.sh's `output_word` (lane RB) holds the same
+list. Test: `test_an_organisation_named_like_a_word_of_command_output_makes_the_report_private_only`.
+
+**A remote's host ends at a query or a fragment** (V88). `_rewrite_values` cut a URL's host at `/` only, so a docs
+remote `https://<host>?x` registered `<host>?x` and git's `Could not resolve host: <host>` stayed in clear, while
+the shell cuts at `[/?#]`. The host is cut after `@`, then at `?` or `#`, then at `:`; the path split is unchanged.
+Tests: `test_a_docs_repo_remotes_host_is_a_proxy_placeholder_where_git_names_it`,
+`test_install_oneshot.py::test_a_git_remotes_host_ends_at_a_query_or_fragment_in_both_readers`.
+
+**Neither report claims its source ids number as the other's** (V51; amends §16.128 U62). U62 and install.sh said
+the shared ids number alike; the shell numbers by table place, the always-present inbox's too, so one vanished id is
+`<source-1>` in one report and `<source-2>` in the other. The verifier's smallest correct fix is built: the claims
+go from `setup_report._unconfigured_ids`, the registration comment and install.sh's comment. Test:
+`test_neither_report_says_its_source_ids_number_as_the_others`.
+
+**A later run's retry words say what a converter that cannot start leaves** (V75; amends §16.28 U3). The Repeat
+conversions note and the guide said a later run with no failure converted a failed file or gave it up; while its
+converter still cannot start, no run reads or counts it. Both say so. Test:
+`test_repeat_conversions_part_reads_the_run_records_and_the_cache`.
 
 ### 16.135 Round 18: installer, the shell report's redaction and the older build's copies (2026-10-19, wave B13 round 18 lane RB)
 
