@@ -2861,13 +2861,16 @@ class _Cycle:
         other key that would be 0 is left out.
 
         ``converted``: files converted (the sum of ``SourceReport.converted``); ``converter_waiting``:
-        files whose converter could not start, so nothing read them, never in ``converted`` (B13 round 18
-        V13); ``converted_failed``: of
+        files whose converter could not start, so nothing read them, never in ``converted``, counted in
+        each run in which it still cannot (B13 round 18 V13, round 19 W2); ``converted_failed``: of
         those, conversions that failed (counted in each run it failed in: the file keeps its stub, and the
         same bytes are converted again in up to ``_CONVERT_RETRIES`` later runs (``_RETRY_META``); one whose
         converter could not start is not converted while it still cannot, and is converted, uncounted against
-        the retries, in the first run where it starts; so a later run with none converted the file or gave it
-        up; B13 round 18 V62, V67); ``converted_unreadable``: of those, conversions whose
+        the retries, in the first run where it starts; so a later run with none converted the file, gave it
+        up or, while its converter still cannot start, left it unread, a wait that run counts in
+        ``converter_waiting``; B13 round 18 V62, V67, V75, round 19 W53); ``legacy_retried``: failures an
+        older build had settled for good that this run gave the bounded retries again (round 19 W18);
+        ``converted_unreadable``: of those, conversions whose
         result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:
         of those, files whose own pages were made from the same bytes by an earlier run

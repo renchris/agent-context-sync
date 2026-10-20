@@ -24994,6 +24994,12 @@ not used, as its logger prefix reads as an alarm. Tests:
 `test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once`,
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`.
 
+**The run tally's docstring names the wait (W53; `agentsync.cycle`).** `_Cycle._run_tally` still said "a later run
+with none converted the file or gave it up", the sentence V75 corrected in the run record bullet, the report and
+the guide. It now adds "or, while its converter still cannot start, left it unread, a wait that run counts in
+`converter_waiting`" (W2 counts it), and names `legacy_retried` (W18). Docstring only. Test:
+`test_cycle.py::test_the_run_tallys_words_on_a_later_run_name_the_wait_its_converter_leaves`.
+
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
 **V7's add-back is named where it is defined, and the older lines say what V7 changed** (W44, W59, W60, one

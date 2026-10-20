@@ -6951,3 +6951,14 @@ def test_the_rescreen_lines_take_their_noun_from_the_count() -> None:
         [line] = [ln for ln in cycle_mod._Cycle._rescreen_lines(fake) if ln.startswith("- [policy]")]  # type: ignore[arg-type]
         assert said in line and "(s)" not in line, line
         assert ("its mirror page reflects" if left == 1 else "their mirror pages reflect") in line, line
+
+
+def test_the_run_tallys_words_on_a_later_run_name_the_wait_its_converter_leaves() -> None:
+    """B13 round 19 W53: ``_run_tally``'s docstring kept "a later run with none converted the file or gave it
+    up", which V75 corrected everywhere else: while the converter still cannot start, the run left the file
+    unread, a wait it counts in ``converter_waiting`` since W2."""
+    doc = " ".join((cycle_mod._Cycle._run_tally.__doc__ or "").split())
+    assert "converted the file or gave it up;" not in doc
+    assert (
+        "gave it up or, while its converter still cannot start, left it unread, a wait that run counts" in doc
+    )
