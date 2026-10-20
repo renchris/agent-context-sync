@@ -24205,6 +24205,7 @@ renderer's `stopping_error` reads it, and leaves V30 and V31 off. Tests:
 `test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item`.
 Amended 2026-10-20, §16.141 W74: the one-timestamp count starts at the attempt `parse_friction` splits off.
 Amended 2026-10-20, §16.141 W21: a git stop's first-sync line names install.log's earlier first sync too.
+Amended 2026-10-20, §16.141 W24: after a finished attempt a note follows the prompt line, once.
 
 **The older build's attempt lines are rewritten** (V22). Round 17 U27's three attempt-line rules sat behind
 `## Friction log`, a heading no renderer writes; they read `## Agent friction log` now (their temporaries renamed, as
@@ -24806,6 +24807,16 @@ run of <start>, before this attempt)` and the install.out counts are tagged as V
 no install.sh": the attempt can hold a `--list-folders` run, which its `install.sh:` line counts. With no first sync
 in install.log the v10 line is true and stays. Test: `test_a_git_stop_of_the_older_build_names_the_earlier_first_sync`
 (rehearsal D's oldr and oldr2 states, and none in install.log).
+
+**The older build's report after a finished attempt says why its attempt holds both sessions** (W24; amends §16.135
+V31). V31 moves the stopping error to the Items list and says it stopped the run, but nothing said the error was
+logged after attempt N finished, which the current renderer notes and the older build's one attempt hides. The
+first pass reads N from the `Agent friction (attempt N; ...)` heading; the second adds, right after the `- prompt:`
+line (where the renderer and V30's note put theirs), `- note: the step 1 error (F<n>) was logged by another session
+after attempt N finished: this session stopped before `install.sh --log-start`, so this report's attempt N holds
+both sessions.` Gated on `s1mv`, which a second pass no longer sets, so the note is added once; a resolved stop
+gets none. The finder's "(line <m>)" is dropped: no variable carries it and the renderer does not name it. Test:
+`test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item`.
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 

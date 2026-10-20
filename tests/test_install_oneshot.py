@@ -10455,7 +10455,8 @@ def test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item(
     git stop's error under "Agent friction (...; it does not change the outcome by itself)" and said "none of
     these changes the outcome by itself" beside "failed at step 1". The renderer says F<n> stopped the run and
     lists it as an item, with one timestamp; the rewrite does the same. A --list-folders run that ended rc 0
-    after the error resolves it in the renderer, so that report is left as rendered."""
+    after the error resolves it in the renderer, so that report is left as rendered. Round 19 W24: the
+    renderer's note that the stop was logged after that attempt finished is added once."""
     friction = (
         "- agent friction: 0 deviation, 0 prompt, 1 error (F5); none of these changes the outcome by itself"
     )
@@ -10464,7 +10465,8 @@ def test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item(
         "reach GitHub"
     )
     tail = ["", "Agent friction (attempt 1; it does not change the outcome by itself):", "", item]
-    head = [*_GIT_STOP_REPORT[:6], friction, _V10_TIME, _GIT_STOP_REPORT[7]]
+    prompt = f"- prompt: v{COMPAT}"
+    head = [*_GIT_STOP_REPORT[:5], prompt, _GIT_STOP_REPORT[5], friction, _V10_TIME, _GIT_STOP_REPORT[7]]
     report = "\n".join(
         [
             *head,
@@ -10483,9 +10485,15 @@ def test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item(
     summary = text.split("## Summary\n\n", 1)[1].split("\n\n## Doctor", 1)[0]
     if resolved:
         assert friction in summary and "\n".join(tail) in summary and _V10_TIME in summary, summary
-        assert "stopped the run" not in summary
+        assert "stopped the run" not in summary and "- note: " not in summary
         return
-    assert summary.splitlines()[2:] == [
+    # B13 round 19 W24: and notes, right after the prompt line, that attempt 1 holds both sessions
+    assert summary.splitlines()[1:3] == [
+        prompt,
+        "- note: the step 1 error (F5) was logged by another session after attempt 1 finished: this session "
+        "stopped before `install.sh --log-start`, so this report's attempt 1 holds both sessions.",
+    ], summary
+    assert summary.splitlines()[4:] == [
         "- agent friction: 0 deviation, 0 prompt, 1 error (F5); F5 stopped the run (the outcome says so)",
         _ONE_STAMP,
         f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} expected 1: install.commit ({_STEP1_STOP_WARN}) {_DOT} "

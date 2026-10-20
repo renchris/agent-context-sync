@@ -4782,7 +4782,7 @@ older_report_rewrite() { # MODE
 			if (s1cmd && sec == "## Summary") {
 				if (index($0, "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)") == 1) s1out = 1
 				if (index($0, "- agent friction: ") == 1 && ends($0, " (F" s1fline "); none of these changes the outcome by itself")) s1fr = 1
-				if ($0 ~ /^Agent friction \(attempt [0-9]+; it does not change the outcome by itself\):$/) af = 1
+				if ($0 ~ /^Agent friction \(attempt [0-9]+; it does not change the outcome by itself\):$/) { af = 1; s1att = substr($0, 25, index($0, ";") - 25) }
 				else if (af && index($0, "- F" s1fline " ") == 1) mvline = $0
 				else if (af && index($0, "- ") == 1) afother++
 				else if (af && $0 != "") af = 0
@@ -4810,6 +4810,12 @@ older_report_rewrite() { # MODE
 			$0 = substr($0, 1, j + length(nextstep) - 3) "; " fixline " " substr($0, j + length(nextstep))
 		}
 		cp && sec == "## Summary" { $0 = prompt_line($0) }
+		# after a finished attempt (V31): the renderer notes, right after the prompt line, that the stop was logged
+		# after that attempt finished, which the older build\047s one attempt hides; s1mv is 0 on a second pass
+		# (the friction line then says "stopped the run"), so it is added once (B13 round 19 W24)
+		s1mv && sec == "## Summary" && index($0, "- prompt: ") == 1 {
+			$0 = $0 "\n- note: the step 1 error (F" s1fline ") was logged by another session after attempt " s1att " finished: this session stopped before `install.sh --log-start`, so this report\047s attempt " s1att " holds both sessions."
+		}
 		sec == "## Summary" && quiet($0) { next }
 		# inside the (python ...) bracket the renderer wrote, joined by "; ": one bracket, not two in a row (B13
 		# round 11 M27, M52; the rule of G9 and J23/J40). Every renderer writes "setup prompt vN (python X, exe)".
