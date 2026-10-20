@@ -4321,7 +4321,8 @@ older_report_facts() { # DIR
 # builds, §16.110 Q27).
 older_report_rewrite() { # MODE
 	local named cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}" item="${S1_ITEM:-}"
-	[ "$1" != copy ] || { cp=1 note="" apps="" cause="" turns="" item=""; }
+	local cmd="${S1_CMD:-}" at="${S1_AT:-}" fline="${S1_FLINE:-}" one="${S1_ONE:-}"
+	[ "$1" != copy ] || { cp=1 note="" apps="" cause="" turns="" item="" cmd="" at="" fline="" one=""; }
 	# the checkout the undated fetch line names ("checkout <dir> @ ", "checkout <dir> (editable) @ "), as the
 	# renderer dates the folder it was installed from: that folder when it is one here, else no date (a
 	# redacted or missing path keeps the older words, which are true)
@@ -4335,6 +4336,7 @@ older_report_rewrite() { # MODE
 	older_report_facts "$named"
 	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" OR_LASTRUN="$OR_LASTRUN" OR_FETCH="$OR_FETCH" OR_FSSTART="$OR_FSSTART" awk \
 		-v cp="$cp" -v s1note="$note" -v s1apps="$apps" -v s1item="$item" -v inst="$REPORT_INSTALL_SH" \
+		-v s1cmd="$cmd" -v s1at="$at" -v s1fline="$fline" -v s1one="$one" \
 		-v s1cause="$cause" -v s1turns="$turns" -v w1="$STEP1_STOP_WARN" -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \
 		-v gone="(earlier runs' bring-back and issue link lines are left out of this report)" \
 		-v saw=" (what the agent saw)</summary>" -v was=" (earlier attempts' install.sh output: " \
@@ -4566,8 +4568,20 @@ older_report_rewrite() { # MODE
 			if (!at && index($0, "<details><summary>the last ") == 1 && $0 ~ / line(s|\(s\))? of /) { at = FNR; inside = 1; next }
 			if (inside && $0 == "</details>") inside = 0
 			if (inside && left($0)) k++
+			# a git stop after a finished attempt (B13 round 18 V31): the older build files the stopping error
+			# F<n> under "Agent friction (...; it does not change the outcome by itself)" beside "failed at step
+			# 1"; read here whether that is the whole block and the friction line names F<n> alone
+			if (s1cmd && sec == "## Summary") {
+				if (index($0, "- **outcome: failed at step 1** (computed: no install.sh run; step 1 logged an error)") == 1) s1out = 1
+				if (index($0, "- agent friction: ") == 1 && ends($0, " (F" s1fline "); none of these changes the outcome by itself")) s1fr = 1
+				if ($0 ~ /^Agent friction \(attempt [0-9]+; it does not change the outcome by itself\):$/) af = 1
+				else if (af && index($0, "- F" s1fline " ") == 1) mvline = $0
+				else if (af && index($0, "- ") == 1) afother++
+				else if (af && $0 != "") af = 0
+			}
 			next
 		}
+		FNR == 1 && s1out && s1fr && mvline != "" && !afother { s1mv = 1; if (s1item == "") s1item = mvline }
 		cp && FNR == at {
 			n = length($0) - length(saw)
 			if (noout && n > 0 && substr($0, n + 1) == saw)
@@ -4630,6 +4644,27 @@ older_report_rewrite() { # MODE
 			if ((j = index($0, " (install.log)"))) $0 = substr($0, 1, j - 1) " (install.log: that earlier run)" substr($0, j + 14)
 			else if ((j = index($0, " (install.out)"))) $0 = substr($0, 1, j - 1) " (install.out: an earlier run\047s; this attempt ran none)" substr($0, j + 14)
 		}
+		# a step 1 list stop: an older build says no run has a first-sync step, while install.log holds an
+		# earlier one; the renderer words a list-only attempt (setup_report M22) and tags the install.out counts
+		# as that earlier run\047s (B13 round 18 V16)
+		s1note != "" && sec == "## Summary" && $0 ~ /^- (first )?sync: no install\.sh run with a first-sync step \(install\.log\)/ {
+			j = index($0, "no install.sh run with a first-sync step (install.log)")
+			$0 = substr($0, 1, j - 1) "this attempt ran only install.sh --list-folders, no first sync (install.log)" substr($0, j + 54)
+			if ((j = index($0, " (install.out")) && !index($0, "before this attempt")) $0 = substr($0, 1, j - 1) " (install.out: " (ENVIRON["OR_FSSTART"] != "" ? "the install run of " ENVIRON["OR_FSSTART"] : "an earlier run\047s") ", before this attempt" substr($0, j + 13)
+		}
+		# a git stop (step1_cmd_stop_facts; B13 round 18 V30): the older build warns that an attempt with no end
+		# line may be stale, where the renderer splits off the session that logged the stop and notes why it
+		# has no end line; with that line alone in its attempt, the time is one timestamp
+		s1cmd && s1fline != "" && sec == "## Summary" && $0 ~ /^- WARNING: attempt [0-9]+ has no "end \| finished" line/ {
+			$0 = "- note: the step 1 error (F" s1fline ") was logged by another session after the earlier session\047s `install.sh --log-start`, which has no end line: this session stopped before `install.sh --log-start`, so `install.sh --report-only` had no attempt to close."
+		}
+		s1cmd && s1one && sec == "## Summary" && index($0, "- time: ") == 1 { $0 = "- time: session: one timestamp (" s1at "), no duration" }
+		# after a finished attempt (B13 round 18 V31): F<n> stopped the run, so it is an item, not friction
+		s1mv && sec == "## Summary" && index($0, "- agent friction: ") == 1 && ends($0, "; none of these changes the outcome by itself") {
+			$0 = substr($0, 1, length($0) - 45) "; F" s1fline " stopped the run (the outcome says so)"
+		}
+		s1mv && sec == "## Summary" && $0 ~ /^Agent friction \(attempt [0-9]+; it does not change the outcome by itself\):$/ { blank = 0; afdrop = 1; next }
+		afdrop && $0 == mvline { blank = 0; afdrop = 0; next }
 		# v10\047s friction words, in both modes (B13 round 17 U27): the rerun the header names, the attempt\047s bits
 		# joined by "; ", "line N" for one line, and no "finished" tail beside a count of it
 		!det && !fence && (j = index($0, "(a line written after that is not in this report: run setup-report again)")) {
@@ -4689,7 +4724,7 @@ older_report_rewrite() { # MODE
 # in the attempt (a friction stop, which is the Items list's first entry then; B13 round 17 U26, U107).
 step1_stop_facts() {
 	local facts begin who="" names t n=0 of missing gone app label clause why
-	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM=""
+	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM="" S1_CMD="" S1_AT="" S1_FLINE="" S1_ONE=""
 	[ -f "$SETUP_LOG" ] || return 1
 	begin="$(utc_stamp "$(friction_attempt_begin)")"
 	facts="$(BEGIN_AT="$begin" LC_ALL=C awk '
@@ -4778,21 +4813,38 @@ friction_attempt_errors() {
 # one aside) started at or after it. S1_TURNS is the renderer's line for that attempt (_expected_turns_line,
 # unstarted); S1_NOTE and S1_APPS stay empty, so no FAIL moves to the sign-in stop, and S1_CAUSE too: the
 # renderer names no cause beside "step 1 logged an error". The attempt split and its note are not shimmed.
+# S1_CMD=1 marks this stop for older_report_rewrite (B13 round 18 V30, V31), with S1_AT, the error line's stamp,
+# S1_FLINE, its line number (the report's F<n>), and S1_ONE=1 when it is the only event line, an end line aside,
+# after the last Attempt: line (the renderer's attempt is then that line alone: one timestamp).
 step1_cmd_stop_facts() {
 	local f at
-	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM=""
+	S1_NOTE="" S1_APPS="" S1_CAUSE="" S1_TURNS="" S1_ITEM="" S1_CMD="" S1_AT="" S1_FLINE="" S1_ONE=""
 	f="$(friction_file)"
 	[ -f "$f" ] && [ -f "$SETUP_LOG" ] || return 1
 	at="$(LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		{ track($0) }
+		/^Attempt:/ { ev = 0 }
 		NH { NH = 0; last = ""; next }
 		/^Attempt:/ || /^[-* ]*(Prompt|Agent|Outcome|Run):/ { last = ""; next }
-		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/ && !/[|] end [|] finished[[:space:]]*$/ { last = $0 }
-		END { if (last ~ s1 && stated(last)) print substr(last, 1, 20) }' "$f" 2>/dev/null)"
+		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/ && !/[|] end [|] finished[[:space:]]*$/ { last = $0; nr = NR; ev++ }
+		END { if (last ~ s1 && stated(last)) print substr(last, 1, 20) "|" nr "|" (ev == 1) }' "$f" 2>/dev/null)"
 	[ -n "$at" ] || return 1
+	S1_FLINE="${at#*|}" S1_ONE="${at##*|}"
+	S1_FLINE="${S1_FLINE%|*}" at="${at%%|*}"
 	AT="$at" LC_ALL=C awk 'index($0, " start install.sh ") && $1 >= ENVIRON["AT"] && $0 !~ / args=--list-folders$/ { found = 1 }
 		END { exit found }' "$SETUP_LOG" 2>/dev/null || return 1
 	S1_TURNS="- expected turns: none (step 1's command stopped before install.sh --log-start, before the folder list: no folder question and no Allow click)"
+	S1_CMD=1 S1_AT="$at"
+	[ "$S1_ONE" = 1 ] || S1_ONE=""
+	# a --list-folders run started at or after the error that ended rc=0 resolves it, as the renderer's
+	# stopping_error reads it: nothing stopped the run, so the error stays friction and the time is not one stamp
+	AT="$at" LC_ALL=C awk 'match($0, / run=[^ ]+ /) { r = substr($0, RSTART + 5, RLENGTH - 6) }
+		index($0, " start install.sh ") && $1 >= ENVIRON["AT"] && $0 ~ / args=--list-folders$/ { list[r] = 1 }
+		(r in list) && index($0, " end rc=0 ") { found = 1 }
+		END { exit !found }' "$SETUP_LOG" 2>/dev/null && S1_FLINE="" S1_ONE=""
+	# any run started at or after it is in the renderer's attempt too, with its start and end: no one timestamp
+	AT="$at" LC_ALL=C awk 'index($0, " start install.sh ") && $1 >= ENVIRON["AT"] { found = 1 } END { exit !found }' \
+		"$SETUP_LOG" 2>/dev/null && S1_ONE=""
 	return 0
 }
 # The report of this attempt's own step 1 stop rendered by the installed agentsync, which is older than this

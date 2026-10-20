@@ -9809,6 +9809,26 @@ def test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_chec
     assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
 
 
+def test_a_step_1_stop_of_the_older_build_names_the_earlier_first_sync(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 18 V16 (rehearsal B, M1o): v10 read only this attempt's runs, the --list-folders one, and
+    wrote "no install.sh run with a first-sync step (install.log)" beside install.log's earlier first sync,
+    with install.out's counts untagged, as if this attempt's. The rewrite gives the renderer's words for a
+    list-only attempt and tags the counts as the earlier install run's; the current words pass unchanged."""
+    sync = "- first sync: {} \u00b7 converted 7, deferred 0 online-only (install.out{}) \u00b7 2 of 3 sources"
+    old = sync.format("no install.sh run with a first-sync step (install.log)", "")
+    now = sync.format(
+        "this attempt ran only install.sh --list-folders, no first sync (install.log)",
+        ": the install run of 2026-10-18T09:00:10Z, before this attempt",
+    )
+    text = _step1_stop_home(env, tmp_path, _v10_step1_report([*_V10_SUMMARY, old]))
+    assert _summary(text)[-1] == now, text
+    assert "no install.sh run with a first-sync step" not in text
+    current = _v10_step1_report([*_NOW_SUMMARY, now]).replace("54 check(s):", "54 checks:")
+    assert _step1_stop_home(env, tmp_path, current) == current, "the current words pass unchanged"
+
+
 def test_a_step_1_stop_of_the_older_build_says_its_fix_for_one_expected_warn(
     env: dict[str, str], tmp_path: Path
 ) -> None:
@@ -10003,6 +10023,138 @@ def test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkou
         "54 check(s):", "54 checks:"
     )
     assert rendered(current) == current, "the current words pass unchanged"
+
+
+_GIT_ERROR = (
+    f"2026-10-18T10:00:30Z | step 1 | error | prompt v{COMPAT}, Claude Code test-agent: git -C "
+    "~/src/agent-context-sync pull --ff-only failed | -\n"
+)
+_EARLIER_LIST = [
+    "2026-10-18T09:00:10Z run=20261018T090010Z-41 start install.sh compat=24 commit=- kind=- source=- "
+    "args=--list-folders",
+    "2026-10-18T09:00:11Z run=20261018T090010Z-41 step=list-folders seconds=1 rc=0 result=done note=listed-6",
+    "2026-10-18T09:00:11Z run=20261018T090010Z-41 end rc=0 seconds=1",
+]
+_LATER_LIST = [line.replace("T09:00:1", "T10:01:1").replace("090010Z", "100110Z") for line in _EARLIER_LIST]
+"""An rc-0 --list-folders run after the git stop's error, which the renderer's stopping_error reads as
+resolving it."""
+_V10_TIME = (
+    "- time: session 18s (first to last timestamp); install.sh (install.log): step 1 --list-folders 2s"
+)
+_ONE_STAMP = "- time: session: one timestamp (2026-10-18T10:00:30Z), no duration"
+
+
+def _git_stop_report(env: dict[str, str], tmp_path: Path, friction: str, log: list[str], report: str) -> str:
+    """rehearsal D's git stop: ``friction`` and install.log ``log``, then --report-only, whose report the
+    installed v10 build renders (``report``); the report as install.sh leaves it."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True, exist_ok=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    friction_path(env).write_text(f"Attempt: 2026-10-18T09:00:00Z\nPrompt: v{COMPAT}\nAgent: x\n{friction}")
+    (home / "agent-context" / "setup" / "install.log").write_text("\n".join(log) + "\n", encoding="utf-8")
+    stub = tmp_path / "rendered.md"
+    stub.write_text(report, encoding="utf-8")
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(stub)}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    return report_path(env).read_text(encoding="utf-8")
+
+
+def _summary(text: str) -> list[str]:
+    return text.split("## Summary\n\n", 1)[1].split("\n\n", 1)[0].splitlines()
+
+
+def test_a_git_stop_with_no_end_line_rendered_by_the_older_build_is_not_called_stale(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 18 V30 (rehearsal D, oldr): since round 17 U33 --report-only appends no end line to a
+    session that logged only step 1's git error, and the v10 build, which does not split that session off,
+    warned the report "may be stale" and told the agent to run `agentsync setup-report` again (not on PATH),
+    with a session time across both sessions. The rewrite gives the renderer's note on the missing end line
+    and its one-timestamp time line; the other shims hold and a second pass changes nothing."""
+    warning = (
+        '- WARNING: attempt 1 has no "end | finished" line (install.sh --report-only), so this report may be '
+        "stale: it was written before prompt step 3, or the agent stopped early. Run `agentsync "
+        "setup-report` again after step 3."
+    )
+    friction = (
+        "- agent friction: 0 deviation, 0 prompt, 1 error (F4); F4 stopped the run (the outcome says so)"
+    )
+    report = "\n".join(
+        [*_GIT_STOP_REPORT[:5], warning, _GIT_STOP_REPORT[5], friction, _V10_TIME, *_GIT_STOP_REPORT[7:]]
+    )
+    text = _git_stop_report(env, tmp_path, _GIT_ERROR, _EARLIER_LIST, report)
+    assert _summary(text) == [
+        _GIT_STOP_REPORT[4],
+        "- note: the step 1 error (F4) was logged by another session after the earlier session's `install.sh "
+        "--log-start`, which has no end line: this session stopped before `install.sh --log-start`, so "
+        "`install.sh --report-only` had no attempt to close.",
+        "- expected turns: none (step 1's command stopped before install.sh --log-start, before the folder "
+        "list: no folder question and no Allow click)",
+        friction,
+        _ONE_STAMP,
+        f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} expected 1: install.commit ({_STEP1_STOP_WARN}) {_DOT} "
+        "unexpected 0",
+    ], text
+    assert _git_stop_report(env, tmp_path, _GIT_ERROR, _EARLIER_LIST, text) == text, "a second pass"
+    # a --list-folders run after the error that failed is in the renderer's attempt too: a span, not one stamp
+    failed = [ln.replace("rc=0", "rc=3").replace("result=done", "result=failed") for ln in _LATER_LIST]
+    text = _git_stop_report(env, tmp_path, _GIT_ERROR, [*_EARLIER_LIST, *failed], report)
+    assert _V10_TIME in _summary(text) and _ONE_STAMP not in text, text
+
+
+@pytest.mark.parametrize("resolved", [False, True], ids=["git stop", "a list run after it ended rc 0"])
+def test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item(
+    env: dict[str, str], tmp_path: Path, resolved: bool
+) -> None:
+    """B13 round 18 V31 (rehearsal D, oldr2): after an attempt that has its end line, the v10 build filed the
+    git stop's error under "Agent friction (...; it does not change the outcome by itself)" and said "none of
+    these changes the outcome by itself" beside "failed at step 1". The renderer says F<n> stopped the run and
+    lists it as an item, with one timestamp; the rewrite does the same. A --list-folders run that ended rc 0
+    after the error resolves it in the renderer, so that report is left as rendered."""
+    friction = (
+        "- agent friction: 0 deviation, 0 prompt, 1 error (F5); none of these changes the outcome by itself"
+    )
+    item = (
+        "- F5 \u00b7 step 1 \u00b7 error \u00b7 prompt v26, x: git pull failed \u2192 a terminal that can "
+        "reach GitHub"
+    )
+    tail = ["", "Agent friction (attempt 1; it does not change the outcome by itself):", "", item]
+    head = [*_GIT_STOP_REPORT[:6], friction, _V10_TIME, _GIT_STOP_REPORT[7]]
+    report = "\n".join(
+        [
+            *head,
+            "",
+            "Items that were not one command (attempt 1):",
+            "",
+            "- none",
+            *tail,
+            *_GIT_STOP_REPORT[8:],
+        ]
+    )
+    log = [*_EARLIER_LIST, *(_LATER_LIST if resolved else [])]
+    text = _git_stop_report(
+        env, tmp_path, "2026-10-18T09:05:00Z | end | finished\n" + _GIT_ERROR, log, report
+    )
+    summary = text.split("## Summary\n\n", 1)[1].split("\n\n## Doctor", 1)[0]
+    if resolved:
+        assert friction in summary and "\n".join(tail) in summary and _V10_TIME in summary, summary
+        assert "stopped the run" not in summary
+        return
+    assert summary.splitlines()[2:] == [
+        "- agent friction: 0 deviation, 0 prompt, 1 error (F5); F5 stopped the run (the outcome says so)",
+        _ONE_STAMP,
+        f"- doctor: 0 FAIL, 1 warn (54 checks) {_DOT} expected 1: install.commit ({_STEP1_STOP_WARN}) {_DOT} "
+        "unexpected 0",
+        "",
+        "Items that were not one command (attempt 1):",
+        "",
+        item,
+    ], summary
+    assert (
+        _git_stop_report(env, tmp_path, "2026-10-18T09:05:00Z | end | finished\n" + _GIT_ERROR, log, text)
+        == text
+    )
 
 
 def test_a_stopped_copy_of_an_attempt_that_ran_no_install_names_the_earlier_first_sync(
