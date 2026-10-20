@@ -23930,6 +23930,8 @@ the file. Not `_STILL_NO_ANSWER`, whose "no setup step clears that" setting pand
 Amended 2026-10-20, §16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `run <install.sh> again
 with the options of the run that installed agentsync (not --report-only, which builds nothing)`
 (`doctor.AGAIN_UNDER_INSTALL_SH`), not `run the same <installer> command again ...`; the fallback above is unchanged.
+Amended 2026-10-20, §16.149 X21: under install.sh `_again_fix` starts `run <install.sh> again (it keeps the folders
+already synced; not --report-only, which builds nothing)`, with no options repeated.
 
 **A native or configured pandoc's time-out gives the busy Mac's reason (U104; `agentsync.ops.doctor`; dated line
 at §16.126 T17, T77).** It gave none, and round 16 left T77's optional part unrecorded. `_PANDOC_BUSY_START` is `any
@@ -24395,6 +24397,8 @@ step (`agentsync's state file, which cannot be read`); `state-table` then names 
 Amended 2026-10-20, §16.148 X72: `state-table` no longer has a clause of its own; it gives the `state` clause,
 since step 2 reinstalls this checkout, whose config step stops on any damaged table or index root, and "(at its
 status or its first sync)" was false for an index root.
+Amended 2026-10-20, §16.149 X50: `manifest_unreadable` reads each index's first entry too (`INDEXED BY`), so with an
+installed build that has it, damage under an index's root is `state` as well.
 
 **An add-source that wrote the block says so on any exit, after its block** (V47, V26; amends §16.130 U40). U40's
 branch read only exit 78, so an add-source that wrote the folder's block and then exited 1 on a docs-repo remote
@@ -25163,6 +25167,8 @@ Amended 2026-10-20, §16.151 X59 (by §16.143 W41): `TD-items` no longer reaches
 `manifest_unreadable` reads the items table's first row and answers `state` first (as for `TD`). The cases that
 fail without the W1/W10 reader are `TD-items-older` (an installed build without that probe) and `TD-path`;
 `TD-canonical` is still the case a `NOT INDEXED`-only reader fails.
+Amended 2026-10-20, §16.149 X50: with this build's probe `TD-canonical` and `TD-path` are `state` too (it reads each
+index `INDEXED BY`); only `TD-items-older` reaches this reader.
 
 **Step 2's unreadable-patch line says where the patch goes, not that it is sent** (W8, W12; amends §16.136 V25).
 Step 2's `WAITING ON YOU: 1 patch file in ~/agent-context/setup/local-work cannot be read by this account; make it
@@ -25996,7 +26002,7 @@ Status keyed `the state file cannot be opened: ...; the state_dir lines say why`
 under a comment naming SQLITE_PERM, which is 3; 23 is SQLITE_AUTH, which only an authorizer callback raises and
 none is set. A real SQLITE_PERM got the damaged-file words. `doctor.CANNOT_OPEN_CODES` (CANTOPEN, PERM, READONLY,
 by name) and `doctor.cannot_open(exc)` (an extended code included, as `contended`) are the one set; status reads
-it, and the setup report's own set (lane RA, §16.146 X42, X60) names the same three. Test:
+it, and the setup report's own set (lane RA's X42 and X60, in §16.146) names the same three. Test:
 `test_cli.py::test_the_codes_of_a_state_file_this_account_cannot_open_are_named`.
 
 **X47, X49: a manifest that will not open keeps its reason, and only an access error gets the access fix
@@ -26013,7 +26019,8 @@ with no fix line: not an `OSError` left raw, which no arm of `cli._main` catches
 Tests: `test_cli.py::test_a_manifest_this_account_cannot_open_keeps_its_reason` and
 `test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix` (both layouts).
 
-**X50: damage under an index root fails status before any sync (`agentsync.ops.doctor`; amends §16.143 W41).**
+**X50: damage under an index root fails status before any sync (`agentsync.ops.doctor`; amends §16.143 W41,
+§16.136 V21 and §16.142 W1).**
 `doctor.manifest_unreadable` read each table's first row `NOT INDEXED` and never an index b-tree, while install.sh's
 step 1 reads every b-tree, so after damage under items_by_path or items_by_canonical status exited 0 with no FAIL,
 the next sync exited 65, and only that sync's record made status FAIL. The probe reads every b-tree with a root
@@ -26022,7 +26029,7 @@ page, as install.sh does: a table by its first row, as before, and an index by i
 with the same filter: damage or a held file raises, any other error (an index the planner will not use) is
 skipped. About one page per index, 21 on this schema. Status then FAILs state_dir.manifest at once and
 `cli._state_readable` stops the sync before it runs (exit 65), and step 1's config tail names the state file for an
-index root as for a table root (lane P's §16.148 X72 words that tail). Tests:
+index root as for a table root (lane P's X72, in §16.148, words that tail). Tests:
 `test_cli.py::test_damage_under_an_index_root_fails_status_before_any_sync` (every index of the schema, held to it
 by `test_the_index_list_is_the_manifests`) and the TD-canonical and TD-path cases of
 `test_install_oneshot.py::test_list_folders_says_step_2_stops_on_a_config_it_refuses`.
@@ -26034,7 +26041,7 @@ and `are`. And the two owner fixes, state_dir's and state_dir.files', were `sudo
 which `doctor.is_persons_fix` and install.sh's `persons_fails` read as the agent's: status's rule-1 NEXT and
 install.sh's NEXT handed a sudo to the agent, whose prompt says no sudo. Both are `the person runs sudo chown -R
 <uid> <state_dir> (the agent runs no sudo)` (`doctor._persons_chown`), the person's by PERSONS_FIX_RE's existing
-`the person ` alternative, so the NEXT names the owner; `doctor.PERSONS_KINDS` is unchanged (lane P's §16.148 X26
+`the person ` alternative, so the NEXT names the owner; `doctor.PERSONS_KINDS` is unchanged (lane P's X26, in §16.148,
 words it). The chmod fixes stay the agent's. Tests: `test_ops_doctor.py::test_state_files_say_it_of_one_file_and_them_of_more`,
 `test_state_files_this_account_cannot_open_fail_by_their_cause`, and the `state-owner` case of
 `test_install_oneshot.py::_persons_fail_lines`, which install.sh's run reads as the person's
@@ -26089,7 +26096,7 @@ such a path, and for one whose `exists()` raises PermissionError, so `ensure_tim
 re-excludes it every cycle (no setxattr, no tmutil). `cli._time_machine_checks` keeps the warn for a path that is
 not excluded and gives each unreadable one an [info] line, no warn and no fix: `not checked: this account cannot
 read its exclusion: <path> (<reason>)`, plus `; the state_dir lines say why` when the path is in the state folder;
-the `tenant-data paths excluded` line is printed only when neither applies. Lane RA's §16.146 X28 needs no
+the `tenant-data paths excluded` line is printed only when neither applies. Lane RA's X28, in §16.146, needs no
 time_machine case of its own. Test:
 `test_cli.py::test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded` (macOS).
 
@@ -26114,7 +26121,7 @@ the state folder, never a docs repo the loop cannot search: `doctor.state_unopen
 `doctor.LISTING_STATE_SHUT_NOTE`, `as of its last walk: this account cannot open the state file, so no sync
 lists it again until it can; the state_dir [FAIL] lines say what to do first`, and no fix. Keyed on the read's
 error, never on a state_dir.files FAIL, which a loose mode the loop reads past also gives. The report's bucket
-for that FAIL is lane RA's §16.146 X28. Tests:
+for that FAIL is lane RA's X28, in §16.146. Tests:
 `test_cli.py::test_a_listing_warn_over_damage_only_a_sync_read_makes_no_claim_about_the_loop`,
 `test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line` (by hand and under
 install.sh, with a loose-mode control), `test_a_state_file_unopenable_is_one_in_the_state_folder` and the W11 test's
@@ -26149,7 +26156,7 @@ report: after this fix it means a real missing exclusion (X4's verifier). Tests:
 and `test_staging_left_at_a_bad_mode_is_repaired_not_a_failed_cycle`.
 
 **X20, X21: the helper time-out line says the re-run once, and under install.sh by the plain command
-(`agentsync.ops.doctor`; amends §16.144 W20, §16.143 W19, §16.137 V5 and §16.32 W19).** The ocr, media and speech
+(`agentsync.ops.doctor`; amends §16.144 W20, §16.143 W19, §16.137 V5, §16.132 U78 and §16.32 W19).** The ocr, media and speech
 warns of a build that ran out of time put the whole marker reason in the line, which ends `; <install.sh> tries
 the build again on its next run`, beside a fix that starts with the same re-run (X20). Doctor's line drops that
 exact suffix (`doctor._RETRY_CLAUSE`, `removesuffix`) when the fix is `_helper_again_fix`'s; the marker, which

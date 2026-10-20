@@ -7687,15 +7687,21 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     from agentsync.ops import doctor  # noqa: PLC0415
 
     head = doctor.AGAIN_UNDER_INSTALL_SH.replace(doctor.INSTALL_SH, "<install.sh>")
-    assert head.startswith("run <install.sh> again with the options")
+    # B13 round 20 X21 (lane B) changed the head after X68's line: X68 quotes round 19's, X21 the current
+    assert head.startswith("run <install.sh> again (it keeps the folders already synced")
     claims, _bare, _held, _unheld = _dated_line_scan()
     assert ("16.151", ["X68"], "16.132", "U78") in claims
+    assert ("16.149", ["X20", "X21"], "16.132", "U78") in claims
     u78 = " ".join(
         _contracts_section(
             "**A time-out under install.sh does not name the same re-run twice", "\n\n"
         ).split()
     )
-    assert f"§16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `{head}`" in u78
+    round_19 = "run <install.sh> again with the options of the run that installed agentsync"
+    round_19 += " (not --report-only, which builds nothing)"
+    x68 = f"§16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `{round_19}`"
+    assert x68 in u78
+    assert f"§16.149 X21: under install.sh `_again_fix` starts `{head}`" in u78
 
 
 def test_exit_1_names_a_state_file_this_account_cannot_open() -> None:
