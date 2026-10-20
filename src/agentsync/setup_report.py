@@ -5217,12 +5217,12 @@ def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], boo
 
 
 def _add_backs(c: Config, conn: sqlite3.Connection, vanished: list[str]) -> list[Path]:
-    """doctor's ``vanished_add_backs`` over the report's read-only connection, never a Manifest (which opens
-    read-write); [] when doctor cannot be imported."""
+    """``cycle.vanished_add_backs`` (doctor's, moved there by B13 round 18 V7) over the report's read-only
+    connection, never a Manifest (which opens read-write); [] when it cannot be imported."""
     if not vanished:
         return []
     try:
-        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+        from agentsync import cycle  # noqa: PLC0415 - lazy: the report must import even if it is broken
     except Exception:
         return []
 
@@ -5230,16 +5230,16 @@ def _add_backs(c: Config, conn: sqlite3.Connection, vanished: list[str]) -> list
         row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return None if row is None else str(row[0])
 
-    return list(doctor.vanished_add_backs(c, meta, vanished))
+    return list(cycle.vanished_add_backs(c, meta, vanished))
 
 
 def _add_back_tail(roots: list[Path], *, every: bool) -> str:
-    """doctor's ``vanished_add_back_tail``; "" when doctor cannot be imported."""
+    """``cycle.vanished_add_back_tail`` (doctor's, moved by V7); "" when it cannot be imported."""
     try:
-        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+        from agentsync import cycle  # noqa: PLC0415 - lazy: the report must import even if it is broken
     except Exception:
         return ""
-    return str(doctor.vanished_add_back_tail(roots, every=every))
+    return str(cycle.vanished_add_back_tail(roots, every=every))
 
 
 def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
@@ -5253,6 +5253,13 @@ def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:
     if rest:
         first += "; once that is fixed, a sync also refuses it: " + "; ".join(rest)
     return first, read
+
+
+_READD_TAIL_RE = re.compile(
+    r"; or add (its folder|their folders|the folders? still here) again, under the same id: .*$"
+)
+"""The add-back ``cycle.vanished_add_back_tail`` ends the sync's vanished-source refusal with, through the
+line's end (B13 round 18 V7)."""
 
 
 def _reads_again(said: str, read: bool) -> bool:
@@ -5299,6 +5306,9 @@ def _sync_refusal(r: _Run, c: Config) -> str | None:
     from agentsync.cycle import VANISHED_WORDS  # noqa: PLC0415 - lazy, as in _live_refusal
 
     if said is not None and VANISHED_WORDS in said:  # the manifest could not be read: ids by place only
+        # the add-back after the advice names a folder, never a source: cut before the ids are labelled, and
+        # point at Doctor's line, whose folder is registered for redaction (B13 round 18 V7)
+        said = _READD_TAIL_RE.sub(r"; or add \1 again, under the same id (see Doctor)", said)
         labels = _Labels(c, r.red)
         # an id and its count, "'x' (3 files)" or an older build's "'x' (1 file(s))", as one bracket (T7)
         said = _QUOTED_COUNT_RE.sub(lambda m: _with_count(labels.of(m.group(1)), m.group(2)), said)

@@ -995,6 +995,22 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
         "(<folder-3>, not in the config; 1 file(s)) are mirrored but no longer in sources.toml"
     ), line
     assert gone not in line
+    # B13 round 18 V7: step 2's line ends with the add-back, a folder path with a space: it is cut before the
+    # ids are labelled, so the folder is never labelled a source "not in the config", nor shown in clear
+    readd = (
+        f"; or add its folder again, under the same id: ~/.local/bin/agentsync add-source '{fake_mac['two']}'"
+    )
+    out.write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"configuration error: {cycle.vanished_detail({gone: 1})}; {cycle.VANISHED_ADVICE}{readd}\n",
+        encoding="utf-8",
+    )
+    line = loads()
+    assert line.endswith(
+        f"{cycle.VANISHED_ADVICE}; or add its folder again, under the same id (see Doctor)"
+    ), line
+    assert line.count("not in the config") == 1, line
+    assert not any(w in line for w in (*FOLDERS, gone, str(fake_mac["home"]))), line
     write_install_log(fake_mac)  # step 2's first sync passed: nothing to say
     assert loads() == "- loads: yes"
 
@@ -1228,14 +1244,21 @@ def test_a_vanished_id_numbers_before_a_retired_one_and_a_retired_report_word_st
 
 
 @pytest.mark.usefixtures("roomy_calls")
+@pytest.mark.parametrize("under", [False, True], ids=["cli", "install-sh"])
 @pytest.mark.parametrize("where", ["cloud", "local", "deep-cloud"])
 def test_a_vanished_sources_add_back_folder_is_never_in_the_report(
-    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str], where: str
+    fake_mac: dict[str, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    where: str,
+    under: bool,
 ) -> None:
     """B13 round 17 U46: doctor's config.vanished_sources fix now names the folder add-source adds back under
     the same id (``doctor.vanished_fix``), a path no configured source has any more. The report's Doctor
     section must show it by placeholder, never in clear: a cloud folder, and a local folder outside
-    CloudStorage. No ``clean_doctor``: the [FAIL] line is the leak."""
+    CloudStorage. No ``clean_doctor``: the [FAIL] line is the leak. Round 18 V7, V8: under install.sh the
+    add-back is its --source-local, the folder in install.sh's double quotes, and that is redacted too."""
     cfg = fake_mac["config"]
     if where == "cloud":
         folder = fake_mac["two"]
@@ -1253,16 +1276,24 @@ def test_a_vanished_sources_add_back_folder_is_never_in_the_report(
     head, *blocks = cfg.read_text(encoding="utf-8").split("[[source]]")
     cfg.write_text("[[source]]".join([head, *(b for b in blocks if f'id = "{gone}"' not in b)]), "utf-8")
     capsys.readouterr()
+    if under:
+        monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     assert cli.main(["status", "--config", str(cfg)]) == 1
     [fail] = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[FAIL] config.vanished")]
-    assert f"add-source {shlex.quote(str(folder))})" in fail, fail  # the leak this test guards
+    said = f'--source-local "{folder}")' if under else f"add-source {shlex.quote(str(folder))})"
+    assert said in fail, fail  # the leak this test guards
     rc, text, _ = report(tmp_path, cfg)
     assert rc == 0
     words = [*folder.name.split(), *(["Zeta"] if where == "deep-cloud" else []), gone]
     leaked = [ln for ln in text.splitlines() if any(w.lower() in ln.lower() for w in words)]
     assert not leaked, leaked
     [shown] = [ln for ln in section(text, "Doctor").splitlines() if ln.startswith("[FAIL] config.vanished")]
-    assert "; or add its folder again, under the same id: ~/.local/bin/agentsync add-source " in shown, shown
+    cmd = (
+        "~/src/agent-context-sync/scripts/install.sh --source-local "
+        if under
+        else "~/.local/bin/agentsync add-source "
+    )
+    assert f"; or add its folder again, under the same id: {cmd}" in shown, shown
 
 
 def test_the_reports_vanished_source_check_is_the_cycles(fake_mac: dict[str, Path]) -> None:

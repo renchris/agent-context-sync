@@ -6760,6 +6760,9 @@ def test_a_mirrored_folder_whose_block_is_gone_is_named_in_step_1_and_added_back
     )
     bare = install_sh(env, str(wheel))
     assert bare.returncode == 1 and "[FAIL] config.vanished_sources" in bare.stdout, bare.stdout + bare.stderr
+    # B13 round 18 V7, V8: step 2's [FAIL] names the command step 1's NEXT does, install.sh's own
+    [fail] = [ln for ln in bare.stdout.splitlines() if "[FAIL] config.vanished_sources" in ln]
+    assert fail.endswith(f'under the same id: {cli.loop.INSTALL_SH} --source-local "{beta}")'), fail
     again = install_sh(env, str(wheel), "--source-local", str(beta))
     assert again.returncode == 0, again.stdout + again.stderr
     assert cfg.read_text(encoding="utf-8") == whole

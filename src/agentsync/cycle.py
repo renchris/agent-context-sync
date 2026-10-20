@@ -32,6 +32,7 @@ import logging
 import os
 import re
 import secrets
+import shlex
 import shutil
 import socket
 import sqlite3
@@ -69,7 +70,14 @@ from agentsync.classifier import (
     classify_output,
 )
 from agentsync.classifier import classify_pass as _classify_pass
-from agentsync.config import RETIRE_ADVICE, BreakerConfig, Config, SourceConfig, canonical_source_root
+from agentsync.config import (
+    RETIRE_ADVICE,
+    BreakerConfig,
+    Config,
+    SourceConfig,
+    canonical_source_root,
+    derive_source_id,
+)
 from agentsync.convert import (
     CONVERSION_FAILED,
     CONVERTER_UNAVAILABLE,
@@ -349,6 +357,68 @@ def vanished_sources(config: Config, manifest: Manifest) -> dict[str, int]:
     15 S7). A block set to ``state = "retired"`` is still configured (``config.sources``, never
     ``live_sources()``): its retiring sync is the one that tombstones the pages."""
     return vanished_from((s.id for s in config.sources), manifest.present_counts())
+
+
+def vanished_add_backs(
+    config: Config, scope_root: Callable[[str], str | None], vanished: Iterable[str]
+) -> list[Path]:
+    """The folders that ``add-source`` adds back under a vanished id, in id order: the root recorded in the
+    manifest's meta ``scope_root:<id>`` (``scope_root``, a manifest's ``get_meta`` or the setup report's
+    read-only read of it) when it is a folder here and the id add-source derives for it is that id,
+    install.sh's ``vanished_folders`` rule ("a name alone never matches"). A custom id, or a root that is
+    gone, has none: re-adding it would mirror the folder twice under a new id and leave the refusal (B13
+    round 17 U9, U25, U46). Nor does a folder another source has now (an id renamed in sources.toml):
+    add-source would only say it is configured already. A root this process may not read is skipped, never
+    an error that would drop the FAIL itself (review). Doctor's fix, the sync's refusal and the setup
+    report's loads line all name these (B13 round 18 V7)."""
+    configured = {s.id for s in config.sources}
+    taken = {canonical_source_root(expand(s.path)) for s in config.sources if s.path is not None}
+    inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")  # every init adds it back
+    out: list[Path] = []
+    for sid in sorted(vanished):
+        raw = (scope_root(f"scope_root:{sid}") or "").partition(":")[2]
+        if not raw:
+            continue
+        try:
+            root = canonical_source_root(Path(raw))
+            if root == inbox or root in taken or str(root) != raw or not root.is_dir():
+                continue
+        except OSError:  # 3.11's is_dir raises EACCES and EPERM
+            continue
+        if derive_source_id(root, configured) == sid:
+            out.append(root)
+    return out
+
+
+def _shown_arg(value: str) -> str:
+    r"""``value`` as install.sh's ``shown_arg`` shows a folder in its NEXT lines: in double quotes, with
+    ``\``, ``"``, ``$`` and a backquote escaped; one holding ``!`` or a character that does not print is
+    single-quoted instead (``shown_arg`` falls back to ``printf %q`` there), which a shell reads the same."""
+    if "!" in value or not value.isprintable():
+        return shlex.quote(value)
+    for ch in ("\\", '"', "$", "`"):
+        value = value.replace(ch, "\\" + ch)
+    return f'"{value}"'
+
+
+def vanished_add_back_tail(roots: Sequence[Path], *, every: bool) -> str:
+    """What follows :data:`VANISHED_FIX` or :data:`VANISHED_ADVICE` for the folders
+    :func:`vanished_add_backs` found: ``; or add its folder again, under the same id: <command>``, or "" for
+    none. ``every``: every vanished source has one. Under install.sh (``AGENTSYNC_NO_NEXT_HINT=1``, which it
+    exports for every agentsync call) the command is install.sh's own ``--source-local``, as step 1's NEXT
+    names it, so the step's NEXT and the [FAIL] line beside it agree; elsewhere the CLI's own verb by its full
+    path, the operator's re-add (B13 round 17 U9, U25, U46; round 18 V7, V8)."""
+    if not roots:
+        return ""
+    if os.environ.get("AGENTSYNC_NO_NEXT_HINT", "").strip() == "1":  # loop.NO_NEXT_HINT_ENV
+        cmds = f"{skill.INSTALL_SH} " + " ".join(f"--source-local {_shown_arg(str(r))}" for r in roots)
+    else:
+        cmds = ", then ".join(f"{skill.AGENTSYNC_BIN} add-source {shlex.quote(str(r))}" for r in roots)
+    if every:
+        what = "its folder" if len(roots) == 1 else "their folders"
+    else:
+        what = "the folder still here" if len(roots) == 1 else "the folders still here"
+    return f"; or add {what} again, under the same id: {cmds}"
 
 
 def vanished_detail(vanished: Mapping[str, int]) -> str:
@@ -2570,7 +2640,10 @@ class _Cycle:
         the fix, before anything is written (:func:`vanished_sources`, which doctor's check reads too)."""
         vanished = vanished_sources(self.config, self.manifest)
         if vanished:
-            raise ConfigError(f"{vanished_detail(vanished)}; {VANISHED_ADVICE}")
+            back = vanished_add_backs(self.config, self.manifest.get_meta, vanished)
+            # doctor's tail (B13 round 18 V7)
+            tail = vanished_add_back_tail(back, every=len(back) == len(vanished))
+            raise ConfigError(f"{vanished_detail(vanished)}; {VANISHED_ADVICE}{tail}")
 
     def _retag_published(self) -> None:
         """Keep ``published`` on HEAD when HEAD is an agentsync commit: a crash between commit_cycle and

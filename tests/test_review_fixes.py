@@ -1355,9 +1355,21 @@ def test_two_vanished_sources_are_named_with_counted_nouns() -> None:
     """B13 round 15 S14: "source(s) 'x' (4 file(s)) are mirrored": the counts are known."""
     fake = cast(
         Any,
-        type("Fake", (), {"config": type("C", (), {"sources": ()})(), "manifest": None})(),
+        type(
+            "Fake",
+            (),
+            {"config": type("C", (), {"sources": (), "docs_repo": "/nonexistent/docs"})(), "manifest": None},
+        )(),
     )
-    fake.manifest = type("M", (), {"present_counts": staticmethod(lambda: {"b": 3, "a": 1})})()
+    # B13 round 18 V7: the refusal looks up each vanished id's recorded root for its add-back (none here)
+    fake.manifest = type(
+        "M",
+        (),
+        {
+            "present_counts": staticmethod(lambda: {"b": 3, "a": 1}),
+            "get_meta": staticmethod(lambda key: None),
+        },
+    )()
     with pytest.raises(cycle.ConfigError) as refused:
         cycle._Cycle._refuse_vanished_sources(fake)
     assert str(refused.value).startswith("sources 'a' (1 file), 'b' (3 files) are mirrored but no longer")

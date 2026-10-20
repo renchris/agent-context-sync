@@ -18,7 +18,6 @@ import logging
 import os
 import plistlib
 import re
-import shlex
 import shutil
 import sqlite3
 import stat
@@ -34,8 +33,16 @@ from urllib.parse import quote
 from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
-from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root, derive_source_id
-from agentsync.cycle import VANISHED_FIX, _holds_home, _sync_leaves, vanished_detail, vanished_sources
+from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
+from agentsync.cycle import (
+    VANISHED_FIX,
+    _holds_home,
+    _sync_leaves,
+    vanished_add_back_tail,
+    vanished_add_backs,
+    vanished_detail,
+    vanished_sources,
+)
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
@@ -2011,61 +2018,16 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
 
 
 def _vanished_add_backs(config: Config, manifest: Manifest, vanished: Collection[str]) -> list[Path]:
-    """:func:`vanished_add_backs` read through ``manifest``."""
+    """``cycle.vanished_add_backs`` read through ``manifest``."""
     return vanished_add_backs(config, manifest.get_meta, vanished)
-
-
-def vanished_add_backs(
-    config: Config, get_meta: Callable[[str], str | None], vanished: Collection[str]
-) -> list[Path]:
-    """The folders that ``add-source`` adds back under a vanished id, in id order: the manifest's recorded
-    root (``scope_root:<id>``) when it is a folder here and the id add-source derives for it is that id,
-    install.sh's ``vanished_folders`` rule ("a name alone never matches"). A custom id, or a root that is
-    gone, has none: re-adding it would mirror the folder twice under a new id and leave the refusal (B13
-    round 17 U9, U25, U46). Nor does a folder another source has now (an id renamed in sources.toml):
-    add-source would only say it is configured already. A root this process may not read is skipped, never
-    an error that would drop the FAIL itself (review). ``get_meta``: the manifest's meta read (the setup
-    report's loads line reads it over its own read-only connection, B13 round 18 V18)."""
-    configured = {s.id for s in config.sources}
-    taken = {canonical_source_root(expand(s.path)) for s in config.sources if s.path is not None}
-    inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")  # every init adds it back
-    out: list[Path] = []
-    for sid in sorted(vanished):
-        raw = (get_meta(f"scope_root:{sid}") or "").partition(":")[2]
-        if not raw:
-            continue
-        try:
-            root = canonical_source_root(Path(raw))
-            if root == inbox or root in taken or str(root) != raw or not root.is_dir():
-                continue
-        except OSError:  # 3.11's is_dir raises EACCES and EPERM
-            continue
-        if derive_source_id(root, configured) == sid:
-            out.append(root)
-    return out
 
 
 def vanished_fix(roots: Sequence[Path], *, every: bool) -> str:
     """Doctor's config.vanished_sources fix: :data:`cycle.VANISHED_FIX`, which starts with the person's words
-    (``PERSONS_FIX_RE``), then, for each folder :func:`_vanished_add_backs` found, the one command that adds
-    it back under the same id, as step 1's NEXT offers (``--source-local``, which runs it); the CLI's own
-    verb, by its full path, since status and doctor print it outside install.sh too (B13 round 17 U9, U25,
-    U46). ``every``: every vanished source has one."""
-    return VANISHED_FIX + vanished_add_back_tail(roots, every=every)
-
-
-def vanished_add_back_tail(roots: Sequence[Path], *, every: bool) -> str:
-    """The ``; or add its folder again, under the same id: <command>`` tail of :func:`vanished_fix`, "" with
-    no folder: the setup report's loads line ends its refusal with it, so both say one text (B13 round 18
-    V18)."""
-    if not roots:
-        return ""
-    cmds = ", then ".join(f"{BIN} add-source {shlex.quote(str(r))}" for r in roots)
-    if every:
-        what = "its folder" if len(roots) == 1 else "their folders"
-    else:
-        what = "the folder still here" if len(roots) == 1 else "the folders still here"
-    return f"; or add {what} again, under the same id: {cmds}"
+    (``PERSONS_FIX_RE``), then, for each folder ``cycle.vanished_add_backs`` found, the command that adds it
+    back under the same id (``cycle.vanished_add_back_tail``, the tail the sync's refusal and the setup report
+    end with too; B13 round 17 U9, U25, U46, round 18 V7). ``every``: every vanished source has one."""
+    return f"{VANISHED_FIX}{vanished_add_back_tail(roots, every=every)}"
 
 
 def _check_heartbeat(

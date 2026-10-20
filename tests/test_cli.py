@@ -3069,12 +3069,19 @@ def test_the_vanished_sources_fix_names_the_re_add_only_where_it_adds_the_same_i
     fix = fail.split(" (fix: ", 1)[1]
     assert rc == cli.EXIT_FAILED and fix.startswith("put the [[source]] block back "), fail
     assert doctor.is_persons_fix(fix)
+    # B13 round 18 V7: the sync's refusal ends with the same add-back as doctor's fix, or with none
+    if case != "unreadable":
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_CONFIG
+        err = capsys.readouterr().err.strip()
+        assert err.startswith("configuration error: ") and cycle_mod.VANISHED_ADVICE in err, err
+        assert err.endswith(cycle_mod.VANISHED_ADVICE + fix.removeprefix(cycle_mod.VANISHED_FIX)[:-1]), err
     if case != "default-id":
         assert fix == f"{cycle_mod.VANISHED_FIX})" and "add-source" not in fix, fail
         return
     assert sid == "project-delta"
     cmd = f"{loop.BIN} add-source {shlex.quote(str(canonical_source_root(folder)))}"
     assert fix == f"{cycle_mod.VANISHED_FIX}; or add its folder again, under the same id: {cmd})", fail
+    assert err.endswith(f"or restore it; or add its folder again, under the same id: {cmd}"), err
     # the command it names clears the refusal: the same id comes back, and the sync runs
     assert cli.main(["add-source", str(folder), "--config", cfg]) == cli.EXIT_OK
     assert sid in [s.id for s in load_config(initialised.config_path).sources]
@@ -3096,6 +3103,48 @@ def test_the_vanished_sources_fix_offers_each_folder_and_says_which_when_not_all
         f"{cycle_mod.VANISHED_FIX}; or add the folder still here again, under the same id: "
     )
     assert doctor.vanished_fix([], every=False) == cycle_mod.VANISHED_FIX
+
+
+def test_under_install_sh_the_vanished_sources_add_back_is_one_source_local_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 18 V7, V8: under install.sh (AGENTSYNC_NO_NEXT_HINT=1) the add-back names install.sh's own
+    --source-local, as step 1's NEXT does, one run for every folder, each shown as install.sh's shown_arg
+    shows it, so step 1's NEXT and the [FAIL] line beside it name one command; elsewhere add-source stays."""
+    a, b = Path("/Users/x/Project Delta"), Path("/Users/x/Gamma")
+    monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
+    assert doctor.vanished_fix([a, b], every=True) == (
+        f"{cycle_mod.VANISHED_FIX}; or add their folders again, under the same id: {loop.INSTALL_SH} "
+        f'--source-local "{a}" --source-local "{b}"'
+    )
+    monkeypatch.delenv(cli.NO_NEXT_HINT_ENV)
+    assert f"{loop.BIN} add-source '{a}'" in doctor.vanished_fix([a], every=True)
+
+
+@pytest.mark.parametrize(
+    "folder",
+    ['/Users/x/Q$1 `id` \\ "Plans"', "/Users/x/Plain Folder", "/Users/x/Hi! there", "/Users/x/T\tab"],
+)
+def test_the_add_backs_folder_is_shown_as_install_shs_shown_arg_shows_it(folder: str) -> None:
+    """B13 round 18 V7, V8 (lane P's parity test): ``cycle._shown_arg`` is install.sh's ``shown_arg``, read
+    from install.sh and run under /bin/bash: the same text, which a shell reads back as the folder."""
+    text = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    m = re.search(r"^shown_arg\(\) \{\n.*?^\}\n", text, re.M | re.S)
+    assert m is not None
+    shown = subprocess.run(
+        ["/bin/bash", "-c", m.group(0) + 'shown_arg "$1"', "bash", folder],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    ).stdout
+    if "!" not in folder and folder.isprintable():
+        assert cycle_mod._shown_arg(folder) == shown
+    for form in (shown, cycle_mod._shown_arg(folder)):
+        back = subprocess.run(
+            ["/bin/bash", "-c", f"printf %s {form}"], capture_output=True, text=True, check=True
+        ).stdout
+        assert back == folder, form
 
 
 def test_the_vanished_source_check_says_nothing_before_the_first_sync(
