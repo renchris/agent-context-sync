@@ -408,6 +408,23 @@ def test_etimedout_exhausts_retries(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert list(dest.parent.iterdir()) == []
 
 
+@pytest.mark.parametrize(("code", "retries"), [(89, 0), (89, 1), (60, 0), (60, 1)])
+def test_a_provider_reasons_attempts_are_a_counted_noun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int, retries: int
+) -> None:
+    """B13 round 18 V90: the File Provider reasons said "after N attempt(s)": "1 attempt", "2 attempts"."""
+    src = _write(tmp_path / "c.docx", b"online-only")
+    _, fake = _failing_copy([code] * 10)
+    monkeypatch.setattr(m, "_copy_once", fake)
+    with pytest.raises((DatalessRefusedError, ProviderTimeoutError)) as exc:
+        m.materialise(
+            src, tmp_path / "o" / "c.docx", ByteBudget(100, 1), retries=retries, sleep=lambda _s: None
+        )
+    said = str(exc.value)
+    assert said.endswith(" after 1 attempt" if retries == 0 else " after 2 attempts"), said
+    assert "(s)" not in said
+
+
 def test_ecanceled_retries_then_defers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Field report N8: OneDrive answered errno 89 until the file was downloaded in Finder. It retries like
     # ETIMEDOUT, then ends as the OS refusal the cycle defers (HYDRATION_REFUSED), not a generic error.

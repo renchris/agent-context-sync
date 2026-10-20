@@ -1098,6 +1098,11 @@ def test_remote_policy_and_push(world: World, tmp_path: Path) -> None:
     assert rep.verified and rep.remote.startswith("pushed")
     assert git(remote, "rev-parse", "main") == git(world.repo, "rev-parse", "main")
     assert any("remote-tracking" in n for n in rep.notes)
+    # B13 round 18 V90: counted nouns, never "ref(s)"
+    assert rep.remote == "pushed 1 ref to origin", rep.remote
+    assert "deleted 1 remote-tracking ref; remotes are NOT purged" in rep.notes, rep.notes
+    git(world.repo, "branch", "extra")
+    assert gv.push_rewritten(world.repo, allowed, {}) == "pushed 2 refs to origin"
 
 
 def test_purge_without_push_names_the_remote(world: World, tmp_path: Path) -> None:

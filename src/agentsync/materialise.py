@@ -31,6 +31,7 @@ from pathlib import Path
 
 from agentsync.errors import DatalessRefusedError, MaterialiseError, ProviderTimeoutError
 from agentsync.model import ByteBudget
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -366,13 +367,14 @@ def materialise(
                             raise DatalessRefusedError(
                                 str(src),
                                 code,
-                                f"File Provider canceled the read (ECANCELED) after {attempts} attempt(s)",
+                                "File Provider canceled the read (ECANCELED) after "
+                                + plural(attempts, "attempt"),
                             ) from exc
                         if attempts > retries:
                             raise ProviderTimeoutError(
                                 str(src),
                                 code,
-                                f"File Provider timed out (ETIMEDOUT) after {attempts} attempt(s)",
+                                f"File Provider timed out (ETIMEDOUT) after {plural(attempts, 'attempt')}",
                             ) from exc
                         delay = backoff_s * (2 ** (attempts - 1))
                         log.info("%s: %s on attempt %d; retrying in %.1fs", src, name, attempts, delay)

@@ -22940,6 +22940,9 @@ built. T86 adds the count-2 pins S65 claimed: the over-budget and refused waits,
 Amended 2026-10-19, §16.131 U18, U71, U102: the purge notes, the empty-root and withheld alarms, the breaker finding,
 the CHANGELOG's lint line, doctor's symlink, shared-content and logs lines and the compaction commit drop `(s)`
 too; the inbox's settle wait, a progress notice, is counted and printed plain.
+Amended 2026-10-19, §16.137 V90: so do purge's remote field (`pushed N refs to <remote>`, `1 ref`), its note
+`deleted N remote-tracking refs; remotes are NOT purged`, publish's `N generated files are ignored by a .gitignore
+rule` (`1 generated file is`) and the File Provider reasons `after N attempts` (`1 attempt`).
 
 **T37, T56, T33: a WARNING the report prints is held back from a foreground sync (`agentsync.arm_local`,
 `agentsync.cycle`, `agentsync.cli`; amends §16.119 S2, §16.68 H31).** A foreground sync still printed raw
@@ -23753,6 +23756,9 @@ pins in `test_arm_local.py`, `test_governance.py`, `test_publish.py`, `test_ops_
 with count-1 and count-2 cases (`test_publish.py::test_the_changelogs_lint_line_counts_its_findings`,
 `test_ops_doctor.py::test_the_logs_line_counts_its_files`), and
 `test_arm_local.py::test_inbox_settle_waits_for_a_fresh_file_beside_a_future_dated_one`.
+Amended 2026-10-19, §16.137 V90: four count-led lines the sweep missed take noun and verb from the count too:
+purge's remote field and remote-tracking note (`agentsync.governance`), publish's ignored-generated-file error
+(`agentsync.gitops`) and the File Provider's ECANCELED and ETIMEDOUT reasons (`agentsync.materialise`).
 
 **U49, U50, U51: the empty-folder waits point by noun, exclude-empty says one head (`agentsync.loop`,
 `agentsync.cli`; amends §16.125 T38).** The collides wait pointed at the alarm with `which names them` when its own

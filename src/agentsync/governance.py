@@ -1616,7 +1616,8 @@ def push_rewritten(
 ) -> str:
     """Force-push rewritten branches/tags with a lease on their pre-rewrite values, only when the policy
     allows
-    the remote; returns ``disabled`` | ``no-remote`` | ``refused: …`` | ``pushed N ref(s) to <remote>``."""
+    the remote; returns ``disabled`` | ``no-remote`` | ``refused: …`` | ``pushed N refs to <remote>``
+    (``1 ref`` for one; B13 round 18 V90)."""
     if not gov.allow_remote:
         return "disabled"
     names = _git_text(repo, "remote").split()
@@ -1644,7 +1645,7 @@ def push_rewritten(
         len(refspecs),
         remote,
     )
-    return f"pushed {len(refspecs)} ref(s) to {remote}"
+    return f"pushed {plural(len(refspecs), 'ref')} to {remote}"
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -2361,7 +2362,8 @@ def _purge_locked(
             ]
             if result.deleted_refs:
                 notes.append(
-                    f"deleted {len(result.deleted_refs)} remote-tracking ref(s); remotes are NOT purged"
+                    f"deleted {plural(len(result.deleted_refs), 'remote-tracking ref')}; "
+                    "remotes are NOT purged"
                 )
         cmap = result.commit_map if result else {}
         rows = _manifest_apply(

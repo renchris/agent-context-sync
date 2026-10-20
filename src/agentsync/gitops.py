@@ -30,6 +30,7 @@ from pathlib import Path
 from agentsync.errors import GitError, PublishError
 from agentsync.model import ChangeOp, MirrorChange
 from agentsync.paths import expand, is_cloud_path
+from agentsync.text import plural
 
 log = logging.getLogger(__name__)
 
@@ -442,7 +443,8 @@ def commit_cycle(
     lost = _ignored_generated(repo)
     if lost:
         raise PublishError(
-            f"{len(lost)} generated file(s) are ignored by a .gitignore rule and would silently not be "
+            f"{plural(len(lost), 'generated file')} {'is' if len(lost) == 1 else 'are'} ignored by a "
+            ".gitignore rule and would silently not be "
             f"committed (first: {lost[0]}); remove the rule from docs/.gitignore"
         )
     literal = _literal(specs)

@@ -628,9 +628,13 @@ def test_commit_cycle_refuses_while_a_repo_gitignore_hides_a_page(repo: Path) ->
     write(repo, "mirror/src/research-plan.md", "x\n")
     write(repo, "mirror/src/b.md", "y\n")
     write(repo, "_manifest/cache/k.json", "{}\n")  # the converter cache is meant to be ignored
-    with pytest.raises(PublishError, match=r"1 generated file\(s\) are ignored .*research-plan\.md"):
+    with pytest.raises(PublishError, match=r"^1 generated file is ignored .*research-plan\.md"):
         gitops.commit_cycle(repo, "sync: 2a")
     assert gitops.head_sha(repo) is None
+    # B13 round 18 V90: a counted noun and its verb, never "file(s) are"
+    write(repo, "mirror/src/research-notes.md", "z\n")
+    with pytest.raises(PublishError, match=r"^2 generated files are ignored .*research-notes\.md"):
+        gitops.commit_cycle(repo, "sync: 2a")
 
 
 def test_every_git_call_carries_the_safe_overrides(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
