@@ -2934,6 +2934,8 @@ class _Facts:
     # (B13 round 18 V3, V49); 0.0: the budget was used up before it started
     doctor_cut_off: float | None = None
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
+    # those lines by why (the words in their bracket; a bare one is the time limit's), B13 round 18 V15, V35
+    evidence_why: Counter[str] = dataclasses.field(default_factory=Counter)
     loop_checks: tuple[str, ...] = ()  # the loop's NextStep.checks (the Loop line's hook); () when not read
 
 
@@ -7363,22 +7365,59 @@ def _evidence(r: _Run) -> list[str]:
         r.evidence_steps = mirror.steps
         r.evidence_statements = tuple(mirror.statements)
         mirror.close()
-    r.facts.evidence = sum(1 for line in out if "not measured" in line)
+    unmeasured = [line for line in out if "not measured" in line]
+    r.facts.evidence = len(unmeasured)
+    for line in unmeasured:
+        m = _NOT_MEASURED_WHY_RE.search(line)
+        r.facts.evidence_why[m.group(1) if m is not None else "time limit"] += 1
     return out
+
+
+_NOT_MEASURED_WHY_RE = re.compile(r"not measured \(([^()]*)\)")
+_RETRY_WHYS = frozenset(
+    {"time limit", "it did not finish in time", "the state file is busy: a sync holds it"}
+)
+"""The reasons a report written again when the Mac is idle can clear (:func:`_why_not_read`'s; a busy state
+file too: waiting frees it)."""
 
 
 def _evidence_line(r: _Run) -> str:
     """The Summary's line about the evidence parts: whether every one was measured. The person sends one
-    report, so a part that ran out of time is said where it is seen first."""
+    report, so a part that ran out of time is said where it is seen first. A line not measured for a cause
+    waiting cannot fix (a state file that cannot be read, a refused configuration) says where that cause is
+    fixed, with no advice to write the report again when idle; mixed causes get a clause each (B13 round 18
+    V15, V35)."""
     count = r.facts.evidence
     if count is None:
         return "- evidence: not read (the Status section's parts need a config that loads)"
     if count == 0:
         return f"- evidence: the {len(EVIDENCE_TITLES)} parts at the end of Status were measured"
-    return (
-        f"- evidence: {_plural(count, 'line')} at the end of Status {'says' if count == 1 else 'say'} "
-        f'"not measured": {_IDLE_AGAIN}'
-    )
+    say = "says" if count == 1 else "say"
+    head = f'- evidence: {_plural(count, "line")} at the end of Status {say} "not measured"'
+    why = r.facts.evidence_why
+    retry = sum(n for w, n in why.items() if w in _RETRY_WHYS)
+    if retry == count:
+        return f"{head}: {_IDLE_AGAIN}"
+    state = sum(n for w, n in why.items() if w.startswith("the state file cannot be read"))
+    config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
+    clauses = [
+        (
+            state,
+            "the state file cannot be read: a report written after it is fixed measures them (see Doctor's "
+            "state_dir.manifest line)",
+        ),
+        (
+            config,
+            "the configuration is refused: a report written after it loads measures them (see Configuration)",
+        ),
+        (count - retry - state - config, "of another cause: see those lines"),
+    ]
+    said = [(n, f"because {words}") for n, words in clauses if n]
+    if retry:
+        said.append((retry, f"ran out of time: {_IDLE_AGAIN}"))
+    if len(said) == 1:
+        return f"{head} {said[0][1]}"
+    return f"{head}: " + "; ".join(f"{n} {words}" for n, words in said)
 
 
 def _status_section(r: _Run) -> list[str]:

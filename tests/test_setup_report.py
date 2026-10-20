@@ -6063,6 +6063,10 @@ def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(
     named = [ln for ln in said if re.search(r"\b[A-Z]\w*Error\b", ln)]
     assert named == [], named
     assert "not read (the configuration is refused: see Configuration)" in text
+    # B13 round 18 V15, V35: the evidence line said to write the report again when idle, which cannot help
+    evidence = _line(section(text, "Summary"), "- evidence: ")
+    assert "because the state file cannot be read" in evidence and "state_dir.manifest line" in evidence
+    assert "idle" not in evidence, evidence
     assert setup_report._why_not_read(sqlite3.DatabaseError("x")) == (
         "the state file cannot be read: see Doctor's state_dir.manifest line"
     )
@@ -9919,6 +9923,44 @@ def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
         "is idle (`~/src/agent-context-sync/scripts/install.sh --report-only`) before sending it\n"
         in section(text, "Summary")
     )
+
+
+def test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed(fake_mac: dict[str, Path]) -> None:
+    """B13 round 18 V15, V35: the Summary said ``5 lines ... say "not measured": write the report again when
+    this Mac is idle`` while each of the 5 said the state file cannot be read, which waiting never fixes. Each
+    cause says where it is fixed; a time-out or a busy state file keeps the idle advice, a clause each when
+    the causes are mixed."""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
+    state = "the state file cannot be read: see Doctor's state_dir.manifest line"
+    busy = "the state file is busy: a sync holds it"
+
+    r.facts.evidence_why = Counter({state: 5})
+    r.facts.evidence = 5
+    assert setup_report._evidence_line(r) == (
+        '- evidence: 5 lines at the end of Status say "not measured" because the state file cannot be read: '
+        "a report written after it is fixed measures them (see Doctor's state_dir.manifest line)"
+    )
+    r.facts.evidence_why = Counter({state: 5, "time limit": 2})
+    r.facts.evidence = 7
+    mixed = setup_report._evidence_line(r)
+    assert mixed == (
+        '- evidence: 7 lines at the end of Status say "not measured": 5 because the state file cannot be '
+        "read: a report written after it is fixed measures them (see Doctor's state_dir.manifest line); 2 "
+        f"ran out of time: {setup_report._IDLE_AGAIN}"
+    ), mixed
+    r.facts.evidence_why = Counter({busy: 1, "time limit": 2})
+    r.facts.evidence = 3
+    assert setup_report._evidence_line(r).endswith(f'say "not measured": {setup_report._IDLE_AGAIN}')
+    r.facts.evidence_why = Counter(
+        {"the configuration is refused: see Configuration": 1, "an unexpected error: KeyError": 1}
+    )
+    r.facts.evidence = 2
+    assert setup_report._evidence_line(r) == (
+        '- evidence: 2 lines at the end of Status say "not measured": 1 because the configuration is '
+        "refused: a report written after it loads measures them (see Configuration); 1 because of another "
+        "cause: see those lines"
+    )
+    assert "idle" not in setup_report._evidence_line(r)
 
 
 class Clock:
