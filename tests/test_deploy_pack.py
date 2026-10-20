@@ -5677,6 +5677,12 @@ _ROUND_19_D_PARAGRAPH_AMENDS = (
 """Round 19 lane D's dated lines at sections its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: W72's at §16.14's Background runs paragraph."""
 
+_ROUND_19_B_PARAGRAPH_AMENDS = (
+    ("16.32", "Its fix has two parts, `<run again>; if this line comes back: <then>`:", "§16.143 W19, W48"),
+)
+"""Round 19 lane B's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: W19 and W48's beside §16.32's `<run again>` table."""
+
 _ROUND_19_E_PARAGRAPH_AMENDS = (
     ("16.28", "- A failed conversion is not retried. The next pass finds the same", "§16.144 W2"),
     ("16.28", "| `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions", "§16.144 W18"),
@@ -5735,6 +5741,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_18_E_PARAGRAPH_AMENDS)) == len(_ROUND_18_E_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_19_D_PARAGRAPH_AMENDS)) == len(_ROUND_19_D_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_19_E_PARAGRAPH_AMENDS)) == len(_ROUND_19_E_PARAGRAPH_AMENDS) == 5
+    assert len(_pinned_dated_lines(_ROUND_19_B_PARAGRAPH_AMENDS)) == len(_ROUND_19_B_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5756,6 +5763,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_18_E_PARAGRAPH_AMENDS,
         *_ROUND_19_D_PARAGRAPH_AMENDS,
         *_ROUND_19_E_PARAGRAPH_AMENDS,
+        *_ROUND_19_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

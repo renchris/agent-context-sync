@@ -509,7 +509,11 @@ def test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv(
 
 RUN_AGAIN = "~/.local/bin/agentsync status (run it again as it is)"
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
-RUN_AGAIN_INSTALL = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
+# B13 round 19 W19, W48: by what it is; no NEXT line names it under a warn, and --report-only builds nothing
+RUN_AGAIN_INSTALL = (
+    f"run {INSTALL_SH} again with the options of the run that installed agentsync (not --report-only, which "
+    "builds nothing)"
+)
 COMES_BACK = "; if this line comes back: "
 STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
 AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its own for a broken program
@@ -2992,6 +2996,8 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
             "; the build stops after 20 minutes, and if it stops again, "
             "run it when the Mac and the network are less busy"
         ), r.fix
+        assert r.fix.startswith(f"{RUN_AGAIN_INSTALL}; the build stops"), r.fix  # B13 round 19 W19, W48
+        assert "NEXT line" not in r.fix and "--report-only" in r.fix, r.fix
     marker.write_text("swift package resolve failed (exit 1): could not reach github.com", encoding="utf-8")
     assert not speech.build_timed_out(sample_config.cache_dir)
     r = by_name(run_checks(sample_config))["speech"]

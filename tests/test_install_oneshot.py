@@ -993,7 +993,8 @@ def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(
     monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
     timeout = subprocess.TimeoutExpired(["/x/pandoc", "--version"], 60)
     again = doctor.format_results([doctor._timed_out("pandoc", timeout)])
-    assert again.startswith("[FAIL] pandoc") and f"run the same {doctor.INSTALL_SH} command again" in again
+    # B13 round 19 W19, W48: the command by what it is, not "the same command ... (its NEXT line names it)"
+    assert again.startswith("[FAIL] pandoc") and doctor.AGAIN_UNDER_INSTALL_SH in again
     renamed = _persons_fail_lines(sample_config)["renamed"]
     native = _pandoc_fail_lines(sample_config)["native-timeout"]  # B13 round 15 S47: the re-run first
     for fails in (

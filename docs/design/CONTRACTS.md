@@ -9980,6 +9980,9 @@ Amended 2026-10-18, §16.126 T54, T59, T60, T65: the bundled pandoc's `<then>` i
 reinstalls agentsync when the bundled pandoc is missing or not the file pypandoc_binary installed), or set
 [convert] pandoc_path to an absolute pandoc`: step 2 no longer skips while that pandoc is not the file its
 RECORD lists.
+Amended 2026-10-20, §16.143 W19, W48: under install.sh's status step `<run again>` is `run scripts/install.sh again
+with the options of the run that installed agentsync (not --report-only, which builds nothing)`
+(`doctor.AGAIN_UNDER_INSTALL_SH`); the row below no longer holds.
 
 | Where | `<run again>` |
 |---|---|
@@ -24461,6 +24464,9 @@ Amended 2026-10-20, §16.144 W20, W49: the fix reads `run <install.sh> again; th
 and if it stops again, run it when the Mac and the network are less busy` (`doctor._helper_again_fix`), and the
 OCR and media helpers' builds that ran out of time get the same fix with 5 minutes and "the Mac" and share the
 bucket, now `from a helper build that ran out of time (N checks): ...`.
+Amended 2026-10-20, §16.143 W19, W48: under install.sh the fix starts `run <install.sh> again with the options of
+the run that installed agentsync (not --report-only, which builds nothing)`, not `_again_fix`'s old `(its NEXT line
+names it)`, which no NEXT line made true for a warn.
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
@@ -25016,6 +25022,19 @@ beat was `...; waiting for it to end, at most 10 minutes`, so a `-vv` log of ins
 line every 30 s. `_acquire_waiting` logs the plain beat, `(Ns of at most Ms)`, on every DEBUG record and keeps the
 quiet words for the one line it says. Test: the W46 lines of
 `test_cli.py::test_the_quiet_lock_wait_logs_once_and_leaves_the_skip_to_its_stderr_line`.
+
+**W19, W48: a fix under install.sh names install.sh by what it is (`agentsync.ops.doctor`; amends §16.32 and
+§16.137 V5).** A check that ran out of time, and the speech helper build that did, said under install.sh
+(`AGENTSYNC_NO_NEXT_HINT=1`) `run the same <install.sh> command again as it is (its NEXT line names it)`. A
+warn makes no NEXT line name install.sh (only a [FAIL], a failed agent step or a stopped run does), and
+`--report-only`, which sets the same variable and writes this fix into the report, builds nothing. Both fixes
+(the helper builds' one is `_helper_again_fix` since §16.144 W49, for OCR and media too) now start
+`doctor.AGAIN_UNDER_INSTALL_SH`, `run <install.sh> again with the options of the run that installed agentsync (not
+--report-only, which builds nothing)`; `--list-folders` runs no doctor, so it is not named. Run by hand nothing
+changes. One defect from two finders, built once; W48's corrected fix (both fixes, one phrase) is built over
+W19's (the speech fix alone, plain words in both modes), since the plain `run <install.sh> again` is as wrong
+under `--report-only`. Tests: `RUN_AGAIN_INSTALL` in `test_ops_doctor.py` and the W19 lines of
+`test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 

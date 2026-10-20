@@ -543,14 +543,24 @@ def _quoted(text: str) -> str:
     return "'" + text.replace("'", "'\\''") + "'"
 
 
+AGAIN_UNDER_INSTALL_SH = (
+    f"run {INSTALL_SH} again with the options of the run that installed agentsync (not --report-only, which "
+    "builds nothing)"
+)
+"""How a fix under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) says to run it again: by what the command is.
+It said ``run the same <install.sh> command again as it is (its NEXT line names it)``, but a warn makes no
+NEXT line name install.sh, and the same command under ``--report-only``, which sets the variable too and
+writes this fix into the report, builds nothing (B13 round 19 W19, W48). ``--list-folders`` runs no doctor."""
+
+
 def _again_fix(fallback: str | None = None) -> str:
     """The fix for a check that ran out of time: run again as it is, and what to do when the same line
-    comes back.  Under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) the run is the command its ``NEXT:``
-    line names, which a setup agent may run; else ``agentsync status``.  A program that was only slow
+    comes back.  Under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) the run is install.sh's, named by
+    :data:`AGAIN_UNDER_INSTALL_SH`; else ``agentsync status``.  A program that was only slow
     answers the next time.  One that never answers gives the same line at every run, so the fix does not
     end at "again": it names ``fallback`` (the check's own fix), else says to report the line."""
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
-        again = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
+        again = AGAIN_UNDER_INSTALL_SH
     else:
         again = f"{BIN} status (run it again as it is)"
     return f"{again}; if this line comes back: {fallback or _STILL_NO_ANSWER}"
@@ -810,8 +820,8 @@ def _helper_again_fix(detail: str, helper: str) -> str | None:
     again; any other failed build keeps no fix, as its reason is the news (B13 round 18 V5, V28; the OCR and
     media helpers, B13 round 19 W49). The 20 minutes of the speech build cover the FluidAudio fetch too, so
     its cause is the Mac and the network; the OCR and media builds fetch nothing, and stop after 5. The
-    re-run is said once, and the minutes are a limit, not a promise (W20). Under install.sh the run is the
-    one its NEXT line names, as :func:`_again_fix` says it."""
+    re-run is said once, and the minutes are a limit, not a promise (W20). Under install.sh the run is
+    named as :func:`_again_fix` names it, :data:`AGAIN_UNDER_INSTALL_SH` (B13 round 19 W19, W48)."""
     try:
         words, minutes = helper_timed_out_words(helper)
     except Exception:  # lazy: doctor must import, and give its line, even if convert is broken
@@ -819,7 +829,7 @@ def _helper_again_fix(detail: str, helper: str) -> str | None:
     if not detail.startswith(words):
         return None
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
-        again = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
+        again = AGAIN_UNDER_INSTALL_SH
     else:
         again = f"run {INSTALL_SH} again"
     busy = "the Mac and the network are" if helper == "speech" else "the Mac is"
