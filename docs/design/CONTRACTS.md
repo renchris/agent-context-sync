@@ -24482,6 +24482,8 @@ words for v27's step 3 (V24, V39). Tests:
 pandoc not found (is pypandoc_binary installed?); set [convert] pandoc_path; looked at <~/path>`: the 200-character
 cut of a per-file reason (unchanged, so `state_reason` comparisons stay equal) falls in the path. Test:
 `test_cli.py::test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length`.
+Amended 2026-10-20, §16.144 W33: the action is now `run ~/src/agent-context-sync/scripts/install.sh again (it
+reinstalls agentsync with its pandoc)`; `[convert] pandoc_path` is left to doctor's [FAIL] line, as the person's.
 
 **V42: a leaf page damaged below an interior root (tests only).** `test_cli.py::_damage_table_leaf` walks the
 b-tree itself (the macOS sqlite3 has no dbstat) to a leaf below the items table's interior root and writes random
@@ -25030,6 +25032,17 @@ that are no diagram still fail first (a `ConversionError`). Tests:
 `test_convert_formats.py::test_a_diagram_that_cannot_be_read_fails_bounded`,
 `test_cycle.py::test_a_blank_diagram_is_a_page_and_no_quarantine_row`,
 `test_cycle.py::test_a_blank_diagrams_stub_an_older_build_left_is_read_again_into_a_page`.
+
+**A missing bundled pandoc's error names the re-run (W33; `agentsync.convert.pandoc`; amends §16.137 V41).** With
+the wheel's pandoc missing, the sync's per-file error line named only `set [convert] pandoc_path`, the person's
+edit, while doctor's [FAIL] pandoc line for the same state names the agent's install.sh re-run first and gives
+the person the edit only if the line comes back. `resolved_pandoc` now raises `bundled pandoc not found; run
+<INSTALL_SH> again (it reinstalls agentsync with its pandoc); looked at <~/path>`: the action before the path
+still (V41), so the 200-character cut falls in the path. The configured path's error (`[convert] pandoc_path is
+not an absolute file`) is unchanged: that one is the person's. A stub that carries the old words keeps them, and
+W51's error line shows the current ones while pandoc still cannot start. Tests:
+`test_cli.py::test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length`,
+`test_cli.py::test_a_missing_bundled_pandocs_reason_names_the_re_run_and_not_the_persons_edit`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

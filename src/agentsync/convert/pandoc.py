@@ -59,6 +59,7 @@ from agentsync.convert.image import _FAILED as _OCR_FAILED
 from agentsync.convert.ocr import OcrEngine, OcrError, _ended
 from agentsync.errors import ConversionError
 from agentsync.model import RenderedUnit, UnitKind
+from agentsync.skill import INSTALL_SH
 
 log = logging.getLogger(__name__)
 
@@ -344,10 +345,12 @@ def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
                 return native, "native"
         return bundled, "wheel"
     # the action before the path: a sync's per-file error and the manifest's reason keep 200 characters, and
-    # a long home folder cut the action off mid-word (B13 round 18 V41); a cut now falls in the path
+    # a long home folder cut the action off mid-word (B13 round 18 V41); a cut now falls in the path. The
+    # action is the agent's re-run, as doctor's [FAIL] line says first; [convert] pandoc_path is the person's
+    # edit, which that line gives them only if the re-run does not clear it (B13 round 19 W33)
     looked = str(bundled).replace(str(Path.home()), "~", 1)
     raise ConversionError(
-        "bundled pandoc not found (is pypandoc_binary installed?); set [convert] pandoc_path; "
+        f"bundled pandoc not found; run {INSTALL_SH} again (it reinstalls agentsync with its pandoc); "
         f"looked at {looked}"
     )
 

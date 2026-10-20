@@ -1291,10 +1291,30 @@ def test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_fold
     pandoc = [ln for ln in errors if "bundled pandoc not found" in ln]
     assert pandoc, errors
     for ln in pandoc:
-        assert "(is pypandoc_binary installed?); set [convert] pandoc_path" in ln, ln
+        # B13 round 19 W33: the action is the agent's re-run, as doctor's [FAIL] line says first; the
+        # [convert] pandoc_path edit is the person's, which that line gives them after it
+        assert f"run {skill.INSTALL_SH} again" in ln and "pandoc_path" not in ln, ln
     cli.main(["sync", "--config", cfg])
     out = capsys.readouterr().out
     assert " · commit none (no content change) · 0 changes" in out.splitlines()[0], out
+
+
+def test_a_missing_bundled_pandocs_reason_names_the_re_run_and_not_the_persons_edit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13 round 19 W33: the reason named only "set [convert] pandoc_path", the person's step, while doctor's
+    [FAIL] line for the same state names the agent's install.sh re-run first."""
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
+    from agentsync.errors import ConversionError  # noqa: PLC0415
+
+    monkeypatch.setattr(pandoc_mod, "_wheel_pandoc", lambda: tmp_path / "pypandoc" / "files" / "pandoc")
+    with pytest.raises(ConversionError) as exc:
+        pandoc_mod.resolved_pandoc(None)
+    action, _, looked = str(exc.value).partition("; looked at ")
+    assert action == (
+        f"bundled pandoc not found; run {skill.INSTALL_SH} again (it reinstalls agentsync with its pandoc)"
+    )
+    assert "pandoc_path" not in action and looked.endswith("pypandoc/files/pandoc")
 
 
 def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:
