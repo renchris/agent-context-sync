@@ -51,7 +51,8 @@ def _wide_limit(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch)
     """A recording's time limit is wall time, from ``_BASE_S`` (60 s), and the fake helpers are Python
     subprocesses: a test process starved of CPU (a busy land gate) ran out of it reading nothing (B13 round 19
     W70, lead note 3). Every test gets 600 s, ten times the field's, which still bounds a hung fake helper
-    well under CI's 30 minutes; a test whose subject is the limit is marked ``real_limit`` and keeps 60 s.
+    well under the ci job's 40 minutes (``timeout-minutes`` in ci.yml); a test whose subject is the limit is
+    marked ``real_limit`` and keeps 60 s.
     Not the ``timing`` marker, which skips a test when the Mac is busy."""
     if request.node.get_closest_marker("real_limit") is None:
         monkeypatch.setattr(rec, "_BASE_S", 600.0)

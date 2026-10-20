@@ -5694,6 +5694,13 @@ _ROUND_19_E_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: W2's at §16.28's not-retried bullet, W18's `legacy_retried` row and
 W27's at §16.42's diagram page bullet, W50's at its signal paragraph, W67's at §16.35's probe states."""
 
+_ROUND_20_D_PARAGRAPH_AMENDS = (
+    ("9", "`SingleWriterLock(state_paths.lock, label).acquire()`", "§16.151 X56 (by §16.143 W13, W14)"),
+    ("9", "For each live source (errors isolated per source;", "§16.151 X56 (by §16.143 W41)"),
+)
+"""Round 20 lane D's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: X56's two in §9's steps 2 and 5. Each records a round 19 item's change, so its marker names that item after "by"."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5728,7 +5735,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated),
     §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48, and
     §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22. Round 19's §16.145 (lane D) one: W72's at
-    §16.14.
+    §16.14. Round 20's §16.151 (lane D) two: X56's two in §9.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5742,6 +5749,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_19_D_PARAGRAPH_AMENDS)) == len(_ROUND_19_D_PARAGRAPH_AMENDS) == 1
     assert len(_pinned_dated_lines(_ROUND_19_E_PARAGRAPH_AMENDS)) == len(_ROUND_19_E_PARAGRAPH_AMENDS) == 5
     assert len(_pinned_dated_lines(_ROUND_19_B_PARAGRAPH_AMENDS)) == len(_ROUND_19_B_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_20_D_PARAGRAPH_AMENDS)) == len(_ROUND_20_D_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5764,6 +5772,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_19_D_PARAGRAPH_AMENDS,
         *_ROUND_19_E_PARAGRAPH_AMENDS,
         *_ROUND_19_B_PARAGRAPH_AMENDS,
+        *_ROUND_20_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -7440,3 +7449,130 @@ def test_readme_step2_does_not_log_a_failed_run_whose_next_it_follows() -> None:
     assert "the same command was run again and ended 0" in Path(setup_report.__file__).read_text(
         encoding="utf-8"
     )
+
+
+def test_section_9_says_who_logs_the_skip_and_what_isolation_leaves_out() -> None:
+    """B13 round 20 X56: §9 step 2 still said `EMPTY_BODY_HOLDER` names an empty body "in the WARNING, the
+    stderr line and doctor alike" and read as if every run logs the skip WARNING, and step 5 that errors are
+    isolated per source: since round 19 W13 only the job's run logs it, since W14 the stderr line names the
+    holder in the wait's words, and since W41 a state file that cannot be read leaves the source's isolation.
+    Each claim of the two dated lines is read from the code."""
+    from agentsync import cli, cycle  # noqa: PLC0415
+
+    main = inspect.getsource(cli._main)
+    skip = main[main.index("except LockHeldError as exc:") : main.index("return EXIT_LOCK_HELD")]
+    assert 'f"skipped: lock held by {_skip_holder(exc)}"' in skip
+    assert re.search(r"elif _in_job\(args\):[^\n]*\n\s+_log\.warning\(", skip)
+    assert re.search(r"else:[^\n]*\n\s+_log\.debug\(", skip)
+    assert "launchd.started_by_our_job(" in inspect.getsource(cli._in_job)
+    assert "UNRECORDED_LOCK_HOLDER" in inspect.getsource(cli._skip_holder)
+    isolate = inspect.getsource(cycle._Cycle._run_source)
+    assert re.search(
+        r"except Exception as exc:  # isolate[^\n]*\n\s+if _manifest_unreadable\(exc\):", isolate
+    )
+    section = " ".join(_contracts_section("## 9. The cycle", "## 10. ").split())
+    step2 = section[section.index("2. `SingleWriterLock") : section.index("3. `Manifest(")]
+    assert "Amended 2026-10-20, §16.151 X56 (by §16.143 W13, W14):** only the background job's run" in step2
+    assert "`cycle.UNRECORDED_LOCK_HOLDER` (through `cli._skip_holder`)" in step2
+    assert "`EMPTY_BODY_HOLDER`" in step2  # the empty-lock-body test's anchor
+    step5 = section[section.index("5. For each live source") : section.index("6. Work queue")]
+    assert (
+        "Amended 2026-10-20, §16.151 X56 (by §16.143 W41):** the per-source isolation does not cover" in step5
+    )
+    assert "exits 65" in step5 and cli.EXIT_STATE == 65
+
+
+def test_v21s_and_w1s_lines_say_table_damage_is_state_since_w41() -> None:
+    """B13 round 20 X59: §16.136 V21 said `manifest_unreadable` is unchanged and init passes the config step
+    on a table page it cannot read, and §16.142 W1 that `TD-items` fails without its reader; since round 19
+    W41 the probe reads each table's first row before init, so `TD-items` reads `state`. Both have W41's
+    line, read here against the probe and the install test's word map."""
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    assert "NOT INDEXED LIMIT 1" in inspect.getsource(doctor.manifest_unreadable)
+    oneshot = (ROOT / "tests" / "test_install_oneshot.py").read_text(encoding="utf-8")
+    assert '"TD-items": "state",' in oneshot and '"TD-items-older"' in oneshot
+    claims, _bare, _held, unheld = _dated_line_scan()
+    assert ("16.151", ["X59"], "16.136", "V21") in claims and ("16.151", ["X59"], "16.142", "W1") in claims
+    assert unheld == []
+    v21 = " ".join(
+        _contracts_section("**Step 1 names a docs-repo remote [governance] refuses", "\n\n").split()
+    )
+    assert "§16.151 X59 (by §16.143 W41): `manifest_unreadable` is no longer unchanged" in v21
+    assert "damage on a table's root or first-row page is `state`, and step 2 stops at its config step" in v21
+    w1 = " ".join(_contracts_section("**Step 1's damaged-table check reads every table", "\n\n").split())
+    assert "§16.151 X59 (by §16.143 W41): `TD-items` no longer reaches this reader" in w1
+
+
+def test_the_recording_tests_limit_names_cis_own_limit() -> None:
+    """B13 round 20 X61: round 19 W70's note and the `_wide_limit` fixture said 600 s is well under CI's 30
+    minutes, though W80 had set the job's limit to 40 first. Both name the limit ci.yml sets."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
+    fixture = " ".join((ROOT / "tests" / "test_convert_recording.py").read_text(encoding="utf-8").split())
+    w70 = " ".join(
+        _contracts_section("**The recording tests' time limit holds under load (W70", "\n\n").split()
+    )
+    for text in (fixture, w70):
+        assert "CI's 30 minutes" not in text
+        assert re.search(
+            rf"well under the ci job's {limit} minutes[ ,(]+`+timeout-minutes`+ in ci\.yml", text
+        )
+
+
+def test_a_round_19_or_later_citation_names_a_section_that_holds_its_item() -> None:
+    """B13 round 20 X62: §16.145 W58 cited the slow-doctor grace as §16.137's V4, which is §16.134's. Every
+    `§16.N <item>` written from §16.140 (round 19) on names an item section N holds. Older rounds reuse
+    item ids across waves (eight of their citations fail this read and are left as written)."""
+    sections = dict(_contracts_numbered_sections())
+    cite = r"§(16\.\d+)(?:'s)? ((?:[A-Z]\d+)(?:(?:, | and )[A-Z]\d+)*)\b"
+    read, wrong = 0, []
+    for number, text in sections.items():
+        if not re.fullmatch(r"16\.\d+", number) or int(number[3:]) < 140:
+            continue
+        for found in re.finditer(cite, text):
+            for item in re.findall(r"[A-Z]\d+", found.group(2)):
+                read += 1
+                if not re.search(rf"\b{item}\b", sections.get(found.group(1), "")):
+                    wrong.append(f"§{number}: {found.group(0)}")
+    assert read >= 60, "the scan is broken"
+    assert wrong == []
+    assert "§16.134 V4 gives a slow doctor at least `_DOCTOR_GRACE_S`" in " ".join(sections["16.145"].split())
+
+
+def test_u78s_line_quotes_the_again_fix_head() -> None:
+    """B13 round 20 X68: §16.132 U78 quoted `_again_fix` as `run the same <installer> command again ...`;
+    since round 19 W19, W48 it starts `doctor.AGAIN_UNDER_INSTALL_SH` under install.sh, and U78 had no
+    line."""
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    head = doctor.AGAIN_UNDER_INSTALL_SH.replace(doctor.INSTALL_SH, "<install.sh>")
+    assert head.startswith("run <install.sh> again with the options")
+    claims, _bare, _held, _unheld = _dated_line_scan()
+    assert ("16.151", ["X68"], "16.132", "U78") in claims
+    u78 = " ".join(
+        _contracts_section(
+            "**A time-out under install.sh does not name the same re-run twice", "\n\n"
+        ).split()
+    )
+    assert f"§16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `{head}`" in u78
+
+
+def test_w41s_measurement_counts_the_tables_the_test_damages() -> None:
+    """B13 round 20 X70: §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, all but three that
+    passed: 13 is the count of the 16 cases (11 tables and both last-leaf cases). The numbers are read from
+    the test that measured them."""
+    source = (ROOT / "tests" / "test_cli.py").read_text(encoding="utf-8")
+    block = re.search(r"^_MANIFEST_TABLES = \(\n(.*?)^\)", source, re.M | re.S)
+    assert block is not None
+    tables = re.findall(r'^    "(\w+)",$', block.group(1), re.M)
+    leaves = re.findall(r'\("(\w+)", "last leaf"\)', source)
+    reached = ["meta", "items", "runs"]  # status's loop read already reached these before W41
+    assert len(tables) == 14 and set(reached) <= set(tables) and len(leaves) == 2
+    failed = len(tables) - len(reached)
+    w41 = " ".join(_contracts_section("**W41: damage under any table fails status", "\n\n").split())
+    assert (
+        f"{failed} of the {len(tables)} tables (all but meta, items and runs, which status's loop read"
+        f" already reached) and both last-leaf cases failed, {failed + len(leaves)} of the"
+        f" {len(tables) + len(leaves)} cases"
+    ) in w41

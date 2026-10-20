@@ -403,6 +403,11 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    **Amended 2026-10-13, §16.68 H33:** a cycle label reads `skipped: lock held by another sync (its pass:
    <label>)`: a sync typed in a terminal holds the lock as `poll` or `reconcile`, as the background job does. Any
    other holder (the unrecorded and unidentified texts, governance, exclude-empty) is named as before.
+   **Amended 2026-10-20, §16.151 X56 (by §16.143 W13, W14):** only the background job's run logs the skip WARNING
+   (`launchd.started_by_our_job`; a config that does not load counts as the job); a terminal's or an agent's run
+   logs it at DEBUG, since its stderr line already said it. The stderr line names an empty body in the wait line's
+   words, `cycle.UNRECORDED_LOCK_HOLDER` (through `cli._skip_holder`); `who`, the WARNING and doctor keep
+   `EMPTY_BODY_HOLDER`, so "in the WARNING, the stderr line and doctor alike" above no longer covers the stderr line.
    **Amended (2026-10-04, KISS K12):** an explicit mode (`--mode`, every LaunchAgent) tries the lock once and still
    exits 75. `mode=None` (`agentsync sync` without `--mode`) first picks its mode, before the lock so the label is
    truthful: RECONCILE when the newest ok/partial RECONCILE run (else the first run) started at least
@@ -420,6 +425,10 @@ moved) or write pages; DELETED / applied candidates → `Publisher.tombstone`; r
    `arm.scan(current_cursor, full=…)` (FULL for local/inbox always, for RECONCILE mode, when no cursor, after a
    stale lock) → `classify_pass` → in ONE transaction: `upsert_observed` for every item, `rekey` safe-saves,
    `stage_cursor(pending)`, `set_page_link(None)`, `set_enumeration_complete` for FULL passes, `record_source_pass`.
+   **Amended 2026-10-20, §16.151 X56 (by §16.143 W41):** the per-source isolation does not cover a state file that
+   cannot be read: a `sqlite3.DatabaseError` that `doctor.unreadable_code` names (SQLITE_CORRUPT or SQLITE_NOTADB;
+   `cycle._manifest_unreadable`) re-raises out of `_run_source`, `run()` discards pending, writes the run's end best
+   effort and re-raises, and the CLI prints `state: <db> cannot be read: ... (fix: <MANIFEST_FIX>)` and exits 65.
 6. Work queue = `pending_work(source)` (sorted by stable_id): `arm.fetch` under `ByteBudget(max_materialise_bytes,
    max_files)` → `canonical_hash` → `set_content` → `classify_content` → `convert_file` → `classify_output` →
    `Publisher.plan_pages`/`write_pages` → `set_verdict`. Budget exhaustion → remaining rows `DEFERRED`.
@@ -23892,6 +23901,9 @@ not answer on this Mac, and install.sh found its file whole)`; by hand it stays 
 the file. Not `_STILL_NO_ANSWER`, whose "no setup step clears that" setting pandoc_path contradicts. Tests:
 `test_ops_doctor.py::test_a_pandoc_that_does_not_answer_in_time_names_the_rerun_and_is_no_crash`,
 `test_ops_doctor.py::test_a_program_that_never_answers_is_told_what_to_do_when_the_line_comes_back`.
+Amended 2026-10-20, §16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `run <install.sh> again
+with the options of the run that installed agentsync (not --report-only, which builds nothing)`
+(`doctor.AGAIN_UNDER_INSTALL_SH`), not `run the same <installer> command again ...`; the fallback above is unchanged.
 
 **A native or configured pandoc's time-out gives the busy Mac's reason (U104; `agentsync.ops.doctor`; dated line
 at §16.126 T17, T77).** It gave none, and round 16 left T77's optional part unrecorded. `_PANDOC_BUSY_START` is `any
@@ -24348,6 +24360,12 @@ reads a stop at step 2's config step, status or first sync alike (below). Test:
 `(none is needed)`).
 Amended 2026-10-20, §16.142 W1, W10: `state-table` reads each table `NOT INDEXED` and each index `INDEXED BY`; a plain
 `SELECT 1` from a table is answered from its smallest covering index, so the real schema's items page was not read.
+Amended 2026-10-20, §16.151 X59 (by §16.143 W41): `manifest_unreadable` is no longer unchanged: it reads each
+table's first row (`SELECT * FROM "<t>" NOT INDEXED LIMIT 1`), and `cli._state_readable` runs it before init,
+add-source and sync, so init no longer passes the config step on a table page it cannot read. With an installed
+build that has the probe, damage on a table's root or first-row page is `state`, and step 2 stops at its config
+step (`agentsync's state file, which cannot be read`); `state-table` then names damage the probe does not read
+(an index's root or first page) or a table's damage under an older installed build without the probe.
 
 **An add-source that wrote the block says so on any exit, after its block** (V47, V26; amends §16.130 U40). U40's
 branch read only exit 78, so an add-source that wrote the folder's block and then exited 1 on a docs-repo remote
@@ -25075,6 +25093,10 @@ read catches today. Standard library only, so an older installed build runs it t
 `test_list_folders_says_step_2_stops_on_a_config_it_refuses` (`TD-items`, `TD-path`, which fail without it,
 `TD-canonical`, which a `NOT INDEXED`-only reader fails, and `clean-real`, the same schema undamaged: `(none is
 needed)`).
+Amended 2026-10-20, §16.151 X59 (by §16.143 W41): `TD-items` no longer reaches this reader: the installed
+`manifest_unreadable` reads the items table's first row and answers `state` first (as for `TD`). The cases that
+fail without the W1/W10 reader are `TD-items-older` (an installed build without that probe) and `TD-path`;
+`TD-canonical` is still the case a `NOT INDEXED`-only reader fails.
 
 **Step 2's unreadable-patch line says where the patch goes, not that it is sent** (W8, W12; amends §16.136 V25).
 Step 2's `WAITING ON YOU: 1 patch file in ~/agent-context/setup/local-work cannot be read by this account; make it
@@ -25229,8 +25251,9 @@ defects. Status's owner and mode FAIL is lane RA's W64 (§16.140), which this li
 status at exit 0 with no FAIL while the report's evidence lines said `see Doctor's state_dir.manifest line`, and
 the sync failed the source (exit 1, a traceback, `BLOCKING CYCLE -: cycle failed`, `NEXT: ... run sync again`):
 `_run_source`'s and `run()`'s `except Exception` turned SQLITE_CORRUPT into a source's or the cycle's failure, so
-`cli._state_readable` never saw it. Measured by the test below on the pre-fix source: 13 of the 14 tables (all but
-meta, items and runs, which status's loop read already reached) and both last-leaf cases failed. Five parts:
+`cli._state_readable` never saw it. Measured by the test below on the pre-fix source: 11 of the 14 tables (all but
+meta, items and runs, which status's loop read already reached) and both last-leaf cases failed, 13 of the 16
+cases. Five parts:
 (1) `cycle._manifest_unreadable` (`doctor.unreadable_code` on a `sqlite3.DatabaseError`) re-raises out of
 `_run_source`'s isolation; (2) `run()`'s handler, for the same error, discards pending and writes the run's end
 best effort (logged at debug), then re-raises with no stack, so the CLI says `state: <db> cannot be read: ...
@@ -25399,7 +25422,8 @@ words).
 `recording._BASE_S` (60 s), and `media_kit.fake_media` runs each helper as a Python subprocess, so under a starved
 land gate 3 of 3 runs of a state test read `0 of 60000 ms` and failed on a limit that is not their subject. A
 file-level autouse fixture in `tests/test_convert_recording.py` sets `_BASE_S` to 600 s (ten times the field's,
-which still bounds a hung fake helper well under CI's 30 minutes), unless the test carries the new `real_limit`
+which still bounds a hung fake helper well under the ci job's 40 minutes, `timeout-minutes` in ci.yml), unless
+the test carries the new `real_limit`
 marker (registered in `pyproject.toml`, not read by conftest's load guard): the two that measurably need the
 field's 60 s (`test_the_time_limit_is_fixed_from_counts_before_the_frames_are_read`,
 `test_a_speech_piece_past_its_deadline_waits_and_stores_nothing`, which relies on `_BASE_S + _SPEECH_S * 400 <
@@ -25440,7 +25464,7 @@ W41 and W62 lands second adds the dated line there. Test: `test_v73s_lines_say_w
 reads the three calls from the code.
 
 **The deploy guides give the report's real time and V48's sync label** (W57, W58). The setup-feedback guide and
-the deploy README said the report finishes within 12 s; §16.137 V4 gives a slow doctor at least
+the deploy README said the report finishes within 12 s; §16.134 V4 gives a slow doctor at least
 `_DOCTOR_GRACE_S` (20 s) and moves the deadline, so the report can take about 35 s (the code's own figure, and the
 took line names the extra seconds), and V55 reads the docs repo's remotes (a local `git remote`, so "no network
 calls" holds) outside the budget. The first-sync row said the `sync`/`first sync` label follows the last run's
@@ -25495,4 +25519,45 @@ Reserved for round 20 lane E of B13.
 
 ### 16.151 Round 20: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 20 lane D)
 
-Reserved for round 20 lane D of B13.
+Lane D's round 20 items (`docs/plans/bring-back-ocr.md`, "B13 round 20"; specs `round20/items/X<n>.md`, the
+verifier's corrected fix built unless said): X56, X59, X61, X62, X63, X64, X65, X66, X67, X68, X69 and X70. None
+was recorded as making things worse.
+
+**§9 says who logs the skip and what the per-source isolation leaves out** (X56; dated lines at §9's steps 2 and
+5). Step 2 said the skip WARNING is logged and that `EMPTY_BODY_HOLDER` names an empty body "in the WARNING, the
+stderr line and doctor alike", and step 5 that errors are isolated per source, with no line for round 19: since
+§16.143 W13 only the background job's run logs the WARNING, since W14 the stderr line uses
+`cycle.UNRECORDED_LOCK_HOLDER`, and since W41 a state file that cannot be read ends the cycle with exit 65. §16.39
+N24 already has W13 and W14's line; §9 gets both, each recording round 19's change. The exit-code list there still
+has no 65, which §16.133 U84 and the lists it names carry. Test:
+`test_section_9_says_who_logs_the_skip_and_what_isolation_leaves_out`, which reads each claim from the code, and
+two rows of `_ROUND_20_D_PARAGRAPH_AMENDS`.
+
+**V21's and W1's lines say what W41 changed** (X59; dated lines at §16.136 V21 and §16.142 W1). V21 said
+`manifest_unreadable` is unchanged and init reads only the schema, so a table page that cannot be read passes the
+config step; since W41 the probe reads each table's first row and `cli._state_readable` runs it before init,
+add-source and sync, so that damage is `state` and step 2 stops at its config step. W1's test sentence said
+`TD-items` fails without its reader; `TD-items` now reads `state` first, and `TD-items-older` and `TD-path` are the
+ones that do. The guide's sentence on the same tail is lane P's (§16.148: its X72 changes the tail itself, so it
+rewrites that sentence in the same commit); this item builds the two lines only. Test:
+`test_v21s_and_w1s_lines_say_table_damage_is_state_since_w41`, which reads the test's word map and the probe.
+
+**CI's limit is the one ci.yml sets** (X61). §16.144 W70 and `tests/test_convert_recording.py`'s `_wide_limit`
+said the 600 s limit is well under CI's 30 minutes, though §16.145 W80's 40 had landed first. Both say 40 now,
+corrected in place, as a number wrong when written records nothing. Test:
+`test_the_recording_tests_limit_names_cis_own_limit`, which reads the limit from ci.yml.
+
+**A round 19 or later citation names a section that holds its item** (X62). §16.145 W58 cited V4 under §16.137
+for the slow-doctor grace, which is §16.134's (round 18 lane RA); one token, corrected in place. Test:
+`test_a_round_19_or_later_citation_names_a_section_that_holds_its_item`, which reads every `§16.N <item>` written
+from §16.140 on and finds the item in section N. Measured over the whole file, 8 older citations (rounds 4 to 15,
+such as G29's under §16.62 and Q31's under §16.110) fail the same read; their ids repeat across waves (Q31 is in
+five sections), so each needs its own round's evidence, and they are left as they are.
+
+**U78's fix head is the one install.sh gets since W48** (X68; dated line at §16.132 U78). U78 quoted `_again_fix`
+as `run the same <installer> command again ...`; under install.sh it starts `doctor.AGAIN_UNDER_INSTALL_SH` since
+§16.143 W19, W48, whose lines are at §16.32 and §16.137 V5 only. Test: `test_u78s_line_quotes_the_again_fix_head`.
+
+**W41's measurement adds up** (X70). §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, less
+three that passed; the verifier's re-run gave 13 failed of 16 cases: 11 tables and both last-leaf cases. Corrected
+in place. Test: `test_w41s_measurement_counts_the_tables_the_test_damages`, which counts them in `test_cli.py`.
