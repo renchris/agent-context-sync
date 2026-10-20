@@ -62,6 +62,7 @@ from agentsync.config import (
 from agentsync.convert import pandoc as pandoc_converter
 from agentsync.cycle import VANISHED_FIX
 from agentsync.cycle import vanished_detail as cycle_vanished_detail
+from agentsync.manifest import Manifest
 from agentsync.ops import doctor
 from agentsync.ops.lock import SingleWriterLock
 
@@ -6589,7 +6590,38 @@ def _config_step_2_stops_on(env: dict[str, str], state: str) -> Path:
         with db.open("r+b") as fh:
             fh.seek((root - 1) * size)
             fh.write(b"Contoso junk page" * 4)
+    elif state.startswith("TD-") or state == "clean-real":  # B13 round 19 W1, W10: the real schema
+        roots = {"TD-canonical": "items_by_canonical", "TD-path": "items_by_path", "clean-real": None}
+        tree = roots.get(state, "items")
+        _real_manifest_damaged(_state_db(env), tree)
     return cfg
+
+
+def _real_manifest_damaged(db: Path, tree: str | None) -> None:
+    """A manifest with agentsync's own schema (items has four indexes and its key's) holding 7 items of
+    project-alpha, out of WAL, with the root page of b-tree ``tree`` overwritten when it is given."""
+    db.parent.mkdir(parents=True, exist_ok=True)
+    Manifest(db).close()
+    conn = sqlite3.connect(db)
+    with contextlib.closing(conn):
+        with conn:
+            conn.execute(
+                "INSERT INTO sources (source_id, kind, config_state, config_fingerprint) "
+                "VALUES ('project-alpha', 'local', 'active', 'x')"
+            )
+            conn.executemany(
+                "INSERT INTO items (source_id, stable_id, name, rel_path, state, first_seen_run, "
+                "last_seen_run, canonical_sha256) VALUES ('project-alpha', ?, ?, ?, 'live', 1, 1, ?)",
+                [(str(i), f"f{i}.docx", f"f{i}.docx", f"{i:064x}") for i in range(7)],
+            )
+        conn.execute("PRAGMA journal_mode=DELETE").fetchall()
+        if tree is None:
+            return
+        [(root,)] = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (tree,)).fetchall()
+        [(size,)] = conn.execute("PRAGMA page_size").fetchall()
+    with db.open("r+b") as fh:
+        fh.seek((root - 1) * size)
+        fh.write(b"Contoso junk page" * 4)
 
 
 CONFIG_STOP = {
@@ -6600,7 +6632,23 @@ CONFIG_STOP = {
 }
 
 
-@pytest.mark.parametrize("state", ["PT", "GV", "MF", "GR", "TD", "GR-allowed", "clean"])
+@pytest.mark.parametrize(
+    "state",
+    [
+        "PT",
+        "GV",
+        "MF",
+        "GR",
+        "TD",
+        "TD-items",
+        "TD-canonical",
+        "TD-path",
+        "TD-items-older",
+        "GR-allowed",
+        "clean",
+        "clean-real",
+    ],
+)
 def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, str], state: str) -> None:
     """B13 round 17 U12 (probes PT, GV, MF): step 1's readers call load_config alone, which reads neither
     policy.toml nor [governance], and a damaged manifest read as no vanished source, so the NEXT ended "(none
@@ -6612,9 +6660,17 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     B13 round 18 V9, V21, V36 (probes GR, TD): a docs-repo remote [governance] does not allow, which init and
     add-source exit 1 on, and a damaged table page under a schema that reads, which step 2's status or first
     sync stops on, also ended "(none is needed)". Both are named now, never the remote's host; a remote the
-    table allows is no stop."""
+    table allows is no stop.
+    B13 round 19 W1, W10 (probe TD on agentsync's own schema): SELECT 1 from items is answered from its
+    covering index items_by_canonical, so a damaged items root page, or a damaged items_by_path, still ended
+    "(none is needed)". Each table is read NOT INDEXED and each index INDEXED BY; a clean manifest of the
+    same schema is no stop. TD-items-older: an installed build without doctor.manifest_unreadable reads the
+    schema alone, so the damaged items page is this reader's to name."""
     cfg = _config_step_2_stops_on(env, state)
-    _tool_python(env)
+    if state.endswith("-older"):
+        _tool_python_without(env, "agentsync.ops.doctor", "manifest_unreadable")
+    else:
+        _tool_python(env)
     cp = install_sh(env, "--list-folders")
     assert cp.returncode == 0, cp.stdout + cp.stderr
     head = f"NEXT: this Mac already syncs 1 folder, and a re-run keeps it: run {INSTALL_SH}, with one "
@@ -6622,10 +6678,10 @@ def test_list_folders_says_step_2_stops_on_a_config_it_refuses(env: dict[str, st
     logged = install_log(env)[-2]
     for text in (last_line(cp), "\n".join(install_log(env))):
         assert "contoso.example" not in text and "Contoso junk" not in text, text
-    if state in ("clean", "GR-allowed"):
+    if state in ("clean", "clean-real", "GR-allowed"):
         assert last_line(cp).endswith("(none is needed)") and "config_err" not in logged, logged
         return
-    if state == "TD":
+    if state.startswith("TD"):
         assert last_line(cp).endswith(
             "; step 2 stops on agentsync's state file, part of which cannot be read (at its status or its "
             "first sync): fixing that is the person's, and the step that stops prints the error"

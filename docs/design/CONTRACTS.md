@@ -24293,6 +24293,8 @@ The log line adds `config_err=remote` or `config_err=state-table`; no host is in
 reads a stop at step 2's config step, status or first sync alike (below). Test:
 `test_list_folders_says_step_2_stops_on_a_config_it_refuses` (GR, TD, and a remote `[governance]` allows, which ends
 `(none is needed)`).
+Amended 2026-10-20, §16.142 W1, W10: `state-table` reads each table `NOT INDEXED` and each index `INDEXED BY`; a plain
+`SELECT 1` from a table is answered from its smallest covering index, so the real schema's items page was not read.
 
 **An add-source that wrote the block says so on any exit, after its block** (V47, V26; amends §16.130 U40). U40's
 branch read only exit 78, so an add-source that wrote the folder's block and then exited 1 on a docs-repo remote
@@ -24684,7 +24686,26 @@ Reserved for round 19 lane RB of B13.
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
-Reserved for round 19 lane P of B13.
+The B13 round 19 items of lane P (specs `round19/items/W<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): W1, W8, W10, W12, W26, W28, W39. W1 and W10 are one defect, built once; W8 and W12
+are one, built once (W12's words, which name the file by its path).
+
+**Step 1's damaged-table check reads every table and every index** (W1, W10; amends §16.136 V21). `config_errors`
+ran `SELECT 1 FROM "<table>" LIMIT 1` for each table. `SELECT 1` needs no column, so SQLite answers it from the
+table's smallest covering index (`SCAN items USING COVERING INDEX items_by_canonical`) and never reads the table's own
+b-tree: on agentsync's real schema a damaged items root page, which step 2's status stops on, read clean, and step 1's
+NEXT ended `(none is needed)` (probe TD; round 18's test used a two-column items table with no index). It also read
+no index but the one the planner picked, so a damaged `items_by_path` root was missed too. The reader now walks every
+b-tree in `sqlite_master` (`rootpage > 0`): a table by `SELECT 1 FROM "<t>" NOT INDEXED LIMIT 1`, an index by `SELECT
+1 FROM "<t>" INDEXED BY "<i>" LIMIT 1`, read only, names quoted with `""` doubling, under the same 5 s bound; an error
+`unreadable_code` accepts (11 or 26) is `state-table` and ends the walk, any other (an older SQLite refusing `INDEXED
+BY`) skips that b-tree. Not `PRAGMA quick_check(1)` (W1's verifier): it walks the whole file inside the 5 s bound,
+whose timeout would drop the reader's other words with it, and flags damage no command reads (the freelist), which
+predicts a stop that never comes. Not `NOT INDEXED` alone (W10's verifier): it drops the index damage the covering
+read catches today. Standard library only, so an older installed build runs it too. Test:
+`test_list_folders_says_step_2_stops_on_a_config_it_refuses` (`TD-items`, `TD-path`, which fail without it,
+`TD-canonical`, which a `NOT INDEXED`-only reader fails, and `clean-real`, the same schema undamaged: `(none is
+needed)`).
 
 ### 16.143 Round 19: table damage, the lock-wait words and the speech fix (2026-10-20, wave B13 round 19 lane B)
 

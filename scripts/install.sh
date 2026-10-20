@@ -5431,9 +5431,13 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # the list said "(none is needed)" over a config step 2 then stopped on. Also "remote" when that table loads
 # and the docs repo has a git remote it does not allow (governance.remote_policy_findings, the check
 # cli._refuse_remotes makes before init and add-source exit 1; never after "governance", which stops first),
-# and "state-table" when the schema reads but a table's first page does not (SELECT 1 from each table, read
-# only: status reads the schema and some tables, so such damage stopped step 2 with nothing said at step 1;
-# damage deeper in a table still shows only at a read of it) (B13 round 18 V9, V21, V36). Fixed words only,
+# and "state-table" when the schema reads but a table's or an index's first page does not (SELECT 1 from each
+# table NOT INDEXED and through each index INDEXED BY, read only: status reads the schema and some tables, so
+# such damage stopped step 2 with nothing said at step 1; damage deeper in a table still shows only at a read
+# of it) (B13 round 18 V9, V21, V36). A plain SELECT 1 from a table is answered from its smallest covering
+# index, so it read neither the table's own pages nor any other index, and the real schema's items page said
+# "(none is needed)" (round 19 W1, W10); an error other than a damaged page (an older SQLite refusing an
+# INDEXED BY) skips that one b-tree. Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
 # its own, after synced_folders and allowed to fail: a name an older agentsync lacks reads nothing for that
 # check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
@@ -5500,10 +5504,17 @@ if db.is_file():
         try:
             conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=0.5)
             try:
-                names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = ?", ("table",))]
-                for name in names:
+                # every table and index (a view or trigger has no b-tree); upper case, as the shell report
+                # reads a lower-case word in the strings of this program as one it prints
+                trees = conn.execute("SELECT type, name, TBL_NAME FROM sqlite_master WHERE ROOTPAGE > 0").fetchall()
+                for kind, name, table in trees:
+                    q = "\"%s\"" % name.replace("\"", "\"\"")
+                    if kind == "table":
+                        q += " NOT INDEXED"
+                    else:
+                        q = "\"%s\" INDEXED BY %s" % (table.replace("\"", "\"\""), q)
                     try:
-                        conn.execute("SELECT 1 FROM \"%s\" LIMIT 1" % name.replace("\"", "\"\"")).fetchall()
+                        conn.execute("SELECT 1 FROM %s LIMIT 1" % q).fetchall()
                     except sqlite3.DatabaseError as exc:
                         if getattr(exc, "sqlite_errorcode", 0) & 0xFF in (11, 26):
                             words.append("state-table")
