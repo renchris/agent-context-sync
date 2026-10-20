@@ -24579,6 +24579,9 @@ cut of a per-file reason (unchanged, so `state_reason` comparisons stay equal) f
 `test_cli.py::test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length`.
 Amended 2026-10-20, §16.144 W33: the action is now `run ~/src/agent-context-sync/scripts/install.sh again (it
 reinstalls agentsync with its pandoc)`; `[convert] pandoc_path` is left to doctor's [FAIL] line, as the person's.
+Amended 2026-10-20, §16.150 X5: the 200-character cut is the stored reason's alone (`state_reason`, the stub,
+QUARANTINE.tsv); the sync's per-file error line is made from the uncut reason and cut at 300, in the first sync as in
+W51's line in the syncs after it.
 
 **V42: a leaf page damaged below an interior root (tests only).** `test_cli.py::_damage_table_leaf` walks the
 b-tree itself (the macOS sqlite3 has no dbstat) to a leaf below the items table's interior root and writes random
@@ -26205,6 +26208,17 @@ misses and status's loop read hits. Tests: the `last leaf` case of
 
 Round 20's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 20"; specs `round20/items/X<n>.md`, the
 verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-20, §16.150 X<n>`.
+
+**A converter's error line is the same in the first sync and the next (X5; `agentsync.cycle`,
+`agentsync.convert.pandoc`; dated line at §16.137 V41).** With pandoc gone, the first sync cut the error line's
+reason at the stored reason's 200 characters, so it ended `looked at ~/.local/share/uv/tools/…`, while the next
+sync's line, W51's, rebuilt from that sync's exception, kept the line's 300 and the whole path. `_publish` now
+makes the error line from the uncut reason (`full`) and cuts only the stored reason at 200, so `state_reason`, the
+stub, QUARANTINE.tsv and the comparisons in `_stub_stands` and the refused-stub check are unchanged; the comment
+in `resolved_pandoc` says only the stored reason keeps 200. Test:
+`test_cycle.py::test_a_converter_error_line_is_the_same_in_the_first_sync_and_the_next` (two syncs with a
+pandoc path past 200 characters print the same line, ending in the whole path, and the second leaves the stub
+page as it was).
 
 **The upgrade's retry note in install.sh's first sync (X11).** One defect with X85: on a field Mac the upgrade's
 move runs in step 2's first sync, whose screen showed only the summary line. Built once, by lane RB in

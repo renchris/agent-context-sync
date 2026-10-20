@@ -3871,6 +3871,34 @@ def test_a_waiting_stubs_error_line_names_why_its_converter_cannot_start_now(
     assert "contoso-first" in _quarantine_reason(sample_config, rel), "the stub's row keeps its reason"
 
 
+def test_a_converter_error_line_is_the_same_in_the_first_sync_and_the_next(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 20 X5 (probe PD): with pandoc gone the first sync cut the error line's reason at the stored
+    reason's 200 characters, so it ended "looked at ~/.local/share/uv/tools/…", while the next sync's line
+    (W51's, rebuilt from that sync's exception) kept 300 and the whole path. Both print the uncut reason now,
+    to the line's 300; the stored reason keeps its 200, so the second sync leaves the stub page as it was."""
+    assert run(sample_config).exit_code == 0
+    shutil.copy2(
+        local_source_dir / "projects" / "sample.docx", local_source_dir / "projects" / "Contoso k.docx"
+    )
+    rel = "projects/Contoso k.docx"
+    deep = Path("/") / "Users" / ("contoso-" * 15) / ".local/share/uv/tools/agentsync/pypandoc/files/pandoc"
+    gone = dataclasses.replace(
+        sample_config, convert=dataclasses.replace(sample_config.convert, pandoc_path=deep)
+    )
+    [first] = [e for s in run(gone).sources for e in s.errors]
+    reason = first.removeprefix(f"{rel}: ")
+    assert len(reason) > 200 and len(first) < 300, (len(reason), len(first))
+    assert first.endswith("pypandoc/files/pandoc"), first
+    [page] = (sample_config.docs_repo / f"mirror/{SID}/projects").glob("*k.docx.md")
+    before = (page.read_bytes(), page.stat().st_mtime_ns)
+    assert _quarantine_reason(sample_config, rel).endswith("…"), "the stored reason keeps its 200"
+    [second] = [e for s in run(gone).sources for e in s.errors]
+    assert second == first
+    assert (page.read_bytes(), page.stat().st_mtime_ns) == before, "the stub stands"
+
+
 def _settle_as_an_older_build(config: Config, rel: str) -> None:
     """Leave ``rel``'s row as a build before the retry did (B13 round 17 U3): its verdict touched_not_changed,
     nothing pending, and the source's re-read record one from that build."""

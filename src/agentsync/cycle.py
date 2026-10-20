@@ -5291,7 +5291,11 @@ class _Cycle:
             self.manifest.set_verdict(sid, stable, _SETTLED_PUBLISHED)
             return
         self.stub_pages.update(p.output_path for p in pages)
-        reason = _one_line(quarantine_reason or result.reason or result.status.value, 200)
+        # 200 characters for the stored reason, which _stub_stands and the refused-stub check compare; the
+        # error line keeps 300 from the uncut text, as _converter_waits' line in the next sync does, so the
+        # same converter error is not cut in the path on the first sync only (B13 round 20 X5)
+        full = quarantine_reason or result.reason or result.status.value
+        reason = _one_line(full, 200)
         refused = result.status is ConversionStatus.REFUSED or (
             result.status is ConversionStatus.UNREADABLE and content_policy.is_refusal_reason(result.reason)
         )
@@ -5307,7 +5311,7 @@ class _Cycle:
             self.manifest.set_state(sid, stable, RowState.QUARANTINED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.ERROR)  # not cached: retried next cycle
             acc.settle(stable, Verdict.ERROR)
-            acc.errors.append(_one_line(f"{row.rel_path}: {reason}"))
+            acc.errors.append(_one_line(f"{row.rel_path}: {full}"))
         else:
             self.manifest.set_state(sid, stable, RowState.QUARANTINED, reason)
             self.manifest.set_verdict(sid, stable, Verdict.QUARANTINED)
