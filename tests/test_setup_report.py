@@ -3973,6 +3973,52 @@ def add_project_source(fake_mac: dict[str, Path]) -> Path:
     return path
 
 
+@pytest.mark.parametrize(
+    ("rel", "sid", "own"),
+    [
+        (("Projects", "Contoso Ledger"), "contoso-ledger", True),  # its id is its folder's slug
+        (("Projects", "Contoso", "Ledger Docs"), "ledger-docs", True),  # nested: the leaf is not alone
+        (("Projects", "Contoso Ledger"), PROJECT_ID, False),  # an id of its own stays a <source-N>
+    ],
+)
+def test_a_project_sources_id_that_is_its_folders_slug_reads_as_that_folder(
+    fake_mac: dict[str, Path], rel: tuple[str, ...], sid: str, own: bool
+) -> None:
+    """B13 round 19 W6: a CloudStorage source's id that is its folder's slug reads as that ``<folder-N>``
+    (the fuzzy folder name matches it), while a project folder's was registered as one literal, so one
+    source outside CloudStorage read ``source.<source-1>.listable — ~/Projects/<folder-5>``. The project's
+    name component is fuzzy too, and a nested project's slug id is an alias of its path's placeholder."""
+    path = fake_mac["home"].joinpath(*rel)
+    path.mkdir(parents=True)
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8") + f'\n[[source]]\nid = "{sid}"\nkind = "inbox"\npath = "{path}"\n',
+        encoding="utf-8",
+    )
+
+    def doctor(config: object) -> list[str]:
+        return [f"[warn] source.{sid}.listable — {path} is slow to list"]
+
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks(doctor=doctor))
+    found = re.search(r"source\.(<[a-z]+-\d+>)\.listable — ~/Projects/(<folder-\d+>) is slow to list", text)
+    assert found is not None, section(text, "Doctor")
+    assert (found.group(1) == found.group(2)) is own, found.group(0)
+    for raw in ("Contoso", "Ledger", sid):
+        assert raw not in text, raw
+    # the review of W6: a source at a generic home folder has no project value, which raised inside the
+    # redactor's build, and the report fell back to one that knows only the home folder
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + f'\n[[source]]\nid = "papers"\nkind = "inbox"\npath = "{fake_mac["home"] / "Documents"}"\n',
+        encoding="utf-8",
+    )
+    (fake_mac["home"] / "Documents").mkdir(exist_ok=True)
+    text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks(doctor=doctor))
+    assert ORG not in text and FOLDERS[1] not in text and "papers" not in text, "still fully redacted"
+    if own:
+        assert red.redact(sid) == found.group(2)
+
+
 def test_shell_escaped_folder_names_are_redacted(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     """install.sh writes its arguments with ``printf %q``: a folder name's spaces arrive as ``\\ `` and a
     ``&`` or a bracket inside a word as ``\\&``, in install.log's ``args=`` and in install.out's header."""

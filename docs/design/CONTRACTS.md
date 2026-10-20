@@ -24804,6 +24804,17 @@ kind made outside the pass, as the pass counts its own, and the cut calls it; th
 Summary bucket's call passes a fresh redactor, so it counts nothing in the report's. Test:
 `test_the_loads_lines_value_placeholder_is_counted_and_in_the_legend`.
 
+**A project source's id that is its folder's slug reads as that folder** (W6). A CloudStorage folder's name is
+registered fuzzy, so its slug id (`contoso-ledger` of `Contoso Ledger`) matches it and reads as its `<folder-N>`;
+a project folder outside CloudStorage was registered as one literal in any case, so the same id became a
+`<source-N>` of its own: `source.<source-1>.listable — ~/Projects/<folder-5>`, one source labelled two ways. The
+project's name component (`_project_values`' last value) is registered fuzzy now, as a CloudStorage component is;
+a value with a `/` or a joined report word stays one literal. For a nested project, whose leaf is never registered
+alone (it would cut ordinary words), an id that is `slugify` of its folder's name is an alias of the placeholder
+of the folder's own path value (`Redactor.alias`), unless the id is a generic one. An id of its own
+(`nw-client-alpha-mail`) stays a `<source-N>`. Test:
+`test_a_project_sources_id_that_is_its_folders_slug_reads_as_that_folder`.
+
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
 Lane RB's items of B13 round 19 (`docs/plans/bring-back-ocr.md`, "B13 round 19"): the shell report's re-add

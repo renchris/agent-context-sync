@@ -150,6 +150,7 @@ from agentsync.paths import (
     provider_link_resolved,
 )
 from agentsync.skill import AGENTSYNC_BIN, INSTALL_SH
+from agentsync.slug import slugify
 from agentsync.text import plural as _plural
 
 REPORT_TITLE = "# agentsync setup report"
@@ -1286,6 +1287,20 @@ class Redactor:
         else:
             self._exact.setdefault(_bare(value), placeholder)
             self._literals.append((value, "exact"))
+        self._regex = None
+
+    def alias(self, value: str, of: str) -> None:
+        """Register ``value`` under the placeholder ``of`` already has, matched as written: a project
+        source's id that is its own folder's slug (``ledger-docs`` of ``~/Projects/Contoso/Ledger Docs``)
+        reads as that folder's ``<folder-N>``, not a ``<source-N>`` of its own, where the folder's leaf is
+        not registered alone (B13 round 19 W6). :meth:`add` keeps a known value's first placeholder, so it
+        cannot do this. Nothing happens when ``of`` is not registered or ``value`` already is."""
+        value = value.strip()
+        placeholder = self._known(of)
+        if placeholder is None or len(value) < 2 or self._known(value) is not None:
+            return
+        self._exact.setdefault(_bare(value), placeholder)  # as add("source", id) registers an id: as written
+        self._literals.append((value, "exact"))
         self._regex = None
 
     def set_app_heads(self, heads: Iterable[str]) -> None:
@@ -3836,13 +3851,25 @@ def _build_redactor(r: _Run) -> Redactor:
             )
     red.listing_unread = not listing_ok and not has_list
     _add_listed(red, [*listed, *printed])
+    own_value: dict[Path, str] = {}  # a project folder -> the value its whole path is registered as
     for path in project_paths:
-        for value in _project_values(path):
-            red.add("folder", value, ignore_case=True)
+        values = _project_values(path)
+        if values:  # none for ~/Documents, ~/Development or the home folder itself (_GENERIC_HOME_DIRS)
+            own_value[path] = values[0]
+        for value in values:
+            # B13 round 19 W6: its name component as a CloudStorage folder's is (fuzzy), so an id that is its
+            # slug (``contoso-ledger``) reads as its <folder-N>; a path value (a "/") or a joined report word
+            # stays one literal
+            joined = len(_tokens(value)) >= 2 and _norm(value) in report_words()
+            red.add("folder", value, ignore_case=True, fuzzy="/" not in value and not joined)
     # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
     for src in r.config.sources if r.config is not None else ():
+        folder = expand(src.path) if src.path is not None and src.id not in _GENERIC_IDS else None
+        mirror = own_value.get(folder) if folder is not None else None  # a Graph source has no path
+        if folder is not None and mirror is not None and src.id == slugify(folder.name):
+            red.alias(src.id, mirror)  # a nested project's id that is its folder's slug: that <folder-N> (W6)
         if src.id in cloud_ids or src.id not in _GENERIC_IDS:
             red.add("source", src.id)
     # Then every id the manifest or the purge queue holds that sources.toml no longer has, after the
