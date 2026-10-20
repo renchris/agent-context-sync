@@ -8907,15 +8907,23 @@ def _state_unreadable(c: Config, read_error: BaseException | None = None) -> boo
         return False
 
 
-def _speech_timed_out(c: Config) -> bool:
-    """Whether the speech helper's last build ran out of time, from its own marker (``convert.speech.
-    build_timed_out``; B13 round 18 V5, V28). False when convert cannot be imported."""
+def _helpers_timed_out(c: Config) -> dict[str, str]:
+    """The helpers (doctor's ``ocr``, ``media`` and ``speech`` checks) whose last build ran out of time, each
+    from its own marker (``convert.ocr.build_timed_out``, ``convert.speech.build_timed_out``), with the words
+    its reason starts with (``doctor.helper_timed_out_words``); B13 round 18 V5, V28 for speech, round 19 W49
+    for the OCR and media helpers. Empty when convert cannot be imported."""
     try:
-        from agentsync.convert import speech  # noqa: PLC0415 - lazy, as the doctor reads are
+        from agentsync.convert import media, ocr, speech  # noqa: PLC0415 - lazy, as the doctor reads are
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
-        return speech.build_timed_out(c.cache_dir)
+        built = {
+            "ocr": ocr.build_timed_out(c.cache_dir),
+            "media": ocr.build_timed_out(c.cache_dir, media.MEDIA),
+            "speech": speech.build_timed_out(c.cache_dir),
+        }
+        return {name: doctor.helper_timed_out_words(name)[0] for name, out in built.items() if out}
     except Exception:
-        return False
+        return {}
 
 
 def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
@@ -8962,9 +8970,8 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
     unreadable = r.config is not None and _state_unreadable(r.config, read_error)
     from_state: list[str] = []
-    timed_out = r.config is not None and _speech_timed_out(r.config)
-    speech_words = "the speech helper's build ran out of time"  # speech.BUILD_TIMED_OUT, in the warn too
-    from_speech: list[str] = []
+    timed_out = _helpers_timed_out(r.config) if r.config is not None else {}
+    from_helpers: list[str] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
@@ -8998,10 +9005,10 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             from_state.append(f"{name} warn (not judged: the loop cannot read the state)")
             continue
         # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
-        # never expected, and not unexpected either: install.sh builds it again. Keyed on the report's own
-        # read of the build's marker, never on doctor's words or fix
-        if tag == "warn" and name == "speech" and timed_out and speech_words in detail:
-            from_speech.append(name)
+        # never expected, and not unexpected either: install.sh builds it again; the OCR and media helpers'
+        # too (round 19 W49). Keyed on the report's own read of each build's marker, never on doctor's fix
+        if tag == "warn" and name in timed_out and timed_out[name] in detail:
+            from_helpers.append(name)
             continue
         why = (
             expected_warn(name, detail, agents_installed=installed, stopped_copy=r.facts.copy_stopped)
@@ -9054,11 +9061,13 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
             f"from the state file that cannot be read ({_plural(len(from_state), 'check')}): "
             + ", ".join(from_state)
         )
-    if from_speech:
+    if from_helpers:
+        one = len(from_helpers) == 1
         parts.append(
-            f"from the speech helper's build that ran out of time ({_plural(len(from_speech), 'check')}): "
-            + ", ".join(f"{n} warn" for n in from_speech)
-            + " (install.sh builds it again)"
+            f"from {'a helper build' if one else 'helper builds'} that ran out of time "
+            f"({_plural(len(from_helpers), 'check')}): "
+            + ", ".join(f"{n} warn" for n in from_helpers)
+            + f" (install.sh builds {'it' if one else 'them'} again)"
         )
     parts.append(f"unexpected {len(unexpected)}" + (f": {', '.join(unexpected)}" if unexpected else ""))
     gone = _install_doctor_only(r, runs)

@@ -742,8 +742,8 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     """On-device OCR, which is optional: ok when the helper is ready or OCR is switched off; a not-ok INFO
     line when the helper is not built (scripts/install.sh builds it; this check never compiles); WARN with
     the reason when the last build failed, or the helper is there and may not be run or does not answer,
-    with a fix only when the developer tools are missing.  Never a FAIL: a probe that crashes is a WARN
-    too.
+    with a fix only when the developer tools are missing or the build ran out of time
+    (:func:`_helper_again_fix`; B13 round 19 W49).  Never a FAIL: a probe that crashes is a WARN too.
 
     scripts/install.sh builds nothing on a Mac without developer tools and leaves no failure to report, so
     the not-built line says there that the build waits for them.  It stays INFO with no fix."""
@@ -759,7 +759,7 @@ def _check_ocr(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("ocr", f"{detail}; {how}", Severity.INFO)]
-    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "ocr")
     return [_bad("ocr", f"on-device OCR is not working: {detail}", Severity.WARN, fix=fix)]
 
 
@@ -767,7 +767,8 @@ def _check_media(config: Config) -> list[CheckResult]:
     """The media helper that reads recordings, optional as OCR is and checked the same way: ok when ready or
     switched off (``[convert] recordings = false`` among the switches); a not-ok INFO line when it is not
     built (scripts/install.sh builds it; this check never compiles); WARN with the reason when it failed,
-    with a fix only when the developer tools are missing.  Never a FAIL."""
+    with a fix only when the developer tools are missing or the build ran out of time (W49).  Never a
+    FAIL."""
     try:
         state, detail = _media_status(config)
     except Exception as exc:
@@ -778,7 +779,7 @@ def _check_media(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("media", f"{detail}; {how}", Severity.INFO)]
-    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else None
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "media")
     return [_bad("media", f"media helper: not working ({detail})", Severity.WARN, fix=fix)]
 
 
@@ -799,29 +800,43 @@ def _check_speech(config: Config) -> list[CheckResult]:
     if state == "not-built":
         how = _OCR_NOT_BUILT_NO_DEVTOOLS if _devtools_missing() else _OCR_NOT_BUILT
         return [_bad("speech", f"speech: {state} ({detail}; {how})", Severity.INFO)]
-    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _speech_again_fix(detail)
+    fix = _OCR_DEVTOOLS_FIX if _devtools_missing() else _helper_again_fix(detail, "speech")
     return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
 
 
-def _speech_again_fix(detail: str) -> str | None:
-    """The fix of a speech helper build that ran out of time (its reason starts with
-    ``speech.BUILD_TIMED_OUT``): install.sh again, which builds it again; any other failed build keeps no fix,
-    as its reason is the news (B13 round 18 V5, V28). The time covers the FluidAudio fetch too, so no cause is
-    named: the Mac and the network. Under install.sh the run is the one its NEXT line names, as
-    :func:`_again_fix` says it."""
-    from agentsync.convert import speech  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
-
-    if not detail.startswith(speech.BUILD_TIMED_OUT):
+def _helper_again_fix(detail: str, helper: str) -> str | None:
+    """The fix of a helper build that ran out of time (``ocr``, ``media`` or ``speech``; its reason starts
+    with the helper's own time-out words, :func:`helper_timed_out_words`): install.sh again, which builds it
+    again; any other failed build keeps no fix, as its reason is the news (B13 round 18 V5, V28; the OCR and
+    media helpers, B13 round 19 W49). The 20 minutes of the speech build cover the FluidAudio fetch too, so
+    its cause is the Mac and the network; the OCR and media builds fetch nothing, and stop after 5. The
+    re-run is said once, and the minutes are a limit, not a promise (W20). Under install.sh the run is the
+    one its NEXT line names, as :func:`_again_fix` says it."""
+    try:
+        words, minutes = helper_timed_out_words(helper)
+    except Exception:  # lazy: doctor must import, and give its line, even if convert is broken
+        return None
+    if not detail.startswith(words):
         return None
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         again = f"run the same {INSTALL_SH} command again as it is (its NEXT line names it)"
     else:
         again = f"run {INSTALL_SH} again"
-    minutes = int(speech._BUILD_TIMEOUT_S // 60)
-    return (
-        f"{again}: it builds the speech helper again, within {minutes} minutes; if it runs out of time "
-        "again, run it when the Mac and the network are less busy"
-    )
+    busy = "the Mac and the network are" if helper == "speech" else "the Mac is"
+    stops = f"the build stops after {minutes} minutes, and if it stops again, run it when {busy} less busy"
+    return f"{again}; {stops}"
+
+
+def helper_timed_out_words(helper: str) -> tuple[str, int]:
+    """The words a build of ``helper`` (``ocr``, ``media`` or ``speech``) that ran out of time starts its
+    reason with, and its limit in minutes. The setup report keys its bucket on the same words, read from the
+    helper's own marker (B13 round 19 W49)."""
+    from agentsync.convert import media, ocr, speech  # noqa: PLC0415 - lazy, as the probes are
+
+    if helper == "speech":
+        return speech.BUILD_TIMED_OUT, int(speech._BUILD_TIMEOUT_S // 60)
+    kind = media.MEDIA if helper == "media" else ocr._OCR
+    return f"{ocr.BUILD_TIMED_OUT} {kind.name}", int(ocr._BUILD_TIMEOUT_S // 60)
 
 
 def _check_config(config: Config) -> list[CheckResult]:

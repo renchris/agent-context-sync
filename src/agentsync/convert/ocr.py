@@ -79,6 +79,10 @@ _BATCH = 16  # images per helper run
 _VERSION_TIMEOUT_S = 5.0
 _TOOL_TIMEOUT_S = 60.0
 _BUILD_TIMEOUT_S = 300.0
+BUILD_TIMED_OUT = "swiftc ran out of time building the"
+"""How the reason of a helper build that ran out of time starts, the helper's name next; doctor's fix and the
+setup report's bucket key on it, read from the helper's own marker (:func:`build_timed_out`; B13 round 19
+W49)."""
 _PRUNE_AFTER_S = 7 * 24 * 3600.0
 _MIN_MACOS = "12.0"
 _HELPER_SOURCE = "vision_ocr.swift"
@@ -453,6 +457,16 @@ def _failure(helper: Path, kind: Helper = _OCR) -> str:
     return _plain(text) if text.strip() else f"the last build of the {kind.name} failed"
 
 
+def build_timed_out(cache_dir: Path, kind: Helper = _OCR) -> bool:
+    """Whether the last build of ``kind`` under ``cache_dir`` ran out of time: its marker's reason starts with
+    :data:`BUILD_TIMED_OUT` and the helper's name (a marker written before the retry clause too).  Never
+    raises."""
+    try:
+        return _failure(_helper_path(cache_dir, kind), kind).startswith(f"{BUILD_TIMED_OUT} {kind.name}")
+    except Exception:  # a cache that cannot be looked at says nothing about the build
+        return False
+
+
 def _open(helper: Path) -> OcrEngine:
     """The engine for a helper that answers ``--version``; raises OcrError."""
     answer = _run_helper(helper, ["--version"], timeout=_VERSION_TIMEOUT_S)
@@ -706,7 +720,10 @@ def _compile(helper: Path, kind: Helper = _OCR) -> None:
                 timeout=_BUILD_TIMEOUT_S,
             )
         except subprocess.TimeoutExpired:
-            raise kind.error(f"swiftc ran out of time building the {kind.name}") from None
+            # the retry clause as a signal's: install.sh builds every helper on each run (B13 round 19 W49)
+            raise kind.error(
+                f"{BUILD_TIMED_OUT} {kind.name}; {INSTALL_SH} tries the build again on its next run"
+            ) from None
         if cp.returncode < 0:
             raise kind.error(
                 _signal_reason(f"swiftc, building the {kind.name}, was ", cp.returncode, cp.stderr)

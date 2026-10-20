@@ -24446,6 +24446,10 @@ over V28's: never `expected`, since speech is missing. Tests:
 `test_setup_report.py::test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected`.
 Amended 2026-10-20, §16.145 W61 (by §16.138 V68): the marker's retry clause names install.sh by its path:
 `; ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run` (`skill.INSTALL_SH`, V68).
+Amended 2026-10-20, §16.144 W20, W49: the fix reads `run <install.sh> again; the build stops after 20 minutes,
+and if it stops again, run it when the Mac and the network are less busy` (`doctor._helper_again_fix`), and the
+OCR and media helpers' builds that ran out of time get the same fix with 5 minutes and "the Mac" and share the
+bucket, now `from a helper build that ran out of time (N checks): ...`.
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
@@ -25057,6 +25061,33 @@ start fits. The subject stays first, where doctor's `not working: <detail>` read
 `BUILD_TIMED_OUT` are unchanged, and a SIGKILL or SIGTERM reason, which has no crash line, reads as before. Tests:
 `test_ocr.py::test_a_crashed_builds_long_line_leaves_the_retry_clause_whole`,
 `test_speech.py::test_a_crashed_build_steps_long_line_leaves_the_retry_clause_whole`.
+
+**The OCR and media helpers' builds that ran out of time are handled as speech's (W49; `agentsync.convert.ocr`,
+`agentsync.ops.doctor`, `agentsync.setup_report`; amends §16.137 V5).** A swiftc build of the OCR or media helper
+that ran out of time stored `swiftc ran out of time building the <helper>` with no retry clause, doctor's warn had
+no fix (one only when the developer tools are missing), and the report's bucket read only speech's marker, so the
+warn was `unexpected`. `ocr.BUILD_TIMED_OUT` (`swiftc ran out of time building the`) now starts that reason, which
+ends `; <INSTALL_SH> tries the build again on its next run` (true: install.sh builds every helper on each run, and
+the `.failed` marker blocks nothing), and `ocr.build_timed_out(cache_dir, kind)` reads a helper's marker by that
+prefix and the helper's name, so a marker an older build wrote is recognised too. Doctor's `_speech_again_fix` is
+`_helper_again_fix(detail, helper)`, used by `_check_ocr`, `_check_media` and `_check_speech`, keyed on
+`doctor.helper_timed_out_words(helper)`: speech's 20 minutes and "the Mac and the network", the OCR and media
+builds' 5 minutes (`ocr._BUILD_TIMEOUT_S`) and "the Mac", since they fetch nothing. The report's
+`_helpers_timed_out` reads each helper's own marker and buckets a warn only when that helper's marker says so
+and the warn's detail holds its words; the bucket reads `from a helper build that ran out of time (1 check): ...
+(install.sh builds it again)`, plural for more. Tests:
+`test_ops_doctor.py::test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`,
+`test_setup_report.py::test_an_ocr_or_media_build_that_ran_out_of_time_shares_the_helper_bucket`,
+`test_ocr.py::test_a_build_that_hangs_is_stopped_and_recorded`.
+
+**Doctor's speech time-out fix says the re-run once (W20; `agentsync.ops.doctor`; amends §16.137 V5).** The warn's
+detail is the marker's reason, which already says `<install.sh> tries the build again on its next run`, and the
+fix went on `again: it builds the speech helper again, within 20 minutes`, so one line said the retry twice and
+read the build's limit as a promise. The fix is now `<again>; the build stops after 20 minutes, and if it stops
+again, run it when the Mac and the network are less busy`. The marker's reason (`speech._TIMED_OUT`) is unchanged:
+it is the only hint on the surfaces that read it without doctor, and tests pin it as a V68 promise. The `<again>`
+head (`run <install.sh> again`, or under install.sh `_again_fix`'s words) is lane B's (W19, W48). Test:
+`test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

@@ -29,7 +29,7 @@ import pytest
 
 from agentsync import governance
 from agentsync.config import ConvertConfig
-from agentsync.convert import ocr
+from agentsync.convert import media, ocr
 from agentsync.convert.cache import ConverterCache
 from agentsync.ops import doctor
 from agentsync.skill import INSTALL_SH
@@ -1021,8 +1021,12 @@ def test_a_build_that_hangs_is_stopped_and_recorded(
     monkeypatch.setattr(ocr, "_BUILD_TIMEOUT_S", 1.0)
     with pytest.raises(ocr.OcrError) as error:
         ocr.build(tmp_path)
-    assert str(error.value) == "swiftc ran out of time building the OCR helper"
-    assert ocr.probe(CFG, tmp_path) == ("failed", "swiftc ran out of time building the OCR helper")
+    # B13 round 19 W49: the retry clause, as a signal's has: install.sh builds every helper on each run
+    reason = (
+        f"swiftc ran out of time building the OCR helper; {INSTALL_SH} tries the build again on its next run"
+    )
+    assert str(error.value) == reason and ocr.probe(CFG, tmp_path) == ("failed", reason)
+    assert ocr.build_timed_out(tmp_path) and not ocr.build_timed_out(tmp_path, media.MEDIA)
     assert [p.name for p in (tmp_path / "ocr").iterdir()] == [ocr._marker(ocr._helper_path(tmp_path)).name]
     assert gone(compiler_pid(pidfile)), "the compiler outlived the build's time limit"
 
@@ -1038,7 +1042,7 @@ def test_a_build_whose_compiler_starts_after_the_time_limit_is_stopped_too(
     pidfile = tmp_path / "compiler.pid"
     script(tools / "swiftc", compiling(pidfile, start_after=1.5))
     monkeypatch.setattr(ocr, "_BUILD_TIMEOUT_S", 1.0)
-    with pytest.raises(ocr.OcrError, match=r"^swiftc ran out of time building the OCR helper$"):
+    with pytest.raises(ocr.OcrError, match=r"^swiftc ran out of time building the OCR helper; "):
         ocr.build(tmp_path)
     assert gone(compiler_pid(pidfile)), "the compiler outlived the build's time limit"
 

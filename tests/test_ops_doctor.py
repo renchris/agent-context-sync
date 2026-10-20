@@ -2980,18 +2980,58 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
         r = by_name(run_checks(sample_config))["speech"]
         assert (r.ok, r.severity) == (False, Severity.WARN)
         assert r.detail == f"speech: failed ({reason})"
+        # B13 round 19 W20: the re-run said once (the marker's clause says it too), the 20 minutes a limit
         assert r.fix == (
-            f"run {INSTALL_SH} again: it builds the speech helper again, within 20 minutes; if it runs out "
-            "of time again, run it when the Mac and the network are less busy"
+            f"run {INSTALL_SH} again; the build stops after 20 minutes, and if it stops again, run it "
+            "when the Mac and the network are less busy"
         )
+        assert "builds the speech helper again" not in r.fix and "within" not in r.fix
         monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
         r = by_name(run_checks(sample_config))["speech"]
-        assert r.fix is not None and r.fix.startswith(
-            f"run the same {INSTALL_SH} command again as it is (its NEXT line names it): it builds"
+        assert r.fix is not None and r.fix.endswith(
+            "; the build stops after 20 minutes, and if it stops again, "
+            "run it when the Mac and the network are less busy"
         ), r.fix
     marker.write_text("swift package resolve failed (exit 1): could not reach github.com", encoding="utf-8")
     assert not speech.build_timed_out(sample_config.cache_dir)
     r = by_name(run_checks(sample_config))["speech"]
+    assert (r.severity, r.fix) == (Severity.WARN, None), r
+
+
+@pytest.mark.parametrize("helper", ["ocr", "media"])
+def test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """B13 round 19 W49: the OCR and media helpers' builds that ran out of time left a warn with no fix and
+    no retry clause, where speech's has both (V5, V28). Keyed on each helper's own marker words, the fix is
+    install.sh again with their own 5 minutes; their builds fetch nothing, so no network is named."""
+    from agentsync.convert import media  # noqa: PLC0415
+
+    (_real_ocr if helper == "ocr" else _real_media)(monkeypatch)
+    monkeypatch.setattr(doctor, "_devtools_missing", lambda: False)
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
+    kind = ocr._OCR if helper == "ocr" else media.MEDIA
+    marker = ocr._marker(ocr._helper_path(sample_config.cache_dir, kind))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    fix = (
+        f"run {INSTALL_SH} again; the build stops after 5 minutes, and if it stops again, run it when "
+        "the Mac is less busy"
+    )
+    retry = f"; {INSTALL_SH} tries the build again on its next run"
+    for reason in (
+        f"swiftc ran out of time building the {kind.name}{retry}",
+        f"{ocr.BUILD_TIMED_OUT} {kind.name}",
+    ):
+        marker.write_text(reason, encoding="utf-8")
+        assert ocr.build_timed_out(sample_config.cache_dir, kind)
+        r = by_name(run_checks(sample_config))[helper]
+        assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, fix), r
+        assert reason in r.detail
+    marker.write_text(
+        f"swiftc did not build the {kind.name} (exit 1): error: no such module", encoding="utf-8"
+    )
+    assert not ocr.build_timed_out(sample_config.cache_dir, kind)
+    r = by_name(run_checks(sample_config))[helper]
     assert (r.severity, r.fix) == (Severity.WARN, None), r
 
 

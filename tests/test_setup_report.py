@@ -8259,7 +8259,7 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
     marker.write_text(speech._TIMED_OUT, encoding="utf-8")
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
     assert (
-        "- doctor: 0 FAIL, 1 warn (2 checks) · from the speech helper's build that ran out of time "
+        "- doctor: 0 FAIL, 1 warn (2 checks) · from a helper build that ran out of time "
         "(1 check): speech warn (install.sh builds it again) · unexpected 0" in summary
     ), summary
     assert "expected 1" not in summary
@@ -8270,6 +8270,47 @@ def test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected(
     marker.write_text("swift package resolve failed (exit 1): could not reach the host", encoding="utf-8")
     _text, summary = summary_of(fake_mac, doctor=lambda config: ["[ok  ] python — fine", warn])
     assert "- doctor: 0 FAIL, 1 warn (2 checks) · unexpected 1: speech warn" in summary, summary
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_an_ocr_or_media_build_that_ran_out_of_time_shares_the_helper_bucket(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 19 W49: an OCR or media helper build that ran out of time fell into "unexpected", as only
+    speech had a bucket. Each helper's warn is bucketed on that helper's own marker and words; a marker of one
+    helper does not bucket another's warn."""
+    v6_install_log(fake_mac)
+    write_friction(fake_mac, V6_HAPPY)
+    config = load_config(fake_mac["config"])
+    retry = "; ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run"
+    words = {"ocr": "swiftc ran out of time building the OCR helper"}
+    words["media"] = "swiftc ran out of time building the media helper"
+    ocr_warn = f"[warn] ocr — on-device OCR is not working: {words['ocr']}{retry} (fix: run install.sh again)"
+    media_warn = (
+        f"[warn] media — media helper: not working ({words['media']}{retry}) (fix: run install.sh again)"
+    )
+    marker = ocr._marker(ocr._helper_path(config.cache_dir))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(words["ocr"] + retry, encoding="utf-8")
+    _text, summary = summary_of(
+        fake_mac, doctor=lambda config: ["[ok  ] python — fine", ocr_warn, media_warn]
+    )
+    assert (
+        "- doctor: 0 FAIL, 2 warn (3 checks) · from a helper build that ran out of time (1 check): ocr warn "
+        "(install.sh builds it again) · unexpected 1: media warn" in summary
+    ), summary
+    from agentsync.convert import media  # noqa: PLC0415
+
+    marker = ocr._marker(ocr._helper_path(config.cache_dir, media.MEDIA))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(words["media"], encoding="utf-8")  # an older marker, without the retry clause
+    _text, summary = summary_of(
+        fake_mac, doctor=lambda config: ["[ok  ] python — fine", ocr_warn, media_warn]
+    )
+    assert (
+        "- doctor: 0 FAIL, 2 warn (3 checks) · from helper builds that ran out of time (2 checks): ocr warn, "
+        "media warn (install.sh builds them again) · unexpected 0" in summary
+    ), summary
 
 
 def test_residue_ignores_macos_path_components_and_the_temp_folder_is_redacted(
