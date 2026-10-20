@@ -315,6 +315,30 @@ def test_xlsx_cached_values_render_beside_formulas(tmp_path: Path, fixture_files
     assert "no cached values" not in q3.body
 
 
+def test_xlsx_one_uncached_cell_of_four_takes_the_pronoun_of_one(
+    tmp_path: Path, fixture_files: dict[str, Path]
+) -> None:
+    """B13 round 17 U74's rule that the note's pronoun follows the uncached count, not the formula count, was
+    pinned only where the two agree (1 of 1, 2 of 2, 4 of 4), so a pronoun taken from the formula count
+    passed every test (B13 round 18 V66). 1 of 4 is the case where they give different pronouns; both call
+    sites, full and streamed, are pinned on it."""
+    src = with_cached_values(
+        fixture_files["sample.xlsx"], tmp_path / "one-of-four.xlsx", "xl/worksheets/sheet1.xml",
+        {"D2": "20", "D3": "-5", "B4": "180"},
+    )  # fmt: skip
+    q3 = XlsxConverter(CFG).convert(src, name="one-of-four.xlsx")[1]
+    [note] = [ln for ln in q3.body.splitlines() if ln.startswith("[no cached values")]
+    assert note == (
+        "[no cached values: 1 of 4 formula cells carries no stored result (the workbook was last written by "
+        "a tool that does not calculate, e.g. a script or BI export); that cell shows the formula only, "
+        "never a guessed number]"
+    )
+    streamed = XlsxConverter(replace(CFG, xlsx_stream_threshold_bytes=0))
+    body = "\n".join(u.body for u in streamed.convert(src, name="one-of-four.xlsx"))
+    assert "streamed summary" in body, body
+    assert "1 of 4 formula cells carries no stored result; that cell shows the formula only]" in body, body
+
+
 def test_xlsx_rich_workbook_objects_comments_hidden_names(tmp_path: Path) -> None:
     units = XlsxConverter(CFG).convert(build_xlsx_rich(tmp_path / "r.xlsx"), name="r.xlsx")
     index, data, secret = units
