@@ -4518,7 +4518,14 @@ older_report_rewrite() { # MODE
 			if ($0 == "- none") $0 = s1item
 			else if (index($0, "- ") == 1 && !index($0, "the folder list stopped")) { for (; blank > 0; blank--) print ""; print s1item }
 		}
-		{ for (; blank > 0; blank--) print ""; print (det || fence ? $0 : plural_all($0)) }
+		# the one-warn note an older renderer writes itself says "their fix" (e5c5b0e2, dd5d55d5): in either
+		# mode and whatever c is, it takes the current words, "its" (B13 round 17 U31; round 18 V27)
+		{
+			px = (det || fence ? $0 : plural_all($0))
+			if (!det && !fence && sec == "## Doctor" && px ~ /^[0-9]+ checks?(\(s\))?: /) sub(/ 1 expected warn ends in \(expected: <why>\) instead of their fix:/, " 1 expected warn ends in (expected: <why>) instead of its fix:", px)
+			for (; blank > 0; blank--) print ""
+			print px
+		}
 		END { if (tn) table(); if (cp) { print ""; print "Not for sending: see the note at the top of this report." } }' "$REPORT_PATH" "$REPORT_PATH"
 }
 # The step 1 stop older_report_rewrite step1 words (B13 round 16 T11): when install.log's last run is this

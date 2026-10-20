@@ -9799,6 +9799,22 @@ def test_a_step_1_stop_rendered_by_the_older_installed_agentsync_takes_this_chec
     assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
 
 
+def test_a_step_1_stop_of_the_older_build_says_its_fix_for_one_expected_warn(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 18 V27: an older renderer writes its own one-warn note with "their fix" (an ad hoc
+    launcher's expected warn); the step 1 rewrite gives it the current renderer's "its fix", as the copy's
+    does, and leaves the rest of the header."""
+    head = "54 check(s): 46 ok, 1 info, 1 warn, 7 FAIL. Only the lines that are not ok:"
+    note = " 1 expected warn(s) end in (expected: <why>) instead of their fix: nothing for this setup to do."
+    text = _step1_stop_home(env, tmp_path, _v10_step1_report(_V10_SUMMARY).replace(head, head + note))
+    doctor = text.split("## Doctor\n\n", 1)[1].splitlines()
+    assert doctor[0] == (
+        "54 checks: 46 ok, 1 info, 1 warn, 7 FAIL. Only the lines that are not ok: 1 expected warn ends in "
+        "(expected: <why>) instead of its fix: nothing for this setup to do."
+    )
+
+
 def _items(text: str) -> list[str]:
     """The Summary's Items list, heading first."""
     summary = text.split("## Summary\n\n", 1)[1].split("\n\n## ", 1)[0]
@@ -10184,6 +10200,18 @@ def _old_doctor_report(summary: str, head: str, fenced: list[str]) -> str:
             None,
             None,
         ),
+        (  # B13 round 18 V27: a renderer (e5c5b0e2, dd5d55d5) that marks the warn expected itself, "their"
+            "- doctor: 0 FAIL, 1 warn (42 checks) · expected 1: install.commit "
+            f"({STOPPED_WARN}) · unexpected 0",
+            _NEW_HEAD
+            + " 1 expected warn ends in (expected: <why>) instead of their fix: nothing for this setup to do"
+            + setup_report._STOPPED_COPY_BEYOND
+            + ".",
+            [_COMMIT_WARN.split(" (fix: ", maxsplit=1)[0] + f" (expected: {STOPPED_WARN})"],
+            None,
+            _NEW_HEAD + _new_note(1, stopped=True),
+            None,
+        ),
         (  # another install.commit warn
             "- doctor: 0 FAIL, 1 warn (42 checks) · unexpected 1: install.commit warn",
             _DOCTOR_HEAD,
@@ -10224,6 +10252,9 @@ def test_a_stopped_copy_rendered_before_j18_calls_its_commit_warn_expected(
         r"(\d+) expected warn\(s\) end in",
         lambda m: f"{m[1]} expected warn{' ends' if m[1] == '1' else 's end'} in",
         (want_head or head).replace("42 check(s):", "42 checks:"),
+    ).replace(  # B13 round 18 V27: one warn is "its fix", whatever wrote the note
+        " 1 expected warn ends in (expected: <why>) instead of their fix",
+        " 1 expected warn ends in (expected: <why>) instead of its fix",
     )
     assert doctor[2] == want
     assert got_fenced == (want_fenced or fenced)
