@@ -967,6 +967,12 @@ def test_doctors_persons_fix_words_are_install_shs(sample_config: Config) -> Non
     # B13 round 16 T5, T9: the kinds status's NEXT lists are PERSONS_FAILS's, word for word
     kinds = f"(each names its fix: {cli.PERSONS_KINDS}), not a step for the agent"
     assert f"PERSONS_FAILS=\"the [FAIL] lines above are the person's to fix {kinds}" in text
+    # B13 round 18 V53: --help prints the header's list, in the same kinds and order (plus "or sentinel")
+    shown = subprocess.run(
+        ["/bin/bash", str(INSTALL_SH), "--help"], capture_output=True, text=True, check=True
+    ).stdout
+    header = cli.PERSONS_KINDS.replace("a [[source]] path,", "a [[source]] path or sentinel,")
+    assert f"is the person's ({header}), the NEXT says so" in " ".join(shown.split())
 
 
 def test_a_fail_the_agent_fixes_by_a_re_run_keeps_the_re_run_next(

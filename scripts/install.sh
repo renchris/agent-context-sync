@@ -167,10 +167,11 @@
 #      installed), which the wait (step 8) asks the Allow for when this run installs them. A listing macOS holds for an Allow click in this terminal is a
 #      source.<id>.listable [FAIL]: it stops them. Every [FAIL] line names its fix; for a check that ran out
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
-#      [FAIL] that stops them is the person's (a [[source]] path or sentinel, a [[source]] block to put back,
-#      a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that cannot be
-#      read, a folder to put back or sync, a
-#      sign-in, Rosetta or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30; round 16 T5, T9)
+#      [FAIL] that stops them is the person's (a folder or file to put back or sync, a [[source]] path or
+#      sentinel, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to
+#      remove or allow, a state file that cannot be read, a sign-in, a [convert] pandoc_path,
+#      Rosetta to install or a native pandoc copy), the NEXT says so and sends the agent on to the report
+#      (B13 round 13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
