@@ -24188,6 +24188,8 @@ kept: non-zero is not built, the step stays `done` (an optional helper is never 
 `not built: the speech helper; its "speech:" line in install.out says why`; older_report_rewrite's `not_built` gives
 an older renderer's table the same words. Tests: the three `test_helpers_step_builds_*` tests,
 `test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer`.
+Amended 2026-10-20, §16.141 W38: the words are `not ready: ...`, since a helper built that fails its probe exits 1
+too; the token stays `not-built-<names>`.
 
 **The older build's step 1 and git-stop reports take the renderer's words** (V16, V30, V31). In step 1 mode the
 rewrite now also gives a list stop's first-sync line the renderer's `this attempt ran only install.sh --list-folders,
@@ -24753,6 +24755,16 @@ running" stays, as V40's `UNRECORDED_LOCK_WAIT_QUIET` keeps it: README step 2 ca
 "still running" lines expected, so no prompt words change. A body with a pid, or one that cannot be read, keeps the
 three lines it had; `AGENTSYNC_NOTE` is unchanged. Test: `test_the_reinstall_names_who_started_the_sync_it_waits_for`
 (an empty body: the three words, no "the other sync", no "the background job").
+
+**The helpers note says "not ready", which a built helper that fails its probe is** (W38; amends §16.135 V6).
+`ocr._entry` exits 1 when the probe after a good build answers `failed`, so install.sh notes `not-built-<names>`
+and the report said `not built: the OCR helper; ...` beside an `OCR helper: failed (...)` line. Rare (the build's
+own last step runs the same `--version`), but the words were wrong. `setup_report._helpers_note` and install.sh's
+`not_built` now say `not ready: <helpers>; its "<line>:" line in install.out says why` (a test keeps them equal);
+the token is unchanged, so older install.logs still read, and older_report_rewrite turns round 18's rendered `(not
+built: the ...)` cell into the same words. The convert modules' docstrings ("1 when not built") are lane E's files
+and are left. Test: `test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer` (both renderers and
+a round 18 copy).
 
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 

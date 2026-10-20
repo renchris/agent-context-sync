@@ -9464,9 +9464,9 @@ def test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer(
     rows = [("helpers", {"result": "done", "note": note, "seconds": "1220"}) for note in _NOT_BUILT]
     new = setup_report._step_table(rows)
     assert new[2].split(" | ")[2].rstrip(" |") == (
-        'done (not built: the OCR helper; its "OCR helper:" line in install.out says why)'
+        'done (not ready: the OCR helper; its "OCR helper:" line in install.out says why)'
     )
-    assert "| done (not built: the OCR helper, the media helper and the speech helper; their " in new[-1]
+    assert "| done (not ready: the OCR helper, the media helper and the speech helper; their " in new[-1]
     assert '"OCR helper:", "media helper:" and "speech:" lines in install.out say why) |' in new[-1]
     assert setup_report._helpers_note("not-built-wifi") == "not-built-wifi", "an unknown name stays a token"
     old = [
@@ -9475,6 +9475,13 @@ def test_a_helper_not_built_is_named_in_the_installer_row_of_either_renderer(
         *(f"| helpers |    1220 | done ({note}) |" for note in _NOT_BUILT),
     ]
     report = "\n".join(["# agentsync setup report", "", "## Installer", "", *old, ""])
+    lines = _stopped_copy_of(env, tmp_path, report).splitlines()
+    assert [ln for ln in lines if ln.startswith("|")] == new
+    # B13 round 19 W38: "not ready", since a helper built that then fails its probe is noted so too; a copy
+    # round 18's renderer wrote, "not built: ...", takes the same words
+    assert not [ln for ln in new if "not built" in ln]
+    v27 = [ln.replace("(not ready: ", "(not built: ") for ln in new]
+    report = "\n".join(["# agentsync setup report", "", "## Installer", "", *v27, ""])
     lines = _stopped_copy_of(env, tmp_path, report).splitlines()
     assert [ln for ln in lines if ln.startswith("|")] == new
 

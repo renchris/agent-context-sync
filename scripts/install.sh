@@ -4564,8 +4564,8 @@ older_report_rewrite() { # MODE
 				ws = ws (i == 1 ? "" : i == n ? " and " : ", ") what
 				hs = hs (i == 1 ? "" : i == n ? " and " : ", ") head
 			}
-			if (n == 1) return "not built: " ws "; its " hs " line in install.out says why"
-			return "not built: " ws "; their " hs " lines in install.out say why"
+			if (n == 1) return "not ready: " ws "; its " hs " line in install.out says why"
+			return "not ready: " ws "; their " hs " lines in install.out say why"
 		}
 		function table(    i, k, c, ch, w1, w2, w3, tok, x) { # the Installer table buffered in tb[1..tn]
 			for (; blank > 0; blank--) print ""
@@ -4578,6 +4578,8 @@ older_report_rewrite() { # MODE
 					tok = substr(R[i], RSTART + 2, RLENGTH - 3)
 					if ((S[i] SUBSEP tok) in words) { R[i] = substr(R[i], 1, RSTART) "(" words[S[i], tok] ")"; ch = 2 }
 					else if (S[i] == "helpers" && (x = not_built(tok)) != "") { R[i] = substr(R[i], 1, RSTART) "(" x ")"; ch = 2 }
+					# the words of round 18: a helper built that fails its probe is not "not built" (B13 round 19 W38)
+					else if (S[i] == "helpers" && index(tok, "not built: the ") == 1) { R[i] = substr(R[i], 1, RSTART) "(not ready: " substr(tok, 12) ")"; ch = 2 }
 				}
 				# each cell: its "(s)" by its count, after the token lookup, which reads the token as written; the
 				# table is padded again (B13 round 14 Q39 "listed N folders", round 16 T23)
@@ -6441,9 +6443,10 @@ if have_devtools; then
 			say "${line:-$3}"
 			return "$rc"
 		}
-		# A helper whose build exits non-zero is not built: the step is still done (an optional helper is
-		# never a failed step), noted not-built-<names> joined by "+", so install.log and the report's
-		# Installer row name it beside the helper's own line, which says why (B13 round 18 V6).
+		# A helper whose build exits non-zero is not built, or built and failing its probe: the step is still
+		# done (an optional helper is never a failed step), noted not-built-<names> joined by "+", so
+		# install.log and the report's Installer row name it ("not ready: ...") beside the helper's own line,
+		# which says why (B13 round 18 V6; round 19 W38).
 		nb=""
 		if build_helper ocr "OCR helper" "OCR helper: not built (the build did not run)"; then rc=0; else rc=$?; nb="ocr"; fi
 		if [ "$rc" -ne 78 ]; then

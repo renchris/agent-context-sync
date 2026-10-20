@@ -4469,8 +4469,9 @@ def _helpers_note(note: str) -> str:
     """The helpers step's note in the report's words: ``not-built-<names>`` (names joined by ``+``) names the
     helpers whose build exited non-zero and the install.out lines that say why, the step still ``done``: an
     optional helper is never a failed step (B13 round 18 V6: a speech build that ran out of time read as a
-    bare ``done``); else :data:`_HELPERS_NOTE_WORDS`. scripts/install.sh's older_report_rewrite words it the
-    same way (a test keeps them equal)."""
+    bare ``done``). "not ready", not "not built": a helper built that then fails its probe exits non-zero too,
+    and its line says ``failed (...)`` (B13 round 19 W38). Else :data:`_HELPERS_NOTE_WORDS`.
+    scripts/install.sh's older_report_rewrite words it the same way (a test keeps them equal)."""
     built = re.fullmatch(r"not-built-([a-z+]+)", note)
     names = built.group(1).split("+") if built else []
     if not names or any(name not in _HELPER_NAMES for name in names):
@@ -4478,9 +4479,9 @@ def _helpers_note(note: str) -> str:
     whats = [_HELPER_NAMES[name][0] for name in names]
     heads = [f'"{_HELPER_NAMES[name][1]}"' for name in names]
     if len(names) == 1:
-        return f"not built: {whats[0]}; its {heads[0]} line in install.out says why"
+        return f"not ready: {whats[0]}; its {heads[0]} line in install.out says why"
     return (
-        f"not built: {', '.join(whats[:-1])} and {whats[-1]}; their {', '.join(heads[:-1])} and {heads[-1]} "
+        f"not ready: {', '.join(whats[:-1])} and {whats[-1]}; their {', '.join(heads[:-1])} and {heads[-1]} "
         "lines in install.out say why"
     )
 
