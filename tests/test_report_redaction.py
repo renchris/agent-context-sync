@@ -782,3 +782,45 @@ def test_an_unreadable_git_config_leaves_the_launchagents_proxy_redacted(
     text = _shell_report(env, friction, AGENTSYNC_LAUNCHCTL=str(stub))
     gitconfig.chmod(0o600)
     assert "fabrikam" not in text, text
+
+
+def test_the_agents_name_keeps_a_configured_product_word_in_both_reports(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 20 X40, X81 (round 19 W17's shell twin): the shell report redacted a configured Copilot
+    folder in the agent's name too, so its friction log, Summary and issue link read "GitHub <folder-N> CLI
+    gpt-5", whose placeholder the name around it decodes, where the agentsync report keeps the product word.
+    Both now keep it where it stands as a word of the name, and only there: a path in the name and the step
+    line still read <folder-N>, and the legend says why."""
+    from urllib.parse import parse_qs, urlsplit  # noqa: PLC0415
+
+    from agentsync.config import local_source_table  # noqa: PLC0415
+
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Documents" / "Copilot"
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", folder), encoding="utf-8")
+    agent = "GitHub Copilot CLI gpt-5 in ~/Development/Copilot"
+    text = _shell_report(
+        env,
+        f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\nAgent: {agent}\n"
+        "2026-10-12T10:00:01Z | step 2 | deviation | Copilot synced | -\n",
+    )
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    python = red.redact_agent(agent)
+    assert re.fullmatch(r"GitHub Copilot CLI gpt-5 in ~/Development/<folder-\d+>", python), python
+    shell = re.sub(r"<folder-\d+>", "<folder-N>", python)
+    friction = text.split("\n## Agent friction log\n", 1)[1].split("\n## ", 1)[0]
+    assert re.sub(r"<folder-\d+>", "<folder-N>", friction).count(f"Agent: {shell}\n") == 1, friction
+    assert re.search(r"\| <folder-\d+> synced \|", friction), friction
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    linked = re.sub(r"[^\w .:/()+,@<>-]", "", shell)  # as _issue_link and link_agent keep it: no "~"
+    assert [re.sub(r"<folder-\d+>", "<folder-N>", a) for a in link["agent"]] == [linked], link
+    kept = text.replace("GitHub Copilot CLI", "").replace("GitHub%20Copilot%20CLI", "")
+    assert "Copilot" not in kept, "only the agent's name keeps the word"
+    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split())
+    assert "; a configured one's coding-agent product word stays as written in the agent's name" in legend

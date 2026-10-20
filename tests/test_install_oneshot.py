@@ -14601,12 +14601,93 @@ def test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name(env
     # the agentsync report reads the same agent from the same line
     attempt = setup_report.parse_friction(friction_path(env).read_text()).latest
     assert attempt is not None and attempt.said("Agent") == "GitHub Copilot CLI"
-    # a configured folder named so is still redacted, as in the Python report
+    # a configured folder named so is still redacted, as in the Python report, but in the agent's name (B13
+    # round 20 X40, X81: "GitHub <folder-N> CLI" decoded its own placeholder), where the Python report keeps
+    # it too (round 19 W17); a path still reads <folder-N>
     (cs / "OneDrive-Contoso" / "Copilot").mkdir()
     _write_config(env, local_source_table("copilot", cs / "OneDrive-Contoso" / "Copilot"))
+    said = (
+        f"prompt v{COMPAT}, GitHub Copilot CLI: git pull failed in "
+        "~/Library/CloudStorage/OneDrive-Contoso/Copilot"
+    )
+    assert install_sh(env, "--log", "1", "error", said, "-").returncode == 0
     assert install_sh(env, "--report-only").returncode == 0
-    outcome = next(ln for ln in _summary(report_path(env).read_text()) if ln.startswith("- outcome: "))
-    assert re.search(r" · agent: GitHub <folder-\d+> CLI$", outcome), outcome
+    text = report_path(env).read_text()
+    outcome = next(ln for ln in _summary(text) if ln.startswith("- outcome: "))
+    assert outcome.endswith(" · agent: GitHub Copilot CLI"), outcome
+    fields = urllib.parse.parse_qs(urllib.parse.urlsplit(text.splitlines()[-1]).query)
+    assert fields["agent"] == ["GitHub Copilot CLI"], fields
+    assert re.search(
+        r"\| prompt v\d+, GitHub Copilot CLI: git pull failed in ~/Library/CloudStorage/"
+        r"OneDrive-<org-\d+>/<folder-\d+> \|",
+        text,
+    ), text
+    item = " ".join(_folder_item(text).split())
+    assert "; a configured one's coding-agent product word stays as written in the agent's name;" in item, (
+        item
+    )
+
+
+def test_the_shells_agent_spans_keep_only_a_product_word_standing_alone(tmp_path: Path) -> None:
+    """B13 round 20 X40, X81, the review of the build: agent_protect keeps a configured product-word value in
+    the agent's name only. A colon inside the stated run ("prompt v27: ...") or in the fix column is no
+    agent's end, a "## " line inside the fenced friction log leaves the spans read, a tab-indented header is
+    a header, and a longer value of another kind ("Claude Code" beside "Claude") is the pairs' to replace
+    whole, as the agentsync report matches the longest value first. The pairs are stubbed; the body runs
+    through agent_protect, a stand-in redaction and agent_restore."""
+    pairs = "Copilot\t<folder-1>\tf\nClaude\t<folder-3>\tf\nClaude Code\t<folder-2>\tf\n"
+    body = [
+        "## Summary",
+        "- outcome: x · agent: Claude Code (Opus)",
+        "- outcome: y · agent: GitHub Copilot-CLI · z",
+        "## Agent friction log",
+        "~~~text",
+        "## Notes",
+        "\tAgent: GitHub Copilot CLI gpt-5 in ~/Development/Copilot",
+        "2026-10-10T00:00:01Z | step 1 | error | prompt v27: Copilot CLI: stopped | -",
+        "2026-10-10T00:00:01Z | step 1 | error | prompt v27,,: Xcode stopped | -",
+        "2026-10-10T00:00:01Z | step 1 | error | prompt v27, Copilot stopped | run: x",
+        "2026-10-10T00:00:02Z | step 2 | deviation | Copilot synced | -",
+        "Agent: Claude Code and Claude, CopilotX",
+        "~~~",
+    ]
+    flag = tmp_path / "kept"
+    script = "\n".join(
+        [
+            "set -euo pipefail",
+            *(
+                _shell_function(f)
+                for f in ("agent_words_name", "agent_word_values", "agent_protect", "agent_restore")
+            ),
+            f"redaction_pairs() {{ printf {shlex.quote(pairs)}; }}",
+            "agent_protect | LC_ALL=C sed 's/Claude Code/<folder-2>/g; s/Copilot/<folder-1>/g; "
+            "s/Claude/<folder-3>/g' | agent_restore",
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", script],
+        input="\n".join(body) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "AGENT_KEPT_FILE": str(flag)},
+    )
+    assert cp.stdout.splitlines() == [
+        "## Summary",
+        "- outcome: x · agent: <folder-2> (Opus)",
+        "- outcome: y · agent: GitHub Copilot-CLI · z",
+        "## Agent friction log",
+        "~~~text",
+        "## Notes",
+        "\tAgent: GitHub Copilot CLI gpt-5 in ~/Development/<folder-1>",
+        "2026-10-10T00:00:01Z | step 1 | error | prompt v27: Copilot CLI: stopped | -",
+        "2026-10-10T00:00:01Z | step 1 | error | prompt v27,,: Xcode stopped | -",
+        "2026-10-10T00:00:01Z | step 1 | error | prompt v27, <folder-1> stopped | run: x",
+        "2026-10-10T00:00:02Z | step 2 | deviation | <folder-1> synced | -",
+        "Agent: <folder-2> and Claude, <folder-1>X",
+        "~~~",
+    ], cp.stdout
+    assert flag.exists(), "a kept word sets the legend's flag"
 
 
 def test_the_shell_report_gives_each_folder_one_number(env: dict[str, str]) -> None:

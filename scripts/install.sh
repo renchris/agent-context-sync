@@ -2413,6 +2413,141 @@ repo_slug() { # owner/repo of ISSUE_URL: redact_stream holds this repository's o
 	local s="${ISSUE_URL#https://github.com/}"
 	printf '%s' "${s%%/issues/*}"
 }
+# The shell twin of setup_report.Redactor.redact_agent (B13 round 19 W17; round 20 X40, X81): where the report
+# prints an agent's name, a configured folder or source id made only of coding-agent product words
+# (agent_words_name) stays as written where it stands as a word of that name, so "GitHub Copilot CLI" beside a
+# configured Copilot folder does not read "GitHub <folder-N> CLI", whose placeholder the name around it decodes;
+# everywhere else it is <folder-N> as before. The places: the friction log's Agent: header line in any form
+# parse_friction reads, a step 1 line's stated "prompt vN, <agent>:" prefix and the Summary's " · agent: "
+# field (the issue link's agent field is read from them after redaction). A word of its own: on each side the
+# span's edge, a blank, sentence punctuation, "-" or "_", never a word character, and no "/", "~" or "\" in
+# its blank-delimited token, so ~/Development/Copilot or CopilotX is still replaced. agent_protect hides such
+# a run from redact_stream as \004, two bytes from \016-\035 per byte of it, \005 (no pair holds those bytes,
+# and gov_value_sed's own markers are \001 and \003); agent_restore puts it back and, when it did, creates
+# the file $AGENT_KEPT_FILE for the legend's clause.
+agent_word_values() { # "a<TAB>value" for each configured folder or source value agent_protect keeps, "o<TAB>value" for every other
+	local v p
+	while IFS=$'\t' read -r v p _; do
+		case "$p" in "<folder-"*">" | "<source-"*">") if agent_words_name "$v"; then printf 'a\t%s\n' "$v"; else printf 'o\t%s\n' "$v"; fi ;; esac
+	done < <(redaction_pairs 2>/dev/null)
+}
+agent_protect() {
+	local vals
+	vals="$(agent_word_values | LC_ALL=C sort -u)"
+	case $'\n'"$vals" in
+	*$'\n'a$'\t'*) ;;
+	*)
+		cat
+		return 0
+		;;
+	esac
+	VALS="$vals" LC_ALL=C awk '
+		function rx(v,    m, j, r) { # its words in lower case, any run of blanks, "_", "-" or "\" or none between them
+			m = split(tolower(v), W, /[ \t_\\-]+/); r = ""
+			for (j = 1; j <= m; j++) if (W[j] != "") r = r (r == "" ? "" : sep) W[j]
+			return r
+		}
+		BEGIN {
+			sep = "[ \t_\\\\-]*"
+			m = split(ENVIRON["VALS"], L, "\n")
+			for (i = 1; i <= m; i++) {
+				v = substr(L[i], 3)
+				if (substr(L[i], 1, 1) == "a") V[++n] = v; else O[++no] = v
+			}
+			for (i = 2; i <= n; i++) { x = V[i]; for (j = i - 1; j > 0 && length(V[j]) < length(x); j--) V[j + 1] = V[j]; V[j + 1] = x }
+			for (i = 1; i <= n; i++) R[i] = rx(V[i])
+			# a longer value of another kind ("Claude Code" beside "Claude") is matched first by the pairs, as the
+			# agentsync report matches the longest value first: its matches are left to redact_stream whole
+			for (i = 1; i <= no; i++) Q[i] = rx(O[i])
+			for (i = 1; i < 256; i++) ord[sprintf("%c", i)] = i
+			nib = "\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035"
+		}
+		function enc(s,    i, b, o) {
+			o = "\004"
+			for (i = 1; i <= length(s); i++) { b = ord[substr(s, i, 1)]; o = o substr(nib, int(b / 16) + 1, 1) substr(nib, b % 16 + 1, 1) }
+			return o "\005"
+		}
+		function edge(c) { return c == "" || c ~ /[ \t]/ || index(",;:()[]\047\"`.-_", c) > 0 }
+		function pathy(s, a, b) { # whether the blank-delimited token around s[a..b] holds a path sign
+			while (a > 1 && substr(s, a - 1, 1) !~ /[ \t]/) a--
+			while (b < length(s) && substr(s, b + 1, 1) !~ /[ \t]/) b++
+			return substr(s, a, b - a + 1) ~ /[\/~\\]/
+		}
+		function protect(span,    low, i, j, k, p, s, l, ok, out) {
+			low = tolower(span); split("", cov); split("", take)
+			for (i = 1; i <= no; i++) {
+				if (Q[i] == "") continue
+				p = 1
+				while (p <= length(low) && match(substr(low, p), Q[i])) {
+					s = p + RSTART - 1; l = RLENGTH
+					# no substr(span, 0, 1): BSD awk gives the first character for it
+					if (l > 0 && (s == 1 || substr(span, s - 1, 1) !~ /[A-Za-z0-9]/) && substr(span, s + l, 1) !~ /[A-Za-z0-9]/)
+						for (j = s; j < s + l; j++) cov[j] = 1
+					p = s + 1
+				}
+			}
+			for (i = 1; i <= n; i++) {
+				if (R[i] == "") continue
+				p = 1
+				while (p <= length(low) && match(substr(low, p), R[i])) {
+					s = p + RSTART - 1; l = RLENGTH
+					ok = l > 0 && edge(s > 1 ? substr(span, s - 1, 1) : "") && edge(substr(span, s + l, 1)) && !pathy(span, s, s + l - 1)
+					for (j = s; ok && j < s + l; j++) if ((j in cov) || (j in held)) ok = 0
+					if (ok) { take[s] = l; for (j = s; j < s + l; j++) held[j] = 1; p = s + l } else p = s + 1
+				}
+				split("", held)
+				for (j in take) for (k = j; k < j + take[j]; k++) held[k] = 1
+			}
+			split("", held)
+			out = ""; j = 1
+			while (j <= length(span)) {
+				if (j in take) { out = out enc(substr(span, j, take[j])); j += take[j] } else { out = out substr(span, j, 1); j++ }
+			}
+			return out
+		}
+		# the friction log copy is fenced: a "## " line inside it is the log, not a section of the report
+		fence && index($0, "~~~") == 1 { fence = 0; print; next }
+		!fence && /^## / { sec = $0 }
+		sec == "## Agent friction log" && !fence && $0 == "~~~text" { fence = 1; print; next }
+		fence && match($0, /^[-* \t]*\**[Aa][Gg][Ee][Nn][Tt]\**[ \t]*:[ \t]*\**[ \t]*/) {
+			h = substr($0, 1, RLENGTH); v = substr($0, RLENGTH + 1); t = ""
+			if (match(v, /[ \t]+$/)) { t = substr(v, RSTART); v = substr(v, 1, RSTART - 1) }
+			print h protect(v) t; next
+		}
+		fence && match($0, /[|] step 1 [|][^|]*[|] /) {
+			h = substr($0, 1, RSTART + RLENGTH - 1); w = substr($0, RSTART + RLENGTH); f = ""
+			# the what-text ends at the last "|", as parse_friction cuts the fix column off
+			if ((c = match(w, /[|][^|]*$/))) { f = substr(w, c); w = substr(w, 1, c - 1) }
+			if (match(w, /^([ \t\047"]|\342\200[\230\231])*/)) { h = h substr(w, 1, RLENGTH); w = substr(w, RLENGTH + 1) }
+			if (tolower(substr(w, 1, 8)) == "prompt v" && match(substr(w, 9), /^[0-9][0-9]?[0-9]?/) && substr(w, 9 + RLENGTH, 1) !~ /[A-Za-z0-9_]/) {
+				k = 8 + RLENGTH; r = substr(w, k + 1)
+				if (match(r, /^[ ,:;-]+/) && (c = index(substr(r, (rl = RLENGTH) + 1), ":")) > 0) {
+					# rl, not RLENGTH: protect() runs match() itself
+					print h substr(w, 1, k) substr(r, 1, rl) protect(substr(r, rl + 1, c - 1)) substr(r, rl + c) f; next
+				}
+			}
+		}
+		sec == "## Summary" && (k = index($0, " · agent: ")) > 0 {
+			k += length(" · agent: "); r = substr($0, k); t = ""
+			if ((c = index(r, " · ")) > 0) { t = substr(r, c); r = substr(r, 1, c - 1) }
+			print substr($0, 1, k - 1) protect(r) t; next
+		}
+		{ print }'
+}
+agent_restore() {
+	LC_ALL=C awk '
+		BEGIN { for (i = 1; i < 256; i++) chr[i] = sprintf("%c", i); for (i = 0; i < 16; i++) val[sprintf("%c", 14 + i)] = i }
+		{
+			out = ""
+			while (match($0, "\004[\016-\035]*\005")) {
+				s = substr($0, RSTART + 1, RLENGTH - 2); w = ""
+				for (i = 1; i < length(s); i += 2) w = w chr[val[substr(s, i, 1)] * 16 + val[substr(s, i + 1, 1)]]
+				out = out substr($0, 1, RSTART - 1) w; $0 = substr($0, RSTART + RLENGTH); kept = 1
+			}
+			print out $0
+		}
+		END { if (kept && ENVIRON["AGENT_KEPT_FILE"] != "") printf "" > ENVIRON["AGENT_KEPT_FILE"] }'
+}
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
 	# Every stage byte-wise: under a UTF-8 locale macOS cut and sort stop at the first pair that is not UTF-8
@@ -3551,6 +3686,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	elif [ -n "$skip_agent" ]; then
 		folder_item+="; not $ag, where only step 1's list names it"
 	fi
+	# a configured product-word name kept in the agent's name (agent_protect), as the agentsync report's legend
+	# says it (B13 round 19 W17; round 20 X40, X81)
+	[ -z "${AGENT_KEPT:-}" ] || folder_item+="; a configured one's coding-agent product word stays as written in the agent's name"
 	# numbers are given to names the body need not show (folder_value numbers a project path and its first
 	# part), as setup_report._LEGEND["folder"] says (B13 round 20 X22)
 	folder_item+="; a number can be missing (one given to a name this report does not show)"
@@ -3867,7 +4005,14 @@ write_fallback_report() { # RC WHY
 	friction="$(friction_text 2>/dev/null || true)"
 	(
 		umask 077
-		fallback_body "$1" "$2" "$friction" | strip_run_pids | redact_stream | scrub_exclude_lists >"$tmp"
+		AGENT_KEPT_FILE="$tmp.agent"
+		export AGENT_KEPT_FILE
+		rm -f "$AGENT_KEPT_FILE"
+		fallback_body "$1" "$2" "$friction" | strip_run_pids | agent_protect | redact_stream | agent_restore |
+			scrub_exclude_lists >"$tmp"
+		AGENT_KEPT=""
+		[ ! -f "$AGENT_KEPT_FILE" ] || AGENT_KEPT=1
+		rm -f "$AGENT_KEPT_FILE"
 		# the issue form, after redaction (a login may match the URL's owner); none for a private copy (G65).
 		# What it fills is read from the redacted Summary just written.
 		fallback_issue_link "$tmp"

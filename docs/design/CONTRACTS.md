@@ -24882,6 +24882,9 @@ unchanged here. Tests:
 Amended 2026-10-20, §16.146 X38, X39: the name keeps the word where a step 1 line states it too (`_STATED_AT`:
 the friction log's `| step 1 | <kind> | prompt vN, <agent>:` row and the Summary's ` · step 1 · <kind> · ` item),
 and where a hyphen or an underscore joins it to a model id (`claude-opus-5-5`), unless a path is in the same token.
+Amended 2026-10-20, §16.147 X40, X81: the shell fallback report keeps the word too (`agent_protect` and
+`agent_restore` around `redact_stream`), at the friction log's `Agent:` header, a step 1 line's stated prefix and
+the Summary's `· agent:` field, with the same legend clause; "unchanged here" no longer holds.
 
 **The report reads the files waiting for a converter that could not start** (W52, W68; amends §16.134 V75). A file
 whose first conversion fails because its converter could not start is counted in the run record's
@@ -25847,6 +25850,37 @@ older copy, its `--report-only`, then a plain install.sh: no invite line, both f
 not for sending, the clause in the NEXT; then a new attempt is reported as before),
 `test_a_run_after_a_stopped_copys_end_line_does_not_resolve_the_stop` and
 `test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it` (tests/test_setup_report.py).
+
+**The shell report's agent name keeps a configured folder's product word** (X40, X81: one defect from two finders;
+amends §16.140 W17). W17 fixed the agentsync report only, so the shell fallback still printed `Agent: GitHub
+<folder-N> CLI gpt-5` and `agent=GitHub%20%3Cfolder-N%3E%20CLI%20gpt-5` for a configured `.../Copilot`, the
+placeholder decoded by the name around it; `agent_words_name` exempted only a folder step 1's list alone printed.
+The verifiers' fix is built at the agent spans only, not across the body: `agent_protect`, before
+`redact_stream`, finds in the friction log's `Agent:` header line (any form `parse_friction` reads), a step 1
+line's stated `prompt vN, <agent>:` prefix and the Summary's ` · agent: ` field each run that matches a
+registered `<folder-N>` or `<source-N>` value made only of coding-agent product words (`agent_word_values`), in
+any case and with any run of blanks, `_`, `-` or `\` or none between its words, longest first, where it stands as
+a word of its own: on each side the span's edge, a blank, sentence punctuation, `-` or `_`, never a word character,
+and no `/`, `~` or `\` in its blank-delimited token (round 20 X39's rule for the agentsync report, so `Copilot-CLI`
+keeps it and `~/Development/Copilot` or `CopilotX` does not). Such a run is hidden from the pairs as `\004`, two
+bytes from `\016`-`\035` per byte of it, `\005` (no pair holds those bytes; `gov_value_sed`'s markers are
+`\001` and `\003`), and `agent_restore` puts it back after `redact_stream`; the issue link's agent field is read
+from the restored text, so it follows. When a word was kept (a flag file beside the temp report), the legend's
+folder item adds `; a configured one's coding-agent product word stays as written in the agent's name`, as the
+agentsync report's does. The shell prints no coding-agent Configuration line, so no clause goes there. The
+agentsync report's `-`/`_` edges and the stated prefix are lane RA's (X38, X39). Whether the shell should also
+go Private only for a configured product-word folder, as the agentsync report does, was not changed: its
+public/private rule is its own (§16.64 G48). The build's review added four rules, each measured: a longer
+registered value of another kind (`Claude Code` beside a product-word `Claude`) is the pairs' to replace whole, as
+the agentsync report matches the longest value first, so it is never half kept and decodable; the stated prefix's
+agent ends at the first colon after the separator run and before the fix column (the last `|`), as `stated()`
+reads it; the friction log copy is read inside its `~~~text` fence, so a `## ` line the log holds ends no span;
+and a header may be indented by a tab. Tests:
+`test_the_agents_name_keeps_a_configured_product_word_in_both_reports` (tests/test_report_redaction.py: the
+friction log's Agent line and the link's agent field in both reports, a path in the name and the step line still
+`<folder-N>`, the legend clause) and `test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name`
+(a configured Copilot: the Summary's agent field, the link, the stated prefix kept, the path redacted), and
+`test_the_shells_agent_spans_keep_only_a_product_word_standing_alone` (the review's cases, the pairs stubbed).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
