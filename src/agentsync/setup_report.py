@@ -399,7 +399,10 @@ INSTALL_RUNS_SHOWN = 3
 FRICTION_MAX_BYTES = 256 * 1024
 EXIT_MEANINGS = {
     0: "ok",
-    1: "failed: a source failed or a blocking lint fired (see Recent errors)",
+    1: (  # B13 round 20 X69: since round 19 W65 a manifest this account cannot open exits 1 too
+        "failed: a source failed, a blocking lint fired, or the state file cannot be opened by this account"
+        " (the line in Recent errors names the cause and fix)"
+    ),
     2: "usage error",
     64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
     65: "the state file (manifest.sqlite) cannot be read: the person's to fix",  # B13 round 17 U55, U65

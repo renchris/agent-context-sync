@@ -7640,6 +7640,24 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     assert f"§16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `{head}`" in u78
 
 
+def test_exit_1_names_a_state_file_this_account_cannot_open() -> None:
+    """B13 round 20 X69: since round 19 W65 a sync on a manifest this account cannot open (root-owned after
+    one sudo run) exits 1, and the deploy guide, the report's `EXIT_MEANINGS` and `--help` decoded 1 as a
+    failed source or lint only. Each names it; the guide gives its fix."""
+    from agentsync import cli, setup_report  # noqa: PLC0415
+
+    main = inspect.getsource(cli._main)
+    handler = main[main.index("except ManifestOpenError as exc:") :]
+    assert handler[: handler.index("except AgentSyncError")].rstrip().endswith("return EXIT_FAILED")
+    assert "or the state file cannot be opened by this account" in setup_report.EXIT_MEANINGS[1]
+    assert "or the state file cannot be opened by this account" in " ".join(cli._EPILOG.split())
+    readme = _page("docs/deploy/README.md")
+    listed = readme.split("## Exit codes the jobs report", 1)[1]
+    one = listed[listed.index("· `1` ") : listed.index("· `64` ")]
+    assert "one such error is a state file this account cannot open" in one
+    assert "(owner, mode 600); the file is not damaged, so do not move it aside" in one
+
+
 def test_w41s_measurement_counts_the_tables_the_test_damages() -> None:
     """B13 round 20 X70: §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, all but three that
     passed: 13 is the count of the 16 cases (11 tables and both last-leaf cases). The numbers are read from

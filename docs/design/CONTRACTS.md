@@ -25586,6 +25586,13 @@ run skips, which lane E's round 20 X53 rewords. §16.28's Configuration paragrap
 as `run the same <installer> command again ...`; under install.sh it starts `doctor.AGAIN_UNDER_INSTALL_SH` since
 §16.143 W19, W48, whose lines are at §16.32 and §16.137 V5 only. Test: `test_u78s_line_quotes_the_again_fix_head`.
 
+**Exit 1 names a state file this account cannot open** (X69). Since §16.143 W65 `sync` exits 1 on a manifest this
+account cannot open (one root-owned by a `sudo` run), and a job's code 1 decoded as a failed source or lint. The
+deploy guide's list says 1 is also another error the job's log names in one line, this one among them with its
+fix (owner and mode 600, the file is not damaged, so it is not moved aside); `setup_report.EXIT_MEANINGS[1]` and
+`--help`'s list name it too. `curate` on the same file printed the line and exited 0 in the verifier's run, so
+nothing says it exits 1. Test: `test_exit_1_names_a_state_file_this_account_cannot_open`.
+
 **W41's measurement adds up** (X70). §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, less
 three that passed; the verifier's re-run gave 13 failed of 16 cases: 11 tables and both last-leaf cases. Corrected
 in place. Test: `test_w41s_measurement_counts_the_tables_the_test_damages`, which counts them in `test_cli.py`.

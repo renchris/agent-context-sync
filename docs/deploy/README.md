@@ -206,7 +206,10 @@ launcher's `TCC_*` tokens.
 
 ## Exit codes the jobs report
 
-`0` ok · `1` a source or lint failed · `64` the launcher refused the job: its program is not the one it starts, or
+`0` ok · `1` failed: a source or lint failed, or another error that the job's error log names in one line; one
+such error is a state file this account cannot open, for example a `manifest.sqlite` left root-owned by a `sudo`
+run: give it back to this account (owner, mode 600); the file is not damaged, so do not move it aside · `64` the
+launcher refused the job: its program is not the one it starts, or
 an option is wrong (a `PROGRAM_REFUSED` or `USAGE` line in the job's error log; `~/.local/bin/agentsync status` gives
 the fix) · `65` the state file (`manifest.sqlite`) is no database or a damaged one:
 you, not an agent, fix it (the message names the file and the fix; `~/.local/bin/agentsync sync` prints it again)

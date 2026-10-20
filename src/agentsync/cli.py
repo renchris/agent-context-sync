@@ -136,7 +136,8 @@ _EPILOG = f"""\
 exit codes:
   0   ok
   1   failed: a source failed, a blocking lint fired, curate found a blocking finding, a status check
-      failed, a purge/compaction was not verified, or discovery was incomplete (curate rows are not a failure)
+      failed, a purge/compaction was not verified, discovery was incomplete, or the state file cannot be
+      opened by this account (curate rows are not a failure)
   2   usage error (bad arguments)
   65  the state file (manifest.sqlite) is no database or a damaged one: the person's to fix (the message
       names the file and the fix; `{loop.BIN} status` prints it as state_dir.manifest)
