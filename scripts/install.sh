@@ -4250,9 +4250,10 @@ REPORT_INSTALL_SH="~/src/agent-context-sync/scripts/install.sh"
 # usage error stopped, logs commit=- and says nothing of the installed copy), "commit <c>[ tree <t> (...)]" or
 # "no commit read", empty with none, as setup_report._installed_where words it; OR_FETCH, the checkout's
 # FETCH_HEAD as _last_fetch words it, empty when it cannot be read; OR_FSSTART, the start time of the last run
-# with a first-sync step.
-older_report_facts() {
-	local d paths=() p rel common best="" bm=-1 m z
+# with a first-sync step. DIR: the checkout the report's fetch line names (B13 round 18 V91: the date of install.sh's
+# own checkout went on another checkout's line); empty, OR_FETCH stays empty and the line keeps its undated words.
+older_report_facts() { # DIR
+	local d="$1" paths=() p rel common best="" bm=-1 m z
 	OR_LASTRUN="" OR_FETCH="" OR_FSSTART=""
 	if [ -f "$SETUP_LOG" ]; then
 		IFS='|' read -r OR_LASTRUN OR_FSSTART < <(LC_ALL=C awk '
@@ -4277,8 +4278,9 @@ older_report_facts() {
 		' "$SETUP_LOG" 2>/dev/null) || true
 	fi
 	# a worktree's FETCH_HEAD is its own, but origin/main is shared: the newer of the two dates it
-	d="$repo"
-	if [ -d "$d/.git" ]; then
+	if [ -z "$d" ]; then
+		return 0
+	elif [ -d "$d/.git" ]; then
 		paths=("$d/.git/FETCH_HEAD")
 	elif [ -e "$d/.git" ] && /usr/bin/xcode-select -p >/dev/null 2>&1; then # no git shim's install dialog
 		rel="$(GIT_OPTIONAL_LOCKS=0 git -C "$d" rev-parse --git-path FETCH_HEAD 2>/dev/null)" || return 0
@@ -4318,9 +4320,19 @@ older_report_facts() {
 # installed build wrote them: doctor stays one build (a checkout's renderer over an old install mixed two
 # builds, §16.110 Q27).
 older_report_rewrite() { # MODE
-	local cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}" item="${S1_ITEM:-}"
+	local named cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}" item="${S1_ITEM:-}"
 	[ "$1" != copy ] || { cp=1 note="" apps="" cause="" turns="" item=""; }
-	older_report_facts
+	# the checkout the undated fetch line names ("checkout <dir> @ ", "checkout <dir> (editable) @ "), as the
+	# renderer dates the folder it was installed from: that folder when it is one here, else no date (a
+	# redacted or missing path keeps the older words, which are true)
+	named="$(LC_ALL=C awk 'index($0, "(as of the checkout\047s last fetch)") && (i = index($0, "checkout ")) {
+		p = substr($0, i + 9); j = index(p, " @ ")
+		if (j) { p = substr(p, 1, j - 1); sub(/ \(editable\)$/, "", p); print p }
+		exit
+	}' "$REPORT_PATH" 2>/dev/null || true)"
+	case "$named" in \~) named="$HOME" ;; \~/*) named="$HOME/${named#\~/}" ;; esac
+	[ -n "$named" ] && [ -d "$named" ] || named=""
+	older_report_facts "$named"
 	LC_ALL=C STEPWORDS="$STOPPED_STEP_WORDS" OR_LASTRUN="$OR_LASTRUN" OR_FETCH="$OR_FETCH" OR_FSSTART="$OR_FSSTART" awk \
 		-v cp="$cp" -v s1note="$note" -v s1apps="$apps" -v s1item="$item" -v inst="$REPORT_INSTALL_SH" \
 		-v s1cause="$cause" -v s1turns="$turns" -v w1="$STEP1_STOP_WARN" -v u="$ISSUE_URL" -v r="Read the report before sending it: a" \

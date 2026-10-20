@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import calendar
 import contextlib
 import dataclasses
 import fcntl
@@ -9704,30 +9705,6 @@ def _now_tail(fetch: str) -> list[str]:
     ]
 
 
-def _checkout_fetch() -> str:
-    """The checkout's last fetch as setup_report._last_fetch words it (install.sh's own checkout)."""
-    repo = INSTALL_SH.parent.parent
-    if (repo / ".git").is_dir():
-        paths = [repo / ".git" / "FETCH_HEAD"]
-    else:
-
-        def path(*args: str) -> Path:
-            out = subprocess.run(
-                ["git", "-C", str(repo), "rev-parse", *args], capture_output=True, text=True, check=True
-            ).stdout.strip()
-            return Path(out) if Path(out).is_absolute() else repo / out
-
-        paths = [path("--git-path", "FETCH_HEAD"), path("--git-common-dir") / "FETCH_HEAD"]
-    stats = [p.lstat() for p in dict.fromkeys(paths) if os.path.lexists(p)]
-    if not stats:
-        return "no fetch since the clone"
-    st = max(stats, key=lambda x: x.st_mtime)
-    when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(st.st_mtime)))
-    if st.st_size == 0:
-        return f"the checkout's last fetch, {when}, failed; origin/main is from an earlier fetch"
-    return f"as of the checkout's last fetch, {when}"
-
-
 _V10_SUMMARY = [
     "- **outcome: failed at step 1** (computed: no install run: only install.sh --list-folders ran (step 1))",
     "- Loop: baseline drafted; NEXT: the docs_repo.permissions check failed: do what the fix on its [FAIL] "
@@ -9914,14 +9891,21 @@ def test_a_step_1_stop_of_the_older_build_takes_the_current_friction_and_checkou
     again", the attempt bits joined by ", " (an agent's own comma kept), "lines 5-5" and a "finished" tail
     beside "1 finished", the checkout's undated "(as of the checkout's last fetch)", and "last install.sh run:
     commit -", which v10 took from the --list-folders run: the renderer names the last run that reached an
-    install step, from install.log. A report in the current words passes unchanged."""
+    install step, from install.log. A report in the current words passes unchanged. B13 round 18 V91: the date
+    is the FETCH_HEAD of the checkout the line names (here one in the test's home, not install.sh's own); a
+    named folder that is not here keeps the undated words, which are true."""
+    fetch = Path(env["HOME"]) / "src" / "agent-context-sync" / ".git" / "FETCH_HEAD"
+    fetch.parent.mkdir(parents=True)
+    fetch.write_text("0123456789ab\t\tbranch 'main' of https://github.com/contoso/agentsync\n")
+    when = calendar.timegm((2026, 5, 6, 7, 8, 9, 0, 0, 0))
+    os.utime(fetch, (when, when))
     text = _step1_stop_home(env, tmp_path, _v10_step1_report(_V10_SUMMARY, _V10_TAIL))
     tail = "## Run metadata" + text.split("## Run metadata", 1)[1]
-    # the fetch's words by _last_fetch's kind, its time aside: another checkout of the same repository may
-    # fetch while this runs (a worktree's FETCH_HEAD and the common one are both read)
-    stamp = r"(last fetch, )\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
-    kind = re.sub(stamp, r"\1<t>", _checkout_fetch())
-    assert re.sub(stamp, r"\1<t>", tail) == "\n".join(_now_tail(kind)), tail
+    assert tail == "\n".join(_now_tail("as of the checkout's last fetch, 2026-05-06T07:08:09Z")), tail
+    shutil.rmtree(fetch.parent.parent)
+    text = _step1_stop_home(env, tmp_path, _v10_step1_report(_V10_SUMMARY, _V10_TAIL))
+    tail = "## Run metadata" + text.split("## Run metadata", 1)[1]
+    assert tail == "\n".join(_now_tail("as of the checkout's last fetch")), tail
     now = _v10_step1_report(_NOW_SUMMARY, _now_tail("as of the checkout's last fetch, 2026-10-18T09:59:00Z"))
     now = now.replace("54 check(s):", "54 checks:")
     assert _step1_stop_home(env, tmp_path, now) == now, "the current words pass unchanged"
