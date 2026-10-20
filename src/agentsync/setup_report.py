@@ -406,10 +406,13 @@ EXIT_MEANINGS = {
     2: "usage error",
     64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
     65: "the state file (manifest.sqlite) cannot be read: the person's to fix",  # B13 round 17 U55, U65
-    71: (  # B13 round 19 W72: the launcher's exOSErr, SPAWN_FAILED (and WAIT_FAILED)
-        "the launcher could not start agentsync (a SPAWN_FAILED line in the job's error log names the"
-        " program and the error): the Python it runs is missing or not executable; one 71 during a reinstall"
-        " is expected, a 71 at every run means re-run the install command"
+    # B13 round 19 W72: the launcher's exOSErr, SPAWN_FAILED (and WAIT_FAILED). No bracket inside: its callers
+    # put it in one, and the run to repeat is named, as doctor's AGAIN_UNDER_INSTALL_SH does (round 20 X44)
+    71: (
+        "the launcher could not start agentsync: the Python it runs is missing or not executable, and a"
+        " SPAWN_FAILED line in the job's error log names the program and the error; one 71 during a reinstall"
+        " is expected, a 71 at every run means run install.sh again with the options of the run that"
+        " installed agentsync, not --report-only, which builds nothing"
     ),
     75: "skipped: another cycle held the lock; launchd retries",
     77: f"sign-in required ({AGENTSYNC_BIN} graph login)",

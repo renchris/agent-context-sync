@@ -1115,7 +1115,7 @@ rc_meaning() {
 	3) printf 'the wait for the first background run ran out' ;;
 	64) printf 'the launcher refused the job: its program is not the one it starts, or an option is wrong' ;;
 	65) printf "the state file (manifest.sqlite) cannot be read: the person's to fix" ;; # B13 round 17 U55, U65
-	71) printf "%s" "the launcher could not start agentsync (a SPAWN_FAILED line in the job's error log names the program and the error): the Python it runs is missing or not executable; one 71 during a reinstall is expected, a 71 at every run means re-run the install command" ;; # B13 round 19 W72
+	71) printf "%s" "the launcher could not start agentsync: the Python it runs is missing or not executable, and a SPAWN_FAILED line in the job's error log names the program and the error; one 71 during a reinstall is expected, a 71 at every run means run install.sh again with the options of the run that installed agentsync, not --report-only, which builds nothing" ;; # B13 round 19 W72; round 20 X44: no bracket inside the callers' own
 	75) printf 'lock busy: another agentsync cycle is running' ;;
 	77) printf 'sign-in required' ;;
 	78) printf 'configuration invalid' ;;

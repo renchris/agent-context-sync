@@ -5947,13 +5947,26 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     )
     assert cp.stdout == setup_report.EXIT_MEANINGS[spawn] != f"exit {spawn}"
     spawn_failed = setup_report.EXIT_MEANINGS[spawn]
-    assert spawn_failed.startswith("the launcher could not start agentsync (a SPAWN_FAILED line")
-    assert "a 71 at every run means re-run the install command" in spawn_failed
+    assert spawn_failed.startswith("the launcher could not start agentsync: the Python it runs is missing")
+    assert "and a SPAWN_FAILED line in the job's error log names the program and the error;" in spawn_failed
+    # B13 round 20 X44: its callers put it in brackets (``71 (...)``, ``exit 71 (...)``), so a bracket of its
+    # own nested there, and "re-run the install command" did not say which run: --report-only builds nothing
+    assert "(" not in spawn_failed and ")" not in spawn_failed, spawn_failed
+    decoded = setup_report.decode_exit(str(spawn))
+    assert decoded == f"{spawn} ({spawn_failed})" and decoded.count("(") == 1, decoded
+    assert (
+        "a 71 at every run means run install.sh again with the options of the run that installed agentsync,"
+        " not --report-only, which builds nothing" in spawn_failed
+    )
+    assert "re-run the install command" not in spawn_failed
     assert (
         "`71` the launcher could not start agentsync: the Python it runs is missing or not executable (a"
         " `SPAWN_FAILED` line in the job's error log" in listed
     )
-    assert "a 71 at every run means re-run the install command · `75`" in listed
+    assert (
+        "a 71 at every run means run `install.sh` again with the options of the run that installed agentsync,"
+        " not `--report-only`, which builds nothing · `75`" in listed
+    )
     assert (
         "`65` the state file (`manifest.sqlite`) is no database or a damaged one: you, not an agent" in listed
     )
