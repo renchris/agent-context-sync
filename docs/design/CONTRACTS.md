@@ -24744,9 +24744,12 @@ new `git_rewrite_pairs` reads every `insteadOf` value and its `[url "<base>"]` f
 `pushInsteadOf`), the longest value that starts the URL (case-sensitive) is applied, and the clause is added only
 when the label is not `none` and the rewritten URL's label differs. W23's finder fix (the clause for any matching
 rule) would say "elsewhere" for a rewrite to `git@github.com:`, which the agentsync report does not; the label
-comparison is the verifier's fix. `[include]` files are not followed, as for `git_rewrite_bases`. Test:
-`test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror rewrite, one to
-`git@github.com:`, the longest of two, and a `pushInsteadOf` alone; the mirror's host never shows).
+comparison is the verifier's fix. As git reads them: a section and its key on one line, and an empty value, which
+matches every URL; only the global files and the checkout's own config, never the clone that runs install.sh.
+`[include]` files are not followed, as for `git_rewrite_bases`. Test:
+`test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror rewrite, one on one line, an
+empty value, one to `git@github.com:`, the longest of two, and a `pushInsteadOf` alone; the mirror's host never
+shows).
 
 **The reinstall's wait names an empty-body holder as agentsync does** (W31; amends §16.93 M43 and §16.41 H33). A
 lock held with an empty body (only blanks, as `ops/lock.py` reads `body.strip()`) is held by no sync:
@@ -24793,8 +24796,10 @@ stated step 1 error that opens a header-less attempt (`track()`'s return) and at
 and `late_run` moves the run of step 1 lines dated after that end line into the new attempt. An earlier session's
 step 2 line before its end line therefore kept the older build's session span beside an attempt that is the error
 alone, and a step 1 line moved before a bare `Attempt:` line claimed one timestamp where the renderer has two lines.
-The awk now resets its count at those splits and carries the moved run, as the verifier's prototype (all six of its
-cases agree with `parse_friction`). Test: `test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits`
+The awk now resets its count at those splits and carries the moved run, as the verifier's prototype, and a gap
+split restates the attempt as every other reader does (the lane's review: without it a stated error after an
+unstated one read as another session's). A random differential against `parse_friction`, 4,500 logs, finds no
+difference. Test: `test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits`
 (a step 2 line before the end line: one timestamp; a step 1 line after it, and one moved before a bare `Attempt:`
 line: the span kept).
 
@@ -24831,7 +24836,8 @@ and was not built. Test: `test_the_older_builds_line_numbers_line_names_f_ids_on
 joined `sw_vers`' product name to its version, `- macOS: macOS 15.7.9 (24G830)`, under a label that already says
 macOS, and older_report_rewrite passed it on in both modes. A line in the report's own `## Environment` section,
 outside a fence, that starts `- macOS: macOS ` loses the second word; with no version (`- macOS: macOS (<build>)`)
-it reads `- macOS: ? (<build>)`, as `setup_report.sw_vers` writes it. A line in the current words passes unchanged.
+it reads `- macOS: ? (<build>)`, and with neither (`- macOS: macOS`) `- macOS: ?`, as `setup_report.sw_vers`
+writes them. A line in the current words passes unchanged.
 Test: `test_the_older_builds_macos_line_gives_the_version_and_build` (both modes).
 
 **The older build's cut git-error item is rebuilt as the renderer cuts it** (W25). Round 18 V34 gave the renderer's
@@ -24839,9 +24845,12 @@ Items error line 320 characters, the command cut to 80, so git's reason stays; t
 the `prompt vN, <agent>: ` prefix still on it, before the reason, and the rewrite placed that line as it was (on
 V31's path, as `s1item`). Under a git stop the first pass now reads the report's own friction row for F<n> (the
 redacted `~~~text` row, never friction.md), splits it on ` | ` (exactly five fields, or the line is left), drops the
-stated prefix and applies `_item_what`'s rule by characters, as Python counts them: whole up to 320 when a `failed
-(exit N):` follows the command, else the command cut to 80 and the rest to the room left, each at a word's end with
-`…`; with no such match, `_shorten` at 220. Only an Items line whose what-text ends in `…` before ` → ` (or at the
+stated prefix as `_STEP1_STATED_RE` reads it (any case, quotes, `[ ,:;-]` separators, its backtrack into the agent)
+and applies `_item_what`'s rule by characters, as Python counts them: whole up to 320 when `_FAILED_EXIT_RE` matches
+(`failed (exit N):`, `exited N:`, `failed with exit code N:`, `(exit N):`, `rc=N:`, `returned N:`; found by hand,
+`fail_at`, as awk has no lazy match), else the command cut to 80 and the rest to the room left, each at a word's end
+with `…`; with no match, `_shorten` at 220. Measured against Python: 340 random what-texts in the six wordings and
+3,000 stated prefixes, no difference. Only an Items line whose what-text ends in `…` before ` → ` (or at the
 line's end) is replaced, its fix kept; on V31's path `s1item` is, never `mvline`, which the friction block's drop
 compares exactly. Test: `test_the_older_builds_cut_git_error_item_takes_the_renderers_cut` (oldr's and oldr2's
 states against `setup_report._item_what`, a row holding ` | `, and an error that was not cut).

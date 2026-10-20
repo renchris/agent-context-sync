@@ -2205,6 +2205,8 @@ def test_the_shell_reports_origin_label_is_the_agentsync_reports() -> None:
         "no-url",
         "no-checkout",
         "rewrite-mirror",
+        "rewrite-one-line",
+        "rewrite-empty",
         "rewrite-same",
         "rewrite-longest",
         "push-rewrite",
@@ -2231,6 +2233,9 @@ def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
         url = "https://github.com/renchris/agent-context-sync.git"
         rules = {
             "rewrite-mirror": '[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf = https://github.com/\n',
+            # a section and its key on one line, and an empty value, which git applies to every URL
+            "rewrite-one-line": '[url "https://git.contoso-mirror.invalid/m/"] insteadOf = https://github.com/\n',
+            "rewrite-empty": '[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf =\n',
             "rewrite-same": '[url "git@github.com:"]\n\tinsteadOf = https://github.com/\n',
             # git takes the longest insteadOf value that starts the URL: here the one that keeps GitHub
             "rewrite-longest": '[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf = https://github.com/\n'
@@ -2250,7 +2255,7 @@ def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
     label = {"mirror": "other (redacted)", "github": "github.com/renchris/agent-context-sync"}.get(
         origin, "github.com/renchris/agent-context-sync" if url else "none"
     )
-    if origin == "rewrite-mirror":
+    if origin in ("rewrite-mirror", "rewrite-one-line", "rewrite-empty"):
         label += " (a URL rewrite sends it elsewhere)"
     if origin == "no-checkout":
         assert "- install source: no checkout at ~/src/agent-context-sync\n" in summary, text
@@ -10226,6 +10231,7 @@ def test_the_older_builds_macos_line_gives_the_version_and_build(
 
     assert environment("- macOS: macOS 15.5 (24F74)") == "- macOS: 15.5 (24F74)\n- Python: 3.11.9"
     assert environment("- macOS: macOS (24F74)") == "- macOS: ? (24F74)\n- Python: 3.11.9"
+    assert environment("- macOS: macOS") == "- macOS: ?\n- Python: 3.11.9", "neither version nor build"
     assert environment("- macOS: 15.5 (24F74)") == "- macOS: 15.5 (24F74)\n- Python: 3.11.9"
 
 
@@ -10571,6 +10577,7 @@ def test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item(
         "a step 2 line before the end line",
         "a step 1 line after the end line",
         "a step 1 line moved before a bare Attempt: line",
+        "an unstated step 1 error past the gap",
     ],
 )
 def test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits(
@@ -10589,6 +10596,9 @@ def test_a_git_stops_one_timestamp_counts_from_the_attempt_the_renderer_splits(
         "2026-10-18T10:00:10Z | step 1 | deviation | retried the pull | -\n",
         "a step 1 line moved before a bare Attempt: line": "2026-10-18T09:05:00Z | end | finished\n"
         "2026-10-18T10:00:10Z | step 1 | deviation | retried the pull | -\nAttempt:\n",
+        # a gap split opens an attempt with no header, and the stated error after it stays in it (the review)
+        "an unstated step 1 error past the gap": "2026-10-18T09:05:00Z | end | finished\n"
+        "2026-10-18T09:40:00Z | step 1 | error | git failed | -\n",
     }[state]
     report = "\n".join([*_GIT_STOP_REPORT[:7], _V10_TIME, *_GIT_STOP_REPORT[7:]])
     summary = _summary(_git_stop_report(env, tmp_path, friction + _GIT_ERROR, _EARLIER_LIST, report))
@@ -10652,7 +10662,14 @@ _LONG_GIT_WHAT = (
 
 
 @pytest.mark.parametrize(
-    "state", ["no end line", "after a finished attempt", "a what-text holding a bar", "a short error"]
+    "state",
+    [
+        "no end line",
+        "after a finished attempt",
+        "another wording",
+        "a what-text holding a bar",
+        "a short error",
+    ],
 )
 def test_the_older_builds_cut_git_error_item_takes_the_renderers_cut(
     env: dict[str, str], tmp_path: Path, state: str
@@ -10666,6 +10683,9 @@ def test_the_older_builds_cut_git_error_item_takes_the_renderers_cut(
     if state == "a what-text holding a bar":
         what = what.replace("Failed to connect", "a | b Failed to connect")
     stated = f"prompt v{COMPAT}, Claude Code test-agent: {what}"
+    if state == "another wording":  # setup_report._FAILED_EXIT_RE's and _STEP1_STATED_RE's other forms
+        what = what.replace("failed (exit 1):", "exited with exit code 1:")
+        stated = f"'Prompt V{COMPAT} - Claude Code test-agent: {what}"
     fix = "a terminal that can reach GitHub (the network, or a proxy setting for git)"
     finished = state == "after a finished attempt"
     n = 5 if finished else 4

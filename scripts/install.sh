@@ -389,21 +389,24 @@ git_rewrite_bases() {
 # can hold several insteadOf lines. fallback_install_source_line applies them as `git remote get-url` does,
 # with no git process (B13 round 19 W7, W23); pushInsteadOf is left out.
 git_rewrite_pairs() {
-	local g
+	local g repo="" # the files `git -C ~/src/agent-context-sync` reads: not the clone running this script
 	git_config_files | while IFS= read -r g; do
 		[ ! -f "$g" ] || LC_ALL=C awk '
+			function pair(line,    v) { # an insteadOf key: its value after an "x", so an empty one (every URL) survives read
+				if (base == "" || tolower(line) !~ /^[ \t]*insteadof[ \t]*=/) return
+				v = line; sub(/^[^=]*=[ \t]*/, "", v); sub(/[ \t]+[#;].*$/, "", v); sub(/[ \t\r]*$/, "", v)
+				gsub(/^"|"$/, "", v)
+				print "x" v "\t" base
+			}
 			/^[ \t]*\[/ {
 				base = ""
 				if ($0 ~ /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/) {
 					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+					rest = $0; sub(/^[^]]*\]/, "", rest); pair(rest) # [url "<base>"] insteadOf = <value> on one line
 				}
 				next
 			}
-			base != "" && tolower($0) ~ /^[ \t]*insteadof[ \t]*=/ {
-				v = $0; sub(/^[^=]*=[ \t]*/, "", v); sub(/[ \t]+[#;].*$/, "", v); sub(/[ \t\r]*$/, "", v)
-				gsub(/^"|"$/, "", v)
-				if (v != "") print v "\t" base
-			}
+			{ pair($0) }
 		' "$g" || true
 	done 2>/dev/null
 }
@@ -3012,13 +3015,14 @@ fallback_install_source_line() {
 	# a URL rewrite is said beside the label, as setup_report._checkout_facts says it, never its host: git's
 	# longest insteadOf value that starts the URL, case-sensitive, and only when the rewritten URL's label
 	# differs (a rewrite to git@github.com: is the same repository; B13 round 19 W7, W23)
-	local label best="" base="" iv b said=""
+	local label best="" base="" iv b said="" found=""
 	label="$(origin_label "$url")"
 	if [ "$label" != none ]; then
 		while IFS=$'\t' read -r iv b; do
-			case "$url" in "$iv"*) [ "${#iv}" -le "${#best}" ] || best="$iv" base="$b" ;; esac
+			iv="${iv#x}" # an empty value matches every URL, as in git
+			case "$url" in "$iv"*) [ -n "$found" ] && [ "${#iv}" -le "${#best}" ] || best="$iv" base="$b" found=1 ;; esac
 		done < <(git_rewrite_pairs)
-		[ -z "$best" ] || [ "$(origin_label "$base${url#"$best"}")" = "$label" ] ||
+		[ -z "$found" ] || [ "$(origin_label "$base${url#"$best"}")" = "$label" ] ||
 			said=" (a URL rewrite sends it elsewhere)"
 	fi
 	say "- install source: checkout ~/src/agent-context-sync · origin: $label$said"
@@ -4581,19 +4585,55 @@ older_report_rewrite() { # MODE
 			sub(/ +$/, "", cut)
 			return cut "\342\200\246"
 		}
+		# where setup_report._FAILED_EXIT_RE first matches w ("... failed (exit 1): ", "exited 128:", "(exit 1):",
+		# "failed with exit code 2:", "rc=1:", "returned 1:"), 0 for nowhere: by hand, as awk has no lazy match
+		function fail_at(w,    i, n, s, b, k, c, seg, d) {
+			n = length(w)
+			for (i = 1; i <= n; i++) {
+				b = (i == 1 || substr(w, i - 1, 1) !~ /[A-Za-z0-9_]/)
+				s = substr(w, i)
+				k = 0
+				if (b && match(s, /^(failed|exited|returned)/) && substr(s, RLENGTH + 1, 1) !~ /[A-Za-z0-9_]/) k = RLENGTH
+				else if (substr(s, 1, 5) == "(exit" && substr(s, 6, 1) !~ /[A-Za-z0-9_]/) k = 5
+				if (k && (c = index(substr(s, k + 1), ":"))) { # up to 24 more, then digits, ")" and blanks
+					seg = substr(s, k + 1, c - 1); sub(/[ \t]+$/, "", seg); sub(/\)$/, "", seg)
+					if (match(seg, /[0-9]+$/) && RSTART - 1 <= 24) return i
+				}
+				if (b && match(s, /^(exit([ \t]+(code|status))?|rc)[ \t]*=?[ \t]*[0-9]+\)?[ \t]*:/)) return i
+			}
+			return 0
+		}
 		function item_what(w,    p, head) {
 			gsub(/[ \t]+/, " ", w); sub(/^ /, "", w); sub(/ $/, "", w)
-			if (!match(w, /failed \(exit [0-9]+\):/) || (RSTART > 1 && substr(w, RSTART - 1, 1) ~ /[A-Za-z0-9_]/)) return shorten(w, 220)
+			if (!(p = fail_at(w))) return shorten(w, 220)
 			if (ulen(w) <= 320) return w
-			p = RSTART; head = shorten(substr(w, 1, p - 1), 80)
+			head = shorten(substr(w, 1, p - 1), 80)
 			if (head == "") return shorten(w, 320)
 			return head " " shorten(substr(w, p), 319 - ulen(head))
 		}
-		function row_what(row,    n, f, w) { # the report\047s own (redacted) friction row: "", unless it splits in five
+		# the what-text without its "prompt vN, <agent>:" words, as parse_friction drops _STEP1_STATED_RE\047s match
+		function unstate(w,    x, y, a, l) {
+			x = w
+			while (match(x, /^([ \t\047"]|\342\200[\230\231])/)) x = substr(x, RLENGTH + 1)
+			if (tolower(substr(x, 1, 8)) != "prompt v" || !match(substr(x, 9), /^[0-9][0-9]?[0-9]?/)) return w
+			x = substr(x, 9 + RLENGTH)
+			if (x ~ /^[A-Za-z0-9_]/ || !match(x, /^[ ,:;-]+/)) return w
+			# the agent may start inside that run, as the regex backtracks: "prompt v27,,:" is agent ","
+			for (l = RLENGTH; l > 0; l--) {
+				y = substr(x, l + 1)
+				if (!match(y, /^[^: \t][^:]*:/)) continue
+				a = substr(y, 1, RLENGTH - 1); sub(/[ \t]+$/, "", a)
+				if (ulen(a) > 100) return w
+				y = substr(y, RLENGTH + 1)
+				while (match(y, /^([ \t\047"]|\342\200[\230\231])/)) y = substr(y, RLENGTH + 1)
+				return y
+			}
+			return w
+		}
+		function row_what(row,    n, f) { # the report\047s own (redacted) friction row: "", unless it splits in five
 			n = split(row, f, / [|] /)
 			if (n != 5 || f[2] != "step 1" || f[3] != "error") return ""
-			w = f[4]; sub(/^prompt v[0-9]+, [^:]*: /, "", w)
-			return item_what(w)
+			return item_what(unstate(f[4]))
 		}
 		function cut_item(line,    pre, j, tail) { # an Items line the older build cut before " → ", whole
 			pre = "- F" s1fline " \302\267 step 1 \302\267 error \302\267 "
@@ -4851,6 +4891,7 @@ older_report_rewrite() { # MODE
 		cp && sec == "## Summary" { $0 = prompt_line($0) }
 		# a renderer from before c6c6a73b (B13 round 12 N26) joins sw_vers\047 product name to its version under a
 		# label that says macOS already: the version and build, "?" for none, as setup_report.sw_vers (round 19 W16)
+		!det && !fence && sec == "## Environment" && $0 == "- macOS: macOS" { $0 = "- macOS: ?" }
 		!det && !fence && sec == "## Environment" && index($0, "- macOS: macOS ") == 1 {
 			$0 = "- macOS: " substr($0, 16)
 			if (substr($0, 10, 1) == "(") $0 = "- macOS: ? " substr($0, 10)
@@ -5107,7 +5148,7 @@ step1_cmd_stop_facts() {
 		/^Attempt:/ || /^[-* ]*(Prompt|Agent|Outcome|Run):/ { last = ""; next }
 		/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z [|]/ {
 			if (/[|] end [|] finished[[:space:]]*$/) { endat = substr($0, 1, 20); run = 0; next }
-			if (q || (endat != "" && $0 ~ s1 && secs($0) - secs(endat) > gap)) { ev = (endat != "" ? run : 0); endat = ""; run = 0 }
+			if (q || (endat != "" && $0 ~ s1 && secs($0) - secs(endat) > gap)) { if (!q) restate($0); ev = (endat != "" ? run : 0); endat = ""; run = 0 }
 			if (endat != "" && $0 ~ /^[0-9TZ:-]+ [|] step 1 [|]/ && substr($0, 1, 20) >= endat) run++; else run = 0
 			last = $0; nr = NR; ev++
 		}
