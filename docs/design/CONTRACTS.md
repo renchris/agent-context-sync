@@ -24223,7 +24223,108 @@ Reserved for round 18 lane P of B13.
 
 ### 16.137 Round 18: the report's doctor hook, the CLI's words and the lock wait (2026-10-19, wave B13 round 18 lane B)
 
-Reserved for round 18 lane B of B13.
+Lane B's round 18 items (`docs/plans/bring-back-ocr.md`, "B13 round 18"; specs `round18/items/V<n>.md`, the
+verifier's corrected fix built unless said): V5, V7, V14, V20, V28, V40, V41, V42, V43, V52, V56, V58, V59, V60, V71
+and V90, all built. One defect from several finders is built once: V14, V52, V56 and V71; V5 and V28. V7 builds
+lane P's V8 command too (agreed with lane P: the tail lives in this lane's helper). V42 adds a test only: U64's
+FAIL already covered the leaf, which no test reached.
+
+**V14, V52, V56, V71: the setup report's doctor fails a manifest damaged under a table, as status does
+(`agentsync.cli`, `agentsync.setup_report`).** The report's Doctor hook ran only `cli._status_checks`, so with the
+items table's root page damaged status FAILed `state_dir.manifest` while the report said `doctor: 0 FAIL`, `NEXT:
+none (the loop state cannot be read)`, and twice `not measured (the state file cannot be read: see Doctor's
+state_dir.manifest line)` with no such line in Doctor. The hook now reads the loop first (`cli._loop_read`, the
+read `_build_status` makes) and applies `cli._with_damaged_manifest`, so Doctor has the one FAIL and the Loop line's
+NEXT is rule 1's, `the state_dir.manifest check failed: ...`; `loop_next` reuses that read's step when no check
+failed. `ReportHooks.state_error` (a callable: the read's error, None when it read or the hook has not run) goes to
+`setup_report._state_unreadable(config, read_error)`, true for a NOTADB or CORRUPT read as well as for the schema
+probe's, so the Summary files the FAIL under `from the state file that cannot be read` (`the person's; see
+Doctor`) and the listing warn beside it as not judged, `unexpected 0`. Correction to two verifiers: the checks still
+get no `loop_checks` in the report; its heartbeat path is the one without them (§16.80's round 9 K75, round 10
+L49), so a healthy report changes no line. Test:
+`test_cli.py::test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does`.
+
+**V5, V28: a speech helper build that ran out of time has a fix and its own bucket (`agentsync.convert.speech`,
+`agentsync.ops.doctor`, `agentsync.setup_report`).** `speech.BUILD_TIMED_OUT` (`the speech helper's build ran out
+of time`) starts the marker's reason, which ends with the retry clause the signal path had (`; scripts/install.sh
+tries the build again on its next run`), and `speech.build_timed_out(cache_dir)` reads the marker. Doctor's `speech`
+warn for it gets `run <install.sh> again: it builds the speech helper again, within 20 minutes; if it runs out of
+time again, run it when the Mac and the network are less busy` (under install.sh, `_again_fix`'s `run the same
+<install.sh> command again as it is (its NEXT line names it)`): the 20 minutes cover the FluidAudio fetch too, so
+no cause is named. Any other failed build keeps no fix. The Summary's own bucket, `from the speech helper's build
+that ran out of time (1 check): speech warn (install.sh builds it again)`, is keyed on the report's read of the
+marker; V5's verifier over V28's: never `expected`, since speech is missing. Tests:
+`test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`,
+`test_setup_report.py::test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected`.
+
+**V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
+(`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
+scope_root, vanished)` (moved from doctor; `scope_root` is a manifest's `get_meta` or the report's read-only read)
+and `cycle.vanished_readd_tail(roots, every=...)` build the `; or add its folder again, under the same id: <cmd>`
+tail of doctor's `config.vanished_sources` fix, of the sync's exit-78 `configuration error:` (after
+`VANISHED_ADVICE`, so `VANISHED_WORDS` matching is unchanged) and of the report's live loads line, whose folder is
+redacted as U46 registers it. Under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the command is `<install.sh>
+--source-local "<folder>"`, one run for every folder, each as `shown_arg` shows it (`cycle._shown_arg`); elsewhere
+`~/.local/bin/agentsync add-source '<folder>'`. The report's install.out fallback cuts the tail before the ids are
+labelled and ends `; or add its folder again, under the same id (see Doctor)`, so no folder path is labelled a
+source. Tests: the `default-id` and other cases of
+`test_cli.py::test_the_vanished_sources_fix_names_the_re_add_only_where_it_adds_the_same_id`,
+`test_cli.py::test_under_install_sh_the_vanished_sources_add_back_is_one_source_local_run`,
+`test_cli.py::test_the_add_backs_folder_is_shown_as_install_shs_shown_arg_shows_it`, the `install-sh` cases of
+`test_setup_report.py::test_a_vanished_sources_add_back_folder_is_never_in_the_report`,
+`test_setup_report.py::test_a_config_the_sync_refuses_loads_but_says_so`, and step 2's line in
+`test_install_oneshot.py::test_a_mirrored_folder_whose_block_is_gone_is_named_in_step_1_and_added_back_in_step_2`.
+
+**V20: a loop part the configuration refuses says so, with no WARNING line (`agentsync.loop`; amends §16.21).**
+`loop.status_line`'s part catches `ConfigError` first: `archive not read (the configuration is refused)`, and no
+`WARNING agentsync.loop` record; the `[FAIL] governance.config` line gives the words. Test:
+`test_cli.py::test_a_refused_governance_value_leaves_the_loop_lines_archive_not_read_with_no_warning`.
+
+**V40: the lock-wait line names its holder in one bracket (`agentsync.cycle`; amends §16.131 U105).**
+`cycle._wait_beat` words each beat from `LockHeldError.holder`; an empty lock body reads
+`cycle.UNRECORDED_LOCK_WAIT`, and the quiet wait's first beat `cycle.UNRECORDED_LOCK_WAIT_QUIET`. Lane P has the
+words for v27's step 3 (V24, V39). Tests:
+`test_cli.py::test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_sync`, the V40 lines in
+`test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not_announce`.
+
+**V41: a missing bundled pandoc's error says what to do before the path (`agentsync.convert.pandoc`).** `bundled
+pandoc not found (is pypandoc_binary installed?); set [convert] pandoc_path; looked at <~/path>`: the 200-character
+cut of a per-file reason (unchanged, so `state_reason` comparisons stay equal) falls in the path. Test:
+`test_cli.py::test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length`.
+
+**V42: a leaf page damaged below an interior root (tests only).** `test_cli.py::_damage_table_leaf` walks the
+b-tree itself (the macOS sqlite3 has no dbstat) to a leaf below the items table's interior root and writes random
+bytes over it from Python, never `dd`; the `leaf` case of
+`test_cli.py::test_a_manifest_damaged_under_a_table_status_reads_fails_status` asserts one FAIL in status and
+install.sh's doctor, and the sync's exit 65.
+
+**V43: two emptied folders are "them" and "those pages" (`agentsync.loop`, `agentsync.cli`; amends §16.22).** Two
+or more emptied folders read `excluding them instead retires those pages at once` in the sync's wait and
+`(excluding them retires those pages at once, with no deletion check)` in exclude-empty; one folder keeps `such a
+folder` with its page or pages. Test: `test_exclude_empty.py::test_two_emptied_folders_are_them_and_those_pages_whatever_each_held`.
+
+**V58: the docs-repo line names each remote's verdict (`agentsync.cli`).** `cli._remote_clause(config, gov)` tests
+each remote's URL with `governance.remote_allowed`, the test `remote_policy_findings` makes: one verdict for all
+keeps `remotes backup, origin, refused by [governance]`; mixed verdicts read `remotes backup, origin: backup refused
+by [governance], origin allowed`, never a URL. Test: `test_cli.py::test_the_docs_repo_line_names_the_remotes_git_has`.
+
+**V59, V60: a full, read-only or failing disk is one line, and status calls a locked state file busy
+(`agentsync.cli`, `agentsync.ops.doctor`, `agentsync.setup_report`; amends §16.131 U72).**
+`doctor.ENVIRONMENT_CODES`, an allowlist (`doctor.CONTENDED_CODES`, SQLITE_BUSY and SQLITE_LOCKED, plus FULL,
+READONLY, IOERR, CANTOPEN and PERM, extended codes included, by `doctor.environmental`), is what `_main` says in one
+`error:` line; every other code keeps its traceback. `cli._unread_words` says `the state file is busy: another
+agentsync run holds it; try again when it ends` for `doctor.contended`, which `setup_report._why_not_read` tests too
+(its words are lane RA's). V59's test is a new one; the U72 test keeps its name, which CONTRACTS cites. Tests:
+`test_cli.py::test_a_full_read_only_or_failing_disk_is_one_line_with_no_traceback`,
+`test_cli.py::test_status_calls_a_locked_state_file_busy_as_the_report_does`.
+
+**V90: four count-led lines the `(s)` sweep missed (`agentsync.governance`, `agentsync.gitops`,
+`agentsync.materialise`; amends §16.125 T32 and §16.131 U18).** Purge's `pushed N refs to <remote>` and `deleted N
+remote-tracking refs; remotes are NOT purged`, publish's `N generated files are ignored by a .gitignore rule` and
+the File Provider's `after N attempts` take `text.plural`. Tests: the V90 pins in
+`test_governance.py::test_remote_policy_and_push`,
+`test_gitops.py::test_commit_cycle_refuses_while_a_repo_gitignore_hides_a_page` and
+`test_materialise.py::test_a_provider_reasons_attempts_are_a_counted_noun`.
 
 ### 16.138 Round 18: the convert-retry record, converters and the gate (2026-10-19, wave B13 round 18 lane E)
 

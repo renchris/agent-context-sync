@@ -5614,11 +5614,14 @@ _ROUND_18_PARAGRAPH_AMENDS = (
         "§16.139 V89 (by §16.131 U71)",
     ),
     ("16.14", "**Amended (2026-10-10):** the MDM server's host in the Environment line", "§16.135 V46"),
+    ("16.21", "`loop.status_line(config)`: `loop: skill <current|stale|missing>", "§16.137 V20"),
+    ("16.22", "folders that held mirrored files get no paste line", "§16.137 V43"),
 )
 """Round 18's dated lines (lane D's §16.139), as :data:`_ROUND_12_PARAGRAPH_AMENDS`: V69's at §16.126 T61,
 V73's at §16.129 and §16.133, and V89's seven at the paragraphs that quote the swept `(s)` lines. Each
 records a round 16 or 17 item's change, so its marker names that item after "by". Lane RB's V46 at §16.14's
-shell-fallback registration paragraph, a section its claim names with no item."""
+shell-fallback registration paragraph, a section its claim names with no item. Lane B's §16.137: V20's at
+§16.21's loop-line item and V43's at §16.22's held-folders bullet."""
 
 _ROUND_18_E_PARAGRAPH_AMENDS = (
     ("16.28", "| `converted_failed` | of those, conversions that failed", "§16.138 V62, V67 (by §16.132 U3)"),
@@ -5664,7 +5667,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     17's §16.133 (lane D) two, U83's and U84's, and §16.132 (lane E) thirteen: U77's beside each of T62's
     lines, U3's at §16.28, U80's at §16.106 and three in §16.126 (U106's landed last). Round 18's §16.139
     (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated),
-    and §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48.
+    §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48, and
+    §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5673,7 +5677,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
     assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 15
-    assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 11
+    assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 13
     assert len(_pinned_dated_lines(_ROUND_18_E_PARAGRAPH_AMENDS)) == len(_ROUND_18_E_PARAGRAPH_AMENDS) == 6
 
 
