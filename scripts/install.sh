@@ -2084,7 +2084,20 @@ pacv=\1/p' || true
 # remote_url_prefixes" (any host: the path names the company too), a label id or name after
 # exclude_label_ids: or exclude_label_names:, and a URL prefix after remote_url_prefixes:. Before every pair,
 # so a folder or organisation pair never cuts the URL first.
+# The [governance] keys whose type error quotes the value after "got ": setup_report._GOVERNANCE_TYPED_KEYS (a
+# test keeps them equal).
+GOVERNANCE_TYPED_KEYS="history_days|compaction_slack_days|allow_remote|hold|hold_reason|hold_owner|purge_on_upstream_delete|archive"
 gov_value_sed() {
+	# The value a [governance] type error quotes ("got ['Jane Contoso']") is <value>, as the Python report's
+	# _GOVERNANCE_VALUE_RE writes it (B13 round 17 U103; round 18 V44, V72): it ends at the first " (fix: " or
+	# at the end of the line. sed -E has no lazy match, so each " (fix: " is a byte no report text carries
+	# (\001) while the value is cut, and is put back after.
+	local soh
+	soh="$(printf '\001')"
+	printf 's/ \\(fix: /%s/g\n' "$soh"
+	printf 's/(\\[governance\\]\\.(%s): expected (a non-empty string|true\\/false|an integer >= [0-9]), got )[^%s]+/\\1<value>/g\n' \
+		"$GOVERNANCE_TYPED_KEYS" "$soh"
+	printf 's/%s/ (fix: /g\n' "$soh"
 	cat <<'SED'
 s/\(([^()]+)\) (exists but \[governance\] allow_remote|is not under a tenant-owned prefix|is not tenant-owned per remote_url_prefixes)/(<remote>) \2/g
 s/(exclude_label_(ids|names): )('([^'\\]|\\.)*'|"([^"\\]|\\.)*")/\1<label>/g
@@ -2282,7 +2295,7 @@ redact_stream() {
 	{
 		m = 0; s = $0
 		while (1) {
-			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|label|remote|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
+			if (!match(s, /<(name|user|host|mdmhost|tmp|path|serial|label|remote|value|org|Org|team|TEAMID|(org|folder|library|source|email|guid|hash|commit|proxy|link)-([0-9]+|N))>/)) RSTART = 0
 			if ((r = repo_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = RL }
 			if ((r = own_at(s)) && (!RSTART || r < RSTART)) { RSTART = r; RLENGTH = OL }
 			if (!RSTART) break
@@ -3042,7 +3055,7 @@ PRIVATE_ONLY="" # 1 once fallback_redaction says the shell report is for a priva
 # its own words never count.
 legend_kinds() { # BODY
 	local used=" ~ " k
-	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>' '<label>' '<remote>'; do
+	for k in '<tmp>' '<user>' '<name>' '<org-[0-9]' '<link-[0-9]' '<mdmhost>' '<proxy-[0-9]' '<folder-[0-9]' '<source-[0-9]' '<path>' '<label>' '<remote>' '<value>'; do
 		! LC_ALL=C grep -q -- "$k" "$1" 2>/dev/null || used+="$k "
 	done
 	printf '%s' "$used"
@@ -3061,7 +3074,7 @@ say_item() { # TEXT
 fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it line names them] [USED: legend_kinds] [BODY]
 	local used="${2:-}" folder_item in_list="" whole="" skip_generic="" skip_agent="" v p fl
 	local org_item apps="" heads e email="" inword="" inword_ex="" ag="one made of coding-agent product words (Copilot, GitHub Copilot)"
-	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> "
+	[ -n "$used" ] || used=" ~ <tmp> <user> <name> <org-[0-9] <link-[0-9] <mdmhost> <proxy-[0-9] <folder-[0-9] <source-[0-9] <path> <label> <remote> <value> "
 	local pairs generic=" "
 	pairs="$(redaction_pairs 2>/dev/null || true)"
 	# The <folder-N> item's clauses, each only where the report shows what it explains (B13 round 11 M3, as
@@ -3207,6 +3220,7 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
 	case "$used" in *" <label> "*) say "- <label>: a label id or name a policy error quotes" ;; esac
 	case "$used" in *" <remote> "*) say "- <remote>: a remote URL, or a URL prefix, that a [governance] error or check quotes" ;; esac
+	case "$used" in *" <value> "*) say "- <value>: any other value a [governance] error quotes" ;; esac
 	say "Read the report before sending it: anything else confidential is yours to remove."
 	# A one-word folder or organisation pair that is a word the report prints: its placeholder in the report's own
 	# text reads back as the word, so the report is for a private copy only (setup_report's F92, B13 round 5; an

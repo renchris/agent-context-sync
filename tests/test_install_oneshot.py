@@ -12356,6 +12356,38 @@ def test_a_policy_or_governance_value_is_redacted_alike_in_both_readers(
         "[governance].remote_url_prefixes: <remote> is not a remote URL; remote_url_prefixes: <remote> "
         "carries a password; exclude_label_names: expected a list of non-empty strings"
     ), shell
+    # B13 round 18 V44, V72: a [governance] type error's value is <value> in both readers, ending at the
+    # first " (fix: " or at the end of the line; the identifier and its form stay
+    for folder, said, want in (
+        (
+            "Ledger",
+            "[FAIL] governance.config: [governance].hold_owner: expected a non-empty string, got "
+            "['Jane Fabrikam'] (fix: set it); [governance].history_days: expected an integer >= 1, got "
+            "'Contoso Legal' (fix: set a number)",
+            "[FAIL] governance.config: [governance].hold_owner: expected a non-empty string, got <value> "
+            "(fix: set it); [governance].history_days: expected an integer >= 1, got <value> (fix: set a "
+            "number)",
+        ),
+        (
+            "Atlas",
+            "[governance].hold: expected true/false, got 'Litigation Fabrikam v. Tailspin'",
+            "[governance].hold: expected true/false, got <value>",
+        ),
+    ):
+        shell, python = _fuzzy_report(env, monkeypatch, [folder], said)  # each call adds its folder
+        assert shell == python == want, (shell, python)
+        report = report_path(env).read_text()
+        assert "\n- <value>: any other value a [governance] error quotes\n" in report
+        assert "Fabrikam" not in report and "Contoso Legal" not in report
+
+
+def test_the_shell_governance_keys_are_the_reports() -> None:
+    """B13 round 18 V44: the keys whose type error the shell's gov_value_sed cuts are
+    setup_report._GOVERNANCE_TYPED_KEYS, and its legend line is the Python report's."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    [keys] = re.findall(r'(?m)^GOVERNANCE_TYPED_KEYS="(.*)"$', script)
+    assert tuple(keys.split("|")) == setup_report._GOVERNANCE_TYPED_KEYS
+    assert f'say "- <value>: {setup_report._LEGEND["value"].removeprefix("<value> ")}"' in script
 
 
 def test_a_resolver_host_that_is_a_word_the_report_prints_is_matched_only_in_a_url(
