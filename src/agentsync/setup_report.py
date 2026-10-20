@@ -7497,6 +7497,17 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
             "file's bytes change, and it is in Quarantine by reason under the class its stub names "
             f'(such as {_unreadable_examples()}), never "conversion failed"',
         ]
+    upgraded = [x for x in runs[:_RUNS_SHOWN] if x.n("legacy_retried")]
+    if upgraded:
+        # the one-time retry of failures an older build settled, which may have run in a LaunchAgent cycle
+        # nobody watched: it is why an old error is back in the runs after it (B13 round 19 W18)
+        each = "; ".join(f"run {x.run_id}, {_plural(x.n('legacy_retried'), 'file')}" for x in upgraded)
+        out += [
+            "",
+            f"- tried again after an upgrade: {each}. An older build had given up on these conversions; this "
+            "build tries each again from the same bytes in up to 2 runs from that one on, so an old "
+            "conversion error can show in those runs",
+        ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
     # said only when one of the two runs it counts for is an earlier build's, one that finished and recorded

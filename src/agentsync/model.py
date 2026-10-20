@@ -497,6 +497,10 @@ class CycleReport:
     # the sync's NEXT names the pandoc check by it even when no error line says so, as for a stub an older
     # build settled (B13 round 18 V57)
     converter_down: bool = False
+    # failed conversions an older build had settled for good, given the bounded retries again by this run
+    # (``Manifest.retry_settled_failures``, once per manifest): the sync's note says why their errors come
+    # back (B13 round 19 W18)
+    legacy_retried: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

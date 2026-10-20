@@ -1877,6 +1877,8 @@ class _Cycle:
             )
             if moved:  # one line, and a count: never a name
                 log.info("%d failed conversion(s) an older build settled are tried again", moved)
+                # and the sync's note, and the run record's count the report reads (B13 round 19 W18)
+                self._tally["legacy_retried"] = moved
             _tighten_own_paths(self.config)  # another umask is not ours: no permissions FAIL of its making
             skill.write_skill(self.repo)  # outside the docs repo; a failure is only a warning
             _clear_staging(self.staging)
@@ -2754,6 +2756,7 @@ class _Cycle:
             rescreened_unchanged=self._tally["rescreened_unchanged"],
             rescreen_left=self._rescreen_left(),
             converter_down=any(self._cannot_run.values()),
+            legacy_retried=self._tally["legacy_retried"],
         )
 
     def _rescreen_left(self) -> int:

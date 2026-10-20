@@ -74,6 +74,7 @@ from agentsync.config import (
 )
 from agentsync.convert import CONVERTER_UNAVAILABLE
 from agentsync.cycle import (
+    _CONVERT_RETRIES,
     ECHOED_WHEN,
     INTERACTIVE_LOCK_WAIT_S,
     _acquire_waiting,
@@ -514,6 +515,15 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     if report.auth_required:
         _out(f"  sign-in required: run `{loop.BIN} graph login` (errors above name any IT action)")
     _print_checkpoint(report)
+    if n := report.legacy_retried:
+        # the one-time retry after an upgrade, which only -v logged, so the same old error came back with
+        # nothing saying why (B13 round 19 W18); no bare "converted" for install.sh's awk
+        tries = plural(_CONVERT_RETRIES, "time")
+        _out(
+            f"  note: {plural(n, 'conversion')} an older build gave up on {'is' if n == 1 else 'are'} tried "
+            f"again, up to {tries} from this sync on; {'its error' if n == 1 else 'their errors'} may show "
+            "again until then"
+        )
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""

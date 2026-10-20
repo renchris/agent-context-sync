@@ -4062,6 +4062,55 @@ def test_a_failed_conversion_an_older_build_settled_gets_the_bounded_retries_onc
         assert rel in quarantine
 
 
+def test_the_upgrades_retry_of_an_older_builds_failure_says_so_once(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 19 W18: the one-time retry of failures an older build settled (V65) logged its count at
+    INFO only, which a foreground sync does not print, so an error settled long ago came back in two syncs
+    with nothing saying why. The sync that moves them says so in one note, and the run record keeps the
+    count for the report; no other sync says it, nor one with no such failure."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+    tries: list[str] = []
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso flaky"):
+            tries.append(name)
+            raise RuntimeError("pandoc timed out after 60 s")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", convert)
+    cfg = str(sample_config.config_path)
+    note = (
+        "  note: 1 conversion an older build gave up on is tried again, up to 2 times from this sync on; its "
+        "error may show again until then"
+    )
+    rel = "projects/Contoso flaky.md"
+    (local_source_dir / rel).write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    cli.main(["sync", "--config", cfg])
+    assert "an older build gave up on" not in capsys.readouterr().out, "a fresh manifest moves nothing"
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._RETRY_META + SID, "{}")
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+    _settle_as_an_older_build(sample_config, rel)
+    tries.clear()
+    outs = []
+    for _ in range(cycle_mod._CONVERT_RETRIES + 1):
+        cli.main(["sync", "--config", cfg])
+        outs.append(capsys.readouterr().out)
+        if len(outs) == 1:
+            assert _run_record(sample_config)["legacy_retried"] == 1
+            assert len(tries) == 1, "the sync that says so is the first of the tries"
+    assert outs[0].splitlines().count(note) == 1, outs[0]
+    assert all("an older build gave up on" not in out for out in outs[1:]), outs[1:]
+    assert "legacy_retried" not in _run_record(sample_config)
+    assert len(tries) == cycle_mod._CONVERT_RETRIES, "up to 2 times, as the note says"
+
+
 def test_an_unreadable_conversion_is_counted_apart_from_a_failed_one(
     sample_config: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

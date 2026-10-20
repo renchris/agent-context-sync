@@ -1033,6 +1033,7 @@ class CycleReport:
     rescreened_unchanged: int = 0  # 2026-10-12 (§16.56 F86; round 5 lane B)
     rescreen_left: int = 0  # 2026-10-18 (§16.125 T33; round 16 lane B)
     converter_down: bool = False  # 2026-10-19 (§16.138 V57): a converter could not start for a file this run
+    legacy_retried: int = 0  # 2026-10-20 (§16.144 W18): an older build's settled failures retried from this run
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -8074,6 +8075,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 |---|---|
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
 | `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change (**Amended 2026-10-19, §16.138 V62, V67 (by §16.132 U3):** the same bytes are converted again in up to `_CONVERT_RETRIES` (2) later runs and counted in each; one whose converter could not start is converted, uncounted against the retries, in the first run in which it starts; see the not-retried bullet below) |
+| `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -24977,6 +24979,20 @@ the exception `conv.version()` raised (`_cannot_run_why`), and the error line is
 and QUARANTINE.tsv keep the stored reason, as rewriting them each waiting cycle is git and manifest churn, and
 the row is rewritten once the converter starts. Test:
 `test_cycle.py::test_a_waiting_stubs_error_line_names_why_its_converter_cannot_start_now`.
+
+**The upgrade's retry of an older build's failures says so (W18; `agentsync.cycle`, `agentsync.model`,
+`agentsync.cli`, `agentsync.setup_report`; dated line at §16.28).** V65's one-time move of failures an older build
+had settled logged its count at INFO, which a foreground sync does not print, so a conversion error settled long
+ago came back in two syncs with nothing saying why. The count is now `CycleReport.legacy_retried` and the run
+record's `legacy_retried`; the sync prints, before its last line and only when it is above 0, `  note: N
+conversion(s) an older build gave up on is/are tried again, up to 2 times from this sync on; its error / their
+errors may show again until then` (the count from `_CONVERT_RETRIES`, no bare "converted" for install.sh's
+awk), and the report's Repeat conversions part adds `- tried again after an upgrade: run R, N files. ...`, since
+the move may happen in a LaunchAgent cycle nobody reads, or in install.sh's first sync, whose screen shows only
+the summary lines (`show_first_sync`). The INFO line stays for err.log and `-v`; a WARNING was
+not used, as its logger prefix reads as an alarm. Tests:
+`test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once`,
+`test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

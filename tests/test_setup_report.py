@@ -9749,6 +9749,27 @@ def test_an_install_out_of_one_line_is_the_last_line_never_the_last_1_line(
     assert "the last 1 line" not in text
 
 
+def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 19 W18: the sync that gives an older build's settled failures the bounded retries once (V65)
+    may be a LaunchAgent's, which nobody reads, and an old conversion error then shows again. The run record
+    counts them (``legacy_retried``) and the Repeat conversions part names that run; a run without them adds
+    nothing."""
+    seed_ocr(fake_mac)
+    seed = Seed(fake_mac["config"])
+    four = {"converted": 1, "converted_failed": 1, "legacy_retried": 3}
+    seed.m._db.execute("UPDATE runs SET counts_json = ? WHERE run_id = 4", (json.dumps(four),))
+    seed.close()
+    part = status_parts(fake_mac)[1]["Repeat conversions"]
+    assert (
+        "- tried again after an upgrade: run 4, 3 files. An older build had given up on these conversions; "
+        f"this build tries each again from the same bytes in up to {cycle._CONVERT_RETRIES} runs from that "
+        "one on, so an old conversion error can show in those runs" in " ".join(part.split())
+    ), part
+    assert part.count("tried again after an upgrade") == 1
+
+
 @pytest.mark.parametrize(("last_used", "said"), [(5, "the newest run (5)"), (4, "the run before it")])
 def test_one_repeat_conversion_is_it_never_them(fake_mac: dict[str, Path], last_used: int, said: str) -> None:
     """B13 round 16 T49, T63: the converter-cache line agreed its verb with a count of 1, then said "made

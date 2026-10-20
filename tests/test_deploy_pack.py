@@ -5679,9 +5679,10 @@ _ROUND_19_D_PARAGRAPH_AMENDS = (
 
 _ROUND_19_E_PARAGRAPH_AMENDS = (
     ("16.28", "- A failed conversion is not retried. The next pass finds the same", "§16.144 W2"),
+    ("16.28", "| `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions", "§16.144 W18"),
 )
 """Round 19 lane E's dated lines at sections its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: W2's at §16.28's not-retried bullet."""
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: W2's at §16.28's not-retried bullet and W18's `legacy_retried` row."""
 
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
@@ -5729,7 +5730,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 13
     assert len(_pinned_dated_lines(_ROUND_18_E_PARAGRAPH_AMENDS)) == len(_ROUND_18_E_PARAGRAPH_AMENDS) == 6
     assert len(_pinned_dated_lines(_ROUND_19_D_PARAGRAPH_AMENDS)) == len(_ROUND_19_D_PARAGRAPH_AMENDS) == 1
-    assert len(_pinned_dated_lines(_ROUND_19_E_PARAGRAPH_AMENDS)) == len(_ROUND_19_E_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_19_E_PARAGRAPH_AMENDS)) == len(_ROUND_19_E_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
