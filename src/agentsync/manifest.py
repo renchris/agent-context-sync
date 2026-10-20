@@ -1837,6 +1837,43 @@ class Manifest:
             stable_id,
         )
 
+    def retry_settled_failures(self, reason_prefix: str, *, retried_meta: str, done_key: str) -> int:
+        """Once per manifest (meta ``done_key``): give every failed conversion's stub that a build before the
+        retry settled the ERROR verdict again, so the classifier carries it as pending and the cycle's early
+        cutoff tries it again, as it tries a failure of this build (B13 round 18 V65). Such a build left
+        ERROR for one cycle and then settled the stub as unchanged for good. A quarantined file whose
+        ``state_reason`` starts ``reason_prefix`` and not already ERROR, but not a local online-only one
+        (``dataless``), which waits for new bytes; a Graph file is fetched again within the run's download
+        budget, as the retry fetches a failure of this build; not one whose stable id is in its source's
+        ``retried_meta`` record, which a build with the retry has tried already. The flag is written in the
+        same transaction. Returns how many rows moved."""
+        moved = 0
+        with self._atomic():
+            if self.get_meta(done_key) is not None:
+                return 0
+            rows = self._db.execute(
+                "SELECT source_id, stable_id FROM items WHERE state = ? AND is_dir = 0 AND dataless = 0 "
+                "AND substr(state_reason, 1, ?) = ? AND (last_verdict IS NULL OR last_verdict != ?)",
+                (RowState.QUARANTINED.value, len(reason_prefix), reason_prefix, Verdict.ERROR.value),
+            ).fetchall()
+            tried: dict[str, set[str]] = {}
+            for source_id, stable_id in rows:
+                if source_id not in tried:
+                    try:
+                        held = json.loads(self.get_meta(retried_meta + source_id) or "{}")
+                    except ValueError:
+                        held = {}
+                    tried[source_id] = {str(k) for k in held} if isinstance(held, dict) else set()
+                if stable_id in tried[source_id]:
+                    continue
+                self._db.execute(
+                    "UPDATE items SET last_verdict = ? WHERE source_id = ? AND stable_id = ?",
+                    (Verdict.ERROR.value, source_id, stable_id),
+                )
+                moved += 1
+            self.set_meta(done_key, "1")
+        return moved
+
     def set_state(self, source_id: str, stable_id: str, state: RowState, reason: str | None) -> None:
         """Set a row's state (quarantine, refuse, tombstone, restore to live)."""
         self._update_item(

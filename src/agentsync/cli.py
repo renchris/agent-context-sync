@@ -452,7 +452,9 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     L33), as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side
     (B13 round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
     [policy] or secret-rule re-screen runs the converter on the same bytes, so it is in N, and counted again
-    in S (F35), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
+    in S (F35), then ``; W waiting for its converter (it could not start; read once it does)`` when the
+    converter of W files could not start: nothing read them, so they are in neither N nor F (B13 round 18
+    V13), then ``; Q refused without a read (no converter for the type, or a rule that needs no bytes)``
     when Q files were refused with no byte read: those are in each source line's ``refused=`` but not in N, so
     with R and W the line's refusals add up to the sources' (B13 round 7 H32). Before it, ``; W withheld
     unread by the label rule (a file whose label cannot be read: an image, or a .msg not on this Mac)`` counts
@@ -562,7 +564,17 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         )
         if n
     )
-    _out(f"converted {converted}, deferred {online} online-only{again}{of_them}{rescreened}{unread_tail}")
+    # A file whose converter could not start was not read: it is no conversion, so it is not in N or F, and
+    # the clause names it with no bare "converted", "deferred" or "read again" (B13 round 18 V13)
+    waiting = sum(s.converter_waiting for s in report.sources)
+    waits = (
+        f"; {waiting} waiting for {'its' if waiting == 1 else 'their'} converter (it could not start; "
+        "read once it does)"
+        if waiting
+        else ""
+    )
+    tail = f"{again}{of_them}{rescreened}{waits}{unread_tail}"
+    _out(f"converted {converted}, deferred {online} online-only{tail}")
 
 
 def _print_checkpoint(report: CycleReport) -> None:
@@ -967,8 +979,11 @@ def _unavailable_steps(config: Config, report: CycleReport) -> list[str]:
     """Rule 1's fix when a file's converter could not start in this sync and the pandoc check fails: the
     file's error line said why it was not converted while the NEXT went on to the baseline step (B13 round 17
     U3). It names status, whose [FAIL] pandoc line carries the fix and whose NEXT says whose it is; the sync
-    prints no check line. The cycle converts the file once the converter starts."""
-    if not any(CONVERTER_UNAVAILABLE in e for s in report.sources for e in s.errors):
+    prints no check line. The cycle converts the file once the converter starts. A cycle whose converter could
+    not start for a file with no error line (a stub an older build settled, which only the re-read pass reads)
+    gets it too (``CycleReport.converter_down``, B13 round 18 V57)."""
+    unavailable = any(CONVERTER_UNAVAILABLE in e for s in report.sources for e in s.errors)
+    if not (unavailable or report.converter_down):
         return []
     if all(r.ok for r in doctor._check_pandoc(config)):
         return []

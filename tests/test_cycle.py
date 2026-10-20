@@ -3819,6 +3819,212 @@ def test_a_foreground_sync_whose_converter_could_not_start_names_the_pandoc_chec
     ), out
     assert "agentsync.convert" not in err and "cannot run (" not in err, err
     assert convert_mod._ECHOED_WHEN == cycle_mod.ECHOED_WHEN, "the key the convert logger marks it with"
+    # B13 round 18 V13: the count line said "converted 1 ... 1 failed" beside "it is not converted yet". A
+    # file whose converter could not start was not read: it is named apart, and in neither N nor F.
+    [count] = [ln for ln in out.splitlines() if ln.startswith("converted ")]
+    assert count == (
+        "converted 0, deferred 0 online-only; 1 waiting for its converter (it could not start; read once it "
+        "does)"
+    ), out
+    record = _run_record(sample_config)
+    assert (record["converted"], record["converter_waiting"]) == (0, 1) and "converted_failed" not in record
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace(f'pandoc_path = "{gone}"', ""), encoding="utf-8")
+    cli.main(["sync", "--config", str(cfg)])
+    out = capsys.readouterr().out
+    [count] = [ln for ln in out.splitlines() if ln.startswith("converted ")]
+    assert count == "converted 1, deferred 0 online-only", "converted once, in the sync that read it"
+    assert "converter_waiting" not in _run_record(sample_config)
+
+
+def _settle_as_an_older_build(config: Config, rel: str) -> None:
+    """Leave ``rel``'s row as a build before the retry did (B13 round 17 U3): its verdict touched_not_changed,
+    nothing pending, and the source's re-read record one from that build."""
+    with Manifest(config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+        assert row is not None
+        m.set_verdict(SID, row.stable_id, Verdict.TOUCHED_NOT_CHANGED)
+        m.set_meta(cycle_mod._REREAD_META + SID, "")
+
+
+def test_a_re_read_that_waits_for_its_converter_is_no_sync_again(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path
+) -> None:
+    """B13 round 18 V57: while a stub's converter could not start, its source's re-read record stayed open
+    with nothing left to read, and loop.next_step said "sync again" after every sync, which no sync cleared.
+    The run record counts such files apart (``reread_waits``), the note says another sync does not clear
+    it, and the sync's NEXT names the pandoc check, though no error line says why. One sync in which the
+    converter starts reads the file, and the note is gone."""
+    assert run(sample_config).exit_code == 0
+    kickoff = local_source_dir / "projects" / "Contoso kickoff.docx"
+    shutil.copy2(local_source_dir / "projects" / "sample.docx", kickoff)
+    rel = "projects/Contoso kickoff.docx"
+    broken = _pandoc_gone(sample_config, tmp_path)
+    run(broken)
+    _settle_as_an_older_build(sample_config, rel)
+    for _ in range(2):
+        report = run(broken)
+        record = _run_record(sample_config)
+        assert record.get("reread_waits") == 1 and "reread_left" not in record, record
+        notes = loop.next_step(sample_config).notes
+        assert not [n for n in notes if n.startswith(loop.SYNC_AGAIN)], notes
+        assert [n for n in notes if loop._REREAD_STUCK_ONE in n], notes
+        assert report.converter_down and not [e for s in report.sources for e in s.errors]
+        assert cli._unavailable_steps(broken, report), "NEXT names the pandoc check"
+    report = run(sample_config)
+    assert not report.converter_down and "reread_waits" not in _run_record(sample_config)
+    assert not [n for n in loop.next_step(sample_config).notes if "read again" in n]
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and row.state is RowState.LIVE, row
+
+
+def test_a_stub_whose_converter_could_not_start_is_a_first_read_on_the_re_read_path(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path
+) -> None:
+    """B13 round 18 V61: an older build's "converter unavailable" stub, read by the re-read pass once pandoc
+    starts, was counted as read again and not as converted (``again``), though no converter had read its
+    bytes; the work queue counts the same event as converted. It is a first read now, in N and in R."""
+    assert run(sample_config).exit_code == 0
+    shutil.copy2(
+        local_source_dir / "projects" / "sample.docx", local_source_dir / "projects" / "Contoso k.docx"
+    )
+    rel = "projects/Contoso k.docx"
+    run(_pandoc_gone(sample_config, tmp_path))
+    _settle_as_an_older_build(sample_config, rel)
+    run(_pandoc_gone(sample_config, tmp_path))
+    report = run(sample_config)
+    assert (source_report(report).converted, report.read_again, report.read_first) == (1, 1, 1)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and row.state is RowState.LIVE, row
+
+
+def test_a_converter_that_answers_after_failing_to_start_counts_no_ocr_failure(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V64: pandoc's ``--version`` failed inside ``convert_file`` (a time-out on a busy Mac) and
+    answered on the cycle's next call, so ``_lacks`` called the "converter unavailable" result one OCR left
+    unread and the run record counted an OCR failure for an engine that never ran."""
+    assert run(sample_config).exit_code == 0
+    engine = fake_engine(tmp_path / "ocr-bin")
+    monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: engine)
+    assert run(sample_config).exit_code == 0
+    real = pandoc_mod._PandocRunner.version
+    failed: list[bool] = []
+
+    def version(self: Any) -> str:
+        frame = sys._getframe(1)
+        while frame is not None and frame.f_code.co_name != "_identity":
+            frame = frame.f_back  # type: ignore[assignment]
+        if frame is not None and not failed:
+            failed.append(True)
+            raise pandoc_mod.ConversionError("pandoc timed out after 300s")
+        return real(self)
+
+    monkeypatch.setattr(pandoc_mod._PandocRunner, "version", version)
+    rel = "projects/Contoso kickoff.docx"
+    shutil.copy2(local_source_dir / "projects" / "sample.docx", local_source_dir / rel)
+    report = run(sample_config)
+    assert failed, "convert_file's version() failed once"
+    [error] = [e for s in report.sources for e in s.errors]
+    assert error.startswith(f"{rel}: conversion failed: converter unavailable: pandoc timed out"), error
+    record = _run_record(sample_config)
+    assert not {"ocr_failed", "ocr_without_budget", "ocr_without_down"} & set(record), record
+    run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and row.state is RowState.LIVE, row
+
+
+def test_the_retry_record_drops_a_file_that_is_gone_and_keeps_a_stub(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V63: ``convert-retry:<source>`` kept the entry of a file that failed, was given up and
+    was then deleted upstream and removed, for good. An entry goes once its file is no failed conversion's
+    stub; one whose file still is one keeps its count, so its retries stay bounded (a prune by LIVE rows
+    would drop that count at once and convert the file in every cycle)."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+
+    def failing(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso broken"):
+            raise RuntimeError("no such heading")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", failing)
+    gone = local_source_dir / "projects" / "Contoso broken gone.md"
+    kept = local_source_dir / "projects" / "Contoso broken kept.md"
+    for path in (gone, kept):
+        path.write_text(f"# {path.stem}\n\nA page the converter fails on.\n", encoding="utf-8")
+    for _ in range(cycle_mod._CONVERT_RETRIES + 2):
+        run(sample_config)
+
+    with Manifest(sample_config.state_paths.db) as m:
+        ids = {p.name: m.item_by_path(SID, f"projects/{p.name}") for p in (gone, kept)}
+    stable = {name: row.stable_id for name, row in ids.items() if row is not None}
+
+    def held() -> dict[str, int]:
+        with Manifest(sample_config.state_paths.db) as m:
+            record = json.loads(m.get_meta(cycle_mod._RETRY_META + SID) or "{}")
+        return {name: record[sid][1] for name, sid in stable.items() if sid in record}
+
+    assert held() == {gone.name: cycle_mod._CONVERT_RETRIES, kept.name: cycle_mod._CONVERT_RETRIES}
+    gone.unlink()
+    for _ in range(4):
+        run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.get_item(SID, stable[gone.name])
+    assert row is None or row.state is not RowState.QUARANTINED, row
+    assert held() == {kept.name: cycle_mod._CONVERT_RETRIES}
+
+
+@pytest.mark.parametrize("fixed", [True, False], ids=["converter-fixed", "still-failing"])
+def test_a_failed_conversion_an_older_build_settled_gets_the_bounded_retries_once(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch, fixed: bool
+) -> None:
+    """B13 round 18 V65: a build before the retry (B13 round 17 U3) settled an ordinary failed conversion's
+    stub as unchanged after one cycle (a pandoc time-out under load), and it stayed a stub until its bytes
+    changed while the contract, the report and the guide said it is tried again. Once per manifest every
+    such stub is given the ERROR verdict again, so the cycle tries it ``_CONVERT_RETRIES`` times as it tries
+    a failure of this build."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+    tries: list[str] = []
+    failing = [True]
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso flaky"):
+            tries.append(name)
+            if failing[0]:
+                raise RuntimeError("pandoc timed out after 60 s")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", convert)
+    rel = "projects/Contoso flaky.md"
+    (local_source_dir / rel).write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._RETRY_META + SID, "{}")  # a build before the retry kept no record
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))  # nor the flag
+    _settle_as_an_older_build(sample_config, rel)
+    failing[0] = not fixed
+    tries.clear()
+    for _ in range(cycle_mod._CONVERT_RETRIES + 2):
+        run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+        flag = m.get_meta(cycle_mod._RETRY_LEGACY_META)
+    assert row is not None and flag is not None
+    quarantine = (sample_config.docs_repo / "_sync" / "QUARANTINE.tsv").read_text(encoding="utf-8")
+    if fixed:
+        assert row.state is RowState.LIVE and len(tries) == 1, (row, tries)
+        assert rel not in quarantine
+    else:
+        assert len(tries) == cycle_mod._CONVERT_RETRIES, "tried the bounded number of times, then settled"
+        assert row.state is RowState.QUARANTINED and row.last_verdict is not Verdict.ERROR, row
+        assert rel in quarantine
 
 
 def test_an_unreadable_conversion_is_counted_apart_from_a_failed_one(

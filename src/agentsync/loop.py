@@ -481,6 +481,8 @@ def _reread_notes(
       what an earlier run read says nothing.  It gets a note of its own, without a count;
     - the helper stopped working, or the run read none with OCR time left (a converter that cannot run, a
       folder it could not list);
+    - the run read none and has files whose converter could not start (``reread_waits``), which it leaves
+      out of ``reread_left``, whether or not its OCR time ran out (B13 round 18 V57);
     - the run read none, its OCR time was used up, it left more than the run before, and ``downloads``:
       new files have the OCR time first, the ones converted past it join the files to read again, and the
       next sync downloads more.  Used-up OCR time is no progress then."""
@@ -499,6 +501,9 @@ def _reread_notes(
         grew = len(runs) > 1 and left > runs[1].get("reread_left", 0)
         if new is not None and new.get("ocr_down"):
             notes.append(said(looked, left, _REREAD_STUCK))
+        elif new is not None and new.get("reread_waits") and not new.get("reread"):
+            # files whose converter could not start: no sync reads them while it cannot (B13 round 18 V57)
+            notes.append(said(looked, left + new["reread_waits"], _REREAD_STUCK))
         elif new is None or not left or new.get("reread"):
             notes.append(SYNC_AGAIN + said(looked, left, _REREAD_AGAIN))
         elif not new.get("ocr_over"):

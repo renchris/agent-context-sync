@@ -443,6 +443,10 @@ class SourceReport:
     # of ``counts[CHANGED]``: files new this run (phase 1 counted them as created); the sync line reads
     # ``changed=N (K new)`` (B13 round 12 N39)
     new: int = 0
+    # files whose converter could not start, so nothing read their bytes: never in ``converted`` or
+    # ``conversion_failed``; the sync line names them apart, and the cycle reads each once its converter
+    # starts (B13 round 18 V13)
+    converter_waiting: int = 0
 
 
 SYNC_OUTPUT_END = "at the end of a sync's output"
@@ -489,6 +493,10 @@ class CycleReport:
     # label-capable files a [policy] change queued that are still to be re-screened after this run: the CLI
     # holds the run's "[policy] changed" WARNING back only when none is (B13 round 16 T33)
     rescreen_left: int = 0
+    # a converter whose version could not be read in this run (pandoc could not start) was asked for a file:
+    # the sync's NEXT names the pandoc check by it even when no error line says so, as for a stub an older
+    # build settled (B13 round 18 V57)
+    converter_down: bool = False
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
