@@ -13,6 +13,7 @@ Secrets: cursor values (delta links) are never logged; ``cursor_fingerprint`` is
 from __future__ import annotations
 
 import contextlib
+import errno
 import functools
 import hashlib
 import json
@@ -31,7 +32,7 @@ from typing import Any, NamedTuple
 
 from agentsync import tm_exclude
 from agentsync.config import SourceConfig, always_excluded
-from agentsync.errors import ConfigError, ManifestOpenError, ManifestSchemaError
+from agentsync.errors import ConfigError, ManifestOpenError, ManifestPathError, ManifestSchemaError
 from agentsync.model import (
     PRESENT_STATES,
     ChangeOp,
@@ -785,17 +786,25 @@ def _source_from_row(r: sqlite3.Row) -> SourceRow:
     )
 
 
+_ACCESS_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.EROFS})
+"""The errnos of a file or folder this account may not open or write: its owner, its mode, a read-only volume.
+Only these get the access fix (:class:`ManifestOpenError`; B13 round 20 X49)."""
+
+
 def _connect(db_path: Path) -> sqlite3.Connection:
     """Create the db file 0600 if needed, connect in autocommit mode and apply the connection pragmas. A file
     or folder this account cannot open raises :class:`ManifestOpenError`, never a raw PermissionError (B13
-    round 19 W65)."""
+    round 19 W65); any other refusal (a folder where the file belongs, a file where its folder belongs, a full
+    disk) :class:`ManifestPathError`, one line with no access fix (B13 round 20 X49)."""
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)
         os.close(fd)
         db_path.chmod(0o600)
     except OSError as exc:
-        raise ManifestOpenError(f"{db_path} cannot be opened: {exc.strerror or exc}", exc.errno) from exc
+        said = f"{db_path} cannot be opened: {exc.strerror or exc}"
+        error = ManifestOpenError if exc.errno in _ACCESS_ERRNOS else ManifestPathError
+        raise error(said, exc.errno, reason=exc.strerror) from exc
     conn = sqlite3.connect(str(db_path), isolation_level=None, timeout=30.0)
     conn.row_factory = sqlite3.Row
     mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]

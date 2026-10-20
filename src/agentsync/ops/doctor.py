@@ -1122,6 +1122,17 @@ def environmental(exc: BaseException) -> bool:
     return _code(exc) in ENVIRONMENT_CODES
 
 
+CANNOT_OPEN_CODES = frozenset({sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_PERM, sqlite3.SQLITE_READONLY})
+"""SQLite's codes for a manifest this account cannot open or write: no damage, the file's owner or mode, or
+its folder's (B13 round 19 W64). By name, once, for status's words and the setup report's: a hand-kept (8, 14,
+23) held SQLITE_AUTH (23), which nothing here raises, for SQLITE_PERM (3; B13 round 20 X48)."""
+
+
+def cannot_open(exc: BaseException) -> bool:
+    """Whether ``exc`` has one of :data:`CANNOT_OPEN_CODES`, an extended code included (B13 round 20 X48)."""
+    return _code(exc) in CANNOT_OPEN_CODES
+
+
 def manifest_unreadable(db: Path) -> sqlite3.DatabaseError | None:
     """The error when the manifest at ``db`` is no database or a damaged one, read through a read-only
     open (no file is created, nothing is written) of its schema, which every open of the manifest reads

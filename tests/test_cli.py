@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import errno
 import functools
 import json
 import logging
@@ -43,7 +44,7 @@ from agentsync import (
 from agentsync import cycle as cycle_mod
 from agentsync.config import RETIRE_ADVICE, Config, canonical_source_root, inbox_source_table, load_config
 from agentsync.cycle import HYDRATION_REFUSED, RECORDING_WAITS, run_cycle
-from agentsync.errors import AuthError, GitError, LockHeldError
+from agentsync.errors import AuthError, GitError, LockHeldError, ManifestOpenError, ManifestPathError
 from agentsync.graph import auth as graph_auth
 from agentsync.graph import discover
 from agentsync.graph.auth import AuthStatus
@@ -3394,6 +3395,102 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
         assert not db.exists()
         db.with_name("kept.sqlite").rename(db)
     assert db.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    ("code", "opened"),
+    [
+        (sqlite3.SQLITE_CANTOPEN, True),
+        (sqlite3.SQLITE_PERM, True),
+        (sqlite3.SQLITE_PERM | 256, True),  # an extended form of the same primary code
+        (sqlite3.SQLITE_READONLY, True),
+        (23, False),  # SQLITE_AUTH: only an authorizer callback raises it, and none is set
+    ],
+)
+def test_the_codes_of_a_state_file_this_account_cannot_open_are_named(code: int, opened: bool) -> None:
+    """B13 round 20 X48: status keyed "cannot be opened" on (8, 14, 23) under a comment naming SQLITE_PERM,
+    which is 3; 23 is SQLITE_AUTH. A real SQLITE_PERM got the damaged-file words. The set is named once, in
+    doctor, and status reads it."""
+    exc = sqlite3.OperationalError("unable to open database file")
+    exc.sqlite_errorcode = code  # type: ignore[attr-defined]
+    assert doctor.cannot_open(exc) is opened
+    words = cli._unread_words(exc)
+    if opened:
+        assert (
+            words
+            == "the state file cannot be opened: unable to open database file; the state_dir lines say why"
+        )
+    else:
+        assert words == "the state file cannot be read: unable to open database file", words
+
+
+def test_a_manifest_this_account_cannot_open_keeps_its_reason(tmp_path: Path) -> None:
+    """B13 round 20 X47: W65's ManifestOpenError set no strerror, so status lost the reason ("a file cannot be
+    opened; the state_dir lines say why", where fba3908a said "...: Permission denied"). The reason is its own
+    attribute: setting strerror would turn ``str()`` into "[Errno 13] Permission denied", which the one-line
+    ``error: state:`` must not print."""
+    from agentsync import manifest as manifest_mod  # noqa: PLC0415
+
+    made = ManifestOpenError(
+        "/x/manifest.sqlite cannot be opened: Permission denied", errno.EACCES, "Permission denied"
+    )
+    assert str(made) == "/x/manifest.sqlite cannot be opened: Permission denied"
+    assert (
+        cli._unread_words(made) == "a file cannot be opened: Permission denied; the state_dir lines say why"
+    )
+    assert cli._unread_words(ManifestOpenError("x", errno.EACCES)) == (
+        "a file cannot be opened; the state_dir lines say why"
+    )
+    assert cli._unread_words(ManifestPathError("x", errno.EISDIR, "Is a directory")) == (
+        "a file cannot be opened: Is a directory"
+    )
+    if os.geteuid() != 0:  # root opens a mode-000 file
+        db = tmp_path / "state" / "manifest.sqlite"
+        db.parent.mkdir()
+        db.write_bytes(b"")
+        db.chmod(0)
+        try:
+            with pytest.raises(ManifestOpenError) as raised:
+                manifest_mod._connect(db)
+        finally:
+            db.chmod(0o600)
+        assert raised.value.reason == "Permission denied" and raised.value.strerror is None
+        assert str(raised.value) == f"{db} cannot be opened: Permission denied"
+
+
+@pytest.mark.parametrize("layout", ["manifest is a folder", "state folder is a file"])
+def test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str], layout: str
+) -> None:
+    """B13 round 20 X49: W65 gave every OSError from opening the manifest the access fix ("owner and mode 600;
+    the file itself is not damaged"), a folder where the file belongs (EISDIR) and a file where its folder
+    belongs (EEXIST) included. Those stay one line with no traceback, and name no owner or mode."""
+    from agentsync import manifest as manifest_mod  # noqa: PLC0415
+
+    cfg = str(initialised.config_path)
+    db = initialised.state_paths.db
+    if layout == "manifest is a folder":
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+        db.rename(db.with_name("kept.sqlite"))
+        for side in db.parent.glob(db.name + "-*"):
+            side.unlink()
+        db.mkdir()
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        err = capsys.readouterr().err
+        assert "Traceback" not in err and "IsADirectoryError" not in err, err
+        (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
+        assert line == f"error: {db} cannot be opened: Is a directory", line
+        assert cli.MANIFEST_OPEN_FIX not in err, err
+        target = db
+    else:  # a sync's lock opens the state folder first; the manifest's own open is what this range covers
+        folder = tmp_path / "x49-state"
+        folder.write_text("not a folder\n", encoding="utf-8")
+        target = folder / "manifest.sqlite"
+    with pytest.raises(ManifestPathError) as raised:
+        manifest_mod._connect(target)
+    assert not isinstance(raised.value, ManifestOpenError)
+    assert raised.value.errno in (errno.EISDIR, errno.EEXIST, errno.ENOTDIR), raised.value.errno
 
 
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:

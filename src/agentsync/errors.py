@@ -16,15 +16,25 @@ class ManifestSchemaError(AgentSyncError):
     an older one, so this means a newer build wrote it: upgrade this install."""
 
 
-class ManifestOpenError(AgentSyncError, OSError):
-    """The manifest or its folder will not open for this account (EACCES, EPERM, EROFS: a root-owned file left
-    by one sudo run, a folder made read-only). The file itself is not damaged, so it is no exit 65 and its
-    move-aside fix would throw good state away: the CLI says one line and exits 1 (B13 round 19 W65). An
-    ``OSError`` too, so a caller that caught the raw error still does."""
+class ManifestPathError(AgentSyncError, OSError):
+    """The manifest or its folder will not open for a reason that is no access of this account's: a folder
+    where the file belongs (EISDIR), a file where its folder belongs (EEXIST, ENOTDIR), a full disk. One line
+    and exit 1, as every AgentSyncError, with no fix that names the owner or the mode (B13 round 20 X49: every
+    OSError got the access fix; a plain OSError would have been a traceback). An ``OSError`` too, so a caller
+    that caught the raw error still does. ``reason`` is the system's words (``strerror``), kept apart from
+    ``OSError.strerror``: with both errno and strerror set ``str()`` reads ``[Errno 13] ...``, which the
+    one-line error must not (B13 round 20 X47)."""
 
-    def __init__(self, message: str, errno_: int | None = None) -> None:
+    def __init__(self, message: str, errno_: int | None = None, reason: str | None = None) -> None:
         super().__init__(message)
         self.errno = errno_
+        self.reason = reason
+
+
+class ManifestOpenError(ManifestPathError):
+    """The manifest or its folder will not open for this account (EACCES, EPERM, EROFS: a root-owned file left
+    by one sudo run, a folder made read-only). The file itself is not damaged, so it is no exit 65 and its
+    move-aside fix would throw good state away: the CLI says one line and exits 1 (B13 round 19 W65)."""
 
 
 class LockHeldError(AgentSyncError):

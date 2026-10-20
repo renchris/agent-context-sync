@@ -25303,6 +25303,9 @@ mean a damaged database, and moving an intact manifest aside throws its history 
 sqlite will not open exit 1. Handled where it happens, not with a broad `OSError` arm that would hide code
 defects. Status's owner and mode FAIL is lane RA's W64 (§16.140), which this line's words were sent to. Test:
 `test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (file and folder; skipped as root).
+Amended 2026-10-20, §16.149 X47, X49: the error keeps the system's words as its own `reason` (status: `a file
+cannot be opened: <reason>; the state_dir lines say why`), and only EACCES, EPERM and EROFS are
+`ManifestOpenError` with this fix; any other errno is its base `ManifestPathError`, one `error:` line with no fix.
 
 **W41: damage under any table fails status and stops the sync (`agentsync.cycle`, `agentsync.ops.doctor`,
 `agentsync.cli`, `agentsync.setup_report`; amends §16.131 U64, §16.129 U55 and §16.133 U84).** Damage under the cache or outputs table left
@@ -25963,7 +25966,30 @@ Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_
 
 ### 16.149 Round 20: an unopenable manifest, index-root damage and staging's exclusion (2026-10-20, wave B13 round 20 lane B)
 
-Reserved for round 20 lane B of B13.
+Round 20's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 20"; specs `round20/items/X<n>.md`), each the
+verifier's corrected fix. A dated line this round writes reads `Amended 2026-10-20, §16.149 X<n>`.
+
+**X48: the codes of a state file this account cannot open are named once (`agentsync.ops.doctor`, `agentsync.cli`).**
+Status keyed `the state file cannot be opened: ...; the state_dir lines say why` on the primary codes (8, 14, 23)
+under a comment naming SQLITE_PERM, which is 3; 23 is SQLITE_AUTH, which only an authorizer callback raises and
+none is set. A real SQLITE_PERM got the damaged-file words. `doctor.CANNOT_OPEN_CODES` (CANTOPEN, PERM, READONLY,
+by name) and `doctor.cannot_open(exc)` (an extended code included, as `contended`) are the one set; status reads
+it, and the setup report's own set (lane RA, §16.146 X42, X60) names the same three. Test:
+`test_cli.py::test_the_codes_of_a_state_file_this_account_cannot_open_are_named`.
+
+**X47, X49: a manifest that will not open keeps its reason, and only an access error gets the access fix
+(`agentsync.errors`, `agentsync.manifest`, `agentsync.cli`; amends §16.143 W65).** W65's `ManifestOpenError` set
+no `strerror`, so status said `a file cannot be opened; the state_dir lines say why` where it had said `...:
+Permission denied`. Setting `strerror` would have turned `str()` into `[Errno 13] Permission denied`, which the
+one-line `error: state:` must not print, so the system's words are the error's own `reason`, and
+`cli._unread_words` reads it: `a file cannot be opened: <reason>; the state_dir lines say why`. And every
+`OSError` from `manifest._connect` got `MANIFEST_OPEN_FIX` (owner and mode 600), a folder where the file belongs
+(EISDIR) and a file where its folder belongs (EEXIST, ENOTDIR) included. Only EACCES, EPERM and EROFS raise
+`ManifestOpenError` now; any other errno raises its base, `errors.ManifestPathError` (an `AgentSyncError` and an
+`OSError`), which `cli._main`'s `AgentSyncError` arm says as `error: <db> cannot be opened: <reason>`, exit 1,
+with no fix line: not an `OSError` left raw, which no arm of `cli._main` catches and would be a traceback again.
+Tests: `test_cli.py::test_a_manifest_this_account_cannot_open_keeps_its_reason` and
+`test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix` (both layouts).
 
 ### 16.150 Round 20: the upgrade's retry note, converter errors and helper docstrings (2026-10-20, wave B13 round 20 lane E)
 
