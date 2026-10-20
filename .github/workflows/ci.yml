@@ -16,9 +16,10 @@ name: ci
 # is in CLAUDE.md's gate list; change both together.
 #
 # timeout-minutes was 30 until B13 round 19 W80: the job took 23 to 24 minutes on the four green runs before it,
-# and the same 5120 tests and source took 23:32 on one run and 20:23 on the next (6e7ae244, fba3908a: docs and
-# three test regexes apart), so the runner's own spread (about 3 minutes) and a round's new tests left too
-# little margin. No test added in the jump was an outlier to cut.
+# and the same 5120 tests and source took 24:00 on one run and 20:59 on the next (pytest's step 23:32 and 20:23;
+# 6e7ae244, fba3908a: docs and three test regexes apart), so the runner's own spread (about 3 minutes) and a
+# round's new tests left too little margin. No test added in the jump was an outlier to cut. Round 19's jobs then
+# took 20:59 to 24:46 (B13 round 20 X63), the range CLAUDE.md gives.
 on:
   workflow_dispatch:
   push:

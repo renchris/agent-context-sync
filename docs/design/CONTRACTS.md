@@ -25494,6 +25494,10 @@ step is built: `timeout-minutes` is 40 (a public repository, so a hung job costs
 CLAUDE.md gives 19 to 24 minutes and the new limit in the same commit. Test:
 `test_claude_md_gives_cis_time_and_its_limit`, which reads the limit from ci.yml and holds it 10 minutes above
 the range's top.
+Amended 2026-10-20, §16.151 X63: 23:32 and 20:23 were the pytest step's times, not the job's; those two jobs took
+24:00 and 20:59 (`gh run view --json jobs`), and round 19's jobs took 20:59 to 24:46, so "19 to 24", which mixed
+the two, named no job and one ran past its top. CLAUDE.md gives 21 to 25 minutes, the jobs' own range, under the
+same 40-minute limit, and ci.yml's note gives the job times with pytest's beside them.
 
 All nine are built; none was recorded as making things worse. W44, W59 and W60 are one defect, built once.
 
@@ -25553,6 +25557,12 @@ for the slow-doctor grace, which is §16.134's (round 18 lane RA); one token, co
 from §16.140 on and finds the item in section N. Measured over the whole file, 8 older citations (rounds 4 to 15,
 such as G29's under §16.62 and Q31's under §16.110) fail the same read; their ids repeat across waves (Q31 is in
 five sections), so each needs its own round's evidence, and they are left as they are.
+
+**CI's time is the jobs' own** (X63; dated line at §16.145 W80). W80's "23.5 and then 20 minutes" were the pytest
+step's 23:32 and 20:23; those jobs took 24:00 and 20:59, and round 19's took 20:59 to 24:46 (re-read with `gh run
+view --json jobs`, and 21:17 for 34818253), so CLAUDE.md's "19 to 24", which mixed the two, named no job. It gives
+21 to 25 and the same 40-minute limit, ci.yml's note gives the job times with pytest's beside them, and the test
+holds the limit 10 minutes above 25. Test: `test_claude_md_gives_cis_time_and_its_limit`.
 
 **U78's fix head is the one install.sh gets since W48** (X68; dated line at §16.132 U78). U78 quoted `_again_fix`
 as `run the same <installer> command again ...`; under install.sh it starts `doctor.AGAIN_UNDER_INSTALL_SH` since
