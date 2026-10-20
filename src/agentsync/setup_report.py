@@ -3400,7 +3400,9 @@ def _rewrite_values(base: str) -> tuple[str, str, str] | None:
     if "://" in base:
         rest = base.split("://", 1)[1]
         auth, sep, path = rest.partition("/")
-        hostport = auth.rpartition("@")[2]
+        # the host ends at a query or a fragment too, as the shell's git_remote_entries cuts it: after the
+        # "@", then at "?" or "#", then at ":" (B13 round 18 V88: "https://host?x" registered "host?x")
+        hostport = re.split(r"[?#]", auth.rpartition("@")[2], maxsplit=1)[0]
         host = hostport.split(":", 1)[0]
         value, scp = host, False
     else:

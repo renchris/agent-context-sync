@@ -1461,6 +1461,24 @@ def test_a_docs_repo_remotes_host_is_a_proxy_placeholder_where_git_names_it(
     assert "contoso-docs" not in said and re.search(r"'https://<proxy-\d+>/x'", said), said
     said = red.redact(f"fatal: unable to access '{url}/': error: 403")
     assert "team-zeta" not in said and re.search(r"'https://<proxy-\d+>/<proxy-\d+>/'", said), said
+    # B13 round 18 V88: the host ends at a query or a fragment, as the shell cuts it
+    for odd in ("https://git.contoso-docs.invalid?x", "https://git.contoso-docs.invalid#x"):
+        subprocess.run(["git", "-C", str(docs), "remote", "set-url", "origin", odd], check=True)
+        red = setup_report._build_redactor(
+            setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+        )
+        said = red.redact(
+            f"fatal: unable to access '{odd}/': Could not resolve host: git.contoso-docs.invalid"
+        )
+        assert "contoso-docs" not in said, said
+    assert setup_report._rewrite_values("https://proxy.fabrikam.invalid?x") == (
+        "proxy.fabrikam.invalid",
+    ) * 2 + ("",)
+    assert setup_report._rewrite_values("https://u@proxy.fabrikam.invalid:8443#y/team-zeta/") == (
+        "proxy.fabrikam.invalid",
+        "proxy.fabrikam.invalid",
+        "/team-zeta",
+    )
 
 
 # ---- the v5 friction log -------------------------------------------------------------------------------

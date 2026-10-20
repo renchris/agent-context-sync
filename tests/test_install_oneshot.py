@@ -12157,6 +12157,28 @@ def test_a_git_remotes_host_is_redacted_in_both_readers(
     ]
 
 
+def test_a_git_remotes_host_ends_at_a_query_or_fragment_in_both_readers(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 18 V88: Python registered ``git.zeta-corp.example?x`` for a remote ``https://...?x`` (its
+    rewrite value cut at ``/`` only), so git's ``Could not resolve host: git.zeta-corp.example`` stayed in
+    clear while the shell, which cuts at ``[/?#]``, redacted it."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    git = Path(env["HOME"]) / "src" / "agent-context-sync" / ".git"
+    git.mkdir(parents=True)
+    (git / "config").write_text(
+        '[core]\n\tbare = false\n[remote "origin"]\n\turl = https://git.fabrikam-eng.invalid?x\n'
+    )
+    said = (
+        "fatal: unable to access 'https://git.fabrikam-eng.invalid?x/': Could not resolve host: "
+        "git.fabrikam-eng.invalid"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == python, (shell, python)
+    assert "fabrikam" not in shell, shell
+
+
 def test_a_governance_lines_remote_url_and_the_docs_repos_host_are_redacted_in_both_readers(
     env: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
