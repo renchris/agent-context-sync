@@ -8240,7 +8240,12 @@ def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_pa
     default 15 s. The status wait now counts its first interval from where the pandoc start began: a line
     is printed once the two have lasted one interval together, though neither did alone. The two functions
     are run here as the script has them, in step 5's order, and the wait after those two counts from its
-    own start again."""
+    own start again.
+
+    B13 round 20 X36: a start silent for most of an interval left the status wait's first line to print
+    "status: still running, 1s" after 14 s of silence (status's own time). A start silent for half an
+    interval or more ends with its own "pandoc: started after Ns" line, so the status line comes a full
+    interval after it and no status count is smaller than the silence before it."""
     quiet = _write_exe(tmp_path / "pandoc", "#!/bin/bash\nsleep 2.5\n")
     lines = [
         "set -euo pipefail",
@@ -8252,7 +8257,7 @@ def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_pa
         _shell_function("watchdog"),
         _shell_function("start_pandoc_once"),
         "start_pandoc_once",
-        "with_progress status sleep 4",
+        "with_progress status sleep 7",
         "echo status is done",
         "with_progress 'first sync' sleep 1",
         "echo the run goes on",
@@ -8267,6 +8272,9 @@ def test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock(tmp_pa
     assert said, "neither wait lasted an interval, the two together did: a line says the run is alive"
     progress = rf"status: still running, \d+s|{PANDOC_PROGRESS}|pandoc: started after \d+s"
     assert all(re.fullmatch(progress, ln) for ln in said), cp.stdout
+    assert re.fullmatch(r"pandoc: started after [23]s", said[0]), cp.stdout
+    beats = [int(m) for ln in said for m in re.findall(r"^status: still running, (\d+)s$", ln)]
+    assert beats and min(beats) >= 4, cp.stdout  # one interval (5 s) after the pandoc line, a second's slack
 
 
 def test_the_config_step_logs_no_count_nobody_took(env: dict[str, str], folder: Path, wheel: Path) -> None:

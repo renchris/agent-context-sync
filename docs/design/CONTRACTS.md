@@ -9947,6 +9947,8 @@ PROGRESS_SINCE=""    # scripts/install.sh: $SECONDS at the last line of a wait t
 - `with_progress` counts its first interval from `$PROGRESS_SINCE` when that is set, and clears it. So a
   `status: still running, <N>s` line is due one interval after the pandoc start's last line, or after its
   start when it printed none. `<N>` is still the time status itself has run, so the first one can be small.
+  Amended 2026-10-20, §16.147 X36: small only after a start shorter than half an interval; a start silent for
+  half an interval or more ends with its own `pandoc: started after <N>s` line.
 - It is used once. The first sync's wait and the closing status begin their own count, as before.
 - Not covered: reading the config for the pandoc path prints no line of its own. That takes 0.1 s as a
   rule and is stopped at 20 s, so only a read slower than the interval is quiet for longer than one.
@@ -25728,6 +25730,19 @@ new build. It is now printed after the summary with the step's label (`sync: not
 handling. Lane E's X11 is the same defect and cites this sha. Test: `test_the_first_sync_shows_the_upgrades_retry_note`
 (a stub sync that prints the note and exits 0: one labeled line after the summary, install.log's note
 unchanged).
+
+**A pandoc start silent for half an interval ends with its own line** (X36; amends §16.32). `start_pandoc_once`
+printed nothing when its ticker had not, and `with_progress` counts status's first interval from the start's
+clock (`PROGRESS_SINCE`) but prints status's own time, so a 13 s silent start was followed by `status: still
+running, 1s`, the first line after 14 s of silence (rehearsal home 3, load about 200). The verifier's fix B: a
+start silent for half an interval or more (`PROGRESS_EVERY / 2`, at least 1, so 7 s by default) now ends with
+`pandoc: started after <N>s`, which moves the shared clock, so status's first line comes a full interval later
+with a real count. A shorter start stays silent, as every start but the first is; its carry-over can still make
+status's first count small, at worst about half an interval. The `status: still running, <N>s` format is kept
+(fix A's suffix would change a line tests and the prompt match). The verifier's `(PROGRESS_EVERY + 1) / 2` was not
+used: at the test's interval of 5 it is 3, which a 2.5 s start reaches only when it straddles a second.
+Test: `test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock` (a 2.5 s silent start at an interval
+of 5 prints `pandoc: started after 2s` or `3s`, and no status count is under 4).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 

@@ -6995,12 +6995,14 @@ print(pandoc)
 # take longer than the 60 s status gives it, and this wait is the installer's own, with progress lines. At
 # most $PANDOC_START_SECONDS, the time a conversion gives pandoc; past that it is stopped and status says
 # what it finds. Never fails the run: a pandoc that is missing or broken is the check's to report, with its
-# fix. Quiet when the start is quick, which every start but the first is. Its clock is $PROGRESS_SINCE (see
-# with_progress): the status wait after it goes on counting from this function's last line, or from its
-# start when it printed none, the time status_pandoc took included.
+# fix. Quiet when the start takes under half a progress interval, which every start but the first does; one
+# silent for longer ends with its "started after" line, so the status wait's first line comes a full interval
+# later and shows a real count, not "status: still running, 1s" after 14 s of silence (B13 round 20 X36). Its
+# clock is $PROGRESS_SINCE (see with_progress): the status wait after it goes on counting from this function's
+# last line, or from its start when it printed none, the time status_pandoc took included.
 PANDOC_START_SECONDS=300
 start_pandoc_once() {
-	local pandoc pid wd t0=$SECONDS since rc=0 shown=0
+	local pandoc pid wd t0=$SECONDS since rc=0 shown=0 half
 	PROGRESS_SINCE=$SECONDS
 	pandoc="$(status_pandoc)"
 	[ -n "$pandoc" ] && [ -x "$pandoc" ] || return 0
@@ -7049,7 +7051,9 @@ start_pandoc_once() {
 		say "pandoc: no answer after ${PANDOC_START_SECONDS}s; status checks it next"
 		return 0
 	fi
-	[ "$shown" -eq 1 ] || return 0
+	half=$((PROGRESS_EVERY / 2))
+	[ "$half" -ge 1 ] || half=1
+	[ "$shown" -eq 1 ] || [ $((SECONDS - since)) -ge "$half" ] || return 0
 	PROGRESS_SINCE=$SECONDS
 	say "pandoc: started after $((SECONDS - t0))s"
 }
