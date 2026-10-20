@@ -15179,6 +15179,11 @@ output other than `skipped-dataless` or `tombstone` (a page made from read bytes
 line ends `; re-screened S for a rule change (also counted above, K of them unchanged)`, after every parsed
 clause and with no bare `converted`, `deferred` or `read again`, so install.sh's `SYNC_SUMMARY_RE`, its awk and
 `_CONVERTED_LINE_RE` read the line as before. Test: `test_a_policy_rescreen_is_counted_apart_on_the_sync_line`.
+Amended 2026-10-20, §16.150 X34: a no-converter stub counts too when its pages were made from read bytes (an output
+whose converter id is not `none`: a binary .msg read, then withheld by a label rule), or when a label rule withheld it
+by its name and that sync's [policy] change queued it, not a later sync while
+`policy_rescreen_pending` stays set; a stub of
+a file no converter claims still does not.
 
 **F12, F45: the report's Doctor section points at its Loop line (`agentsync.ops.doctor`, `agentsync.cli`).**
 `doctor._LISTING_YOURS_NOTE` (`... the WAITING ON YOU lines at the end of this run say whether it still is`) stays
@@ -26223,6 +26228,21 @@ page as it was).
 **The upgrade's retry note in install.sh's first sync (X11).** One defect with X85: on a field Mac the upgrade's
 move runs in step 2's first sync, whose screen showed only the summary line. Built once, by lane RB in
 `show_first_sync` (§16.147, X85, `ecd5c001`); its words are X53's below.
+
+**The sync line names the conversions a lifted label rule queues (X34; `agentsync.cycle`; dated line at §16.57
+F35).** Once a label rule was removed the sync line read `converted 9, ...; re-screened 7 for a rule change`: the
+re-screen count left out every no-converter stub, as made with no byte read. A binary .msg read and then
+withheld has pages from its bytes, and an image withheld by its name is converted because the rule change
+queued it (`mark_for_rescreen`'s withheld arm). `_after_fetch` now counts such a stub (`_rescreened_stub`: an
+output whose converter id is not `NO_CONVERTER_ID`, or a withheld reason in the cycle whose [policy] change
+queued it, `_rescreen_queued`; not `_RESCREEN_META`, which stays set for as long as any label-capable file is
+pending, so an image stubbed while OCR was missing and edited later would count) in S, never through
+`_reread_n` or `_reread_first`, so the capability re-read line, the run record's `reread` and the first-read
+clause are unchanged, and no new clause reaches install.sh or the report. A queued stub that sync does not
+convert (online-only, out of time) is left out of S in the sync that does, as before. Tests:
+`test_cycle.py::test_the_sync_line_after_a_label_rule_is_lifted_names_every_conversion_it_counts` (an image
+and a binary .msg, then the image alone: no rule, the rule, the rule removed; S equals N and no `reread`),
+`test_cycle.py::test_an_image_stub_converted_after_a_rule_changes_sync_is_no_re_screen`.
 
 **The upgrade's retry note counts tries in each file's own source (X53; `agentsync.cli`,
 `agentsync.setup_report`; dated line at §16.144 W18).** `retry_settled_failures` moves the settled failures of

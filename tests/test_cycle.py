@@ -3357,6 +3357,63 @@ def test_a_policy_tweak_that_keeps_the_label_rule_reads_no_binary_msg_again(
     assert rep.refused == 0
 
 
+@pytest.mark.parametrize("files", ["png and msg", "png"])
+def test_the_sync_line_after_a_label_rule_is_lifted_names_every_conversion_it_counts(
+    files: str,
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 20 X34 (probe run 13): once a label rule was removed, the sync line read "converted 9 ...;
+    re-screened 7 for a rule change", 2 conversions in no clause. A no-converter stub was left out of the
+    re-screen count as made with no byte read, but a binary .msg read and then withheld by the rule has pages
+    from its bytes, so it is a re-screen; and an image withheld by its name, never read, is converted now
+    because the rule change queued it (``mark_for_rescreen``'s withheld arm), so it is counted with the
+    re-screens too, never as a re-read: the run record has no ``reread``."""
+    from agentsync import cli  # noqa: PLC0415
+
+    _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    if "msg" in files:
+        (local_source_dir / KICKOFF_MSG).write_bytes(msg_bytes(plain="Renewal is in March.\n"))
+    assert run(config_with(tmp_path, local_source_dir)).exit_code == 0
+    assert run(config_with(tmp_path, local_source_dir, LABEL_RULE)).exit_code == 0
+    assert _image_page(config_with(tmp_path, local_source_dir), SITE_PLAN)[0]["status"] == "refused"
+    lifted = config_with(tmp_path, local_source_dir)
+    report = run(lifted)
+    assert report.exit_code == 0
+    rep = source_report(report)
+    capsys.readouterr()
+    cli._print_report(report)
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last.startswith(
+        f"converted {rep.converted}, deferred 0 online-only; re-screened {rep.converted} "
+    ), last
+    assert _image_page(lifted, SITE_PLAN)[0]["status"] == "current"
+    assert "reread" not in _run_record(lifted) and report.read_again == 0
+
+
+def test_an_image_stub_converted_after_a_rule_changes_sync_is_no_re_screen(
+    tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 20 X34, its review: ``policy_rescreen_pending`` stays set while any label-capable file is
+    still pending, for many syncs, so the withheld-stub arm reads the sync whose [policy] change queued it,
+    not that flag. An image stubbed while OCR was missing and edited once OCR is back is a first read of new
+    bytes in any sync after it, never "re-screened for a rule change"."""
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    cfg = config_with(tmp_path, local_source_dir)
+    assert run(cfg).exit_code == 0
+    assert _image_page(cfg, SITE_PLAN)[0]["reason"] == "no converter for .png"
+    _use_ocr(monkeypatch, tmp_path)
+    picture(local_source_dir / SITE_PLAN, "North gate")
+    with Manifest(cfg.state_paths.db) as m:
+        m.set_meta(cycle_mod._RESCREEN_META, "a re-screen still under way")
+    report = run(cfg)
+    assert report.exit_code == 0 and _image_page(cfg, SITE_PLAN)[0]["status"] == "current"
+    assert report.rescreened == 0, report
+
+
 def test_a_binary_msg_read_under_the_rule_then_online_only_is_read_once_the_rule_is_lifted(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

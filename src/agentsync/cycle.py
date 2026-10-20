@@ -1836,6 +1836,7 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._cannot_run_why: dict[int, BaseException] = {}  # and why not, as this cycle reads it (W51)
         self._waiting_ids: set[tuple[str, str]] = set()  # stubs counted as waiting in this cycle (W2)
+        self._rescreen_queued = False  # this cycle's [policy] change queued files for a re-screen (X34)
         self._convert_retries: dict[str, dict[str, tuple[str, int]]] = {}  # per source: _RETRY_META
         self._reread_n = 0  # files read again
         self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
@@ -2147,6 +2148,7 @@ class _Cycle:
                 _LABEL_CAPABLE, sorted(label_withheld_suffixes()), unread_only=policy.labels_active
             )
             if marked:
+                self._rescreen_queued = True
                 self.manifest.set_meta(_RESCREEN_META, current)
                 log.warning(
                     "[policy] changed: %d label-capable %s queued for a re-screen",
@@ -4896,12 +4898,15 @@ class _Cycle:
         again = reread and same and not _unavailable_stub(fresh)
         # A re-screen (B13 round 5 F35): a [policy] or secret-rule change forgot the hashes of a file whose
         # pages were made from its bytes (``mark_for_rescreen``, ``mark_quarantined_rescreen``), so it is
-        # converted again. Only a page made from read bytes counts: an online-only placeholder's, a
-        # tombstone's and a no-converter stub's were made with no byte read, and a re-read is counted apart.
+        # converted again. Only a page made from read bytes counts: an online-only placeholder's and a
+        # tombstone's were made with no byte read, and a re-read is counted apart. A no-converter stub counts
+        # when its pages were made from its bytes (a binary .msg read, then withheld by a label rule) or when
+        # a label rule withheld it by its name and this cycle's rule change queued it (``mark_for_rescreen``'s
+        # withheld arm): it is converted for that change, so the sync line names it (B13 round 20 X34)
         rescreen = (
             not reread
             and row.content_sha256 is None
-            and not _no_converter_stub(row)
+            and (not _no_converter_stub(row) or self._rescreened_stub(row, outs))
             and any(o.status not in (OutputStatus.SKIPPED_DATALESS, OutputStatus.TOMBSTONE) for o in outs)
         )
         # ...or bytes never read before, behind a stub made from the name: the stub is what there is to keep
@@ -5034,6 +5039,18 @@ class _Cycle:
             or row.state_reason in (RECORDING_WAITS, *_RECORDING_STOPPED_REASONS)
             or _no_converter_stub(row)
         )
+
+    def _rescreened_stub(self, row: ItemRow, outs: Sequence[OutputRow]) -> bool:
+        """Whether the no-converter stub of ``row``, its hashes forgotten, is converted for a rule change
+        (B13 round 20 X34): its pages were made from read bytes (a converter's id, not ``NO_CONVERTER_ID``),
+        or it is a stub a label rule withheld by its name with no byte read, which this cycle's [policy]
+        change queued (``_rescreen_queued``). Not by ``_RESCREEN_META``, which stays set while any
+        label-capable file is still pending, for many syncs: an image stubbed while OCR was missing and later
+        edited would count as a re-screen then. A stub of a file no converter claims is not one either."""
+        if any(o.converter_id != NO_CONVERTER_ID for o in outs if o.status is not OutputStatus.TOMBSTONE):
+            return True
+        withheld = {NO_CONVERTER_PREFIX + s.lower() for s in label_withheld_suffixes()}
+        return self._rescreen_queued and row.state_reason in withheld
 
     def _retries(self, src: SourceConfig, row: ItemRow, h1: str, acc: _SourceAcc) -> bool | None:
         """Whether the early cutoff converts ``row`` again from the bytes its stub was made from: the stub of
