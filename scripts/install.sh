@@ -4485,21 +4485,23 @@ older_report_rewrite() { # MODE
 		!det && !fence && (j = index($0, "(a line written after that is not in this report: run setup-report again)")) {
 			$0 = substr($0, 1, j - 1) "(a line written after that is not in this report: run `" inst " --report-only` again)" substr($0, j + 73)
 		}
-		!det && !fence && sec == "## Friction log" && $0 ~ /^- attempt [0-9]+ \(lines? [0-9]+(-[0-9]+)?; / {
+		!det && !fence && sec == "## Agent friction log" && $0 ~ /^- attempt [0-9]+ \(lines? [0-9]+(-[0-9]+)?; / {
+			# its own names (ax, ak, ay): k is the count of left-out install.out lines (B13 round 18 V22)
 			if (match($0, /^- attempt [0-9]+ \(lines [0-9]+-[0-9]+;/)) {
-				x = substr($0, 1, RLENGTH); k = index(x, "("); y = substr(x, k + 7, length(x) - k - 7); j = index(y, "-")
-				if (substr(y, 1, j - 1) == substr(y, j + 1)) $0 = substr(x, 1, k) "line " substr(y, 1, j - 1) ";" substr($0, RLENGTH + 1)
+				ax = substr($0, 1, RLENGTH); ak = index(ax, "("); ay = substr(ax, ak + 7, length(ax) - ak - 7); j = index(ay, "-")
+				if (substr(ay, 1, j - 1) == substr(ay, j + 1)) $0 = substr(ax, 1, ak) "line " substr(ay, 1, j - 1) ";" substr($0, RLENGTH + 1)
 			}
 			if (!index($0, "; prompt ") && (j = index($0, ", prompt "))) {
 				$0 = substr($0, 1, j - 1) "; prompt " substr($0, j + 9)
-				if ((k = index(substr($0, j), ", agent "))) $0 = substr($0, 1, j + k - 2) "; agent " substr($0, j + k + 7)
+				if ((ak = index(substr($0, j), ", agent "))) $0 = substr($0, 1, j + ak - 2) "; agent " substr($0, j + ak + 7)
 			}
 			if (ends($0, "; finished") && index(substr($0, 1, length($0) - 10), " finished")) $0 = substr($0, 1, length($0) - 10)
 		}
 		# the last install run\047s commit, and the fetch\047s date, from install.log and FETCH_HEAD (B13 round 17 U27)
 		!det && !fence && match($0, /; last install\.sh run: commit -($|[;) ])/) {
-			k = substr($0, RSTART + RLENGTH - 1, 1); k = (k == "-" ? "" : k)
-			$0 = substr($0, 1, RSTART - 1) (ENVIRON["OR_LASTRUN"] != "" ? "; last install.sh run: " ENVIRON["OR_LASTRUN"] : "") k substr($0, RSTART + RLENGTH)
+			# its own name (lt): k is the count of left-out install.out lines (B13 round 18 review)
+			lt = substr($0, RSTART + RLENGTH - 1, 1); lt = (lt == "-" ? "" : lt)
+			$0 = substr($0, 1, RSTART - 1) (ENVIRON["OR_LASTRUN"] != "" ? "; last install.sh run: " ENVIRON["OR_LASTRUN"] : "") lt substr($0, RSTART + RLENGTH)
 		}
 		!det && !fence && ENVIRON["OR_FETCH"] != "" && (j = index($0, "(as of the checkout\047s last fetch)")) {
 			$0 = substr($0, 1, j) ENVIRON["OR_FETCH"] substr($0, j + 32)

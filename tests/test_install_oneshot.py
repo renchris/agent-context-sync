@@ -9264,6 +9264,46 @@ def _stopped_copy_of(env: dict[str, str], tmp_path: Path, report: str) -> str:
     return (report_path(env).parent / "setup" / "stopped-copy-report.md").read_text()
 
 
+def test_a_stopped_copy_with_an_undated_last_run_keeps_its_left_out_count(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 18 (lane RB's review): the rule that names the last install run on v10's "last install.sh
+    run: commit -" line wrote its tail character into the awk variable k, the count of install.out lines a
+    stopped copy leaves out, so the tail's summary lost "N of them left out" or read "; ; of them left
+    out"."""
+    report = "\n".join(
+        [
+            "# agentsync setup report",
+            "",
+            "## Summary",
+            "",
+            "- outcome: x",
+            "",
+            "### Run metadata",
+            "",
+            "- agentsync: checkout ~/nowhere @ 0123456789ab; last install.sh run: commit -; took 2s",
+            "",
+            "## Installer",
+            "",
+            "<details><summary>the last 3 lines of ~/agent-context/setup/install.out (what the agent "
+            "saw)</summary>",
+            "",
+            "~~~text",
+            "report: ~/agent-context/setup-report.md",
+            "bring back: ~/agent-context/bring-back.md (one file: report, fix request, local work)",
+            "NEXT: stop",
+            "~~~",
+            "",
+            "</details>",
+            "",
+        ]
+    )
+    text = _stopped_copy_of(env, tmp_path, report)
+    assert (
+        "(what the agent saw; 1 of them left out: the bring-back and issue link lines)</summary>" in text
+    ), text
+
+
 def test_a_stopped_copys_waits_of_ten_or_more_folders_keep_their_count(
     env: dict[str, str], tmp_path: Path
 ) -> None:
@@ -9586,7 +9626,7 @@ _V10_TAIL = [
     "- agentsync: checkout ~/src/agent-context-sync @ 0123456789ab \u00b7 on origin/main: yes (as of the "
     "checkout's last fetch); last install.sh run: commit -",
     "",
-    "## Friction log",
+    "## Agent friction log",
     "",
     "Embedded from ~/agent-context/setup/friction.md as this report read it: 7 line(s), last modified "
     "2026-10-18T10:00:05Z (a line written after that is not in this report: run setup-report again). "
@@ -9613,7 +9653,7 @@ def _now_tail(fetch: str) -> list[str]:
         f"({fetch}); "
         "last install.sh run: commit 0123456789ab",
         "",
-        "## Friction log",
+        "## Agent friction log",
         "",
         "Embedded from ~/agent-context/setup/friction.md as this report read it: 7 lines, last modified "
         "2026-10-18T10:00:05Z (a line written after that is not in this report: run "
