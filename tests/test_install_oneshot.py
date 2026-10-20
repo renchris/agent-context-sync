@@ -13733,6 +13733,13 @@ def test_a_policy_or_governance_value_is_redacted_alike_in_both_readers(
             "[governance].history_days: expected an integer >= 1, got <value>; [governance].archive: "
             "expected true/false, got <value>. (fix: set it)",
         ),
+        # B13 round 20 X82: a no-break space ends a value as Python's \s does; the shell cut at the "." and
+        # kept ".5" in clear
+        (
+            "Tundra",
+            "[governance].history_days: expected an integer >= 1, got 1.5\u00a0z (fix: set a number)",
+            "[governance].history_days: expected an integer >= 1, got <value>\u00a0z (fix: set a number)",
+        ),
     ):
         shell, python = _fuzzy_report(env, monkeypatch, [folder], said)
         assert shell == python == want, (shell, python)
@@ -13770,6 +13777,34 @@ def test_the_shell_governance_value_program_stays_under_bsd_seds_limit() -> None
     )
     assert cp.stdout == b"[governance].hold: expected true/false, got <value> | fix col\n", cp.stdout[:200]
     assert time.monotonic() - start < 10
+
+
+def test_the_shell_governance_value_ends_at_every_blank_pythons_value_pattern_takes() -> None:
+    """B13 round 20 X82: the shell ended a value only at a blank, a tab, ";", ",", ")", "|", " (fix: " or
+    ".", so after a number "1.5" followed by \\r, \\v, \\f or a Unicode space the "." rule cut at "1" and kept
+    ".5". Every character Python's ``\\s`` matches now ends a value as setup_report._GOVERNANCE_VALUE_RE ends
+    it. The bytes setup_report's ``splitlines`` breaks a line at are tried here, on the program alone."""
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    funcs = "\n".join(
+        [
+            *(ln for ln in script.splitlines() if ln.startswith("GOVERNANCE_TYPED_KEYS=")),
+            *re.findall(r"(?ms)^gov_value_sed\(\) \{\n.*?^\}$", script),
+        ]
+    )
+    head = "[governance].history_days: expected an integer >= 1, got "
+    blanks = "\r\v\f\x1c\x1d\x1e\x1f\x85\xa0\u1680\u2000\u2005\u200a\u2028\u2029\u202f\u205f\u3000"
+    assert all(re.fullmatch(r"\s", b) for b in blanks)
+    lines = [f"{head}1.5{b}z (fix: x)" for b in blanks] + [f"{head}1.5\r"]
+    cp = subprocess.run(
+        [BASH32, "-c", funcs + "\nLC_ALL=C sed -E -f <(gov_value_sed)"],
+        input="".join(f"{ln}\n" for ln in lines).encode(),
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    got = cp.stdout.decode().split("\n")[:-1]
+    want = [f"{head}<value>{b}z (fix: x)" for b in blanks] + [f"{head}<value>\r"]
+    assert got == want, [(g, w) for g, w in zip(got, want, strict=True) if g != w]
 
 
 def test_the_shell_generic_home_dirs_are_the_reports() -> None:

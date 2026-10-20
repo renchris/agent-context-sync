@@ -2327,8 +2327,11 @@ gov_value_sed() {
 	# which is put back, "." last ("1.5;" is 1.5, not 1); a value the shape does not cover takes the wide cut.
 	# The shape is _repr_shape(1), one level of brackets, not Python's two: two levels make a pattern over
 	# BSD sed's 2048 bytes, which then prints nothing at all; a deeper value takes the wide cut, which covers
-	# more, never less (B13 round 19 W69).
-	local soh stx a items d1 c
+	# more, never less (B13 round 19 W69). A blank is any byte or UTF-8 sequence Python's \s matches (\r, \v,
+	# \f, \034-\037, U+0085, the no-break and other Unicode spaces), else "1.5<no-break space>z" kept ".5" in
+	# clear (B13 round 20 X82). The sequences are written out as literals: d1 holds more than nine groups, so
+	# sed's \1-\9 cannot reach a capture after it.
+	local soh stx a items d1 c seq
 	soh="$(printf '\001')" stx="$(printf '\003')"
 	a='('"'"'([^'"'"'\\]|\\.)*'"'"'|"([^"\\]|\\.)*"|-?[0-9]+(\.[0-9]+)?|True|False|None)'
 	items="($a( *[,:] *$a)*( *,)?)?"
@@ -2337,9 +2340,18 @@ gov_value_sed() {
 	printf 's/(\\[governance\\]\\.(%s): expected (a non-empty string|true\\/false|an integer >= [0-9]), got )/\\1%s/g\n' \
 		"$GOVERNANCE_TYPED_KEYS" "$stx"
 	printf 's/%s%s$/<value>/g\n' "$stx" "$d1"
-	for c in ' ' "$(printf '\t')" ';' ',' ')' '|' "$soh" '.'; do
+	for c in ' ' "$(printf '\t')" ';' ',' ')' '|' "$soh" "$(printf '\r')" "$(printf '\v')" "$(printf '\f')" \
+		"$(printf '\034')" "$(printf '\035')" "$(printf '\036')" "$(printf '\037')"; do
 		printf 's/%s%s[%s]/<value>%s/g\n' "$stx" "$d1" "$c" "$c"
 	done
+	for seq in '\302\205' '\302\240' '\341\232\200' '\342\200\200' '\342\200\201' '\342\200\202' \
+		'\342\200\203' '\342\200\204' '\342\200\205' '\342\200\206' '\342\200\207' '\342\200\210' \
+		'\342\200\211' '\342\200\212' '\342\200\250' '\342\200\251' '\342\200\257' '\342\201\237' \
+		'\343\200\200'; do
+		seq="$(printf '%b' "$seq")"
+		printf 's/%s%s%s/<value>%s/g\n' "$stx" "$d1" "$seq" "$seq"
+	done
+	printf 's/%s%s[.]/<value>./g\n' "$stx" "$d1"
 	printf 's/%s[^%s]+/<value>/g\n' "$stx" "$soh"
 	printf 's/%s//g\n' "$stx"
 	printf 's/%s/ (fix: /g\n' "$soh"

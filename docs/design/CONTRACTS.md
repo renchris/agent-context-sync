@@ -25038,6 +25038,9 @@ Python, never less. Tests: `test_a_policy_or_governance_value_is_redacted_alike_
 string holding both, a number before `;`, a dict, and a two-level list),
 `test_the_shell_governance_value_program_stays_under_bsd_seds_limit` (every rule under 2000 bytes; 9000 blanks
 inside brackets cut at once).
+Amended 2026-10-20, §16.147 X82: the delimiters are every character Python's `\s` matches (also `\r`, `\v`,
+`\f`, `\034` to `\037` and the Unicode spaces as UTF-8 literals), each tried before `.`; the program is 44 lines,
+its longest 591 bytes.
 
 **The git stop's one timestamp counts the attempt the renderer splits off** (W74; amends §16.135 V30).
 `step1_cmd_stop_facts` counted event lines from the last `Attempt:` line, while `parse_friction` also splits at a
@@ -25743,6 +25746,19 @@ status's first count small, at worst about half an interval. The `status: still 
 used: at the test's interval of 5 it is 3, which a 2.5 s start reaches only when it straddles a second.
 Test: `test_a_quiet_pandoc_start_and_the_status_wait_keep_one_progress_clock` (a 2.5 s silent start at an interval
 of 5 prints `pandoc: started after 2s` or `3s`, and no status count is under 4).
+
+**The shell's `<value>` cut ends at every blank Python's does** (X82; amends §16.141 W69). `gov_value_sed` ended a
+value's shape only at a blank, a tab, `;`, `,`, `)`, `|`, the ` (fix: ` sentinel or `.`, while
+`setup_report._GOVERNANCE_VALUE_RE` ends one at any `\s`. After `1.5` and a no-break space, `\r`, `\v`, `\f`
+or another Unicode space, no delimiter rule matched, so the `.` rule cut at `1` and `.5` stayed in clear. The
+verifier measured more than the finder's four: Python's `\s` also takes `\034` to `\037`, U+0085, U+1680,
+U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000. The single bytes join the bracket loop; the UTF-8
+sequences get a loop of their own, each written back as a literal (`d1` holds more than nine groups, so sed's
+`\1`-`\9` cannot reach a capture after it), all before the `.` rule. The program grows from 18 to 44 lines and
+its longest stays at 591 bytes, under BSD sed's limit. Tests:
+`test_the_shell_governance_value_ends_at_every_blank_pythons_value_pattern_takes` (the program alone, since
+`splitlines` breaks a report line at `\r`, `\v`, `\f` and `\034` to `\036`) and a no-break-space case in
+`test_a_policy_or_governance_value_is_redacted_alike_in_both_readers` (both readers alike).
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
