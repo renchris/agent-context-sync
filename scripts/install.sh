@@ -1622,6 +1622,42 @@ listed_folder_names() {
 		done
 	done < <(listed_folder_lines)
 }
+# The path = "..." values of sources.toml, one a line, each read as a TOML basic string in one pass from the left
+# (so an escaped backslash before a t stays a backslash and a t). add-source writes them with json.dumps, so a
+# TAB in a folder name is the two characters \t: read raw, the fuzzy match took "\" as a separator and the name
+# printed in clear (B13 round 20 X75). A whitespace escape (\t, \n, \r, \b, \f, \u0009, \u000A, \u000D) is one
+# space, which the fuzzy match takes as any run of blanks and the pair format carries; another \uXXXX or
+# \UXXXXXXXX is its UTF-8 bytes (json.dumps writes only control characters so); \\ and \" are \ and ".
+config_path_values() {
+	[ -f "$CONFIG" ] || return 0
+	LC_ALL=C awk '
+		function hex(h,    i, v) {
+			v = 0; h = tolower(h)
+			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+			return v
+		}
+		function utf8(c) {
+			if (c < 128) return sprintf("%c", c)
+			if (c < 2048) return sprintf("%c%c", 192 + int(c / 64), 128 + c % 64)
+			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
+			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
+		}
+		/^[[:space:]]*path[[:space:]]*=[[:space:]]*".*"[[:space:]]*$/ {
+			v = $0; sub(/^[^"]*"/, "", v); sub(/"[[:space:]]*$/, "", v)
+			out = ""
+			while ((i = index(v, "\\")) > 0) {
+				out = out substr(v, 1, i - 1); e = substr(v, i + 1, 1); v = substr(v, i + 2)
+				x = "0123456789ABCDEFabcdef"
+				if (e ~ /^[tnrbf]$/) out = out " "
+				else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
+					e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
+					c = hex(substr(v, 1, RLENGTH)); v = substr(v, RLENGTH + 1)
+					out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
+				} else out = out e
+			}
+			print out v
+		}' "$CONFIG" 2>/dev/null || true
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
@@ -1655,7 +1691,7 @@ redaction_pairs() {
 	if [ -f "$CONFIG" ]; then
 		while IFS= read -r line; do
 			known+=("$line")
-		done < <(LC_ALL=C sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null)
+		done < <(config_path_values)
 	fi
 	if [ -f "$SETUP_LOG" ]; then
 		while IFS= read -r line; do
@@ -1691,8 +1727,12 @@ redaction_pairs() {
 		listed+=("$line")
 	done < <(listed_folder_lines)
 	emit_pair() { # VALUE PLACEHOLDER [w] [utf8]: the pair and its printf %q form; with utf8, %q in UTF-8 too
+		# a TAB or a newline in a value would split the line-based pair and print the name (install.out's list
+		# can carry a raw one): a space, which the fuzzy match reads as any run of blanks (B13 round 20 X75)
+		local v="${1//$'\t'/ }" q u
+		v="${v//$'\n'/ }"
+		set -- "$v" "${@:2}"
 		printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
-		local q u
 		q="$(printf '%q' "$1")"
 		[ "$q" = "$1" ] || printf '%s\t%s\t%s\n' "$q" "$2" "${3:-}"
 		# install.log's %q is the logging run's locale: under UTF-8 a non-ASCII word is plain ("Café\ Notes"),
@@ -1985,7 +2025,7 @@ redaction_pairs() {
 		while IFS= read -r line; do
 			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"*) continue ;; esac
 			project_values "$line"
-		done < <(LC_ALL=C sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null)
+		done < <(config_path_values)
 	fi
 	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.

@@ -25806,6 +25806,20 @@ folder's), and the `<source-N>` item, whose cloud id can take a `<folder-N>` ins
 missing`. Tests: `test_the_folder_legend_explains_only_the_names_the_report_shows` (every exact item) and
 `test_the_folder_legend_names_a_project_folder_only_where_one_is_shown` (both items).
 
+**A folder name holding a TAB is redacted in the shell report** (X75). One configured folder `Zephyrine<TAB>Quarry`
+printed in clear in the shell report, both spellings, beside the public issue link, where the agentsync report
+wrote `<folder-1>`. The finder's cause (a TAB splitting the TAB-separated pairs) was not the one measured: no TAB
+reached the pairs. `add-source` writes a path with `json.dumps`, so sources.toml holds the two characters `\t`,
+and `redaction_pairs` read `path = "..."` with a raw sed; the fuzzy match took the backslash as a separator, so the
+tokens were `Zephyrine` and `tQuarry`. The new `config_path_values` reads each value as a TOML basic string, in
+one pass from the left (`\\t` stays a backslash and a `t`): `\\` and `\"` are `\` and `"`; `\t`, `\n`,
+`\r`, `\b`, `\f`, `\u0009`, `\u000A` and `\u000D` are one space, which the fuzzy match takes as any run of
+blanks; another `\uXXXX` or `\UXXXXXXXX` is its UTF-8 bytes. Both readers of the config's paths (the pairs and
+`project_values`) use it. Decoding to a real TAB was measured to keep the leak (the next field then acts as the
+placeholder), so `emit_pair` also turns a TAB or newline in any value into a space, for a raw one install.out's
+folder list could carry. Test: `test_a_folder_name_holding_a_tab_is_redacted_alike_in_both_reports` (two TAB names
+and one holding a backslash and a `t`: the shell's line equals the agentsync report's).
+
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
 The B13 round 20 items of lane P (specs `round20/items/X<n>.md`, the verifier's corrected fix built unless a

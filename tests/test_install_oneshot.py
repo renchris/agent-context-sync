@@ -12548,7 +12548,8 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 # ---- the shell report redacts a vanished source's id (T42) -------------------------------------------------
 
 SHELL_HELPER_FNS = re.compile(
-    r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines)\(\) \{\n.*?^\}$"
+    r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines"
+    r"|config_path_values)\(\) \{\n.*?^\}$"
 )
 
 
@@ -13242,6 +13243,32 @@ def _fuzzy_report(
     return shell.split(" | saw ", 1)[1].removesuffix(" | -"), red.redact(line).split(" | saw ", 1)[
         1
     ].removesuffix(" | -")
+
+
+@pytest.mark.parametrize(
+    ("name", "said"),
+    [
+        ("Zephyrine\tQuarry", "opened Zephyrine\tQuarry and Zephyrine Quarry"),
+        ("Q3\tPlans", "opened Q3\tPlans and Q3 Plans"),
+        ("Q3\\tPlans", "opened Q3\\tPlans and Q3 Plans"),
+    ],
+)
+def test_a_folder_name_holding_a_tab_is_redacted_alike_in_both_reports(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, name: str, said: str
+) -> None:
+    """B13 round 20 X75: add-source writes a configured path with json.dumps, so a TAB in a folder's name is
+    the two characters ``\\t`` in sources.toml, and redaction_pairs read the value raw: the fuzzy match took
+    the backslash as a separator, the tokens were "Zephyrine" and "tQuarry", and both spellings printed in
+    clear beside the public issue link. config_path_values reads the value as a TOML basic string, left to
+    right (an escaped backslash before a "t" stays one), a whitespace escape as one space."""
+    shell, python = _fuzzy_report(env, monkeypatch, [name], said)
+    assert shell == python, (shell, python)
+    if "\t" in name:
+        assert shell == "opened <folder-1> and <folder-1>", shell
+    else:  # a backslash and a t: the name is redacted, the other spelling is another name
+        assert shell.startswith("opened <folder-1> and "), shell
+    report = report_path(env).read_text()
+    assert name not in report and ("\t" not in name or name.replace("\t", " ") not in report), report
 
 
 def test_the_shell_report_redacts_every_spelling_of_a_folder_or_organisation(
