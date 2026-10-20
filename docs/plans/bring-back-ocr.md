@@ -1282,6 +1282,36 @@ checks it. Round 18's own agents left about 70 entries in /tmp, removed with rou
 Round 19: the round 18 workflow with prompt v27 on this section's landed tip, BASE `ba85a3ff` (ids W<n>, outputs
 `round19/`); scenario C plays the v26 and v25 blocks.
 
+### B13 round 19: v27 rehearsal, cross-lane review, harvest (2026-10-20)
+
+Run `wf_34c555f0-f44` on `6e7ae244` (94 agents, 0 errors, 105 minutes; the harvest measured a recording test under
+throttling for about 40 of them). No agent waited on a permission prompt. All six scenarios pass their EXPECTED with no
+turn: the new Mac and the field Mac are "fully one command" (the new Mac's final report kept its Doctor section at a
+load of 99), every v26 and v25 copy is refused in step 1 with exit 2, and the git stop, the reinstall during a sync and
+the empty-folder alarm run as the prompt says. 83 findings, 76 confirmed (0 turn, 8 wrong, 68 small), 7 refused (W36,
+W43, W76, W77, W79, W82, W83); 2 need prompt text, so the next prompt is v28.
+The 8 wrongs are 5 defects: the shell fallback report shows a vanished source's re-add folder in clear, because lane
+B moved the tail into cycle.py and install.sh's parser never learned it (W34, W40, W56, W63); the older build's
+git-stop report says no install.sh run has a first-sync step (W21); under install.sh the speech time-out fix points
+at a NEXT line that does not name it (W19); damage under the cache or outputs table leaves status healthy while the
+sync exits 1 (W41); and a manifest this account cannot open sends the person to a Doctor line that is not there
+(W64).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76 over rounds 2 and 4 to 19;
+turns 0 for six rounds; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22, 25, 24, 8 (5 distinct, the
+fewest of the wave). Two rounds of falling totals; the wrongs are again seams the previous round's builds opened.
+
+Lanes (`--account auto`, CONTRACTS §16.140 to §16.145, brief `lanes/COMMON18.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r19-land.lock`; scratch under `round19/`): RA 12 (the
+report: an unopenable manifest, the converter-waiting clause, the cut-off words, redaction counts), RB 19 (install.sh:
+the re-add folder's parser, the older build's rewrite, the shell legend and install source line, a gitleaks-absent
+census guard), P 7 (prompt v28, step 1's damaged-table check, the step 2 patch line, add-source's held stderr), B 12
+(table damage outside items, the lock-wait residues, the speech fix's words, permission errors), E 15 (the
+converter-waiting count, the speech marker, a blank draw.io diagram, the recording tests' time bound), D 9 (guides,
+CONTRACTS cross-references, the launcher's exit 71, CLAUDE.md's CI time). Lead: W71, built before the fire
+(`cddd3689`: the dated-line scans read a line of any date, so lines dated 2026-10-20 are held), and W81 (round 17 to
+19 /tmp leftovers removed by exact name; `lp-verify`, not ours, left alone).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

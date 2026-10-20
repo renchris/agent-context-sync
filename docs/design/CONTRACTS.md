@@ -24657,3 +24657,27 @@ lines are round 18's, so they are in `_ROUND_18_PARAGRAPH_AMENDS`, not round 17'
 
 All eight are built; none was recorded as making things worse. V69's verifier measured that its finder's fix alone
 turns the dated-line test red, so every dated line here has a claim or a pin.
+
+### 16.140 Round 19: setup report (2026-10-20, wave B13 round 19 lane RA)
+
+Reserved for round 19 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 19").
+
+### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
+
+Reserved for round 19 lane RB of B13.
+
+### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
+
+Reserved for round 19 lane P of B13.
+
+### 16.143 Round 19: table damage, the lock-wait words and the speech fix (2026-10-20, wave B13 round 19 lane B)
+
+Reserved for round 19 lane B of B13.
+
+### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
+
+Reserved for round 19 lane E of B13.
+
+### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
+
+Reserved for round 19 lane D of B13.
