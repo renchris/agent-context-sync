@@ -6562,7 +6562,9 @@ def test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bu
 ) -> None:
     """B13 round 18 V81: with no doctor hook the Environment's own pandoc start gave Rosetta's first-start
     reason for every kind, a native arm64 copy too; doctor gives it for the wheel's bundled Intel binary only
-    (doctor.py's ``_PANDOC_SLOW_START if kind == "wheel"``), as §16.132 U104 keeps it."""
+    (doctor.py's ``_PANDOC_SLOW_START if kind == "wheel"``), as §16.132 U104 keeps it. B13 round 20 X79: a
+    budget of 2.5 s left the run skipped once 1.3 s had gone, which the reads before it took on a loaded Mac
+    (8 of 8 failed at 8 copies at once): 6 s leaves 4.8, and a skip fails here by its own words."""
     from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
 
     exe = tmp_path / "bin" / "pandoc"
@@ -6570,8 +6572,9 @@ def test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bu
     exe.write_text("#!/bin/sh\nsleep 30\n", encoding="utf-8")
     exe.chmod(0o755)
     monkeypatch.setattr(pandoc_mod, "resolved_pandoc", lambda _path: (exe, kind))
-    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), budget_s=2.5)
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=setup_report.ReportHooks(), budget_s=6.0)
     [pandoc] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- pandoc: ")]
+    assert "skipped: the report's time budget" not in pandoc, pandoc
     assert re.search(
         rf"/bin/pandoc{re.escape(which)} did not answer within \d+\.\ds \({re.escape(why)}\)$", pandoc
     ), pandoc
