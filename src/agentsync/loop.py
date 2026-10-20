@@ -84,7 +84,7 @@ from agentsync.cycle import (
     RECORDING_WAITS,
     _reread_records,
 )
-from agentsync.errors import AgentSyncError
+from agentsync.errors import AgentSyncError, ConfigError
 from agentsync.manifest import Manifest
 from agentsync.model import LintFinding, PassKind, RowState, SourceKind, Verdict
 from agentsync.ops import launchd
@@ -1481,12 +1481,16 @@ def status_line(config: Config) -> str:
     archive <on|off>``. ``to curate`` is :func:`queue_rows` (not the purge queue, which status prints on its
     own line). ``inbox`` is the folder the guides name (the live inbox source on the folder
     ``config.ensure_inbox`` keeps, else every live inbox source); doctor checks each source's folder. Disk
-    only; a part that cannot be read shows ``?``."""
+    only; a part that cannot be read shows ``?``, one the configuration refuses ``not read (the configuration
+    is refused)``, with no WARNING line: the governance.config or policy [FAIL] beside it gives the words
+    (B13 round 18 V20)."""
     docs = expand(config.docs_repo)
 
     def part(name: str, fn: Callable[[], object]) -> str:
         try:
             return f"{name} {fn()}"
+        except ConfigError:
+            return f"{name} not read (the configuration is refused)"
         except (OSError, AgentSyncError) as exc:
             _log.warning("loop: cannot read %s: %s", name, exc)
             return f"{name} ?"

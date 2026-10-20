@@ -6082,6 +6082,9 @@ A green doctor or a full-looking status read as "done" while the curation half h
    archive <on|off>` (a part that cannot be read shows `?`). **Amended (2026-10-06, §16.22):** the part was
    labelled `queue`, which read as the purge queue printed two lines below. **Amended (2026-10-11, §16.39
    N22):** `inbox` is the kept inbox (the folder the guides name), not every live inbox source.
+   Amended 2026-10-19, §16.137 V20: a part the configuration refuses (a `[governance]` value that does not
+   pass) shows `not read (the configuration is refused)`, with no `WARNING agentsync.loop` line; any other part
+   that cannot be read shows `?`.
 3. `doctor.format_results(doctor.run_checks(config, tcc_canary=<due>) + cli._extra_checks(config))`: doctor's
    lines byte for byte, so install.sh's `^\[FAIL` parsing is unchanged.
 4. The status lines (lock, holds, queued purges, retention, launcher events, last runs, each source with its

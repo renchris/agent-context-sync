@@ -3263,6 +3263,23 @@ def test_status_names_the_pandoc_fix_that_is_the_persons_as_theirs(
         assert not any("do what the fix" in ln for ln in out)
 
 
+def test_a_refused_governance_value_leaves_the_loop_lines_archive_not_read_with_no_warning(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 18 V20: with a [governance] value that does not pass, status printed a raw timestamped
+    ``WARNING agentsync.loop: loop: cannot read archive: ...`` line and the loop line's ``archive ?``. The
+    [FAIL] governance.config line gives the words: the part says why it is not read, and no warning comes."""
+    cfg = _synced(initialised)
+    path = initialised.config_path
+    path.write_text(path.read_text(encoding="utf-8") + '\n[governance]\nhistory_days = "thirty"\n', "utf-8")
+    capsys.readouterr()
+    assert cli.main(["status", "--config", cfg]) == cli.EXIT_FAILED
+    got = capsys.readouterr()
+    [line] = [ln for ln in got.out.splitlines() if ln.startswith("loop: ")]
+    assert line.endswith(" · archive not read (the configuration is refused)"), line
+    assert "WARNING agentsync.loop" not in got.err and "archive ?" not in got.out, got.err
+
+
 @pytest.mark.parametrize("breakage", ["governance", "schema"])
 def test_status_prints_every_check_when_its_state_cannot_be_read(
     breakage: str, initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
