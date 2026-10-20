@@ -2895,7 +2895,9 @@ def _domain_text(folder: Path) -> str:
     Read as the walk reads it (``arm_local._is_domain``): an entry that is not a folder, and one whose
     attributes cannot be read, are domains, so the empty-folder rule stands (B13 round 4 Q33). A symlink is
     read as the provider folder its target sits in (B13 round 6 G40), and as a domain when it does not
-    resolve or points into no provider folder. A link's target is never printed."""
+    resolve or points into no provider folder. A link's target is never printed. The caller wraps each reading
+    in parentheses after the folder's name and joins them with ", ", so a reading holds no parentheses and no
+    comma of its own; its clauses are joined with "; " (B13 round 19 W9)."""
     from agentsync import arm_local  # noqa: PLC0415 - the walk's own reading of a link
 
     try:
@@ -2905,28 +2907,28 @@ def _domain_text(folder: Path) -> str:
                 target = folder.resolve(strict=True)
             except (OSError, RuntimeError):  # 3.11 raises RuntimeError on a symlink loop
                 return (
-                    "a symlink that does not resolve: read as a File Provider domain (the empty-folder "
-                    "rule stands)"
+                    "a symlink that does not resolve: read as a File Provider domain; the empty-folder rule "
+                    "stands"
                 )
             real = arm_local._provider_folder(target, arm_local._cloud_roots())
             if real is None:
                 return (
-                    "a symlink into no provider folder: read as a File Provider domain (the empty-folder "
-                    "rule stands)"
+                    "a symlink into no provider folder: read as a File Provider domain; the empty-folder "
+                    "rule stands"
                 )
             # the folder by its name, which the report redacts (OneDrive-<org-1>); never the target path
-            return f"a symlink into {real.name}: read as that folder, {_domain_text(real)}"
+            return f"a symlink into {real.name}: read as that folder; {_domain_text(real)}"
         if not stat.S_ISDIR(mode):
-            return "not a folder: read as a File Provider domain (the empty-folder rule stands)"
+            return "not a folder: read as a File Provider domain; the empty-folder rule stands"
         marker = file_provider_marker(folder)
     except OSError as exc:
         return (
-            f"File Provider domain: unknown ({exc.strerror or exc}), read as a domain (the empty-folder rule "
-            "stands)"
+            f"File Provider domain: unknown; {exc.strerror or exc}; read as a domain; the empty-folder rule "
+            "stands"
         )
     if marker is None:
-        return "not a File Provider domain: no File Provider attribute (a plain folder)"
-    return f"File Provider domain ({marker})"
+        return "not a File Provider domain: no File Provider attribute; a plain folder"
+    return f"File Provider domain: attribute {marker}"
 
 
 def agentsync_on_path(path_env: str | None = None) -> list[str]:

@@ -591,7 +591,7 @@ def test_a_cloudstorage_entry_named_like_a_report_word_keeps_the_reports_words(
     assert "OneDrive-<org-" in env
     if link:
         # B13 round 6 G40; round 16 T40: the folder it points into, by its placeholder
-        assert "(a symlink into OneDrive-<org-1>: read as that folder, " in env, env
+        assert "(a symlink into OneDrive-<org-1>: read as that folder; " in env, env
     assert "<org-2>'s own" not in text and "issue <org-" not in text
 
 
@@ -614,7 +614,7 @@ def test_a_provider_symlink_is_no_second_organization(fake_mac: dict[str, Path],
     )
     text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
     env = section(text, "Environment")
-    assert "<link-1> (a symlink into OneDrive-<org-1>: read as that folder, " in env, env
+    assert "<link-1> (a symlink into OneDrive-<org-1>: read as that folder; " in env, env
     assert "<org-2>" not in text, [ln for ln in text.splitlines() if "<org-2>" in ln]
     assert ORG not in text and f"OneDrive-{name}" not in text and name not in text.replace("link", ""), [
         ln for ln in text.splitlines() if name in ln
@@ -8503,7 +8503,7 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
         assert setup_report.file_provider_marker(tmp_path) is None, "a plain folder has none"
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
-    assert "OneDrive-<org-1> (not a File Provider domain: no File Provider attribute (a plain folder))" in env
+    assert "OneDrive-<org-1> (not a File Provider domain: no File Provider attribute; a plain folder)" in env
     for module in (setup_report, arm_local):  # the walk reads it too
         monkeypatch.setattr(
             module,
@@ -8512,7 +8512,7 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
         )
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     env = section(text, "Environment")
-    assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
+    assert "OneDrive-<org-1> (File Provider domain: attribute com.apple.file-provider-domain-id)" in env
     assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain" in env
     # B13 round 4 Q33: a symlink is read as the walk reads it, and is no provider folder of its own; since
     # round 6 G40 the walk reads it as the provider folder it points into (here a domain), not by its own
@@ -8524,11 +8524,16 @@ def test_environment_says_whether_each_provider_folder_is_a_file_provider_domain
     env = section(text, "Environment")
     assert "listable, 2 provider folders and 1 symlink and 1 other entry: " in env, env
     assert (  # B13 round 16 T40: the link's own name is a <link-N>, and the folder it points into is named
-        "<link-1> (a symlink into OneDrive-<org-1>: read as that folder, File Provider domain "
-        "(com.apple.file-provider-domain-id))" in env
+        "<link-1> (a symlink into OneDrive-<org-1>: read as that folder; File Provider domain: attribute "
+        "com.apple.file-provider-domain-id)" in env
     ), env
-    assert "(not a folder: read as a File Provider domain (the empty-folder rule stands))" in env
-    assert "OneDrive-<org-1> (File Provider domain (com.apple.file-provider-domain-id))" in env
+    assert "(not a folder: read as a File Provider domain; the empty-folder rule stands)" in env
+    assert "OneDrive-<org-1> (File Provider domain: attribute com.apple.file-provider-domain-id)" in env
+    # B13 round 19 W9: each reading sits in the one pair of parentheses after its folder, never a second
+    [line] = [ln for ln in env.splitlines() if ln.startswith("- ~/Library/CloudStorage: ")]
+    assert "))" not in line and "((" not in line, line
+    for item in re.findall(r"\(([^()]*)\)", line):
+        assert ", " not in item, (item, line)
     assert "OneDrive-SharedLibraries-<org-1> (not a File Provider domain: no File Provider attribute" in env
     assert arm_local._is_domain(root / "OneDrive-Zeta"), "the walk's own rule"
 

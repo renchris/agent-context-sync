@@ -5303,7 +5303,9 @@ origin/main`. **Environment (L10).** Each `~/Library/CloudStorage` folder says w
 domain: `file_provider_marker(path)` lists the folder's own extended attributes (`listxattr`, no symlink
 followed, no provider file opened) and returns the first name containing `fileprovider` or `file-provider`
 ("File Provider domain (<name>)"), else "not a File Provider domain: no File Provider attribute (a plain
-folder)". **Redaction (L6, L7).** `$TMPDIR` and its realpath are registered (after the home, so a sandbox home
+folder)".
+Amended 2026-10-20, §16.140 W9: the readings hold no parentheses of their own, since the line wraps each in one pair after the folder's name: `File Provider domain: attribute <name>` and `not a File Provider domain: no File Provider attribute; a plain folder`.
+**Redaction (L6, L7).** `$TMPDIR` and its realpath are registered (after the home, so a sandbox home
 inside it stays `~`) and any `/(private/)?var/folders/<x>/<y>` becomes `<tmp>` (legend "<tmp> this account's
 temporary folder"). The residue check ignores the fixed macOS path components (Users, Library, Application,
 Support, CloudStorage, Volumes, Applications), and `/Users/<user>/` (the login is `<user>`) is read as a home
@@ -14522,6 +14524,7 @@ in, never by its own or its target's attributes: `a symlink: read as the provide
 folder's reading>`, and `a symlink that does not resolve` or `a symlink into no provider folder` read as a domain.
 Amended 2026-10-18, §16.122 T40: the folder it points into is named, by its own placeholder, and the link's name is
 a `<link-N>`: `<link-1> (a symlink into OneDrive-<org-1>: read as that folder, <that folder's reading>)`.
+Amended 2026-10-20, §16.140 W9: a reading's clauses are joined with `; `, in no parentheses or comma of its own: `not a folder: read as a File Provider domain; the empty-folder rule stands`, `File Provider domain: unknown; <why>; read as a domain; the empty-folder rule stands`, and `read as that folder; <that folder's reading>`.
 
 **Q41: the module docstring's redaction paragraph** names the LaunchAgent's proxy, the generic dotless host replaced
 only inside a URL, the unaccented spellings, the joined-word rule (Q72), the held placeholders and the kept
@@ -24780,6 +24783,17 @@ both writers. W45 changes no behaviour, so no test can fail without it; the beha
 `test_a_loop_stage_status_could_not_read_is_not_read_not_installed` and tests/test_cli.py's
 `test_status_prints_every_check_when_its_state_cannot_be_read`. Test (W54):
 `test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected`.
+
+**A CloudStorage folder's reading sits in one pair of parentheses** (W9; amends §16.14 L10 and §16.52 Q33). The
+Environment's line wraps each folder's reading in parentheses after its name and joins the folders with `, `, and
+every reading but a plain `not a folder` carried a bracket of its own: `OneDrive-<org-1> (File Provider domain
+(com.apple.file-provider-domain-id))`. `_domain_text`'s clauses are now joined with `; `, with no parentheses and
+no comma inside a reading: `File Provider domain: attribute <name>`, `not a File Provider domain: no File Provider
+attribute; a plain folder`, `...: read as a File Provider domain; the empty-folder rule stands`, `File Provider
+domain: unknown; <why>; read as a domain; the empty-folder rule stands`, and a symlink's `read as that folder;
+<that folder's reading>`. The finder's `OneDrive-<org-1>: a File Provider domain, by its <name>` was not built: a
+colon and a comma inside each item make a two-folder line ambiguous. Test:
+`test_environment_says_whether_each_provider_folder_is_a_file_provider_domain`.
 
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
