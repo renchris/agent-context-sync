@@ -1256,6 +1256,32 @@ cross-references). Lead: V95 (round 17's /tmp leftovers, removed by exact name) 
 closed, reopen if either test fails on an attempt-1 ci run); V42's method (damage a manifest in place with
 `python3 -I`, not `dd`) goes into round 19's script.
 
+### B13 round 18 landed (2026-10-20)
+
+All six lanes landed; CI green on `a7cd9146` (ci `39398610939`, diagrams `39398610954`; prompt v27). Notes
+`lanes/r18-<lane>.md`, lead notes `round18/lead-notes.md`. Every item is built; none carries a not-built reason (lane
+E left two optional halves out, named in its note). V8 moved to lane B's shared vanished-source tail, and B's V7 merged
+with RA's V18.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `dd5b5108..c20d2c3c`, 2 commits |
+| RA | `8b9c1730..bd916c67`, 10 commits |
+| E | `d404cb60..25584dfa`, 5 commits, plus the gate change `a7cd9146` (landed last) |
+| RB | `d879ce8b..b7c1b941`, 10 commits, plus the CI fix `c342bb2e` |
+| B | `782e4b16..4d090c1a`, 13 commits |
+| P | `59514c3b..dbb22f4d`, 5 commits (v27) |
+
+Learnings: the rehearsals' new small-command rule held, so the workflow ran in 56 minutes with no permission stall.
+Lane RB's land turned trunk CI red on its own new test, which passed here only because this Mac has gitleaks and the CI
+runner does not; P and B waited on the lock about 90 minutes for RB's fix. All six lanes queued on one lock at a load
+of 150 to 350: the first land reached trunk about 90 minutes after the fire and the last about seven hours after it.
+Lane B's last note to lane RA (what the report hook now returns) arrived after RA had retired; round 19's harvest
+checks it. Round 18's own agents left about 70 entries in /tmp, removed with round 17's by exact name.
+
+Round 19: the round 18 workflow with prompt v27 on this section's landed tip, BASE `ba85a3ff` (ids W<n>, outputs
+`round19/`); scenario C plays the v26 and v25 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
