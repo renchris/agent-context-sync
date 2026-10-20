@@ -24270,6 +24270,8 @@ worse). The guide quotes section 3's `not sent:` form beside its two `not repeat
 `test_step_2_says_a_patch_this_account_cannot_read_is_the_persons`,
 `test_a_patch_unreadable_at_a_report_is_sent_once_it_is_readable` (the whole NEXT, no file name, no `this command`),
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
+Amended 2026-10-20, §16.142 W8, W12: the line ends `... puts it in ~/agent-context/bring-back.md for you to copy
+back` (the path this run writes), not `sends it`: the report sends nothing.
 
 **Step 1 names a docs-repo remote [governance] refuses and a damaged table page** (V9, V21, V36; amends §16.130 U12).
 `config_errors` printed only `policy`, `governance` and `state`, so the `--list-folders` NEXT ended `(none is
@@ -24706,6 +24708,18 @@ read catches today. Standard library only, so an older installed build runs it t
 `test_list_folders_says_step_2_stops_on_a_config_it_refuses` (`TD-items`, `TD-path`, which fail without it,
 `TD-canonical`, which a `NOT INDEXED`-only reader fails, and `clean-real`, the same schema undamaged: `(none is
 needed)`).
+
+**Step 2's unreadable-patch line says where the patch goes, not that it is sent** (W8, W12; amends §16.136 V25).
+Step 2's `WAITING ON YOU: 1 patch file in ~/agent-context/setup/local-work cannot be read by this account; make it
+readable (chmod u+r), and the setup report at the end of this setup sends it` contradicted the report's own NEXT,
+`(nothing is sent for you)`, and its send lines' `Nothing is sent automatically.`: the report only puts the patch in
+bring-back.md, which the person copies back. The line now ends `... puts it in ~/agent-context/bring-back.md for you
+to copy back` (`N patch files ... them`). The path is the one `write_bring_back` writes (`$out`, beside
+`REPORT_PATH`), shortened to `~` as the local-work folder is, never a literal (W12's verifier:
+`AGENTSYNC_SETUP_REPORT` moves it); still no file name. Section 3's `not sent:` label inside bring-back.md is left
+as it is, where "sent" reads as "carried in this file". Test:
+`test_step_2_says_a_patch_this_account_cannot_read_is_the_persons` (one patch at the default path, and two under a
+report path of their own).
 
 ### 16.143 Round 19: table damage, the lock-wait words and the speech fix (2026-10-20, wave B13 round 19 lane B)
 

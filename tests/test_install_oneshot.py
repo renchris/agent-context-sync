@@ -2915,7 +2915,9 @@ def test_step_2_says_a_patch_this_account_cannot_read_is_the_persons(
     """B13 round 18 V25 (probe O25b): step 2's run writes bring-back.md too, and printed the report's
     ``warning: 1 patch file ... could not be read`` line, a form the setup prompt's step 2 does not place. It
     is a WAITING ON YOU: line there, the person's, with its fix and no file name; step 2's NEXT, which drives
-    the setup, is as without it. The report's run keeps the warning its NEXT points to."""
+    the setup, is as without it. The report's run keeps the warning its NEXT points to. B13 round 19 W8, W12:
+    it said the report "sends" the patch, against the report's own "nothing is sent for you"; it puts it in
+    bring-back.md, named by the path this run writes."""
     before = install_sh(env, str(wheel), "--source-local", str(folder))
     assert before.returncode == 0, before.stdout + before.stderr
     patch = _keep_patch(env, "2026-10-07T16:00:00Z", body="+def contoso(): ...\n", name="0002-x.patch")
@@ -2927,10 +2929,29 @@ def test_step_2_says_a_patch_this_account_cannot_read_is_the_persons(
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert (
         "WAITING ON YOU: 1 patch file in ~/agent-context/setup/local-work cannot be read by this account; "
-        "make it readable (chmod u+r), and the setup report at the end of this setup sends it\n"
+        "make it readable (chmod u+r), and the setup report at the end of this setup puts it in "
+        "~/agent-context/bring-back.md for you to copy back\n"
     ) in cp.stdout, cp.stdout
     assert "could not be read" not in cp.stderr and "0002-x" not in cp.stdout + cp.stderr, cp.stderr
+    assert " sends " not in cp.stdout, cp.stdout
     assert last_line(cp) == last_line(install_sh(env, str(wheel))), "the NEXT is step 2's own"
+    # two patches, and a report path of its own: the line names the file this run writes
+    other = Path(env["HOME"]) / "reports"
+    other.mkdir()
+    second = _keep_patch(env, "2026-10-07T17:00:00Z", body="+y = 2\n", name="0003-y.patch")
+    for p in (patch, second):
+        p.chmod(0)
+    try:
+        cp = install_sh({**env, "AGENTSYNC_SETUP_REPORT": str(other / "setup-report.md")}, str(wheel))
+    finally:
+        for p in (patch, second):
+            p.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert (
+        "WAITING ON YOU: 2 patch files in ~/agent-context/setup/local-work cannot be read by this account; "
+        "make them readable (chmod u+r), and the setup report at the end of this setup puts them in "
+        "~/reports/bring-back.md for you to copy back\n"
+    ) in cp.stdout, cp.stdout
 
 
 @pytest.mark.parametrize(("readable", "locked_n"), [(False, 1), (True, 1), (False, 2), (True, 2)])

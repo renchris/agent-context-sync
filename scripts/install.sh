@@ -3897,10 +3897,14 @@ write_bring_back() {
 	local out="${REPORT_PATH%/*}/bring-back.md" tmp local_work p fence shown="$SETUP_DIR"
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
 	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem sentat begin force
-	local wassent="" sentlist="" carried held nohash=0 lbr lhold
+	local wassent="" sentlist="" carried held nohash=0 lbr lhold outshown
 	BACK_WHY="" BACK_UNREAD=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
+	esac
+	outshown="$out"
+	case "$outshown" in
+	"$HOME"/*) outshown='~'"${outshown#"$HOME"}" ;;
 	esac
 	# mv onto a folder (or a link to one) moves the file into it and exits 0, so the run would name a folder as
 	# the file to send and leave the unredacted file hidden in it (B13 round 13 O7, O26): build nothing for it
@@ -4111,9 +4115,11 @@ write_bring_back() {
 	BACK_UNREAD="$unread"
 	# Step 2's run (no --report-only) says it as the person's, a WAITING ON YOU: line, the form the setup
 	# prompt's step 2 shows the person and does not act on; its NEXT, which drives the setup, is left alone.
-	# The report's run keeps the warning its NEXT points to ("see the warning above") (B13 round 18 V25).
+	# The report's run keeps the warning its NEXT points to ("see the warning above") (B13 round 18 V25). The
+	# report sends nothing (its NEXT says "nothing is sent for you"): it puts the patch in this file, which the
+	# person copies back, by the path this run writes (B13 round 19 W8, W12).
 	if [ "$unread" -ne 0 ] && [ "$REPORT_ONLY" -eq 0 ]; then
-		say "WAITING ON YOU: $up in $shown/local-work cannot be read by this account; make $uthem readable (chmod u+r), and the setup report at the end of this setup sends $uthem"
+		say "WAITING ON YOU: $up in $shown/local-work cannot be read by this account; make $uthem readable (chmod u+r), and the setup report at the end of this setup puts $uthem in $outshown for you to copy back"
 	elif [ "$unread" -ne 0 ]; then
 		warn "$up in $SETUP_DIR/local-work could not be read, so $out does not hold $uthem"
 	fi
