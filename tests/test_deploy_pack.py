@@ -5644,6 +5644,12 @@ _ROUND_18_E_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: V62 and V67's at §16.28's `converted_failed` row, V74's at its Tests
 paragraph, and V68's four beside the installer texts it quotes in §16.35, §16.42 and §16.48."""
 
+_ROUND_19_D_PARAGRAPH_AMENDS = (
+    ("16.14", "decoded by `EXIT_MEANINGS` (0 ok, 1, 2, 75, 77, 78, 79 TCC_PENDING,", "§16.145 W72"),
+)
+"""Round 19 lane D's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: W72's at §16.14's Background runs paragraph."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5677,7 +5683,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     lines, U3's at §16.28, U80's at §16.106 and three in §16.126 (U106's landed last). Round 18's §16.139
     (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated),
     §16.138 (lane E) six: V62 and V67's and V74's in §16.28, and V68's in §16.35 (two), §16.42 and §16.48, and
-    §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22.
+    §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22. Round 19's §16.145 (lane D) one: W72's at
+    §16.14.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5688,6 +5695,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 15
     assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 13
     assert len(_pinned_dated_lines(_ROUND_18_E_PARAGRAPH_AMENDS)) == len(_ROUND_18_E_PARAGRAPH_AMENDS) == 6
+    assert len(_pinned_dated_lines(_ROUND_19_D_PARAGRAPH_AMENDS)) == len(_ROUND_19_D_PARAGRAPH_AMENDS) == 1
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5707,6 +5715,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_17_PARAGRAPH_AMENDS,
         *_ROUND_18_PARAGRAPH_AMENDS,
         *_ROUND_18_E_PARAGRAPH_AMENDS,
+        *_ROUND_19_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -6096,6 +6105,117 @@ def test_the_guides_give_the_reports_time_with_a_slow_doctor() -> None:
     readme = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     assert "takes under 12 s." not in readme
     assert "usually takes under 12 s (about 35 s at most, when doctor is slow)." in readme
+
+
+def test_the_contract_calls_only_functions_the_code_has() -> None:
+    """B13 round 19 W44, W59 (one defect): §16.137 V7 named `cycle.vanished_readd_tail(roots, every=...)`, a
+    name lane B's merge had made `vanished_add_back_tail`, and no test read a function the prose names. Every
+    backticked call `<module>.<name>(` from §16.68 on names a function that agentsync module has."""
+    import pkgutil  # noqa: PLC0415
+
+    import agentsync  # noqa: PLC0415
+
+    modules: dict[str, str] = {}
+    for found in pkgutil.walk_packages(agentsync.__path__, "agentsync."):
+        modules.setdefault(found.name.rsplit(".", 1)[1], found.name)
+    text = CONTRACTS.read_text(encoding="utf-8")
+    calls = [
+        (module, name)
+        for span in re.findall(r"`([^`\n]+)`", text[text.index("### 16.68 ") :])
+        for module, name in re.findall(r"(?<![\w.])([a-z_]+)\.([A-Za-z_]\w*)\(", span)
+        if module in modules
+    ]
+    assert len(calls) >= 13 and ("cycle", "vanished_add_back_tail") in calls, "the scan is broken"
+    missing = [f"{m}.{n}" for m, n in calls if not hasattr(importlib.import_module(modules[m]), n)]
+    assert missing == []
+
+
+def test_the_vanished_add_back_lines_say_where_v7_moved_it() -> None:
+    """B13 round 19 W44, W60 (one defect): §16.131 U9 still said the add-back is the CLI's own verb, not
+    install.sh's, with `doctor._vanished_add_backs` as the rule, and its §16.134 V18 line that the sync's
+    refusal is unchanged; round 18 V7 moved the rule and the tail to cycle, gave install.sh its own
+    `--source-local`, and ended the sync's refusal with the same tail. The old lines stay; a dated line after
+    them says what V7 changed, and one at V18's paragraph where its `doctor.` names are defined. Each claim is
+    read from the code."""
+    from agentsync import cycle  # noqa: PLC0415
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    u9 = " ".join(
+        _contracts_section("**U9, U25, U46: the vanished-source fix names the add-source", "\n\n").split()
+    )
+    [line] = re.findall(r"Amended 2026-10-20, §16\.145 W44, W60 \(by §16\.137 V7\): .*", u9)
+    assert (
+        "the rule and the tail moved to `cycle.vanished_add_backs` and `cycle.vanished_add_back_tail`" in line
+    )
+    assert 'the command is install.sh\'s own `<install.sh> --source-local "<folder>"`' in line
+    assert "The sync's exit-78 refusal now ends with the same tail after `VANISHED_ADVICE`" in line
+    tail = inspect.getsource(cycle.vanished_add_back_tail)
+    assert (
+        'os.environ.get("AGENTSYNC_NO_NEXT_HINT"' in tail and '"--source-local {_shown_arg(str(r))}"' in tail
+    )
+    refusal = inspect.getsource(cycle._Cycle._refuse_vanished_sources)
+    assert 'raise ConfigError(f"{vanished_detail(vanished)}; {VANISHED_ADVICE}{tail}")' in refusal
+    assert "return vanished_add_backs(config, manifest.get_meta, vanished)" in inspect.getsource(
+        doctor._vanished_add_backs
+    )
+    assert doctor.vanished_add_backs is cycle.vanished_add_backs
+    assert doctor.vanished_add_back_tail is cycle.vanished_add_back_tail
+    v18 = " ".join(_contracts_section("**The loads line ends as Doctor's fix does** (V18;", "\n\n").split())
+    assert (
+        "Amended 2026-10-20, §16.145 W60 (by §16.137 V7): both helpers are defined in `cycle` since V7" in v18
+    )
+
+
+def test_v5s_dated_line_quotes_the_markers_retry_clause() -> None:
+    """B13 round 19 W61: §16.137 V5 quotes the speech marker's retry clause as `; scripts/install.sh tries
+    ...`, the form before round 18 V68 named install.sh by its path. A dated line quotes the clause as
+    `speech._TIMED_OUT` ends."""
+    from agentsync import skill  # noqa: PLC0415
+
+    v5 = " ".join(_contracts_section("**V5, V28: a speech helper build that ran out of time", "\n\n").split())
+    clause = speech._TIMED_OUT.removeprefix(speech.BUILD_TIMED_OUT)
+    assert clause == f"; {skill.INSTALL_SH} tries the build again on its next run"
+    assert (
+        "Amended 2026-10-20, §16.145 W61 (by §16.138 V68): the marker's retry clause names install.sh by its"
+        f" path: `{clause}` (`skill.INSTALL_SH`, V68)." in v5
+    )
+
+
+def test_v73s_lines_say_which_read_fails_status() -> None:
+    """B13 round 19 W62: V73's dated lines at §16.129 and §16.133 called the cursors table one "no status read
+    touches", then said status prints `cannot read the state` for it. Status's detail read of the sources
+    reads that table (`source_statuses`, through `get_cursor`); only the loop's read decides the
+    `state_dir.manifest` FAIL (`_loop_read`, then `_with_damaged_manifest`). Both lines name the loop's read,
+    and each claim is read from the code."""
+    from agentsync import cli, cycle  # noqa: PLC0415
+
+    marker = r"Amended 2026-10-19, §16\.139 V73 \(by §16\.131 U64, U95\): .*"
+    [u55] = re.findall(
+        marker,
+        " ".join(_contracts_section("**An exit 65 at the first sync is the person's** (U55", "\n\n").split()),
+    )
+    [u84] = re.findall(
+        marker,
+        " ".join(
+            _contracts_section("**Exit 65 has its meaning in each exit-code list** (U84;", "\n\n").split()
+        ),
+    )
+    assert "no status read touches" not in u55 + u84
+    assert "when the loop's read of its state hits the damage (the items or runs table, measured)" in u55
+    assert (
+        "Damage under a table that read does not touch (the cursors table, measured) still passes status"
+        in u55
+    )
+    assert (
+        "(`source_statuses`, through `get_cursor`) hits the damage and prints only `status: cannot read"
+        in u55
+    )
+    assert "Damage under a table the loop's read does not touch (the cursors table, measured) has no" in u84
+    assert "though status's detail read of the sources prints `status: cannot read the state: ...`." in u84
+    build = inspect.getsource(cli._build_status)
+    assert "_loop_read(config)" in build and "_with_damaged_manifest(config, checks, state_exc)" in build
+    assert "source_statuses(config, manifest" in inspect.getsource(cli._status_lines)
+    assert "manifest.get_cursor(src.id)" in inspect.getsource(cycle.source_statuses)
 
 
 def test_the_deploy_guide_gives_not_sents_third_field() -> None:

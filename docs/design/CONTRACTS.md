@@ -5073,6 +5073,8 @@ without bootout); or loaded with `last exit code` decoded by `EXIT_MEANINGS` (0 
 80 TCC_DENIED; "(never exited)" explained). Redaction lists only the placeholder kinds used.
 Amended 2026-10-19, §16.133 U84: it decodes 64 (the launcher's refusal) and 65 too, the state file that cannot be
 read, and `install.sh`'s `rc_meaning` and the deploy guide's exit-code list name 65 as well.
+Amended 2026-10-20, §16.145 W72: and 71, the launcher's spawn failure (a pinned interpreter that is gone), in all
+three.
 
 v4 revision, redaction adds: every folder name `cloud_folder_names` finds under `~/Library/CloudStorage` at depth 2
 and 3 (what the prompt's `find ... -mindepth 2 -maxdepth 3 -type d ! -name '.*'` shows, configured or not; a depth-2
@@ -23377,10 +23379,11 @@ be read: the person's to fix`, so the Background runs line decodes it too. Tests
 `test_first_sync_failure_fails_the_run_before_the_agent[65]`,
 `test_a_background_run_that_cannot_read_the_state_names_the_persons_fix`, `test_a_signal_exit_is_named_by_its_signal`,
 `test_setup_report.py::test_background_runs_decode_exit_codes_and_ownership`.
-Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status FAILs `state_dir.manifest` and exits 1 when its own
-read of the loop's state hits the damage (the items or runs table, measured); damage under a table no status read
-touches (the cursors table, measured) still passes status, which then prints only `status: cannot read the state`,
-so pointing at sync stays right.
+Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status FAILs `state_dir.manifest` and exits 1 when the
+loop's read of its state hits the damage (the items or runs table, measured). Damage under a table that read does
+not touch (the cursors table, measured) still passes status with no FAIL; its detail read of the sources
+(`source_statuses`, through `get_cursor`) hits the damage and prints only `status: cannot read the state: ...`, so
+pointing at sync stays right.
 
 **The bash 3.2 comment lint reads a braced substitution** (U108). `substitution_comment_apostrophes` opened a block
 only at a line ending `$(` or `<(`, so a comment inside `done < <({ ... }` or `"$({ ... })"` (four such blocks in
@@ -23699,6 +23702,11 @@ command it names clears the refusal; custom id; root gone),
 `test_setup_report.py::test_a_vanished_sources_add_back_folder_is_never_in_the_report`, the `vanished-add-back` case
 of `test_install_oneshot.py::_persons_fail_lines`.
 Amended 2026-10-19, §16.134 V18: the report's Configuration line now ends with the same add-back as Doctor's fix (`doctor.vanished_add_back_tail`, from `doctor.vanished_add_backs` read over the report's read-only connection); `cycle.VANISHED_ADVICE` itself, the sync's refusal, is unchanged.
+Amended 2026-10-20, §16.145 W44, W60 (by §16.137 V7): the rule and the tail moved to `cycle.vanished_add_backs` and
+`cycle.vanished_add_back_tail` (`doctor._vanished_add_backs` now only reads the meta through a Manifest). Under
+install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the command is install.sh's own `<install.sh> --source-local "<folder>"` (one run for every folder), not
+the CLI's verb. The sync's exit-78 refusal now ends with the same tail after `VANISHED_ADVICE`; the constant itself
+is unchanged, so `VANISHED_WORDS` matching is too.
 
 **U14, U17: the docs-repo line names the remotes git has (`agentsync.cli`).** init and add-source printed `docs
 repo <path> (exists, no remote; ...)` from a fixed string, one line above the governance refusal of that repo's
@@ -23963,8 +23971,10 @@ status does not print for damage under a table), and this item adds the guide's 
 prints the file and the fix again. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which
 holds every `cli.EXIT_*` code to all three lists, so the next new code cannot drift the same way; and the §16.14
 pin in `_ROUND_17_PARAGRAPH_AMENDS`.
-Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status prints that `state_dir.manifest` FAIL when its own
-read hits the damage; only damage under a table no status read touches has no `state_dir.manifest` line.
+Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status prints that `state_dir.manifest` FAIL when the
+loop's read hits the damage. Damage under a table the loop's read does not touch (the cursors table, measured) has
+no `state_dir.manifest` line, though status's detail read of the sources prints `status: cannot read the state:
+...`.
 
 **The guides say a git remote's host is redacted and kept** (U85). Since §16.123 T88 both readers redact the host of
 a git remote's URL as a `<proxy-N>`, and `--log-start` and `--log` write it to `setup/proxy-hosts`
@@ -24081,6 +24091,8 @@ with the meta read passed in (`_vanished_add_backs` reads it through a Manifest)
 read-only connection, and both end with `doctor.vanished_add_back_tail`; the folder is the vanished root's
 placeholder (U46). A custom id or a root that is gone gets no tail; step 2's own line from install.out keeps the
 sync's words. Test: `test_a_config_the_sync_refuses_loads_but_says_so`.
+Amended 2026-10-20, §16.145 W60 (by §16.137 V7): both helpers are defined in `cycle` since V7
+(`cycle.vanished_add_backs`, `cycle.vanished_add_back_tail`); the `doctor.` names are doctor's imports of them.
 
 **The placeholder clause is said only of a placeholder** (V19; amends §16.128 U22). `_table_refusal` takes the
 report's redactor and says `(a value in the error is a placeholder here; ...)` only when its words hold one. Test:
@@ -24401,11 +24413,13 @@ marker and the warn's own reason (both, so a stale marker beside another failure
 over V28's: never `expected`, since speech is missing. Tests:
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`,
 `test_setup_report.py::test_a_speech_build_that_ran_out_of_time_is_its_own_problem_never_expected`.
+Amended 2026-10-20, §16.145 W61 (by §16.138 V68): the marker's retry clause names install.sh by its path:
+`; ~/src/agent-context-sync/scripts/install.sh tries the build again on its next run` (`skill.INSTALL_SH`, V68).
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
 scope_root, vanished)` (moved from doctor; `scope_root` is a manifest's `get_meta` or the report's read-only read)
-and `cycle.vanished_readd_tail(roots, every=...)` build the `; or add its folder again, under the same id: <cmd>`
+and `cycle.vanished_add_back_tail(roots, every=...)` build the `; or add its folder again, under the same id: <cmd>`
 tail of doctor's `config.vanished_sources` fix, of the sync's exit-78 `configuration error:` (after
 `VANISHED_ADVICE`, so `VANISHED_WORDS` matching is unchanged) and of the report's live loads line, whose folder is
 redacted as U46 registers it. Under install.sh (`AGENTSYNC_NO_NEXT_HINT=1`) the command is `<install.sh>
@@ -24646,6 +24660,8 @@ not the pinned one; `EXIT_MEANINGS` and `rc_meaning` decoded it and the guide di
 policy.toml (`EXIT_MEANINGS`: `sources.toml or policy.toml`); a `[governance]` value is inside sources.toml, so it
 needs no clause. The launcher's 71 (spawn failed) is decoded nowhere and stays outside this item. Test:
 `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which reads 64 and 80 from the launcher's source.
+Amended 2026-10-20, §16.145 W72: 71 is decoded now, in `EXIT_MEANINGS`, `rc_meaning` and the guide's list; the
+test reads it from the launcher's source too.
 
 **Seven older paragraphs that quote the swept `(s)` lines get a dated line** (V89; dated lines at §16.16, §16.30,
 §16.36, §16.38, §16.39 and §16.62 G30). Lane B's U71 left them undated because pinning each needed a shared table;
@@ -24680,4 +24696,52 @@ Reserved for round 19 lane E of B13.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
-Reserved for round 19 lane D of B13.
+**V7's add-back is named where it is defined, and the older lines say what V7 changed** (W44, W59, W60, one
+defect; dated lines at §16.131 U9 and §16.134 V18). §16.137 V7 named `cycle.vanished_readd_tail`, a name in no
+source or test (the function is `cycle.vanished_add_back_tail`, the name lane B's merge kept); it is corrected in
+place, since a name that resolves nowhere records no history. §16.131 U9 still said the add-back is the CLI's own
+verb, not install.sh's, with `doctor._vanished_add_backs` as the rule, and its §16.134 V18 line that
+`cycle.VANISHED_ADVICE`, the sync's refusal, is unchanged; since V7 the rule and the tail are cycle's, install.sh
+gets its own `--source-local`, and the sync's exit-78 refusal ends with the same tail (the constant is unchanged).
+The old lines stay; a dated line after V18's says what V7 changed, and one at V18's paragraph says its `doctor.`
+names are imports of cycle's. W60's verifier proposed rewording V18's line in place; W44's kept it and added a
+line, which is the repo's convention, so that is what is built. Tests:
+`test_the_contract_calls_only_functions_the_code_has`, which reads every backticked `<module>.<name>(` from §16.68
+on against the module (13 calls, all resolve once V7's is corrected), and
+`test_the_vanished_add_back_lines_say_where_v7_moved_it`, which reads each claim from the code.
+
+**V5's retry clause is quoted by its path** (W61; dated line at §16.137 V5). V5 quoted the speech marker's retry
+clause as `; scripts/install.sh tries the build again on its next run`, the form before §16.138 V68 named
+install.sh by its path (`skill.INSTALL_SH`, as `speech._TIMED_OUT` has it). The dated line quotes it as the code
+ends it. Test: `test_v5s_dated_line_quotes_the_markers_retry_clause`.
+
+**V73's lines say which read fails status** (W62). §16.139 V73's dated lines at §16.129 U55 and §16.133 U84
+called the cursors table one "no status read touches", then said status prints `status: cannot read the state`
+for it. Status's detail read of the sources reads that table (`cycle.source_statuses`, through `get_cursor`);
+only the loop's read (`cli._loop_read`, then `cli._with_damaged_manifest`) decides the `state_dir.manifest` FAIL.
+Both lines keep their marker and now name the loop's read and the detail line; they are reworded in place, as
+W62's verifier specified, since a dated line correcting a dated line of the round before would only stack. The
+cursors-table case is round 18's measurement: lane B's W41 reads every table's root in status, and whichever of
+W41 and W62 lands second adds the dated line there. Test: `test_v73s_lines_say_which_read_fails_status`, which
+reads the three calls from the code.
+
+**The deploy guides give the report's real time and V48's sync label** (W57, W58). The setup-feedback guide and
+the deploy README said the report finishes within 12 s; §16.137 V4 gives a slow doctor at least
+`_DOCTOR_GRACE_S` (20 s) and moves the deadline, so the report can take about 35 s (the code's own figure, and the
+took line names the extra seconds), and V55 reads the docs repo's remotes (a local `git remote`, so "no network
+calls" holds) outside the budget. The first-sync row said the `sync`/`first sync` label follows the last run's
+config note; V48 takes it from the run whose sync the line shows (`pool[-1]`), the earlier run in exactly the case
+the clause describes. Tests: `test_the_guides_give_the_reports_time_with_a_slow_doctor` and
+`test_the_guides_outcome_rules_and_sync_row_give_round_17s_report_words`, which read the figures and the
+`pool[-1]` read from setup_report.
+
+**The launcher's exit 71 has its meaning in each exit-code list** (W72; dated lines at §16.14 and §16.139 V82).
+The launcher exits 71 (`exOSErr`) when it cannot start the pinned interpreter after `--` (`SPAWN_FAILED`, and
+`WAIT_FAILED`): a job whose Python is gone ends every run on it, as doctor's `job interpreter ... is missing`
+ERROR says. `setup_report.EXIT_MEANINGS`, install.sh's `rc_meaning` and the deploy guide's list had no 71, so the
+report printed a bare `71` and install.sh `exit 71`. All three now say the launcher could not start agentsync,
+point at the job's `SPAWN_FAILED` log line, say one 71 during a reinstall is expected (install.sh's header and
+the guide's reinstall note) and that a 71 at every run means re-running the install command, which rebuilds the
+launcher's pin as well; doctor's own fix (`install-agent`, from the environment agentsync now runs in) is lane B's
+and stays. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which reads 71 from
+main.swift beside 64 and 80, and the §16.14 pin in `_ROUND_19_D_PARAGRAPH_AMENDS`.
