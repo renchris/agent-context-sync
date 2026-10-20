@@ -26273,6 +26273,9 @@ also exits 1 when the probe after a good build answers `failed` (V6); install.sh
 built and failing its probe`. The four now say so. Two finders, one defect, built once. Docstrings only, with no
 test that could fail.
 
+**The recording tests' docstring and W70 name CI's limit (X58).** One defect with lane D's X61 (§16.151), built
+once there: `_wide_limit` and §16.144 W70 name the ci job's 40 minutes and
+`timeout-minutes` in ci.yml, and `test_deploy_pack.py` reads the number from ci.yml.
 
 ### 16.151 Round 20: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 20 lane D)
 
