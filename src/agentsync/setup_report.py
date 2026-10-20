@@ -1454,6 +1454,17 @@ class Redactor:
             return text
         return self._compile().sub(self._replace, text)
 
+    def note(self, kind: str) -> None:
+        """Count one replacement of an unnumbered ``kind`` made outside the redaction pass
+        (``_table_refusal``'s cut of a [governance] value to ``<value>``, which the pass then keeps whole and
+        counts nowhere): the Redaction section's counts and legend name it as they name one the pass made (B13
+        round 19 W35)."""
+        if self.enabled and self._counting and kind in _UNNUMBERED:
+            placeholder = f"<{kind}>"
+            self._kind_of.setdefault(placeholder, kind)
+            self.counts[kind] += 1
+            self._used.add(placeholder)
+
     def scrub(self, text: str) -> str:
         """``text`` redacted even when this redactor is disabled, without counting (for the issue link: it is
         never allowed to carry an unredacted value)."""
@@ -5167,6 +5178,8 @@ def _table_refusal(exc: Exception, file: str, path: Path | None = None, red: Red
     shown = False
     if red is not None and red.enabled:
         cut = _GOVERNANCE_TAIL_RE.sub("<value>", said)
+        if cut != said:  # counted here: the pass keeps a fixed placeholder whole, so it never counts it (W35)
+            red.note("value")
         shown = cut != said or red.scrub(cut) != cut
         said = cut
     m = _TABLE_KEY_RE.search(said)

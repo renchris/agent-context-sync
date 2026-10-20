@@ -1056,6 +1056,20 @@ def test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted()
     assert "Error" not in said + prefix + toml.replace("Expected", ""), "never a class name"
 
 
+def test_the_loads_lines_value_placeholder_is_counted_and_in_the_legend(fake_mac: dict[str, Path]) -> None:
+    """B13 round 19 W35: ``_table_refusal`` cuts a [governance] value to ``<value>`` before the redaction
+    pass, which keeps a fixed placeholder whole and counts nothing, so the body showed ``got <value>`` while
+    the Redaction section's counts and its "Placeholders used" legend left ``value`` out."""
+    cfg = fake_mac["config"]
+    with cfg.open("a", encoding="utf-8") as fh:
+        fh.write('\n[governance]\nallow_remote = "Contoso Secret Project"\n')
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    assert "got <value>" in text and "Contoso Secret" not in text, text
+    redaction = section(text, "Redaction")
+    assert "<value>" in _line(redaction, "Placeholders used"), redaction
+    assert "value" in red.kinds_used() and red.counts["value"] >= 1, red.counts
+
+
 def test_a_governance_values_redaction_never_swallows_the_words_after_it() -> None:
     """B13 round 18 V45: the ``<value>`` match ran to the line's end, so ``[governance].hold: expected
     true/false, got "yes"; once that is fixed, a sync also refuses it: a source (...)`` lost the second

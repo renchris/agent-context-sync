@@ -24795,6 +24795,15 @@ domain: unknown; <why>; read as a domain; the empty-folder rule stands`, and a s
 colon and a comma inside each item make a two-folder line ambiguous. Test:
 `test_environment_says_whether_each_provider_folder_is_a_file_provider_domain`.
 
+**The loads line's `<value>` is counted** (W35). `_table_refusal` cuts a [governance] type error's value to
+`<value>` where the exception ends (round 18 V45), before the redaction pass; the pass keeps a fixed placeholder
+whole and counts nothing, and `scrub` does not count, so the body showed `got <value>` while the Redaction
+section's counts and its `Placeholders used` legend left `value` out, against its own sentence that the unnumbered
+kinds are counted each time a value was replaced. `Redactor.note(kind)` counts one replacement of an unnumbered
+kind made outside the pass, as the pass counts its own, and the cut calls it; the cut itself stays (V45's). The
+Summary bucket's call passes a fresh redactor, so it counts nothing in the report's. Test:
+`test_the_loads_lines_value_placeholder_is_counted_and_in_the_legend`.
+
 ### 16.141 Round 19: installer, the shell report's re-add folders and the older build's copies (2026-10-20, wave B13 round 19 lane RB)
 
 Lane RB's items of B13 round 19 (`docs/plans/bring-back-ocr.md`, "B13 round 19"): the shell report's re-add
