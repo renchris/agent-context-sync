@@ -1128,7 +1128,7 @@ rc_meaning() {
 	80) printf "TCC denied: an earlier \"Don't Allow\"" ;;
 	129) printf 'stopped by SIGHUP' ;;
 	130) printf 'stopped by SIGINT' ;;
-	143) printf 'stopped by SIGTERM (a tool timeout?)' ;;
+	143) printf 'stopped by SIGTERM, perhaps a tool timeout' ;; # no inner brackets: callers wrap it (B13 round 20 X7)
 	*)
 		case "$1" in 129 | 1[3-8][0-9] | 19[0-2]) n="$(kill -l "$(($1 - 128))" 2>/dev/null || true)" ;; esac
 		if [ -n "$n" ]; then printf 'stopped by SIG%s (signal %s)' "${n#SIG}" "$(($1 - 128))"; else printf 'exit %s' "$1"; fi

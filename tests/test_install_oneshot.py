@@ -8367,13 +8367,20 @@ def test_a_stopped_run_logs_its_end_and_names_the_rerun(
     stdout, stderr = proc.stdout.read(), proc.stderr.read()
     assert rc == 143, stdout + stderr
     assert stdout.rstrip("\n").splitlines()[-1] == (
-        "NEXT: this run was stopped before it finished (stopped by SIGTERM (a tool timeout?)); it is safe to "
-        f"re-run: {rerun(wheel)} [setup report: {report_path(env)}]"
+        "NEXT: this run was stopped before it finished (stopped by SIGTERM, perhaps a tool timeout); it is "
+        f"safe to re-run: {rerun(wheel)} [setup report: {report_path(env)}]"
     )
     log = install_log(env)
     assert ("first-sync", "failed", "143", "") in steps(log)
     assert re.search(r" end rc=143 seconds=\d+$", log[-1]) and " step=report " in log[-2]
     assert stdout.rstrip("\n").splitlines()[-1] in install_out(env).read_text(), "install.out has the end too"
+    # B13 round 20 X7: 143's words held their own brackets, so the error and NEXT lines nested two deep
+    for line in (stdout + stderr).splitlines():
+        depth = deepest = 0
+        for c in line:
+            depth += (c == "(") - (c == ")")
+            deepest = max(deepest, depth)
+        assert deepest <= 1, line
 
 
 @pytest.mark.parametrize("group", [False, True])
@@ -8450,7 +8457,7 @@ def test_a_signal_exit_is_named_by_its_signal() -> None:
         "stopped by SIGKILL (signal 9)",
         "stopped by SIGABRT (signal 6)",
         "stopped by SIGPIPE (signal 13)",
-        "stopped by SIGTERM (a tool timeout?)",
+        "stopped by SIGTERM, perhaps a tool timeout",  # B13 round 20 X7: no brackets in the brackets
         "stopped by SIGINT",
         "exit 200",
         "failed",

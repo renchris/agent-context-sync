@@ -13611,6 +13611,8 @@ the fix.
 - **The setup-report warning's quoted time** (R108) is converted to UTC by one regex anchored to `warning:
   agentsync setup-report failed (...): `; it is lazy across the parentheses, because `rc_meaning` can give
   `stopped by SIGTERM (a tool timeout?)`.
+  Amended 2026-10-20, §16.147 X7: 143 now reads `stopped by SIGTERM, perhaps a tool timeout`, with no brackets
+  of its own; the regex stays lazy, which the new words do not need and older warnings still do.
 - **Signal exits** (R81): `rc_meaning` names every 128 + N as `stopped by SIG<NAME> (signal N)`; doctor's git
   and pandoc probes (`_exit_words`) and the report's probes (`_exited`) word subprocess's negative code with
   `ocr._ended`. `test_a_signal_exit_is_named_by_its_signal`,
@@ -25662,6 +25664,14 @@ first `]`. A one-line `pushInsteadOf` is still no rewrite. The agentsync report'
 Test: `test_the_shell_report_reads_a_url_rewrite_written_on_its_header_line` (a one-line mirror rewrite, a
 one-line `pushInsteadOf`, a base with `[fd00::1]` and no blank before its key: `set (2)`, the host and path as
 `<proxy-1>` and `<proxy-2>`).
+
+**Signal 143's words hold no brackets of their own** (X7; amends §16.47 R108). `rc_meaning` gave 143 as `stopped
+by SIGTERM (a tool timeout?)`, and `on_signal` puts it inside its own brackets in both the error and the NEXT, so
+both lines nested two deep (`... (stopped by SIGTERM (a tool timeout?)) before it finished`). It now reads
+`stopped by SIGTERM, perhaps a tool timeout`. 129 and 130 had no inner brackets, and the default `stopped by
+SIG<NAME> (signal N)` is R81's phrase shared with `ocr._ended`, doctor and the report, so both stay. Tests:
+`test_a_stopped_run_logs_its_end_and_names_the_rerun` (no line of a SIGTERM-stopped run nests brackets deeper than
+one, by a depth count) and `test_a_signal_inside_add_source_keeps_its_held_error`'s `rc_meaning` list.
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
