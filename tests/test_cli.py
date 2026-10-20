@@ -1273,6 +1273,30 @@ def test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_
         ], said
 
 
+def test_a_missing_bundled_pandocs_error_keeps_its_action_whatever_the_home_folders_length(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 18 V41: a sync's per-file error line for a missing bundled pandoc put the path first, so
+    under a long home folder the 200-character reason was cut in the middle of "(is pypandoc_binary
+    installed?); set [convert] pandoc_path". The action now comes before the path, so a cut falls inside the
+    path, and the second run publishes nothing new (each stub stands: its cut reason is the same)."""
+    from agentsync.convert import pandoc as pandoc_mod  # noqa: PLC0415
+
+    deep = Path.home() / ("h" * 45) / ".local/share/uv/tools/agentsync/lib/python3.13/site-packages/pypandoc"
+    monkeypatch.setattr(pandoc_mod, "_wheel_pandoc", lambda: deep / "files" / "pandoc")
+    cfg = str(initialised.config_path)
+    capsys.readouterr()
+    cli.main(["sync", "--config", cfg])
+    errors = [ln.strip() for ln in capsys.readouterr().out.splitlines() if ln.strip().startswith("error: ")]
+    pandoc = [ln for ln in errors if "bundled pandoc not found" in ln]
+    assert pandoc, errors
+    for ln in pandoc:
+        assert "(is pypandoc_binary installed?); set [convert] pandoc_path" in ln, ln
+    cli.main(["sync", "--config", cfg])
+    out = capsys.readouterr().out
+    assert " · commit none (no content change) · 0 changes" in out.splitlines()[0], out
+
+
 def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK

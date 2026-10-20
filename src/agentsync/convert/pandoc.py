@@ -343,8 +343,12 @@ def resolved_pandoc(pandoc_path: Path | None) -> tuple[Path, str]:
             if native is not None:
                 return native, "native"
         return bundled, "wheel"
+    # the action before the path: a sync's per-file error and the manifest's reason keep 200 characters, and
+    # a long home folder cut the action off mid-word (B13 round 18 V41); a cut now falls in the path
+    looked = str(bundled).replace(str(Path.home()), "~", 1)
     raise ConversionError(
-        f"bundled pandoc not found at {bundled} (is pypandoc_binary installed?); set [convert] pandoc_path"
+        "bundled pandoc not found (is pypandoc_binary installed?); set [convert] pandoc_path; "
+        f"looked at {looked}"
     )
 
 
