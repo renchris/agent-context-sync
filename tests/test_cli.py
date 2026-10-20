@@ -3192,8 +3192,14 @@ def test_status_prints_every_check_when_its_state_cannot_be_read(
     assert len(checks) > 15 and any(ln.startswith("loop: ") for ln in out), out
     if breakage == "governance":
         assert rc == cli.EXIT_FAILED and any(ln.startswith("[FAIL] governance.config") for ln in checks)
-        said = "status: cannot read the state: the configuration is refused (the governance.config or policy"
+        said = (
+            "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line"
+        )
         assert any(ln.startswith(said) for ln in out)
+        # B13 round 18 V10: only the lines that need [governance] go; the manifest's still print
+        assert any(ln.startswith("last runs: ") for ln in out) and not any(
+            ln.startswith("retention:") for ln in out
+        )
     monkeypatch.setenv(loop.NO_NEXT_HINT_ENV, "1")
     assert cli.main(["doctor", "--config", cfg]) == rc
     alias = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("[")]

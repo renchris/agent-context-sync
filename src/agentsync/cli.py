@@ -1250,8 +1250,14 @@ def _status_lines(config: Config) -> list[str]:
     lock_path = config.state_paths.lock
     held = lock_path.exists() and SingleWriterLock.is_held(lock_path)
     out.append(f"lock: {SingleWriterLock.describe(lock_path) if held else 'free'}")
-    gov = governance.load_governance(config.config_path)
-    for h in governance.active_holds(config.state_paths.root, gov):
+    # B13 round 18 V10: a [governance] that does not load hides only the lines that need it (HOLD, retention);
+    # the manifest's ``last runs:`` and the sources below still print, so the setup report reads the loop
+    gov: governance.GovernanceConfig | None = None
+    try:
+        gov = governance.load_governance(config.config_path)
+    except Exception as exc:  # its [FAIL] governance.config line says why
+        out.append(f"status: cannot read the state: {_unread_words(exc, refused='governance.config')}")
+    for h in governance.active_holds(config.state_paths.root, gov) if gov is not None else ():
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
     queued, kept = governance.partition_purges(config.state_paths)
     if queued:
@@ -1260,11 +1266,12 @@ def _status_lines(config: Config) -> list[str]:
             f"`{loop.BIN} purge --queue`)"
         )
     out += [f"queued purges kept: {line}" for line in governance.kept_lines(kept)]
-    try:
-        cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
-    except AgentSyncError as exc:
-        cstate, cdetail = "unknown", str(exc)
-    out.append(f"retention: {cstate}: {cdetail}")
+    if gov is not None:
+        try:
+            cstate, cdetail = governance.compaction_state(config.docs_repo, gov)
+        except AgentSyncError as exc:
+            cstate, cdetail = "unknown", str(exc)
+        out.append(f"retention: {cstate}: {cdetail}")
     for event in _launcher_events(config):
         out.append(f"launcher: {event}")
     db = config.state_paths.db
@@ -1389,29 +1396,34 @@ def _fail_steps(results: Sequence[doctor.CheckResult]) -> list[str]:
     return [_fail_step(r) for r in sorted(fails, key=lambda r: doctor.is_persons_fix(r.fix))]
 
 
-def _unread_words(exc: Exception) -> str:
+def _unread_words(exc: Exception, *, refused: str = "governance.config or policy") -> str:
     """Why a part of status cannot read the state, in words (B13 round 17 U21): the setup report copies
     these lines, so no Python class name for a failure a setup meets. sqlite's own message is plain English
-    and holds no path; a refused configuration's words are on its [FAIL] line, which names the value; an
-    error no setup should meet keeps its class and message, for whoever debugs it."""
+    and holds no path; a refused configuration's words are on its [FAIL] line, which names the value
+    (``refused``: the check whose FAIL that is, where the caller knows it); an error no setup should meet
+    keeps its class and message, for whoever debugs it. No bracket of its own around a reason: the report
+    quotes these words after "status says", and sqlite's message can hold one (B13 round 18 V11, V54)."""
     if isinstance(exc, ConfigError):
-        return "the configuration is refused (the governance.config or policy [FAIL] line says why)"
+        return f"the configuration is refused: the {refused} [FAIL] line says why"
     if isinstance(exc, StateUnreadableError):
-        return f"the state file cannot be read ({exc.__cause__ or 'see the state_dir.manifest [FAIL] line'})"
+        return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if isinstance(exc, sqlite3.Error):
-        return f"the state file cannot be read ({exc})"
+        return f"the state file cannot be read: {exc}"
     if isinstance(exc, OSError):
-        return f"a file cannot be opened ({exc.strerror})" if exc.strerror else "a file cannot be opened"
+        return f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
     return f"{type(exc).__name__}: {exc}"
 
 
-def _guarded(name: str, fn: Callable[[], list[str]]) -> list[str]:
+def _guarded(
+    name: str, fn: Callable[[], list[str]], *, refused: str = "governance.config or policy"
+) -> list[str]:
     """``fn()``, or one line naming the error: a part of status that cannot be read never hides the checks
-    (the matching FAIL, e.g. governance.config or a manifest check, explains it)."""
+    (the matching FAIL, e.g. governance.config or a manifest check, explains it; ``refused``: which one a
+    refused configuration's is, as :func:`_unread_words` names it)."""
     try:
         return fn()
     except Exception as exc:
-        return [f"{name}: cannot read the state: {_unread_words(exc)}"]
+        return [f"{name}: cannot read the state: {_unread_words(exc, refused=refused)}"]
 
 
 def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
@@ -1508,7 +1520,7 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
             next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes))
     detail: list[str] = []
     if not (brief or hint_off):
-        detail = _guarded("status", lambda: _status_lines(config))
+        detail = _guarded("status", lambda: _status_lines(config), refused="governance.config")
         detail += _guarded("policy", lambda: _policy_lines(config))
     return _Status(tuple(next_lines), _loop_line(config), tuple(checks), tuple(detail))
 
@@ -2025,7 +2037,10 @@ def _report_hooks() -> setup_report.ReportHooks:
 
     return setup_report.ReportHooks(
         doctor=checks,
-        status=lambda config: [_loop_line(config), *_guarded("status", lambda: _status_lines(config))],
+        status=lambda config: [
+            _loop_line(config),
+            *_guarded("status", lambda: _status_lines(config), refused="governance.config"),
+        ],
         loop_next=loop_next,
         job_proxy=_job_proxy_urls,
     )

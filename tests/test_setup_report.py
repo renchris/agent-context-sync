@@ -5984,32 +5984,60 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     does not load), it printed no ``last runs:`` line and the report's Loop line and issue link said
     ``installed`` on a Mac that had synced, while the loop hook's DatabaseError left the Loop line no NEXT.
     The stage is not read then, and left out of the link; a stage the baseline or the topics settle, read
-    from disk, still stands; and the hook falls back to the NEXT status prints, rule 1's from the FAIL."""
+    from disk, still stands; and the hook falls back to the NEXT status prints, rule 1's from the FAIL.
+    Round 18 V11, V54: status's words follow "status says", in no second bracket. V10: a [governance] that
+    does not load hides only status's HOLD and retention lines, so a synced home reads ``Loop: synced``."""
     stage = setup_report.loop_stage
     assert stage(None, None, None) is None and stage("missing", 0, None) is None
     assert stage("draft", 0, None) == "baseline drafted" and stage("missing", 3, None) == "topics 3"
-    unread = "status: cannot read the state: the state file cannot be read (file is not a database)"
+    unread = "status: cannot read the state: the state file cannot be read: file is not a database"
     hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current · baseline missing", unread])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     loop = _line(section(text, "Summary"), "- Loop: ")
     assert loop.startswith(
-        "- Loop: not read (status: the state file cannot be read (file is not a database));"
+        "- Loop: not read: status says the state file cannot be read: file is not a database;"
     )
     assert "loop_stage=" not in text, "no stage in the issue link"
     hooks = setup_report.ReportHooks(status=lambda c: ["loop: skill current · baseline draft", unread])
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
     assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: baseline drafted;")
+    # V10: a refused [governance] beside "manifest: none yet" is a Mac that never synced, not unread
+    refused = "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line"
+    none_yet = "manifest: none yet (no sync has run)"
+    hooks = setup_report.ReportHooks(
+        status=lambda c: ["loop: skill current · baseline missing", f"{refused} says why", none_yet]
+    )
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks)
+    assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: installed;")
     # MF: a home that synced, then its manifest overwritten
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
     expand(load_config(fake_mac["config"]).state_paths.db).write_bytes(b"not a database, " * 256)
     _rc, text, _ = report(tmp_path, fake_mac["config"])
     loop = _line(section(text, "Summary"), "- Loop: ")
-    assert loop.startswith("- Loop: not read (status: "), loop
+    assert loop.startswith("- Loop: not read: status says the state file cannot be read: "), loop
     assert (
         "NEXT: the state_dir.manifest check failed: its fix on the [FAIL] line below is the person's" in loop
     )
     assert "loop_stage=" not in text and "Loop: installed" not in text
+    stage_words = loop.removeprefix("- Loop: ").split("; NEXT: ", 1)[0]
+    depth = max(itertools.accumulate({"(": 1, ")": -1}.get(ch, 0) for ch in stage_words), default=0)
+    assert depth <= 1, stage_words
+    # GV: a home that synced, then a [governance] value that does not load
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    db.unlink()
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    cfg = fake_mac["config"]
+    cfg.write_text(cfg.read_text(encoding="utf-8") + '\n[governance]\nhold = "yes"\n', encoding="utf-8")
+    _rc, text, _ = report(tmp_path, cfg)
+    status = section(text, "Status")
+    assert (
+        "status: cannot read the state: the configuration is refused: the governance.config [FAIL] line "
+        "says why" in status
+    ), status
+    assert "last runs: " in status and "retention:" not in status, status
+    assert _line(section(text, "Summary"), "- Loop: ").startswith("- Loop: synced;")
+    assert "loop_stage=synced" in text
 
 
 def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(
@@ -6027,7 +6055,7 @@ def test_a_part_the_report_could_not_read_says_why_in_words_not_a_class_name(
     capsys.readouterr()
     cli.main(["status", "--config", str(cfg)])
     out = capsys.readouterr().out
-    assert "status: cannot read the state: the state file cannot be read (file is not a database)" in out, out
+    assert "status: cannot read the state: the state file cannot be read: file is not a database" in out, out
     _rc, text, _ = report(tmp_path, cfg)
     unread = re.compile(r"not read|not measured|not compared|cannot read|cannot be read")
     said = [ln for ln in text.splitlines() if unread.search(ln) and not ln.startswith(("[FAIL]", "[warn]"))]

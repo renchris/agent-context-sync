@@ -5316,11 +5316,14 @@ def _status(r: _Run) -> list[str]:
     loop_line = next((ln for ln in lines if ln.startswith("loop: ")), None)
     unread = next((ln for ln in lines if ln.startswith(_STATUS_UNREAD)), None)
     if unread is not None:
-        r.facts.loop_unread = unread.removeprefix(_STATUS_UNREAD).strip() or "it said no more"
+        r.facts.loop_unread = unread.removeprefix(_STATUS_UNREAD).strip() or None
     if loop_line is not None:
         baseline = _LOOP_BASELINE_RE.search(loop_line)
         topics = _LOOP_TOPICS_RE.search(loop_line)
-        ran = [ln for ln in lines if ln.startswith("last runs:")]
+        # status's "manifest: none yet" is no sync, read as "last runs: none" (V10: a refused [governance]
+        # prints its unread line beside it)
+        ran = ["last runs: none" if ln.startswith("manifest: none yet") else ln for ln in lines]
+        ran = [ln for ln in ran if ln.startswith("last runs:")]
         # no "last runs:" line because status could not read the state: unknown, not "no sync" (U7)
         synced: bool | None = any(ln != "last runs: none" for ln in ran) if ran or unread is None else None
         r.facts.loop = (
@@ -9207,7 +9210,13 @@ def _loop_line(r: _Run) -> str:
         r.loop_stage = loop_stage(*r.facts.loop)
     stage = r.loop_stage or "unknown (no status loop line)"
     if r.loop_stage is None and r.facts.loop is not None:  # B13 round 17 U7: not a false "installed"
-        stage = f"not read (status: {r.facts.loop_unread or 'it cannot read the state'})"
+        # status's words as it says them, after "status says", in no bracket of the report's own: they can
+        # hold one, and two read as a typo (B13 round 18 V11, V54)
+        stage = (
+            f"not read: status says {r.facts.loop_unread}"
+            if r.facts.loop_unread
+            else "not read (status cannot read the state)"
+        )
     if r.config is None:
         why = "no sources.toml yet" if r.config_missing else "the config does not load"
         return f"- Loop: {stage}; NEXT: not read ({why})"
