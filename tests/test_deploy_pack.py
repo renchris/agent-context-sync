@@ -5574,6 +5574,50 @@ _ROUND_17_PARAGRAPH_AMENDS = (
 lane D's two (U83, U84), U77's beside each of T62's eight, U3's at §16.28's not-retried bullet, U80's at
 §16.106 O11, and U104's, the bundled fix's and U106's in §16.126."""
 
+_ROUND_18_PARAGRAPH_AMENDS = (
+    ("16.126", "**Rows, columns and windows count at one (T61;", "§16.139 V69 (by §16.132 U76)"),
+    (
+        "16.129",
+        "**An exit 65 at the first sync is the person's** (U55, U65",
+        "§16.139 V73 (by §16.131 U64, U95)",
+    ),
+    (
+        "16.133",
+        "**Exit 65 has its meaning in each exit-code list** (U84;",
+        "§16.139 V73 (by §16.131 U64, U95)",
+    ),
+    (
+        "16.16",
+        "Exit 1 only when a blocking finding exists; rows alone exit 0",
+        "§16.139 V89 (by §16.125 T32)",
+    ),
+    (
+        "16.30",
+        '- The dry run\'s note counted every commit as "would be rewritten"',
+        "§16.139 V89 (by §16.131 U71)",
+    ),
+    (
+        "16.36",
+        "A dry run of an entry that targets nothing (no blob, no docs path",
+        "§16.139 V89 (by §16.131 U71)",
+    ),
+    (
+        "16.38",
+        "`run_purge_queue` asks `_kept_upstream_deletion` before each entry.",
+        "§16.139 V89 (by §16.131 U71)",
+    ),
+    ("16.39", "The cache count in the purge headline reads `1 cache entry`", "§16.139 V89 (by §16.125 T32)"),
+    ("16.39", "- no empty cloud folder below the root (an unreadable folder", "§16.139 V89 (by §16.131 U71)"),
+    (
+        "16.62",
+        "**A label-escalation purge stays queued while its file is published again** (G30;",
+        "§16.139 V89 (by §16.131 U71)",
+    ),
+)
+"""Round 18's dated lines (lane D's §16.139), as :data:`_ROUND_12_PARAGRAPH_AMENDS`: V69's at §16.126 T61,
+V73's at §16.129 and §16.133, and V89's seven at the paragraphs that quote the swept `(s)` lines. Each
+records a round 16 or 17 item's change, so its marker names that item after "by"."""
+
 
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
@@ -5604,7 +5648,9 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     16's §16.127 (lane D) one: T51 and T69's at §16.14's amended re-read clause, and §16.126 (lane E) seven:
     T17's and T54's in §16.32's out-of-time paragraph, and T62's at §16.24 and at four §16.26 blocks. Round
     17's §16.133 (lane D) two, U83's and U84's, and §16.132 (lane E) thirteen: U77's beside each of T62's
-    lines, U3's at §16.28, U80's at §16.106 and three in §16.126 (U106's landed last)."""
+    lines, U3's at §16.28, U80's at §16.106 and three in §16.126 (U106's landed last). Round 18's §16.139
+    (lane D) ten: V69's at T61, V73's two and V89's seven (B13 round 18 V89: lane B's U71 left them undated).
+    """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
     assert len(_pinned_dated_lines(_ROUND_13_PARAGRAPH_AMENDS)) == len(_ROUND_13_PARAGRAPH_AMENDS) == 1
@@ -5612,6 +5658,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
     assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 15
+    assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 10
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5629,6 +5676,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_15_PARAGRAPH_AMENDS,
         *_ROUND_16_PARAGRAPH_AMENDS,
         *_ROUND_17_PARAGRAPH_AMENDS,
+        *_ROUND_18_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

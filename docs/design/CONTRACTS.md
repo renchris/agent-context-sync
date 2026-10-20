@@ -5793,6 +5793,8 @@ then run `curate`. **Amended 2026-10-13, §16.63 G79 (by §16.56 F95):** the std
 `curate.refresh_queue` stays (the cycle's STALE banners use it). The `lint` base change: it used
 the `curated` tag, which kept the last session's pages in scope, so a page a later sync only marked STALE was an
 ERROR (exit 1) instead of a row.
+Amended 2026-10-19, §16.139 V89 (by §16.125 T32): the table's findings and NEXT lines count their noun, `N
+findings, B blocking` (`1 finding`) and `B blocking findings above: ...` (`1 blocking finding above`).
 
 ```python
 # agentsync.curate
@@ -9405,6 +9407,7 @@ Not done here, because they are not the report's:
 - The dry run's note counted every commit as "would be rewritten" when an entry targets nothing. Done since
   in `governance._purge_locked`: such an entry's note says nothing is targeted and no commit would be
   rewritten, and every other dry run says "up to N commit(s)".
+  Amended 2026-10-19, §16.139 V89 (by §16.131 U71): `up to N commits` (`up to 1 commit`).
 
 Tests: `tests/test_setup_report.py` (the queue of §16.28 with two more entries: an id re-keyed after its file
 came back, which is `still listed`, and one re-keyed and deleted again, which is `no live twin`, both
@@ -10864,6 +10867,7 @@ A dry run writes nothing. **Amended (2026-10-11, §16.38 "A purge by selector ta
 the queue"):** after a verified purge, the entries kept so far also drop the ones that purge covered (`_covers`),
 so the run's own write does not put them back; an entry this run already reported as `stays queued:` is kept.
 Tests: `tests/test_governance.py` (a dry run that names nothing; a queue run that stops part-way).
+Amended 2026-10-19, §16.139 V89 (by §16.131 U71): `up to N commits` (`up to 1 commit`).
 
 #### setup-report: what the v9 report could not say (`agentsync.setup_report`)
 
@@ -11152,6 +11156,8 @@ entry exits 1 as a held one does and writes no audit line; `purge --queue`'s las
 that ran (`N queued purge(s) run; M still queued`). The report's `still listed` line under the purge table says
 whether a run keeps those entries queued, keeps some and erases the others (with both counts), or would erase
 them all.
+Amended 2026-10-19, §16.139 V89 (by §16.131 U71): the note's count reads `N rows` (`1 row`), and the last line
+`N queued purges run; M still queued` (`1 queued purge run`).
 
 The same-path rule in `_Rewriter` skips an id the manifest lists (any state but tombstone, or an alias of such a
 row; `_ManifestTargets.others`, passed to both passes): that is another file's earlier page, not the purged
@@ -11377,6 +11383,9 @@ sheet` and `1 worksheet`, a mail's `1 attachment`, a transcript's `1 turn, 1 nam
 message in 1 thread`: no converter summary keeps `(s)`.
 Amended 2026-10-18, §16.126 T61: nor do a table's rows and columns or a recording's windows and the counts beside
 them, which had kept fixed plurals (`1 rows x 1 columns`, `1 windows`).
+Amended 2026-10-19, §16.139 V89 (by §16.125 T32): the purge headline's other counts take their noun from the count
+too (`1 item`, `1 docs path`, `1 commit rewritten`, `1 blob targeted`), so "as every other CLI line does" no
+longer holds.
 
 #### N3: a failed re-read under a new version is still left (`agentsync.cycle`)
 
@@ -11698,6 +11707,8 @@ exclude:
   (by §16.95 M45, M46, M56):** the mixed form has one clause per kind, each capped at five with its own `sync -v`
   pointer, and names the wait it means by its subject: `the WAITING ON YOU line about the empty cloud folder(s)
   in <id>`.
+  Amended 2026-10-19, §16.139 V89 (by §16.131 U71): R103's alarm reads `is empty but N files are mirrored` (`1
+  file is mirrored`).
 
 An inbox whose newest FULL pass stored empty cloud folders that today's `exclude` does not prune gets the
 local source's two waits (§16.22), with N26's count (which in an inbox also includes a present file the last
@@ -15655,6 +15666,7 @@ since running one would erase a current page; if the policy refuses the file aga
 queued purge``). A kept escalation is a note, never a wait. The setup report's Purge queue counts a kept
 escalation with the kept upstream deletions, and its "still listed" line names both. Test:
 `tests/test_review_fixes.py` (`test_a_label_escalation_purge_stays_queued_while_the_policy_publishes_its_file_again`).
+Amended 2026-10-19, §16.139 V89 (by §16.131 U71): the note's count reads `N rows` (`1 row`).
 
 **The lock-wait WARNING names no host, and the report keeps a fixed stage word** (G36). `lock._describe_holder`,
 which LockHeldError, the cycle's `another sync is running (...)` WARNING and doctor print, no longer appends `on
@@ -22998,6 +23010,8 @@ the index's fixed-wording digest: changing it raises `_INDEX_REVISION`, and a co
 is then read again in full for a count's noun (round 11 M64, M85; measured: the digest test fails). Tests:
 `test_convert_formats.py::test_a_table_and_a_sheet_count_their_rows_and_columns_at_one`,
 `test_convert_recording.py::test_a_recording_under_five_minutes_counts_one_window_as_one`.
+Amended 2026-10-19, §16.139 V69 (by §16.132 U76): the screen-limit NOTE's `N later changes not read (limit)` is the
+second fixed plural kept for the same digest reason.
 
 **A cached summary keeps its (s) for its bytes, not its page (T62; docs; dated lines at §16.24, §16.26, §16.54 Q77,
 §16.111 Q39 and §16.120 S52).** The caveat "a page converted before keeps its `(s)` until it is converted again" was
@@ -23310,6 +23324,10 @@ be read: the person's to fix`, so the Background runs line decodes it too. Tests
 `test_first_sync_failure_fails_the_run_before_the_agent[65]`,
 `test_a_background_run_that_cannot_read_the_state_names_the_persons_fix`, `test_a_signal_exit_is_named_by_its_signal`,
 `test_setup_report.py::test_background_runs_decode_exit_codes_and_ownership`.
+Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status FAILs `state_dir.manifest` and exits 1 when its own
+read of the loop's state hits the damage (the items or runs table, measured); damage under a table no status read
+touches (the cursors table, measured) still passes status, which then prints only `status: cannot read the state`,
+so pointing at sync stays right.
 
 **The bash 3.2 comment lint reads a braced substitution** (U108). `substitution_comment_apostrophes` opened a block
 only at a line ending `$(` or `<(`, so a comment inside `done < <({ ... }` or `"$({ ... })"` (four such blocks in
@@ -23857,6 +23875,8 @@ status does not print for damage under a table), and this item adds the guide's 
 prints the file and the fix again. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which
 holds every `cli.EXIT_*` code to all three lists, so the next new code cannot drift the same way; and the §16.14
 pin in `_ROUND_17_PARAGRAPH_AMENDS`.
+Amended 2026-10-19, §16.139 V73 (by §16.131 U64, U95): status prints that `state_dir.manifest` FAIL when its own
+read hits the damage; only damage under a table no status read touches has no `state_dir.manifest` line.
 
 **The guides say a git remote's host is redacted and kept** (U85). Since §16.123 T88 both readers redact the host of
 a git remote's URL as a `<proxy-N>`, and `--log-start` and `--log` write it to `setup/proxy-hosts`
@@ -23924,4 +23944,67 @@ Reserved for round 18 lane E of B13.
 
 ### 16.139 Round 18: deploy docs and CONTRACTS cross-references (2026-10-19, wave B13 round 18 lane D)
 
-Reserved for round 18 lane D of B13.
+Docs and dated lines that lagged round 17's code (`docs/plans/bring-back-ocr.md`, "B13 round 18"; specs
+`round18/items/V<n>.md`, the verifier's corrected fix built). Lane D's round 18 items: V69, V73, V76, V77, V78, V80,
+V82 and V89. Every edit is outside the prompt block and no item needs prompt words, so none went to lane P. A dated
+line this round writes reads `Amended 2026-10-19, §16.139 V<n> (by §16.NN <item>)`, naming the round 16 or 17 item
+whose change it records; each is pinned in `_ROUND_18_PARAGRAPH_AMENDS`.
+
+**T61's paragraph records U76's second fixed plural** (V69; dated line at §16.126 T61). §16.132 U76 named both
+NOTEs that keep a fixed plural in the spec and the code comment, but T61's "Not built" clause still named only the
+carry-over NOTE. A dated line after it names the screen-limit NOTE's `N later changes not read (limit)`, kept for
+the same digest reason. The verifier measured that the line alone turns the dated-line test red (no claim held it);
+the pin holds it. Test: `test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there`.
+
+**Two round 17 paragraphs say what status prints for table damage as U64 left it** (V73; dated lines at §16.129
+U55 and §16.133 U84). §16.129 said a manifest damaged under a table passes status, which prints only `cannot read
+the state`, and §16.133 that status prints no `state_dir.manifest` line for it; since §16.131 U64 (130e1623) status
+FAILs `state_dir.manifest` and exits 1 when its own read hits the damage. Measured by the verifier in throwaway
+homes: damage under the items or runs table FAILs status, damage under the cursors table still passes it, and sync
+exits 65 for all three. Each paragraph keeps its sentences and gets a dated line saying which; status still prints
+its `status: cannot read the state: ...` line beside the FAIL, so neither line says it does not. Test: the pins.
+
+**The guide's placeholder rows follow round 17's redaction** (V76). The `<link-N>` row says both reports write it
+(U61 gave the shell fallback report the placeholder; the Environment line that names the folder a link points into
+stays the agentsync report's), the `<folder-N>` row no longer says the evidence parts and the loads line name a
+vanished id by place (since U8, U23, U44 they read `(<source-N>, not in the config)`, as the `(source N)` row below
+it says) and names U46's recorded folder, and the `<proxy-N>` row reads a remote from the docs repo's own config
+too (U93) and redacts its URL's path as a rewrite's (U15). The deploy README's proxy-hosts cell is unchanged: it
+names no config file and the file keeps hosts only. Tests: `test_the_guides_placeholder_rows_follow_round_17s_redaction`
+and `test_the_guides_say_a_git_remotes_host_is_redacted_and_kept`.
+
+**The guide gives the list's config-stop tail and its log field** (V77). §16.130 U12's tail (`; step 2 stops at its
+config step on <what>: ...`, or the reinstall form) and `config_err=<words>` had no bullet in "A Mac that is already
+set up" and no place in the install.log row's field list. The bullet quotes both tails and the three words as
+install.sh writes them. Test: `test_the_guide_gives_the_lists_config_stop_tail`, which reads them from install.sh.
+
+**The guide's outcome rules and first-sync row give round 17's report words** (V78). The "Stopped at step 1" rule
+gets U35's second exception, an earlier attempt that only listed the folders (`stopped at step 1 (after its folder
+list, with no report)`, never the latest attempt), and the Failed rule's "1 when only `--list-folders` ran" points
+to it; the first-sync row gets U42's `no first sync in the last install run (...)` clause and its newest earlier
+run's sync. Test: `test_the_guides_outcome_rules_and_sync_row_give_round_17s_report_words`, which reads the words
+from setup_report.
+
+**The guide's no-hash route cites no clause the report leaves out** (V80). It told the triager to chmod "as the
+Summary's unreadable clause says", but a carried patch, the only kind with a no-hash `not repeated:` line, is
+never in that clause (§16.127 T24: a rerun sends nothing new, so "not in bring-back.md" would be false), and the
+clause is the Run metadata local-work line's, not the Summary's. The command and its caveat stay; the citation
+goes. Test: `test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`.
+
+**The deploy guide's exit-code list has 64 and a wider 78** (V82). The launcher exits 64 (`exUsage`) when it refuses
+a job's program (a `PROGRAM_REFUSED` line) or its options (`USAGE`), on every run for a job whose interpreter is
+not the pinned one; `EXIT_MEANINGS` and `rc_meaning` decoded it and the guide did not. 78 is also an invalid
+policy.toml (`EXIT_MEANINGS`: `sources.toml or policy.toml`); a `[governance]` value is inside sources.toml, so it
+needs no clause. The launcher's 71 (spawn failed) is decoded nowhere and stays outside this item. Test:
+`test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which reads 64 and 80 from the launcher's source.
+
+**Seven older paragraphs that quote the swept `(s)` lines get a dated line** (V89; dated lines at §16.16, §16.30,
+§16.36, §16.38, §16.39 and §16.62 G30). Lane B's U71 left them undated because pinning each needed a shared table;
+round 17's lane D then built one. Five went stale with §16.131 U71 (a7051cf9: `up to N commits` in §16.30's and
+§16.36's dry-run notes, `N rows` in §16.38's and §16.62's kept notes, R103's `N files are mirrored` in §16.39) and
+two with §16.125 T32 (295650c0: §16.16's curate findings and NEXT lines, at the end of the paragraph after the
+table so it does not render as a row, and §16.39's purge headline, whose other counts no longer keep `(s)`). The
+lines are round 18's, so they are in `_ROUND_18_PARAGRAPH_AMENDS`, not round 17's table. Test: the pins.
+
+All eight are built; none was recorded as making things worse. V69's verifier measured that its finder's fix alone
+turns the dated-line test red, so every dated line here has a claim or a pin.
