@@ -5750,8 +5750,13 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     one, and a LaunchAgent's job passes it on, but the deploy guide's exit-code list, the report's
     `EXIT_MEANINGS` and install.sh's `rc_meaning` had no 65: the report printed a bare 65 and install.sh
     `exit 65`. Every `cli.EXIT_*` code has a meaning in each, and the guide lists every one a job can end on
-    (a job's arguments are written by install-agent, so never `2`, a usage error)."""
+    (a job's arguments are written by install-agent, so never `2`, a usage error). B13 round 18 V82: the
+    guide had no 64, the launcher's usage exit, which a job whose program is not the launcher's pinned one
+    ends on at every run (`EXIT_MEANINGS` and `rc_meaning` decode it), and called 78 a bad sources.toml only,
+    though an invalid policy.toml exits 78 too. The launcher's own codes a job ends on, 64 and 80, are read
+    from its source."""
     from agentsync import cli, setup_report  # noqa: PLC0415
+    from agentsync.ops import launchd  # noqa: PLC0415
 
     codes = {v for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
     assert {0, 1, 2, 65, 75, 77, 78, 79} <= codes, "the scan is broken"
@@ -5768,10 +5773,21 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     assert meanings[65] == setup_report.EXIT_MEANINGS[65]
     readme = (DEPLOY / "README.md").read_text(encoding="utf-8")
     listed = " ".join(readme.split("## Exit codes the jobs report", 1)[1].split("\n## ", 1)[0].split())
-    assert set(map(int, re.findall(r"(?:^|· )`(\d+)`", listed))) == codes - {cli.EXIT_USAGE} | {80}
+    swift = (ROOT / "launcher" / "Sources" / "main.swift").read_text(encoding="utf-8")
+    refused = int(re.findall(r"^let exUsage: Int32 = (\d+)$", swift, re.M)[0])
+    denied = int(re.findall(r"^let exitTCCDenied: Int32 = (\d+)$", swift, re.M)[0])
+    assert (refused, denied) == (64, launchd.EXIT_TCC_DENIED)
+    assert {refused, denied} <= set(setup_report.EXIT_MEANINGS)
+    assert set(map(int, re.findall(r"(?:^|· )`(\d+)`", listed))) == codes - {cli.EXIT_USAGE} | {
+        refused,
+        denied,
+    }
     assert (
         "`65` the state file (`manifest.sqlite`) is no database or a damaged one: you, not an agent" in listed
     )
+    assert f"`64` {setup_report.EXIT_MEANINGS[64]} (a `PROGRAM_REFUSED` or `USAGE` line" in listed
+    assert "(sources.toml or policy.toml)" in setup_report.EXIT_MEANINGS[78]
+    assert "`78` bad `sources.toml` or `policy.toml` ·" in listed
 
 
 def test_the_guides_say_a_git_remotes_host_is_redacted_and_kept() -> None:
@@ -5808,9 +5824,11 @@ def test_the_guides_say_a_git_remotes_host_is_redacted_and_kept() -> None:
     ) in page
     [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<email-N>`, `<guid-N>`")]
     assert (
-        'the host of each git remote\'s URL (`[remote "<name>"] url`, from the same git config files; B13 '
-        "round 16 T88): a `://` URL other than `file://`, or git's `[user@]host:path` form, whose host has a "
-        "dot and is none of the installer's public hosts, github.com or another GitHub host "
+        'the host of each git remote\'s URL (`[remote "<name>"] url`, from the same git config files and, '
+        "since 2026-10-19, the docs repo's own config, read last; B13 round 16 T88, round 17 U93), and, "
+        "since 2026-10-19, that URL's path when a word in it is not only one of those generic words, as a "
+        "rewrite's (U15): a `://` URL other than `file://`, or git's `[user@]host:path` form, whose host "
+        "has a dot and is none of the installer's public hosts, github.com or another GitHub host "
         "(`*.github.com`, `*.githubusercontent.com`); a local remote (a relative or absolute path, a bare "
         "word) names no host,"
     ) in row
@@ -5842,11 +5860,109 @@ def test_the_guide_gives_the_list_tail_for_a_mirrored_folder_whose_block_is_gone
         ln for ln in _feedback_page().splitlines() if ln.startswith("| `~/agent-context/setup/install.log`")
     ]
     assert (
-        "and the list's other fields (`gone=`, `missing=`, `apps=`, `vanished=`) are in "
+        "and the list's other fields (`gone=`, `missing=`, `apps=`, `vanished=`, `config_err=`) are in "
         "[A Mac that is already set up](#a-mac-that-is-already-set-up)"
     ) in row
     for field in ("`gone=N`", "missing=M", "apps=<app>"):
         assert field in section, field
+
+
+def test_the_guide_gives_the_lists_config_stop_tail() -> None:
+    """B13 round 18 V77: since round 17 U12 step 1's list asks the installed agentsync whether step 2's config
+    step would stop on policy.toml, a `[governance]` value or the state file, adds a `NEXT:` tail that says so
+    and logs `config_err=<words>`, but the guide's list section had no bullet for it and its install.log row
+    named no such field. The bullet quotes both tails' fixed openings and words as install.sh writes them."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    tails = re.findall(r'^\t\t\tctail="(; step 2 [^"$]*)\$ctail: ([^"]*)"$', script, re.M)
+    assert [head for head, _ in tails] == [
+        "; step 2 stops at its config step on ",
+        "; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it too, step 2 stops "
+        "at its config step on ",
+    ]
+    [end] = {end for _, end in tails}
+    words = re.findall(
+        r'^\t\tcase ",\$cerr," in \*",(\w+),"\*\) ctail="(?:\$\{ctail:\+\$ctail and \})?([^"]*)" ;; esac$',
+        script,
+        re.M,
+    )
+    assert [w for w, _ in words] == ["policy", "governance", "state"]
+    assert '\t\tclog=" config_err=$cerr"\n' in script
+    page = " ".join(_feedback_page().split())
+    section = page.split("### A Mac that is already set up", 1)[1].split("### ", 1)[0]
+    assert f"adds `{tails[0][0]}<what>: {end}`" in section
+    assert f"the tail opens `{tails[1][0]}<what>: ...`" in section
+    for _, said in words:
+        assert f"`{said.replace('$CONFIG', '<config>')}`" in section, said
+    assert (
+        "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance` and "
+        "`state`" in section
+    )
+    [row] = [
+        ln for ln in _feedback_page().splitlines() if ln.startswith("| `~/agent-context/setup/install.log`")
+    ]
+    assert "`vanished=`, `config_err=`) are in" in row
+
+
+def test_the_guides_placeholder_rows_follow_round_17s_redaction() -> None:
+    """B13 round 18 V76: round 17 changed three placeholders and the guide's rows kept the old reach: U61's
+    `<link-N>` is in the shell fallback report too, U8, U23 and U44 name a vanished source id
+    `(<source-N>, not in the config)` in the evidence parts and the loads line, which the `<folder-N>` row
+    still said name it by place, and U46 redacts the folder such a source's walk recorded; U93 and U15's
+    remote hosts are read from the docs repo's config too, with the URL's path (the `<proxy-N>` row, pinned
+    in `test_the_guides_say_a_git_remotes_host_is_redacted_and_kept`)."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'add_pair "$e" "<link-$lk>"' in script  # the shell report writes it
+    rows = _feedback_page().splitlines()
+    [link] = [ln for ln in rows if ln.startswith("| `<link-N>` |")]
+    assert (
+        "in both reports (the agentsync report since 2026-10-18, the shell fallback report since 2026-10-19, "
+        "B13 round 17 U61)"
+    ) in link
+    assert "in the agentsync report, the Environment line names the folder it points into" in link
+    [folder] = [ln for ln in rows if ln.startswith("| `<library-N>`, `<folder-N>`, `<source-N>` |")]
+    assert "which name it by place" not in folder
+    assert (
+        "the evidence parts and the Configuration section's loads line included, as `(<source-N>, not in the "
+        "config)` there (by place only where the report cannot read it, below)"
+    ) in folder
+    assert (
+        "in the agentsync report since 2026-10-19 (B13 round 17 U46), the folder each such source's walk"
+        in (folder)
+    )
+    [place] = [ln for ln in rows if ln.startswith("| `(source N)`, `(not in the config, N)` |")]
+    assert (
+        "otherwise it reads `(<source-N>, not in the config)`" in place
+    )  # the row the folder row now agrees with
+
+
+def test_the_guides_outcome_rules_and_sync_row_give_round_17s_report_words() -> None:
+    """B13 round 18 V78: round 17 U35 reads an earlier attempt that only listed the folders as `stopped at
+    step 1 (after its folder list, with no report)`, and U42 names an earlier run's sync when the last install
+    run stopped before its own, but the guide's outcome rules predicted `failed at step 1` for the first and
+    its first-sync row had no clause for the second. Each quotes the report's words, from setup_report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    [note] = re.findall(r'_LISTED_AND_LEFT,\), outcome\.version, "([^"]+)"', source)
+    [where] = re.findall(r'f"it stopped at its \{failing\[0\]\} step" if failing else "([^"]+)"', source)
+    [head] = re.findall(
+        r'parts\.append\(f"(no first sync in the last install run) \(install\.log: \{where\}\)"', source
+    )
+    [newest] = re.findall(
+        r'f"(the newest earlier run\'s sync): \{text\} \(install\.log: \{_run_named', source
+    )
+    page = " ".join(_feedback_page().split())
+    rules = page.split("- **Stopped at step 1**", 1)[1].split("A line logged after an attempt's", 1)[0]
+    assert f"an earlier attempt also reads `stopped at step 1 ({note})`, with no deviation" in rules
+    assert "The latest attempt is never read this way" in rules
+    assert (
+        "1 when only `--list-folders` ran (for an earlier attempt whose last list worked, see the U35" in page
+    )
+    [row] = [
+        ln for ln in _feedback_page().splitlines() if ln.startswith("| Summary: `first sync:` or `sync:` |")
+    ]
+    assert f"the clause reads `{head} (install.log: it stopped at its <step> step)`, or `{where}`" in row
+    assert f"then `· {newest}: <result> (install.log: the install run of <time>)`" in row
 
 
 def test_the_deploy_guide_gives_not_sents_third_field() -> None:
@@ -5894,10 +6010,12 @@ def test_the_guide_asks_for_a_not_repeated_patch_by_its_hash() -> None:
     }
     assert (
         f"A line ending `{tail}; still in ...` has no hash to match (B13 round 17 U82). Ask the person to "
-        "make that patch readable (`chmod u+r ~/agent-context/setup/local-work/*.patch`, as the Summary's "
-        "unreadable clause says; it works only where their account owns the file) and to run "
-        f"`{setup_report.LOCAL_WORK_AGAIN}` again: that rerun sends nothing new"
+        "make that patch readable (`chmod u+r ~/agent-context/setup/local-work/*.patch`; the report gives no "
+        "remedy for a patch an earlier report carried, and the command works only where their account owns "
+        f"the file) and to run `{setup_report.LOCAL_WORK_AGAIN}` again: that rerun sends nothing new"
     ) in page
+    # B13 round 18 V80: a carried patch is never in the report's unreadable clause (T24), so none is cited
+    assert "unreadable clause says" not in page
     assert "ask for the file the line names" not in page
     assert (
         "the Mac cannot know what was copied back. The line names no file (a patch's file name carries its "
