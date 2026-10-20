@@ -5254,6 +5254,9 @@ still to come"):** when the last header counted is the run writing the report, t
 `NEXT:` comes after the report.
 Amended 2026-10-16, §16.92 M36: the report's own words spell it "capitalized", and "organization" (the legend's
 `<org-N>`, the Private-only line), the setup prompt's US spelling, in both reports.
+Amended 2026-10-20, §16.146 X35: every doctor FAIL still keeps the outcome from "fully one command", but only a
+FAIL in no bucket of the Summary's doctor line is called unexpected; one in a bucket is `N doctor FAIL(s) with a
+known cause: <checks> (<the bucket's words>)`, and both lines read one sort.
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -15202,6 +15205,10 @@ Amended 2026-10-16, §16.92 M2: `, so the product name ... stays as written` fol
 friction log has a word of a listed folder's name that is not configured, and N counts only those folders (a
 configured one is redacted, and never decides the clause).
 Amended 2026-10-20, §16.140 W17: when M is not 0 the clause ends `, except as a word of the agent's name in the friction log's Agent: line`.
+Amended 2026-10-20, §16.146 X18: N's words say what it leaves out: `N under ~/Library/CloudStorage that no source
+is configured to sync, which this report does not redact`.
+Amended 2026-10-20, §16.146 X38: the configured clause ends `, except as a word of the agent's name in the
+friction log's Agent: line or a step 1 line that states it`.
 
 **F31: one wording for the label rule.** The OCR part's line is `- [policy] label rule: on (no image is read under
 one)`, `off` or `not read (<Exc>)`, the Configuration line's words (Q31), with the OCR part's own suffix kept.
@@ -24856,6 +24863,9 @@ coding-agent product word stays as written in the agent's name`. This ends the l
 unchanged here. Tests:
 `test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_it_is_shown`,
 `test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder`.
+Amended 2026-10-20, §16.146 X38, X39: the name keeps the word where a step 1 line states it too (`_STATED_AT`:
+the friction log's `| step 1 | <kind> | prompt vN, <agent>:` row and the Summary's ` · step 1 · <kind> · ` item),
+and where a hyphen or an underscore joins it to a model id (`claude-opus-5-5`), unless a path is in the same token.
 
 **The report reads the files waiting for a converter that could not start** (W52, W68; amends §16.134 V75). A file
 whose first conversion fails because its converter could not start is counted in the run record's
@@ -24875,6 +24885,10 @@ same. No Loop clause is added: `loop.next_step` already gives the newest run's w
 `test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`,
 `test_repeat_conversions_part_reads_the_run_records_and_the_cache`,
 `test_first_sync_clause_carries_the_read_again_count`.
+Amended 2026-10-20, §16.146 X2, X10: the note's tail is the manifest's state now, not the run history's: `N
+file(s) still wait(s): its stub is / their stubs are in Quarantine by reason, class "conversion failed", until a
+run in which the converter starts converts it/them`, or `none waits now: Quarantine by reason holds no stub of a
+file waiting for its converter`.
 
 **A manifest this account cannot open fails a Doctor line, and the report points at it** (W64; amends §16.128 U21).
 With manifest.sqlite at mode 0000 (or another account's, after a sudo sync) status exited 0 with `[ok]
@@ -24894,6 +24908,11 @@ state_dir lines say why` and adds `; the state_dir lines say why` to an EACCES o
 sync and curate print one line for the same file (§16.143). Tests:
 `test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it` (tests/test_cli.py),
 `test_state_files_this_account_cannot_open_fail_by_their_cause` (tests/test_ops_doctor.py).
+Amended 2026-10-20, §16.146 X42, X60, X45: the codes are sqlite's named constants (they held 23, SQLITE_AUTH,
+where PERM is 3), and `ManifestOpenError` is imported, not read by name.
+Amended 2026-10-20, §16.146 X28: the Summary files that state_dir.files FAIL (and state_dir's, for a folder it
+cannot search) and the listing warn beside it under `from the state file this account cannot open`, not
+`unexpected`.
 
 **A report the time limit cut off says so in the NEXT the agent relays** (W3). A report whose doctor call (or an
 evidence part) the time limit cut off wrote `write the report again when this Mac is idle (...) before sending
@@ -25277,6 +25296,9 @@ cursors table passes status; it now FAILs status, and each has W41's dated line.
 `test_cli.py::test_damage_under_any_table_fails_status_and_stops_the_sync` (every table's root, and the last leaf
 of cache and outputs, with the report before and after the sync), and the probe line of
 `test_a_manifest_damaged_under_a_table_status_reads_fails_status`.
+Amended 2026-10-20, §16.146 X80: the Loop line keeps the loop's NEXT and, when the FAIL came from the evidence
+read alone, says beside it `(the loop's own read; the report's read of the state file found it damaged: the
+state_dir.manifest [FAIL] line under Doctor says what to do first)`.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
@@ -25487,6 +25509,9 @@ the guide's reinstall note) and that a 71 at every run means re-running the inst
 launcher's pin as well; doctor's own fix (`install-agent`, from the environment agentsync now runs in) is lane B's
 and stays. Test: `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`, which reads 71 from
 main.swift beside 64 and 80, and the §16.14 pin in `_ROUND_19_D_PARAGRAPH_AMENDS`.
+Amended 2026-10-20, §16.146 X44: the meaning holds no bracket (its callers put it in one) and says which run
+to repeat: `a 71 at every run means run install.sh again with the options of the run that installed
+agentsync, not --report-only, which builds nothing`; the guide says the same.
 
 **CI's time and its limit** (W80). CLAUDE.md said `ci` takes 15 to 20 minutes; the four green runs on main before
 this round took 23 to 24 of the job's 30 (pytest 22:25 to 23:32 at 5105 to 5120 tests). The verifier asked first
@@ -25507,7 +25532,111 @@ All nine are built; none was recorded as making things worse. W44, W59 and W60 a
 
 ### 16.146 Round 20: setup report (2026-10-20, wave B13 round 20 lane RA)
 
-Reserved for round 20 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 20").
+Lane RA's round 20 items (`docs/plans/bring-back-ocr.md`, "B13 round 20"; specs `round20/items/X<n>.md`, the
+verifier's corrected fix built): X2, X10, X18, X28, X35, X38, X39, X41, X42, X44, X45, X60, X79 and X80. X2 and X10
+are one defect, and so are X42 and X60, each built once. Where an item changes what an older section states, that
+section has a dated line (`Amended 2026-10-20, §16.146 X<n>`).
+
+**The waiting-files note reads whether a stub waits now** (X2, X10; amends §16.140 W52). Under Repeat conversions
+the note on the files waiting for a converter that could not start said `their stubs are in Quarantine by reason,
+class "conversion failed", and a later run converts them once the converter starts` from the run history alone,
+while the same report's Quarantine by reason listed none after a later run had converted the file. Its tail reads
+the manifest now (`_converter_waiting_now`: quarantined rows whose `state_reason` starts with
+`CONVERTER_UNAVAILABLE`, a part of "conversion failed" that a plain failed conversion is not): `N file(s) still
+wait(s): its stub is / their stubs are in Quarantine by reason, class "conversion failed", until a run in which the
+converter starts converts it/them`, or `none waits now: Quarantine by reason holds no stub of a file waiting for its
+converter`. No run is named as the one that converted them: a run's total ties no file to it, and a file also
+leaves when its source does. Tests: `test_the_waiting_files_note_says_whether_a_stub_waits_now_from_the_manifest`,
+`test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_the_run_record`.
+
+**The coding-agent folder count says what it leaves out** (X18; amends §16.58 F4). With the only product-word
+folder configured (`Documents/Copilot`) the line read `0 under ~/Library/CloudStorage, which this report does not
+redact; 1 of the configured source folders`, as if no such folder were there. N is `N under ~/Library/CloudStorage
+that no source is configured to sync, which this report does not redact`. Tests:
+`test_the_coding_agent_folder_count_says_it_leaves_out_a_configured_folder`,
+`test_configuration_counts_the_folders_named_like_a_coding_agent`.
+
+**A state file this account cannot open has its own doctor bucket, and the outcome reads the doctor line's sort**
+(X28, X35; amends §16.140 W64 and §16.14 K4). A manifest at mode 0000 (or another account's) made doctor FAIL
+state_dir.files, and the Summary filed it and the listing warn beside it as `unexpected 2`: the state-file bucket
+took only a damaged file's state_dir.manifest. `_state_shut` reads the file itself, never doctor's words: the
+Doctor hook's or the evidence read's error is a `ManifestOpenError` or CANTOPEN, PERM or READONLY, or the file (its
+-wal or -shm too) is another account's or fails `os.access` for reading and writing (doctor's own test), or its
+folder cannot be searched. Then the doctor line has `from the state file this account cannot open (N checks):
+state_dir.files FAIL (the person's; see Doctor), heartbeat.<id> warn (not judged: the loop cannot read the state)`
+(and `state_dir FAIL` when the folder is the cause); a state_dir.files FAIL for a file others can read stays
+unexpected. Lane B's round 20 X12 makes doctor's governance.time_machine say "not checked" for such a file; until
+then its warn joins the bucket as `governance.time_machine warn (not judged: this account cannot read the state
+file)` only when every path it names is the state file (`_names_only_state`). X35: the outcome called every FAIL `N unexpected doctor FAIL` while the doctor
+line two lines below filed it under its cause. `_sort_doctor` sorts doctor's problems once per attempt's runs,
+doctor problems and loop checks (the friction section's outcome sorts before the Loop line reads the checks);
+`_doctor_line` renders its buckets and `_doctor_fails(r, runs)` hands `compute_outcome` each FAIL with its bucket's
+words. Any FAIL still prevents "fully one command"; the reason has `N unexpected doctor FAIL: <a>`
+for a FAIL in no bucket and `N doctor FAIL(s) with a known cause: <checks> (<bucket words>)` for the rest, grouped
+by bucket. Tests: `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`,
+`test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket`,
+`test_the_outcome_calls_unexpected_only_a_doctor_fail_in_no_bucket`,
+`test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket`.
+
+**The agent's name keeps its product word where a step 1 line states it, and before a hyphen** (X38, X39; amends
+§16.140 W17 and §16.58 F4). A step 1 line states its agent at its text's start (`prompt v28, <agent>:`), and the
+friction log's row and the Summary's item showed `GitHub <folder-N> CLI gpt-5` right under the kept name.
+`_STATED_AT` (the row's `| step 1 | <kind> | ` and the item's ` · step 1 · <kind> · `, then `_STATED_PREFIX`, the
+words `_STEP1_STATED_RE` reads, from one constant) joins `_AGENT_AT` in `_redact_lines`, ending the name at its
+colon, for a row of any kind (a deviation, or a second error, keeps the words); the Summary's item is redacted the
+same way (`_redact_stated`). The Configuration clause says `, except as a word of the agent's name in the friction
+log's Agent: line or a step 1 line that states it`. X39: `_a_whole_word` counted no hyphen as an edge, so
+`Claude Code, claude-opus-5-5` read `Claude Code, <folder-N>-opus-5-5` with a configured `Claude` folder. A hyphen
+or an underscore is an edge now, unless the word's whitespace-delimited token holds a path character (`/`, `~`,
+`\`): `~/Development/work-gemini` still reads `work-<folder-N>`. Tests:
+`test_the_agents_name_keeps_its_product_word_where_a_step_1_line_states_it`,
+`test_the_agents_name_keeps_a_product_word_joined_to_a_model_id_by_a_hyphen`.
+
+**A one-line `[url "<base>"] insteadOf = <url>` rewrite is redacted** (X41). git applies a key written on its
+section header's line, and `_git_rewrite_bases` read an `insteadOf` key only on a line of its own, so a 403 on
+that base printed its host and path in clear and the Environment counted no rewrite. The text after the header's
+`]` is read with `_GIT_INSTEADOF_RE` too (`]insteadOf=` included; `pushInsteadOf` and a comment are still not a
+rewrite). install.sh's `git_rewrite_bases` is lane RB's (round 20 X8), so the two reports keep one numbering. The
+same form for `[http] proxy` and `[remote] url` (`_GIT_PROXY_RE`, `_git_remotes`) was not changed: their shell
+twins are lane RB's, and changing one side alone would number the placeholders apart. Test:
+`test_a_git_url_rewrite_on_its_sections_own_line_is_redacted`.
+
+**The cannot-open codes are sqlite's named constants, and `ManifestOpenError` is imported** (X42, X60, X45; amends
+§16.140 W64). `_CANNOT_OPEN_CODES` was `{14, 23, 8}` under words that say CANTOPEN, PERM and READONLY: 23 is
+SQLITE_AUTH, PERM is 3, so a PERM error was pointed at state_dir.manifest. It is
+`{sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_PERM, sqlite3.SQLITE_READONLY}`; AUTH, which no setup meets (agentsync
+installs no authorizer), keeps the generic words. Lane B's round 20 X48 names the same three in cli.py. X45: the
+lookup of `ManifestOpenError` by name, for a build before it landed, was dead code; it is imported, and the
+camel-case scan's allow-list entry for the name is gone. Test:
+`test_a_state_file_this_account_cannot_open_is_told_by_sqlites_named_codes`.
+
+**Exit 71's meaning has no bracket inside its callers' and names the run to repeat** (X44; amends §16.145 W72).
+`decode_exit('71')` read `71 (the launcher could not start agentsync (a SPAWN_FAILED line ...): ...)` and
+install.sh's `exit 71 (...)` the same, and `re-run the install command` did not say which run. `EXIT_MEANINGS[71]`
+and `rc_meaning 71` are one paren-free literal: `the launcher could not start agentsync: the Python it runs is
+missing or not executable, and a SPAWN_FAILED line in the job's error log names the program and the error; one 71
+during a reinstall is expected, a 71 at every run means run install.sh again with the options of the run that
+installed agentsync, not --report-only, which builds nothing` (doctor's `AGAIN_UNDER_INSTALL_SH` as a comma
+clause, since its own bracket would nest). The deploy guide's list says the same run. Test:
+`test_every_exit_code_a_job_reports_has_its_meaning_everywhere`.
+
+**The Loop line says beside its NEXT when the report's read found the state file damaged** (X80; amends §16.143
+W41). With damage only the evidence read reached, Doctor had the state_dir.manifest FAIL while the Loop line gave
+the ordinary NEXT, ending in a sync that stops on the damage. `_with_evidence_damage` sets
+`facts.evidence_damage_failed` when it adds the FAIL, and the Loop line keeps the loop's NEXT and adds right after
+it, before any WAITING ON YOU or note clause, `(the loop's own read; the report's read of the state file found it
+damaged: the state_dir.manifest [FAIL] line under Doctor says what to do first)`, or `; <the same words>` after a
+`NEXT: not read (...)`. When doctor FAILs it itself the NEXT is already rule 1's and nothing is added. Tests:
+`test_cli.py::test_damage_under_any_table_fails_status_and_stops_the_sync` (last leaf),
+`test_cli.py::test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_status_does`.
+
+**The pandoc time-out test has a budget a loaded Mac cannot use up first** (X79). The test gave `build_report` 2.5 s,
+so its pandoc run was skipped once 1.3 s had gone before it, which the reads before it took at a load of about 24
+per core: measured here at a load of about 200, six concurrent runs failed 6 of 6 at 2.5 s and passed 6 of 6 at
+6.0 s. The budget is 6.0 s, and a skip fails the test by its own words. It is not marked timing, which the land gate
+skips. Test: `test_the_reports_own_pandoc_time_out_gives_the_first_start_reason_for_the_bundled_copy_only`.
+
+All fourteen are built; none was recorded as making things worse.
 
 ### 16.147 Round 20: installer, the shell report's redaction and the stopped copy's outcome (2026-10-20, wave B13 round 20 lane RB)
 
