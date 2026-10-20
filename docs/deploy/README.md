@@ -226,7 +226,8 @@ them, including the Keychain item, the LaunchAgents, the launcher and its TCC gr
 Every real `install.sh` run appends one line per step to `~/agent-context/setup/install.log` (0600; set
 `AGENTSYNC_SETUP_LOG` to move it). `agentsync setup-report --out
 ~/agent-context/setup-report.md` turns that log, doctor, status, the background runs and recent log errors into one
-redacted report with a summary first. It is read-only, makes no network calls and takes under 12 s. The coding agent
+redacted report with a summary first. It is read-only, makes no network calls and usually takes under 12 s (about 35 s at most,
+when doctor is slow). The coding agent
 logs what the prompt did not foresee as it goes, with `scripts/install.sh --log` (`--log-start` opens each attempt
 and `--report-only` closes it), into `~/agent-context/setup/friction.md` (0600); the report embeds it with the same
 redaction, and works out the outcome and run type itself. It prints a link that opens a pre-filled setup-report

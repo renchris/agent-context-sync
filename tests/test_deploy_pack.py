@@ -4075,7 +4075,7 @@ def test_setup_feedback_page_triages_by_friction_id() -> None:
     assert "Full Disk Access to the" in unavoidable and "pre-allows" in unavoidable
     assert "for the terminal (step 1)" in unavoidable
     assert "`install.sh --confirm-install-agent`" in unavoidable, "KISS K11b: launcher click optional"
-    assert "within 12 s" in page  # setup_report.TIME_BUDGET_S (judge finding I20)
+    assert "within a 12 s budget" in page  # setup_report.TIME_BUDGET_S (judge finding I20)
 
 
 def test_setup_feedback_names_every_installer_step() -> None:
@@ -6023,7 +6023,9 @@ def test_the_guides_outcome_rules_and_sync_row_give_round_17s_report_words() -> 
     """B13 round 18 V78: round 17 U35 reads an earlier attempt that only listed the folders as `stopped at
     step 1 (after its folder list, with no report)`, and U42 names an earlier run's sync when the last install
     run stopped before its own, but the guide's outcome rules predicted `failed at step 1` for the first and
-    its first-sync row had no clause for the second. Each quotes the report's words, from setup_report."""
+    its first-sync row had no clause for the second. Each quotes the report's words, from setup_report. B13
+    round 19 W57: the row said the `sync`/`first sync` label follows the last run's config note, but round 18
+    V48 takes it from the run whose sync the line shows (`pool[-1]`), the earlier run in this very case."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -6047,6 +6049,34 @@ def test_the_guides_outcome_rules_and_sync_row_give_round_17s_report_words() -> 
     ]
     assert f"the clause reads `{head} (install.log: it stopped at its <step> step)`, or `{where}`" in row
     assert f"then `· {newest}: <result> (install.log: the install run of <time>)`" in row
+    assert 'config = pool[-1].step("config") or {}' in source
+    assert "label follows the config note of the run whose sync the line shows" in row
+    assert "label follows the last run's config note" not in row
+
+
+def test_the_guides_give_the_reports_time_with_a_slow_doctor() -> None:
+    """B13 round 19 W58: both guides said the report finishes within 12 s, but round 18 V4 gives a slow doctor
+    at least `_DOCTOR_GRACE_S` and moves the deadline to make room (the report's own figure is about 35 s, and
+    its took line names the extra seconds), and V55 reads the docs repo's remotes outside the budget. Each
+    figure and the took line's words are read from setup_report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    assert (setup_report.TIME_BUDGET_S, setup_report._DOCTOR_GRACE_S) == (12.0, 20.0)
+    source = inspect.getsource(setup_report)
+    flat = " ".join(source.split())
+    assert "the report then takes at most about 35 s, inside install.sh's 120 s bound" in flat
+    [took] = re.findall(r'grace = f", \{r\.doctor_grace:\.1f\}s (more for a slow doctor)"', source)
+    page = " ".join(_feedback_page().split())
+    assert "the whole report within 12 s" not in page
+    assert (
+        "the whole report within a 12 s budget (`TIME_BUDGET_S`); a slow doctor is given at least 20 s and"
+        " the deadline moves to make room, so on a busy Mac the report can take about 35 s" in page
+    )
+    assert f"e.g. `time limit 12s, 14.2s {took}`), still inside install.sh's 120 s bound on it." in page
+    assert "a `governance.remote` FAIL) is not counted against the budget." in page
+    readme = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
+    assert "takes under 12 s." not in readme
+    assert "usually takes under 12 s (about 35 s at most, when doctor is slow)." in readme
 
 
 def test_the_deploy_guide_gives_not_sents_third_field() -> None:
