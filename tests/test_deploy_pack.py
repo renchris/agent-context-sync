@@ -5832,7 +5832,9 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     guide had no 64, the launcher's usage exit, which a job whose program is not the launcher's pinned one
     ends on at every run (`EXIT_MEANINGS` and `rc_meaning` decode it), and called 78 a bad sources.toml only,
     though an invalid policy.toml exits 78 too. The launcher's own codes a job ends on, 64 and 80, are read
-    from its source."""
+    from its source. B13 round 19 W72: so is 71, its spawn failure (a pinned interpreter that is gone ends
+    every run on it), which none of the three decoded: the report printed a bare 71 and install.sh
+    `exit 71`."""
     from agentsync import cli, setup_report  # noqa: PLC0415
     from agentsync.ops import launchd  # noqa: PLC0415
 
@@ -5854,12 +5856,29 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     swift = (ROOT / "launcher" / "Sources" / "main.swift").read_text(encoding="utf-8")
     refused = int(re.findall(r"^let exUsage: Int32 = (\d+)$", swift, re.M)[0])
     denied = int(re.findall(r"^let exitTCCDenied: Int32 = (\d+)$", swift, re.M)[0])
-    assert (refused, denied) == (64, launchd.EXIT_TCC_DENIED)
-    assert {refused, denied} <= set(setup_report.EXIT_MEANINGS)
+    [spawn] = map(int, re.findall(r"^let exOSErr: Int32 = (\d+)$", swift, re.M))
+    assert (refused, denied, spawn) == (64, launchd.EXIT_TCC_DENIED, 71)
+    assert {refused, denied, spawn} <= set(setup_report.EXIT_MEANINGS)
     assert set(map(int, re.findall(r"(?:^|· )`(\d+)`", listed))) == codes - {cli.EXIT_USAGE} | {
         refused,
         denied,
+        spawn,
     }
+    cp = subprocess.run(
+        ["/bin/bash", "-c", fn.group(0) + 'rc_meaning "$1"', "-", str(spawn)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert cp.stdout == setup_report.EXIT_MEANINGS[spawn] != f"exit {spawn}"
+    spawn_failed = setup_report.EXIT_MEANINGS[spawn]
+    assert spawn_failed.startswith("the launcher could not start agentsync (a SPAWN_FAILED line")
+    assert "a 71 at every run means re-run the install command" in spawn_failed
+    assert (
+        "`71` the launcher could not start agentsync: the Python it runs is missing or not executable (a"
+        " `SPAWN_FAILED` line in the job's error log" in listed
+    )
+    assert "a 71 at every run means re-run the install command · `75`" in listed
     assert (
         "`65` the state file (`manifest.sqlite`) is no database or a damaged one: you, not an agent" in listed
     )

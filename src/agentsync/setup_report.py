@@ -400,15 +400,21 @@ EXIT_MEANINGS = {
     2: "usage error",
     64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
     65: "the state file (manifest.sqlite) cannot be read: the person's to fix",  # B13 round 17 U55, U65
+    71: (  # B13 round 19 W72: the launcher's exOSErr, SPAWN_FAILED (and WAIT_FAILED)
+        "the launcher could not start agentsync (a SPAWN_FAILED line in the job's error log names the"
+        " program and the error): the Python it runs is missing or not executable; one 71 during a reinstall"
+        " is expected, a 71 at every run means re-run the install command"
+    ),
     75: "skipped: another cycle held the lock; launchd retries",
     77: f"sign-in required ({AGENTSYNC_BIN} graph login)",
     78: "configuration invalid (sources.toml or policy.toml)",
     79: "TCC_PENDING: the launcher waited for the Allow prompt and timed out",
     80: "TCC_DENIED: access to the synced folder was denied",
 }
-"""agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists its own; 64 and 80 are
-the launcher's: 64 is its usage exit, which a job whose interpreter is not the launcher's pinned one ends on
-at every run, with a PROGRAM_REFUSED line in the job's error log). 65 is a sync's on a manifest that is no
+"""agentsync's meaning of a LaunchAgent's last exit code (``agentsync --help`` lists its own; 64, 71 and 80
+are the launcher's: 64 is its usage exit, which a job whose interpreter is not the launcher's pinned one ends
+on at every run, with a PROGRAM_REFUSED line in the job's error log; 71 is its spawn failure, when the pinned
+interpreter after ``--`` is gone or cannot run, B13 round 19 W72). 65 is a sync's on a manifest that is no
 database or a damaged one (B13 round 17 U84): every ``cli.EXIT_*`` code is a key, as in ``rc_meaning``."""
 
 _RESERVE_S = 1.0

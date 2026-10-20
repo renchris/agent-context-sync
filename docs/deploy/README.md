@@ -210,7 +210,9 @@ launcher's `TCC_*` tokens.
 an option is wrong (a `PROGRAM_REFUSED` or `USAGE` line in the job's error log; `~/.local/bin/agentsync status` gives
 the fix) · `65` the state file (`manifest.sqlite`) is no database or a damaged one:
 you, not an agent, fix it (the message names the file and the fix; `~/.local/bin/agentsync sync` prints it again)
-· `75` another cycle holds the lock · `77` sign-in needed or blocked (the
+· `71` the launcher could not start agentsync: the Python it runs is missing or not executable (a
+`SPAWN_FAILED` line in the job's error log names the program and the error); one 71 during a reinstall is expected,
+a 71 at every run means re-run the install command · `75` another cycle holds the lock · `77` sign-in needed or blocked (the
 message names the IT action) · `78` bad `sources.toml` or `policy.toml` · `79` waiting for the Allow click · `80` (the launcher's
 canary check) access was denied, `TCC_DENIED`: you, not an agent, turn on agentsync-launcher in System Settings >
 Privacy & Security > Files and Folders, then re-run the install command. Logs are in `~/Library/Logs/agentsync/`.
