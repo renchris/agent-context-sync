@@ -11536,7 +11536,9 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 
 # ---- the shell report redacts a vanished source's id (T42) -------------------------------------------------
 
-SHELL_HELPER_FNS = re.compile(r"(?ms)^(?:generic_folder|id_key|listed_folder_lines)\(\) \{\n.*?^\}$")
+SHELL_HELPER_FNS = re.compile(
+    r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines)\(\) \{\n.*?^\}$"
+)
 
 
 def test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone(tmp_path: Path) -> None:
@@ -11593,6 +11595,89 @@ def test_the_shell_report_redacts_the_id_of_a_source_whose_block_is_gone(tmp_pat
         "[FAIL] config.vanished_sources — sources '<source-3>' (3 files), 'mail' (1 file) are mirrored\n"
         "configuration error: source(s) '<source-2>' (1 file(s)) and '<source-1>' (2 files)\n"
     ), cp.stdout + cp.stderr
+
+
+def test_the_shell_report_redacts_a_project_folder_and_a_vanished_sources_folder(tmp_path: Path) -> None:
+    """B13 round 18 V46: doctor's config.vanished_sources fix names the folder add-source adds back (round 17
+    U46), and the shell fallback registered only the id, so the folder printed in clear; a configured folder
+    outside CloudStorage did too. Both are registered as setup_report._project_values does (the path from
+    its first part that names something, and that part, in any case, whole words), a vanished cloud folder by
+    its parts; a container such as "Projects" and agentsync's own inbox stay in clear."""
+    text = INSTALL_SH.read_text()
+    funcs = "\n".join(m.group(0) for m in SHELL_REDACTION_FNS.finditer(text))
+    helpers = "\n".join(m.group(0) for m in SHELL_HELPER_FNS.finditer(text))
+    home = tmp_path / "home"
+    live = home / "Projects" / "Contoso Live"
+    live.mkdir(parents=True)
+    config = tmp_path / "sources.toml"
+    config.write_text(
+        f'[[source]]\nid = "contoso-live"\nkind = "local"\npath = "~/Projects/Contoso Live"\n'
+        f'[[source]]\nid = "inbox"\nkind = "local"\npath = "{home / "agent-context" / "inbox"}"\n'
+    )
+    bids = home / "Projects" / "Contoso Bids" / "Q3"
+    cloud = home / "Library" / "CloudStorage" / "OneDrive-Fabrikam" / "Launch Plans"
+    doctor_log = tmp_path / "doctor.log"
+    doctor_log.write_text(
+        "[FAIL] config.vanished_sources \u2014 sources 'bids-q3' (3 files), 'launch-plans' (1 file) are "
+        "mirrored but no longer in sources.toml (fix: put the [[source]] block back; or add their folders "
+        "again, under "
+        f"the same id: ~/.local/bin/agentsync add-source '{bids}', then ~/.local/bin/agentsync add-source "
+        f"'{cloud}')\n"
+    )
+    said = tmp_path / "lines.txt"
+    said.write_text(
+        f"add-source '{bids}' and '{cloud}'\n"
+        "configured: ~/Projects/Contoso Live; contoso live; CONTOSO BIDS/Q3; launch plans\n"
+        "Projects, Contoso and the inbox stay: ~/agent-context/inbox\n"
+    )
+    harness = "\n".join(
+        [
+            "with_timeout() { return 0; }",
+            "repo_slug() { echo contoso/agentsync; }",
+            'id() { case "$1" in -un) echo jdoe ;; -F) echo "Jane Doe" ;; esac; }',
+            *(ln for ln in text.splitlines() if ln.startswith(("GENERIC_SOURCE_IDS=", "GOVERNANCE_TYPED"))),
+            f"FOLDERS=() CONFIG={config} SETUP_LOG=/nonexistent DOCTOR_LOG={doctor_log}",
+            "INSTALL_OUT=/nonexistent",
+            f"SELF_FILE={INSTALL_SH}",
+            helpers,
+            *(
+                m.group(0)
+                for m in re.finditer(r"(?ms)^(?:gov_value_sed|report_word|joined_word)\(\) \{\n.*?^\}$", text)
+            ),
+            funcs,
+            f"redact_stream <{said}",
+        ]
+    )
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+    )
+    assert cp.returncode == 0, cp.stderr
+    # numbered as the Python report numbers them: the configured one, then the vanished roots in sorted order
+    assert cp.stdout == (
+        "add-source '~/Projects/<folder-3>' and '~/Library/CloudStorage/OneDrive-Fabrikam/<folder-2>'\n"
+        "configured: ~/Projects/<folder-1>; <folder-1>; <folder-3>; <folder-2>\n"
+        "Projects, Contoso and the inbox stay: ~/agent-context/inbox\n"
+    ), cp.stdout + cp.stderr
+    # docs_repo is read from its [agentsync] table: an inbox beside a hand-set docs repo is agentsync's own
+    (home / "Documents" / "inbox").mkdir(parents=True)
+    config.write_text(
+        '[agentsync]\ndocs_repo = "~/Documents/agent-docs"\n\n'
+        f'[[source]]\nid = "inbox"\nkind = "local"\npath = "{home / "Documents" / "inbox"}"\n'
+    )
+    doctor_log.write_text("")
+    said.write_text("the inbox stays: ~/Documents/inbox\n")
+    cp = subprocess.run(
+        [BASH32, "-c", harness],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp_path), **xcrun_db()},
+    )
+    assert cp.stdout == "the inbox stays: ~/Documents/inbox\n", cp.stdout + cp.stderr
 
 
 # ---- the shell report redacts a value in either Unicode form (N7) ------------------------------------------
@@ -12379,6 +12464,13 @@ def test_a_policy_or_governance_value_is_redacted_alike_in_both_readers(
         report = report_path(env).read_text()
         assert "\n- <value>: any other value a [governance] error quotes\n" in report
         assert "Fabrikam" not in report and "Contoso Legal" not in report
+
+
+def test_the_shell_generic_home_dirs_are_the_reports() -> None:
+    """B13 round 18 V46: project_values skips the containers setup_report._project_values skips."""
+    [body] = re.findall(r"(?ms)^generic_home_dir\(\) \{\n(.*?)^\}$", INSTALL_SH.read_text(encoding="utf-8"))
+    words = {w.strip() for ln in re.findall(r"(?m)^\t(\S.*?)\) return 0 ;;$", body) for w in ln.split("|")}
+    assert words == setup_report._GENERIC_HOME_DIRS
 
 
 def test_the_shell_governance_keys_are_the_reports() -> None:

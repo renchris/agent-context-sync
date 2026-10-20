@@ -5613,10 +5613,12 @@ _ROUND_18_PARAGRAPH_AMENDS = (
         "**A label-escalation purge stays queued while its file is published again** (G30;",
         "§16.139 V89 (by §16.131 U71)",
     ),
+    ("16.14", "**Amended (2026-10-10):** the MDM server's host in the Environment line", "§16.135 V46"),
 )
 """Round 18's dated lines (lane D's §16.139), as :data:`_ROUND_12_PARAGRAPH_AMENDS`: V69's at §16.126 T61,
 V73's at §16.129 and §16.133, and V89's seven at the paragraphs that quote the swept `(s)` lines. Each
-records a round 16 or 17 item's change, so its marker names that item after "by"."""
+records a round 16 or 17 item's change, so its marker names that item after "by". Lane RB's V46 at §16.14's
+shell-fallback registration paragraph, a section its claim names with no item."""
 
 _ROUND_18_E_PARAGRAPH_AMENDS = (
     ("16.28", "| `converted_failed` | of those, conversions that failed", "§16.138 V62, V67 (by §16.132 U3)"),
@@ -5671,7 +5673,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_15_PARAGRAPH_AMENDS)) == len(_ROUND_15_PARAGRAPH_AMENDS) == 18
     assert len(_pinned_dated_lines(_ROUND_16_PARAGRAPH_AMENDS)) == len(_ROUND_16_PARAGRAPH_AMENDS) == 8
     assert len(_pinned_dated_lines(_ROUND_17_PARAGRAPH_AMENDS)) == len(_ROUND_17_PARAGRAPH_AMENDS) == 15
-    assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 10
+    assert len(_pinned_dated_lines(_ROUND_18_PARAGRAPH_AMENDS)) == len(_ROUND_18_PARAGRAPH_AMENDS) == 11
     assert len(_pinned_dated_lines(_ROUND_18_E_PARAGRAPH_AMENDS)) == len(_ROUND_18_E_PARAGRAPH_AMENDS) == 6
 
 
@@ -5988,10 +5990,11 @@ def test_the_guides_placeholder_rows_follow_round_17s_redaction() -> None:
         "the evidence parts and the Configuration section's loads line included, as `(<source-N>, not in the "
         "config)` there (by place only where the report cannot read it, below)"
     ) in folder
+    # in both reports since B13 round 18 V46: the shell fallback reads it from doctor's fix
     assert (
-        "in the agentsync report since 2026-10-19 (B13 round 17 U46), the folder each such source's walk"
-        in (folder)
-    )
+        "since 2026-10-19, the folder each such source's walk recorded (the agentsync report, B13 round 17 "
+        "U46; the shell fallback report reads it from doctor's fix, `add-source '<folder>'`, round 18 V46)"
+    ) in folder
     [place] = [ln for ln in rows if ln.startswith("| `(source N)`, `(not in the config, N)` |")]
     assert (
         "otherwise it reads `(<source-N>, not in the config)`" in place

@@ -1433,6 +1433,15 @@ generic_folder() {
 	esac
 	return 1
 }
+# WORD (lower case): a folder below the home folder that names no project: setup_report._GENERIC_HOME_DIRS (a test
+# keeps them equal). project_values skips it at the front of a path (B13 round 18 V46).
+generic_home_dir() {
+	case "$1" in
+	applications | code | desktop | dev | development | documents | downloads | git | library | projects) return 0 ;;
+	repos | sites | source | src | work | workspace) return 0 ;;
+	esac
+	return 1
+}
 # Whether a folder name is made of coding-agent product words only ("Copilot", "github-copilot"), as
 # setup_report._agent_words reads it: in lower case, split on runs of blanks, "_", "\" and "-", at least one
 # word and every word one of setup_report._AGENT_WORDS (a test keeps them equal). A folder only step 1's list
@@ -1511,7 +1520,7 @@ listed_folder_names() {
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
-	local tables=0 ids=" "
+	local tables=0 ids=" " hp beside
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1794,6 +1803,73 @@ redaction_pairs() {
 	n=0
 	folder_parts "" ${known[@]+"${known[@]}"}
 	folder_parts listed ${listed[@]+"${listed[@]}"}
+	# A folder outside CloudStorage (a project checkout), configured or a vanished source's, as
+	# setup_report._project_values registers it (B13 round 18 V46: the shell printed both in clear): below the
+	# home folder, the path from its first part that names something, and that part alone, each in any case
+	# and as a whole word (flag i); leading parts that are generic_home_dir, start with a dot, or are
+	# agent_words_name with more parts after them are skipped, so "Projects" stays a word. Anywhere else, the
+	# whole path. Never agentsync's own: the inbox and the folder beside the docs repo (unless that folder is a
+	# generic one, or the home itself), as the Python report's "own".
+	hp="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
+	beside=""
+	[ ! -f "$CONFIG" ] || beside="$(LC_ALL=C awk '/^[[:space:]]*\[/ { t = ($0 ~ /^[[:space:]]*\[[[:space:]]*agentsync[[:space:]]*\]/); next }
+		t && /^[[:space:]]*docs_repo[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*$/, "", v); print v; exit }' "$CONFIG" 2>/dev/null || true)"
+	beside="${beside:-$HOME/agent-context/docs}"
+	case "$beside" in \~) beside="$HOME" ;; \~/*) beside="$HOME/${beside#\~/}" ;; esac
+	beside="${beside%/}"
+	beside="${beside%/*}"
+	own_folder() { # PATH: agentsync's own
+		case "$1" in "$beside/inbox" | "$beside/inbox/"*) return 0 ;; esac
+		[ "$beside" != "$HOME" ] && [ "$beside" != "$hp" ] || return 1
+		generic_home_dir "$(recase lower "${beside##*/}")" && return 1
+		case "$1" in "$beside" | "$beside/"*) return 0 ;; esac
+		return 1
+	}
+	folder_value() { # VALUE: its <folder-N>, the number another spelling has (folder_keys), in any case
+		k="$(id_key "$1")"
+		case "$folder_keys" in
+		*$'\n'"$k"$'\t'*)
+			m="${folder_keys#*$'\n'"$k"$'\t'}"
+			m="${m%%$'\n'*}"
+			;;
+		*)
+			n=$((n + 1))
+			m="$n"
+			folder_keys+="$k"$'\t'"$m"$'\n'
+			;;
+		esac
+		add_pair "$1" "<folder-$m>" i
+	}
+	project_values() { # PATH
+		local rel first rest
+		case "$1" in \~) set -- "$HOME" ;; \~/*) set -- "$HOME/${1#\~/}" ;; esac
+		own_folder "$1" && return 0
+		case "$1" in
+		"$HOME"/*) rel="${1#"$HOME"/}" ;;
+		"$hp"/*) rel="${1#"$hp"/}" ;;
+		"$HOME" | "$hp") return 0 ;;
+		*) folder_value "$1" && return 0 ;;
+		esac
+		rel="${rel%/}"
+		while [ -n "$rel" ]; do
+			first="${rel%%/*}"
+			[ "$first" = "$rel" ] && rest="" || rest="${rel#*/}"
+			if generic_home_dir "$(recase lower "$first")" || [ "${first#.}" != "$first" ] ||
+				{ [ -n "$rest" ] && agent_words_name "$first"; }; then
+				rel="$rest"
+				continue
+			fi
+			folder_value "$rel"
+			[ -z "$rest" ] || folder_value "$first"
+			return 0
+		done
+	}
+	if [ -f "$CONFIG" ]; then
+		while IFS= read -r line; do
+			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"*) continue ;; esac
+			project_values "$line"
+		done < <(LC_ALL=C sed -n 's/^[[:space:]]*path[[:space:]]*=[[:space:]]*"\(.*\)"[[:space:]]*$/\1/p' "$CONFIG" 2>/dev/null)
+	fi
 	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
 	# A whole word, where "-" is no word character, so "exclude-empty <id>" is matched. An id that is one of
@@ -1849,6 +1925,35 @@ redaction_pairs() {
 		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
 	} 2>/dev/null | LC_ALL=C sed 's/ mirrored but no longer in sources\.toml.*//' |
 		LC_ALL=C grep -oE "'[a-z0-9][a-z0-9-]*' \([0-9]+ file(s|\(s\))?\)" | LC_ALL=C sed "s/^'//; s/' .*//" | LC_ALL=C sort -u)
+	# and the folder each one is added back from: doctor's fix ends "... add-source <folder>[, then ...
+	# add-source <folder>]" (doctor.vanished_fix, shlex-quoted), as the Python report registers each vanished
+	# id's scope_root (B13 round 17 U46; round 18 V46): one in CloudStorage by its parts, any other as a
+	# project folder
+	while IFS= read -r v; do
+		case "$v" in
+		\~/Library/CloudStorage/*) folder_parts "" "$cs/${v#\~/Library/CloudStorage/}" ;;
+		"$cs"/* | "$hp/Library/CloudStorage/"*) folder_parts "" "$cs/${v#*/Library/CloudStorage/}" ;;
+		?*) project_values "$v" ;;
+		esac
+	done < <({
+		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
+		[ ! -f "$INSTALL_OUT" ] || LC_ALL=C grep -E '(^configuration error: |config\.vanished_sources ).*mirrored but no longer in sources\.toml' "$INSTALL_OUT"
+	} 2>/dev/null | LC_ALL=C awk -v q="'" '{
+		s = $0
+		while ((i = index(s, " add-source ")) > 0) {
+			s = substr(s, i + 12); v = ""
+			if (substr(s, 1, 1) == q) { # a quoted one, with each of its own quotes written as q "\"" q "\"" q
+				s = substr(s, 2)
+				while ((j = index(s, q)) > 0) {
+					v = v substr(s, 1, j - 1); s = substr(s, j + 1)
+					if (substr(s, 1, 4) == "\"" q "\"" q) { v = v q; s = substr(s, 5) } else break
+				}
+			} else {
+				v = s; sub(/ .*/, "", v); sub(/\)$/, "", v); sub(/,$/, "", v) # "<folder>, then" or "<folder>)"
+			}
+			if (v != "") print v
+		}
+	}' | LC_ALL=C sort -u)
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
 	# name run together ("janedoe" for "Jane Doe") is <user>, as in the Python report.
 	user="$(id -un 2>/dev/null || true)"
@@ -2277,6 +2382,7 @@ redact_stream() {
 			# under LC_ALL=C tolower keeps every byte where it is, so the offsets found in the lower-cased text cut
 			# the line as written (B13 round 13 O2, O67). Its kind is in its placeholder: no other pair writes one
 			if ((index(f[2], "<proxy-") || index(f[2], "<link-")) && !(f[3] == "f" || f[3] == "j" || f[3] == "o")) lv[k] = tolower(f[1]) # a link: ignore_case (B13 round 17 U61)
+			if (f[3] == "i") lv[k] = tolower(f[1]) # a project folder: ignore_case, a whole word (B13 round 18 V46)
 			if (f[3] == "f" || f[3] == "j" || f[3] == "o") { fz[k] = 1; fuzzy(k, f[1], f[3] == "j"); og[k] = f[3] == "o" }
 			if (og[k]) { okey[k] = tolower(f[1]); gsub(/[ \t_\\-]/, "", okey[k]) }
 		}
@@ -2335,7 +2441,7 @@ redact_stream() {
 				continue
 			}
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
-			n = length(v); word = (f[3] == "w"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
+			n = length(v); word = (f[3] == "w" || f[3] == "i"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
 				s = seg[j]; acc = ""

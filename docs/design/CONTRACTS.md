@@ -5091,6 +5091,9 @@ matches; and the install.out tail's agentsync log lines get the Recent errors sc
 spelled otherwise. The shell fallback report registers that host as well (as written, case-sensitive), and the
 names of the folders under CloudStorage that this run's `--source-local`, sources.toml's `path =` lines or
 install.log's `args=` name, so a `--report-only` run, which names no folder, still redacts them.
+Amended 2026-10-19, §16.135 V46: the shell fallback report also registers a configured folder outside CloudStorage,
+and the folder doctor's `config.vanished_sources` fix adds a vanished source back from, as
+`setup_report._project_values` does: from the project folder down, in any case, as whole words.
 **Amended (2026-10-11, §16.40):** that host is `<mdmhost>`, its own kind, in both reports; `<host>` is only
 this Mac's names.
 **Amended (2026-10-11, §16.40):** a registered value matches in either Unicode form. The report knows a value by
