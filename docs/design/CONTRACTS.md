@@ -24175,7 +24175,9 @@ fix adds a vanished source back from, as `setup_report._project_values` does (`g
 
 **The report-word rule, one with lane RA** (V84, V85, and the shell halves of RA's V1 and V86). report_word lexes each
 line (outside, `"..."`, `'...'`, `$(` depth), so a string nested in `$( ... )` no longer pairs with the quotes around
-it and an awk comment is no printed text (V85: echo, dev, null, gap, index, token out; `designated requirement:` in).
+it and an awk comment is no printed text (V85: echo, dev, null, gap, index, token out; `designated requirement:` in). The
+default word of a `${v:-word}` or `${v:+word}` is printed text too: the census test, run where gitleaks is missing
+(CI), found `- gitleaks: not found (builtin patterns only)`, which no scan had read.
 `output_word`, equal to `setup_report._OUTPUT_WORDS`, lists the words the report prints from command or agent output
 (uname, profiles, the doctor lines, the PAC sentence, the agent's name); it decides only the private-only rule (V84,
 V86). Every one-word organisation is cut out of a longer word; only joined names and context organisations stay

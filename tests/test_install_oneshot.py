@@ -12433,6 +12433,8 @@ def test_the_shell_report_words_are_its_printed_text() -> None:
         "installer",
         "designated",
         "requirement",
+        "builtin",  # the default word of "${v:-not found (builtin patterns only)}", where gitleaks is missing
+        "patterns",
     ):
         assert printed in words, printed
 

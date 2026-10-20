@@ -1400,7 +1400,7 @@ report_word() {
 	# nested in $( ... ) pair with each other, never with the quotes around it (B13 round 18 V85: the text
 	# between two strings read as one gave echo, dev, null, gap, index). A single-quoted program other than a
 	# printf or say format gives its own double-quoted strings and a sed s/// replacement ("designated
-	# requirement:"), never an awk # comment (token).
+	# requirement:"), never an awk # comment (token). The word of a "${v:-word}" or "${v:+word}" is printed text too.
 	[ -n "$REPORT_WORDS" ] || REPORT_WORDS=" $(LC_ALL=C awk '
 		function words(t,    n, a, i) {
 			gsub(/\$\([^)]*\)|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*/, " ", t)
@@ -1437,7 +1437,12 @@ report_word() {
 					if (c == "\\") { buf = buf c substr(line, i + 1, 1); i++; continue }
 					if (c == "\"") { words(buf); buf = ""; d--; continue }
 					if (c == "$" && substr(line, i + 1, 1) == "(") { words(buf); buf = ""; stk[++d] = "c"; i++; continue }
-					if (c == "$" && substr(line, i + 1, 1) == "{" && (j = index(substr(line, i), "}"))) { i += j - 1; buf = buf " "; continue }
+					# ${v:-word} or ${v:+word} prints its word (B13 round 18: "not found (builtin patterns only)")
+					if (c == "$" && substr(line, i + 1, 1) == "{" && (j = index(substr(line, i), "}"))) {
+						x = substr(line, i + 2, j - 3); i += j - 1
+						buf = buf " " (match(x, /^[A-Za-z_][A-Za-z0-9_]*:?[-+]/) ? substr(x, RLENGTH + 1) : "") " "
+						continue
+					}
 					if (c == "$" && substr(line, i + 1, 1) ~ /[A-Za-z_0-9@#?*!-]/) { i++; while (substr(line, i + 1, 1) ~ /[A-Za-z0-9_]/) i++; buf = buf " "; continue }
 					buf = buf c
 					continue
