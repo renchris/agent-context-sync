@@ -3410,8 +3410,9 @@ def _git_rewrite_bases() -> list[str]:
     """The bases of git's URL rewrites (``[url "<base>"]`` with an ``insteadOf`` key) in the files
     :func:`_git_proxy_urls` reads, as files, with no git process (B13 round 7 H20): since v15 step 1's git
     stop names a rewrite as a cause, and git's error then names the rewrite's host (``Could not resolve
-    host: <host>``). ``pushInsteadOf`` is left out: a pull never uses it. ``scripts/install.sh``'s fallback
-    reads the same (``git_rewrite_bases``)."""
+    host: <host>``). ``pushInsteadOf`` is left out: a pull never uses it. The key may follow the header on
+    its own line, as git reads it (B13 round 20 X41). ``scripts/install.sh``'s fallback reads the same
+    (``git_rewrite_bases``)."""
     bases: list[str] = []
     for name in _git_config_names():
         with contextlib.suppress(OSError):
@@ -3421,7 +3422,11 @@ def _git_rewrite_bases() -> list[str]:
                 if head is not None:
                     is_url = head.group(1).lower() == "url" and head.group(2)
                     section = head.group(2).replace('\\"', '"').replace("\\\\", "\\") if is_url else None
-                elif section and _GIT_INSTEADOF_RE.match(line) and section not in bases:
+                    # B13 round 20 X41: git takes a key on the header's own line, ``[url "x"] insteadOf = y``
+                    key = line[head.end() :]
+                else:
+                    key = line
+                if section and _GIT_INSTEADOF_RE.match(key) and section not in bases:
                     bases.append(section)
     return bases
 

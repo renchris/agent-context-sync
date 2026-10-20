@@ -7269,6 +7269,39 @@ def test_a_proxy_only_git_knows_is_redacted(fake_mac: dict[str, Path], tmp_path:
     assert len(re.findall(r"Could not resolve proxy: <proxy-\d+> \(exit 1\)", text)) >= 2, text
 
 
+def test_a_git_url_rewrite_on_its_sections_own_line_is_redacted(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 20 X41: git applies ``[url "<base>"] insteadOf = <url>`` written on one line (round 19 W23
+    taught install.sh's label reader that form), but the report read an ``insteadOf`` key only on a line of
+    its own, so a 403 on that base printed its host and path in clear. A ``pushInsteadOf`` or a comment after
+    the header is still no rewrite a pull uses."""
+    (Path.home() / ".gitconfig").write_text(
+        '[url "https://git.mirror-host.invalid/fabrikam-eng/"] insteadOf = https://github.com/contoso/\n'
+        '[url "https://two.mirror-host.invalid/fabrikam-two/"]insteadOf=https://github.com/other/\n'
+        '[url "https://push.mirror-host.invalid/fabrikam-push/"] pushInsteadOf = https://github.com/\n'
+        '[url "https://note.mirror-host.invalid/fabrikam-note/"] # insteadOf = https://github.com/\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "no-tools"))
+    assert setup_report._git_rewrite_bases() == [
+        "https://git.mirror-host.invalid/fabrikam-eng/",
+        "https://two.mirror-host.invalid/fabrikam-two/",
+    ]
+    v6_install_log(fake_mac)
+    lines = (
+        "2026-09-29T10:01:20Z | step 1 | error | git pull: fatal: unable to access "
+        "'https://git.mirror-host.invalid/fabrikam-eng/agent-context-sync.git/': The requested URL returned "
+        "error: 403 (exit 1) | -\n"
+    )
+    write_friction(fake_mac, V11_HAPPY + lines)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    leaked = [ln for ln in text.splitlines() if "mirror-host" in ln or "fabrikam-eng" in ln]
+    assert leaked == [], leaked
+    assert "https://<proxy-1>/<proxy-2>/agent-context-sync.git/" in text, text
+    assert "URL rewrite in git's config: set (2)" in section(text, "Environment")
+
+
 def test_a_git_url_rewrite_host_and_path_are_redacted(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
