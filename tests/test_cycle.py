@@ -3828,12 +3828,47 @@ def test_a_foreground_sync_whose_converter_could_not_start_names_the_pandoc_chec
     ), out
     record = _run_record(sample_config)
     assert (record["converted"], record["converter_waiting"]) == (0, 1) and "converted_failed" not in record
+    # B13 round 19 W2, W32, W42: a second sync with pandoc still gone kept the error line and the NEXT but
+    # dropped the waiting clause, as only the first sync's conversion counted the file.
+    cli.main(["sync", "--config", str(cfg)])
+    again = capsys.readouterr().out
+    assert again.count("conversion failed: converter unavailable") == 1, again
+    assert [ln for ln in again.splitlines() if ln.startswith("converted ")] == [count], again
+    record = _run_record(sample_config)
+    assert (record["converted"], record["converter_waiting"]) == (0, 1) and "converted_failed" not in record
     cfg.write_text(cfg.read_text(encoding="utf-8").replace(f'pandoc_path = "{gone}"', ""), encoding="utf-8")
     cli.main(["sync", "--config", str(cfg)])
     out = capsys.readouterr().out
     [count] = [ln for ln in out.splitlines() if ln.startswith("converted ")]
     assert count == "converted 1, deferred 0 online-only", "converted once, in the sync that read it"
     assert "converter_waiting" not in _run_record(sample_config)
+
+
+def test_a_waiting_stubs_error_line_names_why_its_converter_cannot_start_now(
+    sample_config: Config, local_source_dir: Path, tmp_path: Path
+) -> None:
+    """B13 round 19 W51: while a stub's converter could not start, every sync printed the reason stored by
+    the cycle that first failed, so a cause that changed (another missing pandoc_path, or an older build's
+    words) stayed hidden until the converter started. The error line reads this cycle's reason; the stub and
+    QUARANTINE row keep theirs, as nothing about the file changed."""
+    assert run(sample_config).exit_code == 0
+    shutil.copy2(
+        local_source_dir / "projects" / "sample.docx", local_source_dir / "projects" / "Contoso k.docx"
+    )
+    rel = "projects/Contoso k.docx"
+
+    def missing(name: str) -> Config:
+        gone = Path("/") / name / "pandoc"  # short, so the reason's 300 characters hold the folder's name
+        return dataclasses.replace(
+            sample_config, convert=dataclasses.replace(sample_config.convert, pandoc_path=gone)
+        )
+
+    [first] = [e for s in run(missing("contoso-first")).sources for e in s.errors]
+    assert first.startswith(f"{rel}: conversion failed: converter unavailable: ") and "contoso-first" in first
+    [second] = [e for s in run(missing("contoso-second")).sources for e in s.errors]
+    assert second.startswith(f"{rel}: conversion failed: converter unavailable: "), second
+    assert "contoso-second" in second and "contoso-first" not in second, second
+    assert "contoso-first" in _quarantine_reason(sample_config, rel), "the stub's row keeps its reason"
 
 
 def _settle_as_an_older_build(config: Config, rel: str) -> None:

@@ -90,6 +90,7 @@ from agentsync.convert import (
     speech,
 )
 from agentsync.convert import _common as convert_common
+from agentsync.convert import _reason as convert_reason
 from agentsync.convert import recording as recording_mod
 from agentsync.convert.base import Converter
 from agentsync.convert.cache import ConverterCache
@@ -1816,6 +1817,8 @@ class _Cycle:
         self._reread_streak = 0  # re-reads that failed in a row
         self._reread_s = 0.0  # seconds spent reading files again
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
+        self._cannot_run_why: dict[int, BaseException] = {}  # and why not, as this cycle reads it (W51)
+        self._waiting_ids: set[tuple[str, str]] = set()  # stubs counted as waiting in this cycle (W2)
         self._convert_retries: dict[str, dict[str, tuple[str, int]]] = {}  # per source: _RETRY_META
         self._reread_n = 0  # files read again
         self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
@@ -3770,6 +3773,7 @@ class _Cycle:
                 conv.version()
             except Exception as exc:
                 self._cannot_run[id(conv)] = True
+                self._cannot_run_why[id(conv)] = exc
                 log.warning(
                     "%s cannot run (%s): no file is read again for it in this cycle",
                     conv.converter_id,
@@ -4908,7 +4912,9 @@ class _Cycle:
         ):
             # its converter could not start, so nothing read the bytes: no conversion to count in N or F,
             # but a file the sync line names apart; its error, stub and QUARANTINE row are as before, and the
-            # first cycle its converter starts in counts its conversion (B13 round 18 V13)
+            # first cycle its converter starts in counts its conversion (B13 round 18 V13); once a cycle, as
+            # _converter_waits counts it (B13 round 19 W2)
+            self._waiting_ids.add((sid, stable))
             acc.converter_waiting += 1
             self._tally["converter_waiting"] += 1
         elif not again:
@@ -5008,16 +5014,28 @@ class _Cycle:
         """True when ``row`` is the stub of a conversion whose converter could not start and still cannot in
         this cycle (B13 round 17 U3): its verdict stays ERROR, so a later cycle asks again, and the run
         reports its error line again; its stub and QUARANTINE row stay as they are, and nothing is fetched,
-        since nothing would read the bytes. New bytes behind it are read once the converter starts."""
+        since nothing would read the bytes. New bytes behind it are read once the converter starts.
+
+        Every cycle in which the converter still cannot start counts the file in ``converter_waiting``, once
+        a cycle, as the first one did, so the sync line's waiting clause stays beside the error line (B13
+        round 19 W2, W32, W42). The error line names why the converter cannot start in this cycle, not the
+        stored reason of the cycle that first failed, which the stub and QUARANTINE row keep (W51)."""
         reason = row.state_reason or ""
         if row.state is not RowState.QUARANTINED or not reason.startswith(CONVERTER_UNAVAILABLE):
             return False
         conv = self.registry.for_name(row.name)
         if conv is None or self._runs(conv):
             return False
+        why = self._cannot_run_why.get(id(conv))
+        now = f"{CONVERTER_UNAVAILABLE}: {convert_reason(why)}" if why is not None else reason
         self.manifest.set_verdict(row.source_id, row.stable_id, Verdict.ERROR)
         acc.settle(row.stable_id, Verdict.ERROR)
-        acc.errors.append(_one_line(f"{row.rel_path}: {reason}"))
+        key = (row.source_id, row.stable_id)
+        if key not in self._waiting_ids:
+            self._waiting_ids.add(key)
+            acc.errors.append(_one_line(f"{row.rel_path}: {now}"))
+            acc.converter_waiting += 1
+            self._tally["converter_waiting"] += 1
         return True
 
     def _retried(self, source_id: str, stable: str) -> None:

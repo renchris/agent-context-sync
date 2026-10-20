@@ -8117,6 +8117,8 @@ other key that would be 0 is left out. No reader depended on the old content.
   failed in, so a later run with none converted the file or gave it up.
   Amended 2026-10-19, §16.134 V75: or, while its converter still cannot start, left it unread, a
   wait no run counts.
+  Amended 2026-10-20, §16.144 W2: each run in which the converter still cannot start counts that wait in
+  `converter_waiting`, once a run.
 - A re-read of the same bytes is in `reread`, never in `converted` (§16.27).
 - `reread_for` lets the report tell a current re-read record from a stale one. A record in manifest meta
   `reread:<source id>` says what it was written `for` (§16.27: the build, the suffixes with a converter, the
@@ -24532,6 +24534,8 @@ nothing at 0, with no bare "converted", "deferred" or "read again", so install.s
 `_CONVERTED_LINE_RE` still read `converted N, deferred M online-only`. Test:
 `test_cycle.py::test_a_foreground_sync_whose_converter_could_not_start_names_the_pandoc_check` (the count line,
 the record, and `converted 1` once in the sync after).
+Amended 2026-10-20, §16.144 W2: a stub still waiting for its converter counts too, in every sync in which the
+converter still cannot start, not only the one that first tried.
 
 **A re-read that waits for its converter is no "sync again" (V57; `agentsync.cycle`, `agentsync.loop`,
 `agentsync.model`, `agentsync.cli`).** While a stub's converter could not start, `_reread_targets` left it out and
@@ -24950,7 +24954,29 @@ Reserved for round 19 lane B of B13.
 
 ### 16.144 Round 19: the converter-waiting count, converters and recording tests (2026-10-20, wave B13 round 19 lane E)
 
-Reserved for round 19 lane E of B13.
+Round 19's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 19"; specs `round19/items/W<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-20, §16.144 W<n>`.
+
+**A converter that still cannot start counts its file in every sync (W2, W32, W42; `agentsync.cycle`; dated lines
+at §16.138 V13 and §16.28).** A second sync with pandoc still gone printed the
+same `conversion failed: converter unavailable` error line and the same pandoc-check NEXT as the first, but its
+last line dropped `; 1 waiting for its converter (...)` and its run record had no `converter_waiting`: only the
+first sync's conversion counted the file, and every later one reached `_converter_waits`, which counted nothing.
+`_converter_waits` now counts the file in `SourceReport.converter_waiting` and the run tally where it gives the
+error line, once per file and cycle (`_waiting_ids`, which also keeps the error line single); the first sync's
+count on the convert path is unchanged, its row not being a stub yet. Three finders, one defect, built once. The
+report's half (the Repeat conversions note on these runs) is lane RA's W68. Test:
+`test_cycle.py::test_a_foreground_sync_whose_converter_could_not_start_names_the_pandoc_check` (a second sync
+with pandoc gone prints the clause and records `converter_waiting` 1).
+
+**A waiting stub's error line says why now (W51; `agentsync.cycle`).** `_converter_waits` printed the stub's stored
+reason, the one of the cycle that first failed, so a cause that changed while the converter still could not
+start (an older build's wording, another missing `pandoc_path`) stayed hidden until it started. `_runs` now keeps
+the exception `conv.version()` raised (`_cannot_run_why`), and the error line is `<rel>: CONVERTER_UNAVAILABLE:
+<this cycle's reason>`, the prefix `cli._printed` and `_unavailable_steps` match; the stub page, `state_reason`
+and QUARANTINE.tsv keep the stored reason, as rewriting them each waiting cycle is git and manifest churn, and
+the row is rewritten once the converter starts. Test:
+`test_cycle.py::test_a_waiting_stubs_error_line_names_why_its_converter_cannot_start_now`.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
