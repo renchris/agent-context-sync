@@ -24818,6 +24818,15 @@ both sessions.` Gated on `s1mv`, which a second pass no longer sets, so the note
 gets none. The finder's "(line <m>)" is dropped: no variable carries it and the renderer does not name it. Test:
 `test_a_git_stop_after_a_finished_attempt_lists_the_stop_as_an_item`.
 
+**The older build's line-number line names F ids only when the Summary cites one** (W15). The v10 renderer always
+writes `Each line is shown with its line number: the F<n> ids in the Summary are these numbers.`; the renderer since
+round 6 G10 drops the clause when no `\bF\d+\b` is in the Summary, and the rewrite passed the old line on beside a
+Summary with none (rehearsal B's M1o and SC: agent friction 0/0/0). In both modes the final print now notes an F id
+in the rewritten Summary (the Items entry it inserts included), which comes before the friction section, and
+otherwise prints the bare line. The finder's predicate (an `F<n> ·` Items line) is narrower than the renderer's rule
+and was not built. Test: `test_the_older_builds_line_numbers_line_names_f_ids_only_when_the_summary_cites_one`
+(step 1, a stopped copy, and a Summary that cites F8).
+
 ### 16.142 Round 19: setup prompt v28 and step 1's damaged-table check (2026-10-20, wave B13 round 19 lane P)
 
 The B13 round 19 items of lane P (specs `round19/items/W<n>.md`, the verifier's corrected fix built unless a

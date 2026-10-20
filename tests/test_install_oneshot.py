@@ -10173,6 +10173,33 @@ def test_a_step_1_stop_of_the_older_build_names_the_earlier_first_sync(
     assert _step1_stop_home(env, tmp_path, current) == current, "the current words pass unchanged"
 
 
+_V10_LINE_NUMBERS = "Each line is shown with its line number: the F<n> ids in the Summary are these numbers."
+"""The v10 renderer's friction-section line, written whether or not the Summary cites an F<n> id."""
+
+
+@pytest.mark.parametrize("mode", ["step1", "copy", "step1, an F id cited"])
+def test_the_older_builds_line_numbers_line_names_f_ids_only_when_the_summary_cites_one(
+    env: dict[str, str], tmp_path: Path, mode: str
+) -> None:
+    """B13 round 19 W15 (rehearsal B, M1o and SC): the v10 renderer always wrote "the F<n> ids in the Summary
+    are these numbers", and the rewrite passed it on beside a Summary with no F id (agent friction 0/0/0);
+    the renderer since round 6 G10 says it only where the Summary cites one. The rewrite does the same, in
+    both modes, reading its own rewritten Summary."""
+    summary = list(_V10_SUMMARY)
+    if mode.endswith("cited"):
+        summary.append("- agent friction: 1 deviation, 0 prompt, 0 error (F8)")
+    report = _v10_step1_report(summary, [*_V10_TAIL, _V10_LINE_NUMBERS, ""])
+    if mode == "copy":
+        text = _stopped_copy_of(env, tmp_path, report)
+    else:
+        text = _step1_stop_home(env, tmp_path, report)
+    lines = text.splitlines()
+    if mode.endswith("cited"):
+        assert _V10_LINE_NUMBERS in lines, text
+    else:
+        assert "Each line is shown with its line number." in lines and "F<n> ids" not in text, text
+
+
 def test_a_step_1_stop_of_the_older_build_says_its_fix_for_one_expected_warn(
     env: dict[str, str], tmp_path: Path
 ) -> None:

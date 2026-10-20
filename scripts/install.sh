@@ -4924,6 +4924,7 @@ older_report_rewrite() { # MODE
 		$0 == "" { blank++; next }
 		itm && FNR > itm {
 			itm = 0
+			if (s1item ~ /(^|[^A-Za-z0-9_])F[0-9]+([^A-Za-z0-9_]|$)/) fcited = 1 # printed here, not below (W15)
 			if ($0 == "- none") $0 = s1item
 			else if (index($0, "- ") == 1 && !index($0, "the folder list stopped")) { for (; blank > 0; blank--) print ""; print s1item }
 		}
@@ -4932,6 +4933,11 @@ older_report_rewrite() { # MODE
 		{
 			px = (det || fence ? $0 : plural_all($0))
 			if (!det && !fence && sec == "## Doctor" && px ~ /^[0-9]+ checks?(\(s\))?: /) sub(/ 1 expected warn ends in \(expected: <why>\) instead of their fix:/, " 1 expected warn ends in (expected: <why>) instead of its fix:", px)
+			# an older renderer says the F<n> ids in the Summary are these numbers whether or not the Summary
+			# cites one; the renderer only where it does (setup_report: \bF\d+\b), read in the rewritten
+			# Summary, which comes first (B13 round 19 W15)
+			if (!det && !fence && sec == "## Summary" && px ~ /(^|[^A-Za-z0-9_])F[0-9]+([^A-Za-z0-9_]|$)/) fcited = 1
+			if (!det && !fence && sec == "## Agent friction log" && !fcited && px == "Each line is shown with its line number: the F<n> ids in the Summary are these numbers.") px = "Each line is shown with its line number."
 			for (; blank > 0; blank--) print ""
 			print px
 		}
