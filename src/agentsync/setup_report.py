@@ -6372,6 +6372,20 @@ def _stub_rows(m: _Mirror) -> list[tuple[str, str, str, int, int, int | None, in
     return out
 
 
+def _converter_waiting_now(m: _Mirror) -> int:
+    """The files whose stub is in Quarantine now because their converter could not start (``state_reason``
+    starts with ``CONVERTER_UNAVAILABLE``; cycle.py sets it only while the converter still cannot start): the
+    part of "conversion failed" a run in which the converter starts converts (B13 round 20 X2, X10)."""
+    from agentsync.convert import CONVERTER_UNAVAILABLE  # noqa: PLC0415 - lazy, as the converters are
+
+    found = m.rows(
+        "SELECT COUNT(*) FROM items WHERE is_dir = 0 AND state = 'quarantined' "
+        "AND substr(state_reason, 1, ?) = ?",
+        (len(CONVERTER_UNAVAILABLE), CONVERTER_UNAVAILABLE),
+    )
+    return int(found[0][0]) if found else 0
+
+
 def _run_days(m: _Mirror, run_ids: Iterable[object]) -> dict[int, str]:
     """run id -> the UTC day it started, for the ids given (a few)."""
     wanted = sorted({int(x) for x in run_ids if isinstance(x, int)})[:400]
@@ -7676,11 +7690,22 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     waiting = [x for x in runs[:_RUNS_SHOWN] if x.n("converter_waiting")]
     if waiting:
         each = "; ".join(f"run {x.run_id}, {_plural(x.n('converter_waiting'), 'file')}" for x in waiting)
+        # B13 round 20 X2, X10: whether they wait now is the manifest's, not the run history's: a later run
+        # converted them while the note still put their stubs in Quarantine. No run is named as the one that
+        # converted them: a run's total ties no file to it, and a file also leaves when its source goes.
+        still = _converter_waiting_now(m)
+        now = (
+            f"{_plural(still, 'file')} still {'waits' if still == 1 else 'wait'}: "
+            f"{'its stub is' if still == 1 else 'their stubs are'} in Quarantine by reason, class "
+            f'"conversion failed", until a run in which the converter starts converts '
+            f"{'it' if still == 1 else 'them'}"
+            if still
+            else "none waits now: Quarantine by reason holds no stub of a file waiting for its converter"
+        )
         out += [
             "",
             f"- waiting for a converter that could not start: {each}. Nothing read them, so they are in no "
-            'column above; their stubs are in Quarantine by reason, class "conversion failed", and a later '
-            "run converts them once the converter starts",
+            f"column above; {now}",
         ]
     if any(x.n("converted_failed") or x.n("converter_waiting") for x in runs[:_RUNS_SHOWN]):
         # A run with failures followed by runs with none: a retry that worked, one given up, or a file whose

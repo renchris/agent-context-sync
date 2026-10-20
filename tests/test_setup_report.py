@@ -10228,10 +10228,11 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     parts = status_parts(fake_mac)[1]
     part = parts["Repeat conversions"]
     assert "| 3 | poll | ok | 2026-10-06T10:00:00Z | 0 | 0 | 0 | 0 | 0 |" in part, "no column is added"
+    # B13 round 20 X2, X10: whether a stub waits is the manifest's now; this one has none
     assert (
         "- waiting for a converter that could not start: run 3, 1 file; run 2, 2 files. Nothing read them, "
-        'so they are in no column above; their stubs are in Quarantine by reason, class "conversion failed"'
-        in part
+        "so they are in no column above; none waits now: Quarantine by reason holds no stub of a file "
+        "waiting for its converter\n" in part
     ), part
     assert "- a conversion that failed is counted in each run it failed in" in part, "no run has a failure"
     rows = {ln.split(" | ")[0]: ln for ln in parts["OCR"].splitlines() if re.match(r"\| \d", ln)}
@@ -10244,6 +10245,42 @@ def test_the_files_waiting_for_a_converter_that_could_not_start_are_read_from_th
     seed.close()
     part = status_parts(fake_mac)[1]["Repeat conversions"]
     assert "waiting for a converter" not in part and "a conversion that failed" not in part, part
+
+
+def test_the_waiting_files_note_says_whether_a_stub_waits_now_from_the_manifest(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 20 X2, X10 (the rehearsal's PD state): runs 6 and 7 waited for a converter that could not
+    start and run 8 converted the file, but the note still said "their stubs are in Quarantine by reason ...
+    and a later run converts them" while the same report's Quarantine by reason listed none. The note reads
+    the manifest's stubs now: none, or how many still wait there; it names no run as the one that converted
+    them, as no record ties a file to a run's total."""
+    from agentsync.convert import CONVERTER_UNAVAILABLE  # noqa: PLC0415
+
+    seed = Seed(fake_mac["config"])
+    seed.run(6, {"converted": 0, "converter_waiting": 1})
+    seed.run(7, {"converted": 0, "converter_waiting": 1})
+    seed.run(8, {"converted": 1})
+    seed.close()
+    parts = status_parts(fake_mac)[1]
+    note = _line(parts["Repeat conversions"], "- waiting for a converter that could not start: ")
+    assert note.startswith("- waiting for a converter that could not start: run 7, 1 file; run 6, 1 file."), (
+        note
+    )
+    assert "none waits now" in note and "stubs are in Quarantine" not in note, note
+    assert "converted them" not in note and "run 8" not in note, note
+    assert "- no file is quarantined or refused" in parts["Quarantine by reason"]
+    # one still waits, and a failed conversion of another file is "conversion failed" too, but no waiter
+    seed = Seed(fake_mac["config"])
+    one = seed.ids()[0]
+    seed.item(one, "Tailspin plan.docx", state="quarantined", reason=f"{CONVERTER_UNAVAILABLE}: pandoc")
+    seed.item(one, "Wingtip notes.docx", state="quarantined", reason="conversion failed: bad zip")
+    seed.close()
+    note = _line(status_parts(fake_mac)[1]["Repeat conversions"], "- waiting for a converter that could not ")
+    assert note.endswith(
+        '; 1 file still waits: its stub is in Quarantine by reason, class "conversion failed", until a run '
+        "in which the converter starts converts it"
+    ), note
 
 
 def test_purge_queue_part_counts_by_source_reason_day_and_what_took_the_files_place(
