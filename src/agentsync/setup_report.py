@@ -6545,7 +6545,7 @@ def _reread_lines(
         f"- re-read, per source. {scan} {third} The count includes the files given up (two failed tries). "
         "A file that failed once is tried once more while its source's scan is not finished; under a "
         "finished scan it is no longer among the files left to read again (read since, changed, online-only "
-        "or gone), and the record keeps its count:",
+        "or gone), and the record keeps its count, a deleted file's only until the next sync:",
         "",
         *_table(header, rows),
         *_lines(lambda: _failed_once(m, labels, once)),
@@ -6614,7 +6614,9 @@ _ROW_NOW = (
     ("refused", "with a stub"),
     ("tombstone", "deleted"),
 )
-"""A manifest row's state -> the words for what became of a file whose re-read failed once."""
+"""A manifest row's state -> the words for what became of a file whose re-read failed once. A deleted file's
+id, or one with no row, leaves the record at the next sync's load of it (B13 round 19 W75), so "deleted" and
+"with no row" are what a record reads between the deletion and that sync, or what an older build left."""
 
 
 def _failed_once(m: _Mirror, labels: _Labels, once: dict[str, list[str]]) -> list[str]:

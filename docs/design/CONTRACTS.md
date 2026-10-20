@@ -24575,6 +24575,8 @@ stores the record when it dropped one; a purge or `forget_item` is covered, thei
 rows: every entry is a quarantined stub's, so that would drop the count it bounds and convert the file in every
 cycle. Not built: the same prune for the re-read record's `failed` ids, which a new build or capability already
 replaces with a record of its own. Test: `test_cycle.py::test_the_retry_record_drops_a_file_that_is_gone_and_keeps_a_stub`.
+Amended 2026-10-20, §16.144 W75: built, keyed on the row's state: the re-read record drops the ids of tombstoned
+or missing rows.
 
 **An older build's settled failure is tried again once (V65; `agentsync.manifest`, `agentsync.cycle`; dated line
 at §16.132 U3).** A build before U3 settled an ordinary failed conversion's stub as unchanged after one cycle (a
@@ -24999,6 +25001,18 @@ with none converted the file or gave it up", the sentence V75 corrected in the r
 the guide. It now adds "or, while its converter still cannot start, left it unread, a wait that run counts in
 `converter_waiting`" (W2 counts it), and names `legacy_retried` (W18). Docstring only. Test:
 `test_cycle.py::test_the_run_tallys_words_on_a_later_run_name_the_wait_its_converter_leaves`.
+
+**The re-read record forgets a file that is gone (W75; `agentsync.cycle`, `agentsync.setup_report`; amends §16.138
+V63).** V63 left the re-read record's `failed` and `tried` ids unpruned, so a file deleted upstream kept its count
+until a second change of capabilities (the second record carries the first one's ids through one change). A
+deleted file keeps its row as a tombstone (`publish` sets `RowState.TOMBSTONE`; `reap` removes only the
+`tombstones` table's rows), so a prune by "row is gone" would never fire for an ordinary deletion. `_reread_load`
+now drops, on its one load a cycle, every id of either record whose row is missing (a purge, a rekey) or a
+tombstone, and stores the record when it dropped one (`_save_reread`'s `forget` takes an iterable). A restored
+file keeps its stable id and so is read again, up to `_REREAD_ATTEMPTS` more times. The report's re-read lead
+says a deleted file's count lasts only until the next sync; `_ROW_NOW`'s `deleted` stays for that window and for a
+record an older build left. Tests: `test_cycle.py::test_the_re_read_record_drops_the_ids_of_files_that_are_gone`,
+`test_setup_report.py` (the re-read lead).
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 

@@ -3610,7 +3610,12 @@ class _Cycle:
         A record that says a file was being read was left by a cycle that died in that read (a hang the
         launcher's watchdog ended, a crash in a native library, a kill that had nothing to do with it).
         That counts as one failed read of the file: without it the next cycle would start with the same
-        file, and one that kills the process would stop every sync at that source."""
+        file, and one that kills the process would stop every sync at that source.
+
+        An id whose file is gone (its row deleted by a purge or a rekey, or a tombstone: a file deleted
+        upstream keeps its row) leaves both records, which are stored again when one did; else a deleted
+        file's failed count stayed until a second change of capabilities (B13 round 19 W75). A restored file
+        keeps its id and so is read again, up to ``_REREAD_ATTEMPTS`` more times."""
         state = self._rereads.get(source_id)
         if state is None:
             mine = self._capabilities()
@@ -3625,19 +3630,27 @@ class _Cycle:
                 if reading is not None:
                     state.done = False
                     state.failed[reading] = state.failed.get(reading, 0) + 1
-            self._rereads[source_id], self._reread_others[source_id] = state, others
+            ids = set(state.failed) | others
+            rows = self.manifest.get_items(source_id, ids) if ids else {}
+            gone = {s for s in ids if s not in rows or rows[s].state is RowState.TOMBSTONE}
+            for stable in gone:
+                state.failed.pop(stable, None)
+            self._rereads[source_id], self._reread_others[source_id] = state, others - gone
+            if gone:
+                self._save_reread(source_id, forget=gone)
         return state
 
-    def _save_reread(self, source_id: str, *, reading: str | None = None, forget: str | None = None) -> None:
+    def _save_reread(self, source_id: str, *, reading: str | None = None, forget: Iterable[str] = ()) -> None:
         """Store the source's ``_REREAD_META`` value, when it is not the one stored: this cycle's record,
         then the newest one written for other capabilities.  ``reading``: the file about to be read.
-        ``forget``: an id to take out of the other record as well."""
+        ``forget``: the ids to take out of the other record as well."""
         key, mine, state = _REREAD_META + source_id, self._capabilities(), self._reread_load(source_id)
         stored = self.manifest.get_meta(key)
         records: list[_RereadRecord] = [(mine, state.done and reading is None, state.failed, reading)]
         for wanted, done, failed, _reading in _reread_records(stored):
             if wanted != mine:
-                failed.pop(forget or "", None)
+                for stable in forget:
+                    failed.pop(stable, None)
                 records.append((wanted, done, failed, None))
                 break
         value = _reread_value(records)
@@ -3666,7 +3679,7 @@ class _Cycle:
         if stable in state.failed or stable in self._reread_others[src.id]:
             state.failed.pop(stable, None)
             self._reread_others[src.id].discard(stable)
-            self._save_reread(src.id, forget=stable)
+            self._save_reread(src.id, forget=(stable,))
 
     def _reread_note(self, source_id: str, stable: str, outcome: bool | None) -> None:
         """Count what one re-read of ``stable`` came to (``_reread``): True clears what it failed before,

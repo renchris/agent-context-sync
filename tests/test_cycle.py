@@ -6962,3 +6962,64 @@ def test_the_run_tallys_words_on_a_later_run_name_the_wait_its_converter_leaves(
     assert (
         "gave it up or, while its converter still cannot start, left it unread, a wait that run counts" in doc
     )
+
+
+def test_the_re_read_record_drops_the_ids_of_files_that_are_gone(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 19 W75: the re-read record's failed and tried ids left only on a read that worked, new
+    bytes or a change of capabilities, and the second record kept them through one more, so a file deleted
+    upstream kept its count. A file deleted upstream keeps its row as a tombstone, so the prune keys on the
+    row's state: an id whose row is a tombstone or gone (a purge) leaves both records; a file still there,
+    a page or a quarantined stub, keeps its count."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+
+    def failing(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso stub"):
+            raise RuntimeError("no such heading")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", failing)
+    names = (
+        "Contoso once.md",
+        "Contoso given up.md",
+        "Contoso old record.md",
+        "Contoso kept.md",
+        "Contoso stub.md",
+    )
+    for name in names:
+        (local_source_dir / "projects" / name).write_text(f"# {name}\n\nA page.\n", encoding="utf-8")
+    for _ in range(cycle_mod._CONVERT_RETRIES + 1):  # the stub's retries done: they would forget its count
+        run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        rows = {name: m.item_by_path(SID, f"projects/{name}") for name in names}
+        ids = {name: row.stable_id for name, row in rows.items() if row is not None}
+        mine = json.loads(m.get_meta(cycle_mod._REREAD_META + SID) or "[]")[0]["for"]
+        once, given, old, kept, stub = (ids[name] for name in names)
+        m.set_meta(
+            cycle_mod._REREAD_META + SID,
+            cycle_mod._reread_value(
+                [
+                    (mine, True, {once: 1, given: cycle_mod._REREAD_ATTEMPTS, kept: 1, stub: 1}, None),
+                    (
+                        "an older build",
+                        True,
+                        {old: 1, "id-purged": cycle_mod._REREAD_ATTEMPTS, kept: 2},
+                        None,
+                    ),
+                ]
+            ),
+        )
+    for name in names[:3]:
+        (local_source_dir / "projects" / name).unlink()
+    for _ in range(4):
+        run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        states = {name: m.get_item(SID, ids[name]) for name in names}
+        stored = cycle_mod._reread_records(m.get_meta(cycle_mod._REREAD_META + SID))
+    assert all(states[n] is None or states[n].state is RowState.TOMBSTONE for n in names[:3]), states
+    assert states["Contoso stub.md"] is not None and states["Contoso stub.md"].state is RowState.QUARANTINED
+    failed = [failed for _for, _done, failed, _reading in stored]
+    assert failed == [{kept: 1, stub: 1}, {kept: 2}], stored

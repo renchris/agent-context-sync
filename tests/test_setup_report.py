@@ -8776,8 +8776,8 @@ def test_ocr_part_counts_images_documents_rereads_and_time(fake_mac: dict[str, P
     assert (
         "The count includes the files given up (two failed tries). A file that failed once is tried once "
         "more while its source's scan is not finished; under a finished scan it is no longer among the files "
-        "left to read again (read since, changed, online-only or gone), and the record keeps its count:"
-        in lead
+        "left to read again (read since, changed, online-only or gone), and the record keeps its count, a "
+        "deleted file's only until the next sync:" in lead
     )
     assert (
         "- <folder-2>, the 1 file that failed once, by its row in the manifest now: 1 with no row\n"
