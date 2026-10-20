@@ -461,18 +461,47 @@ _GOVERNANCE_TYPED_KEYS = (
 """The [governance] keys whose type error quotes the value (governance.py's ``_bool``, ``_int`` and
 ``_opt_str``): every key but ``remote_url_prefixes``, which :data:`_REMOTE_VALUE_RE` covers; a test pins them
 equal."""
-_GOVERNANCE_VALUE_RE = (  # a fixed-width lookbehind per key and form; the value ends at "(fix:" or EOL
+_GOVERNANCE_FORMS = ("a non-empty string", "true/false", *(f"an integer >= {n}" for n in range(10)))
+_REPR_ATOM = rf"(?:{_REPR}|-?\d+(?:\.\d+)?|True|False|None)"
+
+
+def _repr_shape(depth: int) -> str:
+    """A Python repr :func:`repr` prints for a TOML value: a string (quote-aware), a number, True, False or
+    None, or a list, dict or tuple of those, nested ``depth`` deep. Blanks only, never a newline, and never
+    two blank runs side by side: nested, they backtracked for minutes on a long run of blanks (review)."""
+    if depth == 0:
+        return _REPR_ATOM
+    inner = _repr_shape(depth - 1)
+    items = rf"(?:{inner}(?:[ ]*[,:][ ]*{inner})*(?:[ ]*,)?)?"
+    return rf"(?:{_REPR_ATOM}|\[[ ]*{items}[ ]*\]|\{{[ ]*{items}[ ]*\}}|\([ ]*{items}[ ]*\))"
+
+
+_GOVERNANCE_VALUE_RE = (  # a fixed-width lookbehind per key and form
     "(?:"
     + "|".join(
         f"(?<={re.escape(f'[governance].{key}: expected {what}, got ')})"
         for key in _GOVERNANCE_TYPED_KEYS
-        for what in ("a non-empty string", "true/false", *(f"an integer >= {n}" for n in range(10)))
+        for what in _GOVERNANCE_FORMS
     )
-    + r")[^\n]+?(?= \(fix: |\n|\Z)"
+    + rf")(?:{_repr_shape(2)}(?=[\s;,.)|]|\Z)|[^\n]+?(?= \(fix: |\n|\Z))"
 )
 """The value a [governance] type error quotes (``got <repr>``: a list, a number or a string, which can carry
 a name), after its key and form, never any ", got " (B13 round 17 U103; round 16 T3 covered only the label
-and remote values)."""
+and remote values). The repr's own shape first, so the words after it (a second refusal joined with ``; ``, a
+friction line's `` | `` fix column) stay; text of no repr shape runs to `` (fix: `` or the line's end as
+before, so the match never covers less than it did (B13 round 18 V45). Never cut at the first ``; `` or
+`` | ``: a string or list value can hold either."""
+_GOVERNANCE_TAIL_RE = re.compile(
+    "(?:"
+    + "|".join(
+        f"(?<={re.escape(f'[governance].{key}: expected {what}, got ')})"
+        for key in _GOVERNANCE_TYPED_KEYS
+        for what in _GOVERNANCE_FORMS
+    )
+    + r").+\Z",
+    flags=re.S,
+)
+"""A [governance] type error's value in one exception message, where it runs to the message's end (V45)."""
 # The remote URL a governance remote finding quotes: ``remote <name> (<url>) exists but [governance]
 # allow_remote``, ``... is not under a tenant-owned prefix`` (remote_policy_findings: doctor's
 # governance.remote [FAIL], init's ``governance:`` line) and ``refused: remote <name> (<url>) is not
@@ -4996,26 +5025,36 @@ def _with_count(label: str, count: str) -> str:
     return f"{label} ({count})"
 
 
-def _table_refusal(exc: Exception, file: str, path: Path | None = None) -> str:
+def _table_refusal(exc: Exception, file: str, path: Path | None = None, red: Redactor | None = None) -> str:
     """A ``[policy]`` or ``[governance]`` refusal as the table, its key when it is one of the table's own,
     the file, and the error's own words with only the file's path cut from their front, never the
     exception's class name, which is no word of the person's (B13 round 16 T15). The words are Doctor's, so
     every value the report's one redaction pass matches after its table and key there (a label, a remote, a
     governance type error's ``got <value>``: round 16 T3, round 17 U103) is a placeholder here too;
     ``agentsync status`` prints it in full, which the person needs to find the entry (B13 round 17 U22,
-    U43). ``path``: the file whose path the message starts with."""
+    U43). ``path``: the file whose path the message starts with. ``red``: the report's redactor; the clause
+    about a placeholder is said only when it replaces a value in these words (B13 round 18 V19), and a
+    governance type error's value, which runs to the message's end, is ``<value>`` here before the words are
+    joined to anything, so a refusal after it is never taken for the value (V45)."""
     from agentsync import governance, policy  # noqa: PLC0415 - lazy, as in _policy_line
 
     said = str(exc)
     if path is not None:
         said = said.removeprefix(f"{path}: ")
+    shown = False
+    if red is not None and red.enabled:
+        cut = _GOVERNANCE_TAIL_RE.sub("<value>", said)
+        shown = cut != said or red.scrub(cut) != cut
+        said = cut
     m = _TABLE_KEY_RE.search(said)
     table = m.group("table") if m is not None else "policy"
     key = (m.group("dot") or m.group("key")) if m is not None else None
     keys = policy.POLICY_KEYS if table == "policy" else governance._GOVERNANCE_KEYS
     named = f"[{table}] {key}" if key in keys else f"the [{table}] table"
-    # the pointer before the words: a value pattern runs to the line's end (U103's ``got <value>``)
+    # the pointer before the words: a value pattern can run to the line's end (U103's ``got <value>``)
     words = f": {said}" if said else ""
+    if not shown:
+        return f"{named} in {file} is not valid{words}"
     return (
         f"{named} in {file} is not valid (a value in the error is a placeholder here; `{AGENTSYNC_BIN} "
         f"status` prints it in full){words}"
@@ -5043,12 +5082,13 @@ def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], boo
     except Exception as exc:
         mine = str(exc).startswith(str(sidecar))
         file = policy.POLICY_FILE_NAME if mine else c.config_path.name
-        found.append(("policy", _table_refusal(exc, file, sidecar if mine else c.config_path)))
+        found.append(("policy", _table_refusal(exc, file, sidecar if mine else c.config_path, red)))
     try:
         governance.load_governance(c.config_path)
     except Exception as exc:
-        found.append(("governance.config", _table_refusal(exc, c.config_path.name, c.config_path)))
+        found.append(("governance.config", _table_refusal(exc, c.config_path.name, c.config_path, red)))
     vanished: list[tuple[str, int]] = []
+    back: list[Path] = []
     try:  # a state folder that cannot be searched raises here (U58's review)
         present = db.is_file()
     except OSError:
@@ -5060,9 +5100,11 @@ def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], boo
             conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
             try:
                 counts = present_counts_on(conn)
+                vanished = sorted(vanished_from((s.id for s in c.sources), counts).items())
+                with contextlib.suppress(Exception):  # a failed read drops the tail, never the refusal
+                    back = _add_backs(c, conn, [sid for sid, _n in vanished])
             finally:
                 conn.close()
-            vanished = sorted(vanished_from((s.id for s in c.sources), counts).items())
         except (OSError, sqlite3.Error):
             read = False
     if vanished:
@@ -5071,10 +5113,39 @@ def _sync_refusals(c: Config, red: Redactor) -> tuple[list[tuple[str, str]], boo
         names = ", ".join(_with_count(labels.of(sid), _plural(n, "file")) for sid, n in vanished)
         which = "a source" if len(vanished) == 1 else f"{len(vanished)} sources"
         verb = "is" if len(vanished) == 1 else "are"
+        # the add-back Doctor's fix ends with, in its words (B13 round 18 V18): the path is the vanished
+        # root's placeholder, as there (U46)
+        tail = _add_back_tail(back, every=len(back) == len(vanished))
         found.append(
-            ("config.vanished_sources", f"{which} {names} {verb} {VANISHED_WORDS}; {VANISHED_ADVICE}")
+            ("config.vanished_sources", f"{which} {names} {verb} {VANISHED_WORDS}; {VANISHED_ADVICE}{tail}")
         )
     return found, read
+
+
+def _add_backs(c: Config, conn: sqlite3.Connection, vanished: list[str]) -> list[Path]:
+    """doctor's ``vanished_add_backs`` over the report's read-only connection, never a Manifest (which opens
+    read-write); [] when doctor cannot be imported."""
+    if not vanished:
+        return []
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:
+        return []
+
+    def meta(key: str) -> str | None:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return None if row is None else str(row[0])
+
+    return list(doctor.vanished_add_backs(c, meta, vanished))
+
+
+def _add_back_tail(roots: list[Path], *, every: bool) -> str:
+    """doctor's ``vanished_add_back_tail``; "" when doctor cannot be imported."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+    except Exception:
+        return ""
+    return str(doctor.vanished_add_back_tail(roots, every=every))
 
 
 def _live_refusal(r: _Run, c: Config) -> tuple[str | None, bool]:

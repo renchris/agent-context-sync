@@ -1989,19 +1989,27 @@ def _check_vanished_sources(config: Config) -> list[CheckResult]:
 
 
 def _vanished_add_backs(config: Config, manifest: Manifest, vanished: Collection[str]) -> list[Path]:
+    """:func:`vanished_add_backs` read through ``manifest``."""
+    return vanished_add_backs(config, manifest.get_meta, vanished)
+
+
+def vanished_add_backs(
+    config: Config, get_meta: Callable[[str], str | None], vanished: Collection[str]
+) -> list[Path]:
     """The folders that ``add-source`` adds back under a vanished id, in id order: the manifest's recorded
     root (``scope_root:<id>``) when it is a folder here and the id add-source derives for it is that id,
     install.sh's ``vanished_folders`` rule ("a name alone never matches"). A custom id, or a root that is
     gone, has none: re-adding it would mirror the folder twice under a new id and leave the refusal (B13
     round 17 U9, U25, U46). Nor does a folder another source has now (an id renamed in sources.toml):
     add-source would only say it is configured already. A root this process may not read is skipped, never
-    an error that would drop the FAIL itself (review)."""
+    an error that would drop the FAIL itself (review). ``get_meta``: the manifest's meta read (the setup
+    report's loads line reads it over its own read-only connection, B13 round 18 V18)."""
     configured = {s.id for s in config.sources}
     taken = {canonical_source_root(expand(s.path)) for s in config.sources if s.path is not None}
     inbox = canonical_source_root(expand(config.docs_repo).parent / "inbox")  # every init adds it back
     out: list[Path] = []
     for sid in sorted(vanished):
-        raw = (manifest.get_meta(f"scope_root:{sid}") or "").partition(":")[2]
+        raw = (get_meta(f"scope_root:{sid}") or "").partition(":")[2]
         if not raw:
             continue
         try:
@@ -2021,14 +2029,21 @@ def vanished_fix(roots: Sequence[Path], *, every: bool) -> str:
     it back under the same id, as step 1's NEXT offers (``--source-local``, which runs it); the CLI's own
     verb, by its full path, since status and doctor print it outside install.sh too (B13 round 17 U9, U25,
     U46). ``every``: every vanished source has one."""
+    return VANISHED_FIX + vanished_add_back_tail(roots, every=every)
+
+
+def vanished_add_back_tail(roots: Sequence[Path], *, every: bool) -> str:
+    """The ``; or add its folder again, under the same id: <command>`` tail of :func:`vanished_fix`, "" with
+    no folder: the setup report's loads line ends its refusal with it, so both say one text (B13 round 18
+    V18)."""
     if not roots:
-        return VANISHED_FIX
+        return ""
     cmds = ", then ".join(f"{BIN} add-source {shlex.quote(str(r))}" for r in roots)
     if every:
         what = "its folder" if len(roots) == 1 else "their folders"
     else:
         what = "the folder still here" if len(roots) == 1 else "the folders still here"
-    return f"{VANISHED_FIX}; or add {what} again, under the same id: {cmds}"
+    return f"; or add {what} again, under the same id: {cmds}"
 
 
 def _check_heartbeat(

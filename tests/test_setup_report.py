@@ -875,11 +875,23 @@ def test_a_config_the_sync_refuses_loads_but_says_so(fake_mac: dict[str, Path], 
         return line
 
     line = loads()
+    # B13 round 18 V18: the folder add-source adds back under the same id, as Doctor's fix names it
+    add_back = (
+        "; or add its folder again, under the same id: ~/.local/bin/agentsync add-source "
+        "'~/Library/CloudStorage/OneDrive-SharedLibraries-<org-1>/<library-1>/<folder-3>'"
+    )
     assert line == (
         "- loads: yes, but a sync refuses it: a source (<folder-3>, not in the config; 1 file) is "
         "mirrored but no longer in sources.toml; retirement is explicit: put the [[source]] block back with "
-        f"{RETIRE_ADVICE}, or restore it"
+        f"{RETIRE_ADVICE}, or restore it{add_back}"
     ), line
+    tail = doctor.vanished_add_back_tail([Path("/x")], every=True)
+    assert doctor.vanished_fix([Path("/x")], every=True).endswith(tail), "Doctor's fix ends with it"
+    assert add_back.startswith(tail.removesuffix(" /x") + " '~/"), "the loads line's tail is Doctor's"
+    # a root that is gone has no add-back, as in Doctor
+    fake_mac["two"].rename(tmp_path / "moved away")
+    assert loads().endswith(f"{RETIRE_ADVICE}, or restore it")
+    (tmp_path / "moved away").rename(fake_mac["two"])
     # the sync's order: a policy that does not pass is what it prints first, so the report gives that one
     (cfg.parent / "policy.toml").write_text("[policy]\nrefuse_unlabelled = 1\n", encoding="utf-8")
     assert loads().startswith(
@@ -954,42 +966,86 @@ def test_a_refusals_loads_line_gives_the_errors_words_with_its_values_redacted()
     (round 16 T3), and it named `agentsync sync`, which writes, where install.sh's NEXT names status. It
     gives Doctor's words, the file's path alone cut from their front, so every value pattern that redacts
     Doctor's line redacts them (lane B's U103 ``got <value>`` needs the ``[governance].<key>: `` before it),
-    and names status for the full text."""
+    and names status for the full text. Round 18 V19: the clause about a placeholder is said only when the
+    words hold one (an unknown key, a TOML error or a policy type error hold none, nor does a report with
+    redaction off)."""
     cfg = Path("/Users/jdoe/agent-context/sources.toml")
     tail = "(a value in the error is a placeholder here; `~/.local/bin/agentsync status` prints it in full)"
-    said = setup_report._table_refusal(
-        ConfigError(f"{cfg}: [governance].history_days: expected an integer >= 1, got 'thirty'"),
-        cfg.name,
-        cfg,
-    )
     red = setup_report.Redactor()
-    assert red.redact(said) == (
+
+    def refusal(message: str, file: str = cfg.name, redactor: setup_report.Redactor = red) -> str:
+        said = setup_report._table_refusal(ConfigError(f"{cfg}: {message}"), file, cfg, redactor)
+        return redactor.redact(said)
+
+    said = refusal("[governance].history_days: expected an integer >= 1, got 'thirty'")
+    assert said == (
         f"[governance] history_days in sources.toml is not valid {tail}: [governance].history_days: expected "
         "an integer >= 1, got <value>"
     )
-    prefix = setup_report._table_refusal(
-        ConfigError(
-            f"{cfg}: [governance].remote_url_prefixes: https://git.contoso.invalid/x carries a password"
-        ),
-        cfg.name,
-        cfg,
-    )
-    assert red.redact(prefix) == (
+    prefix = refusal("[governance].remote_url_prefixes: https://git.contoso.invalid/x carries a password")
+    assert prefix == (
         f"[governance] remote_url_prefixes in sources.toml is not valid {tail}: "
         "[governance].remote_url_prefixes: <remote> carries a password"
     )
-    unknown = setup_report._table_refusal(
-        ConfigError(f"{cfg}: [governance]: unknown key(s) foo; allowed: archive"), cfg.name, cfg
-    )
-    said_unknown = (
-        f"the [governance] table in sources.toml is not valid {tail}: [governance]: unknown key(s) foo;"
-    )
-    assert unknown.startswith(said_unknown), unknown
-    toml = setup_report._table_refusal(
-        ConfigError(f"{cfg}: not valid TOML: Expected '=' (at line 2)"), "x", cfg
-    )
-    assert toml.endswith(f" in x is not valid {tail}: not valid TOML: Expected '=' (at line 2)"), toml
+    unknown = refusal("[governance]: unknown key(s) foo; allowed: archive")
+    assert unknown.startswith(
+        "the [governance] table in sources.toml is not valid: [governance]: unknown key(s) foo;"
+    ), unknown
+    toml = refusal("not valid TOML: Expected '=' (at line 2)", "x")
+    assert toml.endswith(" in x is not valid: not valid TOML: Expected '=' (at line 2)"), toml
+    policy = refusal("[policy]: refuse_unlabelled must be true or false", "policy.toml")
+    assert policy == (
+        "[policy] refuse_unlabelled in policy.toml is not valid: [policy]: refuse_unlabelled must be true or "
+        "false"
+    ), policy
+    off = setup_report.Redactor(enabled=False)
+    plain = refusal("[governance].history_days: expected an integer >= 1, got 'thirty'", redactor=off)
+    assert "placeholder" not in plain and "got 'thirty'" in plain, plain
     assert "Error" not in said + prefix + toml.replace("Expected", ""), "never a class name"
+
+
+def test_a_governance_values_redaction_never_swallows_the_words_after_it() -> None:
+    """B13 round 18 V45: the ``<value>`` match ran to the line's end, so ``[governance].hold: expected
+    true/false, got "yes"; once that is fixed, a sync also refuses it: a source (...)`` lost the second
+    refusal and its advice (U58's join), and a friction line lost its `` | `` fix column. The loads line's
+    value is cut where the exception ends, and free text matches the repr's own shape first; a string or a
+    list holding ``; `` or `` | `` is still replaced whole."""
+    cfg = Path("/Users/jdoe/agent-context/sources.toml")
+    red = setup_report.Redactor()
+    hold = setup_report._table_refusal(
+        ConfigError(f'{cfg}: [governance].hold: expected true/false, got "yes"'), cfg.name, cfg, red
+    )
+    later = (
+        "; once that is fixed, a sync also refuses it: a source (<source-3>, not in the config; 5 files) is "
+        "mirrored but no longer in sources.toml; retirement is explicit: put the [[source]] block back"
+    )
+    line = red.redact(f"- loads: yes, but a sync refuses it: {hold}{later}")
+    assert line.endswith(f"got <value>{later}"), line
+    reason = setup_report._table_refusal(
+        ConfigError(
+            f"{cfg}: [governance].hold_reason: expected a non-empty string, got "
+            "['Contoso Legal; Zebra Matter']"
+        ),
+        cfg.name,
+        cfg,
+        red,
+    )
+    assert "Zebra" not in red.redact(reason) and red.redact(reason).endswith("got <value>"), reason
+    for value in ("['Contoso Legal; Zebra Matter']", "'Zebra | Matter'", '"yes"', "30"):
+        friction = (
+            f"| 3 | step 2 | error | [governance].hold_reason: expected a non-empty string, got {value} | "
+            "fix the value |"
+        )
+        shown = red.redact(friction)
+        assert "Zebra" not in shown and shown.endswith("got <value> | fix the value |"), shown
+    assert red.redact("[governance].history_days: expected an integer >= 1, got thirty days (fix: x)") == (
+        "[governance].history_days: expected an integer >= 1, got <value> (fix: x)"
+    ), "text of no repr shape runs to the fix, as before"
+    # review: blank runs between nested closing brackets backtracked for minutes (about n^4)
+    blanks = " " * 3000
+    t0 = time.monotonic()
+    red.redact(f"[governance].hold_reason: expected a non-empty string, got [[[1{blanks}]{blanks}]{blanks}")
+    assert time.monotonic() - t0 < 5, "no catastrophic backtracking"
 
 
 @pytest.mark.usefixtures("clean_doctor")
