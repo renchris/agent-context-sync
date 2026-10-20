@@ -23724,6 +23724,12 @@ comment says every beat goes to DEBUG; `_fail_step`'s docstring points at `PERSO
 `test_install_oneshot.py::test_a_lock_wait_the_probe_missed_is_booked_from_agentsyncs_stdout_mark`, and the
 announced flag in `test_first_sync_lock_busy_is_skipped_not_failed` and
 `test_a_sync_still_running_after_the_wait_leaves_the_reinstall_as_before`.
+Amended 2026-10-19, §16.137 V40: the bracket holds the holder (`LockHeldError.holder`), never `str(exc)`, which
+doubled `lock held: `; a lock held with an empty body (install.sh's reinstall, a status or doctor check, a cycle
+starting) reads `cycle.UNRECORDED_LOCK_WAIT` (`the lock is held by install.sh while it reinstalls agentsync, a
+status or doctor check, or a cycle starting; waiting for it to be free (Ns of at most Ms)`), one bracket deep and
+never "another sync", and the quiet wait's first beat for it `another sync is still running (or install.sh or a
+check holds the lock); waiting for it to end, at most 10 minutes`.
 
 **U18, U71, U102: counted nouns, and a plain settle notice (`agentsync.arm_local`, `agentsync.cli`,
 `agentsync.governance`, `agentsync.publish`, `agentsync.ops.doctor`; amends §16.125 T32, §16.45 R103 and R144).**

@@ -161,6 +161,7 @@ from agentsync.model import (
 )
 from agentsync.ops.launchd import rotate_logs, started_by_our_job
 from agentsync.ops.lock import (
+    EMPTY_BODY_HOLDER,
     STARTED_BY_LAUNCHD,
     STARTED_BY_OTHER,
     LockAcquisition,
@@ -5627,6 +5628,36 @@ def _interactive_mode(config: Config, now: datetime) -> CycleMode:
     return CycleMode.RECONCILE if age >= config.reconcile_interval_s else CycleMode.POLL
 
 
+UNRECORDED_LOCK_WAIT = (
+    "the lock is held by install.sh while it reinstalls agentsync, a status or doctor check, or a cycle "
+    "starting; waiting for it to be free"
+)
+"""A foreground lock wait's beat when the lock's body is empty (``ops.lock.EMPTY_BODY_HOLDER``): no sync may
+hold it, so the line does not say "another sync", and it has one bracket level (B13 round 18 V40)."""
+UNRECORDED_LOCK_WAIT_QUIET = "another sync is still running (or install.sh or a check holds the lock)"
+"""The quiet wait's first beat for an empty body: it keeps the opening the setup prompt quotes as an expected
+wait (README, step 2), and says what else can hold the lock (B13 round 18 V40)."""
+
+
+def _wait_beat(exc: LockHeldError, waited: float, wait_s: float, *, quiet: bool) -> str:
+    """One beat of a lock wait, worded from the holder (``exc.holder``, never ``str(exc)``, which starts
+    ``lock held: `` and doubled it inside the bracket; B13 round 18 V40). ``quiet``: install.sh's first sync,
+    whose wording the setup prompt quotes."""
+    if quiet:
+        head = (
+            UNRECORDED_LOCK_WAIT_QUIET
+            if exc.who == EMPTY_BODY_HOLDER
+            else f"another sync is still running ({exc.holder})"
+        )
+        return f"{head}; waiting for it to end, at most {_minutes(wait_s)}"
+    head = (
+        UNRECORDED_LOCK_WAIT
+        if exc.who == EMPTY_BODY_HOLDER
+        else f"another sync is running ({exc.holder}); waiting for it to finish"
+    )
+    return f"{head} ({int(waited)}s of at most {int(wait_s)}s)"
+
+
 def _minutes(seconds: float) -> str:
     """``10 minutes`` for a whole number of minutes, else ``Ns``: the wait's bound in its plain line."""
     whole = int(seconds)
@@ -5658,22 +5689,16 @@ def _acquire_waiting(
             if waited - noted >= _LOCK_PROGRESS_S:
                 first = noted < 0
                 noted = waited
-                beat = (
-                    f"another sync is running ({exc}); waiting for it to finish "
-                    f"({int(waited)}s of at most {int(wait_s)}s)"
-                )
+                # install.sh's ticker runs, but its own wait line did not: its words, which the setup
+                # prompt quotes as an expected wait (README, step 2)
+                beat = _wait_beat(exc, waited, wait_s, quiet=quiet)
                 if quiet and not (first and unannounced):
                     log.debug("%s", beat)
+                elif say is None:
+                    log.warning("%s", beat)
                 else:
-                    if quiet:  # install.sh's ticker runs, but its own wait line did not: its words, which
-                        # the setup prompt quotes as an expected wait (README, step 2)
-                        beat = f"another sync is still running ({exc}); waiting for it to end, at most "
-                        beat += _minutes(wait_s)
-                    if say is None:
-                        log.warning("%s", beat)
-                    else:
-                        log.debug("%s", beat)
-                        say(beat)
+                    log.debug("%s", beat)
+                    say(beat)
             time.sleep(min(_LOCK_RETRY_S, max(0.0, wait_s - waited)))
 
 

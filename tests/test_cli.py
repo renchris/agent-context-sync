@@ -1209,8 +1209,10 @@ def test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not
     err, out = cap.err.splitlines(), cap.out.splitlines()
     said = [ln for ln in err if re.match(r"another sync is (still )?running \(", ln)]
     assert not [ln for ln in err if "agentsync.cycle:" in ln], err
+    assert not [ln for ln in said if "lock held: " in ln or "((" in ln], err  # B13 round 18 V40
     if env == "plain":
         assert len(said) >= 2 and all(ln.endswith("s of at most 600s)") for ln in said), err
+        assert all(ln.startswith("another sync is running (pid ") for ln in said), err
         assert cli.LOCK_WAITED_MARK not in out
     elif env == "quiet-announced":
         assert not said and cli.LOCK_WAITED_MARK not in out, (err, out)
@@ -1219,6 +1221,56 @@ def test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not
         assert [ln.split(" (", 1)[0] for ln in said] == ["another sync is still running"], err
         assert [ln.split("); ", 1)[1] for ln in said] == ["waiting for it to end, at most 10 minutes"], err
         assert out.count(cli.LOCK_WAITED_MARK) == 1, out
+
+
+@pytest.mark.parametrize("env", ["plain", "quiet-unannounced"])
+def test_a_lock_held_with_no_body_is_waited_for_in_one_bracket_never_as_another_sync(
+    initialised: Config,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env: str,
+) -> None:
+    """B13 round 18 V40: the foreground wait's line put ``str(exc)`` in its bracket, so it read
+    ``another sync is running (lock held: an unrecorded holder (install.sh ..., a status or doctor check, or a
+    cycle starting))``: brackets nested two deep, and a status check called a sync. A lock held with an empty
+    body (install.sh's lockf, a status probe) now gets its own line, one bracket deep; the quiet wait keeps
+    the opening the setup prompt quotes and says what else holds the lock."""
+    import fcntl  # noqa: PLC0415
+
+    monkeypatch.setattr(cycle_mod, "_LOCK_PROGRESS_S", 0.2)
+    if env != "plain":
+        monkeypatch.setenv(cycle_mod.QUIET_LOCK_WAIT_ENV, "1")
+        monkeypatch.setenv(cycle_mod.LOCK_WAIT_ANNOUNCED_ENV, "0")
+    path = initialised.state_paths.lock
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    os.ftruncate(fd, 0)
+    fcntl.flock(fd, fcntl.LOCK_EX)  # held, no body: what install.sh's lockf does
+
+    def release() -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+    timer = threading.Timer(1.2, release)
+    timer.start()
+    try:
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    finally:
+        timer.join()
+        os.close(fd)
+    err = capsys.readouterr().err.splitlines()
+    said = [ln for ln in err if "waiting for it" in ln]
+    assert said, err
+    for ln in said:
+        assert "((" not in ln and "))" not in ln and "lock held: " not in ln, ln
+    if env == "plain":
+        assert all(ln.startswith(f"{cycle_mod.UNRECORDED_LOCK_WAIT} (") for ln in said), said
+        assert not [ln for ln in said if ln.startswith("another sync")], said
+    else:
+        assert said == [
+            "another sync is still running (or install.sh or a check holds the lock); waiting for it to end, "
+            "at most 10 minutes"
+        ], said
 
 
 def test_interactive_sync_behind_a_launchd_reconcile_runs_a_poll(initialised: Config) -> None:
