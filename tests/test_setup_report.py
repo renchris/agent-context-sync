@@ -2550,6 +2550,39 @@ def test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_
     assert "Gemini" not in text
 
 
+def test_the_agents_name_keeps_its_product_word_where_a_step_1_line_states_it(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 20 X38: a step 1 line states its agent at its text's start (``prompt v28, <agent>:``), and
+    W17 kept the product word only in the Agent: header, the Summary's agent field and the attempt line: the
+    friction log's row and the Summary's item read ``GitHub <folder-N> CLI gpt-5`` right under the kept
+    name, and the residue check listed GitHub and CLI. A deviation row, a curly-quoted ``Prompt v28 -`` form
+    and a stated row after a headed attempt keep it too; the folder's path stays ``<folder-N>``."""
+    cloud = fake_mac["home"] / "Library" / "CloudStorage" / f"OneDrive-{ORG}" / "Documents" / "Copilot"
+    cloud.mkdir(parents=True)
+    assert cli.main(["add-source", str(cloud), "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    agent = "GitHub Copilot CLI gpt-5"
+    pair = (
+        f"2026-09-29T10:00:00Z | step 1 | deviation | prompt v28, {agent}: the pull asked for a key | -\n"
+        f"2026-09-29T10:01:00Z | step 1 | error | \u2019Prompt v28 - {agent}: \u2019 git pull exited 1 | -\n"
+    )
+    headed = V7_HAPPY.replace("Claude Code, claude-opus-5-5", agent) + (
+        f"2026-09-29T10:20:00Z | step 1 | error | prompt v28, {agent}: git pull exited 1 | -\n"
+    )
+    for log in (pair, headed):
+        write_friction(fake_mac, log)
+        text, _summary = summary_of(fake_mac)
+        rows = [ln for ln in text.splitlines() if "| step 1 |" in ln or " · step 1 · " in ln]
+        stated = [ln for ln in rows if re.search(r"(?i)prompt v28", ln)]
+        assert stated and all(agent in ln for ln in stated), stated
+        assert [ln for ln in rows if "<folder-" in ln] == [], rows
+        hits = setup_report.residue(text)
+        assert "GitHub" not in hits and "CLI" not in hits, hits
+        body = text.rstrip("\n").rsplit("\n", 1)[0]  # the issue link carries the name URL-encoded
+        assert "Copilot" not in body.replace(agent, ""), "only the agent's name keeps the word"
+
+
 def test_the_agents_name_keeps_a_product_word_joined_to_a_model_id_by_a_hyphen(
     fake_mac: dict[str, Path],
 ) -> None:
@@ -2621,7 +2654,8 @@ def test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder(
     assert "· agent: Gemini CLI x\n" in summary, summary
     assert (
         "1 of the configured source folders, which are redacted to <folder-N> like any other, except as a "
-        "word of the agent's name in the friction log's Agent: line" in section(text, "Configuration")
+        "word of the agent's name in the friction log's Agent: line or a step 1 line that states it"
+        in section(text, "Configuration")
     )
     assert setup_report.residue("<folder-1> Gemini <org-1> Codex <name>") == ["Gemini", "Codex"], (
         "a product word next to a placeholder is residue like any other"

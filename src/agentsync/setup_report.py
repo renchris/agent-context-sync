@@ -1754,8 +1754,11 @@ def _parse_event(line_no: int, at: str, rest: str) -> FrictionEvent:
     return FrictionEvent(line_no, moment, step, kind or "?", what, fix)
 
 
+_STATED_PREFIX = r"[\s'\"\u2018\u2019]*prompt v(\d{1,3})(?![\d\w])[ ,:;-]+"
+"""The words before the agent in :data:`_STEP1_STATED_RE` (read case-blind, with ASCII classes): one constant,
+so the report's redaction finds the stated agent where parse_friction reads it (B13 round 20 X38)."""
 _STEP1_STATED_RE = re.compile(
-    r"[\s'\"\u2018\u2019]*prompt v(\d{1,3})(?![\d\w])[ ,:;-]+([^:\s][^:]{0,99}?)\s*:[\s'\"\u2018\u2019]*",
+    _STATED_PREFIX + r"([^:\s][^:]{0,99}?)\s*:[\s'\"\u2018\u2019]*",
     re.IGNORECASE | re.ASCII,
 )
 """How a step 1 error line starts its what-text since setup prompt v12 (``prompt v12, <agent>:``, the words
@@ -5245,7 +5248,9 @@ def _configuration(r: _Run) -> list[str]:
             "other"
             # B13 round 19 W17: the agent's name keeps a configured folder's product word (redact_agent)
             + (
-                ", except as a word of the agent's name in the friction log's Agent: line"
+                # round 20 X38: and where a step 1 line states it (``prompt v28, <agent>:``)
+                ", except as a word of the agent's name in the friction log's Agent: line or a step 1 line"
+                " that states it"
                 if configured
                 else ""
             )
@@ -10001,7 +10006,21 @@ def _item_line(r: _Run, att: Attempt, e: FrictionEvent) -> str:
     cut = 640 if _PROMPT_STOP_RE.match(e.what) else 160
     fix = f" → {_shorten(r.red.redact(e.fix), cut)}" if e.fix else ""
     step = f"step {e.step}" if e.step is not None else "no step"
-    return f"- F{e.line} · {step} · {e.kind} · {_item_what(r.red.redact(e.what), e.kind)}{fix}"
+    return f"- F{e.line} · {step} · {e.kind} · {_item_what(_redact_stated(r, e), e.kind)}{fix}"
+
+
+def _redact_stated(r: _Run, e: FrictionEvent) -> str:
+    """``e``'s what-text redacted, but for an agent's name a step 1 line states at its start (``prompt v28,
+    <agent>:``, :data:`_STEP1_STATED_RE`), which :meth:`Redactor.redact_agent` redacts, as the friction log's
+    row has it (:data:`_STATED_AT`; B13 round 20 X38). Only a name an attempt has (its ``Agent:`` or its
+    stated words): another session's agent is redacted like any text."""
+    m = _STEP1_STATED_RE.match(e.what) if e.step == 1 else None
+    names = {a.said("Agent") for a in (r.friction.attempts if r.friction is not None else ())}
+    if m is None or m.group(2) not in names:
+        return r.red.redact(e.what)
+    return (
+        r.red.redact(e.what[: m.start(2)]) + r.red.redact_agent(m.group(2)) + r.red.redact(e.what[m.end(2) :])
+    )
 
 
 def _the_last(n: int, word: str) -> str:
@@ -10776,6 +10795,10 @@ _AGENT_AT = r"(?:^ *\d+  \s*(?:[-*]\s+)?\**(?i:agent)\**\s*:\s*\**\s*| · agent:
 """Where the report prints an attempt's agent name (``Attempt.said("Agent")``): the embedded friction log's
 numbered ``Agent:`` header line in any form :data:`_FRICTION_KEY_RE` reads (``**Agent**:``, ``- agent:``), the
 Summary's ``· agent:`` field and an attempt line's ``; agent`` (B13 round 19 W17)."""
+_STATED_AT = rf"(?:\| step 1 \| [^|]*?\| | · step 1 · [^·]*? · )(?ai:{_STATED_PREFIX})"
+"""Where a step 1 line states the agent at its text's start (:data:`_STEP1_STATED_RE`, ``prompt v28,
+<agent>:``): the embedded friction log's row and the Summary's item, of any kind (a deviation, or a second
+error, keeps the words in its text), the agent ending at its colon (B13 round 20 X38)."""
 
 
 def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -> str:
@@ -10784,15 +10807,18 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
     ``--source-local`` argument is then settled by structure (:func:`_source_local_shown`). A doctor line
     loses the padding after its check's name: doctor pads every name to the longest real one, so the
     padding left beside a placeholder gave the length of the id it replaced. Where a line prints one of
-    ``agents`` (:data:`_AGENT_AT`), that name is redacted by :meth:`Redactor.redact_agent`, the rest of the
-    line as usual."""
+    ``agents`` (:data:`_AGENT_AT`, or a step 1 line's stated words, :data:`_STATED_AT`), that name is redacted
+    by :meth:`Redactor.redact_agent`, the rest of the line as usual."""
     keep = {REPORT_TITLE, *(f"## {t}" for t in SECTION_TITLES)}
     if not red.enabled:
         return "\n".join(lines)
     shown = functools.partial(_source_local_shown, red)
     names = sorted({a for a in agents if a.strip()}, key=len, reverse=True)
+    alt = "|".join(map(re.escape, names))
     at = (
-        re.compile(rf"{_AGENT_AT}(?P<agent>{'|'.join(map(re.escape, names))})(?=[ \t]*(?:$|[);]| ·))")
+        re.compile(
+            rf"{_AGENT_AT}(?P<agent>{alt})(?=[ \t]*(?:$|[);]| ·))|{_STATED_AT}(?P<stated>{alt})(?=\s*:)"
+        )
         if names
         else None
     )
@@ -10802,8 +10828,9 @@ def _redact_lines(red: Redactor, lines: list[str], agents: Iterable[str] = ()) -
             return plain(line)
         out, pos = [], 0
         for m in at.finditer(line):
-            out += [plain(line[pos : m.start("agent")]), red.redact_agent(m.group("agent"))]
-            pos = m.end("agent")
+            name = "agent" if m.group("agent") is not None else "stated"
+            out += [plain(line[pos : m.start(name)]), red.redact_agent(m.group(name))]
+            pos = m.end(name)
         return "".join([*out, plain(line[pos:])])
 
     def plain(line: str) -> str:
