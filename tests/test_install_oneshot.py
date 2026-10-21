@@ -13888,6 +13888,78 @@ def test_a_git_remotes_host_ends_at_a_query_or_fragment_in_both_readers(
     assert "fabrikam" not in shell, shell
 
 
+_ONE_LINE_GIT = (
+    '[remote "origin"] url = https://git.fabrikam-eng.invalid/team/kb.git\n'
+    "[http] proxy = http://gw.fabrikam-eng.invalid:8080\n"
+)
+_TWO_LINE_GIT = (
+    '[remote "origin"]\n\turl = https://git.fabrikam-eng.invalid/team/kb.git\n'
+    "[http]\n\tproxy = http://gw.fabrikam-eng.invalid:8080\n"
+)
+
+
+@pytest.mark.parametrize("config", [_ONE_LINE_GIT, _TWO_LINE_GIT], ids=["one-line", "two-line"])
+def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_shell_report(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, config: str
+) -> None:
+    """B13 round 21 Y64: git applies ``[remote "origin"] url = ...`` and ``[http] proxy = ...`` written on
+    the section's header line, but git_remote_entries skipped every header line and git_proxy_values read a
+    key only at a line's start, so a 403 line kept the remote's host and company path in clear beside the
+    public issue link. Both forms give the same placeholders (the two-line form's numbers); the Python
+    readers are lane RA's (Y1, Y36)."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    (Path(env["HOME"]) / ".gitconfig").write_text(config)
+    said = (
+        "fatal: unable to access 'https://git.fabrikam-eng.invalid/team/kb.git/': 403 through "
+        "http://gw.fabrikam-eng.invalid:8080"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert shell == (
+        "fatal: unable to access 'https://<proxy-2>/<proxy-3>/': 403 through http://<proxy-1>:8080"
+    ), shell
+    if config == _TWO_LINE_GIT:
+        assert python == shell, "the numbers the agentsync report gives"
+
+
+def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: Path) -> None:
+    """B13 round 21 Y64, the readers alone: a url or proxy key after its header is read, with a quoted
+    subsection and a comment; an empty ``proxy =`` there (git's off switch) still gives nothing, and a url key
+    after a header that is no remote's is no remote."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".gitconfig").write_text(
+        '[remote "origin"] url = https://git.fabrikam-eng.invalid/team/kb.git\n'
+        '[http "https://x.fabrikam-eng.invalid"] proxy = "http://p2.fabrikam-eng.invalid:3128" # IT\n'
+        "[http] proxy =\n"
+        "[http]proxy=gw.fabrikam-eng.invalid:8080\n"
+        '[branch "main"] url = https://not-a-remote.fabrikam-eng.invalid/x.git\n'
+        '[remote "up"]\n\turl = git@ssh.fabrikam-eng.invalid:team/x.git\n'
+    )
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "".join(
+        m.group(0)
+        for name in ("git_proxy_values", "git_config_files", "git_remote_entries", "checkout_git_configs")
+        for m in [re.search(rf"^{name}\(\) \{{.*?^\}}\n", script, re.M | re.S)]
+        if m is not None
+    )
+    dirs = re.search(r"^checkout_git_dirs\(\) \{.*?^\}\n", script, re.M | re.S)
+    assert dirs is not None and fns.count("() {") == 4
+    cp = subprocess.run(
+        [BASH32, "-c", f"PUBLIC_HOSTS=''\n{fns}{dirs.group(0)}git_proxy_values; echo --; git_remote_entries"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
+    )
+    proxies, remotes = cp.stdout.split("--\n")
+    assert proxies.splitlines() == ["http://p2.fabrikam-eng.invalid:3128", "gw.fabrikam-eng.invalid:8080"]
+    assert remotes.splitlines() == [
+        "git.fabrikam-eng.invalid\thttps://git.fabrikam-eng.invalid/team/kb.git",
+        "ssh.fabrikam-eng.invalid\tgit@ssh.fabrikam-eng.invalid:team/x.git",
+    ]
+
+
 def test_a_governance_lines_remote_url_and_the_docs_repos_host_are_redacted_in_both_readers(
     env: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

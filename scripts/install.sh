@@ -351,14 +351,15 @@ friction_append() {
 # The proxy values in the config files git reads, one a line: the files setup_report._git_proxy_urls reads,
 # the global ones and the repository config of two checkouts (checkout_git_configs, a linked worktree too):
 # the one holding this script, which agentsync is installed from, and the one the prompt clones. Read as files: the logged git error names git's proxy, and step 1 may have stopped
-# with no git. An empty "proxy =" (git's off switch) prints nothing.
+# with no git. An empty "proxy =" (git's off switch) prints nothing. A key on its section's header line
+# ("[http] proxy = ..."), which git applies, is read after the header (B13 round 21 Y64, as round 20 X8).
 git_proxy_values() {
 	local g
 	git_config_files | while IFS= read -r g; do
 		# An unreadable file is skipped: under set -e a failed sed would end the caller's whole list (the
 		# LaunchAgent's proxies after it went unread).
 		[ ! -f "$g" ] ||
-			LC_ALL=C sed -n 's/^[[:space:]]*[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\1/p' "$g" ||
+			LC_ALL=C sed -n 's/^[[:space:]]*\(\[[[:space:]]*[A-Za-z0-9.-]\{1,\}\([[:space:]]\{1,\}"[^"]*"\)\{0,1\}[[:space:]]*\][[:space:]]*\)\{0,1\}[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\3/p' "$g" ||
 			true
 	done 2>/dev/null
 }
@@ -430,24 +431,35 @@ git_remote_entries() { # host TAB url, one a line; git_remote_hosts and git_remo
 		checkout_git_configs "$HOME/agent-context/docs"
 	} | while IFS= read -r g; do
 		[ ! -f "$g" ] || PUBLIC="$PUBLIC_HOSTS" LC_ALL=C awk '
-			/^[ \t]*\[/ { remote = ($0 ~ /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"[^"]*"[ \t]*\]/); next }
-			remote && tolower($0) ~ /^[ \t]*url[ \t]*=/ {
-				u = $0; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u)
+			function entry(line,    u, h, c, l) { # a url key of a remote section
+				if (tolower(line) !~ /^[ \t]*url[ \t]*=/) return
+				u = line; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u)
 				if (u ~ /:\/\//) {
-					if (tolower(u) ~ /^file:\/\//) next
+					if (tolower(u) ~ /^file:\/\//) return
 					h = u; sub(/^[^:]*:\/\//, "", h); sub(/[\/?#].*$/, "", h); sub(/^.*@/, "", h); sub(/:.*$/, "", h)
 				} else {
 					c = index(u, ":")
-					if (c == 0) next
+					if (c == 0) return
 					h = substr(u, 1, c - 1)
-					if (h ~ /\//) next
+					if (h ~ /\//) return
 					sub(/^.*@/, "", h)
 				}
 				l = tolower(h)
-				if (h !~ /^[A-Za-z0-9._-]+$/ || h !~ /\./ || l == "github.com" || l ~ /\.github(usercontent)?\.com$/) next
-				if (index(" " ENVIRON["PUBLIC"] " ", " " l " ")) next
+				if (h !~ /^[A-Za-z0-9._-]+$/ || h !~ /\./ || l == "github.com" || l ~ /\.github(usercontent)?\.com$/) return
+				if (index(" " ENVIRON["PUBLIC"] " ", " " l " ")) return
 				print h "\t" u
 			}
+			/^[ \t]*\[/ {
+				remote = 0
+				if (match($0, /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"[^"]*"[ \t]*\]/)) {
+					remote = 1
+					# [remote "<name>"] url = <url> on one line, which git applies: the rest after the matched
+					# header (B13 round 21 Y64, as round 20 X8 for insteadOf)
+					entry(substr($0, RSTART + RLENGTH))
+				}
+				next
+			}
+			remote { entry($0) }
 		' "$g" || true
 	done 2>/dev/null | LC_ALL=C awk -F '\t' '!seen[tolower($1)]++'
 }
