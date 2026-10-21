@@ -26604,6 +26604,16 @@ were joined by the `; ` that separates the reasons themselves. Each bucket is a 
 cannot be read: state_dir.manifest`. Tests: `test_the_outcome_calls_unexpected_only_a_doctor_fail_in_no_bucket`,
 `test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket`.
 
+**Items names a state file this account could not open at a retried config step** (Y5). After the agent's chmod
+and re-run, Items read only `exited 1 at its config step; the same command was run again and ended 0`: the cause
+was in the raw install.out excerpt alone. When the failed run's own install.out block (from its `# run=` header)
+holds the sync's `error: state: ... cannot be opened` line, the item adds ` on agentsync's state file, which this
+account could not open (a mode, not damage)` and the re-run reads `... was run again after the file's mode was
+fixed and ended 0`; the line's own fix says whose: a sudo chown is `which another account owns` (`after the file
+was given back`), another fix `doctor.is_persons_fix` reads as the person's is `the person's to fix`. No path and
+no mode number: the run's output has none, and by report time the file is 0600 again. Another cause at the config
+step keeps the old words. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
 The B13 round 21 items of lane RB (specs `round21/items/Y<n>.md`, the verifier's corrected fix built unless a

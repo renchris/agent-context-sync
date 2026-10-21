@@ -8525,6 +8525,51 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         "in the install.out lines read); the same command was run again and ended 0"
     )
 
+    # B13 round 21 Y5: a config step that met the sync's line for a state file this account cannot open read
+    # only "exited 1 at its config step; the same command was run again and ended 0" after the agent's chmod.
+    # The line's own fix says whose: this account's mode, another account's (a sudo chown), never the path
+    failed = run("2026-09-29T10:00:00Z", 1, "--source-local x").replace(
+        "step=config seconds=1 rc=0 result=done note=add-source", "step=config seconds=1 rc=1 result=failed"
+    )
+    db = "~/Library/Application Support/agentsync/manifest.sqlite"
+    for fix, cause, after in (
+        (
+            f"chmod 600 {db}",
+            "which this account could not open (a mode, not damage)",
+            "the file's mode was fixed",
+        ),
+        (
+            cli.MANIFEST_OPEN_FIX,
+            "which this account could not open (a mode, not damage)",
+            "the file's mode was fixed",
+        ),
+        (
+            f"the person runs sudo chown -R {os.getuid()} ~/x (the agent runs no sudo)",
+            "which another account owns",
+            "the file was given back",
+        ),
+    ):
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            f"error: state: {db} cannot be opened: Permission denied (fix: {fix})\n"
+            "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
+            encoding="utf-8",
+        )
+        got = items(failed, worked)
+        assert got == (
+            "- install.sh · step 2 · run 20260929T100000Z exited 1 at its config step on agentsync's state "
+            f"file, {cause}; the same command was run again after {after} and ended 0"
+        ), got
+        assert "Library" not in got and "manifest" not in got, got
+    out.write_text(  # another cause at the config step keeps today's words
+        "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "configuration error: policy.toml: unknown key\n",
+        encoding="utf-8",
+    )
+    assert items(failed, worked).endswith(
+        "exited 1 at its config step; the same command was run again and ended 0"
+    )
+
 
 def judged(tmp_path: Path, friction: str, *runs: str) -> tuple[setup_report.Outcome, list[int | None]]:
     """The latest attempt's outcome on its own runs, as the Summary computes it, and the exits of the runs

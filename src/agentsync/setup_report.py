@@ -10610,6 +10610,48 @@ def _status_fail_names(r: _Run, run: InstallRun) -> str:
     return f" ([FAIL] {'; '.join(shown)}{more})"
 
 
+_STATE_OPEN_RE = re.compile(r"error: state: .* cannot be opened\b.*?(?:\(fix: (?P<fix>.*)\))?$")
+"""The sync's one line for a state file or folder this account cannot open (``cli``'s ``error: state: <path>
+cannot be opened: <reason> (fix: <fix>)``): never printed, its path holds the home folder."""
+
+
+def _state_open_words(r: _Run, run: InstallRun) -> tuple[str, str] | None:
+    """What a failed config step met, when the run's own install.out block holds the sync's ``error:
+    state: ... cannot be opened`` line (B13 round 21 Y5: Items said only "exited 1 at its config step; the
+    same command was run again and ended 0" after the agent's chmod of the state file): the clause after the
+    step, and the words for what the run that ended 0 came after. Whose, by the line's own fix
+    (``doctor.is_persons_fix``, status's test): another account's (the person's sudo chown), another fix of
+    the person's, or this account's mode, the agent's chmod. No mode number: the run's output has none, and
+    by report time the file is 0600 again. None when the block is not read or holds no such line."""
+    lines = r.facts.out_counted
+    start = next((i for i, ln in enumerate(lines or ()) if ln.startswith(f"# run={run.run_id} ")), None)
+    if start is None:
+        return None
+    for ln in lines[start + 1 :]:
+        if _OUT_RUN_RE.match(ln):
+            break
+        found = _STATE_OPEN_RE.search(ln.strip())
+        if found is None:
+            continue
+        fix = found.group("fix") or ""
+        try:
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+            persons = doctor.is_persons_fix(fix)
+        except Exception:
+            persons = False
+        if fix.startswith("the person runs sudo chown"):
+            return " on agentsync's state file, which another account owns", "after the file was given back"
+        if persons:
+            return " on agentsync's state file, which this account could not open: the person's to fix", (
+                "after the file was fixed"
+            )
+        return " on agentsync's state file, which this account could not open (a mode, not damage)", (
+            "after the file's mode was fixed"
+        )
+    return None
+
+
 def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) -> str:
     """One of :func:`retried_runs` as an item that was not one command: the run, its exit and the first step
     that did not end rc 0 (a step name is printed only when it is one of install.sh's own words), a status
@@ -10625,12 +10667,14 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
         None,
     )
     at = ""
+    again = _again_words(run, ok)
     if failing is not None:
         at = failing[1] + (_status_fail_names(r, run) if failing[0] in ("status", "doctor") else "")
-    return (
-        f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; "
-        + _again_words(run, ok)
-    )
+        state = _state_open_words(r, run) if failing[0] == "config" else None
+        if state is not None:  # Y5: the cause, and what the run that ended 0 came after
+            at += state[0]
+            again = again.removesuffix(" and ended 0") + f" {state[1]} and ended 0"
+    return f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; " + again
 
 
 def _latest_runs(r: _Run) -> list[InstallRun]:
