@@ -530,18 +530,29 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     if report.auth_required:
         _out(f"  sign-in required: run `{loop.BIN} graph login` (errors above name any IT action)")
     _print_checkpoint(report)
-    if n := report.legacy_retried:
+    if report.legacy_retried:
         # the one-time retry after an upgrade, which only -v logged, so the same old error came back with
         # nothing saying why (B13 round 19 W18); no bare "converted" for install.sh's awk. The move takes
         # every source's failures, and one this sync does not read (--source, paused, out of time) is tried
-        # in its own source's syncs, so the tries are counted in those, not "from this sync on" (round 20 X53)
-        tries = plural(_CONVERT_RETRIES, "time")
-        whose = "its source" if n == 1 else "their sources"
-        _out(
-            f"  note: {plural(n, 'conversion')} an older build gave up on {'is' if n == 1 else 'are'} tried "
-            f"again, up to {tries} in the syncs of {whose} from this one on; "
-            f"{'its error' if n == 1 else 'their errors'} may show again until then"
-        )
+        # in its own source's syncs, so the tries are counted in those, not "from this sync on" (round 20
+        # X53). Split by outcome: the ones this sync made current say so, and the retry words are for the rest
+        # (B13 round 21 Y28); each note keeps "an older build gave up on ", which install.sh's grep shows
+        cleared = min(report.legacy_cleared, report.legacy_retried)
+        if cleared:
+            _out(
+                f"  note: {plural(cleared, 'conversion')} an older build gave up on "
+                f"{'was' if cleared == 1 else 'were'} tried again in this sync and "
+                f"{'is' if cleared == 1 else 'are'} now current"
+            )
+        if n := report.legacy_retried - cleared:
+            tries = plural(_CONVERT_RETRIES, "time")
+            whose = "its source" if n == 1 else "their sources"
+            are = "is" if n == 1 else "are"
+            _out(
+                f"  note: {plural(n, 'conversion')} an older build gave up on {are} tried "
+                f"again, up to {tries} in the syncs of {whose} from this one on; "
+                f"{'its error' if n == 1 else 'their errors'} may show again until those tries are used"
+            )
     converted = sum(s.converted for s in report.sources)
     online = sum(s.deferred_online_only for s in report.sources)
     again = f", read again {report.read_again}" if report.read_again else ""

@@ -1852,6 +1852,9 @@ class _Cycle:
         self._reread_looked = False  # a source's record was brought up to date (``_reread_source``)
         # what this run did, as counts for its run record (``_run_tally``, CONTRACTS.md 16.28): never a name
         self._tally: Counter[str] = Counter()
+        # the rows the upgrade's one-time retry moved (``Manifest.retry_settled_failure_rows``): the report
+        # counts those this run made current, for the sync's note alone (B13 round 21 Y28)
+        self._legacy_moved: list[tuple[str, str]] = []
         # the recording pass (spec S0 rules 3 to 8): who reads, what the queues left it, what it knows
         self.recordings: _RecordingRun = "none" if self.dry else recordings
         self._recording_queue: dict[str, list[str]] = {}  # per source: the recordings its queue deferred
@@ -1897,10 +1900,10 @@ class _Cycle:
             self._check_secret_rules()
             self.publisher.ensure_scaffold()
             self._rerender_stubs()
-            moved = self.manifest.retry_settled_failures(
+            self._legacy_moved = self.manifest.retry_settled_failure_rows(
                 CONVERSION_FAILED, retried_meta=_RETRY_META, done_key=_RETRY_LEGACY_META
             )
-            if moved:  # one line, and a count: never a name
+            if moved := len(self._legacy_moved):  # one line, and a count: never a name
                 log.info("%d failed conversion(s) an older build settled are tried again", moved)
                 # and the sync's note, and the run record's count the report reads (B13 round 19 W18)
                 self._tally["legacy_retried"] = moved
@@ -2808,7 +2811,19 @@ class _Cycle:
             rescreen_left=self._rescreen_left(),
             converter_down=any(self._cannot_run.values()),
             legacy_retried=self._tally["legacy_retried"],
+            legacy_cleared=self._legacy_cleared(),
         )
+
+    def _legacy_cleared(self) -> int:
+        """How many of the rows the upgrade's retry moved this run made current (live again): the sync's note
+        says those were tried and are current, and keeps the retry words for the rest, which failed again or
+        were not read (--source, paused, out of time); 0 when the manifest cannot say (B13 round 21 Y28: the
+        retry note told of an error that "may show again" over a file the same sync had converted)."""
+        try:
+            rows = [self.manifest.get_item(sid, stable) for sid, stable in self._legacy_moved]
+        except Exception:  # the report never fails over a count
+            return 0
+        return sum(1 for row in rows if row is not None and row.state is RowState.LIVE)
 
     def _rescreen_left(self) -> int:
         """The [policy] re-screen's backlog after this run, as STATE.md's line counts it; 0 when none is

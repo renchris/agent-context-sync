@@ -4212,7 +4212,7 @@ def test_the_upgrades_retry_of_an_older_builds_failure_says_so_once(
     cfg = str(sample_config.config_path)
     note = (
         "  note: 1 conversion an older build gave up on is tried again, up to 2 times in the syncs of its "
-        "source from this one on; its error may show again until then"
+        "source from this one on; its error may show again until those tries are used"
     )
     rel = "projects/Contoso flaky.md"
     (local_source_dir / rel).write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
@@ -4234,6 +4234,51 @@ def test_the_upgrades_retry_of_an_older_builds_failure_says_so_once(
     assert all("an older build gave up on" not in out for out in outs[1:]), outs[1:]
     assert "legacy_retried" not in _run_record(sample_config)
     assert len(tries) == cycle_mod._CONVERT_RETRIES, "up to 2 times, as the note says"
+
+
+def test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 21 Y28: the upgrade's sync said "1 conversion an older build gave up on is tried again ...
+    its error may show again until then" in the sync that converted it: the note counted the rows the move
+    took, not their outcome. A row the same sync made current says so; the retry words, ending "until those
+    tries are used", are left for a row that failed again. The run record's count is unchanged."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+    failing = [True]
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso flaky") and failing[0]:
+            raise RuntimeError("pandoc timed out after 60 s")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", convert)
+    cfg = str(sample_config.config_path)
+    rel = "projects/Contoso flaky.md"
+    (local_source_dir / rel).write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    cli.main(["sync", "--config", cfg])
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._RETRY_META + SID, "{}")
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+    _settle_as_an_older_build(sample_config, rel)
+    failing[0] = False  # the converter works now
+    capsys.readouterr()
+    cli.main(["sync", "--config", cfg])
+    out = capsys.readouterr().out
+    notes = [ln for ln in out.splitlines() if "an older build gave up on " in ln]
+    assert notes == [
+        "  note: 1 conversion an older build gave up on was tried again in this sync and is now current"
+    ], out
+    assert "may show again" not in out and "until then" not in out
+    assert _run_record(sample_config)["legacy_retried"] == 1
+    assert "legacy_cleared" not in _run_record(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and row.state is RowState.LIVE, row
 
 
 def test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_own_syncs(
@@ -4280,7 +4325,7 @@ def test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_
     out = capsys.readouterr().out
     assert (
         "  note: 1 conversion an older build gave up on is tried again, up to 2 times in the syncs of its "
-        "source from this one on; its error may show again until then"
+        "source from this one on; its error may show again until those tries are used"
     ) in out.splitlines(), out
     assert "from this sync on" not in out
     assert tries == [], "the sync that says so does not read that file's source"

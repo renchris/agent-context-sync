@@ -1119,7 +1119,7 @@ def test_the_first_sync_shows_the_upgrades_retry_note(env: dict[str, str], folde
     The note is in lane E's round 20 X53 words; install.sh keys on "an older build gave up on" alone."""
     note = (
         "  note: 1 conversion an older build gave up on is tried again, up to 2 times in the syncs of its "
-        "source from this one on; its error may show again until then"
+        "source from this one on; its error may show again until those tries are used"
     )
     e = {**env, "STUB_SYNC_OUT": f"  alpha: converted 1, deferred 0 online-only\n{note}"}
     cp = install_sh(e, str(wheel), "--source-local", str(folder))

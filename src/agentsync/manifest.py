@@ -1852,6 +1852,14 @@ class Manifest:
         )
 
     def retry_settled_failures(self, reason_prefix: str, *, retried_meta: str, done_key: str) -> int:
+        """:meth:`retry_settled_failure_rows`, counted."""
+        return len(
+            self.retry_settled_failure_rows(reason_prefix, retried_meta=retried_meta, done_key=done_key)
+        )
+
+    def retry_settled_failure_rows(
+        self, reason_prefix: str, *, retried_meta: str, done_key: str
+    ) -> list[tuple[str, str]]:
         """Once per manifest (meta ``done_key``): give every failed conversion's stub that a build before the
         retry settled the ERROR verdict again, so the classifier carries it as pending and the cycle's early
         cutoff tries it again, as it tries a failure of this build (B13 round 18 V65). Such a build left
@@ -1860,11 +1868,12 @@ class Manifest:
         (``dataless``), which waits for new bytes; a Graph file is fetched again within the run's download
         budget, as the retry fetches a failure of this build; not one whose stable id is in its source's
         ``retried_meta`` record, which a build with the retry has tried already. The flag is written in the
-        same transaction. Returns how many rows moved."""
-        moved = 0
+        same transaction. Returns the (source id, stable id) of each row moved, so the cycle can tell which
+        this run then converted (B13 round 21 Y28)."""
+        moved: list[tuple[str, str]] = []
         with self._atomic():
             if self.get_meta(done_key) is not None:
-                return 0
+                return []
             rows = self._db.execute(
                 "SELECT source_id, stable_id FROM items WHERE state = ? AND is_dir = 0 AND dataless = 0 "
                 "AND substr(state_reason, 1, ?) = ? AND (last_verdict IS NULL OR last_verdict != ?)",
@@ -1884,7 +1893,7 @@ class Manifest:
                     "UPDATE items SET last_verdict = ? WHERE source_id = ? AND stable_id = ?",
                     (Verdict.ERROR.value, source_id, stable_id),
                 )
-                moved += 1
+                moved.append((str(source_id), str(stable_id)))
             self.set_meta(done_key, "1")
         return moved
 

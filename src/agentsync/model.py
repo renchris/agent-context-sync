@@ -502,6 +502,9 @@ class CycleReport:
     # (``Manifest.retry_settled_failures``, once per manifest): the sync's note says why their errors come
     # back (B13 round 19 W18)
     legacy_retried: int = 0
+    # of those, the ones this run made current, for the sync's note alone (never a run-record count): "tried
+    # again in this sync and now current", the retry words only for the rest (B13 round 21 Y28)
+    legacy_cleared: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
