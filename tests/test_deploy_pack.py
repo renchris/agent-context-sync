@@ -6225,16 +6225,18 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "state-side-owner",
         "state-side-access",
         "state-side-refused",
+        "state-notfile",  # B13 round 22 Z11: a folder where manifest.sqlite belongs
     ]
     for word, said in opened:
         assert f"`{word}`, `{said}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
-        "`state-side-access`, `state-side-owner` and `state-side-refused`" in section
+        "`state-side-access`, `state-side-owner`, `state-side-refused` and `state-notfile`" in section
     )
     words_read = (
-        "state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused)$"
+        "state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused"
+        "|state-notfile)$"
     )
     assert words_read in script, "the list reads every word config_errors writes"
     [row] = [

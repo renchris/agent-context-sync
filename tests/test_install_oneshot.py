@@ -7295,6 +7295,24 @@ def _acl_deny(path: Path) -> None:
         pytest.skip("no ACL that refuses the owner here")
 
 
+STATE_NOTFILE_TAIL = (
+    "; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or "
+    "something else that is not a file (not damage of its contents): fixing that is the person's (keeping a "
+    "copy, they put the file back or move the folder aside), and ~/.local/bin/agentsync status prints it on "
+    "its state_dir.manifest line"
+)
+"""Step 1's tail for a folder where manifest.sqlite belongs (B13 round 22 Z11)."""
+
+STATE_NOTFILE_NEXT = (
+    "NEXT: agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the "
+    "error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest "
+    "line): fixing it is the person's (keeping a copy, they put the file back or move the folder aside), not "
+    "a step for the agent, so show them the error and go on to the report; once it is fixed, the next run "
+    "is: {rerun}"
+)
+"""Step 2's NEXT for it, at the config step init stops on (B13 round 22 Z11)."""
+
+
 SIDE_STOPS = (
     "; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds "
     "unwritten changes or is in use (an empty one may not stop it), "
@@ -7329,6 +7347,7 @@ STATE_OPEN_TAIL = {
         "agent's to run, once, when step 2 stops on it, and ~/.local/bin/agentsync status prints it on its "
         "state_dir.files line"
     ),
+    "state-notfile": STATE_NOTFILE_TAIL,
     "state-side-refused": (
         f"{SIDE_STOPS}which this account is refused though its mode allows it (an ACL, or a volume mounted "
         "read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on "
@@ -7357,6 +7376,7 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "PM-ro",
         "PM-ro-mode",
         "PM-ro-wal",
+        "NR",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -7378,7 +7398,11 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
 
     Round 22 Z79 (probe owner-rovolumebig): on a volume mounted read-only the person's tail named an ACL or
     a folder above it as the cause; it names the read-only volume too. A folder there whose mode also lacks a
-    bit (0500, PM-ro-mode) got the agent's chmod 700, which fails on that volume: it is the person's too."""
+    bit (0500, PM-ro-mode) got the agent's chmod 700, which fails on that volume: it is the person's too.
+
+    Round 22 Z11 (probe NR): a 0700 folder where manifest.sqlite belongs passed every probe, so step 1 said
+    nothing and step 2 stopped at its config step; it says so now, as the person's (no reinstall hedge: every
+    build stops on it)."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
@@ -7392,6 +7416,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "PM-ro": "state-refused",
         "PM-ro-mode": "state-refused",
         "PM-ro-wal": "state-side-refused",
+        "NR": "state-notfile",
     }.get(state, "state-access")
     try:
         if state == "PM-owner":
@@ -7425,12 +7450,17 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         elif state == "PM-ro-wal":
             wal.write_bytes(b"")
             wal.chmod(0o400)
+        elif state == "NR":
+            db.unlink()
+            db.mkdir(0o700)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
     finally:
         db.parent.parent.chmod(0o700)
         db.parent.chmod(0o700)
+        if db.is_dir():
+            db.rmdir()
         for f in (db, wal, shm):
             if f.exists():
                 subprocess.run(["/bin/chmod", "-N", str(f)], capture_output=True, check=False)
@@ -8237,7 +8267,19 @@ doctor.state_path_fix gives (B13 round 21 Y24, Y10, Y4)."""
 
 @pytest.mark.parametrize(
     "state",
-    ["manifest", "folder", "configured", "sides", "parent", "acl", "older", "readable", "ro", "ro-mode"],
+    [
+        "manifest",
+        "folder",
+        "configured",
+        "sides",
+        "parent",
+        "acl",
+        "older",
+        "readable",
+        "ro",
+        "ro-mode",
+        "notfile",
+    ],
 )
 def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     env: dict[str, str], wheel: Path, state: str
@@ -8255,7 +8297,8 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
 
     Round 22 Z79: on a volume mounted read-only (ro) the person's NEXT named an ACL or a folder above it as
     the cause, and a folder there at 0500 (ro-mode) got the agent's chmod 700, which fails on that volume;
-    both now get the person's NEXT naming the read-only volume."""
+    both now get the person's NEXT naming the read-only volume. Z11 (probe NR): a folder where manifest.sqlite
+    belongs got "fix the error above", over a fix that is the person's; it gets the person's NEXT."""
     if state == "older":
         _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
     elif not state.startswith("ro"):
@@ -8282,6 +8325,9 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
             pass
         elif state == "ro-mode":
             shut.chmod(0o500)
+        elif state == "notfile":
+            db.unlink()
+            db.mkdir(0o700)
         elif state == "sides":
             for f in (db, wal, shm):
                 f.write_bytes(b"")
@@ -8291,7 +8337,7 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
         cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
     finally:
         subprocess.run(["/bin/chmod", "-N", str(db)], capture_output=True, check=False)
-        shut.chmod(0o600 if shut == db else 0o700)
+        shut.chmod(0o600 if shut == db and not db.is_dir() else 0o700)
         for f in (wal, shm):
             if f.exists():
                 f.chmod(0o600)
@@ -8301,6 +8347,10 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     rerun = f"{INSTALL_SH} {wheel}"
     if state in ("older", "readable"):
         assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
+        return
+    if state == "notfile":
+        assert last_line(cp).startswith(STATE_NOTFILE_NEXT.format(rerun=rerun)), last_line(cp)
+        assert "chmod" not in last_line(cp), last_line(cp)
         return
     if state in ("parent", "acl", "ro", "ro-mode"):
         assert last_line(cp).startswith(
@@ -8581,6 +8631,34 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod(
     subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 22 Z11 (probe NR), with the real agentsync: manifest.sqlite moved aside and a 0700 folder in
+    its place. Step 1 said nothing (the folder passes stat, owner and access) and step 2 stopped at its config
+    step on "cannot be opened: Is a directory" with "fix the error above", while status gives the person's
+    fix. Step 1's tail names it, logged config_err=state-notfile; step 2 exits 1 with the person's NEXT."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    db.rename(db.with_name("manifest.sqlite.aside"))
+    for end in ("-wal", "-shm"):
+        db.with_name(db.name + end).unlink(missing_ok=True)
+    db.mkdir(0o700)
+    listed = install_sh(env, "--list-folders")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert last_line(listed).endswith(STATE_NOTFILE_TAIL), last_line(listed)
+    assert install_log(env)[-2].endswith(" config_err=state-notfile"), install_log(env)[-2]
+    cp = install_sh(env, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert last_line(cp).startswith(STATE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
 
 
 def test_no_next_names_the_percent_q_args() -> None:

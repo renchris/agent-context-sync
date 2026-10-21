@@ -640,14 +640,22 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   chmod 600 or chmod 700 of paths in the state folder, its `NEXT:` names them the same way (`agentsync's state folder
   or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance file) has a mode this
   account cannot open ...: the fix is the agent's: run <the chmods> once, then re-run: ...`; round 22 Z8, Z36, Z59);
-  a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. When step 2 would reinstall agentsync first
+  a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. A folder (or a socket or a fifo) where
+  `manifest.sqlite` belongs passes every probe above, and every build's init stops on it: `state-notfile`, `; step 2
+  stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is
+  not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back or
+  move the folder aside), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line`, with no
+  reinstall hedge, and step 2's config step its own `NEXT:` (`agentsync's state file, manifest.sqlite, is a folder
+  or something else that is not a file (...): fixing it is the person's (...), not a step for the agent, so show them
+  the error and go on to the report; ...`), where it said `fix the error above` (round 22 Z11). When step 2 would
+  reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it
   too, step 2 stops at its config step on <what>: ...`. The tail is on every list whose `NEXT:` points to step 2,
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
-  `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner` and
-  `state-side-refused`,
+  `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
+  `state-side-refused` and `state-notfile`,
   never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`

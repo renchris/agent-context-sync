@@ -6068,7 +6068,10 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # account cannot search, a volume mounted read-only, or a doctor.state_path_fix fix that is no chmod: the
 # person's, round 21 Y24; round 22 Z79: the read-only volume, whatever the file's mode), and
 # "state-side-owner", "state-side-access" or "state-side-refused" for the -wal or the -shm, which init opens
-# past, so only step 2's status or sync may stop on it (round 21 Y57). Fixed words only,
+# past, so only step 2's status or sync may stop on it (round 21 Y57). "state-notfile" when the manifest's path
+# is a folder (or a socket or a fifo), not a file: it passes stat, owner and access, so no word was said, and
+# every build's init stops on it at step 2's config step; its fix keeps history only by a person's choice
+# (MANIFEST_FIX), so it is the person's (round 22 Z11). Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
 # its own, after synced_folders and allowed to fail: a name an older agentsync lacks reads nothing for that
 # check (manifest_unreadable falls back to the same read-only schema read; the remote check catches every
@@ -6076,7 +6079,7 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # this runs in is imported.
 config_errors() { # PYTHON
 	with_timeout 5 "$1" -I -c '
-import os, sqlite3, sys
+import os, sqlite3, stat, sys
 from pathlib import Path
 from agentsync.config import ConfigError, load_config
 from agentsync.paths import expand
@@ -6152,8 +6155,14 @@ for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + 
             fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
         access = word + ("access" if fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 ")) else "refused")
         break
+try:
+    notfile = not (stat.S_ISREG(db.lstat().st_mode) or stat.S_ISLNK(db.lstat().st_mode))
+except OSError:
+    notfile = False
 if access:
     words.append(access)
+elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
+    words.append("state-notfile")
 elif db.is_file():
     try:
         from agentsync.ops.doctor import manifest_unreadable
@@ -6304,7 +6313,7 @@ list_folders() {
 			fi
 			# what step 2's config step stops on, in fixed words; a reader that fails says nothing (U12)
 			if config_errors "$py" >"$tmp/cerr" 2>/dev/null; then
-				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
+				cerr="$(LC_ALL=C grep -E '^(policy|governance|state|remote|state-table|state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused|state-notfile)$' "$tmp/cerr" | LC_ALL=C tr '\n' ',' || true)"
 				cerr="${cerr%,}"
 			fi
 		fi
@@ -6438,6 +6447,7 @@ list_folders() {
 		case ",$cerr," in *",state-side-owner,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-access,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account cannot write (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2 stops on it, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-refused,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account is refused though its mode allows it (an ACL, or a volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-notfile,"*) stail="; step 2 stops at its config step on agentsync's state file, manifest.sqlite, which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's (keeping a copy, they put the file back or move the folder aside), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
 			:
@@ -7216,6 +7226,26 @@ for p, want in ((db.parent, 0o700), (db, 0o600)):
 	fi
 	printf '%s' "$fix"
 }
+# Whether the manifest's path is there and is no file (a folder, a socket, a fifo; a symlink is read through),
+# as the agentsync step 2 installed sees it (B13 round 22 Z11): init and add-source exit 1 on it ("cannot be
+# opened: Is a directory"), and fail's "fix the error above" sent the agent to a fix that is the person's
+# (doctor's MANIFEST_FIX on status's state_dir.manifest line: moving it aside loses history). Keyed on the
+# path's lstat, never on the error's words or class. -I: nothing from the folder this runs in is imported.
+state_not_a_file() {
+	local n=""
+	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
+		n="$(with_timeout 10 "$TOOL_PY" -I -c '
+import stat, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.paths import expand
+
+mode = expand(load_config(Path(sys.argv[1])).state_paths.db).lstat().st_mode
+print(int(not (stat.S_ISREG(mode) or stat.S_ISLNK(mode))))
+' "$CONFIG" 2>/dev/null | head -n 1 || true)"
+	fi
+	[ "$n" = 1 ]
+}
 # A config agentsync refuses (exit 78, EX_CONFIG: "configuration error: ...") is the person's to fix: a re-run
 # fails the same way, and the agent's own mistakes here (a folder that is not there, one inside the docs repo)
 # exit 2, which keeps fail's "fix the error above". So the NEXT names the owner and leads with what the agent
@@ -7239,7 +7269,8 @@ for p, want in ((db.parent, 0o700), (db, 0o600)):
 # error above" named no command, and the prompt let the agent follow only an install.sh or agentsync one), or
 # the person's NEXT when that fix is no chmod (an ACL, a folder above it this account cannot search, a volume
 # mounted read-only: round 22 Z79); with no answer (an installed build without state_path_fix) fail's "fix the
-# error above". Never the exit-65 NEXT: moving the file aside loses history (X26).
+# error above". Never the exit-65 NEXT: moving the file aside loses history (X26). A folder where the manifest
+# belongs (state_not_a_file) is the person's, ahead of the chmod (round 22 Z11).
 # Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
 # 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
 # before the switch to $BASE_ARGS below.
@@ -7257,6 +7288,8 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	fi
 	if [ "$rc" -eq 1 ] && state_owned_elsewhere; then
 		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_file; then
+		FAIL_NEXT="agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the person's (keeping a copy, they put the file back or move the folder aside), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ]; then
 		local fix
 		fix="$(state_open_fix)"

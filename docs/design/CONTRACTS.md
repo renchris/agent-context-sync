@@ -26796,7 +26796,8 @@ itself naming `state_path_fix`'s command on the `ManifestOpenError` path, is cli
 
 Amended 2026-10-21, §16.160 Z79: the refused NEXT and step 1's `state-refused` and `state-side-refused` tails name a
 volume mounted read-only beside an ACL and a folder above it, and a state path on such a volume is `refused`
-whatever its mode (no chmod writes there).
+whatever its mode (no chmod writes there). Amended 2026-10-21, §16.160 Z11: a folder where manifest.sqlite belongs no longer gets `fix the error above`: step 1
+logs `state-notfile` with the person's tail, and step 2's config step the person's NEXT.
 
 **Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
 amends §16.148 X9). `config_errors` named a state folder at 0000 "agentsync's state file", whose fix is a chmod 700 of
@@ -27406,6 +27407,27 @@ chmod as written, then a pass) and `test_a_side_file_this_account_cannot_write_i
 a -shm in use and a -wal with frames), and
 `test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket` (the
 agent's label, the heartbeat's, an ACL's the person's).
+
+**A folder where manifest.sqlite belongs is the person's at step 1 and step 2** (Z11, install.sh's part; amends
+§16.154 Y24). In probe NR (manifest.sqlite moved aside, a 0700 folder in its place) step 1 said nothing: the folder
+passes `config_errors`'s stat, owner and access probes and `db.is_file()` is false, so neither the access nor the
+damage branch ran; and step 2 stopped at its config step on init's `cannot be opened: Is a directory` (exit 1) with
+fail's `fix the error above`, while status gives the person's `MANIFEST_FIX` on its `state_dir.manifest` line.
+Keyed on the path's `lstat` (neither a regular file nor a symlink), never on the error's words or class (the
+verifier: `ManifestPathError` also covers a state folder that is a file and a full disk): `config_errors` logs
+`state-notfile` with its own tail, `; step 2 stops at its config step on agentsync's state file, manifest.sqlite,
+which is a folder or something else that is not a file (not damage of its contents): fixing that is the person's
+(keeping a copy, they put the file back or move the folder aside), and ~/.local/bin/agentsync status prints it on its
+state_dir.manifest line` (not `state`'s damage tail, whose reinstall hedge is false here: every build stops on it);
+`config_failed`, for exit 1 with no owner found first, asks the installed agentsync (`state_not_a_file`, `-I`) and
+sets `agentsync's state file, manifest.sqlite, is a folder or something else that is not a file (the error above
+names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the
+person's (keeping a copy, they put the file back or move the folder aside), not a step for the agent, so show them
+the error and go on to the report; once it is fixed, the next run is: <install.sh ...>`, ahead of the chmod probe;
+the exit stays 1 (never 65's damaged-file NEXT). The init error's own words and `governance.time_machine` are cli's,
+lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
+(NR), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (notfile) and, with the real agentsync,
+`test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2`.
 
 **The person's kinds name every state refusal no chmod fixes** (Z65, with lane B's Z83, Z17 and Z48 built here once;
 amends §16.148 X26). An ACL on this account's own 0600 manifest gave status a NEXT whose kinds said `a state file that
