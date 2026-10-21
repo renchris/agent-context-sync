@@ -485,9 +485,10 @@ class CycleReport:
     # of those, the ones whose bytes were read for the first time (a no-converter stub made from the name, or
     # bytes that changed): also counted in their source's converted (B13 round 4 Q28)
     read_first: int = 0
-    # files converted again because a [policy] or secret-rule change forgot their hashes (a re-screen of the
-    # same bytes): also counted in their source's converted (B13 round 5 F35); of those, the ones whose pages
-    # came out the same
+    # files converted again for a [policy] or secret-rule change that forgot their hashes: the bytes their
+    # pages were made from, or a stub a label rule withheld by its name that a [policy] change queued, this
+    # run's or an earlier one's, possibly a first read (B13 round 20 X34, round 21 Y73); also counted in their
+    # source's converted (B13 round 5 F35); of those, the ones whose pages came out the same
     rescreened: int = 0
     rescreened_unchanged: int = 0
     # label-capable files a [policy] change queued that are still to be re-screened after this run: the CLI

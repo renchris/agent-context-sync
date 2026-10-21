@@ -463,9 +463,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     R when K of the R have a stub that says so (a binary .msg on this Mac, read and then refused: B13 round 10
     L33), as ``; of the converted: ...`` after the Q28 clause, so two parentheses never stand side by side
     (B13 round 5 F34), then ``; re-screened S for a rule change (also counted above, K of them unchanged)``: a
-    [policy] or secret-rule re-screen runs the converter on the same bytes, so it is in N, and counted again
-    in S (F35), then ``; C waiting for its converter (it could not start; read once it does)`` when the
-    converter of C files could not start: nothing read them, so they are in neither N nor F (B13 round 18
+    [policy] or secret-rule re-screen converts a file again for that rule change, so it is in N, and counted
+    again in S (F35): the bytes its pages were made from, or a stub a label rule withheld by its name that a
+    [policy] change queued, this run's or an earlier one's, for which it may be the first read of its bytes
+    (B13 round 20 X34, round 21 Y73; never a re-read, so not in R or the run record's reread), then ``; C
+    waiting for its converter (it could not start; read once it does)`` when the converter of C files could
+    not start: nothing read them, so they are in neither N nor F (B13 round 18
     V13; C, not W, which names the withheld-unread count below: round 19 W47), then ``; Q refused without a
     read (no converter for the type, or a rule that needs no bytes)`` when Q files were refused with no
     byte read: those are in each source line's ``refused=`` but not in N, so
