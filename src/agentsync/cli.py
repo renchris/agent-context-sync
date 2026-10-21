@@ -2880,12 +2880,14 @@ def _state_refused(args: argparse.Namespace, exc: PermissionError) -> str | None
 
 
 STATE_REFUSED_STEP = (
-    f"this account cannot open a state file, so this sync did not run: run `{loop.BIN} status`, whose [FAIL] "
-    "line names the fix and whose NEXT says whose it is"
+    f"this account cannot open a state file or its folder, so this sync did not run: run `{loop.BIN} status` "
+    "and do what its NEXT says; its [FAIL] line names the fix"
 )
 """The NEXT an interactive sync prints after its ``error: state:`` line: status, not the fix itself, since
 another account's file is the person's sudo chown, which no NEXT hands the agent (B13 round 21 Y31: the sync
-printed no NEXT, so the setup prompt sent the agent to the report past this account's own chmod)."""
+printed no NEXT, so the setup prompt sent the agent to the report past this account's own chmod). It promises
+no owner: status's NEXT names the person only for the person's fix, and for this account's own chmod it is an
+imperative, the agent's (B13 round 22 Z37: "whose NEXT says whose it is" was not kept there)."""
 
 
 def _state_next(args: argparse.Namespace) -> None:

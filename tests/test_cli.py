@@ -3923,6 +3923,33 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
     assert db.read_bytes() == before
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_the_syncs_next_over_its_own_state_file_promises_no_owner_status_does_not_name(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 22 Z37: over this account's own manifest at 0000 the sync's NEXT said status's "NEXT says
+    whose it is", but status's NEXT for the agent's own chmod is an imperative that names no owner. The sync's
+    NEXT sends the agent to do what status's NEXT says, and promises no owner; status's is unchanged."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    for side in ("-wal", "-shm"):
+        db.with_name(db.name + side).unlink(missing_ok=True)
+    db.chmod(0)
+    try:
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        nexts = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("NEXT: ")]
+        _rc, out = _status(cfg, capsys)
+    finally:
+        db.chmod(0o600)
+    assert nexts == [f"NEXT: {cli.STATE_REFUSED_STEP}"], nexts
+    assert "whose" not in cli.STATE_REFUSED_STEP and "do what its NEXT says" in cli.STATE_REFUSED_STEP
+    assert (
+        out[0] == "NEXT: the state_dir.files check failed: do what the fix on its [FAIL] line below says"
+    ), out
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_a_manifest_behind_a_folder_that_refuses_a_search_is_still_not_damaged(
     initialised: Config, capsys: pytest.CaptureFixture[str]

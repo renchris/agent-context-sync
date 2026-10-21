@@ -26896,6 +26896,9 @@ add-source and curate; another account's file),
 Amended 2026-10-21, §16.161 Z47, Z78, Z53: a read-only volume (EROFS) gets status's own fix, the person's
 `doctor.read_only_fix` of the file, not `MANIFEST_OPEN_FIX`, whose generic words are left for another cause or a path
 outside the state folder; and `; the file itself is not damaged` is said unless the file is known to be absent.
+Amended 2026-10-21, §16.161 Z37: the NEXT reads `this account cannot open a state file or its folder, so this
+sync did not run: run \`~/.local/bin/agentsync status\` and do what its NEXT says; its [FAIL] line names the fix`, with no promise of
+whose the fix is, which status's NEXT names only for the person's.
 
 **Y75: curate's help says it exits 1 on a state file this account cannot open (`agentsync.cli`; amends §16.151
 X69).** Its line said `rc 1 only on a blocking finding` above an exit-code list that says 1 is also a state file
@@ -27281,6 +27284,15 @@ keeps the guard (the verifier's trap). The report already reads the new fix as t
 `test_cli.py::test_a_manifest_behind_a_folder_that_refuses_a_search_is_still_not_damaged`,
 `test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (the folder case drops the clause) and
 `test_ops_doctor.py::test_a_state_folder_on_a_read_only_volume_gets_the_volume_fix_whatever_its_mode`.
+
+**Z37: the sync's NEXT over a state file promises no owner (`agentsync.cli`; amends §16.155 Y31).**
+`cli.STATE_REFUSED_STEP`, the NEXT an interactive sync prints after its `error: state:` line, said to run status,
+`whose [FAIL] line names the fix and whose NEXT says whose it is`; over this account's own file status's NEXT is
+`_fail_step`'s imperative, `do what the fix on its [FAIL] line below says`, which names no owner, so the promise was
+not kept. The constant now reads `... run \`~/.local/bin/agentsync status\` and do what its NEXT says; its [FAIL]
+line names the fix`, true in both cases; `_fail_step` is unchanged, as its words are every check's and are pinned
+in three test files (the verifier's). Lane P was sent the words. Test:
+`test_cli.py::test_the_syncs_next_over_its_own_state_file_promises_no_owner_status_does_not_name`.
 
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
