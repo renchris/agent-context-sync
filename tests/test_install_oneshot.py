@@ -3366,6 +3366,38 @@ def test_local_work_branches_with_no_patch_are_named_in_the_next_line(
     )
 
 
+def test_a_cut_off_report_with_local_work_branches_says_either_way_once(
+    env: dict[str, str], tmp_path: Path
+) -> None:
+    """B13 round 22 Z44: the cut-off clause joined Y23's branch NEXT with "either way", and that NEXT holds
+    its own "either way" before the review, so the line said it twice. Both pieces of advice come before the
+    one "either way, review"; Y23's words are kept as they are."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    shutil.copy(env["STUB_AGENTSYNC"], home / ".local" / "bin" / "agentsync")
+    heads = home / "src" / "agent-context-sync" / ".git" / "refs" / "heads"
+    heads.mkdir(parents=True)
+    (heads / "local-work-20261020-220940").write_text("a" * 40 + "\n")
+    old = tmp_path / "report.md"
+    old.write_text(
+        "# agentsync setup report\n\n## Summary\n\n- doctor: cut off after 20.0s, the wait the report gives "
+        f"a slow doctor (see Doctor) · {setup_report._IDLE_AGAIN}\n\n## Redaction\n\n"
+        "Private only: one of your folder, library or organization names is ...\n"
+    )
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    back = report_path(env).parent / "bring-back.md"
+    again = "~/src/agent-context-sync/scripts/install.sh --report-only again"
+    assert last_line(cp) == (
+        "NEXT: part of the report was cut off or not measured (its Summary says which, and why): if this Mac "
+        f"was busy, run {again} once it is idle; also, {back} does not carry the commits of 1 local-work "
+        f"branch (its section 3 says how to add them as patches, then run {again}; a branch that writes "
+        f"nothing holds no new commit); either way, review {back} and copy that one file back privately "
+        f"(nothing is sent for you) [setup report: {report_path(env)}]"
+    ), last_line(cp)
+    assert last_line(cp).count("either way") == 1, last_line(cp)
+
+
 def test_two_unreadable_patches_are_counted_by_their_number(env: dict[str, str]) -> None:
     """B13 round 15 S65: the warning beside a known count read "1 patch file(s) ... does not hold them"; it
     takes the noun and pronoun of its count, two here (one is the test above)."""

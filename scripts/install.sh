@@ -5594,7 +5594,11 @@ on_exit() {
 				# notes word for word, and a note that quoted the advice faked a cut-off (B13 round 21 Y66)
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ -f "$REPORT_PATH" ] &&
 					LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$REPORT_PATH"; then
-					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle; either way, $NEXT_MSG"
+					# Y23's branch NEXT already owns the one "either way" before the review: "also" then joins the
+					# two pieces of advice (B13 round 22 Z44: the line said "either way" twice)
+					join="; either way, "
+					case "$NEXT_MSG" in *"; either way, "*) join="; also, " ;; esac
+					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle$join$NEXT_MSG"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or
 				# without one: the files it would hold are, the ones not redacted as private, and one an earlier
