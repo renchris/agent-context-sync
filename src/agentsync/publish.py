@@ -517,11 +517,17 @@ def _sidecar_fits(rel: str) -> bool:
 
 
 def _display_path(path: Path) -> str:
+    """``path`` as ``~/...`` under the home folder, by the home as HOME names it or as it resolves: a
+    canonical path (``config.canonical_source_root``) under a HOME reached through a link (/tmp is
+    /private/tmp) spelled out the whole home path (B13 round 21 Y33). ``path`` itself is never resolved, so
+    a link inside the home keeps its own name."""
     home = Path.home()
-    try:
-        return "~/" + path.relative_to(home).as_posix()
-    except ValueError:
-        return path.as_posix()
+    for base in (home, home.resolve()):
+        try:
+            return "~/" + path.relative_to(base).as_posix()
+        except ValueError:
+            continue
+    return path.as_posix()
 
 
 def _age(seconds: int | None) -> str:

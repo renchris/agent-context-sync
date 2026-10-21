@@ -1776,6 +1776,25 @@ def test_root_guide_names_the_kept_inbox_whatever_the_other_inbox_ids(env: Env) 
     assert f"into `{publish._display_path(bridge_dir)}`; the next" in text
 
 
+def test_root_guide_names_the_inbox_by_the_home_under_a_home_reached_through_a_link(
+    env: Env, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y33: under a HOME reached through a link (/tmp is /private/tmp), the docs repo's
+    AGENTS.md and CLAUDE.md named the inbox by its full resolved path: the kept folder is canonical, and
+    ``_display_path`` tried only the HOME as written. It tries the resolved home too; the literal is checked,
+    not ``_display_path``'s own output."""
+    link = tmp_path / "home-link"
+    link.symlink_to(tmp_path, target_is_directory=True)
+    monkeypatch.setenv("HOME", str(link))
+    kept = canonical_source_root(env.repo.parent / "inbox")
+    assert not kept.is_relative_to(link), "the kept folder is the resolved path"
+    text = _inbox_guide(env, SourceConfig(id="inbox", kind=SourceKind.INBOX, path=kept))
+    assert "into `~/agent-context/inbox`; the next\nsync converts them." in text, text
+    assert str(tmp_path.resolve()) not in text
+    assert publish._display_path(tmp_path.resolve() / "state").startswith("~/")
+    assert publish._display_path(Path("/elsewhere/x")) == "/elsewhere/x"
+
+
 def test_root_guide_lists_every_live_inbox_when_none_is_the_kept_one(env: Env) -> None:
     home = Path.home()
     beta = SourceConfig(id="beta-notes", kind=SourceKind.INBOX, path=home / "Contoso" / "beta notes")
