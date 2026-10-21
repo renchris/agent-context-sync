@@ -2675,11 +2675,97 @@ def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str
     legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
     assert max(map(len, legend)) <= 115, legend
     item = " ".join(" ".join(legend).split(" - <path>: ", 1)[1].split(" - ", 1)[0].split())
+    # B13 round 22 Z77: and a ~/ or absolute one naming no configured folder, cut as the Python report cuts it
     assert item.startswith(
         "a relative --source-local argument in install.log (which records no working directory) whose first "
-        "part is not a CloudStorage entry, and every word bash wrote in its dollar-quote form ($'...'),"
+        "part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no "
+        "configured folder, cut at its first part that is not a fixed macOS folder or one every home or "
+        "drive has; and every word bash wrote in its dollar-quote form ($'...'),"
     ), item
     assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
+
+
+def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_report_cuts_it(
+    env: dict[str, str],
+) -> None:
+    """B13 round 22 Z2, Z13, Z29, Z42, Z77: a ``~/`` or absolute --source-local argument outside CloudStorage
+    that sources.toml does not configure (a failed run's, or a source whose block was removed) was printed in
+    clear in the shell report's Installer lines, beside the public link, where the agentsync report cuts it to
+    ``<path>`` at its first part that is no fixed macOS folder or one every home or drive has
+    (``setup_report._source_local_shown``). The shell cuts it the same way, as the argument only: a common
+    word of it ("sync") is not replaced anywhere else, and a configured folder keeps its ``<folder-N>``."""
+    home = Path(env["HOME"])
+    ledger = home / "Projects" / "Contoso Ledger"
+    ledger.mkdir(parents=True)
+    (home / "Projects" / "Tailspin Merger").mkdir()  # a removed source's folder, still on disk
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "s"\nkind = "local"\npath = "{ledger}"\n')
+    typed = {
+        "~/Clients/Zephyrine Board": "~/<path>",
+        f"{home}/Clients/Zephyrine Board": "~/<path>",
+        "/Volumes/Kestrel Share/Quarry Plans": "/Volumes/<path>",
+        f"{home}/Projects/Tailspin Merger": "~/Projects/<path>",
+        "~/Projects/Fabrikam Payroll": "~/Projects/<path>",
+        f"{home}/Projects/sync": "~/Projects/<path>",
+        "/Zephyrine Data/x": "/<path>",
+        f"{home}/Desktop/Notes": "~/Desktop/<path>",
+        str(ledger): "~/Projects/<folder-1>",
+        # the review of the fix: the home itself is ~; an argument that starts a longer one cuts only itself;
+        # a configured folder's name, or one inside it, reads as its <folder-N>, as the Python report reads it
+        str(home): "~",
+        f"{home}/Projects/Contoso": "~/Projects/<path>",
+        f"{ledger}/q1": "~/Projects/<folder-1>/<path>",
+        "~/Work/Contoso Ledger": "~/Work/<folder-1>",
+    }
+    words = subprocess.run(  # as install.sh's log_start writes them
+        [BASH32, "-c", 'printf "%q\\n" "$@"', "_", *typed], capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    head = "start install.sh compat=10 commit=- kind=- source=- args=--source-local "
+    (setup / "install.log").write_text(
+        "".join(
+            f"2026-10-10T{i:02}:00:00Z run=20261010T{i:02}0000Z-1 {head}{w}\n" for i, w in enumerate(words, 1)
+        )
+    )
+    friction_path(env).write_text("Prompt: v10\nF1 | step 2 | clean | 1 | the sync ran; Notes kept | -\n")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+
+    def args(report: str) -> dict[str, str]:  # each start line's argument, by its run
+        return {
+            ln.split(" run=", 1)[1].split()[0]: ln.split(" args=--source-local ", 1)[1]
+            for ln in report.splitlines()
+            if f" {head}" in ln
+        }
+
+    shown = args(text)
+    assert list(shown.values()) == list(typed.values()), shown
+    for name in ("Zephyrine", "Kestrel", "Quarry", "Fabrikam", "Tailspin", "Ledger"):
+        for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+            assert name not in path.read_text(), (name, path)
+    assert "| the sync ran; Notes kept |" in text, "the argument only: its words stay words elsewhere"
+    # the agentsync report on the same home shows each line it quotes the same way (its own folder numbers)
+    py = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys; from pathlib import Path; from agentsync import setup_report; "
+            "print(setup_report.build_report(Path(sys.argv[1]))[0])",
+            str(cfg),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**env, "PATH": "/usr/bin:/bin"},
+    ).stdout
+    quoted = args(py)
+    assert len(quoted) >= 3, py
+    for run, arg in quoted.items():
+        assert re.sub(r"<folder-\d+>", "<folder-N>", arg) == re.sub(r"<folder-\d+>", "<folder-N>", shown[run])
 
 
 _LEGEND_KINDS = (

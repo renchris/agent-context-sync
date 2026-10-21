@@ -1682,7 +1682,7 @@ redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
 	local tables=0 ids=" " hp beside
-	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=()
+	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
 	# LC_ALL=C: under a UTF-8 locale BSD sed stops at the first byte that is not UTF-8 and every later line is
@@ -1693,8 +1693,8 @@ redaction_pairs() {
 		local rel part
 		case "$1" in
 		\~) known+=("$HOME") ;;
-		\~/*) known+=("$HOME/${1#\~/}") ;;
-		/*) known+=("$1") ;;
+		\~/*) known+=("$HOME/${1#\~/}") rooted+=("$1") ;;
+		/*) known+=("$1") rooted+=("$1") ;;
 		*Library/CloudStorage/*) known+=("$cs/${1#*Library/CloudStorage/}") ;;
 		*)
 			rel="${1#./}" # the word as logged stays the loose one: install.log shows "./Name"
@@ -2045,6 +2045,7 @@ redaction_pairs() {
 		while IFS= read -r line; do
 			case "$line" in "$cs"/* | \~/Library/CloudStorage/* | "$hp/Library/CloudStorage/"*) continue ;; esac
 			project_values "$line"
+			placed+=("$line")
 		done < <(config_path_values)
 	fi
 	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
@@ -2114,7 +2115,10 @@ redaction_pairs() {
 		case "$v" in
 		\~/Library/CloudStorage/*) folder_parts "" "$cs/${v#\~/Library/CloudStorage/}" ;;
 		"$cs"/* | "$hp/Library/CloudStorage/"*) folder_parts "" "$cs/${v#*/Library/CloudStorage/}" ;;
-		?*) project_values "$v" ;;
+		?*)
+			project_values "$v"
+			placed+=("$v")
+			;;
 		esac
 	done < <({
 		[ -z "$DOCTOR_LOG" ] || [ ! -f "$DOCTOR_LOG" ] || LC_ALL=C grep -E '^\[FAIL\] config\.vanished_sources ' "$DOCTOR_LOG"
@@ -2146,6 +2150,69 @@ redaction_pairs() {
 			if (v != "") print v
 		}
 	}' | LC_ALL=C sort -u)
+	# A ~/ or absolute --source-local argument in install.log outside CloudStorage that is no folder placed
+	# above (configured, or a removed source's add-back folder) nor agentsync's own: a failed run's, or a
+	# source whose [[source]] block is gone (B13 round 22 Z2, Z13, Z29, Z42, Z77: the shell printed it in clear
+	# beside the public link). Cut as setup_report._source_local_shown cuts it, as the argument only, so no
+	# bare word of it is replaced anywhere else: kept up to its first part that is not ~, a fixed macOS folder
+	# (_PATH_COMPONENTS), a folder every drive has (generic_folder) or one every home has (generic_home_dir),
+	# then <path>. Its home as ~; each spelling of it (as logged, its home as $HOME, as pwd -P gives it, and
+	# as ~), so no pair that runs before it matters. One inside a placed folder is cut the same way.
+	for w in ${rooted[@]+"${rooted[@]}"}; do
+		case "$w" in \~/*) w="$HOME/${w#\~/}" ;; esac
+		case "$w" in *Library/CloudStorage/*) continue ;; esac
+		own_folder "$w" && continue
+		x=""
+		for f in ${placed[@]+"${placed[@]}"}; do
+			case "$f" in \~) f="$HOME" ;; \~/*) f="$HOME/${f#\~/}" ;; esac
+			[ "${f%/}" != "${w%/}" ] || x=1
+		done
+		[ -z "$x" ] || continue
+		v="$w"
+		case "$v" in "$HOME" | "$HOME"/*) v="~${v#"$HOME"}" ;; "$hp" | "$hp"/*) v="~${v#"$hp"}" ;; esac
+		u=""
+		rel="$v"
+		while :; do
+			part="${rel%%/*}"
+			top="$part"
+			k=""
+			case "$part" in "" | \~ | . | ..) ;; *) k="$(id_key "$part")" ;; esac
+			# a folder registered above reads as its placeholder, as the Python report redacts it first
+			if [ -n "$k" ]; then
+				case "$folder_keys" in
+				*$'\n'"$k"$'\t'*)
+					m="${folder_keys#*$'\n'"$k"$'\t'}"
+					top="<folder-${m%%$'\n'*}>"
+					;;
+				esac
+			fi
+			case "$top" in
+			"" | \~ | . | .. | Users | Library | Application | Support | CloudStorage | Volumes | Applications | "<folder-"*">") ;;
+			*) generic_folder "$part" || generic_home_dir "$(recase lower "$part")" || {
+				u="$u<path>"
+				break
+			} ;;
+			esac
+			u="$u$top"
+			[ "$part" != "$rel" ] || break
+			rel="${rel#*/}"
+			u="$u/"
+		done
+		[ "$u" != "$v" ] || continue # nothing to cut: every part is a common one
+		segs=("$w")
+		case "$v" in \~/*) segs+=("$HOME${v#\~}" "${hp:-$HOME}${v#\~}" "$v") ;; esac
+		seen=$'\n'
+		for x in "${segs[@]}"; do
+			case "$seen" in *$'\n'"$x"$'\n'*) continue ;; esac
+			seen+="$x"$'\n'
+			k="$(printf '%q' "$x")"
+			printf '%s\t%s\ta\n' "--source-local $k" "--source-local $u"
+			m="$(LC_ALL=en_US.UTF-8 && printf '%q' "$x")" # as a UTF-8 run logged it (emit_pair, B13 R111)
+			[ "$m" = "$k" ] || printf '%s\t%s\ta\n' "--source-local $m" "--source-local $u"
+			m="$(shown_arg "$x")" # as a NEXT's re-run shows it, in its quotes, as the Python report keeps them
+			case "$m" in \"*) printf '%s\t%s\ta\n' "--source-local $m" "--source-local \"$u\"" ;; esac
+		done
+	done
 	# The login before the name's joined forms: of two equal values the first pair wins, and a login that is the
 	# name run together ("janedoe" for "Jane Doe") is <user>, as in the Python report.
 	user="$(id -un 2>/dev/null || true)"
@@ -2796,13 +2863,14 @@ redact_stream() {
 			}
 			if ((k in lv) ? !index(low, lv[k]) : !index($0, v)) continue # every plain piece is a piece of the input line
 			n = length(v); word = (f[3] == "w" || f[3] == "i"); tail = (f[3] == "t"); alnum = (f[3] == "e"); m = 0
+			arg = (f[3] == "a") # a --source-local argument: only where it ends, never a prefix of a longer one (B13 round 22 Z77)
 			for (j = 1; j <= ns; j++) {
 				if (held[j]) { keep(seg[j], 1); continue }
 				s = seg[j]; acc = ""
 				while ((i = (k in lv) ? index(tolower(s), lv[k]) : index(s, v)) > 0) {
 					pre = (i > 1) ? substr(s, i - 1, 1) : substr(acc, length(acc), 1)
 					post = substr(s, i + n, 1)
-					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (alnum && post ~ /[A-Za-z0-9]/)) {
+					if ((word && (pre ~ /[A-Za-z0-9_]/ || post ~ /[A-Za-z0-9_]/)) || (tail && post ~ /[A-Za-z0-9_.-]/) || (alnum && post ~ /[A-Za-z0-9]/) || (arg && post != "" && post !~ /[ \t"\047),;\]]/)) {
 						acc = acc substr(s, 1, i + n - 1)
 					} else {
 						keep(acc substr(s, 1, i - 1), 0); acc = ""
@@ -3752,12 +3820,13 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		;;
 	esac
 	case "$used" in *" <path> "*)
-		# only a relative argument is <path>: a ~/ or absolute one is matched by its configured folders, as the body
-		# shows it (B13 round 21 Y8)
+		# a configured ~/ or absolute argument is matched by its configured folders, as the body shows it (B13 round
+		# 21 Y8); any other is cut to <path>, as the Python report cuts it (round 22 Z2, Z13, Z29, Z42, Z77)
 		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
-		say "  part is not a CloudStorage entry, and every word bash wrote in its dollar-quote form (\$'...'), which install.log"
-		say "  uses for a name with a tab or another control character, a curly apostrophe, an en dash or an accent (under the"
-		say "  C locale, any character outside ASCII)"
+		say "  part is not a CloudStorage entry, or a ~/ or absolute one outside CloudStorage that names no configured folder,"
+		say "  cut at its first part that is not a fixed macOS folder or one every home or drive has; and every word bash"
+		say "  wrote in its dollar-quote form (\$'...'), which install.log uses for a name with a tab or another control"
+		say "  character, a curly apostrophe, an en dash or an accent (under the C locale, any character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)
