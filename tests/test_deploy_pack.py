@@ -1240,6 +1240,12 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     script = SCRIPTS[0].read_text(encoding="utf-8")
     assert 'NEXT_MSG="$back does not hold $up this account cannot read' in script
     assert "kept patch file" in script.split('NEXT_MSG="$back does not hold $up', 1)[0].rsplit("up=", 1)[1]
+    # B13 round 21 Y66: the cut-off clause's keyed words are install.sh's own NEXT, as the unreadable-patch
+    # clause's are
+    assert (
+        'NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why)' in script
+    )
+    assert "part of the report was cut off or not measured" in CUT_OFF_TOLD
     # B13 round 12 N71 (lane RB's words): when the report could not write bring-back.md, the finish still
     # named that file; it now names what the report's NEXT: line says to copy back instead. B13 round 13
     # O15: v21's "the files the NEXT: line names" took in bring-back.md itself, which that NEXT names as the

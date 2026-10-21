@@ -5540,9 +5540,11 @@ on_exit() {
 				# agent. The marker is setup_report._IDLE_AGAIN, which every cut-off part writes, and so does an
 				# evidence line whose only gap is a state file a sync held (B13 round 20 X37): the words name no
 				# cause, the Summary does. An older installed agentsync without it adds nothing. Before the remedy
-				# for an unreadable patch, which keeps its words
+				# for an unreadable patch, which keeps its words. Read only at the start of the Summary's doctor and
+				# evidence lines, the two that write it: the Summary and the friction log both repeat an agent's
+				# notes word for word, and a note that quoted the advice faked a cut-off (B13 round 21 Y66)
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ -f "$REPORT_PATH" ] &&
-					LC_ALL=C grep -qF 'write the report again when this Mac is idle' "$REPORT_PATH"; then
+					LC_ALL=C grep -qE '^- (doctor|evidence): .*write the report again when this Mac is idle' "$REPORT_PATH"; then
 					NEXT_MSG="part of the report was cut off or not measured (its Summary says which, and why): if this Mac was busy, run $LOCAL_WORK_AGAIN again once it is idle; either way, $NEXT_MSG"
 				fi
 				# A bring-back.md this run could not write is not named as the file to review, with a link or

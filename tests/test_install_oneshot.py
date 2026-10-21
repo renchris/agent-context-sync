@@ -3253,6 +3253,17 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
     old.write_text(old.read_text().replace(setup_report._IDLE_AGAIN, "nothing cut off"))
     cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
     assert "cut off or not measured" not in last_line(cp), "a report nothing cut off keeps its NEXT"
+    # B13 round 21 Y66: an agent's note that quotes the advice, where a real report repeats it (its Summary's
+    # friction line and the embedded friction log), is no cut-off part
+    note = f"the earlier report said {setup_report._IDLE_AGAIN}"
+    old.write_text(
+        old.read_text().replace("\n\n## Redaction", f"\n- F1 · step 3 · note · {note}\n\n## Redaction")
+        + f"\n## Agent friction log\n\n    12  F1 | step 3 | note | 1 | {note} | -\n"
+    )
+    cp = install_sh({**env, "STUB_REPORT_FILE": str(old)}, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    assert old.read_text().count(setup_report._IDLE_AGAIN) == 2, "quoted twice, cut off nowhere"
+    assert "cut off or not measured" not in last_line(cp), "a quoted note fakes no cut-off"
 
 
 def test_two_unreadable_patches_are_counted_by_their_number(env: dict[str, str]) -> None:
