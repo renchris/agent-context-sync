@@ -326,9 +326,9 @@ install.log (a `--list-folders` run is not an install run):
   is 2, the step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an
   error logged in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a
   `--list-folders` re-run included, but not for install.sh's own `--log-start` stop of a copy of the prompt; for step
-  2 an install run), with no later step logged before the report. That stop is resolved only by a run started no later
-  than that attempt's end line (CONTRACTS §16.147, X19), and the stop writes its error and end lines together, so a later
-  install.sh or `--list-folders` run leaves the attempt failed at step 1; every other step 1 error is still judged
+  2 an install run), with no later step logged before the report. That stop is resolved by no run (CONTRACTS §16.147,
+  X19; §16.152, Y17: the stop writes its header, error and end lines with one time, so a run stamped that same second
+  is a stand-alone one too), so a later install.sh or `--list-folders` run leaves the attempt failed at step 1; every other step 1 error is still judged
   with the runs after the end line (round 5, F37). Step 2
   is the one install.sh command (in v6 too: its exit 0 covers the background sync v6 could ask for), so any install
   run of the attempt that ended 0 resolves a step 2 error, whenever the line was logged: a step 2 `error` line

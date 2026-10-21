@@ -14244,21 +14244,30 @@ def test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket(
     db = expand(cfg.state_paths.db)
     db.parent.mkdir(parents=True, exist_ok=True)
     db.write_bytes(b"")
-    db.chmod(0o600)
-    assert setup_report._shut_whose(cfg, "file") == setup_report._AGENTS
     db.chmod(0o000)
     try:
         assert setup_report._shut_whose(cfg, "file") == setup_report._AGENTS
-        assert setup_report._shut_whose(cfg, "folder") == setup_report._AGENTS  # 0700: not the person's chown
+        db.parent.chmod(0o500)  # this account's folder shut by its mode: doctor's fix is chmod 700
+        try:
+            assert setup_report._shut_whose(cfg, "folder") == setup_report._AGENTS
+        finally:
+            db.parent.chmod(0o700)
         real = os.getuid()
+        root = expand(cfg.state_paths.root)
         monkeypatch.setattr(os, "getuid", lambda: real + 1)  # every file reads as another account's
         assert setup_report._shut_whose(cfg, "file") == setup_report._PERSONS
         assert setup_report._shut_whose(cfg, "folder") == setup_report._PERSONS
+        # the round's ownership rule, read from doctor's own fix (lane B's wording): an ACL that refuses this
+        # account's own folder at 0700 is the person's (review)
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(os, "getuid", lambda: real)
+            mp.setattr(doctor, "state_folder_fix", doctor._search_fix)
+            assert doctor.is_persons_fix(doctor._search_fix(root))
+            assert setup_report._shut_whose(cfg, "folder") == setup_report._PERSONS
         # a folder this account shut by its mode, holding a file another account owns: the person's still
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(doctor, "state_folder_fix", lambda root: f"chmod 700 {root}")
             assert setup_report._shut_whose(cfg, "folder") == setup_report._PERSONS
-        root = expand(cfg.state_paths.root)
         assert doctor.is_persons_fix(doctor.state_path_fix(root, db))  # the same verdict doctor's fix gives
     finally:
         db.chmod(0o600)

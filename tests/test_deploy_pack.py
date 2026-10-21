@@ -6062,8 +6062,9 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
         " builds nothing" in spawn_failed
     )
     assert "options of the run" not in spawn_failed
-    keeps = doctor.AGAIN_UNDER_INSTALL_SH.split(" (", 1)[1].split(";", 1)[0]  # the plain run's own words
-    assert keeps == "it keeps the folders already synced" and keeps not in spawn_failed
+    # the plain run's own words (round 21 Y20 made them a clause of their own)
+    assert "keeps the folders already synced" in doctor.AGAIN_UNDER_INSTALL_SH
+    assert "keeps the folders already synced" not in spawn_failed
     assert "re-run the install command" not in spawn_failed
     assert (
         "`71` the launcher could not start agentsync: the Python it runs is missing or not executable (a"
@@ -7908,17 +7909,15 @@ def test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does() -> 
     assert 'if tell="$(friction_attempt_stopped)"; then' in install
     assert '[ "$REPORT_ONLY" -eq 1 ] || stopped=2' in install
     stopping = inspect.getsource(setup_report.stopping_error)
-    assert "if end is not None and _PROMPT_STOP_RE.match(e.what):" in stopping
-    assert "r.started <= end" in stopping
+    # B13 round 21 Y17 (lane RA): no run resolves that stop, one in the end line's own second included
+    assert "if _PROMPT_STOP_RE.match(e.what):  # Y17: no run resolves the installer's own stop" in stopping
+    assert "done = []" in stopping
     guide = " ".join((ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8").split())
     assert (
         "a `--list-folders` re-run included, but not for install.sh's own `--log-start` stop of a copy"
         in guide
     )
-    assert (
-        "That stop is resolved only by a run started no later than that attempt's end line (CONTRACTS"
-        " §16.147, X19)" in guide
-    )
+    assert "That stop is resolved by no run (CONTRACTS §16.147, X19; §16.152, Y17:" in guide
     assert "so a later install.sh or `--list-folders` run leaves the attempt failed at step 1" in guide
     assert "Since 2026-10-20 (CONTRACTS §16.147, X19), any other run that writes a report after such" in guide
     assert "(a plain `install.sh` the stopped copy's Doctor asked for, say), routes it the same way" in guide
