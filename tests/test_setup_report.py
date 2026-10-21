@@ -7650,6 +7650,26 @@ def test_a_git_proxy_or_remote_on_its_sections_header_line_is_read_and_redacted(
     leaked = [ln for ln in text.splitlines() if "fabrikam" in ln.lower()]
     assert leaked == [], leaked
     assert "proxy in git's config: not set" not in section(text, "Environment"), section(text, "Environment")
+    # B13 round 22 Z76: git's older dotted form is a remote too, on its own line or the header's; a name with
+    # nothing after the dot, or another section that starts with the word, is none
+    (Path.home() / ".gitconfig").write_text(
+        "[remote.origin]\n\turl = https://git.fabrikam-dot.invalid/team/kb.git/\n"
+        "[Remote.Upstream] url = git@scm.fabrikam-one.invalid:team/x.git\n"
+        '[remote.a "b"]\n\turl = https://git.fabrikam-sub.invalid/y.git\n'
+        "[remote.]\n\turl = https://none.fabrikam-empty.invalid/z.git\n"
+        "[remotex.y]\n\turl = https://none.fabrikam-other.invalid/z.git\n",
+        encoding="utf-8",
+    )
+    assert setup_report._git_remotes() == [
+        ("git.fabrikam-dot.invalid", "https://git.fabrikam-dot.invalid/team/kb.git/"),
+        ("scm.fabrikam-one.invalid", "git@scm.fabrikam-one.invalid:team/x.git"),
+        ("git.fabrikam-sub.invalid", "https://git.fabrikam-sub.invalid/y.git"),
+    ]
+    said = "unable to access 'https://git.fabrikam-dot.invalid/team/kb.git/': 403"
+    red = setup_report._build_redactor(
+        setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 12.0)
+    )
+    assert "fabrikam" not in red.redact(said), red.redact(said)
 
 
 def test_a_git_url_rewrite_host_and_path_are_redacted(

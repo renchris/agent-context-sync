@@ -3576,7 +3576,13 @@ def _git_remotes(docs: Path | None = None) -> list[tuple[str, str]]:
                 # B13 round 21 Y36: and a ``url`` on the header's own line, ``[remote "x"] url = <url>``
                 head, rest = _git_key_text(line)
                 if head is not None:
-                    remote = head.group(1).lower() == "remote" and head.group(2) is not None
+                    # B13 round 22 Z76: and git's older dotted form, ``[remote.origin]``, which git still
+                    # applies (``[remote.a "b"]`` is the remote ``a.b``); ``[remote.]`` and ``[remotex.y]``
+                    # name none
+                    section = head.group(1).lower()
+                    remote = (section == "remote" and head.group(2) is not None) or (
+                        section.startswith("remote.") and len(section) > len("remote.")
+                    )
                 key = _GIT_URL_KEY_RE.match(rest) if remote else None
                 url = key.group(1).removeprefix('"').removesuffix('"') if key else ""
                 host = _remote_url_host(url) if key else None
