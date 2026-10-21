@@ -24985,6 +24985,8 @@ cannot search) and the listing warn beside it under `from the state file this ac
 Amended 2026-10-20, §16.149 X17, X74: one file is `it` and `is` (`this account cannot read and write it:
 manifest.sqlite (0000)`, `manifest.sqlite is 0600`), and both owner fixes read `the person runs sudo chown -R <uid>
 <state_dir> (the agent runs no sudo)`, the person's.
+Amended 2026-10-20, §16.152 Y12, Y13, Y38: a state folder this account cannot search gives the same words where
+the path is known (the re-screen's stat, the manifest parts' open, the purge queue's read), never a class name.
 
 **A report the time limit cut off says so in the NEXT the agent relays** (W3). A report whose doctor call (or an
 evidence part) the time limit cut off wrote `write the report again when this Mac is idle (...) before sending
@@ -25833,6 +25835,8 @@ advice. Prompt v29 relays this clause (lane P's X3, which has these words). Test
 `test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review` (a W4 slow-doctor line and a
 busy-only evidence line from `_evidence_line`, each with and without an unreadable patch; no NEXT says "time
 limit").
+Amended 2026-10-20, §16.152 Y15, Y37: the Summary now gives the why: the evidence line names a busy state file
+(`because a sync held the state file`) and the time limit apart, never a held file as `ran out of time`.
 
 **install.sh's first sync shows the upgrade's retry note** (X85; amends §16.144 W18). On exit 0 `show_first_sync`
 printed only the lines that match `SYNC_SUMMARY_RE`, so the sync's `note: N conversion(s) an older build gave up
@@ -26136,6 +26140,8 @@ the manifest is neither another account's nor shut to this one, and `doctor.mani
 existing file this account cannot read and write (returns None), so a sync's state check and the report's read
 make no side files either; the FAIL already stands, the damage check waits for the next status, and the single
 chmod is the whole fix. `manifest_unreadable`'s docstring no longer says the read creates no file. Test: `test_ops_doctor.py::test_a_manifest_this_account_cannot_write_is_not_probed_so_one_chmod_fixes_it`.
+Amended 2026-10-20, §16.152 Y70: the setup report's own read-only opens did make them; `_open_manifest_ro` reads
+such a file `immutable=1`, or not at all with a -wal and no -shm.
 
 **X73: a state folder this account cannot look inside (`agentsync.ops.doctor`, `agentsync.cli`).** With the state
 folder at mode 0000 (or 0700 root's, after a first sudo sync under umask 077), the files loop's lstat raised
@@ -26481,6 +26487,43 @@ warn that still comes names an exclusion doctor read and found missing, and it s
 `getattr(doctor, "recorded_unreadable", None)` guard for a name that exists is gone, as X45 removed one for
 `ManifestOpenError`. Tests: `test_the_cannot_open_codes_are_doctors`,
 `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`.
+
+**A state folder this account cannot search is named in W64's words where the path is known** (Y12, Y13, Y38;
+amends §16.140 W64). With the state folder at 0000 the Environment printed `secret scan: ... (could not read:
+PermissionError: [Errno 13] ... <path>)`: `_last_rescreen`'s `db.exists()` raised below Python 3.12 (and from 3.14
+says no manifest). It stats the file in its own `try`: a PermissionError is `not read (the state file cannot be
+opened by this account: see Doctor's state_dir lines)`, and `fact`'s catch-all says `(could not read: <words>)`
+through `_why_not_read`, never a class or a message. Y13: the five manifest parts said `a file cannot be opened:
+Permission denied` and the Summary `another cause`: `_Mirror._open` raises `ManifestOpenError` from an EACCES or
+EPERM OSError of its `is_file` or open, the manifest being the path. The purge queue said `an unexpected error:
+GovernanceError`: `_purge_part` raises `ManifestOpenError` when governance's error comes from a PermissionError and
+the state folder cannot be searched (Doctor's state_dir FAIL); Y38: a `GovernanceError` from an OSError is worded
+by that OSError (`a file cannot be opened: Permission denied`), so governance/ at 0000 in a folder this account can
+search points at no state_dir line, which does not judge it. `_why_not_read` maps no PermissionError to the state
+file by itself: a plist's, a kept patch's or a source's would point at the wrong lines. Tests:
+`test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere`,
+`test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file`.
+
+**The evidence line says why a report written again when idle measures them** (Y15, Y37; amends §16.147 X37).
+install.sh's NEXT says the Summary gives which, and why, but `_evidence_line` gave a busy-only gap no cause and,
+beside another cause, called a state file a sync held `ran out of time`. A busy state file and the time limit are
+counted apart: `because a sync held the state file: <_IDLE_AGAIN>`, `because the report's time limit cut them
+off: <_IDLE_AGAIN>`, and beside other causes `N ran out of time and M found the state file held by a sync:
+<_IDLE_AGAIN>`, with the advice once and no bracket of its own; `_IDLE_AGAIN` is unchanged, as install.sh keys on
+it. The Loop line: the loop's read waits on a held state file past the hook's 4 s, so its error is the time-out,
+never sqlite's busy; when the evidence read found the file held, it reads `NEXT: not read (it did not finish in
+time: a sync held the state file)`. Tests: `test_the_evidence_line_says_why_a_report_written_again_when_idle_measures_them`,
+`test_the_loop_line_says_a_sync_held_the_state_file_its_hook_waited_on`.
+
+**The report's read-only opens create no file beside a manifest it cannot write** (Y70; amends §16.149 X78). X78
+kept doctor's probe off a manifest this account cannot write, but the report's five `mode=ro` opens
+(`_unconfigured_ids`, `_unconfigured_roots`, `_last_rescreen`, the Configuration's vanished-source read and
+`_Mirror._open`) still created the -wal and -shm at 0400 beside a 0400 WAL manifest, so after the one chmod status
+FAILed the -shm and a sync could not write. `_open_manifest_ro` opens a file this account can write as before;
+otherwise, with no -wal, `immutable=1` (the file is the whole database; nothing is created); with both side
+files, a plain `mode=ro`, which creates nothing; with a -wal and no -shm it opens nothing (a plain open makes the
+-shm, `immutable=1` misses the -wal's rows), and each caller says not read, `_Mirror` as the state file this
+account cannot open. Test: `test_the_reports_read_only_opens_create_no_file_beside_a_manifest_it_cannot_write`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

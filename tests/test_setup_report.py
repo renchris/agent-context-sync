@@ -10742,7 +10742,10 @@ def test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed(fake_m
     ), mixed
     r.facts.evidence_why = Counter({busy: 1, "time limit": 2})
     r.facts.evidence = 3
-    assert setup_report._evidence_line(r).endswith(f'say "not measured": {setup_report._IDLE_AGAIN}')
+    assert setup_report._evidence_line(r).endswith(
+        f'say "not measured": 2 ran out of time and 1 found the state file held by a sync: '
+        f"{setup_report._IDLE_AGAIN}"
+    )
     r.facts.evidence_why = Counter(
         {"the configuration is refused: see Configuration": 1, "an unexpected error: KeyError": 1}
     )
@@ -10753,6 +10756,123 @@ def test_the_evidence_line_says_where_a_cause_waiting_cannot_fix_is_fixed(fake_m
         "cause: see those lines"
     )
     assert "idle" not in setup_report._evidence_line(r)
+
+
+def test_the_evidence_line_says_why_a_report_written_again_when_idle_measures_them(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 21 Y15, Y37: install.sh's NEXT says the Summary gives which, and why. A state file a sync
+    held read as no cause at all, or as "ran out of time" beside other causes, while each Status line said
+    the state file was busy. Each cause has its own words, with no bracket (the advice holds one), and the
+    advice comes once, after the last."""
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
+    busy = "the state file is busy: a sync holds it"
+    idle = setup_report._IDLE_AGAIN
+    head = '- evidence: 5 lines at the end of Status say "not measured"'
+    r.facts.evidence = 5
+    r.facts.evidence_why = Counter({busy: 5})
+    line = setup_report._evidence_line(r)
+    assert line == f"{head} because a sync held the state file: {idle}", line
+    assert "time" not in line.replace("this Mac", ""), line
+    r.facts.evidence_why = Counter({"time limit": 3, "it did not finish in time": 2})
+    assert setup_report._evidence_line(r) == f"{head} because the report's time limit cut them off: {idle}"
+    r.facts.evidence = 3
+    r.facts.evidence_why = Counter({busy: 2, "a file cannot be opened: boom": 1})
+    line = setup_report._evidence_line(r)
+    assert "ran out of time" not in line and line.count(idle) == 1, line
+    assert line.endswith("; 2 found the state file held by a sync: " + idle), line
+    assert line.count("(") == idle.count("("), line
+
+
+def test_the_loop_line_says_a_sync_held_the_state_file_its_hook_waited_on(fake_mac: dict[str, Path]) -> None:
+    """B13 round 21 Y15: the loop's read of a state file a sync holds waits on it past the hook's limit, and
+    the Loop line said only ``it did not finish in time`` while every evidence line said the file was busy.
+    The time-out's words keep their place, and name the held file when the evidence read found it held."""
+
+    def slow(_config: object) -> list[str]:
+        raise TimeoutError
+
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(loop_next=slow), 5.0)
+    assert "NEXT: not read (it did not finish in time)" in setup_report._loop_line(r)
+    r.facts.evidence_why["the state file is busy: a sync holds it"] += 1
+    line = setup_report._loop_line(r)
+    assert "NEXT: not read (it did not finish in time: a sync held the state file)" in line, line
+
+
+def test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 21 Y12, Y13, Y38: with the state folder at 0000 the Environment printed ``(could not read:
+    PermissionError: [Errno 13] ... <path>)``, five evidence parts ``a file cannot be opened: Permission
+    denied``, the purge queue ``an unexpected error: GovernanceError``, and the Summary ``another cause``,
+    while Doctor FAILs state_dir. Each is the state file this account cannot open, W64's words, where the
+    path is known. The file alone at 0000 says the same."""
+    cfg = fake_mac["config"]
+    Seed(cfg).close()
+    db = expand(load_config(cfg).state_paths.db)
+    shut = setup_report._STATE_SHUT
+    for target in (db.parent, db):
+        target.chmod(0o000)
+        try:
+            text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        finally:
+            target.chmod(0o700 if target == db.parent else 0o600)
+        [scan] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- secret scan: ")]
+        assert scan.endswith(f"last re-screen: not read ({shut})"), scan
+        assert "Error" not in text.replace("Recent errors", "") and "Errno" not in text, target
+        assert "Permission denied" not in section(text, "Status"), target
+        evidence = _line(section(text, "Summary"), "- evidence: ")
+        assert "because the state file cannot be opened by this account" in evidence, evidence
+        assert "another cause" not in evidence, evidence
+
+
+def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 21 Y13, Y38: governance/ at 0000 inside a state folder this account can search is no
+    state_dir line's (Doctor FAILs governance.*): the purge queue's line says the file cannot be opened in
+    the OSError's words, with no class name and no pointer at Doctor's state_dir lines."""
+    cfg = fake_mac["config"]
+    Seed(cfg).close()
+    gov = expand(load_config(cfg).state_paths.root) / "governance"
+    gov.mkdir(exist_ok=True)
+    (gov / "purge-queue.json").write_text("[]", encoding="utf-8")
+    gov.chmod(0o000)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        gov.chmod(0o700)
+    purge = section(text, "Status").split("### Purge queue", 1)[1].split("###", 1)[0]
+    assert "GovernanceError" not in purge and "state_dir" not in purge, purge
+    assert "not measured (a file cannot be opened: Permission denied)" in purge, purge
+
+
+def test_the_reports_read_only_opens_create_no_file_beside_a_manifest_it_cannot_write(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 21 Y70 (round 20 X78's residual): the report's ``mode=ro`` opens of a 0400 WAL manifest
+    created its -wal and -shm at 0400, so after the chmod Doctor named, status FAILed the -shm and a sync
+    could not write. With no -wal it is read ``immutable=1`` and nothing is created; with a -wal and no -shm
+    it is not opened at all; one it can write opens as before."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    wal, shm = db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")
+    assert db.read_bytes()[18:20] == b"\x02\x02", "a WAL database (its header's read and write versions)"
+    assert not wal.exists() and not shm.exists()
+    db.chmod(0o400)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        assert not wal.exists() and not shm.exists(), "the report created a side file at the file's mode"
+        assert "last re-screen: not read" not in text, "read through immutable=1"
+        wal.write_bytes(b"")
+        conn = setup_report._open_manifest_ro(db, 1.0)
+        assert conn is None and not shm.exists(), "a plain open would create a 0400 -shm"
+        wal.unlink()
+    finally:
+        db.chmod(0o600)
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
 
 
 class Clock:

@@ -105,6 +105,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import dataclasses
+import errno
 import functools
 import hashlib
 import importlib.metadata
@@ -3724,6 +3725,24 @@ def _project_values(path: Path) -> list[str]:
 _UNCONFIGURED_IDS_S = 2.0  # the manifest's and the purge queue's ids, for redaction
 
 
+def _open_manifest_ro(db: Path, timeout: float) -> sqlite3.Connection | None:
+    """A read-only connection to the manifest at ``db`` that creates no file beside it, or None when every
+    such open would (B13 round 21 Y70, X78's residual): a ``mode=ro`` open of a WAL database this account
+    cannot write creates its -wal and -shm with the file's own mode (0400), so after the chmod Doctor names
+    two more files FAILed status and a sync. With no -wal the file is the whole database, read
+    ``immutable=1``, which creates nothing; with both side files there, a plain ``mode=ro`` creates nothing;
+    with a -wal and no -shm, a plain open creates a 0400 -shm and ``immutable=1`` misses the -wal's rows, so
+    nothing is opened, as ``doctor.manifest_unreadable`` skips it. A file this account can write is opened
+    as before."""
+    uri = f"file:{quote(str(db))}?mode=ro"
+    if not os.access(db, os.R_OK | os.W_OK):
+        if not db.with_name(db.name + "-wal").exists():
+            uri += "&immutable=1"
+        elif not db.with_name(db.name + "-shm").exists():
+            return None
+    return sqlite3.connect(uri, uri=True, timeout=timeout)
+
+
 def _unconfigured_ids(config: Config) -> tuple[list[str], list[str]]:
     """The source ids the manifest's rows (any state) and the purge queue hold that ``config`` does not have,
     in two sorted groups: those ``cycle.vanished_from`` reports (present file rows: the ids doctor's
@@ -3739,8 +3758,8 @@ def _unconfigured_ids(config: Config) -> tuple[list[str], list[str]]:
     ids: set[str] = set()
     present: dict[str, int] = {}
     db = expand(config.state_paths.db)
-    if db.is_file():
-        conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+    conn = _open_manifest_ro(db, 1.0) if db.is_file() else None
+    if conn is not None:
         try:
             ids.update(str(row[0]) for row in conn.execute("SELECT DISTINCT source_id FROM items").fetchall())
             present = present_counts_on(conn)
@@ -3762,7 +3781,9 @@ def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
     if not ids or not db.is_file():
         return []
     wanted = {f"scope_root:{sid}" for sid in ids}
-    conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+    conn = _open_manifest_ro(db, 1.0)
+    if conn is None:
+        return []
     try:
         rows = conn.execute("SELECT key, value FROM meta WHERE key LIKE ?", ("scope_root:%",)).fetchall()
     finally:
@@ -4302,20 +4323,28 @@ def _last_rescreen(r: _Run) -> str:
     if r.config is None:
         return "not read (no sources.toml yet)" if r.config_missing else "not read (the config does not load)"
     db = expand(r.config.state_paths.db)
-    if not db.exists():
+    # B13 round 21 Y12: a stat of its own, as ``exists()`` raises a folder's EACCES below Python 3.12 (and
+    # says no manifest from 3.14), which the Environment printed as the exception's class and message
+    try:
+        db.stat()
+    except FileNotFoundError:
         return "none recorded (no manifest yet)"
+    except OSError as exc:
+        return f"not read ({_STATE_SHUT if isinstance(exc, PermissionError) else _why_not_read(exc)})"
     if (
         not db.is_file()
     ):  # a folder where it belongs: sqlite's IOERR fell to the generic words (B13 round 21 Y47)
         return "not read (the state file is not a file: see Doctor's state_dir.manifest line)"
     try:
-        conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+        conn = _open_manifest_ro(db, 1.0)
+        if conn is None:  # its -wal is there and its -shm is not: an open would create one (Y70)
+            return f"not read ({_STATE_SHUT})"
         try:
             row = conn.execute("SELECT value FROM meta WHERE key = 'secret_rules'").fetchone()
         finally:
             conn.close()
         stored = json.loads(row[0]) if row and row[0] else None
-    except (sqlite3.Error, ValueError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         return f"not read ({_why_not_read(exc)})"
     if not isinstance(stored, dict):
         return "none recorded"
@@ -4328,8 +4357,8 @@ def _environment(r: _Run) -> list[str]:
     def fact(label: str, fn: Callable[[], str]) -> None:
         try:
             value = fn()
-        except Exception as exc:
-            value = f"(could not read: {type(exc).__name__}: {exc})"
+        except Exception as exc:  # in words, never the class or the message, which can hold a path (Y12)
+            value = f"(could not read: {_why_not_read(exc)})"
         out.append(f"- {label}: {value}")
 
     def sw_vers() -> str:
@@ -5406,7 +5435,9 @@ def _sync_refusals(
         try:
             # its own read-only connection (a Manifest opens read-write and may migrate), with the cycle's
             # query, rule and words (B13 round 16 T52, T87)
-            conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
+            conn = _open_manifest_ro(db, 1.0)
+            if conn is None:
+                raise sqlite3.OperationalError("unable to open database file")  # its -shm would be made (Y70)
             try:
                 counts = present_counts_on(conn)
                 vanished = sorted(vanished_from((s.id for s in c.sources), counts).items())
@@ -6134,9 +6165,22 @@ class _Mirror:
 
     def _open(self) -> sqlite3.Connection:
         if self._conn is None:
-            if not self.db.is_file():
-                raise _NoManifestError
-            conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=ro", uri=True, timeout=0.5)
+            from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
+
+            # B13 round 21 Y13: a state folder this account cannot search raised a bare PermissionError
+            # here, read as "a file cannot be opened: Permission denied" while Doctor FAILs state_dir: the
+            # file is named, so it is the state file this account cannot open (W64's words)
+            try:
+                if not self.db.is_file():
+                    raise _NoManifestError
+                opened = _open_manifest_ro(self.db, 0.5)
+            except OSError as exc:
+                if exc.errno in (errno.EACCES, errno.EPERM):
+                    raise ManifestOpenError(str(self.db), exc.errno, exc.strerror) from exc
+                raise
+            if opened is None:  # Y70: an open would create its -shm at the file's mode
+                raise ManifestOpenError(str(self.db), errno.EACCES)
+            conn = opened
             conn.set_progress_handler(self._tick, _STEP_TICK)
             conn.create_function(
                 "reason_class", 3, lambda r, s, i: quarantine_class(r, withheld=self.withheld_for(r, s, i))
@@ -6323,6 +6367,15 @@ def _why_not_read(exc: BaseException) -> str:
         return "the configuration is refused: see Configuration"
     if isinstance(exc, ManifestOpenError):
         return _STATE_SHUT
+    # B13 round 21 Y38: governance's read of a file it cannot open raises its own error from the OSError
+    # (a GovernanceError), which read as its class name: the OSError's words, which name no Doctor line, as
+    # governance/ is no state_dir line's (a state folder that cannot be searched is mapped where the path is
+    # known: _Mirror._open and _purge_part)
+    if not isinstance(exc, OSError) and isinstance(exc.__cause__, OSError):
+        from agentsync.governance import GovernanceError  # noqa: PLC0415 - lazy
+
+        if isinstance(exc, GovernanceError):
+            return _why_not_read(exc.__cause__)
     if isinstance(exc, sqlite3.Error):
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
@@ -7346,7 +7399,18 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     config = cast(Config, r.config)
-    queue = governance.pending_purges(config.state_paths.root)
+    try:
+        queue = governance.pending_purges(config.state_paths.root)
+    except governance.GovernanceError as exc:
+        # B13 round 21 Y13: a state folder this account cannot search is the state file it cannot open, as
+        # Doctor's state_dir FAIL says; a purge queue refused inside a folder it can search is not (no
+        # state_dir line judges governance/), and keeps the OSError's own words (_why_not_read)
+        root = expand(config.state_paths.root)
+        if isinstance(exc.__cause__, PermissionError) and root.is_dir() and not os.access(root, os.X_OK):
+            from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
+
+            raise ManifestOpenError(str(root), errno.EACCES) from exc
+        raise
     if not queue:
         return ["- no purge is queued"]
     reasons = {reason.value for reason in governance.PurgeReason}
@@ -7921,9 +7985,8 @@ def _evidence(r: _Run) -> list[str]:
 
 
 _NOT_MEASURED_WHY_RE = re.compile(r"not measured \(([^()]*)\)")
-_RETRY_WHYS = frozenset(
-    {"time limit", "it did not finish in time", "the state file is busy: a sync holds it"}
-)
+_BUSY_WHY = "the state file is busy: a sync holds it"
+_RETRY_WHYS = frozenset({"time limit", "it did not finish in time", _BUSY_WHY})
 """The reasons a report written again when the Mac is idle can clear (:func:`_why_not_read`'s; a busy state
 file too: waiting frees it)."""
 
@@ -7943,8 +8006,18 @@ def _evidence_line(r: _Run) -> str:
     head = f'- evidence: {_plural(count, "line")} at the end of Status {say} "not measured"'
     why = r.facts.evidence_why
     retry = sum(n for w, n in why.items() if w in _RETRY_WHYS)
+    # B13 round 21 Y15, Y37: install.sh's NEXT says the Summary gives which, and why; a state file a sync held
+    # read as nothing, or as "ran out of time", beside lines that say it was busy. Each cause in words, with
+    # no bracket of its own (the advice holds one), and the advice once, after the last
+    busy = why.get(_BUSY_WHY, 0)
+    cut = retry - busy
     if retry == count:
-        return f"{head}: {_IDLE_AGAIN}"
+        them = "it" if count == 1 else "them"
+        if not cut:
+            return f"{head} because a sync held the state file: {_IDLE_AGAIN}"
+        if not busy:
+            return f"{head} because the report's time limit cut {them} off: {_IDLE_AGAIN}"
+        return f"{head}: {cut} ran out of time and {busy} found the state file held by a sync: {_IDLE_AGAIN}"
     state = sum(n for w, n in why.items() if w.startswith("the state file cannot be read"))
     shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
@@ -7965,12 +8038,17 @@ def _evidence_line(r: _Run) -> str:
         ),
         (count - retry - state - shut - config, "of another cause: see those lines"),
     ]
-    said = [(n, f"because {words}") for n, words in clauses if n]
-    if retry:
-        said.append((retry, f"ran out of time: {_IDLE_AGAIN}"))
+    said = [f"{n} because {words}" for n, words in clauses if n]
+    again = [
+        f"{n} {words}"
+        for n, words in ((cut, "ran out of time"), (busy, "found the state file held by a sync"))
+        if n
+    ]
+    if again:
+        said.append(" and ".join(again) + f": {_IDLE_AGAIN}")
     if len(said) == 1:
-        return f"{head} {said[0][1]}"
-    return f"{head}: " + "; ".join(f"{n} {words}" for n, words in said)
+        return f"{head} {said[0].split(' ', 1)[1]}"
+    return f"{head}: " + "; ".join(said)
 
 
 def _status_section(r: _Run) -> list[str]:
@@ -10079,7 +10157,12 @@ def _loop_line(r: _Run) -> str:
         got = r.call(lambda: next_fn(config), timeout=_LOOP_NEXT_S)
         lines = [_eval_by_name(ln, config) for ln in (got if isinstance(got, list) else got.lines())]
     except Exception as exc:  # costs the NEXT, never the Summary; only the type (a message may hold a path)
-        return f"- Loop: {stage}; NEXT: not read ({_why_not_read(exc)}){damaged}"
+        said = _why_not_read(exc)
+        # B13 round 21 Y15: a loop that reads a state file a sync holds waits on it past the hook's limit;
+        # when the evidence read found it held, the cut-off says so (the hook's own error is the time-out)
+        if isinstance(exc, (TimeoutError, CallTimedOutError)) and r.facts.evidence_why.get(_BUSY_WHY):
+            said += ": a sync held the state file"
+        return f"- Loop: {stage}; NEXT: not read ({said}){damaged}"
     found = next((ln for ln in lines if ln.startswith("NEXT: ")), None)
     text = loop_next_text(found) if found else "NEXT: none (the loop state cannot be read)"
     if damaged:  # right after the loop's own NEXT, which it keeps, before its waits and notes
