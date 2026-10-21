@@ -11389,6 +11389,28 @@ def test_pid_alive_reads_this_process_and_a_reaped_one() -> None:
     assert setup_report._pid_alive(0) is None and setup_report._pid_alive(1) is None
 
 
+def test_the_last_rescreen_of_a_folder_where_the_manifest_belongs_points_at_its_doctor_line(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 21 Y47: with a folder where manifest.sqlite belongs, the report's raw connect got sqlite's
+    IOERR, which fell to "see Doctor's state_dir.manifest line" while doctor printed no such line. Read from
+    the file itself: not a file, and doctor now FAILs that line."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.mkdir(mode=0o700)
+    text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    [line] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- secret scan: ")]
+    assert line.endswith(
+        "; last re-screen: not read (the state file is not a file: see Doctor's state_dir.manifest line)"
+    ), line
+    assert "state_dir.manifest" in {r.name for r in doctor.run_checks(load_config(cfg)) if not r.ok}
+
+
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
 def test_environment_says_what_the_secret_scan_can_use(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, case: str

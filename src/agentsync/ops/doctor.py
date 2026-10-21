@@ -1106,6 +1106,20 @@ def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult |
     return _bad(name, detail, fix=state_path_fix(Path(os.path.realpath(root)), path))
 
 
+def _not_a_file(mode: int) -> str | None:
+    """What an ``lstat`` mode is when it is neither a regular file nor a symlink (``a folder``, ``a socket``,
+    ``a fifo``, ``not a regular file``), else None."""
+    if stat.S_ISREG(mode) or stat.S_ISLNK(mode):
+        return None
+    if stat.S_ISDIR(mode):
+        return "a folder"
+    if stat.S_ISSOCK(mode):
+        return "a socket"
+    if stat.S_ISFIFO(mode):
+        return "a fifo"
+    return "not a regular file"
+
+
 def _them(names: Sequence[str], one: str, many: str) -> str:
     """``one`` for a single file, ``many`` for more (B13 round 20 X17: "them: manifest.sqlite (0000)")."""
     return one if len(names) == 1 else many
@@ -1178,6 +1192,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     modes: list[str] = []
     others: list[str] = []  # another account's (a sudo sync): only the whole folder's chown leaves none
     shut: list[str] = []  # this account's, with no read or no write for it (chmod 000, 0400)
+    nonfile: list[CheckResult] = []  # a folder, socket or fifo where a state file belongs
     for p in (
         sp.db,
         sp.db.with_name(sp.db.name + "-wal"),
@@ -1201,6 +1216,15 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 )
             return out  # else state_dir's owner or mode FAIL above is the answer, with its fix
         m = stat.S_IMODE(fst.st_mode)
+        kind = _not_a_file(fst.st_mode)
+        if kind is not None:
+            # B13 round 21 Y47: a folder at 0700 read "[ok] manifest.sqlite (0700): this account's alone"
+            # while every sync stopped on "cannot be opened: Is a directory", so status exited 0 with no
+            # NEXT; judged before its owner and mode, and never probed. A symlink keeps its loose-mode FAIL
+            name = "state_dir.manifest" if p == sp.db else "state_dir.files"
+            fix = MANIFEST_FIX if p == sp.db else f"the person moves {_shell_path(expand(p))} aside"
+            nonfile.append(_bad(name, f"{expand(p)} is {kind}, not the state file", fix=fix))
+            continue
         present.append(p.name)
         modes.append(f"{p.name} ({m:04o})")
         # B13 round 19 W64: a manifest this account cannot open read "are 0600" and no FAIL, while every
@@ -1211,6 +1235,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             shut.append(f"{p.name} ({m:04o})")
         elif m & 0o077:
             loose.append(f"{p.name} ({m:04o})")
+    out += nonfile
     if others:
         out.append(
             _bad(
@@ -1238,7 +1263,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         out.append(_ok("state_dir.files", f"{', '.join(present)} {_them(present, 'is', 'are')} 0600"))
     elif present:  # "are 0600" only when they are: 0700 is not (W64)
         out.append(_ok("state_dir.files", f"{', '.join(modes)}: this account's alone"))
-    else:
+    elif not nonfile:
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL

@@ -3996,6 +3996,31 @@ def test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix(
     assert raised.value.errno in (errno.EISDIR, errno.EEXIST, errno.ENOTDIR), raised.value.errno
 
 
+def test_a_folder_where_the_manifest_belongs_fails_status(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y47: manifest.sqlite as a 0700 folder made every sync exit 1 (``cannot be opened: Is a
+    directory``) while status read ``[ok] state_dir.files — manifest.sqlite (0700): this account's alone``,
+    exited 0 and printed no NEXT. state_dir.manifest FAILs it, with the person's fix, before its owner and
+    mode are read, so status exits 1 and its NEXT names that line."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.mkdir(mode=0o700)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED, out
+    (fail,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.manifest ")]
+    assert f"{db} is a folder, not the state file" in fail and fail.endswith(f"(fix: {doctor.MANIFEST_FIX})")
+    assert not any(ln.startswith("[ok  ] state_dir.files ") and "manifest.sqlite" in ln for ln in out), out
+    assert out[0].startswith("NEXT: the state_dir.manifest check failed"), out[0]
+    named = {r.name: r for r in doctor.run_checks(initialised)}
+    assert doctor.is_persons_fix(named["state_dir.manifest"].fix)
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_a_state_folder_this_account_cannot_look_inside_is_one_line_with_the_folders_fix(
     initialised: Config, capsys: pytest.CaptureFixture[str]

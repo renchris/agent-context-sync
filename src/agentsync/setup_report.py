@@ -4304,6 +4304,10 @@ def _last_rescreen(r: _Run) -> str:
     db = expand(r.config.state_paths.db)
     if not db.exists():
         return "none recorded (no manifest yet)"
+    if (
+        not db.is_file()
+    ):  # a folder where it belongs: sqlite's IOERR fell to the generic words (B13 round 21 Y47)
+        return "not read (the state file is not a file: see Doctor's state_dir.manifest line)"
     try:
         conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True, timeout=1.0)
         try:
