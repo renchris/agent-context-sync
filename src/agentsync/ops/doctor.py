@@ -314,7 +314,7 @@ def _pandoc_route(config: Config) -> tuple[Path, str]:
 def _ocr_status(config: Config) -> tuple[str, str]:
     """(state, detail) of the on-device OCR helper, from ``convert.ocr.probe``: it looks and never compiles;
     the one program it may start is a built helper's ``--version``, which it gives 5 s."""
-    from agentsync.convert import ocr  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+    from agentsync.convert import ocr  # noqa: PLC0415 - lazy, as the probes are
 
     return ocr.probe(config.convert, config.cache_dir)
 
@@ -322,7 +322,7 @@ def _ocr_status(config: Config) -> tuple[str, str]:
 def _media_status(config: Config) -> tuple[str, str]:
     """(state, detail) of the media helper, from ``convert.media.probe``: as :func:`_ocr_status`, it looks and
     never compiles; the one program it may start is a built helper's ``--version``, which it gives 5 s."""
-    from agentsync.convert import media  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+    from agentsync.convert import media  # noqa: PLC0415 - lazy, as the probes are
 
     return media.probe(config.convert, config.cache_dir)
 
@@ -330,7 +330,7 @@ def _media_status(config: Config) -> tuple[str, str]:
 def _speech_status(config: Config) -> tuple[str, str]:
     """(state, detail) of the speech engine, from ``convert.speech.probe``: it looks, never compiles and
     takes no model digest; the one program it may start is a built helper's ``--version``, given 5 s."""
-    from agentsync.convert import speech  # noqa: PLC0415 - lazy: doctor must import even if convert is broken
+    from agentsync.convert import speech  # noqa: PLC0415 - lazy, as the probes are
 
     return speech.probe(config.convert, config.cache_dir)
 
@@ -869,9 +869,9 @@ def _check_speech(config: Config) -> list[CheckResult]:
 _RETRY_CLAUSE = HELPER_RETRY_CLAUSE
 """How a helper's marker reason ends when its build ran out of time or a signal stopped it
 (``convert.speech._TIMED_OUT``, ``convert.ocr``'s): doctor's line drops it when its fix says the re-run, so
-the re-run is said once (B13 round 20 X20). The writers' own text, from ``skill``, never from ``convert``
-(doctor imports, and gives its line, even when convert is broken): a reworded clause is dropped too (B13
-round 21 Y54)."""
+the re-run is said once (B13 round 20 X20). The writers' own text, from ``skill``, so the four writers and
+doctor share one constant: a reworded clause is dropped too (B13 round 21 Y54). Doctor already imports convert
+through ``cycle``, so this is about one copy, not import safety (round 22 Z56)."""
 
 
 def _helper_detail(detail: str, fix: str | None) -> str:
@@ -893,7 +893,8 @@ def _helper_again_fix(detail: str, helper: str) -> str | None:
     named as :func:`_again_fix` names it, :data:`AGAIN_UNDER_INSTALL_SH` (B13 round 19 W19, W48)."""
     try:
         words, minutes = helper_timed_out_words(helper)
-    except Exception:  # lazy: doctor must import, and give its line, even if convert is broken
+    except Exception:  # a runtime error in convert's names or attributes (a renamed constant), never a
+        # convert that fails to import: that already fails doctor's import through cycle (B13 round 22 Z56)
         return None
     if not detail.startswith(words):
         return None

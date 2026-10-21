@@ -26999,6 +26999,9 @@ builds its marker through `ocr._build` with the real `_compile` (`_tool` stubbed
 `_run_build` raising `TimeoutExpired`), not a copy of the words, so it needs no swiftc. Test:
 `test_ops_doctor.py::test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`
 (the verifier's rewording of ocr's clause turns it red).
+Amended 2026-10-21, §16.162 Z56: "so doctor still imports and gives its line when convert is broken" is not true:
+doctor imports `agentsync.cycle`, which imports convert, so a convert that cannot import stops doctor's import too.
+doctor takes the clause from `skill` so there is one copy, not for import safety.
 
 **Exit 1 for a built helper that fails its probe dates from each helper's first build (Y55;
 `agentsync.convert.ocr`; corrects §16.150 X57).** §16.150 said `_entry` "also exits 1 when the probe after a good
@@ -27203,6 +27206,18 @@ file deleted upstream, current. Test:
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again` (an unreadable
 stub and a label refusal: the settled note once, neither `now current` nor `may show again`, and two more syncs
 with no note and no converter call), and Y28's and W18's tests unchanged.
+
+**doctor's words claim no import safety from convert (Z56; `agentsync.ops.doctor`; dated line at §16.156
+Y54).** `_RETRY_CLAUSE`'s docstring and §16.156 Y54 said doctor imports the clause from `skill`, "never from
+`convert`", so doctor still imports and gives its line when convert is broken; the comments on the lazy imports
+in `_ocr_status`, `_media_status` and `_speech_status` and on `_helper_again_fix`'s `except` said the same. doctor imports `agentsync.cycle`
+at module level, which imports `convert` and its `ocr`, `media` and `speech`, so a convert that cannot import stops
+doctor's import. The docstring now says the one constant is about one copy, not import safety; the three imports
+read "lazy, as the probes are"; the `except` catches a runtime error in convert's names or attributes, never a
+failed import. Not the other way, cycle's convert imports made lazy: a large change to `cycle.py` for a wording
+finding. Test: `test_ops_doctor.py::test_doctor_loads_convert_through_cycle_and_its_words_say_so` (with
+`agentsync.convert.ocr`, `media` or `speech` unimportable, `import agentsync.ops.doctor` raises ImportError, and
+no word in doctor says it imports when convert is broken).
 
 **The counting retry_settled_failures is removed (Z50, Z57; `agentsync.manifest`, `agentsync.cycle`,
 `agentsync.model`; dated lines at §16.28 W18, §16.48 V74, §16.132 U3, §16.138 V65, §16.150 X53 and §16.155
