@@ -588,7 +588,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (29, "633c0bc4d07e73f004532f54f1dfd827f0561652656d4f270f58291fe33582b8")
+PROMPT = (30, "11677bc0fe6ab44972692684d4ea471d538195076b917c80be85a8d30c6e36dd")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3069,6 +3069,19 @@ sign-in's ``agentsync status`` before the sign-in, or ``agentsync install-agent`
 Lane B added a state file that cannot be read (its T12). Since v29 a state file that is damaged or another
 account's (B13 round 20 X26): a file of this account's own that it cannot open is a chmod the agent runs, the
 fix doctor's state_dir.files line names, while "cannot be read" read as covering it."""
+
+STATE_CHMOD_IS_YOURS = (
+    "A chmod 600 or chmod 700 of agentsync's own state folder or a file in it is yours too, once, when the"
+    " NEXT: line or a [FAIL] state_dir line names it as the fix: run it as written, then the same install.sh"
+    " command again; if it stops the same way, show me, log it and go to step 3's report. A sudo or a chown"
+    " stays mine."
+)
+"""Step 2's words, since v30, for a state folder or file of this account's own that it cannot open (B13 round
+21 Y4, Y24, Y59; the lead's ownership rule): step 1 said that chmod is the agent's once step 2 stops on it,
+but step 2 let the agent follow a failed run's NEXT only when it was an install.sh or agentsync command or a
+click, and its [FAIL] rule only re-ran install.sh, so a literal reading logged "failed at step 2" and handed
+the person the chmod. The grant is tied to the NEXT: or [FAIL] line's own words, so a later paste needs no
+memory of step 1, and it is one chmod, once; sudo and chown stay the person's."""
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
@@ -6159,17 +6172,30 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
     for _, said in words:
         assert f"`{said.replace('$CONFIG', '<config>')}`" in section, said
     assert "Since v29 that word gives the same `agentsync's state file, which cannot be read`" in section
-    # B13 round 20 X9, X29: a state file this account cannot open has its own tails, by owner
+    # B13 round 20 X9, X29: a state file this account cannot open has its own tails, by owner; round 21 Y24,
+    # Y57: by the owner doctor.state_path_fix gives, and the -wal and -shm by the step that may stop on them
     opened = re.findall(
-        r'^\t\tcase ",\$cerr," in \*",(state-\w+),"\*\) stail="(; [^"]*)" ;; esac$', script, re.M
+        r'^\t\tcase ",\$cerr," in \*",(state-[\w-]+),"\*\) stail="(; [^"]*)" ;; esac$', script, re.M
     )
-    assert [w for w, _ in opened] == ["state-owner", "state-access"]
+    assert [w for w, _ in opened] == [
+        "state-owner",
+        "state-access",
+        "state-refused",
+        "state-side-owner",
+        "state-side-access",
+        "state-side-refused",
+    ]
     for word, said in opened:
         assert f"`{word}`, `{said}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
-        "`state`, `remote`, `state-table`, `state-access` and `state-owner`" in section
+        "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
+        "`state-side-access`, `state-side-owner` and `state-side-refused`" in section
     )
+    words_read = (
+        "state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused)$"
+    )
+    assert words_read in script, "the list reads every word config_errors writes"
     [row] = [
         ln for ln in _feedback_page().splitlines() if ln.startswith("| `~/agent-context/setup/install.log`")
     ]
@@ -7531,6 +7557,32 @@ def test_a_first_sync_refusal_is_no_config_that_does_not_load() -> None:
 
     source = Path(setup_report.__file__).read_text(encoding="utf-8")
     assert '"- loads: yes, but a sync refuses it: ' in source and "- loads: yes, but step 2's sync" in source
+
+
+def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
+    """B13 round 21 Y4, Y24, Y59 (rehearsals A, B and E, probes PM, PMr, 51-55): step 1's tail and prompt
+    called the chmod of this account's own state file the agent's once step 2 stops on it, while step 2's
+    NEXT was "fix the error above" and step 2 allowed only install.sh or agentsync commands. Step 2 now grants
+    that chmod, once, when its NEXT: line or a [FAIL] state_dir line names it, and keeps sudo and chown the
+    person's; install.sh's NEXT names it (doctor.state_path_fix's chmod 600 or chmod 700, nothing else), and
+    step 1's tail says when (tests/test_install_oneshot.py runs each)."""
+    step2 = " ".join(_prompt_steps()[2].split())
+    assert step2.count(STATE_CHMOD_IS_YOURS) == 1
+    assert f"{FAIL_IS_MINE} {STATE_CHMOD_IS_YOURS} " in step2, "right after the [FAIL] rule it widens"
+    assert (
+        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me or that chmod (but after"
+        in step2
+    )
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    body = script.split("\nstate_open_fix() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'fix.startswith(("chmod 600 ", "chmod 700 "))' in body and "state_path_fix(root" in body
+    assert "the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS" in script
+    assert '"chmod 600 "* | "chmod 700 "*)' in script
+    assert "the chmod that fixes it is the agent's to run, once, when step 2's NEXT names it" in script
+    from agentsync.ops import doctor  # noqa: PLC0415
+
+    fix = inspect.getsource(doctor.state_path_fix) + inspect.getsource(doctor.state_folder_fix)
+    assert 'f"chmod 600 {_shell_path(at)}"' in fix and 'f"chmod 700 {_shell_path(' in fix
 
 
 def test_readme_step2_does_not_log_a_failed_run_whose_next_it_follows() -> None:

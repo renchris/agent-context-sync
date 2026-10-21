@@ -1,4 +1,4 @@
-"""scripts/install.sh as the README one-prompt (setup prompt v29) runs it: ``--version``, ``--log-start``,
+"""scripts/install.sh as the README one-prompt (setup prompt v30) runs it: ``--version``, ``--log-start``,
 ``--list-folders``, then one command that installs, syncs once, installs the LaunchAgents, starts the poll job
 and waits for its first run to pass the macOS access check or exit 0 (with a progress line at least every
 15 s), then writes the setup report at every exit; ``--log`` and ``--report-only`` keep the friction log.
@@ -425,11 +425,11 @@ def rerun(wheel: Path, folder: Path | None = None) -> str:
 
 def test_version_prints_the_prompt_compat_line_last() -> None:
     """README step 1: "If the --version inside step 1's one command does not end with
-    "setup-prompt-compat 29", ... stop"."""
+    "setup-prompt-compat 30", ... stop"."""
     cp = subprocess.run([BASH32, str(INSTALL_SH), "--version"], capture_output=True, text=True, check=False)
     assert cp.returncode == 0, cp.stderr
     lines = cp.stdout.splitlines()
-    assert lines[-1] == "setup-prompt-compat 29" == f"setup-prompt-compat {COMPAT}"
+    assert lines[-1] == "setup-prompt-compat 30" == f"setup-prompt-compat {COMPAT}"
     assert len(lines) == 2 and re.fullmatch(
         r"source commit: ([0-9a-f]{12}"
         r"( dirty [0-9a-f]{12} \(local changes in this checkout; setup prompt step 1 keeps them on a local"
@@ -7016,22 +7016,71 @@ def _tool_python_as_another_account(env: dict[str, str]) -> Path:
     )
 
 
+def _acl_deny(path: Path) -> None:
+    """An ACL entry that refuses this account read and write on ``path``, whose mode allows both (macOS
+    ``chmod +a``); skips where the file system has no ACLs. ``chmod -N`` takes it off."""
+    me = pwd.getpwuid(os.getuid()).pw_name
+    cp = subprocess.run(
+        ["/bin/chmod", "+a", f"user:{me} deny read,write", str(path)], capture_output=True, check=False
+    )
+    if cp.returncode != 0 or os.access(path, os.R_OK | os.W_OK):
+        pytest.skip("no ACL that refuses the owner here")
+
+
 STATE_OPEN_TAIL = {
     "state-access": (
-        "; step 2 stops at its config step on agentsync's state file, which this account cannot open (a "
-        "mode, not damage): the chmod that fixes it is the agent's to run, and ~/.local/bin/agentsync status "
-        "prints it on its state_dir lines"
+        "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
+        "cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step "
+        "2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir lines"
     ),
     "state-owner": (
-        "; step 2 stops at its config step on agentsync's state file, which another account owns, so this "
-        "one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no "
-        "sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines"
+        "; step 2 stops at its config step on agentsync's state folder or a file in it, which another "
+        "account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; "
+        "the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines"
+    ),
+    "state-refused": (
+        "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
+        "is refused though its mode allows it (an ACL, or a folder above it this account cannot search; not "
+        "damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir "
+        "lines"
+    ),
+    "state-side-owner": (
+        "; step 2's status may fail on the -wal or -shm of agentsync's state file, which another account "
+        "owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and "
+        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+    ),
+    "state-side-access": (
+        "; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account cannot "
+        "write (a mode, not damage): the chmod that fixes it is the agent's to run, once, and "
+        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+    ),
+    "state-side-refused": (
+        "; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account is "
+        "refused though its mode allows it (an ACL; not damage): fixing that is the person's, and "
+        "~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
 }
-"""Step 1's tails for a state file this account cannot open (B13 round 20 X9, X29)."""
+"""Step 1's tails for a state folder or file this account cannot open (B13 round 20 X9, X29), by the owner of
+its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: init opens past a -wal or a
+-shm); the noun covers the folder (Y14)."""
 
 
-@pytest.mark.parametrize("state", ["PM", "PM-wal", "PM-folder", "PM-owner", "PM-fixed"])
+@pytest.mark.parametrize(
+    "state",
+    [
+        "PM",
+        "PM-wal",
+        "PM-shm",
+        "PM-folder",
+        "PM-owner",
+        "PM-parent",
+        "PM-acl",
+        "PM-shm-acl",
+        "PM-older",
+        "PM-folder-older",
+        "PM-fixed",
+    ],
+)
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
     env: dict[str, str], state: str
 ) -> None:
@@ -7040,30 +7089,57 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     step 2 then stopped at its config step ("cannot be opened: Permission denied"). Step 1 now reads the
     owner and modes of the state folder, the manifest, its -wal and its -shm, as doctor's state_dir lines
     do, and names that stop: this account's own file is a chmod the agent runs (X26), another account's a
-    sudo chown, the person's. Neither is worded as damage. Put back at 0600, the clause is gone."""
+    sudo chown, the person's. Neither is worded as damage. Put back at 0600, the clause is gone.
+
+    Round 21: the tail said "agentsync's state file" for a folder at 0000, whose fix is a chmod 700 of the
+    folder (Y14); it said step 2 stops at its config step for a -wal or -shm, which init opens past, so only
+    step 2's status or sync may stop on it (Y57); and a state folder above which a folder refuses a search
+    (PM-parent), or one an ACL refuses though its mode allows it (PM-acl, PM-shm-acl), got the agent's
+    chmod, which fixes nothing: it is the person's (Y24's ownership rule). An installed agentsync without
+    state_path_fix (an older build) judges by the mode."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
-    wal = db.with_name(db.name + "-wal")
-    word = "state-owner" if state == "PM-owner" else "state-access"
+    wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
+    word = {
+        "PM-owner": "state-owner",
+        "PM-wal": "state-side-access",
+        "PM-shm": "state-side-access",
+        "PM-parent": "state-refused",
+        "PM-acl": "state-refused",
+        "PM-shm-acl": "state-side-refused",
+    }.get(state, "state-access")
     try:
         if state == "PM-owner":
             _tool_python_as_another_account(env)
+        elif state.endswith("-older"):
+            _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
         else:
             _tool_python(env)
-        if state in ("PM", "PM-fixed"):
+        if state in ("PM", "PM-fixed", "PM-older"):
             db.chmod(0)
-        elif state == "PM-wal":
-            wal.write_bytes(b"")
-            wal.chmod(0o400)
-        elif state == "PM-folder":
+        elif state in ("PM-wal", "PM-shm"):
+            side = wal if state == "PM-wal" else shm
+            side.write_bytes(b"")
+            side.chmod(0o400)
+        elif state in ("PM-folder", "PM-folder-older"):
             db.parent.chmod(0)
+        elif state == "PM-parent":
+            db.parent.parent.chmod(0)
+        elif state == "PM-acl":
+            _acl_deny(db)
+        elif state == "PM-shm-acl":
+            shm.write_bytes(b"")
+            shm.chmod(0o600)
+            _acl_deny(shm)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
     finally:
+        db.parent.parent.chmod(0o700)
         db.parent.chmod(0o700)
-        for f in (db, wal):
+        for f in (db, wal, shm):
             if f.exists():
+                subprocess.run(["/bin/chmod", "-N", str(f)], capture_output=True, check=False)
                 f.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
@@ -7829,8 +7905,9 @@ def test_a_state_file_another_account_owns_is_the_persons_to_fix(
     ("cannot be opened: Permission denied"), and config_failed had no NEXT for it, so fail's "fix the error
     above" handed the agent a sudo chown when another account owned it, though the agent runs no sudo. That
     one is the person's now, keyed on the installed agentsync finding the owner, never on exit 1 or the
-    error's words. This account's own file keeps "fix the error above": its fix is a chmod the agent runs,
-    and the damaged-file NEXT would put an intact manifest under a fix that moves it aside (X26)."""
+    error's words. A file of this account's own that it can open keeps "fix the error above" (exit 1 is any
+    failure); one it cannot open gets the chmod (round 21 Y24, in the test below). Never the damaged-file
+    NEXT, which would put an intact manifest under a fix that moves it aside (X26)."""
     if owner == "another account":
         _tool_python_as_another_account(env)
     else:
@@ -7855,12 +7932,103 @@ def test_a_state_file_another_account_owns_is_the_persons_to_fix(
     ), last_line(cp)
 
 
+STATE_CHMOD_NEXT = (
+    "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; "
+    "the error above names it): the fix is the agent's: run {fix} once, then re-run: {rerun}; if it stops "
+    "the same way again, show the person the error and go on to the report"
+)
+"""Step 2's NEXT for a state folder or manifest of this account's own that it cannot open, with the chmod
+doctor.state_path_fix gives (B13 round 21 Y24, Y10, Y4)."""
+
+
+@pytest.mark.parametrize(
+    "state", ["manifest", "folder", "configured", "sides", "parent", "acl", "older", "readable"]
+)
+def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
+    env: dict[str, str], wheel: Path, state: str
+) -> None:
+    """B13 round 21 Y24, Y10, Y4 (probes PM, 53): with this account's own manifest at 0000, init exits 1
+    and step 2's NEXT was fail's "fix the error above, then re-run", which names no command, while the
+    prompt lets the agent follow a NEXT only when it is an install.sh or agentsync command: a literal agent
+    logged "failed at step 2" and handed the person the chmod. The NEXT now names the chmod
+    doctor.state_path_fix gives, the one status prints: chmod 600 for the manifest, chmod 700 for a folder at
+    0000 (a chmod 600 of the file leaves it failing, round 20 X73), at the configured state folder's path.
+    With the manifest, the -wal and the -shm its mode refuses, as state_dir.files names them (a chmod of the
+    manifest alone left status failing on them, the "once" spent). When no chmod fixes it (a folder above it
+    refuses a search, an ACL refuses a file its mode allows) it is the person's; an installed agentsync
+    without state_path_fix keeps "fix the error above", as does a state this account can open."""
+    if state == "older":
+        _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
+    else:
+        _tool_python(env)
+    home = Path(env["HOME"])
+    cfg = _write_config(env, _inbox(env))
+    if state == "configured":
+        cfg.write_text(
+            default_config_text() + f'[agentsync]\nstate_dir = "{home / "agent state"}"\n' + _inbox(env),
+            encoding="utf-8",
+        )
+    db = _state_db(env)
+    db.parent.mkdir(parents=True)
+    db.write_bytes(b"")
+    db.chmod(0o600)
+    wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
+    shut = {"folder": db.parent, "parent": db.parent.parent}.get(state, db)
+    try:
+        if state == "acl":
+            _acl_deny(db)
+        elif state == "sides":
+            for f in (db, wal, shm):
+                f.write_bytes(b"")
+                f.chmod(0o400)
+        elif state != "readable":
+            shut.chmod(0)
+        cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(db)], capture_output=True, check=False)
+        shut.chmod(0o600 if shut == db else 0o700)
+        for f in (wal, shm):
+            if f.exists():
+                f.chmod(0o600)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert one_next(cp)
+    rerun = f"{INSTALL_SH} {wheel}"
+    if state in ("older", "readable"):
+        assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
+        return
+    if state in ("parent", "acl"):
+        assert last_line(cp).startswith(
+            "NEXT: this account is refused agentsync's state folder or a file in it though its mode allows "
+            "it (an ACL, or a folder above it this account cannot search; the error above names it, and "
+            "~/.local/bin/agentsync status prints the fix on its state_dir lines): fixing that is the "
+            "person's, not a step for the agent, so show them the error and go on to the report; once it is "
+            f"fixed, the next run is: {rerun}"
+        ), last_line(cp)
+        assert "chmod" not in last_line(cp), last_line(cp)
+        return
+    fix = {
+        "manifest": "chmod 600 ~/'Library/Application Support/agentsync/manifest.sqlite'",
+        "folder": "chmod 700 ~/'Library/Application Support/agentsync'",
+        "configured": "chmod 600 ~/'agent state/manifest.sqlite'",
+        "sides": " ".join(
+            f"~/'Library/Application Support/agentsync/manifest.sqlite{end}'" for end in ("", "-wal", "-shm")
+        ).join(("chmod 600 ", "")),
+    }[state]
+    assert last_line(cp).startswith(STATE_CHMOD_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+    assert "sudo" not in last_line(cp) and "chown" not in last_line(cp), last_line(cp)
+
+
+@pytest.mark.parametrize("shut", ["manifest", "folder"])
 def test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says(
-    real_env: dict[str, str], wheel: Path
+    real_env: dict[str, str], wheel: Path, shut: str
 ) -> None:
     """B13 round 20 X9, X26, X29 (probes PM, 51, 53), with the real agentsync: a manifest at mode 0000.
     Step 1 says step 2 stops at its config step on it, a chmod the agent runs; step 2 stops there with the
-    error's own fix and fail's "fix the error above"; after the chmod, step 2 passes."""
+    error's own fix. Round 21 Y24, Y10, Y59: its NEXT was fail's "fix the error above", no command the
+    prompt let the agent follow; it names the chmod now, the one status prints on its state_dir line, and
+    that command, run as written, lets step 2 pass. A state folder at 0000 (probe SF) gets chmod 700 of the
+    folder, in both, and step 1 says "state folder" (Y14)."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -7868,20 +8036,105 @@ def test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says(
     first = install_sh(env, str(wheel), "--source-local", str(folder))
     assert first.returncode == 0, first.stdout + first.stderr
     db = _state_db(env)
-    db.chmod(0)
+    target = db if shut == "manifest" else db.parent
+    fix = (
+        "chmod 600 ~/'Library/Application Support/agentsync/manifest.sqlite'"
+        if shut == "manifest"
+        else "chmod 700 ~/'Library/Application Support/agentsync'"
+    )
+    agentsync = [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync")]
+    target.chmod(0)
     try:
         listed = install_sh(env, "--list-folders")
         assert listed.returncode == 0, listed.stdout + listed.stderr
         assert last_line(listed).endswith(STATE_OPEN_TAIL["state-access"]), last_line(listed)
         cp = install_sh(env, str(wheel))
+        status = subprocess.run(
+            [*agentsync, "status"], env=env, capture_output=True, text=True, timeout=120, check=False
+        )
     finally:
-        db.chmod(0o600)
+        target.chmod(0o600 if shut == "manifest" else 0o700)
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert ("config", "failed", "1", "") in steps(install_log(env))
     assert "cannot be opened: Permission denied" in cp.stderr, cp.stderr
-    assert last_line(cp).startswith("NEXT: fix the error above, then re-run: "), last_line(cp)
+    assert last_line(cp).startswith(STATE_CHMOD_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    # Y59: the chmod the prompt sends the agent to is the one status's state_dir [FAIL] line names
+    assert status.returncode == 1 and f"(fix: {fix})" in status.stdout, status.stdout + status.stderr
+    target.chmod(0)
+    subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
+    assert (target.stat().st_mode & 0o777) == (0o600 if shut == "manifest" else 0o700)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
+
+
+@pytest.mark.parametrize("side", ["empty-wal", "shm-in-use", "wal-with-frames"])
+def test_a_side_file_this_account_cannot_write_is_no_config_step_stop(
+    real_env: dict[str, str], wheel: Path, side: str
+) -> None:
+    """B13 round 21 Y57 (probes r21wal, r21v), with the real agentsync: step 1 said step 2 stops at its
+    config step for a -wal or -shm this account cannot write, but init opens past it. An empty -wal at 0400
+    is no stop at all (the list's own read of the manifest leaves none this account cannot write, and step 2
+    passes); a -shm in use, or a -wal that holds committed frames, at 0400
+    survives init, and step 2's status fails on state_dir.files with its chmod 600. Step 1's tail names
+    status and says "may" (dropping every -wal would bring back round 20 X9's "(none is needed)" over a run
+    that then stops)."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
+    if side == "empty-wal":
+        wal.write_bytes(b"")
+        shut = [wal]
+    else:
+        # a header write left in the -wal by a process that ended with no checkpoint, as a killed sync
+        # leaves one (application_id: a header field agentsync never reads)
+        subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                "import os, sqlite3, sys\n"
+                "c = sqlite3.connect(sys.argv[1], isolation_level=None)\n"
+                "c.execute('PRAGMA journal_mode=WAL')\n"
+                "c.execute('PRAGMA wal_autocheckpoint=0')\n"
+                "c.execute('PRAGMA application_id=1')\n"
+                "os._exit(0)\n",
+                str(db),
+            ],
+            check=True,
+        )
+        assert wal.stat().st_size > 0 and shm.stat().st_size > 0
+        shut = [shm] if side == "shm-in-use" else [wal, shm]
+    for f in shut:
+        f.chmod(0o400)
+    try:
+        listed = install_sh(env, "--list-folders")
+        cp = install_sh(env, str(wheel))
+    finally:
+        for f in (wal, shm):
+            if f.exists():
+                f.chmod(0o600)
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    if side == "empty-wal":
+        # the list's own read of the manifest opens past it and leaves no -wal this account cannot write, so
+        # there is nothing to say: the NEXT is the plain one, and step 2 passes
+        assert last_line(listed).endswith("(none is needed)"), last_line(listed)
+    else:
+        assert last_line(listed).endswith(STATE_OPEN_TAIL["state-side-access"]), last_line(listed)
+    assert "stops at its config step" not in last_line(listed), last_line(listed)
+    assert ("config", "failed", "1", "") not in steps(install_log(env)), steps(install_log(env))
+    if side == "empty-wal":
+        assert cp.returncode == 0, cp.stdout + cp.stderr
+        return
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    failed = [ln for ln in cp.stdout.splitlines() if ln.startswith("[FAIL] state_dir.files")]
+    assert failed and "(fix: chmod 600 " in failed[0], cp.stdout
 
 
 def test_no_next_names_the_percent_q_args() -> None:

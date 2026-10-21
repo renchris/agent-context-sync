@@ -26003,6 +26003,12 @@ person's NEXT; this account's own keeps `fix the error above`) and, with the rea
 `test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says` (step 1's clause, step 2's exit 1 at its
 config step with `cannot be opened: Permission denied`, and a pass after the chmod).
 
+Amended 2026-10-21, §16.154 Y24, Y10, Y4, Y14, Y57: this account's own state folder or manifest no longer keeps
+`fix the error above`: step 2's NEXT names the chmod `doctor.state_path_fix` gives, the agent's once, or the person's
+NEXT when that fix is no chmod; step 1's tails say "state folder or a file in it", and "no build can open the file
+either" holds for the folder and the manifest only: init opens past a `-wal` or `-shm`, whose own words
+(`state-side-owner`, `state-side-access`) name step 2's status, not its config step.
+
 **Setup prompt v29** (X3, X24, X26, and X9 and X29's step 1 words; amends §16.140 W3). Version 29 everywhere the
 bump list names it (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, the form's placeholder, the
 version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback K53). No other lane
@@ -26452,7 +26458,69 @@ the Summary and the friction log) and `test_deploy_pack.py::test_prompt_routes_c
 
 ### 16.154 Round 21: setup prompt v30 and the agent's chmod of its own state (2026-10-20, wave B13 round 21 lane P)
 
-Reserved for round 21 lane P of B13.
+The B13 round 21 items of lane P (specs `round21/items/Y<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise), under the lead's ownership rule (a state file or folder this account owns but
+cannot open because of its own mode is the agent's chmod, once, then the re-run; another account's, an ACL deny or an
+unsearchable parent is the person's): Y4, Y10, Y14, Y24, Y57, Y59. Y4, Y10, Y24 and Y59 are one defect, built once.
+
+**Step 2's NEXT names the chmod of this account's own state** (Y24, Y10, Y4; amends §16.148 X26). For a manifest or
+state folder of this account's own that it cannot open, init exits 1 and `config_failed` left fail's `fix the error
+above, then re-run`, which names no command, while the prompt let the agent follow a failed run's NEXT only when it
+was an install.sh or agentsync command or a click: a literal agent logged `failed at step 2` (rehearsals A, B, E,
+probes PM, PMr, 53). `state_open_fix`, a read by the agentsync step 2 installed (`-I`, a 10 s timeout), finds the
+first of the state folder and the manifest this account is refused and, when this account owns it and its own mode
+is why, prints `doctor.state_path_fix`'s fix for it when that starts `chmod 600 ` or `chmod 700 ` (the fix status
+prints on its `state_dir` lines, at the configured state folder's path, `chmod 700 <folder>` for a folder at 0000,
+since a file's chmod leaves it failing, round 20 X73), with the `-wal` and `-shm` whose mode refuses this account
+added to a manifest's `chmod 600`, as `state_dir.files` names them all (the lane's review: a chmod of the manifest alone
+spent the agent's "once" and left status failing on them); else `refused`: a folder above it that refuses a search,
+or an ACL or sandbox refusing a file whose mode allows it (the review measured `state_path_fix` giving `chmod 600`
+for an ACL deny on a 0600 manifest, a chmod that changes nothing). `config_failed` then sets, for exit 1 when no other owner was found first: `agentsync's state folder or a
+file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the
+agent's: run <that chmod> once, then re-run: <install.sh ...>; if it stops the same way again, show the person the
+error and go on to the report`, or, for `refused`, the person's NEXT (`this account is refused agentsync's state
+folder or a file in it though its mode allows it (an ACL, or a folder above it this account cannot search; ...):
+fixing that is the person's, not a step for the agent, ...`). An installed build without `state_path_fix`, or a read
+that cannot say, keeps `fix the error above`; never the exit-65 NEXT. Keyed on the probe, never on the error's words.
+Y10's corrected fix (agentsync restores u+rw itself in `_ensure_setup`) is not built: the ownership rule gives the
+chmod to the agent, and Y59's verifier showed a mode change by the installer or by agentsync widens a mode the person
+set, against install.sh's rule that no mode is widened; its stop is the same NEXT. Y24's first part, the error line
+itself naming `state_path_fix`'s command on the `ManifestOpenError` path, is cli.py's handler, lane B's Y31 (§16.155).
+
+**Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
+amends §16.148 X9). `config_errors` named a state folder at 0000 "agentsync's state file", whose fix is a chmod 700 of
+the folder (Y14); it gave a 0400 `-wal` or `-shm` the config step's tail, but init opens past both: a `-shm` in use
+or a `-wal` that holds committed frames survives init and fails step 2's status on `state_dir.files` (and the sync),
+while an empty one leaves no stop once the manifest is opened (measured: a writable one stands in its place; Y57; dropping every `-wal` would bring back X9's `(none is
+needed)` over a run that stops, Y57's verifier); and it called the agent's chmod the fix of a state folder above which
+a folder refuses a search, which no chmod fixes (Y24). The folder and the manifest keep the config step's tails, with
+the noun `agentsync's state folder or a file in it`: `state-owner` (another account's), `state-access` (this
+account's own whose `state_path_fix` is a chmod: `the chmod that fixes it is the agent's to run, once, when step 2's
+NEXT names it`) and `state-refused` (no chmod fixes it: a folder above it that refuses a search, a mode that already
+allows it, or a non-chmod `state_path_fix`: the person's). The `-wal` and the `-shm` log `state-side-owner`,
+`state-side-access` or `state-side-refused` (an ACL), `; step 2's status may fail on the -wal or -shm of agentsync's
+state file, ...`, naming `state_dir.files`. An installed agentsync without `state_path_fix` judges by the mode alone. Words and tails in setup-feedback's "A Mac that is already
+set up". Tests: `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open` (PM, PM-wal, PM-shm,
+PM-folder, PM-owner, PM-parent, PM-acl, PM-shm-acl, PM-older, PM-folder-older, PM-fixed; the ACL cases skip where
+`chmod +a` cannot refuse the owner), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (a 0000
+manifest, a 0000 folder, a configured state folder, a 0400 manifest with its 0400 `-wal` and `-shm`, an unsearchable
+parent, an ACL on a 0600 manifest, an older build and a readable state) and, with the real agentsync,
+`test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says` (manifest and folder: step 2's NEXT names the
+chmod status prints, the chmod run as written, then a pass) and `test_a_side_file_this_account_cannot_write_is_no_config_step_stop`
+(an empty `-wal`, a `-shm` in use and a `-wal` with committed frames: init passes each time; status fails on the last
+two with its chmod 600).
+
+**Setup prompt v30** (Y4, Y24, Y59). Version 30 everywhere the bump list names it (README block, `PROMPT`,
+`SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, the form's placeholder, the version pins in tests/test_install_oneshot.py and
+tests/test_setup_report.py, setup-feedback K54). Step 2, right after its [FAIL] rule: `A chmod 600 or chmod 700 of
+agentsync's own state folder or a file in it is yours too, once, when the NEXT: line or a [FAIL] state_dir line names
+it as the fix: run it as written, then the same install.sh command again; if it stops the same way, show me, log it
+and go to step 3's report. A sudo or a chown stays mine.` Its non-zero rule now reads `do what NEXT: says only if it is
+an install.sh or agentsync command, a click for me or that chmod`. Tied to the NEXT: or [FAIL] line's own words, so a
+later paste needs no memory of step 1 (Y4's verifier); the [FAIL] form covers a side file's `state_dir.files` stop at
+step 2's status, whose NEXT stays `fix the [FAIL] lines above` (Y59). Step 1's sentence (`mine, or the agent's: then it
+is yours once step 2 stops on it`) is unchanged: step 2 now says when. Tests:
+`test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_gives_the_agent_the_chmod_of_its_own_state`.
 
 ### 16.155 Round 21: a shut state folder, state_path_fix in every error and the lock's words (2026-10-20, wave B13 round 21 lane B)
 

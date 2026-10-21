@@ -13,7 +13,7 @@ Three sources feed one file, `~/agent-context/setup-report.md`:
 |---|---|---|
 | `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config, or, when a config is there and could not be read (since 2026-10-13), `synced=unreadable marks=<why>`, the why one fixed word (`no-tool`, `timeout`, `older:<name>`, `failed` or `failed:<ErrorClass>`), and the list's other fields (`gone=`, `missing=`, `apps=`, `vanished=`, `config_err=`) are in [A Mac that is already set up](#a-mac-that-is-already-set-up); `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether git's config sets a proxy and how many URL rewrites it has (a count, never a host), whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log entries (repeats in a row shown once), read from the last 64 KiB of each log file |
-| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v29, <agent>'` (`Attempt: <UTC time>`, `Prompt: v29`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log), at any gap (the prefix is written only before `--log-start`), or the attempt has no header but stated words of its own and the line is in the strict `<time> \| step 1 \| error \|` form, at any gap (since round 14, Q28), end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
+| `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v30, <agent>'` (`Attempt: <UTC time>`, `Prompt: v30`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log), at any gap (the prefix is written only before `--log-start`), or the attempt has no header but stated words of its own and the line is in the strict `<time> \| step 1 \| error \|` form, at any gap (since round 14, Q28), end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
 
 `--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one host a line, in lower case and, where
 it differs, as written: the proxy, git proxy and URL rewrite hosts, and the host of each git remote's URL (since
@@ -244,7 +244,7 @@ form's option below, the same words where the form has them and otherwise the op
 |---|---|---|
 | `outcome` | dropdown | the computed outcome, exactly one option: `Fully one command`, `Worked with help`, or `Failed at step <n> (<step title>)` with the README step's title (`preflight`, `install and start`, `IT request and report`, `sync loop and report`, `finish`); setup prompt v7 and later name step 3 `sync loop and report`, v6 `IT request and report`, so a count of step 3 failures adds both |
 | `run_type` | dropdown | the computed run type: `Real Mac`, `Sandbox` or `Sandbox with simulated launchd` |
-| `prompt_version` | input | the prompt version, `v29` (an attempt an older copy started reports that copy's: `v28`, `v27`, `v26`, `v25`, `v24`, `v23`, `v22`, `v21`, `v20`, `v19`, `v18`, `v17`, `v16`, `v15`, `v14`, `v13`, `v12`, `v11`, `v10`, `v9`, `v8`, `v7`, `v6`, `v5`) |
+| `prompt_version` | input | the prompt version, `v30` (an attempt an older copy started reports that copy's: `v29`, `v28`, `v27`, `v26`, `v25`, `v24`, `v23`, `v22`, `v21`, `v20`, `v19`, `v18`, `v17`, `v16`, `v15`, `v14`, `v13`, `v12`, `v11`, `v10`, `v9`, `v8`, `v7`, `v6`, `v5`) |
 | `agent` | input | the attempt header's `Agent:` value (for an attempt with no header, the agent its step 1 error line names, below) |
 | `loop_stage` | input | the stage on the Summary's `Loop:` line (below); empty for a report from before that line |
 | `report` | textarea | not in the link (too long for a URL): pasted |
@@ -376,10 +376,10 @@ prompt's version, and otherwise they log nothing and write no report), so the re
 lists it, and the lines after it, as an attempt of its own with "no Attempt: line, since it was logged after the
 previous attempt finished". The unbroken run of step 1 lines just before it, at or after the closing line, moves with it
 at any gap: the finished session runs nothing after its report. When it is the last attempt it is the one the Summary judges: "failed at step 1". Since
-prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v29, <agent>: ` now), the words step 1 gives `--log-start`, so the
+prompt v12 that line's text starts with `prompt vN, <agent>: ` (`prompt v30, <agent>: ` now), the words step 1 gives `--log-start`, so the
 Summary's `prompt:` and `agent:`, the attempt's line in the friction log section and the issue link's
 `prompt_version` and `agent` name them (the version marked `(from the step 1 error line)`; in the attempt's line
-`prompt v29, from the step 1 error line`), and the item shows
+`prompt v30, from the step 1 error line`), and the item shows
 the rest of the line. Without those words, as in a v11 log, they say `not stated`. Those words also split an
 attempt that has no end line. Since round 5 (F23) a step 1 `error` that states them always starts its own attempt
 when the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in
@@ -419,7 +419,7 @@ and 2 to 1, 3 to 2, 4 and 5 to 3, and 6 to 4. A `Prompt: v7` attempt has three s
 (step 3 runs the sync loop, then the report; there is no IT request step). Its step 1 and step 3 each take the
 form's option with the same number and name, and its step 2 (`install and start`, the prompt's own name since v7)
 takes `Failed at step 2 (install and start)`.
-A `Prompt: v8`, `Prompt: v9`, `Prompt: v10`, `Prompt: v11`, `Prompt: v12`, `Prompt: v13`, `Prompt: v14`, `Prompt: v15`, `Prompt: v16`, `Prompt: v17`, `Prompt: v18`, `Prompt: v19`, `Prompt: v20`, `Prompt: v21`, `Prompt: v22`, `Prompt: v23`, `Prompt: v24`, `Prompt: v25`, `Prompt: v26`, `Prompt: v27`, `Prompt: v28` or `Prompt: v29` attempt is judged by the same rules: none moved a step. So is every
+A `Prompt: v8`, `Prompt: v9`, `Prompt: v10`, `Prompt: v11`, `Prompt: v12`, `Prompt: v13`, `Prompt: v14`, `Prompt: v15`, `Prompt: v16`, `Prompt: v17`, `Prompt: v18`, `Prompt: v19`, `Prompt: v20`, `Prompt: v21`, `Prompt: v22`, `Prompt: v23`, `Prompt: v24`, `Prompt: v25`, `Prompt: v26`, `Prompt: v27`, `Prompt: v28`, `Prompt: v29` or `Prompt: v30` attempt is judged by the same rules: none moved a step. So is every
 later version until one moves a step, since the version changes with every edit of the prompt's text (below) and
 the rules only with its steps.
 
@@ -470,7 +470,7 @@ sentence included. A saved copy is therefore always known by its number. Twice a
 pasted again, ran its old wording against the new installer, and nobody could tell: the edit had kept the
 version, and the installer wrote its own number into the log.
 
-- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v29, <agent>'`. The
+- Step 1 hands the prompt's version to the installer: `install.sh --log-start 'prompt v30, <agent>'`. The
   `Prompt:` line of the attempt is that version.
 - When it is not the installer's own number, the pasted copy is not the README's: `--log-start` logs the attempt
   with the version the copy gave (`v7 or older` for a copy from before v8, which gives none), a `step 1 |
@@ -479,8 +479,8 @@ version, and the installer wrote its own number into the log.
   `README.md` on the main branch; a newer copy is told what the installer finds about its own checkout (the
   last item below). The exit 2 means step 1's command stops before it lists the folders. A v8
   or later copy checks the same from its side: `install.sh --version` must end with exactly its own number.
-- The version leads the value, and is read in the shape the agent gave it (`Prompt v29: <agent>` and `prompt v29 -
-  <agent>` are v29). The stop message shows no value that passes; its last sentence tells a current copy whose
+- The version leads the value, and is read in the shape the agent gave it (`Prompt v30: <agent>` and `prompt v30 -
+  <agent>` are v30). The stop message shows no value that passes; its last sentence tells a current copy whose
   agent changed the value to run step 1's command again as the prompt writes it. When the changed value named a
   version newer than the installer's (the stop reads `this checkout is older than the prompt`), an attempt the
   session ran again so reads stopped, not failed (the rerun exception under "Stopped at step 1"). After the stop of
@@ -489,7 +489,7 @@ version, and the installer wrote its own number into the log.
 - A copy whose step 3 does not name this stop as one with no report (v9 and older, and a v10 copy taken before its
   step 3 named it) still goes on to its own report; a later copy stops without one, as the installer's stop
   message says. That report's Summary says
-  `prompt: v7 or older (older than the installer's v29: the pasted copy was not the current README, or the --log-start value was changed)`
+  `prompt: v7 or older (older than the installer's v30: the pasted copy was not the current README, or the --log-start value was changed)`
   (the second reading, as the stop line names it, since 2026-10-14), its outcome
   is "failed at step 1", and `install.sh --report-only` ends on a `NEXT:` line that says not to bring that
   report back and to copy the prompt again. That run writes the report to `~/agent-context/setup/stopped-copy-report.md`,
@@ -508,7 +508,7 @@ version, and the installer wrote its own number into the log.
   and no Allow click)`. Before 2026-10-07 it said `1 question` and `the folder question (step 1; not logged)`
   there (K28). A question the agent logged is still counted, and an attempt with an `install.sh` run in it
   (the agent listed the folders all the same) is read by the usual rules.
-- A copy newer than the installer (`newer than the installer's v29`) has one of two causes, and the installer
+- A copy newer than the installer (`newer than the installer's v30`) has one of two causes, and the installer
   tells them apart by its own checkout's upstream ([CONTRACTS §16.59](../design/CONTRACTS.md) F17); the stop
   line's last column (the fix) in the friction log says which it found. The checkout follows main of the
   repository: step 1's pull worked, and the copy came from another branch or a fork, so the fix is to copy
@@ -597,19 +597,41 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   build reads `state-table`, which step 2 reinstalls first. Its v27 tail, `(at its status or its first sync)`, was
   false for an index: a status and a sync with nothing new read none, and step 2 passed (round 20 X72). Since v29 a
   state folder, `manifest.sqlite` or its `manifest.sqlite-wal` or `manifest.sqlite-shm` this account cannot open, which no probe can read, adds a tail of its
-  own, with no reinstall form, since any build stops at its config step on it (round 20 X9, X29): logged
-  `state-owner`, `; step 2 stops at its config step on agentsync's state file, which another account owns, so this
-  one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
-  ~/.local/bin/agentsync status prints it on its state_dir lines`, or, for this account's own, `state-access`, `;
-  step 2 stops at its config step on agentsync's state file, which this account cannot open (a mode, not damage):
-  the chmod that fixes it is the agent's to run, and ~/.local/bin/agentsync status prints it on its state_dir
-  lines`. When step 2 would reinstall agentsync first
+  own, with no reinstall form (round 20 X9, X29). Since v30 (round 21) the folder and the manifest, which stop any
+  build's config step, are named apart from the -wal and the -shm, which init opens past (Y57), the noun covers
+  the folder (Y14), and the owner is the one `doctor.state_path_fix` gives (Y24): logged `state-owner`, `; step 2
+  stops at its config step on agentsync's state folder or a file in it, which another account owns, so this one
+  cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
+  ~/.local/bin/agentsync status prints it on its state_dir lines`; for this account's own whose fix is a chmod,
+  `state-access`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
+  account cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2's NEXT
+  names it, and ~/.local/bin/agentsync status prints it on its state_dir lines`; for one no chmod fixes,
+  `state-refused`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
+  account is refused though its mode allows it (an ACL, or a folder above it this account cannot search; not
+  damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines`; and for
+  a -wal or -shm, `state-side-owner`, `; step 2's status may fail on the -wal or -shm of agentsync's state file,
+  which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
+  ~/.local/bin/agentsync status prints it on its state_dir.files line`, or `state-side-access`, `; step 2's status
+  may fail on the -wal or -shm of agentsync's state file, which this account cannot write (a mode, not damage): the
+  chmod that fixes it is the agent's to run, once, and ~/.local/bin/agentsync status prints it on its
+  state_dir.files line` ("may": an empty one leaves no stop once the manifest is opened), or, when an ACL refuses
+  one its mode allows, `state-side-refused`, `; step 2's status may fail on the -wal or -shm of agentsync's state
+  file, which this account is refused though its mode allows it (an ACL; not damage): fixing that is the person's,
+  and ~/.local/bin/agentsync status prints it on its state_dir.files line`. A folder or file whose own mode already
+  allows this account is refused by an ACL or a sandbox, which no chmod changes: `state-refused` (or
+  `state-side-refused`), the person's. An installed agentsync without
+  `state_path_fix` judges by the mode, as doctor does. Step 2's config step then names that chmod in its own
+  `NEXT:` (`agentsync's state folder or a file in it has a mode this account cannot open ...: the fix is the
+  agent's: run chmod 600 <file> once, then re-run: ...`, with the -wal and -shm its mode refuses too, as
+  status's `state_dir.files` names them, or `chmod 700 <folder>`), or the person's for
+  `state-refused`. When step 2 would reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it
   too, step 2 stops at its config step on <what>: ...`. The tail is on every list whose `NEXT:` points to step 2,
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
-  `state-access` and `state-owner`,
+  `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner` and
+  `state-side-refused`,
   never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
@@ -1006,6 +1028,7 @@ named as "v5b review, its L<n>").
 | K51 | wording the v26 rehearsals and review read two ways or found wrong (B13 round 18): step 1's list said "(none is needed)" over a docs-repo remote [governance] does not allow and over a damaged table page, which step 2 then stopped on, the second at its status or first sync, not its config step (V9, V21, V36); step 1's git quote named `remote get-url origin`, which a URL rewrite changes, as the checkout's own remote, and named it after a clone that failed, when there is no folder (V33, V70); step 3 said a sync prints nothing while it works, but it prints a lock wait and an inbox settle wait, which an agent logged as deviations, and a sync that waited out the lock ends "skipped: lock held" with no NEXT: line (V24, V39, with lane B's V40 words); the finish asked which kept patch file to make readable, and no line names one, by design (V12, V17, V32, V79) | prompt wording and installer automation | v27: step 1's list names the remote and the damaged state file, and the prompt tells the person of a stop at step 2's config step, status or first sync; the quote names `config --get remote.origin.url`, if the checkout exists; step 3 calls the waits expected and runs a lock-skipped sync once more; the finish gives the count, the chmod and the report command, and names no file; `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_is_one_command`, `test_step_3_calls_a_syncs_waits_expected_and_retries_a_lock_skip` |
 | K52 | wording the v27 rehearsals and review read two ways or found wrong (B13 round 19): step 1's git quote checked the checkout's remote "if ~/src/agent-context-sync exists", but a clone that failed into a folder that already existed leaves that folder, and the query then printed a repository above it, such as a dotfiles repo in ~ (W26); step 1's no-answer sentence for a Mac that already syncs folders came right after the not-on-disk sub-case, so it could be read as bound to it, and a Mac whose kept folders are all on disk would then fall back to the general rule, a logged deviation and a stop (W28) | prompt wording | v28: the quote checks the remote if ~/src/agent-context-sync/.git exists, since a clone that failed leaves no checkout; the no-answer sentence holds "whether or not that line names such a folder" and keeps any not-on-disk folder and its fix for the final message; `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_is_one_command`, `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder` |
 | K53 | wording the v28 rehearsals and review read two ways or found wrong (B13 round 20): step 1's log rule said the report replaces the host of a "Could not resolve" or "Failed to connect to" message and of a git remote, but it keeps a public host such as github.com (X24); step 1 told the person every stop step 1's list names is theirs, but a state file of this account's own that it cannot open is a chmod the agent runs (X9, X26, X29); step 2's person's fixes said "a state file that cannot be read", which read as that same file (X26); the finish did not relay the report's NEXT when part of the report was cut off or not measured, and the report is the last command the agent runs (X3) | prompt wording | v29: the log rule adds "but keeps a public host such as github.com"; step 1 tells the person what the list names and whose fix it says that is; step 2 names "a state file that is damaged or another account's"; the finish relays the cut-off NEXT in its own words, with the --report-only re-run left to the person; `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_is_one_command`, `test_readme_prompt_asks_a_mac_already_set_up_for_no_folder`, `test_prompt_routes_changes_to_the_source_not_the_checkout` |
+| K54 | wording the v29 rehearsals and review read two ways or found wrong (B13 round 21): step 1 said the chmod of this account's own state file is the agent's once step 2 stops on it, but step 2 let the agent follow a failed run's NEXT only when it was an install.sh or agentsync command or a click, its [FAIL] rule only re-ran install.sh, and step 2's NEXT was "fix the error above", which names no command (Y4, Y10, Y24, Y59) | prompt wording | v30: step 2 grants a chmod 600 or chmod 700 of agentsync's own state folder or a file in it, once, when the NEXT: line or a [FAIL] state_dir line names it as the fix, and keeps a sudo or a chown the person's; install.sh's NEXT names that chmod; `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_gives_the_agent_the_chmod_of_its_own_state` |
 
 ## 5. Unavoidable steps so far
 
