@@ -11018,6 +11018,73 @@ def test_the_evidence_line_says_why_a_report_written_again_when_idle_measures_th
     assert line.count("(") == idle.count("("), line
 
 
+def test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z90 (round 21 Y66's guard): install.sh adds the cut-off clause to its NEXT only when a
+    Summary line starting ``- doctor:`` or ``- evidence:`` holds :data:`setup_report._IDLE_AGAIN`, and nothing
+    pinned that those two are its only writers: a new Summary line giving the advice would get no NEXT.
+
+    (a) The source: only the four functions that write it today name ``_IDLE_AGAIN``, and ``_cut_off_words``
+    is called only from the Doctor section and the doctor line, so a new writer fails here whatever condition
+    reaches it. (b) The render: a doctor cut off, one never started, an evidence part cut off and one a sync
+    held, with no agent note, each give the advice only in lines install.sh's own pattern reads."""
+    tree = ast.parse(Path(setup_report.__file__).read_text(encoding="utf-8"))
+    names: set[str] = set()
+    callers: set[str] = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and node.id == "_IDLE_AGAIN":
+                names.add(fn.name)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_cut_off_words":
+                callers.add(fn.name)
+    assert names == {"_cut_off_words", "_doctor", "_doctor_line", "_evidence_line"}, names
+    assert callers == {"_doctor", "_doctor_line"}, callers
+
+    script = (Path(__file__).parents[1] / "scripts" / "install.sh").read_text(encoding="utf-8")
+    found = re.search(
+        r"grep -qE '(\^- [^']*?)(write the report again when this Mac is idle)' \"\$REPORT_PATH\"", script
+    )
+    assert found is not None, "install.sh's cut-off test"
+    assert setup_report._IDLE_AGAIN.startswith(found.group(2))
+    reads = re.compile(found.group(1) + re.escape(setup_report._IDLE_AGAIN))
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+
+    def hung(_config: object) -> list[str]:
+        time.sleep(30)
+        return []
+
+    def summaries() -> Iterator[str]:
+        for budget in (5.0, 0.5):  # cut off, and never started
+            yield section(
+                setup_report.build_report(
+                    fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung), budget_s=budget
+                )[0],
+                "Summary",
+            )
+        seed_ocr(fake_mac)
+        with monkeypatch.context() as m:
+            m.setattr(setup_report, "EVIDENCE_BUDGET_S", 0.0)
+            yield section(status_parts(fake_mac)[0], "Summary")
+
+        def locked(
+            self: setup_report._Mirror, sql: str, params: Sequence[object] = ()
+        ) -> list[tuple[Any, ...]]:
+            raise sqlite3.OperationalError("database is locked")
+
+        with monkeypatch.context() as m:
+            m.setattr(setup_report._Mirror, "rows", locked)
+            yield section(status_parts(fake_mac)[0], "Summary")
+
+    for n, summary in enumerate(summaries()):
+        said = [ln for ln in summary.splitlines() if setup_report._IDLE_AGAIN in ln]
+        assert said, (n, summary)
+        assert all(reads.match(ln) for ln in said), (n, said)
+    assert "held by a sync" in summary or "a sync held" in summary, summary
+
+
 def test_the_loop_line_says_a_sync_held_the_state_file_its_hook_waited_on(fake_mac: dict[str, Path]) -> None:
     """B13 round 21 Y15: the loop's read of a state file a sync holds waits on it past the hook's limit, and
     the Loop line said only ``it did not finish in time`` while every evidence line said the file was busy.
