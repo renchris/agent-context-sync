@@ -2259,11 +2259,14 @@ def _report_hooks() -> setup_report.ReportHooks:
     L49), so a read that succeeds changes no line."""
     fixes: list[str] = []
     read: list[tuple[loop.NextStep | None, Exception | None]] = []
+    seen: list[str] = []  # the check groups doctor started, the last the one a cut-off doctor was in (Y22)
 
     def checks(config: Config) -> list[str]:
         step, state_exc = _loop_read(config)
         read[:] = [(step, state_exc)]
-        results = _with_damaged_manifest(config, _status_checks(config, offline=True), state_exc)
+        with doctor.groups_seen(seen.append):
+            found = _status_checks(config, offline=True)
+        results = _with_damaged_manifest(config, found, state_exc)
         results = _listings_unread(results, state_exc, expand(config.state_paths.root))
         fixes[:] = _fail_steps(results)
         # The report has no "end of this run": its own note (B13 round 5 F12, F45). _status_checks never
@@ -2303,6 +2306,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         loop_next=loop_next,
         job_proxy=_job_proxy_urls,
         state_error=lambda: read[0][1] if read else None,
+        doctor_at=lambda: seen[-1] if seen else None,
     )
 
 

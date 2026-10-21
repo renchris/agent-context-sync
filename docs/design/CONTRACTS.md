@@ -25007,6 +25007,8 @@ Amended 2026-10-20, §16.148 X3: the finish did not relay this NEXT (it relays t
 could-not-write and unreadable-patch cases, and the report is the last command the agent runs), so "still matches"
 was false; prompt v29's finish relays it in its own clause, keyed on lane RB's X37 opening, "part of the report was
 cut off or not measured".
+Amended 2026-10-20, §16.152 Y22: a cut-off doctor's Doctor and Summary words give the advice only if this Mac was
+busy, after the check it was in and the load, as install.sh's NEXT does; the evidence line keeps it unconditional.
 Amended 2026-10-20, §16.147 X37: the clause reads `part of the report was cut off or not measured (its Summary
 says which, and why): if this Mac was busy, run ... again once it is idle; either way, ...`, since a busy state
 file writes the marker too.
@@ -26098,6 +26100,8 @@ none is set. A real SQLITE_PERM got the damaged-file words. `doctor.CANNOT_OPEN_
 by name) and `doctor.cannot_open(exc)` (an extended code included, as `contended`) are the one set; status reads
 it, and the setup report's own set (lane RA's X42 and X60, in §16.146) names the same three. Test:
 `test_cli.py::test_the_codes_of_a_state_file_this_account_cannot_open_are_named`.
+Amended 2026-10-20, §16.152 Y48, Y71: the setup report keeps no set of its own; it reads `doctor.cannot_open`, so
+the set is named once.
 
 **X47, X49: a manifest that will not open keeps its reason, and only an access error gets the access fix
 (`agentsync.errors`, `agentsync.manifest`, `agentsync.cli`; amends §16.143 W65).** W65's `ManifestOpenError` set
@@ -26489,7 +26493,7 @@ keeps the person's. Tests: `test_the_fail_of_a_state_file_this_account_cannot_op
 (the file at 0000, then the folder at 0000), `test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket`.
 
 **The cannot-open codes are doctor's, and the interim Time Machine rule is gone** (Y48, Y71, Y39, Y50, Y63, Y78;
-amends §16.146 X28 and §16.146 X42). `setup_report._CANNOT_OPEN_CODES` was a second copy of
+amends §16.146 X28, §16.146 X42 and §16.149 X48). `setup_report._CANNOT_OPEN_CODES` was a second copy of
 `doctor.CANNOT_OPEN_CODES`, the kind of hand-kept set that once held SQLITE_AUTH for PERM. `_cannot_open` reads
 `doctor.cannot_open` lazily and is False when doctor does not import, so the report still writes and
 `_state_shut`'s own access test of the file still answers. Y39, Y50, Y63, Y78: `_names_only_state` and its
@@ -26613,6 +26617,21 @@ fixed and ended 0`; the line's own fix says whose: a sudo chown is `which anothe
 was given back`), another fix `doctor.is_persons_fix` reads as the person's is `the person's to fix`. No path and
 no mode number: the run's output has none, and by report time the file is 0600 again. Another cause at the config
 step keeps the old words. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+**A cut-off doctor names the check it was in and the load, and advises a re-run only if this Mac was busy** (Y22;
+amends §16.140 W3). Doctor's cut-off text and the Summary's doctor line said `write the report again when this Mac
+is idle (...)` with no condition, while install.sh's NEXT says `if this Mac was busy`, and named neither the check
+nor the load: a hung pandoc read the same as a busy Mac, and the rehearsal's re-run at a load of 52 was cut off
+again. At the cut-off `_read_cut_off` reads `os.getloadavg()[0]` and `os.cpu_count()` and the check group the
+doctor hook started last (`ReportHooks.doctor_at`: `doctor.groups_seen`, a context the CLI's hook holds around
+its checks, tells it each group as `run_checks` starts it), and both texts say `it was in the <group> check; the
+1-minute load was <L> on <N> cores; if this Mac was busy, <_IDLE_AGAIN>; if a report written when it is idle is
+cut off again, the <group> check is slow or hung: install.out has install.sh's own doctor`. A figure that cannot be
+read is left out (`a check` with no group). `_IDLE_AGAIN` is whole, so install.sh's key holds; the evidence line's
+use of it, for a state file a sync held, is unchanged. A budget used up before doctor started keeps its words.
+Tests: `test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy`,
+`test_the_doctor_hook_says_which_check_it_started_last`,
+`test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

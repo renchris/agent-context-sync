@@ -6831,18 +6831,26 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
         time.sleep(60)
         return []
 
-    text, _red = setup_report.build_report(
-        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=hung, loop_next=loop), budget_s=4.0
+    # B13 round 21 Y22: the advice was unconditional while install.sh's NEXT says "if this Mac was busy", and
+    # nothing told a hung check from a busy Mac: the check doctor was in and the load, as figures
+    monkeypatch.setattr(os, "getloadavg", lambda: (52.34, 40.0, 30.0))
+    monkeypatch.setattr(os, "cpu_count", lambda: 10)
+    hooks = setup_report.ReportHooks(doctor=hung, loop_next=loop, doctor_at=lambda: "pandoc")
+    text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
+    words = (
+        "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; if this Mac was busy, "
+        f"{setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off again, the pandoc check "
+        "is slow or hung: install.out has install.sh's own doctor"
     )
     assert section(text, "Doctor").strip() == (
         "Cut off: the doctor call did not finish within 6.0s, the wait the report gives a slow doctor (it "
-        f"moves its 4s time limit for one; see Run metadata); {setup_report._IDLE_AGAIN}."
+        f"moves its 4s time limit for one; see Run metadata); {words}."
     )
     line = _line(section(text, "Summary"), "- doctor: ")
     assert line == (
-        "- doctor: cut off after 6.0s, the wait the report gives a slow doctor (see Doctor) · "
-        f"{setup_report._IDLE_AGAIN}"
+        f"- doctor: cut off after 6.0s, the wait the report gives a slow doctor (see Doctor) · {words}"
     ), line
+    assert "write the report again when this Mac is idle" in line, "install.sh's NEXT keys on it"
     assert "--report-only" in line
     # B13 round 19 W4: 6.0 s was called "the report's time limit" beside Run metadata's "time limit 4s"
     took = re.search(r"^- took: [0-9.]+s \(time limit (\d+)s, ", text, re.M)
@@ -6850,6 +6858,53 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
     assert not re.search(r"\d+\.\ds, the report's time limit|report's time limit after", text), text
     assert "- pandoc: not checked: the doctor call was cut off (see Doctor)" in text
     assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
+
+
+def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y22: Doctor and the Summary said to write the report again when idle with no condition,
+    while install.sh's NEXT says "if this Mac was busy", and named neither the check nor the load, so a hung
+    pandoc read the same as a busy Mac (a re-run at a load of 52 was cut off again). Both say the check
+    and the load as figures, then the advice if this Mac was busy (``_IDLE_AGAIN`` whole), and what a second
+    cut-off when idle means. A figure that cannot be read is left out."""
+    monkeypatch.setattr(os, "getloadavg", lambda: (52.34, 40.0, 30.0))
+    monkeypatch.setattr(os, "cpu_count", lambda: 10)
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(doctor_at=lambda: "pandoc"), 5.0)
+    r.facts.doctor_cut_off = 20.0
+    r.facts.doctor_cut_off_moved = True
+    setup_report._read_cut_off(r)
+    idle = setup_report._IDLE_AGAIN
+    line = setup_report._doctor_line(r, [])
+    assert line == (
+        "- doctor: cut off after 20.0s, the wait the report gives a slow doctor (see Doctor) · it was in the "
+        f"pandoc check; the 1-minute load was 52.3 on 10 cores; if this Mac was busy, {idle}; if a report "
+        "written when it is idle is cut off again, the pandoc check is slow or hung: install.out has "
+        "install.sh's own doctor"
+    ), line
+
+    def unread() -> tuple[float, float, float]:
+        raise OSError
+
+    monkeypatch.setattr(os, "getloadavg", unread)
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(), 5.0)
+    r.facts.doctor_cut_off = 20.0
+    setup_report._read_cut_off(r)
+    assert setup_report._doctor_line(r, []).endswith(
+        f"after 20.0s (see Doctor) · if this Mac was busy, {idle}; if a report written when it is idle is "
+        "cut off again, a check is slow or hung: install.out has install.sh's own doctor"
+    )
+
+
+def test_the_doctor_hook_says_which_check_it_started_last(fake_mac: dict[str, Path]) -> None:
+    """B13 round 21 Y22: the report abandons a doctor call it cut off, and nothing said which check it was
+    in. ``cli``'s hook tells the report each check group as doctor's ``run_checks`` starts it."""
+    hooks = cli._report_hooks()
+    assert hooks.doctor_at is not None and hooks.doctor_at() is None
+    assert hooks.doctor is not None
+    hooks.doctor(load_config(fake_mac["config"]))
+    assert hooks.doctor_at() == doctor._CHECKS[-1][0]
+    assert doctor._group_seen is None, "held only while the hook's doctor runs"
 
 
 def test_the_loop_line_survives_a_missing_or_broken_hook(fake_mac: dict[str, Path]) -> None:

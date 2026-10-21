@@ -1042,6 +1042,9 @@ class ReportHooks:
     # run): a manifest damaged under a table, which the schema probe reads past, is unreadable state too
     # (B13 round 18 V14, V52, V56, V71)
     state_error: Callable[[], BaseException | None] | None = None
+    # the check group the ``doctor`` hook's run started last (None: none yet, or not told): the one a doctor
+    # the report cut off was in (B13 round 21 Y22)
+    doctor_at: Callable[[], str | None] | None = None
 
 
 def _tokens(value: str) -> list[str]:
@@ -3172,6 +3175,10 @@ class _Facts:
     # the report moved its time limit to give that doctor _DOCTOR_GRACE_S, so its seconds are not the report's
     # time limit, which Run metadata names (B13 round 19 W4)
     doctor_cut_off_moved: bool = False
+    # the 1-minute load average and the core count when the doctor call was cut off, and the check it was in
+    # (B13 round 21 Y22): Doctor and the Summary say the same figures; None when not read
+    doctor_cut_off_load: tuple[float, int] | None = None
+    doctor_cut_off_at: str | None = None
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     # those lines by why (the words in their bracket; a bare one is the time limit's), B13 round 18 V15, V35
     evidence_why: Counter[str] = dataclasses.field(default_factory=Counter)
@@ -5695,6 +5702,43 @@ def _doctor_skipped(config: Config) -> str:
     return f" (run without {' and '.join(names)}: `{AGENTSYNC_BIN} status` runs {them})"
 
 
+def _read_cut_off(r: _Run) -> None:
+    """At the cut-off: the 1-minute load average and the core count, and the check group the doctor hook
+    started last (``ReportHooks.doctor_at``), into ``r.facts`` for Doctor and the Summary (B13 round 21 Y22).
+    A read that fails leaves its figure out."""
+    with contextlib.suppress(OSError, TypeError):
+        r.facts.doctor_cut_off_load = (os.getloadavg()[0], int(os.cpu_count() or 0))
+    if r.hooks.doctor_at is not None:
+        with contextlib.suppress(Exception):
+            at = r.hooks.doctor_at()
+            r.facts.doctor_cut_off_at = at if isinstance(at, str) and at else None
+
+
+def _cut_off_words(r: _Run) -> str:
+    """What a doctor call the report cut off says after its wait (B13 round 21 Y22): the check it was in and
+    the load as figures, never a verdict, then the advice as install.sh's NEXT gives it, only if this Mac
+    was busy (:data:`_IDLE_AGAIN` kept whole: install.sh keys on it), and what a second cut-off when idle
+    means: the check is slow or hung, which a busy Mac's advice does not clear. The rehearsal's re-run at a
+    load of 52 was cut off again with no figure to tell a hung pandoc from a busy Mac."""
+    facts: list[str] = []
+    at = r.facts.doctor_cut_off_at
+    if at:
+        facts.append(f"it was in the {at} check")
+    if r.facts.doctor_cut_off_load is not None:
+        load, cores = r.facts.doctor_cut_off_load
+        facts.append(
+            f"the 1-minute load was {load:.1f} on {_plural(cores, 'core')}"
+            if cores
+            else f"the 1-minute load was {load:.1f}"
+        )
+    check = f"the {at} check" if at else "a check"
+    advice = (
+        f"if this Mac was busy, {_IDLE_AGAIN}; if a report written when it is idle is cut off again, {check} "
+        "is slow or hung: install.out has install.sh's own doctor"
+    )
+    return "; ".join([*facts, advice])
+
+
 def _doctor(r: _Run) -> list[str]:
     if r.config is None:
         if r.config_missing:
@@ -5723,15 +5767,16 @@ def _doctor(r: _Run) -> list[str]:
         r.facts.doctor_cut_off_moved = moved
         if r.facts.doctor_cut_off == 0.0:
             return [f"Not run: the report's time budget was used up before doctor started; {_IDLE_AGAIN}."]
+        _read_cut_off(r)
         if moved:  # B13 round 19 W4: the doctor's own wait, past the time limit Run metadata names
             return [
                 f"Cut off: the doctor call did not finish within {had:.1f}s, the wait the report gives a "
                 f"slow doctor (it moves its {r.budget_s:.0f}s time limit for one; see Run metadata); "
-                f"{_IDLE_AGAIN}."
+                f"{_cut_off_words(r)}."
             ]
         return [
             f"Cut off: the doctor call did not finish within {had:.1f}s, the report's time limit; "
-            f"{_IDLE_AGAIN}."
+            f"{_cut_off_words(r)}."
         ]
     finally:  # a doctor done within its first share moves nothing
         r.deadline = max(deadline, time.monotonic() + held)
@@ -9686,7 +9731,9 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
                 f" · install.sh's doctor before its first sync (run {run.display_id}): {counts}: "
                 + ", ".join(name for _tag, name in named)
             )
-        return f"{line} · {_IDLE_AGAIN}"  # B13 round 18 V4: a report written when idle has the section
+        # B13 round 18 V4: a report written when idle has the section; round 21 Y22: only if this Mac was
+        # busy, with the check and the load that tell a busy Mac from a hung check
+        return f"{line} · {_cut_off_words(r) if had else _IDLE_AGAIN}"
     if d is None:
         return "- doctor: not run (see Doctor)"
     sort = _sort_doctor(r, runs)

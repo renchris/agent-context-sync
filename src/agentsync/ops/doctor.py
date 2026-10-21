@@ -24,7 +24,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2888,6 +2888,9 @@ def run_checks(
     results: list[CheckResult] = []
     shut = state_folder_shut(config)
     for group, check in _CHECKS:
+        if _group_seen is not None:  # the setup report names the check a doctor it cut off was in (Y22)
+            with contextlib.suppress(Exception):
+                _group_seen(group)
         if shut and group in _STATE_FOLDER_GROUPS:  # each would stop on the folder (B13 round 20 X73)
             results.append(_bad(group, STATE_FOLDER_UNCHECKED, Severity.INFO))
             continue
@@ -2899,6 +2902,22 @@ def run_checks(
         except Exception as exc:
             results.append(unfinished(group, exc))
     return results
+
+
+_group_seen: Callable[[str], None] | None = None
+"""Told each check's group as :func:`run_checks` starts it, while :func:`groups_seen` holds it (B13 round 21
+Y22: a doctor the setup report cut off named no check, so a hung one read the same as a busy Mac)."""
+
+
+@contextlib.contextmanager
+def groups_seen(seen: Callable[[str], None]) -> Iterator[None]:
+    """:func:`run_checks` tells ``seen`` each check's group before it runs it, inside the ``with``."""
+    global _group_seen  # noqa: PLW0603 - one report's doctor at a time; the call that cut it off reads it
+    before, _group_seen = _group_seen, seen
+    try:
+        yield
+    finally:
+        _group_seen = before
 
 
 _STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat"})
