@@ -8104,6 +8104,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
 | `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change (**Amended 2026-10-19, §16.138 V62, V67 (by §16.132 U3):** the same bytes are converted again in up to `_CONVERT_RETRIES` (2) later runs and counted in each; one whose converter could not start is converted, uncounted against the retries, in the first run in which it starts; see the not-retried bullet below) |
 | `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run. **Amended 2026-10-21, §16.162 Z57:** the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28) |
+| `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -15324,6 +15325,9 @@ Amended 2026-10-13, §16.64 G32: N and L count only the runs inside the end line
 run(s) (+L --list-folders) during this attempt and K install run(s) [and J --list-folders run(s)] after its end line
 (<time>)` (`no install run during this attempt and …` when none is inside); "for this attempt, K …" read as one run
 more than there was.
+Amended 2026-10-21, §16.158 Z24: the bracket holds the late runs' start times and the end line's time is
+said as its own: `... after its end line of <end> (started <start>)`, `(the first started <S1>, the last <Sn>)` for
+several; `(<time>)` had read as the start of the run it counts.
 
 **F38: the report install.sh writes says its run time is before its report step.** install.sh's `on_exit`
 writes a provisional `end rc=N seconds=S` line, runs the report, and only then logs the report step and the final
@@ -16027,6 +16031,7 @@ attempt and K install run(s) [and J --list-folders run(s)] after its end line (<
 this attempt and …`; "the last exit" still names the last run overall, and the outcome, retry and time logic are
 unchanged. Tests: `test_an_install_run_after_the_attempts_end_line_is_named_apart`,
 `test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_help`.
+Amended 2026-10-21, §16.158 Z24: `after its end line of <end> (started <start>)` (see §16.58 F37).
 
 **G34: one bracket in the first-sync clause.** Amends §16.58 F8, F32 (dated line there): the first-read clause
 follows `read again R` after a colon and the unreadable/failed split after `; `, so the source tag stays the clause's
@@ -24253,6 +24258,10 @@ added a folder and exited 1, then the same command after the person's fix, logge
 read `kept the 3 already synced (none added)`. The last run after the end line joins the chain when its config step
 added nothing, so the line names the run that added it; a late run that added a folder is still the last run's
 alone. Test: `test_the_folders_line_counts_what_was_kept_added_and_named`.
+Amended 2026-10-21, §16.158 Z23: for a copy the installer stopped (round 21 Y17's test, the install line's) a
+run after its end line is a stand-alone run and never joins the chain: the line reads `- folders: <the runs inside
+the attempt, or no install run during this attempt>; the install run after its end line: <its counts> by that run
+(install.log)`. The retry rule above holds for an attempt the installer did not stop.
 
 **An attempt that stopped before any folder list asked no folder question** (V38). `--log-start`, then step 2
 straight away, stopped at its config step: the report counted the folder question as asked. An attempt whose every
@@ -25731,6 +25740,9 @@ Amended 2026-10-20, §16.152 Y39, Y50, Y63, Y78: the interim rule is gone (`_nam
 `governance.time_machine` warn names an exclusion doctor read and found missing, and it stays unexpected.
 Amended 2026-10-20, §16.152 Y32: each bucket is a reason of its own, `N doctor FAIL(s) with a known cause, <bucket
 words>: <checks>`, with no bracket inside the outcome's own.
+Amended 2026-10-21, §16.158 Z31, Z40, Z84: the bucket reads `from the state folder this account cannot open` when
+the folder is what is shut, a folder above it that refuses a search included (`_state_folder_shut`, a stat, so on
+any Python); state_dir's FAIL joins it too for a folder another account owns when a file of it is shut.
 
 **The agent's name keeps its product word where a step 1 line states it, and before a hyphen** (X38, X39; amends
 §16.140 W17 and §16.58 F4). A step 1 line states its agent at its text's start (`prompt v28, <agent>:`), and the
@@ -26535,6 +26547,10 @@ search points at no state_dir line, which does not judge it. `_why_not_read` map
 file by itself: a plist's, a kept patch's or a source's would point at the wrong lines. Tests:
 `test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere`,
 `test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file`.
+Amended 2026-10-21, §16.158 Z15, Z41: a state folder (or a folder above it) that refuses this account is named
+as the folder: `the state folder cannot be opened by this account: see Doctor's state_dir lines`
+(`_STATE_FOLDER_SHUT`), in the parts, the re-screen and the evidence line's own clause; `_purge_part`'s guard is
+`not os.access(root, os.X_OK)` alone, as `root.is_dir()` raised under an unsearchable parent.
 
 **The evidence line says why a report written again when idle measures them** (Y15, Y37; amends §16.147 X37).
 install.sh's NEXT says the Summary gives which, and why, but `_evidence_line` gave a busy-only gap no cause and,
@@ -26566,6 +26582,8 @@ and `_git_proxy_urls`, `_git_remotes` and `_git_rewrite_bases` read their key th
 time, so an empty `proxy =` still takes nothing from the next line. Read order is unchanged, so install.sh's twins
 (lane RB's Y64, §16.153) number the same `<proxy-N>`. Test:
 `test_a_git_proxy_or_remote_on_its_sections_header_line_is_read_and_redacted`.
+Amended 2026-10-21, §16.158 Z76: git's older dotted section, `[remote.origin]` (and `[remote.a "b"]`, the remote
+`a.b`), is a remote too; `[remote.]` and `[remotex.y]` name none.
 
 **A folder name with a TAB is redacted in add-source's escaped spelling** (Y2). add-source echoes the block it
 adds with the path as a TOML string (`json.dumps(..., ensure_ascii=False)`), so a TAB in a folder's name reads
@@ -26633,6 +26651,12 @@ another account`), else the line's own fix: a sudo chown is `which another accou
 back`), another fix `doctor.is_persons_fix` reads as the person's is `the person's to fix`. No path and
 no mode number: the run's output has none, and by report time the file is 0600 again. Another cause at the config
 step keeps the old words. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+Amended 2026-10-21, §16.158 Z4, Z45, Z6, Z19: a folder's fix names the folder: `chmod 700` of the state folder
+is `on agentsync's state folder, which this account could not open (a mode, not damage)` and `after the folder's
+mode was fixed` (`a folder in agentsync's state folder` for one below it); a folder above it that refuses a search
+and the folder's ACL fix are the person's, in the folder's words. The outcome of a last run that stopped there
+carries the same cause with no bracket (Z6), and a status-step stop on a state file of this account's mode says the
+re-run came `after the file's mode was fixed` (Z19).
 
 **A cut-off doctor names the check it was in and the load, and advises a re-run only if this Mac was busy** (Y22;
 amends §16.140 W3). Doctor's cut-off text and the Summary's doctor line said `write the report again when this Mac
@@ -26649,6 +26673,12 @@ use of it, for a state file a sync held, is unchanged. A budget used up before d
 Tests: `test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy`,
 `test_the_doctor_hook_says_which_check_it_started_last`,
 `test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again`.
+Amended 2026-10-21, §16.158 Z18, Z33: a cut-off with no check named came in the hook's read of the loop state:
+`it was reading the loop state, which a sync held (the state file is busy)` when Status found the file busy (then
+`<_IDLE_AGAIN>, once the sync ends`), else `it had not started its checks (it was reading the loop state)`; and the
+lead-in is read from the figures (`that is above its core count, so the Mac was busy: <_IDLE_AGAIN>`, or `that is
+not above its core count, so <check> is slow or hung, not the Mac busy; ...`), ending `send the report as it is
+(install.sh's own doctor output is in install.out)`. `_IDLE_AGAIN` is whole in every branch.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
@@ -26670,6 +26700,8 @@ outside the exemption, as under G48. Tests: `test_report_redaction.py::
 test_a_folder_named_only_by_product_words_leaves_both_reports_public` (Copilot beside the Copilot agent and
 another, Codex, `GitHub Copilot`; a Status folder still private in both) and
 `test_an_organisation_named_by_a_product_word_makes_both_reports_private`.
+Amended 2026-10-21, §16.158 Z86: the exemption is a folder's or a library's: an organisation whose value lands on a
+placeholder a generic library or folder of the same word took first still marks it, so the report is private only.
 
 **The `<path>` legend item says only a relative argument is one** (Y8). The item said a `--source-local` argument
 in install.log that names no CloudStorage folder, but `logged_source_local` sends only a relative argument to
@@ -26851,6 +26883,10 @@ cannot open (N checks)`, `(the person's; see Doctor)` only where doctor's own fi
 and `_why_not_read` says a `GovernanceError`'s file name, never another error's, not the class. Tests:
 `test_cli.py::test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check` and
 `test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket`.
+Amended 2026-10-21, §16.158 Z32, Z43, Z39: each FAIL in that bucket carries its owner, `(the agent's; see Doctor)`
+for this account's own chmod as the state file's bucket says it. CORRECTED (2026-10-21): `_why_not_read` words a
+`GovernanceError` from an OSError by that OSError (§16.152 Y38), never its class; the file's name is status's
+(`cli._unread_words`), not the report's.
 
 **Y47: a folder where the manifest belongs fails status (`agentsync.ops.doctor`, `agentsync.setup_report`; amends
 §16.149 X49).** With manifest.sqlite a 0700 folder every sync exited 1 (`cannot be opened: Is a directory`) while
@@ -26862,6 +26898,9 @@ with `MANIFEST_FIX` (a side file: `state_dir.files`, the person moves it aside),
 loose-mode FAIL. `_last_rescreen` reads `not read (the state file is not a file: see Doctor's state_dir.manifest
 line)`. Tests: `test_cli.py::test_a_folder_where_the_manifest_belongs_fails_status` and
 `test_setup_report.py::test_the_last_rescreen_of_a_folder_where_the_manifest_belongs_points_at_its_doctor_line`.
+Amended 2026-10-21, §16.158 Z12: the report's evidence parts say `not measured (the state file is not a file: see
+Doctor's state_dir.manifest line)`, never `no manifest yet`, the evidence line counts them, and the FAIL is the
+person's in the Doctor line.
 
 **Y51: the Time Machine line over a shut state folder says not checked once (`agentsync.cli`; amends §16.149
 X12).** Over a folder this account cannot search, governance.time_machine listed every state path as `Permission
@@ -26905,6 +26944,9 @@ Amended 2026-10-21, §16.161 Z49, Z14: the ACL and read-only fixes say their cau
 bracket inside the line's `(fix: ...)`, and the parent fix ends `then run the same command again`, adding `; it is
 this account's own folder at mode <mode>, so chmod u+rwx <folder> gives it` for this account's own folder shut by its
 mode, or names the state folder itself when no folder above refuses a search.
+Amended 2026-10-21, §16.158 Z15: the NEXT reads `this account cannot open a state file or its folder, so this sync
+did not run: ...`, and the `error: state:` line adds `: its folder refuses this account` (or `: a folder above it
+refuses this account a search`) before its fix when the fix is a folder's.
 
 **Y75: curate's help says it exits 1 on a state file this account cannot open (`agentsync.cli`; amends §16.151
 X69).** Its line said `rc 1 only on a blocking finding` above an exit-code list that says 1 is also a state file
@@ -26949,6 +26991,8 @@ refused got the retry words; `CycleReport.legacy_settled` counts those and they 
 `legacy_cleared` counts a row made dataless (a local online-only file) as current, as it does one made live.
 Amended 2026-10-21, §16.162 Z57: the counting wrapper this paragraph named, `retry_settled_failures`, had no
 caller after the cycle took the rows, and is removed.
+Amended 2026-10-21, §16.158 Z35: the run record keeps `legacy_cleared` too (§16.28), so the report says which files
+that run converted.
 
 **Y33: the root guide names the inbox by ~ under a home reached through a link (`agentsync.publish`).** Under a
 HOME reached through a link (/tmp is /private/tmp) the docs repo's AGENTS.md and CLAUDE.md named the inbox by its
@@ -27104,7 +27148,102 @@ not its home, are listed by name in the test. Test:
 
 ### 16.158 Round 22: setup report (2026-10-21, wave B13 round 22 lane RA)
 
-Reserved for round 22 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 22").
+Lane RA's round 22 items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the
+verifier's corrected fix built, under the lead's round 22 rulings): Z4, Z6, Z10, Z12, Z15, Z18, Z19, Z20, Z21,
+Z22, Z23, Z24, Z27, Z28, Z31, Z32, Z33, Z35, Z39, Z40, Z41, Z43, Z45, Z61, Z74, Z76, Z84 and Z86. Items that
+describe one defect are built once: Z10 and Z27; Z40, Z61 and Z74; Z4 and Z45; Z20 and Z22; Z21 and Z28; Z32 and
+Z43. Where an item changes what an older section states, that section has a dated line (`Amended 2026-10-21,
+§16.158 Z<n>`).
+
+**A path the Configuration section cannot reach costs only its own line** (Z10, Z27). With a folder above the
+state folder refusing a search, `expand(c.state_dir).is_dir()` raised on Python 3.11 and the whole section became
+`_This section failed: PermissionError: ...`, so the `loads:` line the setup prompt's finish reads was gone.
+`_path_reached` stats each path the section checks (sources.toml, the docs repo and its `.git`, the state folder):
+a PermissionError reads `not checked: this account cannot reach it: <strerror>`, neither "exists" nor "missing",
+with no path and no class; the state dir line adds `; see Doctor's state_dir line`. `_Run`'s own `config_missing`
+uses the same test. Tests: `test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fault_named_as_the_folder`,
+`test_a_path_the_configuration_cannot_reach_costs_only_its_own_line`.
+
+**A folder above the state folder that refuses a search is the folder's fault, the person's** (Z40, Z61, Z74, Z41;
+round 22 ruling 2; amends §16.146 X28). `_state_shut`'s `db.parent.is_dir()` raised there (3.11 to 3.13; 3.14
+says False), its catch-all returned "", and state_dir's FAIL, whose fix doctor gives as the person's, was filed
+unexpected. `_state_folder_shut` stats the folder: a PermissionError, or a folder this account cannot read, write
+and search, is "folder", and `_shut_whose` reads the person's from `state_folder_fix`'s `_parent_fix`. The purge
+queue's guard drops `root.is_dir()` (Z41). disk and governance FAILs under that parent are doctor's to word (lane
+B's round 22 fix). Tests: `test_a_state_folder_a_folder_above_refuses_is_shut_and_the_persons_on_any_python`, the
+two above.
+
+**The words name what failed: the state folder, or the state file** (Z15, Z31, Z4, Z45, Z6, Z19; round 22 ruling
+3; amends §16.152 Y13, Y5, §16.146 X28 and §16.155 Y31). `_STATE_FOLDER_SHUT` (`the state folder cannot be opened
+by this account: see Doctor's state_dir lines`) beside the unchanged `_STATE_SHUT`, chosen where the path is known
+(the parts' open, the purge queue, the re-screen), with its own evidence clause; the Doctor bucket reads `from the
+state folder this account cannot open` for a shut folder, on the Doctor line and in the outcome (Z31). Items: a
+`chmod 700` fix is the folder's (`after the folder's mode was fixed`), the parent's and the folder's ACL fix the
+person's in the folder's words (Z4, Z45); the outcome of a last run that stopped at its config step on the state
+carries the same cause with no bracket (`install.sh exited 1 at its config step on agentsync's state folder, which a
+folder above it refuses this account a search: the person's to fix`, Z6); a status-step stop whose every [FAIL] is
+a state-folder check with this account's chmod says the re-run came after the mode was fixed (Z19). The sync's
+`error: state:` line keeps the path the system refused and adds `: its folder refuses this account` or `: a folder
+above it refuses this account a search` before a folder's fix, and its NEXT says `a state file or its folder`
+(Z15; status's own words are lane B's Z5). Tests: the Y5 loop and its outcome and status-step cases in
+`test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`,
+`test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere`,
+`test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`,
+`test_cli.py::test_the_syncs_state_error_says_a_folder_refused_when_a_folder_did`.
+
+**A folder where manifest.sqlite belongs is no "no manifest yet"** (Z12; amends §16.155 Y47). `_Mirror._open`
+stats the path: a missing one is `_NoManifestError` as before, a path that is no regular file (or a file where a
+folder on its way belongs) `_StateNotFileError`, worded `the state file is not a file: see Doctor's
+state_dir.manifest line`, with an evidence clause of its own; both share `_NoStateError`, which the purge queue's
+lookups catch, so queued purges still list. The Doctor line files `state_dir.manifest FAIL (the person's; see
+Doctor)` in the cannot-be-read bucket by the report's own stat (`_state_not_file`), never by widening
+`doctor.manifest_unreadable`. Test: `test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons`.
+
+**Each FAIL in the cannot-open buckets carries its owner** (Z32, Z43, Z84, Z39; amends §16.155 Y45). The
+lock/heartbeat/governance bucket gave `(the person's; see Doctor)` or nothing, while the state file's bucket says
+`(the agent's; see Doctor)` for this account's own chmod: it now says the agent's too. state_dir's FAIL for a
+folder another account owns joins the shut bucket when a file of it is shut (`_root_foreign`, doctor's own
+`st_uid` test), never when every state file opens (Z84). Z39: lane B's round 21 GovernanceError branch in
+`_why_not_read` was dead behind Y38's and is gone; the words are pinned. Tests:
+`test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket`,
+`test_a_state_folder_another_account_owns_is_in_the_shut_bucket_only_when_a_file_is_shut`.
+
+**agentsync's own folders that sources.toml moves are redacted** (Z21, Z28). A configured `[agentsync]`
+`state_dir`, `docs_repo`, `cache_dir` or `log_dir` printed its folder names in clear in Configuration, Doctor,
+Environment and Recent errors. Each one moved from its default is registered after the source folders (their
+numbers stay) by `_own_folder_values`: below the home folder, the path from its first folder that names something
+and that folder alone, after the generic home folders, dot folders, agentsync's own containers (`Library`,
+`Application Support`, `Caches`, `Logs`, `agent-context`) and a name made only of report or product words
+(`_own_word_folder`: `state`, `agentsync2`, `agentsync-x`); elsewhere, the whole path; whole-word, never fuzzy.
+`_project_values` is not reused: it registers `agent-context` or `Application Support` alone. The shell report
+prints none of these paths. Test: `test_report_redaction.py::test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted`.
+
+**An organisation named by a product word stays private after a library of that word** (Z86, a Y7 regression;
+amends §16.153 Y7). `Redactor.add` returned for a known value before marking it, so a site library Copilot,
+registered first and generic by Y7's rule, left the organisation Copilot public. The mark is applied to the known
+placeholder too. Test: `test_report_redaction.py::test_an_organisation_named_by_a_product_word_stays_private_after_a_library_of_that_word`.
+
+**A stopped copy's time, folders and install lines agree on its end line** (Z20, Z22, Z23, Z24; amends §16.58
+F37, §16.64 G32 and §16.134 V37). The time line's `_after_end` and the folders line's now take the install line's
+stopped-copy test (round 21 Y17), so a stand-alone run in the end line's own second is after it in all three; for a
+stopped copy the folders line says the runs inside the attempt, then `the install run after its end line: <counts>
+by that run`. The install line's bracket was the end line's time and read as the late run's start: `after its end
+line of <end> (started <start>)`. Tests: `test_a_stopped_copys_time_and_folders_lines_put_a_run_after_its_end_line_apart`,
+`test_an_install_run_after_the_attempts_end_line_is_named_apart`.
+
+**A cut-off doctor's words say where it stopped and what the load means** (Z18, Z33; amends §16.152 Y22). See the
+dated line there. Tests: `test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy`,
+`test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it`.
+
+**The upgrade's retry note says which files that run converted** (Z35; amends §16.28 and §16.155 Y28). The run
+record keeps `legacy_cleared`; the report's bullet reads `run N, 1 file, which that run converted` with no
+old-error clause when every one cleared, `run N, 3 files (1 that run converted)` with it for the rest. Tests:
+`test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`,
+`test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current`.
+
+**A `[remote.origin]` section's URL is read and redacted** (Z76, the report's half; amends §16.152 Y36). Git still
+applies the dotted form; `_git_remotes` reads it (and `[remote.a "b"]` as `a.b`). install.sh's reader is lane
+RB's under the same id. Test: `test_a_git_proxy_or_remote_on_its_sections_header_line_is_read_and_redacted`.
 
 ### 16.159 Round 22: installer, the shell report's redaction and git readers (2026-10-21, wave B13 round 22 lane RB)
 
