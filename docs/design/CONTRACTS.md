@@ -25718,6 +25718,8 @@ Amended 2026-10-20, §16.152 Y3, Y9, Y21, Y25, Y30, Y34: the label is whose fix 
 Doctor)` for another account's file or folder, `(the agent's; see Doctor)` for this account's own chmod.
 Amended 2026-10-20, §16.152 Y39, Y50, Y63, Y78: the interim rule is gone (`_names_only_state`); since X12 a
 `governance.time_machine` warn names an exclusion doctor read and found missing, and it stays unexpected.
+Amended 2026-10-20, §16.152 Y32: each bucket is a reason of its own, `N doctor FAIL(s) with a known cause, <bucket
+words>: <checks>`, with no bracket inside the outcome's own.
 
 **The agent's name keeps its product word where a step 1 line states it, and before a hyphen** (X38, X39; amends
 §16.140 W17 and §16.58 F4). A step 1 line states its agent at its text's start (`prompt v28, <agent>:`), and the
@@ -26593,6 +26595,14 @@ rc 143` while install.sh said it was stopped and safe to run again. For an exit 
 (SIGHUP 129, SIGINT 130 by `_SIGNAL_NAMES`), `during` only when that step's rc is the run's, and with no bracket
 inside the outcome's own; its kind stays `failed at step <install>`, which install.sh's awk reads by prefix. Test:
 `test_the_outcome_of_a_status_fail_stop_names_the_status_step`.
+
+**A known cause's words are no bracket inside the outcome's own** (Y32; amends §16.146 X35). The outcome's reason
+for a FAIL in a Doctor bucket read `(computed: install.sh exit 0; 1 doctor FAIL with a known cause:
+state_dir.manifest (from the state file that cannot be read))`, a bracket inside the computed one, and two buckets
+were joined by the `; ` that separates the reasons themselves. Each bucket is a reason of its own, its words
+(every bucket's begin `from ...`) before the names: `1 doctor FAIL with a known cause, from the state file that
+cannot be read: state_dir.manifest`. Tests: `test_the_outcome_calls_unexpected_only_a_doctor_fail_in_no_bucket`,
+`test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

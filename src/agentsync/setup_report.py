@@ -2655,9 +2655,12 @@ def compute_outcome(
                 known.setdefault(bucket, []).append(name)
         if odd:
             why.append(f"{_plural(len(odd), 'unexpected doctor FAIL')}: {', '.join(odd)}")
-        if known:  # the Doctor line's own bucket: its cause is known, so it is no unexpected FAIL (X35)
-            each = "; ".join(f"{', '.join(names)} ({bucket})" for bucket, names in known.items())
-            why.append(f"{_plural(sum(map(len, known.values())), 'doctor FAIL')} with a known cause: {each}")
+        # the Doctor line's own bucket: its cause is known, so it is no unexpected FAIL (X35). A reason of its
+        # own a bucket, its words (each starts "from ...") before the names: no bracket inside the outcome's
+        # own, and no second "; " inside one reason (B13 round 21 Y32)
+        for bucket, names in known.items():
+            fails = _plural(len(names), "doctor FAIL")
+            why.append(f"{fails} with a known cause, {bucket}: {', '.join(names)}")
         if not why:
             return Outcome(
                 "fully one command",

@@ -2971,8 +2971,18 @@ def test_the_outcome_calls_unexpected_only_a_doctor_fail_in_no_bucket(fake_mac: 
     assert both.kind == "worked with help", both
     assert both.why[-2:] == (
         "1 unexpected doctor FAIL: tcc",
-        "1 doctor FAIL with a known cause: state_dir.manifest (from the state file that cannot be read)",
+        "1 doctor FAIL with a known cause, from the state file that cannot be read: state_dir.manifest",
     ), both
+    # B13 round 21 Y32: a bucket's words in a bracket nested in the outcome's own "(computed: ...)", and two
+    # buckets joined by its "; ": a reason of its own a bucket, no bracket in any
+    two = setup_report.compute_outcome(
+        att, runs, doctor_fails=[("a", "from one cause"), ("b", "from another"), ("c", "from one cause")]
+    )
+    assert two.why[-2:] == (
+        "2 doctor FAILs with a known cause, from one cause: a, c",
+        "1 doctor FAIL with a known cause, from another: b",
+    ), two
+    assert not any("(" in w or ";" in w for w in two.why), two
     known = setup_report.compute_outcome(att, runs, doctor_fails=[("governance.remote", "from a remote")])
     assert known.kind == "worked with help" and not any("unexpected" in w for w in known.why), known
     assert (
@@ -13927,8 +13937,8 @@ def test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket(
     assert "unexpected doctor FAIL" in _line(baseline, "- **outcome"), baseline
     assert "unexpected doctor FAIL" not in outcome, outcome
     assert (
-        "; 2 doctor FAILs with a known cause: source.<folder-2>.listable, source.<folder-2>.volume (from the "
-        "1 synced folder step 1 found not on disk)" in outcome
+        "; 2 doctor FAILs with a known cause, from the 1 synced folder step 1 found not on disk: "
+        "source.<folder-2>.listable, source.<folder-2>.volume)" in outcome
     ), outcome
     # a SharePoint library not synced beside its OneDrive-<org> is in install.sh's gone= count too
     shutil.rmtree(fake_mac["two"].parents[1])
@@ -14021,9 +14031,10 @@ def test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket(
     assert outcome.startswith("- **outcome: worked with help**"), outcome
     assert "unexpected doctor FAIL" not in outcome, outcome
     assert (
-        "1 doctor FAIL with a known cause: state_dir.manifest (from the state file that cannot be read)"
+        "1 doctor FAIL with a known cause, from the state file that cannot be read: state_dir.manifest)"
         in (outcome)
     ), outcome
+    assert "))" not in outcome and "(" not in outcome.split("(computed: ", 1)[1], outcome
 
 
 def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket(
