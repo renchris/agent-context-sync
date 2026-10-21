@@ -1433,6 +1433,35 @@ check), E 4 (the convert retry clause, helper docstrings, rescreened stubs), D 1
 CLAUDE.md's CI time). Lead: Y79 (round 20's /tmp leftovers and the v27 and v28 sandboxes, about 57 GB, by exact name)
 and Y80 (after the fire, every lane gets all six session ids).
 
+### B13 round 21 landed (2026-10-21)
+
+All six lanes landed; CI green on `b0fdb681` (ci `39588432621`, diagrams `39588432586`; prompt v30). Notes
+`lanes/r21-<lane>.md`, lead notes `round21/lead-notes.md`. All 77 items are built (75 in lanes, Y79 and Y80 by the
+lead). One corrected fix was built another way: Y10's restore of u+rw inside agentsync would widen a mode the person
+set, which install.sh promises never to do, so lane P built Y10 as Y24's NEXT (the agent's own chmod, per the
+ownership rule). Lane B's review residual stays as its Y27 verifier accepted: a foreground sync that breaks a stale
+lock and then raises says so only at `-vv` (§16.155). Duplicates built once: Y11/Y26 and Y31/Y69 (B), Y7+Y72 (RB),
+Y75 as lane D's Y76.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `d6949daf..eaed1034`, 2 commits (ci limit 45) |
+| RB | `a0382751..d84fbd7a`, 7 commits |
+| P | `a85a3e8f`, 1 commit (v30) |
+| E | `a29ed578..b0dffb26`, 5 commits |
+| B | `bc6196e5..e0287cae`, 17 commits (with lane P's ownership-rule seams) |
+| RA | `6b08d573..b0fdb681`, 13 commits |
+
+Learnings: sending every lane all six session ids at the fire (Y80) let lanes settle their own seams (RB told RA
+about the Y64 parity test; D told RA about Y48 and Y71); the lead relayed only the two seams known at the fire. The
+shared land lock serialized six lands over about four hours (D first at 02:42, RA last at 06:26), and four land gates
+went red as lanes rebased onto each other's changes; each lane fixed its own. One ci run took 34 minutes on a loaded
+runner, so lane D raised the job's limit to 45. The lead's recycle killed its ping watcher; the mailbox hook armed a
+new one for the pane before the successor's first turn, so no ping was lost.
+
+Round 22: the round 21 workflow with prompt v30 on this section's landed tip, BASE `20612f1f` (ids Z<n>, outputs
+`round22/`); scenario C plays the v29 and v28 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
