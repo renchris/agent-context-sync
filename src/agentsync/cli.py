@@ -1993,13 +1993,18 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             _check("governance.remote", True, "no disallowed remote on the docs repo", doctor.Severity.INFO)
         )
     # a state folder this account cannot look inside: the holds and the purge queue are files in it, so they
-    # are not checked, never a crash of the whole check (B13 round 20 X73)
+    # are not checked, never a crash of the whole check (B13 round 20 X73). The config-level hold is
+    # sources.toml's, so it is shown first either way (B13 round 21 Y44: the not-checked line hid it)
+    out += [
+        _check("governance.hold", True, h.describe(), doctor.Severity.INFO)
+        for h in governance.config_holds(gov)
+    ]
     shut = doctor.state_folder_shut(config)
     if shut:
         out.append(_check("governance.hold", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO))
     else:
         try:
-            holds = governance.active_holds(config.state_paths.root, gov)
+            holds = governance.state_holds(config.state_paths.root)
         except AgentSyncError as exc:  # holds.json this account cannot open: one FAIL, not a crash (X73)
             out.append(_refused_check(config, "governance.hold", exc))
         else:

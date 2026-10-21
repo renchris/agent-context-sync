@@ -426,15 +426,23 @@ def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | Non
     return True
 
 
+def config_holds(gov: GovernanceConfig) -> tuple[Hold, ...]:
+    """The config-level hold (scope ``all``) when sources.toml sets one: read from ``[governance]`` alone, so
+    status shows it over a state folder it cannot open (B13 round 21 Y44: the shut folder's not-checked line
+    hid it)."""
+    if not gov.hold:
+        return ()
+    return (Hold(HOLD_ALL, gov.hold_reason or "hold = true", gov.hold_owner or "sources.toml", "", "config"),)
+
+
+def state_holds(state_dir: Path) -> tuple[Hold, ...]:
+    """The holds recorded in the state folder (``governance/holds.json``), by scope."""
+    return tuple(sorted(_state_holds(state_dir), key=lambda h: h.scope))
+
+
 def active_holds(state_dir: Path, gov: GovernanceConfig) -> tuple[Hold, ...]:
     """Every hold in force: the config-level one (scope ``all``) first, then state holds by scope."""
-    out: list[Hold] = []
-    if gov.hold:
-        out.append(
-            Hold(HOLD_ALL, gov.hold_reason or "hold = true", gov.hold_owner or "sources.toml", "", "config")
-        )
-    out += sorted(_state_holds(state_dir), key=lambda h: h.scope)
-    return tuple(out)
+    return (*config_holds(gov), *state_holds(state_dir))
 
 
 def blocking_holds(holds: Sequence[Hold], source_ids: Iterable[str] | None) -> list[Hold]:

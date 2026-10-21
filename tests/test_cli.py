@@ -3996,6 +3996,43 @@ def test_a_state_folder_this_account_cannot_look_inside_is_one_line_with_the_fol
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_config_hold_shows_over_a_state_folder_status_cannot_open(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y44: with the state folder shut, status printed only governance.hold's not-checked line,
+    hiding a legal hold sources.toml sets, which needs no state file; so did holds.json at 0000. The config
+    hold is shown first either way, and only the state holds are not checked (or FAIL)."""
+    cfg = str(initialised.config_path)
+    path = initialised.config_path
+    text = '\n[governance]\nhold = true\nhold_reason = "Contoso matter 7"\nhold_owner = "Contoso legal"\n'
+    path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = expand(initialised.state_paths.root)
+    shown = "[ok  ] governance.hold "
+    held = "hold all (config): Contoso matter 7"
+    _rc, out = _status(cfg, capsys)
+    assert [ln for ln in out if ln.startswith(shown) and held in ln], out
+    root.chmod(0)
+    try:
+        _rc, out = _status(cfg, capsys)
+    finally:
+        root.chmod(0o700)
+    holds = [ln for ln in out if ln.startswith(("[ok  ] governance.hold ", "[info] governance.hold "))]
+    assert len(holds) == 2 and held in holds[0] and holds[0].startswith(shown), holds
+    assert holds[1].startswith("[info] governance.hold ") and doctor.STATE_FOLDER_UNCHECKED in holds[1], holds
+    state = governance._holds_file(root)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text('{"holds": []}\n', encoding="utf-8")
+    state.chmod(0)
+    try:
+        _rc, out = _status(cfg, capsys)
+    finally:
+        state.chmod(0o600)
+    assert [ln for ln in out if ln.startswith(shown) and held in ln], out
+    assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
+
+
 def test_a_permission_error_outside_the_state_folder_keeps_its_traceback(
     initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
