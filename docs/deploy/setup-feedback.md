@@ -787,8 +787,9 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   start followed by a status that waits was about 27 s with no line.
 - A check whose program does not answer in time says so:
   `<command> did not answer within <N>s: the check ran out of time, so it could not say whether anything is
-  wrong`. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again (it keeps
-  the folders already synced; not --report-only, which builds nothing)`, a step the prompt lets the agent take.
+  wrong`. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again without
+  --report-only, which builds nothing; a plain run keeps the folders already synced`, a step the prompt lets
+  the agent take.
   Run by hand, it starts `~/.local/bin/agentsync status (run it again as it is)`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
@@ -801,7 +802,7 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   file whole or reinstalled it, a second re-run would repeat the first, so the bundled one's names `show the
   person this line: setting [convert] pandoc_path to an absolute pandoc is theirs (the bundled pandoc does not
   answer on this Mac, and install.sh found its file whole)` (CONTRACTS §16.132, U78). For any other check it
-  says `report it (the program does not answer on this Mac, and no setup step clears that)`.
+  says `report it: the program does not answer on this Mac, and no setup step clears that`.
   The bundled pandoc's re-run is a step the prompt lets the agent take: install.sh's step 2 reinstalls when that
   pandoc is not the file pypandoc_binary's RECORD lists, under the background sync's lock, with
   `UV_SYSTEM_CERTS=1` and at uv.lock's versions. Before, the fix was a bare `uv tool upgrade --reinstall-package

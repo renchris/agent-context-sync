@@ -210,7 +210,7 @@ _EBADARCH = getattr(errno, "EBADARCH", 86)  # "Bad CPU type in executable": an I
 # here, so the line does not say which it was.  _STILL_NO_ANSWER is what the fix names for a second such
 # line when the check has no fix of its own for a program that does not work.
 _OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
-_STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
+_STILL_NO_ANSWER = "report it: the program does not answer on this Mac, and no setup step clears that"
 
 # A check that crashed is a fault in agentsync, which nothing on this Mac clears. -v logs the traceback.
 # An operating-system error is not that: the Mac's state causes it and can clear it (see _os_error).
@@ -587,7 +587,8 @@ def _quoted(text: str) -> str:
 
 
 AGAIN_UNDER_INSTALL_SH = (
-    f"run {INSTALL_SH} again (it keeps the folders already synced; not --report-only, which builds nothing)"
+    f"run {INSTALL_SH} again without --report-only, which builds nothing; a plain run keeps the folders "
+    "already synced"
 )
 """How a fix under scripts/install.sh (:data:`NO_NEXT_HINT_ENV`) says to run it again: by what the command is.
 It said ``run the same <install.sh> command again as it is (its NEXT line names it)``, but a warn makes no
@@ -596,7 +597,9 @@ writes this fix into the report, builds nothing (B13 round 19 W19, W48). ``--lis
 No options are repeated: "the options of the run that installed agentsync" named options the person never
 saw, and a plain run does the same job, since a run with no --source-local keeps the config's folders
 (install.sh's header; its own re-run drops them too) and background sync is the operator's flag, which a
-setup agent never passes (B13 round 20 X21)."""
+setup agent never passes (B13 round 20 X21). No bracket of its own: every doctor line wraps its fix in
+``(fix: ...)``, so ``(it keeps ...)`` and :data:`_STILL_NO_ANSWER`'s ``(the program ...)`` nested a bracket in
+that one, which round 20's X7 and X44 had taken out of such lines (B13 round 21 Y20)."""
 
 
 def _again_fix(fallback: str | None = None) -> str:

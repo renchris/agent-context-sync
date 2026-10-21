@@ -514,10 +514,11 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 # B13 round 19 W19, W48: by what it is; no NEXT line names it under a warn, and --report-only builds nothing
 # B13 round 20 X21: the plain command, which keeps the folders; no options the person never saw
 RUN_AGAIN_INSTALL = (
-    f"run {INSTALL_SH} again (it keeps the folders already synced; not --report-only, which builds nothing)"
+    f"run {INSTALL_SH} again without --report-only, which builds nothing; a plain run keeps the folders "
+    "already synced"
 )
 COMES_BACK = "; if this line comes back: "
-STILL_NO_ANSWER = "report it (the program does not answer on this Mac, and no setup step clears that)"
+STILL_NO_ANSWER = "report it: the program does not answer on this Mac, and no setup step clears that"
 AGAIN = RUN_AGAIN + COMES_BACK + STILL_NO_ANSWER  # a check with no fix of its own for a broken program
 PANDOC_PATH_THEIRS = "setting [convert] pandoc_path to an absolute pandoc is theirs"
 PANDOC_FIX = (
@@ -538,6 +539,27 @@ CRASH_FIX = (
     "report, "
     "and no setup step clears it)"
 )
+
+
+def test_the_install_sh_rerun_and_still_no_answer_fixes_nest_no_bracket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 21 Y20: every doctor line wraps its fix in ``(fix: ...)``, and under install.sh the time-out
+    fix and the helper build's put ``(it keeps the folders already synced; ...)`` inside it, and
+    ``_STILL_NO_ANSWER`` its own ``(the program ...)``: round 20's X7 and X44 had taken such inner brackets
+    out. Neither has one now, and "not --report-only" stays an instruction."""
+    monkeypatch.setenv(doctor.NO_NEXT_HINT_ENV, "1")
+    assert doctor.AGAIN_UNDER_INSTALL_SH == RUN_AGAIN_INSTALL
+    assert "without --report-only" in doctor.AGAIN_UNDER_INSTALL_SH
+    assert "(" not in doctor._again_fix() and "(" not in doctor._STILL_NO_ANSWER
+    words, minutes = doctor.helper_timed_out_words("speech")
+    helper = doctor._helper_again_fix(f"{words} x", "speech")
+    assert (
+        helper
+        == f"{RUN_AGAIN_INSTALL}; the build stops after {minutes} minutes, and if it stops again, run it "
+        "when the Mac and the network are less busy"
+    )
+    assert "(" not in helper
 
 
 def _silent(match: Callable[[Sequence[str]], bool]) -> Callable[..., subprocess.CompletedProcess[str]]:
