@@ -27204,6 +27204,11 @@ its state folder is a state file; a folder above the state folder that refuses a
 and the words name what failed, the state folder when the folder (or a folder above it) refuses, a state file only
 for a file. A dated line this round writes reads `Amended 2026-10-21, §16.161 Z<n>`.
 
+**Z17, Z48, Z83: the person's kinds name every state refusal no chmod fixes.** Built by lane P's commit `fix(status):
+the person's kinds name every state refusal no chmod fixes` in §16.160 (Z65), which lands every copy of `doctor.PERSONS_KINDS` in one commit, as the tests pin them equal (the
+lead's ruling); lane B wrote its words: `a state file that is damaged, another account's or not a file, or a state
+file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses`.
+
 **Z3, Z9, Z26, Z34, Z46, Z60, Z73: a folder above the state folder that refuses a search is one FAIL, the person's
 (`agentsync.ops.doctor`, `agentsync.governance`, `agentsync.cli`).** With `~/Library/Application Support` at 0000,
 `Path.exists` and `is_dir` raise PermissionError on Python 3.11, so the disk check (`_nearest_existing`) and
@@ -27342,10 +27347,11 @@ The setup report's `_refused_state_files` keeps its own copy (lane RA's file; th
 `test_cli.py::test_a_wal_and_shm_this_account_cannot_write_name_both_files_one_fix_and_a_next` (real WAL frames).
 
 **Z68: a code comment's CONTRACTS citation names the section that holds its item (`agentsync.ops.lock`).** A comment
-in `ops/lock.py` cited `§16.151 X16`; X16 is §16.149's (§16.155 Y27's own entry had already said so), and the
+in `ops/lock.py` cited section 16.151 for X16, which is §16.149's (§16.155 Y27's own entry had already said so), and the
 citation scan (round 21 Y77) read only CONTRACTS. The comment reads `§16.149 X16`, and a test reads every `§16.N
-<item>` in `src/` and `scripts/` by the same rule, which found two more: setup_report's `§16.97 M3` is §16.93's and
-install.sh's `§16.110 Q27` is §16.111's (comment-only hunks in lanes RA's and RB's files). Test:
+<item>` in `src/` and `scripts/` by the same rule, which found two more: setup_report cited section 16.97 for M3,
+which is §16.93's, and install.sh section 16.110 for Q27, which is §16.111's (comment-only hunks in lanes RA's and
+RB's files). Test:
 `test_deploy_pack.py::test_a_code_comments_contracts_citation_names_a_section_that_holds_its_item`.
 
 **Z52: the state fixes' docstrings name every fix they return (`agentsync.ops.doctor`, `agentsync.cli`).**
