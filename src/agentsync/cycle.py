@@ -268,7 +268,7 @@ Y73). A conversion takes it out; each cycle's first read drops one that waits no
 without a read, deleted, its source gone)."""
 _RETRY_LEGACY_META = "convert-retry-legacy:done"
 """Set once the failed-conversion stubs a build before the retry settled were given the ERROR verdict again
-(``Manifest.retry_settled_failures``, B13 round 18 V65), so each gets the same bounded retries once."""
+(``Manifest.retry_settled_failure_rows``, B13 round 18 V65), so each gets the same bounded retries once."""
 _REREAD_STREAK = 3
 """Re-reads that failed in a row, after which a cycle starts no more: what fails three files running is
 more likely the Mac than the files, and each of them has used one of its attempts."""

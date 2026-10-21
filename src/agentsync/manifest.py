@@ -1851,12 +1851,6 @@ class Manifest:
             stable_id,
         )
 
-    def retry_settled_failures(self, reason_prefix: str, *, retried_meta: str, done_key: str) -> int:
-        """:meth:`retry_settled_failure_rows`, counted."""
-        return len(
-            self.retry_settled_failure_rows(reason_prefix, retried_meta=retried_meta, done_key=done_key)
-        )
-
     def retry_settled_failure_rows(
         self, reason_prefix: str, *, retried_meta: str, done_key: str
     ) -> list[tuple[str, str]]:

@@ -532,6 +532,35 @@ def test_no_private_function_in_src_is_left_for_the_tests_alone() -> None:
     assert dead == []
 
 
+_MANIFEST_TEST_API = {"applied_migrations", "iter_tombstones", "migrate", "pages_citing", "upsert_observed"}
+"""Public ``Manifest`` methods older than this scan that only tests call (the migration probes, the per-row
+upsert that ``upsert_observed_many`` batches, the tombstone and citation reads)."""
+
+
+def test_every_public_manifest_method_has_a_caller_in_src() -> None:
+    """B13 round 22 Z50, Z57: Y28 moved the cycle to ``retry_settled_failure_rows`` and left the counting
+    ``retry_settled_failures`` with no caller, while CONTRACTS still gave it as the API. Every public
+    ``Manifest`` method is reached by an attribute in src's syntax tree (a docstring naming it is not), but
+    the few older ones only tests use."""
+    from agentsync.manifest import Manifest  # noqa: PLC0415
+
+    root = Path(agentsync.__file__).parent
+    reached = {
+        node.attr
+        for p in sorted(root.rglob("*.py"))
+        for node in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Attribute)
+    }
+    public = {
+        name
+        for name, value in vars(Manifest).items()
+        if not name.startswith("_") and (callable(value) or isinstance(value, classmethod | staticmethod))
+    }
+    assert len(public) > 80, "the scan is broken"
+    assert sorted(public - reached - _MANIFEST_TEST_API) == []
+    assert public - reached >= _MANIFEST_TEST_API, "a listed method has a caller in src now: take it out"
+
+
 _SCAN_SAMPLE_A = '''
 def _dead_in_prose():
     """_dead_in_prose is named here only."""

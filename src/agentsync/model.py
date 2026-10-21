@@ -499,7 +499,7 @@ class CycleReport:
     # build settled (B13 round 18 V57)
     converter_down: bool = False
     # failed conversions an older build had settled for good, given the bounded retries again by this run
-    # (``Manifest.retry_settled_failures``, once per manifest): the sync's note says why their errors come
+    # (``Manifest.retry_settled_failure_rows``, once per manifest): the sync's note says why their errors come
     # back (B13 round 19 W18)
     legacy_retried: int = 0
     # of those, the ones this run made current, for the sync's note alone (never a run-record count): "tried

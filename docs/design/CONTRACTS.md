@@ -8103,7 +8103,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 |---|---|
 | `converted` | files converted in this run (the sum of `SourceReport.converted`) |
 | `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change (**Amended 2026-10-19, §16.138 V62, V67 (by §16.132 U3):** the same bytes are converted again in up to `_CONVERT_RETRIES` (2) later runs and counted in each; one whose converter could not start is converted, uncounted against the retries, in the first run in which it starts; see the not-retried bullet below) |
-| `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run |
+| `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run. **Amended 2026-10-21, §16.162 Z57:** the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28) |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -14029,6 +14029,7 @@ Amended 2026-10-19, §16.138 V74 (by §16.132 U3, §16.138 V65): a failed conver
 given the ERROR verdict once after the upgrade (`Manifest.retry_settled_failures`). So a drawing that failed this
 way is converted again in the first syncs after the upgrade, which part a's stack walk reads; one that fails every
 time keeps its stub until its file changes. `diagram-stdlib` still has no `outdated` rule.
+Amended 2026-10-21, §16.162 Z57: the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28).
 
 Tests: `tests/test_convert_formats.py` (`test_a_visio_group_nested_thousands_deep_is_read_in_the_files_order`,
 groups 5000 deep with shapes before, inside and after each; §16.42's
@@ -23996,6 +23997,7 @@ an intact stub, whatever "retried next cycle" said. Now:
   Amended 2026-10-19, §16.138 V65: the stub of an ordinary failed conversion that an older build settled gets the
   same bounded retries once, after the upgrade (`Manifest.retry_settled_failures`); a local online-only one
   waits for new bytes.
+  Amended 2026-10-21, §16.162 Z57: the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28).
 - A foreground sync whose cycle reported such an error, while the pandoc check fails, has rule 1's NEXT `the pandoc
   check failed (a file's converter could not start in this sync, so it is not converted yet): run
   ~/.local/bin/agentsync status, whose [FAIL] pandoc line names the fix` (`cli._unavailable_steps`). The convert
@@ -24736,6 +24738,9 @@ unavailable` one. Each costs at most `_CONVERT_RETRIES` conversions, the cost ev
 `test_cycle.py::test_a_failed_conversion_an_older_build_settled_gets_the_bounded_retries_once` (converter fixed:
 live, one conversion, no QUARANTINE.tsv line; still failing: tried exactly `_CONVERT_RETRIES` times, then
 settled).
+Amended 2026-10-21, §16.162 Z57: since §16.155 Y28 the API is `Manifest.retry_settled_failure_rows(reason_prefix, *,
+retried_meta, done_key) -> list[tuple[str, str]]`, the (source id, stable id) of each row it moves, and the
+counting form, `-> int`, is removed: Y28 left it with no caller.
 
 **The texts that said a failed conversion is never retried (V62, V67, V74; `agentsync.cycle`, `agentsync.convert`;
 dated lines at §16.28, §16.48 R86).** `_run_tally`'s docstring, `convert_file`'s ("would be settled and never read
@@ -26381,6 +26386,7 @@ Amended 2026-10-21, §16.155 Y28: those words are for the rows that failed again
 reads `until those tries are used`, and a row this sync made current has its own note.
 Amended 2026-10-21, §16.162 Z55: so has a row this sync settled with no try left (unreadable, refused or
 removed): `was tried again in this sync and is settled ... not tried again`, never the retry words.
+Amended 2026-10-21, §16.162 Z57: the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28).
 
 **The helper modules' docstrings say what exit 1 means (X57, X84; `agentsync.convert.ocr`,
 `agentsync.convert.media`, `agentsync.convert.speech`; dated lines at §16.25, §16.34, §16.35 and §16.141
@@ -26917,7 +26923,7 @@ accepted cost. (The spec placed X16 in §16.151; it is in §16.149.) Tests:
 `agentsync.manifest`, `agentsync.model`, `agentsync.cli`; amends §16.144 W18 and §16.150 X53).** The upgrade's sync
 said `1 conversion an older build gave up on is tried again ... its error may show again until then` in the sync
 that converted it: the note counted the rows the move took. `Manifest.retry_settled_failure_rows` returns the moved
-rows (`retry_settled_failures` counts them), the cycle counts those it made live as `CycleReport.legacy_cleared`
+rows (a counting wrapper beside it is removed, §16.162 Z57), the cycle counts those it made live as `CycleReport.legacy_cleared`
 (no run-record count; `legacy_retried` is unchanged), and the sync prints `note: N conversion(s) an older build
 gave up on was/were tried again in this sync and is/are now current` for them and the retry words, ending `until
 those tries are used`, for the rest; both keep `an older build gave up on `, which install.sh greps. Test:
@@ -26926,6 +26932,8 @@ its two siblings and `test_install_oneshot.py`.
 Amended 2026-10-21, §16.162 Z55: "the rest" was every row not live, so a row this sync settled as unreadable or
 refused got the retry words; `CycleReport.legacy_settled` counts those and they have their own note, and
 `legacy_cleared` counts a row made dataless (a local online-only file) as current, as it does one made live.
+Amended 2026-10-21, §16.162 Z57: the counting wrapper this paragraph named, `retry_settled_failures`, had no
+caller after the cycle took the rows, and is removed.
 
 **Y33: the root guide names the inbox by ~ under a home reached through a link (`agentsync.publish`).** Under a
 HOME reached through a link (/tmp is /private/tmp) the docs repo's AGENTS.md and CLAUDE.md named the inbox by its
@@ -27195,6 +27203,18 @@ file deleted upstream, current. Test:
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again` (an unreadable
 stub and a label refusal: the settled note once, neither `now current` nor `may show again`, and two more syncs
 with no note and no converter call), and Y28's and W18's tests unchanged.
+
+**The counting retry_settled_failures is removed (Z50, Z57; `agentsync.manifest`, `agentsync.cycle`,
+`agentsync.model`; dated lines at §16.28 W18, §16.48 V74, §16.132 U3, §16.138 V65, §16.150 X53 and §16.155
+Y28).** Y28 moved the cycle to `Manifest.retry_settled_failure_rows`, which returns the rows it moves, and left
+`Manifest.retry_settled_failures`, the wrapper that counted them, with no caller in src, tests or scripts; V65's
+API paragraph still gave it as the API, `-> int`. The wrapper is gone, `cycle._RETRY_LEGACY_META`'s docstring
+and `CycleReport.legacy_retried`'s comment name `retry_settled_failure_rows`, and every paragraph that named the
+wrapper keeps its words and has a dated line (Y28's own clause, `retry_settled_failures` counts them, is
+reworded). Z50 and Z57 are one finding from two reviewers, built once. Not a caller or a test to keep the
+wrapper alive: that keeps an API nothing uses. Test:
+`test_contracts.py::test_every_public_manifest_method_has_a_caller_in_src` (red with the wrapper: every public
+`Manifest` method is reached from src's syntax tree, but five older ones the tests use, named in the test).
 
 ### 16.163 Round 22: deploy docs, CONTRACTS citations and CLAUDE.md's CI time (2026-10-21, wave B13 round 22 lane D)
 
