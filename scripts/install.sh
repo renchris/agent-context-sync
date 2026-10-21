@@ -3723,9 +3723,12 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		;;
 	esac
 	case "$used" in *" <path> "*)
-		say "- <path>: a --source-local argument in install.log that names no CloudStorage folder, and every word bash"
-		say "  wrote in its dollar-quote form, which install.log uses for a name with a curly apostrophe, an en dash or"
-		say "  an accent"
+		# only a relative argument is <path>: a ~/ or absolute one is matched by its configured folders, as the body
+		# shows it (B13 round 21 Y8)
+		say "- <path>: a relative --source-local argument in install.log (which records no working directory) whose first"
+		say "  part is not a CloudStorage entry, and every word bash wrote in its dollar-quote form (\$'...'), which install.log"
+		say "  uses for a name with a tab or another control character, a curly apostrophe, an en dash or an accent (under the"
+		say "  C locale, any character outside ASCII)"
 		;;
 	esac
 	# as setup_report._LEGEND words them (B13 round 16 T3, round 17 U93)

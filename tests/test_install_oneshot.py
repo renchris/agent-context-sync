@@ -2575,11 +2575,51 @@ def test_the_shell_report_reads_past_a_dollar_quoted_install_log_word(
     assert {"<path>", "<folder-N>"} <= set(kinds) and "<proxy-N>" not in kinds, kinds
     item = {i.split(":", 1)[0].lstrip("- "): " ".join(i.split()) for i in items}
     assert item["<path>"].endswith(
-        "and every word bash wrote in its dollar-quote form, which install.log uses for a name with a curly "
-        "apostrophe, an en dash or an accent"
+        "and every word bash wrote in its dollar-quote form ($'...'), which install.log uses for a name with "
+        "a tab or another control character, a curly apostrophe, an en dash or an accent (under the C "
+        "locale, any character outside ASCII)"
     ), "the Redaction text is not itself redacted, and reads plainly (B13 R7)"
+
     # B13 round 11 M3: no name every drive has is in this report, so its rule is not explained
     assert "such as Documents" not in item["<folder-N>"], item["<folder-N>"]
+
+
+def test_the_path_legend_says_only_a_relative_argument_is_one(env: dict[str, str]) -> None:
+    """B13 round 21 Y8: the <path> item said "a --source-local argument in install.log that names no
+    CloudStorage folder", but a ``~/`` or absolute argument is never <path> (a configured one shows as
+    ``~/Projects/<folder-N>``): only a relative one is, and a TAB name's ``$'...'`` word was in no example."""
+    home = Path(env["HOME"])
+    ledger = home / "Projects" / "Contoso Ledger"
+    ledger.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(f'[[source]]\nid = "s"\nkind = "local"\npath = "{ledger}"\n')
+    typed = ("Tailspin Notes", "~/Projects/Contoso Ledger", "~/Projects/Zephyr\tQuarry")
+    words = subprocess.run(  # as install.sh's log_start writes them: bash 3.2 leaves a leading ~ bare
+        [BASH32, "-c", 'printf "%q\\n" "$@"', "_", *typed], capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    assert words[2].startswith("$'"), words
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    head = "run=20261010T010000Z-1 start install.sh compat=10 commit=- kind=- source=- args=--source-local "
+    (setup / "install.log").write_text(
+        "".join(f"2026-10-10T0{i}:00:00Z {head}{w}\n" for i, w in enumerate(words, 1))
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0, cp.stderr
+    text = report_path(env).read_text()
+    assert text.count("args=--source-local <path>\n") == 2, "the relative word and the TAB word"
+    assert re.search(r"args=--source-local ~/Projects/<folder-\d>\n", text), text
+    for name in ("Tailspin", "Ledger", "Zephyr"):
+        assert name not in text, name
+    legend = text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].strip().splitlines()
+    assert max(map(len, legend)) <= 115, legend
+    item = " ".join(" ".join(legend).split(" - <path>: ", 1)[1].split(" - ", 1)[0].split())
+    assert item.startswith(
+        "a relative --source-local argument in install.log (which records no working directory) whose first "
+        "part is not a CloudStorage entry, and every word bash wrote in its dollar-quote form ($'...'),"
+    ), item
+    assert "tab or another control character" in item and "names no CloudStorage folder" not in item, item
 
 
 _LEGEND_KINDS = (
