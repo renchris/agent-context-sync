@@ -28,6 +28,10 @@ SKILL_NAME = "agentsync-docs"
 AGENTSYNC_BIN = "~/.local/bin/agentsync"
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 """Where the README's setup prompt clones the checkout: the installer and its ``--report-only``."""
+HELPER_RETRY_CLAUSE = f"; {INSTALL_SH} tries the build again on its next run"
+"""How a helper build's reason ends when a signal stopped it or it ran out of time (``convert.ocr``'s, the OCR
+and media helpers', ``convert.speech``'s), by the installer's path (B13 round 18 V68): one text, so doctor's
+line, which drops it where its fix says the re-run, drops what the writers wrote (B13 round 21 Y54)."""
 
 
 _AUTHORING = (

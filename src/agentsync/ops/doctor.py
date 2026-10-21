@@ -52,6 +52,7 @@ from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
 from agentsync.paths import default_cache_dir, default_log_dir, expand, is_cloud_path
+from agentsync.skill import HELPER_RETRY_CLAUSE
 from agentsync.text import plural
 
 log = logging.getLogger(__name__)
@@ -862,10 +863,12 @@ def _check_speech(config: Config) -> list[CheckResult]:
     return [_bad("speech", f"speech: {state} ({detail})", Severity.WARN, fix=fix)]
 
 
-_RETRY_CLAUSE = f"; {INSTALL_SH} tries the build again on its next run"
-"""How a helper's marker reason ends when its build ran out of time (``convert.speech._TIMED_OUT``,
-``convert.ocr``'s): doctor's line drops it when its fix says the re-run, so the re-run is said once (B13 round
-20 X20)."""
+_RETRY_CLAUSE = HELPER_RETRY_CLAUSE
+"""How a helper's marker reason ends when its build ran out of time or a signal stopped it
+(``convert.speech._TIMED_OUT``, ``convert.ocr``'s): doctor's line drops it when its fix says the re-run, so
+the re-run is said once (B13 round 20 X20). The writers' own text, from ``skill``, never from ``convert``
+(doctor imports, and gives its line, even when convert is broken): a reworded clause is dropped too (B13
+round 21 Y54)."""
 
 
 def _helper_detail(detail: str, fix: str | None) -> str:

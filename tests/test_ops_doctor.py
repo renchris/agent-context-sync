@@ -24,6 +24,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
@@ -3179,17 +3180,35 @@ def test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failu
         f"run {INSTALL_SH} again; the build stops after 5 minutes, and if it stops again, run it when "
         "the Mac is less busy"
     )
-    retry = f"; {INSTALL_SH} tries the build again on its next run"
-    for reason in (
-        f"swiftc ran out of time building the {kind.name}{retry}",
-        f"{ocr.BUILD_TIMED_OUT} {kind.name}",
-    ):
+    # B13 round 21 Y54: the marker ocr's own build leaves when swiftc runs out of time, not a copy of it
+    tools = {
+        "-p": sample_config.cache_dir,
+        "swiftc": Path(sys.executable),
+        "--show-sdk-path": sample_config.cache_dir,
+    }
+
+    def timed_out(*_a: object, **_k: object) -> NoReturn:
+        raise subprocess.TimeoutExpired("swiftc", 300)
+
+    def none_yet(_helper: Path) -> NoReturn:
+        raise kind.error("no helper yet")
+
+    with monkeypatch.context() as m:
+        m.setattr(ocr.sys, "platform", "darwin")
+        m.setattr(ocr, "_tool", lambda argv: str(tools[argv[-1]]))
+        m.setattr(ocr, "_run_build", timed_out)
+        with pytest.raises(ocr.OcrError):
+            ocr._build(sample_config.cache_dir, kind, none_yet)
+    written = marker.read_text(encoding="utf-8").strip()
+    assert written.startswith(f"{ocr.BUILD_TIMED_OUT} {kind.name}"), written
+    for reason in (written, f"{ocr.BUILD_TIMED_OUT} {kind.name}"):
         marker.write_text(reason, encoding="utf-8")
         assert ocr.build_timed_out(sample_config.cache_dir, kind)
         r = by_name(run_checks(sample_config))[helper]
         assert (r.ok, r.severity, r.fix) == (False, Severity.WARN, fix), r
         # B13 round 20 X20: the re-run is said once, by the fix
-        assert reason.removesuffix(retry) in r.detail and "tries the build again" not in r.detail, r.detail
+        assert r.detail.rstrip(")").endswith(f"{ocr.BUILD_TIMED_OUT} {kind.name}"), r.detail
+        assert "tries the build again" not in r.detail and INSTALL_SH not in r.detail, r.detail
     marker.write_text(
         f"swiftc did not build the {kind.name} (exit 1): error: no such module", encoding="utf-8"
     )

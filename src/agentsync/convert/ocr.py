@@ -50,7 +50,7 @@ from typing import Protocol, TypeVar
 from agentsync.config import ConvertConfig, load_config
 from agentsync.errors import ConfigError, ConversionError
 from agentsync.paths import default_cache_dir, default_config_path, expand
-from agentsync.skill import INSTALL_SH
+from agentsync.skill import HELPER_RETRY_CLAUSE, INSTALL_SH
 
 log = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ def _signal_reason(head: str, returncode: int, stderr: bytes = b"") -> str:
     run``, at most :data:`_REASON_ROOM` characters: :func:`_plain` keeps that many of a reason read back from
     the ``.failed`` marker, and a crash line it ran past cut the retry clause, the only fix such a failure
     has (B13 round 19 W50).  Only the crash line is shortened, so the subject stays first."""
-    tail = f"; {INSTALL_SH} tries the build again on its next run"  # by its path (B13 round 18 V68)
+    tail = HELPER_RETRY_CLAUSE  # by its path (B13 round 18 V68); doctor drops this text (B13 round 21 Y54)
     return f"{head}{_ended(returncode, stderr, room=_REASON_ROOM - len(head) - len(tail))}{tail}"
 
 
@@ -721,9 +721,7 @@ def _compile(helper: Path, kind: Helper = _OCR) -> None:
             )
         except subprocess.TimeoutExpired:
             # the retry clause as a signal's: install.sh builds every helper on each run (B13 round 19 W49)
-            raise kind.error(
-                f"{BUILD_TIMED_OUT} {kind.name}; {INSTALL_SH} tries the build again on its next run"
-            ) from None
+            raise kind.error(f"{BUILD_TIMED_OUT} {kind.name}{HELPER_RETRY_CLAUSE}") from None
         if cp.returncode < 0:
             raise kind.error(
                 _signal_reason(f"swiftc, building the {kind.name}, was ", cp.returncode, cp.stderr)

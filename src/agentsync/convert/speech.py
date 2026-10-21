@@ -47,7 +47,7 @@ from pathlib import Path
 from agentsync.config import ConvertConfig
 from agentsync.convert import media, ocr
 from agentsync.convert.ocr import OcrError
-from agentsync.skill import INSTALL_SH
+from agentsync.skill import HELPER_RETRY_CLAUSE, INSTALL_SH
 
 log = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ BUILD_TIMED_OUT = "the speech helper's build ran out of time"
 so in doctor's ``speech`` warn: doctor gives that warn its fix, and the setup report its own bucket, by these
 words (B13 round 18 V5, V28). The time covers the FluidAudio fetch as well as the compile, so the words name
 no cause."""
-_TIMED_OUT = f"{BUILD_TIMED_OUT}; {INSTALL_SH} tries the build again on its next run"  # by its path (V68)
+_TIMED_OUT = f"{BUILD_TIMED_OUT}{HELPER_RETRY_CLAUSE}"  # by its path (V68), the text doctor drops (Y54)
 _clock = time.monotonic
 
 
