@@ -766,10 +766,21 @@ def _run(config: Config, **kwargs: object) -> int:
 
 
 def _run_report(config: Config, **kwargs: object) -> CycleReport:
-    """One cycle, its report printed (:func:`_run` gives its exit code)."""
+    """One cycle, its report printed (:func:`_run` gives its exit code). A foreground run that broke a stale
+    lock and then raised says so on stderr, once, beside the error line ``_main`` prints next: its report,
+    which carries the note, is never printed, the lock's own line is DEBUG for it, and release empties the
+    file. Not for the LaunchAgent's job, whose err.log keeps the WARNING (B13 round 22 Z89)."""
     kwargs.setdefault("say", _lock_say)
-    with _alarms_in_the_report(config) as held, _state_readable(config):
-        report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
+    broke: list[bool] = []
+    if not launchd.started_by_our_job(config):
+        kwargs.setdefault("on_stale_break", lambda: broke.append(True))
+    try:
+        with _alarms_in_the_report(config) as held, _state_readable(config):
+            report = run_cycle(config, **kwargs)  # type: ignore[arg-type]
+    except BaseException:
+        if broke:  # not "every source ran a full pass": none may have run, and the next sync runs none
+            _err("note: a stale lock from a dead run was broken; this sync stopped before it finished")
+        raise
     if held is not None:
         held.log([r for r in held.held if not _printed(r, report)])
     budget = kwargs.get("budget_bytes")

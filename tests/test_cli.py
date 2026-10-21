@@ -4686,6 +4686,45 @@ def test_a_foreground_sync_that_breaks_a_stale_lock_says_it_once(
     assert "  note: a stale lock from a dead run was broken; every source ran a full pass" in captured.out
 
 
+def test_a_foreground_sync_that_breaks_a_stale_lock_and_then_stops_says_it_once(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z89: a foreground sync that broke a stale lock and then raised said nothing of the break
+    below -vv: the note is in the report, which a raise never prints, the lock's own line is DEBUG for a run
+    the job did not start, and release empties the file. It says so once on stderr, never "every source ran
+    a full pass" (none may have run); the job's run, whose err.log keeps the WARNING, adds nothing."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    lock = expand(initialised.state_paths.lock)
+
+    real_manifest = cycle_mod.Manifest
+
+    def stop(db: Path) -> Manifest:  # each sync's second open, the cycle's, under the lock
+        opened.append(db)
+        if len(opened) % 2 == 0:
+            raise KeyboardInterrupt
+        return real_manifest(db)
+
+    opened: list[Path] = []
+    monkeypatch.setattr(cycle_mod, "Manifest", stop)
+    note = "note: a stale lock from a dead run was broken; this sync stopped before it finished"
+    lock.write_text("not a lock body\n", encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == 130
+    captured = capsys.readouterr()
+    assert captured.err.count(note) == 1 and "interrupted" in captured.err, captured.err
+    assert "every source ran a full pass" not in captured.err + captured.out, captured
+    assert "WARNING agentsync.ops.lock" not in captured.err, captured.err
+    # no stale lock, no note
+    assert cli.main(["sync", "--config", cfg]) == 130
+    assert note not in capsys.readouterr().err
+    # the job's run: its err.log keeps the lock's WARNING, so no note
+    monkeypatch.setattr(cli.launchd, "started_by_our_job", lambda c: True)
+    lock.write_text("not a lock body\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == 130
+    assert note not in capsys.readouterr().err
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read

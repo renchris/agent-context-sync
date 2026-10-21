@@ -27356,6 +27356,16 @@ lists them in the order the code tests them now (Z64, Z78), and `state_path_fix`
 through `state_folder_fix`, never from it directly (the verifier's correction). Documentation only: no test, as no
 behavior changed and a test of a docstring's words would re-assert the source.
 
+**Z89: a foreground sync that breaks a stale lock and then stops says it once (`agentsync.cycle`, `agentsync.cli`).**
+`ops/lock.py` logs a stale-lock break at DEBUG for a run the job did not start, and the note in `_print_report`
+(`every source ran a full pass`) comes only with a report, which a raise after the lock never prints; release then
+empties the lock file, so the break was seen only at -vv. `run_cycle` takes `on_stale_break`, called as soon as the
+acquisition says it broke a stale lock, and `cli._run_report`, for a run `launchd.started_by_our_job` does not
+claim, prints `note: a stale lock from a dead run was broken; this sync stopped before it finished` on stderr when
+`run_cycle` raises, beside the error line `_main` prints next; a run that returns prints its report's note as
+before. Never "every source ran a full pass" (none may have run), and the job's run adds nothing (its err.log keeps
+the WARNING). Test: `test_cli.py::test_a_foreground_sync_that_breaks_a_stale_lock_and_then_stops_says_it_once`.
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the

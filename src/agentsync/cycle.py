@@ -5937,6 +5937,7 @@ def run_cycle(
     wait_for_lock: bool | None = None,
     recordings: _RecordingRun | None = None,
     say: Callable[[str], None] | None = None,
+    on_stale_break: Callable[[], None] | None = None,
 ) -> CycleReport:
     """Run one cycle under the single-writer lock; returns the report (never raises for per-source failures).
 
@@ -5985,6 +5986,10 @@ def run_cycle(
     started_by = STARTED_BY_LAUNCHD if started_by_our_job(config) else STARTED_BY_OTHER
     lock = SingleWriterLock(config.state_paths.lock, mode.value, started_by=started_by)
     acquisition = _acquire_waiting(lock, lock_wait_s, say=say) if interactive else lock.acquire()
+    if acquisition.broke_stale and on_stale_break is not None:
+        # told at once, so a run that raises before its report still says it (B13 round 22 Z89: the break
+        # was logged at DEBUG for a foreground run, and release() empties the lock file)
+        on_stale_break()
     if mode is not CycleMode.DRY_RUN:
         rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)
     own_client = client is None
