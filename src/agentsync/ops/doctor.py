@@ -2333,12 +2333,19 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     (the canonical hash), counted per pair. Neither copy is refused (only an inbox drop of a live Graph file
     is), since between two such sources no side is the real one; whether one source copies the other is the
     person's to settle. Nothing when no pair shares a file, before the first sync, or when the manifest
-    cannot be read (the manifest checks report that)."""
+    cannot be read (the manifest checks report that). Over a state folder this account cannot search it says
+    :data:`STATE_FOLDER_UNCHECKED`, as its siblings do, and only where it has two sources to compare; the
+    look for the manifest is inside the ``try``, since on Python 3.11 ``Path.exists`` raises EACCES (B13 round
+    21 Y11, Y26: a second, generic "could not read ... report it" FAIL beside state_dir's)."""
     db = config.state_paths.db
     ids = [s.id for s in config.live_sources() if s.kind is not SourceKind.INBOX]
-    if len(ids) < 2 or not db.exists():
+    if len(ids) < 2:
         return []
+    if state_folder_shut(config):
+        return [_bad("sources.shared_content", STATE_FOLDER_UNCHECKED, Severity.INFO)]
     try:
+        if not db.exists():
+            return []
         with Manifest(db) as manifest:
             pairs = manifest.shared_canonical_counts(ids)
     except (OSError, sqlite3.Error, AgentSyncError):

@@ -1319,6 +1319,50 @@ def test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_th
     assert doctor.state_folder_fix(root) == files.fix
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_two_sources_over_a_shut_state_folder_say_not_checked_for_shared_content(
+    sample_config: Config,
+) -> None:
+    """B13 round 21 Y11, Y26 (one defect): X73's configs had one source, so ``_check_shared_content`` returned
+    before its ``db.exists()``, which on Python 3.11 raises EACCES over a folder this account cannot search;
+    with two live sources status gave a second, generic "could not read <db> ... report it" FAIL beside
+    state_dir's, and the report filed it as unexpected. It says not checked, as its siblings do; a manifest at
+    0000 in a searchable folder still gives nothing."""
+    first = sample_config.sources[0]
+    cfg = dataclasses.replace(
+        sample_config,
+        sources=(first, dataclasses.replace(first, id="contoso-b", path=first.path.parent / "b")),  # type: ignore[union-attr]
+    )
+    root, db = cfg.state_paths.root, cfg.state_paths.db
+    with Manifest(db) as manifest:
+        manifest.sync_sources(list(cfg.sources))
+    root.chmod(0)
+    try:
+        results = run_checks(cfg)
+    finally:
+        root.chmod(0o700)
+    shared = [r for r in results if r.name == "sources.shared_content"]
+    assert [(r.ok, r.severity, r.detail) for r in shared] == [
+        (False, Severity.INFO, doctor.STATE_FOLDER_UNCHECKED)
+    ], shared
+    stopped = [r for r in results if "could not read" in r.detail and r.name not in ("permissions", "logs")]
+    assert stopped == [], stopped
+    # (permissions, logs and the disk check read the log folder, which this test's config puts in the state
+    # folder)
+    assert "sources.shared_content" not in {r.name for r in results if r.severity is Severity.ERROR}
+    # one source: no new line where the check never printed one
+    root.chmod(0)
+    try:
+        assert "sources.shared_content" not in by_name(run_checks(sample_config))
+    finally:
+        root.chmod(0o700)
+    db.chmod(0)
+    try:
+        assert doctor._check_shared_content(cfg) == []
+    finally:
+        db.chmod(0o600)
+
+
 # ------------------------------------------------------------------------------------------------ sources
 
 
