@@ -2486,11 +2486,14 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
     starts). For an error of the install step, it is any install run of the attempt, whenever the line was
     logged. The install step is the one install.sh command in v6 as in v7 (with v6's
     ``--confirm-install-agent`` it ends 0 only once the background job runs), and an agent logs after the
-    command returns. The installer's own stop of a copy of the prompt (:data:`_PROMPT_STOP_RE`) closes its
-    attempt, so only a run started before the attempt's end line can resolve it: a plain install.sh run after
-    it (a stopped copy's Doctor says to run it again for a helper) is a stand-alone run, which made that
-    stopped attempt "fully one command" (B13 round 20 X19). Every other attempt keeps judging the runs after
-    its end line with it, the operator's own ``--confirm-install-agent`` re-run among them."""
+    command returns. The installer's own stop of a copy of the prompt (:data:`_PROMPT_STOP_RE`) is resolved by
+    no run: a plain install.sh run after it (a stopped copy's Doctor says to run it again for a helper) is a
+    stand-alone run, which made that stopped attempt "fully one command" (B13 round 20 X19), and install.sh
+    stamps the attempt's header, the stop and its end line with one time, so the window X19 left, the runs up
+    to the end line's second, held only a run stamped that same second, never one of the attempt's (B13
+    round 21 Y17: such a run resolved it). A re-run with the right copy opens an attempt of its own. Every
+    other attempt keeps judging the runs after its end line with it, the operator's own
+    ``--confirm-install-agent`` re-run among them."""
     layout = attempt.layout
     events = _run_events(attempt)
     last_step = layout.report_step
@@ -2508,9 +2511,8 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
             if e.step < layout.install_step:
                 at = e.at
                 done = [r for r in done if at is not None and r.started is not None and r.started >= at]
-                end = _attempt_end(attempt)
-                if end is not None and _PROMPT_STOP_RE.match(e.what):
-                    done = [r for r in done if r.started is not None and r.started <= end]
+                if _PROMPT_STOP_RE.match(e.what):  # Y17: no run resolves the installer's own stop
+                    done = []
             resolved = resolved or bool(done)
         if not resolved and not went_on:
             return e
@@ -2520,6 +2522,8 @@ def stopping_error(attempt: Attempt, runs: Sequence[InstallRun] = ()) -> Frictio
 STOPPED_EXITS = (129, 130, 143)
 """What install.sh exits with when a signal ended the run (its ``on_signal`` traps: HUP, INT, TERM). The
 agent's tool stopped that run, not the installer, and the prompt calls running the command again safe."""
+_SIGNAL_NAMES = {129: "SIGHUP", 130: "SIGINT", 143: "SIGTERM"}
+"""Each of :data:`STOPPED_EXITS` by its signal's name, as install.sh's ``rc_meaning`` says it."""
 
 
 def retried_runs(attempt: Attempt | None, runs: Sequence[InstallRun]) -> list[InstallRun]:
@@ -2597,13 +2601,22 @@ def compute_outcome(
                     if layout.logs_steps
                     else "no later install.sh run of that step ended rc 0"
                 )
+                resolution += " and no later step before the report"
+                # B13 round 21 Y19: for the installer's stop of a copy, a run after the end line did end rc 0,
+                # and the Summary's install line names it: the reason says why it does not count
+                if _PROMPT_STOP_RE.match(stop.what) and any(
+                    run.rc == 0 for run in _after_end(installs, _attempt_end(attempt), stopped=True)
+                ):
+                    resolution = (
+                        "the installer stopped this copy at step 1; the install.sh run after its end line, "
+                        "which ended rc 0, is a stand-alone run and does not resolve it"
+                    )
                 return Outcome(
                     "failed",
                     stop.step,
                     (
                         "install.sh exit 0",
-                        f"step {stop.step} logged an error (F{stop.line}) and did not finish: {resolution} "
-                        "and no later step before the report",
+                        f"step {stop.step} logged an error (F{stop.line}) and did not finish: {resolution}",
                     ),
                     version,
                 )
@@ -2666,6 +2679,15 @@ def compute_outcome(
             # the failed step before the open state's "a, b, or c", never read as a fourth cause (H14 C2)
             last_failed = f" after its failed {failing[0]} step" if failing else ""
             detail = f"install.sh has no end line{last_failed}, {_open_state(last)}"
+        elif last.rc in STOPPED_EXITS:
+            # B13 round 21 Y6: on_exit closes the step a signal stopped as failed with the signal's rc, and
+            # the outcome read "its config step failed with rc 143" while install.sh said it was stopped and
+            # safe to run again. "during" only when that step's rc is the run's own (on_exit closed it), and
+            # no bracket inside the outcome's own (round 20 X7)
+            during = f", during its {failing[0]} step" if failing and rc == str(last.rc) else ""
+            signal = _SIGNAL_NAMES[last.rc]
+            detail = f"install.sh was stopped by {signal}, exit {last.rc}{during}; "
+            detail += "the prompt calls running it again safe"
         else:
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
         return Outcome("failed", layout.install_step, (detail,), version)
@@ -8936,9 +8958,13 @@ def _stopped_before_the_list(att: Attempt, runs: Sequence[InstallRun]) -> bool:
     """Whether the installer stopped this attempt's copy of the prompt (:func:`_prompt_copy_note`) and no
     install.sh run followed in it. Step 1 is one command, ``... --log-start '<agent>' && ... --list-folders``,
     and a ``--log-start`` that stops a copy exits 2: the list never ran, so there was no folder to ask about
-    and no folder for macOS to ask an Allow click for. A run in the attempt (a list or an install the agent
-    started all the same) puts it back under the usual rules."""
-    return bool(_prompt_copy_note(att)) and not runs
+    and no folder for macOS to ask an Allow click for. A list the agent ran all the same, whenever it
+    started, puts it back under the usual rules; an install run from its end line on does not: it is the
+    stand-alone run the stopped copy's Doctor asks for (B13 round 21 Y18, as round 20 X19 judges it in
+    :func:`stopping_error`), and it made the attempt read as one that asked a folder question."""
+    end = _attempt_end(att)
+    inside = [r for r in runs if r.list_only or end is None or r.started is None or r.started < end]
+    return bool(_prompt_copy_note(att)) and not inside
 
 
 _LIST_STOPS = {
@@ -10225,14 +10251,26 @@ def _attempt_end(att: Attempt | None) -> datetime | None:
     return max((e.at for e in att.events if e.kind == "finished" and e.at is not None), default=None)
 
 
-def _after_end(runs: Sequence[InstallRun], end: datetime | None) -> list[InstallRun]:
+def _after_end(
+    runs: Sequence[InstallRun], end: datetime | None, *, stopped: bool = False
+) -> list[InstallRun]:
     """The runs that started after the attempt's end line. They are still the attempt's (the operator's own
     ``--confirm-install-agent`` re-run is judged with it: :func:`runs_for_attempt`), but no session time
-    covers them, so the Summary names them apart (B13 round 5 F37)."""
-    return [run for run in runs if end is not None and run.started is not None and run.started > end]
+    covers them, so the Summary names them apart (B13 round 5 F37). ``stopped``: the installer stopped the
+    attempt's copy of the prompt, whose header, stop and end line share one time, so a run in the end line's
+    own second is after it too (B13 round 21 Y17)."""
+    if end is None:
+        return []
+    return [
+        run
+        for run in runs
+        if run.started is not None and (run.started >= end if stopped else run.started > end)
+    ]
 
 
-def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: datetime | None = None) -> str:
+def _install_line(
+    r: _Run, runs: Sequence[InstallRun], scoped: bool, end: datetime | None = None, *, stopped: bool = False
+) -> str:
     if not r.install_runs:
         # no log at all is not a log with no run in it, as the shell report says it (B13 round 5 F29)
         if not r.install_log.is_file():
@@ -10242,7 +10280,7 @@ def _install_line(r: _Run, runs: Sequence[InstallRun], scoped: bool, end: dateti
         return f"- install.sh: no run during this attempt ({len(r.install_runs)} earlier in the install log)"
     pool = list(runs) if scoped else r.install_runs
     installs = install_runs_only(pool)
-    after = _after_end(pool, end) if scoped else []
+    after = _after_end(pool, end, stopped=stopped) if scoped else []
     # The runs after the end line are counted apart from those inside it, never in both (B13 round 6 G32)
     inside = [run for run in pool if run not in after]
     n_in = len(install_runs_only(inside))
@@ -10837,7 +10875,13 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 timing.append("after its end line: " + " · ".join(later))
         out.append("- time: " + "; ".join(timing))
     out.append(
-        _install_line(r, runs, scoped=att is not None and att.begin is not None, end=_attempt_end(att))
+        _install_line(
+            r,
+            runs,
+            scoped=att is not None and att.begin is not None,
+            end=_attempt_end(att),
+            stopped=bool(_prompt_copy_note(att)),
+        )
     )
     folders = _folders_line(r, runs, _attempt_end(att), scoped=att is not None and att.begin is not None)
     if folders is not None:

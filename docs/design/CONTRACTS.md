@@ -25962,6 +25962,9 @@ older copy, its `--report-only`, then a plain install.sh: no invite line, both f
 not for sending, the clause in the NEXT; then a new attempt is reported as before),
 `test_a_run_after_a_stopped_copys_end_line_does_not_resolve_the_stop` and
 `test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it` (tests/test_setup_report.py).
+Amended 2026-10-20, §16.152 Y17, Y18, Y19: no run resolves such a stop, a run in the end line's own second
+included; an install run from the end line on leaves the copy stopped before the list; and the reason names the
+stand-alone run.
 
 **The shell report's agent name keeps a configured folder's product word** (X40, X81: one defect from two finders;
 amends §16.140 W17). W17 fixed the agentsync report only, so the shell fallback still printed `Agent: GitHub
@@ -26568,6 +26571,28 @@ file, manifest.sqlite, cannot be read: the person's to fix` (install.sh's 65 too
 ~/.local/bin/agentsync graph login`, `configuration invalid: sources.toml or policy.toml`. Test:
 `test_every_exit_code_a_job_reports_has_its_meaning_everywhere` (no meaning holds a bracket; every decode holds
 one; 71 does not hold the plain run's `it keeps the folders already synced`).
+
+**No run resolves the installer's stop of a copy, and the stopped attempt's words agree** (Y17, Y18, Y19; amends
+§16.147 X19). install.sh stamps a stopped copy's Attempt header, its stop and its end line with one time, so X19's
+window, the runs started up to the end line's second, held only a stand-alone run stamped that same second, and
+it resolved the stop (`fully one command`). Y17: `stopping_error` lets no run resolve a `_PROMPT_STOP_RE` error; a
+re-run with the right copy opens an attempt of its own. `_after_end(..., stopped=True)` counts a run in the end
+line's own second as after it, for the install line too. Y18: after a plain install.sh run the stopped attempt read
+`expected turns: no folder question (N folders already synced ...)`; `_stopped_before_the_list` leaves out an
+install run from the end line on (a list the agent ran all the same still counts, whenever it started). The folders
+line keeps showing that run (round 18 V37). Y19: the reason said `no later install.sh run of that step ended rc 0`
+above an install line naming one that did; for such a stop with an rc 0 run after the end line it reads `the
+installer stopped this copy at step 1; the install.sh run after its end line, which ended rc 0, is a stand-alone run
+and does not resolve it`. Tests: `test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so`,
+`test_a_stand_alone_install_run_after_a_stopped_copy_asks_no_folder_question`.
+
+**A run a signal stopped is said to be stopped, not failed** (Y6). install.sh's `on_exit` closes the step a signal
+stopped as failed with the signal's rc, and the outcome read `install.sh exited 143: its config step failed with
+rc 143` while install.sh said it was stopped and safe to run again. For an exit in `STOPPED_EXITS` the outcome reads
+`install.sh was stopped by SIGTERM, exit 143, during its config step; the prompt calls running it again safe`
+(SIGHUP 129, SIGINT 130 by `_SIGNAL_NAMES`), `during` only when that step's rc is the run's, and with no bracket
+inside the outcome's own; its kind stays `failed at step <install>`, which install.sh's awk reads by prefix. Test:
+`test_the_outcome_of_a_status_fail_stop_names_the_status_step`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

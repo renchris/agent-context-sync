@@ -5776,6 +5776,29 @@ def test_an_attempt_stopped_before_the_folder_list_is_given_no_question(
     assert setup_report._stopped_before_the_list(current, []) is False, "only the installer's stop counts"
 
 
+def test_a_stand_alone_install_run_after_a_stopped_copy_asks_no_folder_question(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 21 Y18: after a plain install.sh run (the one a stopped copy's Doctor asks for) the stopped
+    attempt read ``expected turns: no folder question (... already synced ...)`` while the same report said
+    it failed at step 1 before the list. An install run from the end line on is the stand-alone run, which
+    leaves the copy stopped before the list; a list the agent ran all the same still counts
+    (:func:`test_an_attempt_stopped_before_the_folder_list_is_given_no_question`)."""
+    with (fake_mac["setup"] / "install.log").open("a", encoding="utf-8") as log:
+        log.write(install_run("2026-09-29T11:05:00Z", 0))
+    write_friction(fake_mac, STOPPED_V8)
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    summary = section(text, "Summary").splitlines()
+    assert rc == 0 and NO_TURN in summary, summary
+    outcome = _line(section(text, "Summary"), "- **outcome: ")
+    assert outcome.startswith("- **outcome: failed at step 1**"), outcome
+    [runs] = [ln for ln in summary if ln.startswith("- install.sh: ")]
+    assert "1 install run after its end line" in runs, runs
+    [stopped] = setup_report.parse_friction(STOPPED_V8).attempts
+    late = setup_report.read_install_runs(fake_mac["setup"] / "install.log")[-1:]
+    assert setup_report._stopped_before_the_list(stopped, late) is True
+
+
 def test_an_unanswered_folder_question_is_a_deviation_not_a_question(fake_mac: dict[str, Path]) -> None:
     """The v10 rehearsal: step 1 orders "log a deviation, stop and wait for my answer" when the folder
     question comes back unanswered, and the expected-turns line said "(step 1; not logged)" two lines above
@@ -8206,6 +8229,20 @@ def test_the_outcome_of_a_status_fail_stop_names_the_status_step(tmp_path: Path)
     # round 14 Q50: status exited 1 with no [FAIL] line (a traceback), which install.sh logs as status-error
     crashed = failed.replace("note=fail-lines", "note=status-error")
     assert outcome(crashed) == "install.sh exited 1: its status step exited 1 with no [FAIL] line"
+    # B13 round 21 Y6: on_exit closes the step a signal stopped as failed with the signal's rc, which read
+    # "its config step failed with rc 143" while install.sh said it was stopped and safe to run again
+    for rc, signal in ((143, "SIGTERM"), (130, "SIGINT")):
+        stopped = install_run("2026-09-29T10:00:00Z", rc).replace(
+            "step=config seconds=1 rc=0 result=done", f"step=config seconds=1 rc={rc} result=failed"
+        )
+        said = outcome(stopped)
+        assert said == (
+            f"install.sh was stopped by {signal}, exit {rc}, during its config step; the prompt calls "
+            "running it again safe"
+        ), said
+        assert f"failed with rc {rc}" not in said
+    between = outcome(install_run("2026-09-29T10:00:00Z", 143))  # no step it closed: no step named
+    assert between == "install.sh was stopped by SIGTERM, exit 143; the prompt calls running it again safe"
 
 
 def test_the_installer_table_puts_the_status_steps_note_in_words() -> None:
@@ -14890,16 +14927,16 @@ def test_both_readers_count_local_work_in_a_checkout_whose_git_is_a_file(fake_ma
     assert both() is None
 
 
-def _x19_outcome(tmp_path: Path, friction: str) -> setup_report.Outcome:
-    """The outcome of ``friction``'s last attempt, judged on one install run that started at 10:05 and
-    ended 0, five minutes after that attempt's end line (B13 round 20 X19)."""
-    run = "20261020T100500Z-4242"
+def _x19_outcome(tmp_path: Path, friction: str, start: str = "10:05:00") -> setup_report.Outcome:
+    """The outcome of ``friction``'s last attempt, judged on one install run that started at ``start`` (10:05,
+    five minutes after that attempt's end line) and ended 0 (B13 round 20 X19)."""
+    run = f"20261020T{start.replace(':', '')}Z-4242"
     log = tmp_path / "install.log"
     log.write_text(
-        f"2026-10-20T10:05:00Z run={run} start install.sh compat=28 commit=0123456789ab kind=checkout "
+        f"2026-10-20T{start}Z run={run} start install.sh compat=28 commit=0123456789ab kind=checkout "
         "source=- args=\n"
-        f"2026-10-20T10:05:30Z run={run} step=agentsync seconds=30 rc=0 result=done\n"
-        f"2026-10-20T10:06:00Z run={run} end rc=0 seconds=60\n",
+        f"2026-10-20T{start}Z run={run} step=agentsync seconds=30 rc=0 result=done\n"
+        f"2026-10-20T{start}Z run={run} end rc=0 seconds=60\n",
         encoding="utf-8",
     )
     fr = setup_report.parse_friction(friction)
@@ -14926,6 +14963,35 @@ def test_a_run_after_a_stopped_copys_end_line_does_not_resolve_the_stop(tmp_path
         "2026-10-20T10:00:00Z | end | finished\n",
     )
     assert (outcome.kind, outcome.step) == ("failed", 1), outcome
+
+
+def test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so(tmp_path: Path) -> None:
+    """B13 round 21 Y17, Y19: install.sh stamps a stopped copy's header, stop and end line with one time, and
+    X19 let a run started in that same second resolve the stop, so the stopped attempt read "fully one
+    command". No run resolves it now. And the reason said "no later install.sh run of that step ended rc 0"
+    two lines above the install line naming the run after the end line that did: it says why that run does
+    not count."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    friction = (
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:00:00Z | end | finished\n"
+    )
+    for start in ("10:00:00", "10:05:00"):  # the end line's own second, and five minutes on
+        outcome = _x19_outcome(tmp_path, friction, start)
+        assert (outcome.kind, outcome.step) == ("failed", 1), (start, outcome)
+        assert "no later install.sh run of that step ended rc 0" not in outcome.why[1], outcome
+        assert outcome.why[1].endswith(
+            "the installer stopped this copy at step 1; the install.sh run after its end line, which ended "
+            "rc 0, is a stand-alone run and does not resolve it"
+        ), outcome
+    head = "Attempt: 2026-10-20T10:00:00Z\nPrompt: v28\nAgent: Contoso Agent (model-1)\n"
+    late = "2026-10-20T10:00:20Z | step 1 | error | install.sh --list-folders exited 1 | -\n"
+    ordinary = _x19_outcome(tmp_path, head + late + "2026-10-20T10:30:00Z | end | finished\n", "10:40:00")
+    assert ordinary.kind != "failed", "another step 1 error is still resolved by a later run"
 
 
 def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_path: Path) -> None:
