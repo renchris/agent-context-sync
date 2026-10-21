@@ -895,3 +895,33 @@ def test_an_organisation_named_by_a_product_word_makes_both_reports_private(
     assert "Private only:" in text and setup_report.ISSUE_URL not in text, text.split("\n## Redaction\n", 1)[
         1
     ]
+
+
+def test_an_organisation_named_by_a_product_word_stays_private_after_a_library_of_that_word(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 22 Z86 (a Y7 regression): a SharePoint site library named Copilot is registered before the
+    organisations, generic by Y7's rule, and the organisation Copilot then found that placeholder known and
+    returned before it was marked: the agentsync report went public while install.sh's stayed private only.
+    An organisation on a known placeholder is still marked, so both reports are private only."""
+    from agentsync.config import local_source_table  # noqa: PLC0415
+
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Copilot" / "Plans"
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    site = (
+        '\n[[source]]\nid = "copilot-site"\nkind = "graph_drive"\n'
+        'site = "contoso.sharepoint.com:/sites/Copilot"\nstate = "paused"\n'
+    )
+    cfg.write_text(local_source_table("s0", folder) + site, encoding="utf-8")
+    said = "2026-10-12T10:00:01Z | step 2 | deviation | the copilot tenant asked for MFA | -"
+    text = _shell_report(env, f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\nAgent: Kestrel 2\n{said}\n")
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    assert "copilot" not in red.redact(said).casefold() and red.private_only
+    assert "Private only:" in text and setup_report.ISSUE_URL not in text, text.split("\n## Redaction\n", 1)[
+        1
+    ]

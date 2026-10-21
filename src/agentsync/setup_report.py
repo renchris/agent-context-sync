@@ -1305,20 +1305,25 @@ class Redactor:
         if context and _norm(value) in self._context:
             return
         known = self._known(value)
+        # a name every OneDrive or Google Drive has ("Documents") reads back as nothing private (round 6 G48),
+        # and nor does a product's name ("Copilot"), as install.sh's fallback_redaction reads both (Y7, Y72)
+        generic = kind in ("folder", "library") and (value in _GENERIC_FOLDERS or _agent_words(value))
+        named = printed and kind in ("folder", "library", "org") and not context and not generic
         # An accented spelling of a known value ("Société" after "Societe") keeps that placeholder, but is
         # matched as written too: the unaccented value's pattern has no accented letters.
         if known is not None and (
             _bare(value) == _nfc(value) or any(_nfc(v) == _nfc(value) for v, _mode in self._literals)
         ):
+            # B13 round 22 Z86: an organisation on a placeholder a generic library or folder of the same word
+            # took first is still one, never generic: the report goes private only, as install.sh's does
+            if named:
+                self._word_named.add(known)
             return
         if url and _bare(value).lower() in self._url_hosts:
             return
         placeholder = known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
-        # a name every OneDrive or Google Drive has ("Documents") reads back as nothing private (round 6 G48),
-        # and nor does a product's name ("Copilot"), as install.sh's fallback_redaction reads both (Y7, Y72)
-        generic = kind in ("folder", "library") and (value in _GENERIC_FOLDERS or _agent_words(value))
-        if printed and kind in ("folder", "library", "org") and not context and not generic:
+        if named:
             self._word_named.add(placeholder)
         if joined:  # matched with a separator or a CamelCase boundary only (report_words)
             self._joined[_norm(value)] = placeholder
