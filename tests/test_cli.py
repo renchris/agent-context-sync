@@ -4123,6 +4123,35 @@ def test_a_config_hold_shows_over_a_state_folder_status_cannot_open(
     assert [ln for ln in out if ln.startswith("[FAIL] governance.hold ")], out
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_two_sources_over_a_shut_state_folder_give_status_one_fail(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y11, Y26: X73's status test had one source, so the second, generic FAIL that
+    ``sources.shared_content`` gave over a shut state folder (``could not read <db> ... report it``) never
+    showed. With two sources status says it is not checked, and the only state FAIL is state_dir's."""
+    cfg = str(initialised.config_path)
+    second = tmp_path / "contoso-b"
+    second.mkdir()
+    (second / "notes.txt").write_text("Contoso notes\n", encoding="utf-8")
+    assert cli.main(["add-source", str(second), "--config", cfg]) == cli.EXIT_OK
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = initialised.state_paths.root
+    root.chmod(0)
+    try:
+        capsys.readouterr()
+        _rc, out = _status(cfg, capsys)
+    finally:
+        root.chmod(0o700)
+    assert not any(ln.startswith("[FAIL] sources.shared_content ") for ln in out), out
+    (shared,) = [ln for ln in out if ln.startswith("[info] sources.shared_content ")]
+    assert doctor.STATE_FOLDER_UNCHECKED in shared, shared
+    fails = [
+        ln for ln in out if ln.startswith("[FAIL] ") and not re.match(r"\[FAIL\] (logs|permissions) ", ln)
+    ]
+    assert not any("could not read" in ln for ln in fails), fails
+
+
 def test_a_permission_error_outside_the_state_folder_keeps_its_traceback(
     initialised: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

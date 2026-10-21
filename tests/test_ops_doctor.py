@@ -1369,7 +1369,9 @@ def test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons(sample_config: 
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
-def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons(tmp_path: Path) -> None:
+def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons(
+    tmp_path: Path, sample_config: Config
+) -> None:
     """B13 round 21, the ownership rule (lane P's seam note): a state folder whose parent refuses this account
     a search was given "make <root> this account's folder at mode 700", which ``is_persons_fix`` read as the
     agent's, while install.sh's step 1 tail calls it the person's. Its fix starts "the person "; this
@@ -1380,16 +1382,43 @@ def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons
     root.chmod(0o755)
     assert doctor.state_folder_fix(root) == f"chmod 700 {doctor._shell_path(root)}"
     assert not doctor.is_persons_fix(doctor.state_folder_fix(root))
+    config = dataclasses.replace(sample_config, state_dir=root)
     parent.chmod(0)
     try:
         fix = doctor.state_folder_fix(root)
+        results = doctor._check_state_dir(config)
+        refused = doctor.state_path_fix(root, root / "manifest.sqlite")
     finally:
         parent.chmod(0o700)
-    assert (
-        fix
-        == f"the person makes {doctor._shell_path(root)} this account's folder at mode 700, then run again"
+    want = (
+        f"the person gives this account search access to {doctor._shell_path(parent)}, a folder above "
+        f"{doctor._shell_path(root)} that refuses it one, then run again"
     )
-    assert doctor.is_persons_fix(fix)
+    assert fix == want and doctor.is_persons_fix(fix), fix
+    # status says the same (the reviewer's: its bare stat fell to the generic "report it" FAIL), and sync's
+    # error line, which reads state_path_fix
+    (state,) = results
+    assert (state.name, state.ok, state.fix) == ("state_dir", False, want), state
+    assert state.detail == f"cannot reach {root}: Permission denied", state
+    assert refused == want
+
+
+@pytest.mark.skipif(not hasattr(os, "ST_RDONLY"), reason="statvfs flags")
+def test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 lane B's reviewer: a 0600 manifest on a read-only volume fails ``os.access`` for writing
+    as an ACL does, and got the ACL words. It names the read-only volume, the person's."""
+    root, db = sample_config.state_paths.root, sample_config.state_paths.db
+    db.write_bytes(b"")
+    db.chmod(0o600)
+    real_access = os.access
+    monkeypatch.setattr(doctor.os, "access", lambda p, m: False if Path(p) == db else real_access(p, m))
+    monkeypatch.setattr(doctor, "_read_only", lambda p: Path(p) == db)
+    files = by_name(doctor._check_state_dir(sample_config))["state_dir.files"]
+    assert files.detail == f"on a read-only volume, so this account cannot write {db.name} (0600)", files
+    assert files.fix == doctor._read_only_fix(db) and doctor.is_persons_fix(files.fix)
+    assert doctor.state_path_fix(root, db) == doctor._read_only_fix(db)
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")

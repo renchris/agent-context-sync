@@ -1056,6 +1056,40 @@ def _search_fix(root: Path, *, folder: bool = True) -> str:
     )
 
 
+def _unsearchable_above(root: Path) -> Path:
+    """The first folder above ``root``, from ``/`` down, that refuses this account a search, else its
+    parent."""
+    for above in reversed(root.parents):
+        if not os.access(above, os.X_OK):
+            return above
+    return root.parent
+
+
+def _parent_fix(root: Path) -> str:
+    """The fix of a state folder this account cannot reach because a folder above it refuses a search: the
+    person's (the round 21 ownership rule), naming that folder, not the state folder, which is not the one
+    refusing (B13 round 21 lane B's reviewer)."""
+    above = _unsearchable_above(root)
+    return (
+        f"the person gives this account search access to {_shell_path(above)}, a folder above "
+        f"{_shell_path(root)} that refuses it one, then run again"
+    )
+
+
+def _read_only(path: Path) -> bool:
+    """Whether ``path`` is on a volume mounted read-only (no write for anyone, whatever its mode)."""
+    try:
+        return bool(os.statvfs(path).f_flag & os.ST_RDONLY)
+    except (OSError, AttributeError):
+        return False
+
+
+def _read_only_fix(path: Path) -> str:
+    """The fix of a state path on a read-only volume: the person's, as no chmod and no ACL change writes there
+    (B13 round 21 lane B's reviewer: the ACL words named a cause it was not)."""
+    return f"the person makes the volume that holds {_shell_path(path)} writable (it is mounted read-only)"
+
+
 def state_folder_fix(root: Path) -> str:
     """The fix of a state folder this account cannot look inside, as state_dir's lines give it: the person's
     chown when another account owns it, ``chmod 700`` when its mode refuses it, else the access fix (B13
@@ -1063,14 +1097,14 @@ def state_folder_fix(root: Path) -> str:
     try:
         st = root.stat()
     except PermissionError:  # a folder above it refuses a search: the person's, as an ACL is (round 21)
-        return f"the person makes {_shell_path(root)} this account's folder at mode 700, then run again"
+        return _parent_fix(root)
     except OSError:
         return f"make {_shell_path(root)} this account's folder at mode 700, then run again"
     if st.st_uid != os.getuid():
         return _persons_chown(root)
     if stat.S_IMODE(st.st_mode) != 0o700:
         return f"chmod 700 {_shell_path(root)}"
-    return _search_fix(root)
+    return _read_only_fix(root) if _read_only(root) else _search_fix(root)
 
 
 def state_path_fix(root: Path, path: Path) -> str:
@@ -1098,10 +1132,15 @@ def state_path_fix(root: Path, path: Path) -> str:
             if not os.access(at, os.R_OK | os.W_OK | os.X_OK):
                 if at == root:
                     return state_folder_fix(root)
-                # its mode already gives the owner access: an ACL, the person's (round 21, lane P's measure)
-                return _search_fix(at) if mode & 0o700 == 0o700 else f"chmod 700 {_shell_path(at)}"
+                # its mode already gives the owner access: a read-only volume or an ACL, the person's (round
+                # 21, lane P's measure)
+                if mode & 0o700 != 0o700:
+                    return f"chmod 700 {_shell_path(at)}"
+                return _read_only_fix(at) if _read_only(at) else _search_fix(at)
         elif not os.access(at, os.R_OK | os.W_OK):
-            return _search_fix(at, folder=False) if mode & 0o600 == 0o600 else f"chmod 600 {_shell_path(at)}"
+            if mode & 0o600 != 0o600:
+                return f"chmod 600 {_shell_path(at)}"
+            return _read_only_fix(at) if _read_only(at) else _search_fix(at, folder=False)
     return state_folder_fix(root)
 
 
@@ -1168,6 +1207,9 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     out: list[CheckResult] = []
     try:
         st = root.stat()
+    except PermissionError as exc:  # a folder above it refuses a search: the person's (B13 round 21)
+        out.append(_bad("state_dir", f"cannot reach {root}: {exc.strerror or exc}", fix=_parent_fix(root)))
+        return out
     except FileNotFoundError:
         out.append(
             _bad(
@@ -1248,7 +1290,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             others.append(f"{p.name} (owner uid {fst.st_uid}, mode {m:04o})")
         elif not os.access(p, os.R_OK | os.W_OK):
             if m & 0o600 == 0o600:  # a chmod 600 would change nothing (B13 round 21, lane P's measure)
-                denied.append(expand(p))
+                denied.append(expand(p))  # an ACL, or a read-only volume (its own words below)
             else:
                 shut.append(f"{p.name} ({m:04o})")
         elif m & 0o077:
@@ -1275,6 +1317,10 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     if not others:  # each its own line: an ACL is the person's, a chmod above the agent's
         for p in denied:
             m = stat.S_IMODE(p.lstat().st_mode)
+            if _read_only(p):
+                detail = f"on a read-only volume, so this account cannot write {p.name} ({m:04o})"
+                out.append(_bad("state_dir.files", detail, fix=_read_only_fix(p)))
+                continue
             detail = f"refused to this account by an ACL or a privacy setting: {p.name} ({m:04o})"
             out.append(_bad("state_dir.files", detail, fix=_search_fix(p, folder=False)))
     if others or shut or denied:

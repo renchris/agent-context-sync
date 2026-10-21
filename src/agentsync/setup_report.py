@@ -6330,10 +6330,13 @@ def _why_not_read(exc: BaseException) -> str:
         return "the plist cannot be parsed"
     if isinstance(exc, OSError):
         return f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
+    from agentsync.governance import GovernanceError  # noqa: PLC0415 - lazy
+
     cause = exc.__cause__
-    if isinstance(cause, PermissionError) and cause.filename is not None:
-        # a governance file in the state folder this account cannot open (holds.json, the purge queue): its
-        # name and the system's words, as status says them, never "GovernanceError" (B13 round 21 Y45)
+    if isinstance(exc, GovernanceError) and isinstance(cause, PermissionError) and cause.filename is not None:
+        # a governance file in the state folder this account cannot open (holds.json, the purge queue), the
+        # one GovernanceError with that cause, so the name is never a tenant file's: its name and the system's
+        # words, as status says them, never "GovernanceError" (B13 round 21 Y45)
         return f"{Path(os.fsdecode(cause.filename)).name} cannot be opened: {cause.strerror or 'refused'}"
     return f"an unexpected error: {type(exc).__name__}"
 
@@ -9329,6 +9332,7 @@ def _refused_files(c: Config) -> dict[str, bool]:
     another account owns (B13 round 21 Y45: their FAILs were "unexpected"). Keyed on the report's own test of
     the file, never on doctor's words; a test that fails, a shut folder's included, says nothing."""
     from agentsync import governance  # noqa: PLC0415 - lazy, as the doctor reads are
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
     out: dict[str, bool] = {}
     sp = c.state_paths
@@ -9340,11 +9344,17 @@ def _refused_files(c: Config) -> dict[str, bool]:
         ("governance.purge_queue", governance._queue_file(root)),
     ):
         try:
-            if not path.exists():
-                continue
-            theirs = path.stat().st_uid != os.getuid()
-            if theirs or not os.access(path, os.R_OK):
-                out[name] = theirs
+            try:
+                refused = path.exists() and (
+                    path.stat().st_uid != os.getuid() or not os.access(path, os.R_OK)
+                )
+            except PermissionError:  # a folder on its way refuses a search (governance/ at 0000)
+                refused = True
+            if refused:
+                # whose: the fix doctor's FAIL gives (state_path_fix), the person's for another account's
+                # file, an ACL or a read-only volume, never by the owner alone (lane B's reviewer)
+                fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(path)))
+                out[name] = doctor.is_persons_fix(fix)
         except Exception:  # a test that fails says nothing about the file
             continue
     return out

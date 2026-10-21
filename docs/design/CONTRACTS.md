@@ -26598,8 +26598,9 @@ X73).** X73's configs had one source, so `_check_shared_content` returned before
 `could not read <db> ... report it` FAIL beside state_dir's, and the report filed it as unexpected. With two
 non-inbox sources it says `STATE_FOLDER_UNCHECKED`, as its siblings do, and its look for the manifest is inside its
 `try`; one source prints nothing, as before, and a manifest at 0000 in a searchable folder still gives nothing. One
-defect from two finders, built once. Test:
-`test_ops_doctor.py::test_two_sources_over_a_shut_state_folder_say_not_checked_for_shared_content`.
+defect from two finders, built once. Tests:
+`test_ops_doctor.py::test_two_sources_over_a_shut_state_folder_say_not_checked_for_shared_content` and
+`test_cli.py::test_two_sources_over_a_shut_state_folder_give_status_one_fail`.
 
 **Y42: the token cache over a shut state folder is not checked, not a logout (`agentsync.ops.doctor`; amends
 §16.149 X73).** The graph check's MSAL read of `msal_token_cache.bin` raised PermissionError over a folder at 0000,
@@ -26638,8 +26639,9 @@ name> cannot be opened: <reason>; the <check> [FAIL] line says why`, the check b
 governance.purge_queue's, never a check that passed; a file no line judges gets no pointer, not the verifier's
 `state_dir lines`, which Y43 found false). `setup_report._refused_files`, the report's own access test of the lock,
 the heartbeat, holds.json and the purge queue, sorts their FAILs into `from a file in the state folder this account
-cannot open (N checks)`, `(the person's; see Doctor)` only for another account's file, and `_why_not_read` says the
-file's name, not the class. Tests:
+cannot open (N checks)`, `(the person's; see Doctor)` only where doctor's own fix for it is the person's
+(`state_path_fix`: another account's file, an ACL; a folder on its way that refuses a search is counted refused),
+and `_why_not_read` says a `GovernanceError`'s file name, never another error's, not the class. Tests:
 `test_cli.py::test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check` and
 `test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket`.
 
@@ -26672,16 +26674,20 @@ and no `AGENTSYNC_NO_NEXT_HINT=1` prints `NEXT: this account cannot open a state
 run \`~/.local/bin/agentsync status\`, whose [FAIL] line names the fix and whose NEXT says whose it is`
 (`cli.STATE_REFUSED_STEP`), never the fix itself, which for another account's file is the person's sudo. The
 ownership rule, from lane P's two seam notes: `doctor._search_fix`, the access fix of an own folder at 0700 an ACL
-refuses, starts `the person gives this account read, write and search access ...`, and `state_folder_fix` for a
-folder whose parent refuses a search `the person makes <root> this account's folder at mode 700, then run again`,
-so `is_persons_fix` reads both as the person's; an own file (or subfolder) whose mode already gives this account
+refuses, starts `the person gives this account read, write and search access ...`, and a folder whose parent
+refuses a search gets `the person gives this account search access to <folder above>, a folder above <root> that
+refuses it one, then run again` from `state_folder_fix` and from status's `state_dir — cannot reach <root>:
+<reason>` line (a bare stat there had fallen to the generic `report it` FAIL, lane B's reviewer), so
+`is_persons_fix` reads both as the person's; an own file (or subfolder) whose mode already gives this account
 access, refused anyway, gets the person's ACL fix from `state_path_fix` and its own `state_dir.files — refused to
-this account by an ACL or a privacy setting: <file> (<mode>)` line, never a `chmod 600` that changes nothing. One
+this account by an ACL or a privacy setting: <file> (<mode>)` line, never a `chmod 600` that changes nothing, and
+one on a read-only volume `the person makes the volume that holds <path> writable (it is mounted read-only)`. One
 defect from two finders, built once. Tests:
 `test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (file and folder; sync, poll,
 add-source and curate; another account's file),
 `test_ops_doctor.py::test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons` and
-`test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons` (macOS).
+`test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons` (macOS) and
+`test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl`.
 
 **Y75: curate's help says it exits 1 on an error too (`agentsync.cli`; amends §16.151 X69).** Its line said `rc 1
 only on a blocking finding` above an exit-code list that says 1 is also a state file this account cannot open,
@@ -26706,7 +26712,8 @@ left by 'not a lock body'` line beside its own `note: a stale lock from a dead r
 `SingleWriterLock.acquire` picks the level by its own `started_by`: DEBUG for `STARTED_BY_OTHER`, the sync whose
 report prints the note; WARNING for the background job (its err.log) and for a caller with none (exclude-empty,
 governance's lock, purge), which prints no note, so the verifier's objection to a lock that knows no foreground
-holds. (The spec placed X16 in §16.151; it is in §16.149.) Tests:
+holds. A sync that breaks the lock and then raises before its report prints says so only at `-vv`, the verifier's
+accepted cost. (The spec placed X16 in §16.151; it is in §16.149.) Tests:
 `test_ops_lock.py::test_a_stale_lock_is_a_warning_only_where_no_other_line_says_so` and
 `test_cli.py::test_a_foreground_sync_that_breaks_a_stale_lock_says_it_once`.
 

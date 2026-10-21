@@ -13917,6 +13917,24 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
         outcome = _line(summary, "- **outcome: ")
         assert "unexpected doctor FAIL" not in outcome, outcome
     assert "holds.json cannot be opened: Permission denied" not in text  # the last report is the lock's
+    # whose, by the fix doctor's FAIL gives: a governance/ folder at 0000 is the agent's chmod 700, and
+    # another account's file the person's chown (lane B's reviewer: the owner alone missed an ACL)
+    config = load_config(cfg)
+    holds.parent.chmod(0)
+    try:
+        refused = setup_report._refused_files(config)
+    finally:
+        holds.parent.chmod(0o700)
+    assert refused == {"governance.hold": False, "governance.purge_queue": False}, refused
+    me = os.getuid()
+    holds.chmod(0)
+    try:
+        monkeypatch.setattr(os, "getuid", lambda: me + 1)
+        refused = setup_report._refused_files(config)
+    finally:
+        monkeypatch.undo()
+        holds.chmod(0o600)
+    assert refused["governance.hold"] is True, refused
 
 
 @pytest.mark.usefixtures("roomy_calls")
