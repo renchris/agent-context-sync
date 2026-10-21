@@ -26435,8 +26435,7 @@ fix (owner and mode 600, the file is not damaged, so it is not moved aside); `se
 `--help`'s list name it too. `curate` on the same file printed the line and exited 0 in the verifier's run, so
 nothing says it exits 1. Test: `test_exit_1_names_a_state_file_this_account_cannot_open`.
 Amended 2026-10-21, §16.155 Y31, Y69, Y75: curate exits 1 on that file too (measured on a 0400 and a 0000
-manifest), its `--help` line says `rc 1 on a blocking finding or an error, such as a state file this account cannot
-open`, and the line's fix is status's, `doctor.state_path_fix`.
+manifest), its `--help` line says so (§16.157 Y76's words), and the line's fix is status's, `doctor.state_path_fix`.
 
 **W41's measurement adds up** (X70). §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, less
 three that passed; the verifier's re-run gave 13 failed of 16 cases: 11 tables and both last-leaf cases. Corrected
@@ -26689,11 +26688,11 @@ add-source and curate; another account's file),
 `test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons` (macOS) and
 `test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl`.
 
-**Y75: curate's help says it exits 1 on an error too (`agentsync.cli`; amends §16.151 X69).** Its line said `rc 1
-only on a blocking finding` above an exit-code list that says 1 is also a state file this account cannot open,
-which curate exits 1 on. It reads `rc 1 on a blocking finding or an error, such as a state file this account cannot
-open; rows alone exit 0`, as `_cmd_curate`'s docstring does. §16.16's line, which a test pins, and the README's
-dated history entry are left as written. Test:
+**Y75: curate's help says it exits 1 on a state file this account cannot open (`agentsync.cli`; amends §16.151
+X69).** Its line said `rc 1 only on a blocking finding` above an exit-code list that says 1 is also a state file
+this account cannot open, which curate exits 1 on. One defect with lane D's Y76, built once there (§16.157): the
+line reads `rc 1 on a blocking finding or a state file this account cannot open, never on rows`, and its test pins
+the words. This item adds the measured exit: curate after a sync with the manifest at 0400 exits 1. Test:
 `test_cli.py::test_curates_help_says_it_exits_1_on_a_state_file_this_account_cannot_open`.
 
 **Y20: the install.sh re-run fix nests no bracket (`agentsync.ops.doctor`; amends §16.32, §16.132 U78, §16.137 V5,
