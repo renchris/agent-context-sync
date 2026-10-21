@@ -27235,8 +27235,9 @@ folder above it that refuses a search, status's first read was refused at the lo
 and the report's Loop line copied it. `cli._unread_words` says `the state folder cannot be opened: <reason>; the
 state_dir lines say why` for an EACCES or EPERM on a path in the state folder while `doctor.state_folder_shut`;
 keyed on the folder, never on the path refused, so a manifest at 0000 in a folder at 0700 is still `a file`, and an
-error that names no path keeps `a file`. Test:
-`test_cli.py::test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a_file_does`.
+error that names no path keeps `a file`. Tests:
+`test_cli.py::test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a_file_does` and
+`test_setup_report.py::test_the_loop_line_over_a_state_folder_at_0000_names_the_folder`.
 
 **Z7, Z49: doctor's fixes nest no bracket (`agentsync.ops.doctor`; amends §16.149 X74 and §16.155 Y31).** Every doctor line wraps its fix in `(fix:
 ...)`, and round 21 Y20 took the inner brackets out of the time-out fixes, but `_os_error`'s fix ended `then run

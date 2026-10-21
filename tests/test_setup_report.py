@@ -6533,6 +6533,28 @@ def test_the_loop_line_carries_the_note_of_an_unfinished_re_read(fake_mac: dict[
     assert line.endswith(f"; {step}; {wait}") and "note:" not in line
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_the_loop_line_over_a_state_folder_at_0000_names_the_folder(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 22 Z5: with the state folder at 0000 the Loop line copied status's "a file cannot be opened",
+    beside a Doctor section that names the folder. Status says the state folder, and the line copies it."""
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    root = expand(load_config(fake_mac["config"]).state_paths.root)
+    root.chmod(0)
+    try:
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+    finally:
+        root.chmod(0o700)
+    loop = _line(section(text, "Summary"), "- Loop: ")
+    assert loop.startswith(
+        "- Loop: not read: status says the state folder cannot be opened: Permission denied; the state_dir "
+        "lines say why"
+    ), loop
+    assert "a file cannot be opened" not in loop, loop
+
+
 def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:
