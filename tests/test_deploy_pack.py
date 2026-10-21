@@ -7620,7 +7620,9 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
     body = script.split("\nstate_open_fix() {", 1)[1].split("\n}\n", 1)[0]
     assert 'fix.startswith(("chmod 600 ", "chmod 700 "))' in body and "state_path_fix(root" in body
     assert "the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS" in script
-    assert '"chmod 600 "* | "chmod 700 "*)' in script
+    # B13 round 22 Z81: a folder's chmod 700 has its own arm, which adds status's chmods in the same pass
+    assert '\t\t"chmod 700 "*)' in script and '\t\t"chmod 600 "*)' in script
+    assert "run $fix once, then, in the same pass, since that folder's mode hid its files' modes" in script
     assert "the chmod that fixes it is the agent's to run, once, when step 2's NEXT names it" in script
     from agentsync.ops import doctor  # noqa: PLC0415
 

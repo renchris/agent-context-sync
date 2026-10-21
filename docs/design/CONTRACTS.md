@@ -26797,7 +26797,9 @@ itself naming `state_path_fix`'s command on the `ManifestOpenError` path, is cli
 Amended 2026-10-21, §16.160 Z79: the refused NEXT and step 1's `state-refused` and `state-side-refused` tails name a
 volume mounted read-only beside an ACL and a folder above it, and a state path on such a volume is `refused`
 whatever its mode (no chmod writes there). Amended 2026-10-21, §16.160 Z11: a folder where manifest.sqlite belongs no longer gets `fix the error above`: step 1
-logs `state-notfile` with the person's tail, and step 2's config step the person's NEXT.
+logs `state-notfile` with the person's tail, and step 2's config step the person's NEXT. Amended 2026-10-21,
+§16.160 Z81: a folder's `chmod 700` NEXT adds, in the same pass, status and each chmod its [FAIL] lines then name
+for a path in that folder.
 
 **Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
 amends §16.148 X9). `config_errors` named a state folder at 0000 "agentsync's state file", whose fix is a chmod 700 of
@@ -27428,6 +27430,22 @@ the exit stays 1 (never 65's damaged-file NEXT). The init error's own words and 
 lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
 (NR), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (notfile) and, with the real agentsync,
 `test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2`.
+
+**A shut folder holding a shut file takes both chmods in one pass** (Z81, the installer's half; amends §16.154 Y24).
+With the state folder at 0000 holding a manifest at 0000 (probe owner-both000), every reader names the folder's
+`chmod 700` (nothing inside can be read: `state_open_fix` stops at the first path that refuses), and after it the
+re-run stopped again, on the manifest's `chmod 600`: a second stop that v30's "once" read either way. The lead's
+ruling 1 makes "once" one pass, the folder first. The installer cannot fold the file's chmod into the folder's (the
+verifier: a 0000 folder's files cannot be `lstat`'d, so their modes are unknown until it is opened), so
+`config_failed`'s `chmod 700` arm sends the agent through the pass: `... the fix is the agent's: run chmod 700
+<folder> once, then, in the same pass, since that folder's mode hid its files' modes, run
+~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder,
+then re-run: <install.sh ...>; if it stops the same way again, ...`; a `chmod 600` keeps its own NEXT. The prompt's
+grant says the same (v31, below). Test, with the real agentsync:
+`test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass` (the folder's chmod, status naming the
+manifest's chmod 600 alone, both run as written, then a pass), with the folder cases of
+`test_step_2s_next_names_the_chmod_of_this_accounts_own_state` and
+`test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says`.
 
 **The person's kinds name every state refusal no chmod fixes** (Z65, with lane B's Z83, Z17 and Z48 built here once;
 amends §16.148 X26). An ACL on this account's own 0600 manifest gave status a NEXT whose kinds said `a state file that

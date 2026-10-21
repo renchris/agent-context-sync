@@ -8264,6 +8264,16 @@ STATE_CHMOD_NEXT = (
 """Step 2's NEXT for a state folder or manifest of this account's own that it cannot open, with the chmod
 doctor.state_path_fix gives (B13 round 21 Y24, Y10, Y4)."""
 
+STATE_CHMOD_FOLDER_NEXT = (
+    "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; "
+    "the error above names it): the fix is the agent's: run {fix} once, then, in the same pass, since that "
+    "folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 "
+    "its [FAIL] lines name for a path in that folder, then re-run: {rerun}; if it stops the same way again, "
+    "show the person the error and go on to the report"
+)
+"""The same for the state folder's chmod 700 (B13 round 22 Z81): its files' modes cannot be read while it is
+shut, so status names their chmods in the same pass, once the folder is open."""
+
 
 @pytest.mark.parametrize(
     "state",
@@ -8371,7 +8381,8 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
             f"~/'Library/Application Support/agentsync/manifest.sqlite{end}'" for end in ("", "-wal", "-shm")
         ).join(("chmod 600 ", "")),
     }[state]
-    assert last_line(cp).startswith(STATE_CHMOD_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+    shape = STATE_CHMOD_FOLDER_NEXT if fix.startswith("chmod 700 ") else STATE_CHMOD_NEXT
+    assert last_line(cp).startswith(shape.format(fix=fix, rerun=rerun)), last_line(cp)
     assert "sudo" not in last_line(cp) and "chown" not in last_line(cp), last_line(cp)
 
 
@@ -8413,14 +8424,65 @@ def test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says(
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert ("config", "failed", "1", "") in steps(install_log(env))
     assert "cannot be opened: Permission denied" in cp.stderr, cp.stderr
-    assert last_line(cp).startswith(STATE_CHMOD_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
-        last_line(cp)
-    )
+    shape = STATE_CHMOD_FOLDER_NEXT if shut == "folder" else STATE_CHMOD_NEXT
+    assert last_line(cp).startswith(shape.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
     # Y59: the chmod the prompt sends the agent to is the one status's state_dir [FAIL] line names
     assert status.returncode == 1 and f"(fix: {fix})" in status.stdout, status.stdout + status.stderr
     target.chmod(0)
     subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
     assert (target.stat().st_mode & 0o777) == (0o600 if shut == "manifest" else 0o700)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+def test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass(
+    real_env: dict[str, str], wheel: Path
+) -> None:
+    """B13 round 22 Z81 (probe owner-both000), with the real agentsync: a state folder at 0000 holding a
+    manifest at 0000. Every reader names the folder's chmod 700 (nothing inside can be seen); after it the
+    re-run stopped again on the manifest's chmod 600, a second stop the prompt's "once" read either way. The
+    NEXT now names the folder's chmod and, in the same pass, status, whose [FAIL] lines then name the
+    manifest's: run as written, both chmods and one re-run pass."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    db.chmod(0)
+    db.parent.chmod(0)
+    try:
+        cp = install_sh(env, str(wheel))
+    finally:
+        db.parent.chmod(0o700)
+        shut_after = db.stat().st_mode & 0o777
+        db.parent.chmod(0)
+    assert shut_after == 0, oct(shut_after)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    fix = "chmod 700 ~/'Library/Application Support/agentsync'"
+    assert last_line(cp).startswith(STATE_CHMOD_FOLDER_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    try:
+        subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
+        status = subprocess.run(
+            [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "status"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    finally:
+        db.parent.chmod(0o700)
+    named = [
+        ln.rsplit(" (fix: ", 1)[1].removesuffix(")")
+        for ln in status.stdout.splitlines()
+        if ln.startswith("[FAIL] ") and " (fix: chmod 600 " in ln
+    ]
+    assert named == ["chmod 600 ~/'Library/Application Support/agentsync/manifest.sqlite'"], status.stdout
+    subprocess.run(["/bin/bash", "-c", named[0]], env=env, check=True)
     again = install_sh(env, str(wheel))
     assert again.returncode == 0, again.stdout + again.stderr
 

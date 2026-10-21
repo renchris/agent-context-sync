@@ -7176,7 +7176,10 @@ print(owned)
 # read-only, whatever its mode: round 22 Z79), the person's (B13 round 21 Y24, Y10, Y4). The folder and the
 # manifest stop init and add-source, which open past a -wal or -shm (Y57); a manifest's chmod 600 also names
 # the -wal and -shm whose mode refuses this account, as status's state_dir.files does, so the one chmod the
-# agent runs is the whole fix. Empty when nothing is refused or it cannot say, an installed build without
+# agent runs is the whole fix. A folder's chmod 700 cannot name its files: while it refuses a search their modes
+# cannot be read, so config_failed's NEXT sends the agent, in the same pass, to status, which names the chmod of
+# each one still shut once the folder is open (round 22 Z81: a 0000 folder holding a 0000 manifest stopped
+# twice, a chmod each). Empty when nothing is refused or it cannot say, an installed build without
 # state_path_fix included. -I: nothing from the folder this runs in is imported.
 state_open_fix() {
 	local fix=""
@@ -7294,7 +7297,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		local fix
 		fix="$(state_open_fix)"
 		case "$fix" in
-		"chmod 600 "* | "chmod 700 "*)
+		"chmod 700 "*) # the folder's mode hides its files' modes: status names their chmods once it is opened (Z81)
+			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then, in the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person the error and go on to the report"
+			;;
+		"chmod 600 "*)
 			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person the error and go on to the report"
 			;;
 		refused)
