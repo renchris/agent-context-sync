@@ -7418,6 +7418,43 @@ def test_a_git_url_rewrite_on_its_sections_own_line_is_redacted(
     assert "URL rewrite in git's config: set (2)" in section(text, "Environment")
 
 
+def test_a_git_proxy_or_remote_on_its_sections_header_line_is_read_and_redacted(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y1, Y36: git applies ``[http] proxy = <url>`` and ``[remote "x"] url = <url>`` written on
+    the header's line (X41 taught the report that form for ``insteadOf`` only), but the report read those
+    keys on a line of their own, so the proxy read ``not set`` and a line naming either host printed it in
+    clear. The key after the header is read too, in file order (install.sh's twins, lane RB's Y64, number the
+    same); an empty ``proxy =`` still takes nothing from the next line, and a ``]`` inside a quoted
+    subsection does not end the header."""
+    (Path.home() / ".gitconfig").write_text(
+        '[http "https://github.com"] proxy = http://gitproxy.fabrikam-net.invalid:3128\n'
+        '[remote "origin"] url = https://git.fabrikam-corp.invalid/team/docs.git\n'
+        "[http] proxy =\n"
+        "nextword\n"
+        '[http "http://[::1]:8080/"] proxy = http://v6proxy.fabrikam-six.invalid:8080\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "no-tools"))
+    assert setup_report._git_proxy_urls() == [
+        "http://gitproxy.fabrikam-net.invalid:3128",
+        "http://v6proxy.fabrikam-six.invalid:8080",
+    ]
+    assert setup_report._git_remotes() == [
+        ("git.fabrikam-corp.invalid", "https://git.fabrikam-corp.invalid/team/docs.git")
+    ]
+    v6_install_log(fake_mac)
+    lines = (
+        "2026-09-29T10:01:20Z | step 1 | deviation | the proxy gitproxy.fabrikam-net.invalid:3128 answered "
+        "slowly, and git.fabrikam-corp.invalid refused the push | -\n"
+    )
+    write_friction(fake_mac, V11_HAPPY + lines)
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    leaked = [ln for ln in text.splitlines() if "fabrikam" in ln.lower()]
+    assert leaked == [], leaked
+    assert "proxy in git's config: not set" not in section(text, "Environment"), section(text, "Environment")
+
+
 def test_a_git_url_rewrite_host_and_path_are_redacted(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

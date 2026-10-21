@@ -25737,6 +25737,8 @@ rewrite). install.sh's `git_rewrite_bases` is lane RB's (round 20 X8), so the tw
 same form for `[http] proxy` and `[remote] url` (`_GIT_PROXY_RE`, `_git_remotes`) was not changed: their shell
 twins are lane RB's, and changing one side alone would number the placeholders apart. Test:
 `test_a_git_url_rewrite_on_its_sections_own_line_is_redacted`.
+Amended 2026-10-20, §16.152 Y1, Y36: both are read on the header's line now (`_git_key_text`), with lane RB's
+shell twins (Y64) in the same round.
 
 **The cannot-open codes are sqlite's named constants, and `ManifestOpenError` is imported** (X42, X60, X45; amends
 §16.140 W64). `_CANNOT_OPEN_CODES` was `{14, 23, 8}` under words that say CANTOPEN, PERM and READONLY: 23 is
@@ -26524,6 +26526,16 @@ otherwise, with no -wal, `immutable=1` (the file is the whole database; nothing 
 files, a plain `mode=ro`, which creates nothing; with a -wal and no -shm it opens nothing (a plain open makes the
 -shm, `immutable=1` misses the -wal's rows), and each caller says not read, `_Mirror` as the state file this
 account cannot open. Test: `test_the_reports_read_only_opens_create_no_file_beside_a_manifest_it_cannot_write`.
+
+**A git proxy or remote on its section's header line is read and redacted** (Y1, Y36; amends §16.146 X41). git
+applies `[http] proxy = <url>` and `[remote "x"] url = <url>` written on the header's line, but `_GIT_PROXY_RE`
+was anchored at a line's start and `_git_remotes` skipped the rest of a header line, so the Environment said
+`proxy in git's config: not set` and a line naming either host printed it in clear. `_git_key_text` gives the text
+after a header's `]` (cut by `_GIT_SECTION_RE`, so a `]` inside a quoted subsection, an IPv6 URL, does not end it),
+and `_git_proxy_urls`, `_git_remotes` and `_git_rewrite_bases` read their key there; the proxy is read one line at a
+time, so an empty `proxy =` still takes nothing from the next line. Read order is unchanged, so install.sh's twins
+(lane RB's Y64, §16.153) number the same `<proxy-N>`. Test:
+`test_a_git_proxy_or_remote_on_its_sections_header_line_is_read_and_redacted`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

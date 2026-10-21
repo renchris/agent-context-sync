@@ -3387,9 +3387,10 @@ def _org_of(provider: str) -> str | None:
     return org
 
 
-_GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNORECASE | re.MULTILINE)
-"""A ``proxy = <value>`` line of a git config file. Blanks only, never ``\\s``: an empty ``proxy =`` (git's
-way to switch a proxy off) must not take the next line's first word."""
+_GIT_PROXY_RE = re.compile(r'^[ \t]*proxy[ \t]*=[ \t]*"?([^"\s;#]+)', re.IGNORECASE)
+"""A ``proxy = <value>`` key of a git config line, read one line at a time (after a section header on the
+same line too: :func:`_git_key_text`). Blanks only, never ``\\s``: an empty ``proxy =`` (git's way to switch
+a proxy off) must not take the next line's first word."""
 
 
 def _checkout_git_configs(checkout: Path) -> list[Path]:
@@ -3442,8 +3443,20 @@ def _git_proxy_urls() -> list[str]:
     urls: list[str] = []
     for name in _git_config_names():
         with contextlib.suppress(OSError):
-            urls += _GIT_PROXY_RE.findall(name.read_text(encoding="utf-8", errors="replace"))
+            for line in name.read_text(encoding="utf-8", errors="replace").splitlines():
+                found = _GIT_PROXY_RE.match(_git_key_text(line)[1])
+                if found is not None:
+                    urls.append(found.group(1))
     return urls
+
+
+def _git_key_text(line: str) -> tuple[re.Match[str] | None, str]:
+    """A git config line's section header, if it opens with one, and the text where a key is read: after the
+    header's ``]`` on the same line, as git reads ``[http] proxy = <url>`` (B13 round 21 Y1, Y36; round 20
+    X41 for ``insteadOf``), else the whole line. The header's quoted subsection may hold a ``]`` (an IPv6
+    URL), so it is cut by :data:`_GIT_SECTION_RE`, never at the first ``]``."""
+    head = _GIT_SECTION_RE.match(line)
+    return head, line[head.end() :] if head is not None else line
 
 
 _GIT_SECTION_RE = re.compile(r'^[ \t]*\[[ \t]*([A-Za-z0-9.-]+)(?:[ \t]+"((?:[^"\\]|\\.)*)")?[ \t]*\]')
@@ -3475,14 +3488,11 @@ def _git_rewrite_bases() -> list[str]:
         with contextlib.suppress(OSError):
             section: str | None = None
             for line in name.read_text(encoding="utf-8", errors="replace").splitlines():
-                head = _GIT_SECTION_RE.match(line)
+                # B13 round 20 X41: git takes a key on the header's own line, ``[url "x"] insteadOf = y``
+                head, key = _git_key_text(line)
                 if head is not None:
                     is_url = head.group(1).lower() == "url" and head.group(2)
                     section = head.group(2).replace('\\"', '"').replace("\\\\", "\\") if is_url else None
-                    # B13 round 20 X41: git takes a key on the header's own line, ``[url "x"] insteadOf = y``
-                    key = line[head.end() :]
-                else:
-                    key = line
                 if section and _GIT_INSTEADOF_RE.match(key) and section not in bases:
                     bases.append(section)
     return bases
@@ -3510,11 +3520,11 @@ def _git_remotes(docs: Path | None = None) -> list[tuple[str, str]]:
         with contextlib.suppress(OSError):
             remote = False
             for line in name.read_text(encoding="utf-8", errors="replace").splitlines():
-                head = _GIT_SECTION_RE.match(line)
+                # B13 round 21 Y36: and a ``url`` on the header's own line, ``[remote "x"] url = <url>``
+                head, rest = _git_key_text(line)
                 if head is not None:
                     remote = head.group(1).lower() == "remote" and head.group(2) is not None
-                    continue
-                key = _GIT_URL_KEY_RE.match(line) if remote else None
+                key = _GIT_URL_KEY_RE.match(rest) if remote else None
                 url = key.group(1).removeprefix('"').removesuffix('"') if key else ""
                 host = _remote_url_host(url) if key else None
                 if host and host.lower() not in (h.lower() for h, _ in found):
