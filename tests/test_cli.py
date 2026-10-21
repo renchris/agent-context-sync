@@ -4268,6 +4268,24 @@ def test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_c
         target.unlink()
 
 
+def test_a_foreground_sync_that_breaks_a_stale_lock_says_it_once(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y27: a sync over a lock file holding "not a lock body" printed a timestamped ``WARNING
+    agentsync.ops.lock: ... breaking stale lock left by 'not a lock body'`` line and then its own note saying
+    the same; the note alone is left."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    expand(initialised.state_paths.lock).write_text("not a lock body\n", encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    captured = capsys.readouterr()
+    assert "WARNING agentsync.ops.lock" not in captured.err and "not a lock body" not in captured.err, (
+        captured
+    )
+    assert "  note: a stale lock from a dead run was broken; every source ran a full pass" in captured.out
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read

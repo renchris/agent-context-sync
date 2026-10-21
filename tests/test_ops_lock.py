@@ -382,6 +382,25 @@ def test_malformed_body_is_stale_with_no_previous(tmp_path: Path, caplog: pytest
     assert "unparseable body" in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("started_by", "warned"), [(STARTED_BY_OTHER, False), (STARTED_BY_LAUNCHD, True), (None, True)]
+)
+def test_a_stale_lock_is_a_warning_only_where_no_other_line_says_so(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, started_by: str | None, warned: bool
+) -> None:
+    """B13 round 21 Y27: a foreground sync that broke a stale lock printed a timestamped WARNING quoting the
+    raw body beside its own "note: a stale lock from a dead run was broken" line. A sync the background job
+    did not start (STARTED_BY_OTHER, the one whose report prints the note) logs it at debug; the job keeps
+    the WARNING for its err.log, and a caller with no started_by (exclude-empty, governance) has no note."""
+    path = tmp_path / "agentsync.lock"
+    path.write_text("not a lock body\n")
+    caplog.set_level(logging.DEBUG, logger="agentsync.ops.lock")
+    with SingleWriterLock(path, "poll", started_by=started_by) as acq:
+        assert acq.broke_stale is True
+    (record,) = [r for r in caplog.records if "breaking stale lock" in r.getMessage()]
+    assert record.levelno == (logging.WARNING if warned else logging.DEBUG), record
+
+
 def test_boot_time_failure_records_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def broken() -> int:
         raise OSError("no sysctl")

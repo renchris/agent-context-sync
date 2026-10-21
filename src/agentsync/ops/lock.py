@@ -387,7 +387,13 @@ class SingleWriterLock:
             current_boot = _current_boot_or_zero()
             broke_stale = bool(previous_body.strip())
             if broke_stale:
-                log.warning(
+                # a sync the background job did not start prints its own "note: a stale lock from a dead run
+                # was broken" line, so the WARNING repeated it on the same terminal: debug there (-vv); the
+                # job keeps it for its err.log, and a caller with no started_by (exclude-empty, governance,
+                # purge) has no other line (B13 round 21 Y27, as §16.143 W13 and §16.151 X16)
+                level = logging.DEBUG if self._started_by == STARTED_BY_OTHER else logging.WARNING
+                log.log(
+                    level,
                     "lock %s: breaking stale lock left by %s (%s); this cycle runs FULL passes",
                     self._path,
                     previous.render() if previous else repr(previous_body.strip()[:200]),
