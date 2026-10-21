@@ -27391,11 +27391,15 @@ timeout, the [FAIL] lines as its argument), returns one command when every line 
 check (`state_dir` and its parts, `lock`, `heartbeat`, `governance.*`) whose fix is one `chmod 600` or `chmod 700`
 of paths that resolve inside the config's state folder: the folders' `chmod 700` first, then one `chmod 600` of
 every file, each path in doctor's `_shell_path` form. Then, after the person's branch, the status step's NEXT is
-`agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance
-file) has a mode this account cannot open (a mode, not damage; the [FAIL] lines above name it): the fix is the
-agent's: run <chmods> once, then re-run: <install.sh ...>; if it stops the same way again, show the person those
-lines and go on to the report`, and the closing status's NEXT the same with `then run <agentsync> sync and follow its
-NEXT line`. A mix with any other [FAIL], a fix that is more than one chmod or names a path outside the state folder
+`agentsync's state folder or a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat
+or a governance file) has a mode that is wrong for it, one this account cannot open or one others can read (a mode,
+not damage; the [FAIL] lines above name it): the fix is the agent's: run <chmods> once, then re-run: <install.sh
+...>; if the re-run names the same chmod again, show the person those lines and go on to the report`, the closing
+status's NEXT the same (the lane's review: it said "then run <agentsync> sync", while the prompt's grant says the
+re-run). A mode too open (state_dir at 0755, a file others can read) is doctor's chmod as well, hence "wrong for
+it"; a path on a volume mounted read-only gets no chmod (`ST_RDONLY`, Z79). The review also made every chmod NEXT,
+the config step's included, end `if the re-run names the same chmod again`, not `if it stops the same way again`,
+which a NEXT naming a new chmod in the same words read as a stop. A mix with any other [FAIL], a fix that is more than one chmod or names a path outside the state folder
 (a source folder's `chmod u+rx`, the docs repo's `chmod -R go-rwx` and git config), and an installed build without
 `_shell_path` keep `fix the [FAIL] lines above`; an ACL's fix is the person's NEXT as before. The verifier's
 caution is kept: no bare grep for `chmod`. The prompt's grant widens to these lines too (v31, below). Z36: step 1's
@@ -27430,7 +27434,9 @@ sets `agentsync's state file, manifest.sqlite, is a folder or something else tha
 names it; ~/.local/bin/agentsync status prints it and its fix on its state_dir.manifest line): fixing it is the
 person's (keeping a copy, they put the file back or move the folder aside), not a step for the agent, so show them
 the error and go on to the report; once it is fixed, the next run is: <install.sh ...>`, ahead of the chmod probe;
-the exit stays 1 (never 65's damaged-file NEXT). The init error's own words and `governance.time_machine` are cli's,
+the exit stays 1 (never 65's damaged-file NEXT). The lane's review: `config_errors` judged access first, so such a
+folder at 0500 got `state-access`, the agent's chmod; the manifest's path is left out of the access probe when it is
+no file, so it is `state-notfile` at any mode (case NR-mode). The init error's own words and `governance.time_machine` are cli's,
 lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
 (NR), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (notfile) and, with the real agentsync,
 `test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2`.
@@ -27444,20 +27450,21 @@ verifier: a 0000 folder's files cannot be `lstat`'d, so their modes are unknown 
 `config_failed`'s `chmod 700` arm sends the agent through the pass: `... the fix is the agent's: run chmod 700
 <folder> once, then, in the same pass, since that folder's mode hid its files' modes, run
 ~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder,
-then re-run: <install.sh ...>; if it stops the same way again, ...`; a `chmod 600` keeps its own NEXT. The prompt's
+then re-run: <install.sh ...>; if the re-run names the same chmod again, ...`; a `chmod 600` keeps its own NEXT. The prompt's
 grant says the same (v31, below). Test, with the real agentsync:
 `test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass` (the folder's chmod, status naming the
 manifest's chmod 600 alone, both run as written, then a pass), with the folder cases of
 `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` and
 `test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says`.
 
-**Setup prompt v31** (Z59, Z81, Z38, Z65, Z30, Z71; amends §16.154 Y59). Version 31 everywhere the bump list names it
+**Setup prompt v31** (Z59, with Z81, Z38, Z65, Z30 and Z71; amends §16.154 Y59). Version 31 everywhere the bump list names it
 (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION` and its docstrings, the form's placeholder, the
 version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback's version mentions and
 its row K55). No other lane sent prompt words this round: lane B's Z83 words are the person's kinds, built here as
 Z65's; lane B's new `STATE_REFUSED_STEP` and fix words are not quoted by the prompt.
 - Step 2's grant (Z59, Z8, Z81; the lead's ruling 1): `Each chmod 600 or chmod 700 of agentsync's own state folder or
-  a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance file) that the NEXT: line or
+  a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat or a governance file) that the
+  NEXT: line or
   any [FAIL] line (state_dir, lock, heartbeat or governance) names as the fix is yours too, once each, in one pass:
   run each as written, a folder's first; if the NEXT: line also says to run ~/.local/bin/agentsync status (a shut
   folder hides its files' modes), run it, then each such chmod its [FAIL] lines name; then run the same install.sh

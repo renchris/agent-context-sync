@@ -597,7 +597,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (31, "87a111840a59eb6f7830c0a4b02d82017eac607878487f5d88c3dccf5abc5ff8")
+PROMPT = (31, "7648a64cbeba16e8301ddc2aa99d89e67c8f8e38d4944514a0c19463be260fbe")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3084,13 +3084,13 @@ doctor.PERSONS_KINDS's (B13 round 22 Z65, lane B's words): a state file that is 
 or folder an ACL, a privacy setting, a folder above it or a read-only volume refuses."""
 
 STATE_CHMOD_IS_YOURS = (
-    "Each chmod 600 or chmod 700 of agentsync's own state folder or a file in it (the manifest, its -wal or"
-    " -shm, the lock, the heartbeat or a governance file) that the NEXT: line or any [FAIL] line (state_dir,"
-    " lock, heartbeat or governance) names as the fix is yours too, once each, in one pass: run each as"
-    " written, a folder's first; if the NEXT: line also says to run ~/.local/bin/agentsync status (a shut"
-    " folder hides its files' modes), run it, then each such chmod its [FAIL] lines name; then run the same"
-    " install.sh command again. If the re-run names a chmod you already ran, show me, log it and go to step"
-    " 3's report; a new one it names is yours the same way. A sudo or a chown stays mine."
+    "Each chmod 600 or chmod 700 of agentsync's own state folder or a file in it (the manifest, its -wal or "
+    "-shm, the token cache, the lock, the heartbeat or a governance file) that the NEXT: line or any [FAIL] "
+    "line (state_dir, lock, heartbeat or governance) names as the fix is yours too, once each, in one pass: "
+    "run each as written, a folder's first; if the NEXT: line also says to run ~/.local/bin/agentsync status "
+    "(a shut folder hides its files' modes), run it, then each such chmod its [FAIL] lines name; then run "
+    "the same install.sh command again. If the re-run names a chmod you already ran, show me, log it and go "
+    "to step 3's report; a new one it names is yours the same way. A sudo or a chown stays mine."
 )
 """Step 2's words, since v30, for a state folder or file of this account's own that it cannot open (B13 round
 21 Y4, Y24, Y59; the lead's ownership rule): step 1 said that chmod is the agent's once step 2 stops on it,

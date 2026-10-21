@@ -512,13 +512,13 @@ the name in fix-request.md.
    its fix names is yours, once, even when the fix goes on to name a [convert] edit for me (the bundled pandoc's),
    which stays mine: if
    the same [FAIL] line comes back after it, show it to me, log it and go to step 3's report. Each chmod 600 or chmod
-   700 of agentsync's own state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a
-   governance file) that the NEXT: line or any [FAIL] line (state_dir, lock, heartbeat or governance) names as the
-   fix is yours too, once each, in one pass: run each as written, a folder's first; if the NEXT: line also says to
-   run ~/.local/bin/agentsync status (a shut folder hides its files' modes), run it, then each such chmod its
-   [FAIL] lines name; then run the same install.sh command again. If the re-run names a chmod you already ran, show
-   me, log it and go to step 3's report; a new one it names is yours the same way. A sudo or a chown stays mine. If
-   your tool cannot wait
+   700 of agentsync's own state folder or a file in it (the manifest, its -wal or -shm, the token cache, the lock, the
+   heartbeat or a governance file) that the NEXT: line or any [FAIL] line (state_dir, lock, heartbeat or governance)
+   names as the fix is yours too, once each, in one pass: run each as written, a folder's first; if the NEXT: line
+   also says to run ~/.local/bin/agentsync status (a shut folder hides its files' modes), run it, then each such
+   chmod its [FAIL] lines name; then run the same install.sh command again. If the re-run names a chmod you already
+   ran, show me, log it and go to step 3's report; a new one it names is yours the same way. A sudo or a chown stays
+   mine. If your tool cannot wait
    that long in the foreground, run it in the background and read its output until the NEXT: line appears; that is
    expected, not a deviation. When it ends, whether or not it exited non-zero, unless its NEXT: line says the config
    does not load, if ~/agent-context/sources.toml has a kind = "inbox" source, tell me about my inbox: it is the

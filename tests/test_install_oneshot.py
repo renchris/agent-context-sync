@@ -7377,6 +7377,7 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "PM-ro-mode",
         "PM-ro-wal",
         "NR",
+        "NR-mode",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -7402,7 +7403,8 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
 
     Round 22 Z11 (probe NR): a 0700 folder where manifest.sqlite belongs passed every probe, so step 1 said
     nothing and step 2 stopped at its config step; it says so now, as the person's (no reinstall hedge: every
-    build stops on it)."""
+    build stops on it), also at a mode this account cannot open (NR-mode, 0500: the lane's review found the
+    access probe gave it the agent's chmod first)."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
@@ -7417,6 +7419,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "PM-ro-mode": "state-refused",
         "PM-ro-wal": "state-side-refused",
         "NR": "state-notfile",
+        "NR-mode": "state-notfile",
     }.get(state, "state-access")
     try:
         if state == "PM-owner":
@@ -7450,9 +7453,9 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         elif state == "PM-ro-wal":
             wal.write_bytes(b"")
             wal.chmod(0o400)
-        elif state == "NR":
+        elif state in ("NR", "NR-mode"):
             db.unlink()
-            db.mkdir(0o700)
+            db.mkdir(0o500 if state == "NR-mode" else 0o700)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
@@ -7460,6 +7463,7 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         db.parent.parent.chmod(0o700)
         db.parent.chmod(0o700)
         if db.is_dir():
+            db.chmod(0o700)
             db.rmdir()
         for f in (db, wal, shm):
             if f.exists():
@@ -8258,8 +8262,8 @@ def test_a_state_file_another_account_owns_is_the_persons_to_fix(
 
 STATE_CHMOD_NEXT = (
     "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; "
-    "the error above names it): the fix is the agent's: run {fix} once, then re-run: {rerun}; if it stops "
-    "the same way again, show the person the error and go on to the report"
+    "the error above names it): the fix is the agent's: run {fix} once, then re-run: {rerun}; if the re-run "
+    "names the same chmod again, show the person the error and go on to the report"
 )
 """Step 2's NEXT for a state folder or manifest of this account's own that it cannot open, with the chmod
 doctor.state_path_fix gives (B13 round 21 Y24, Y10, Y4)."""
@@ -8268,8 +8272,8 @@ STATE_CHMOD_FOLDER_NEXT = (
     "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; "
     "the error above names it): the fix is the agent's: run {fix} once, then, in the same pass, since that "
     "folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 "
-    "its [FAIL] lines name for a path in that folder, then re-run: {rerun}; if it stops the same way again, "
-    "show the person the error and go on to the report"
+    "its [FAIL] lines name for a path in that folder, then re-run: {rerun}; if the re-run names the same "
+    "chmod again, show the person the error and go on to the report"
 )
 """The same for the state folder's chmod 700 (B13 round 22 Z81): its files' modes cannot be read while it is
 shut, so status names their chmods in the same pass, once the folder is open."""
@@ -8568,10 +8572,11 @@ def test_a_side_file_this_account_cannot_write_is_no_config_step_stop(
 
 
 STATE_CHMODS_NEXT = (
-    "NEXT: agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat "
-    "or a governance file) has a mode this account cannot open (a mode, not damage; the [FAIL] lines above "
-    "name it): the fix is the agent's: run {fix} once, then re-run: {rerun}; if it stops the same way again, "
-    "show the person those lines and go on to the report"
+    "NEXT: agentsync's state folder or a file in it (the manifest, its -wal or -shm, the token cache, the "
+    "lock, the heartbeat or a governance file) has a mode that is wrong for it, one this account cannot open "
+    "or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: "
+    "run {fix} once, then re-run: {rerun}; if the re-run names the same chmod again, show the person those "
+    "lines and go on to the report"
 )
 """Step 2's NEXT when every [FAIL] that stops its status step is a chmod of this account's own state (B13
 round 22 Z8, Z36, Z59): the lock, the heartbeat, a governance file or a -wal or -shm stop it there, past the
@@ -8580,7 +8585,19 @@ config step, and got "fix the [FAIL] lines above"."""
 
 @pytest.mark.parametrize(
     "case",
-    ["heartbeat", "lock-and-wal", "governance", "acl", "mixed", "outside", "source", "older", "closing"],
+    [
+        "heartbeat",
+        "lock-and-wal",
+        "governance",
+        "acl",
+        "mixed",
+        "outside",
+        "source",
+        "older",
+        "closing",
+        "read-only",
+        "loose",
+    ],
 )
 def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts_own_state(
     env: dict[str, str], wheel: Path, case: str
@@ -8590,14 +8607,19 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
     whose fix is one chmod 600 or chmod 700 of paths in the state folder: the folders' chmod 700, then one
     chmod 600 of every file. An ACL's fix is the person's NEXT; a mix with any other [FAIL], a chmod of a
     path outside the state folder or of a source folder (chmod u+rx), and an installed build without doctor's
-    _shell_path keep "fix the [FAIL] lines above". The closing status names the chmod too, then the sync."""
+    _shell_path keep "fix the [FAIL] lines above". The closing status names the chmod too, then the re-run
+    (the lane's review: the prompt's grant says the re-run), and so does a mode too open (state_dir at 0755),
+    in words that fit it; a path on a volume mounted read-only gets no chmod."""
     env = {**env, "AGENTSYNC_OCR": "0"}  # no helper build under the real interpreter
-    if case == "older":
-        _tool_python_without(env, "agentsync.ops.doctor", "_shell_path")
-    else:
-        _tool_python(env)
     _write_config(env, _inbox(env))
     root = _state_db(env).parent
+    if case == "older":
+        _tool_python_without(env, "agentsync.ops.doctor", "_shell_path")
+    elif case == "read-only":  # the lane's review: no chmod writes on a volume mounted read-only
+        root.mkdir(parents=True)
+        _tool_python_read_only(env, root)
+    else:
+        _tool_python(env)
 
     def fail(name: str, path: Path, fix: str) -> str:
         return doctor.format_results([doctor.CheckResult(name, False, f"{path} cannot be opened", fix=fix)])
@@ -8626,6 +8648,8 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
         "outside": [fail("heartbeat", hb, chmod("600", Path(env["HOME"]) / "elsewhere.json"))],
         "source": [fail("source.alpha.listable", Path("/x"), "chmod u+rx /x")],
         "older": [fail("heartbeat", hb, chmod("600", hb))],
+        "read-only": [fail("heartbeat", hb, chmod("600", hb))],
+        "loose": [fail("state_dir", root, chmod("700", root))],
     }
     rerun = f"{INSTALL_SH} {wheel}"
     if case == "closing":
@@ -8634,11 +8658,10 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
         )
         cp = install_sh({**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel))
         assert cp.returncode == 1, cp.stdout + cp.stderr
-        assert last_line(cp).startswith(
-            STATE_CHMODS_NEXT.split(" once, ", maxsplit=1)[0].format(fix=chmod("600", lock))
-            + f" once, then run {env['HOME']}/.local/bin/agentsync sync and follow its NEXT line; if it "
-            "stops the same way again, show the person those lines and go on to the report"
-        ), last_line(cp)
+        # the lane's review: the closing status re-runs install.sh too, as the prompt's grant says
+        assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=chmod("600", lock), rerun=rerun)), (
+            last_line(cp)
+        )
         return
     cp = install_sh({**env, "STUB_DOCTOR_OUT": "\n".join(lines[case]), "STUB_DOCTOR_RC": "1"}, str(wheel))
     assert cp.returncode == 1, cp.stdout + cp.stderr
@@ -8647,6 +8670,7 @@ def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts
         "heartbeat": chmod("600", hb),
         "lock-and-wal": chmod("600", lock, wal),
         "governance": f"{chmod('700', gov)} && {chmod('600', gov / 'holds.json')}",
+        "loose": chmod("700", root),
     }.get(case)
     if fix:
         assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)

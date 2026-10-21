@@ -6128,8 +6128,14 @@ except ImportError:  # an older agentsync: a mode that refuses this account is f
 # account whose mode already allows it (an ACL, a sandbox), that a folder above it hides, that is on a volume
 # mounted read-only (whatever its mode: a chmod fails there), or whose fix doctor.state_path_fix gives as no
 # chmod, is for the person to fix: no chmod changes it
+try:
+    notfile = not (stat.S_ISREG(db.lstat().st_mode) or stat.S_ISLNK(db.lstat().st_mode))
+except OSError:
+    notfile = False
 access = None
 for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+    if p == db and notfile:  # judged below, whatever its mode: it is no file to chmod (the review of Z11)
+        continue
     word = "state-" if p in (db.parent, db) else "state-side-"
     try:
         st = p.stat()
@@ -6155,10 +6161,6 @@ for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + 
             fix = state_path_fix(Path(os.path.realpath(db.parent)), Path(os.path.realpath(p)))
         access = word + ("access" if fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 ")) else "refused")
         break
-try:
-    notfile = not (stat.S_ISREG(db.lstat().st_mode) or stat.S_ISLNK(db.lstat().st_mode))
-except OSError:
-    notfile = False
 if access:
     words.append(access)
 elif notfile:  # a folder (or a socket, a fifo) where the manifest belongs: every build stops on it
@@ -7298,10 +7300,10 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 		fix="$(state_open_fix)"
 		case "$fix" in
 		"chmod 700 "*) # the folder's mode hides its files' modes: status names their chmods once it is opened (Z81)
-			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then, in the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person the error and go on to the report"
+			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then, in the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person the error and go on to the report"
 			;;
 		"chmod 600 "*)
-			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person the error and go on to the report"
+			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person the error and go on to the report"
 			;;
 		refused)
 			FAIL_NEXT="this account is refused agentsync's state folder or a file in it though its mode allows it (an ACL, a folder above it this account cannot search, or a volume mounted read-only; the error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines): fixing that is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
@@ -7508,7 +7510,9 @@ persons_fails() {
 # is more than that one chmod or names a path outside the state folder (a source folder's chmod u+rx, the docs
 # repo's chmod -R go-rwx then a git config), or the installed build cannot say. The lock, the heartbeat, a
 # governance file and a -wal or -shm stop step 2 here, past the config step, and their chmod got "fix the [FAIL]
-# lines above", while the prompt granted it only on a NEXT or a state_dir line (B13 round 22 Z8, Z36, Z59). Read
+# lines above", while the prompt granted it only on a NEXT or a state_dir line (B13 round 22 Z8, Z36, Z59). A
+# mode too open (state_dir's 0755, a file others can read) is doctor's chmod too, and the words say so; a path on
+# a volume mounted read-only is no chmod's (the lane's review). Read
 # by the agentsync step 2 installed (-I), each path resolved against its config's state folder; the lines are
 # its argument, since with_timeout's background job reads no stdin.
 state_chmods() { # STATUS_OUTPUT
@@ -7540,13 +7544,18 @@ for text in sys.argv[2].splitlines():
         real = os.path.realpath(path)
         if not os.path.isabs(path) or not (real == root or real.startswith(root + os.sep)):
             sys.exit(0)
+        try:
+            if os.statvfs(real if os.path.lexists(real) else root).f_flag & os.ST_RDONLY:  # a read-only volume: for the person (Z79)
+                sys.exit(0)
+        except (OSError, AttributeError):
+            pass
         if path not in want[words[1]]:
             want[words[1]].append(path)
 runs = ["chmod %s %s" % (mode, " ".join(_shell_path(p) for p in want[mode])) for mode in ("700", "600") if want[mode]]
 print(" && ".join(runs))
 ' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
 }
-STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance file) has a mode this account cannot open (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
+STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat or a governance file) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
 PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
@@ -8053,7 +8062,7 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	if [ -n "$blocking" ] && persons_fails "$LOOP_OUT"; then
 		next="$PERSONS_FAILS, run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$blocking" ] && chmods="$(state_chmods "$LOOP_OUT")" && [ -n "$chmods" ]; then
-		next="$STATE_CHMODS $chmods once, then run $AGENTSYNC sync and follow its NEXT line; if it stops the same way again, show the person those lines and go on to the report"
+		next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person those lines and go on to the report"
 	elif [ -n "$blocking" ] || { [ -n "$fails" ] && [ -z "$held" ]; }; then # its NEXT points at a [FAIL] line "below"
 		next="fix the [FAIL] lines above (each names its fix), then run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$held" ]; then # the held listing is the NEXT, so its WAITING line is not printed twice
@@ -8078,7 +8087,7 @@ elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
 	next="$PERSONS_FAILS, the next run is: $SELF$RERUN_ARGS"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && chmods="$(state_chmods "$DOCTOR_LOG")" && [ -n "$chmods" ]; then
 	EXIT_RC=1 # this account's own state at a mode that refuses it: the agent's chmod, as config_failed names it
-	next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person those lines and go on to the report"
+	next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if the re-run names the same chmod again, show the person those lines and go on to the report"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null; then
 	# status exited non-zero with no [FAIL] line (note=status-error, B13 round 14 Q50): a re-run fails the same
 	# way, and a signal or a timeout prints no error, so the NEXT promises none (B13 round 15 S33, S58, S62)
