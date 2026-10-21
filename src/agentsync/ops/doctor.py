@@ -1127,9 +1127,12 @@ def read_only_fix(path: Path) -> str:
 
 
 def state_folder_fix(root: Path) -> str:
-    """The fix of a state folder this account cannot look inside, as state_dir's lines give it: the person's
-    chown when another account owns it, ``chmod 700`` when its mode refuses it, else the access fix (B13
-    round 20 X73: W65's "owner and mode 600" still refuses a folder a search)."""
+    """The fix of a state folder this account cannot look inside, as state_dir's lines give it (B13 round 20
+    X73: W65's "owner and mode 600" still refuses a folder a search), the first that applies: the person's
+    fix naming the first folder above it that refuses a search (:func:`_parent_fix`), when it cannot be
+    stat'ed; the person's chown when another account owns it; the person's fix for a read-only volume; the
+    person's access (ACL) fix when its owner bits already give access and it still refuses; ``chmod 700``,
+    the agent's, when its mode refuses it; else the person's access (ACL) fix (B13 round 22 Z52, Z64, Z78)."""
     try:
         st = root.stat()
     except PermissionError:  # a folder above it refuses a search: the person's, as an ACL is (round 21)
@@ -1152,9 +1155,11 @@ def state_folder_fix(root: Path) -> str:
 def state_path_fix(root: Path, path: Path) -> str:
     """The fix of ``path``, in the state folder ``root``, that this account was refused: the first of the
     folder, a folder below it, or the file itself that refuses it, with that one's fix (another account's:
-    the person's chown of the folder; this account's: ``chmod 700`` a folder, ``chmod 600`` a file), else
-    :func:`state_folder_fix` (B13 round 20 X73: a lock at 0000 in a healthy folder was given the folder's ACL
-    fix)."""
+    the person's chown of the folder; on a read-only volume the person's volume fix; this account's at a mode
+    that refuses it: ``chmod 700`` a folder, ``chmod 600`` a file; this account's whose mode already gives it
+    access: the person's access (ACL) fix, search for a folder, read and write for a file), else
+    :func:`state_folder_fix`, which is where the fix of a folder above the state folder comes from (B13 round
+    20 X73: a lock at 0000 in a healthy folder was given the folder's ACL fix; round 22 Z52)."""
     try:
         below = path.relative_to(root).parts
     except ValueError:
@@ -1192,7 +1197,8 @@ def state_path_fix(root: Path, path: Path) -> str:
 def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult | None:
     """``name``'s FAIL for ``exc``, a refused open of a path in the state folder, by its cause: the path and
     the system's words, with the fix of the folder or file that refused it (:func:`state_path_fix`: this
-    account's ``chmod 600`` or ``chmod 700``, another account's the person's chown); None for any other
+    account's ``chmod 600`` or ``chmod 700``; another account's chown, a read-only volume, an ACL or a folder
+    above that refuses a search, the person's; B13 round 22 Z52); None for any other
     error. The one shape of status's governance lines (``cli._refused_check``) and of the lock and heartbeat
     checks, so each says what ``sync``'s ``error: state:`` line says (B13 round 21 Y43: those two gave the
     generic "could not read ... report it" FAIL)."""

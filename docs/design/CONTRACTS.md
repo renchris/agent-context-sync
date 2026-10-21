@@ -27348,6 +27348,14 @@ citation scan (round 21 Y77) read only CONTRACTS. The comment reads `§16.149 X1
 install.sh's `§16.110 Q27` is §16.111's (comment-only hunks in lanes RA's and RB's files). Test:
 `test_deploy_pack.py::test_a_code_comments_contracts_citation_names_a_section_that_holds_its_item`.
 
+**Z52: the state fixes' docstrings name every fix they return (`agentsync.ops.doctor`, `agentsync.cli`).**
+`state_folder_fix`'s docstring named the chown, `chmod 700` and "the access fix", not the parent fix or the
+read-only volume's; `state_path_fix`'s named neither the read-only nor the ACL fix below the folder;
+`refused_state_path`'s and the comment at `cli`'s ManifestOpenError arm named only the chmods and the chown. Each
+lists them in the order the code tests them now (Z64, Z78), and `state_path_fix`'s says the parent fix comes
+through `state_folder_fix`, never from it directly (the verifier's correction). Documentation only: no test, as no
+behavior changed and a test of a docstring's words would re-assert the source.
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the
