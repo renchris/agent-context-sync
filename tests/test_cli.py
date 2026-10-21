@@ -1531,6 +1531,50 @@ def test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="setxattr(2)")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_the_time_machine_line_over_a_shut_state_folder_says_not_checked_once(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y51: over a state folder this account cannot search, governance.time_machine listed every
+    state path as "Permission denied", a teams/ that does not exist included, while governance.hold and
+    purge_queue said STATE_FOLDER_UNCHECKED. The state folder's paths get that one line; the paths outside it
+    are still judged, and "tenant-data paths excluded" never prints over a folder nobody checked."""
+    from agentsync import tm_exclude  # noqa: PLC0415
+
+    monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "1")
+    assert cli.main(["sync", "--config", str(initialised.config_path)]) == cli.EXIT_OK
+    root = expand(initialised.state_paths.root)
+    outside = [
+        p
+        for p in governance.time_machine_exclusions(initialised)
+        if p.exists() and not (p == root or p.is_relative_to(root))
+    ]
+    assert outside, "the docs paths are outside the state folder"
+    for p in governance.time_machine_exclusions(initialised):
+        if p.exists():
+            assert tm_exclude.set_exclusion(p), p
+    root.chmod(0o600)
+    try:
+        checks = cli._time_machine_checks(initialised)
+    finally:
+        root.chmod(0o700)
+    assert [(c.ok, c.severity, c.detail) for c in checks] == [
+        (False, doctor.Severity.INFO, doctor.STATE_FOLDER_UNCHECKED)
+    ], checks
+    assert not any("teams" in c.detail or "Permission denied" in c.detail for c in checks), checks
+    # a path outside the folder with no exclusion still warns beside the line
+    plain = initialised.config_path.parent / "plain.txt"
+    plain.write_text("Contoso\n", encoding="utf-8")
+    monkeypatch.setattr(governance, "time_machine_status", lambda c: [(plain, False), (root / "teams", "x")])
+    monkeypatch.setattr(doctor, "state_folder_shut", lambda c: True)
+    info, warn = sorted(
+        cli._time_machine_checks(initialised), key=lambda c: c.severity is doctor.Severity.WARN
+    )
+    assert info.detail == doctor.STATE_FOLDER_UNCHECKED, info
+    assert warn.severity is doctor.Severity.WARN and warn.detail == f"not excluded from Time Machine: {plain}"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="setxattr(2)")
 def test_staging_keeps_its_time_machine_exclusion_through_a_sync_that_stops_on_the_state_file(
     initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

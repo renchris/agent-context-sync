@@ -1948,9 +1948,18 @@ def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
     lines give that fix when the path is in the state folder (B13 round 20 X12, X27)."""
     transient = ("-wal", "-shm")
     status = [(p, ok) for p, ok in governance.time_machine_status(config) if not p.name.endswith(transient)]
+    root = expand(config.state_paths.root)
+    out: list[doctor.CheckResult] = []
+    if doctor.state_folder_shut(config):
+        # every path in a folder this account cannot search read "Permission denied", a missing one too: one
+        # not-checked line, as governance.hold's and purge_queue's, and only the paths outside it are judged;
+        # the line also keeps "tenant-data paths excluded" off a folder nobody checked (B13 round 21 Y51)
+        status = [(p, ok) for p, ok in status if not (p == root or p.is_relative_to(root))]
+        out.append(
+            _check("governance.time_machine", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO)
+        )
     missing = [p for p, ok in status if ok is False]
     unchecked = [(p, ok) for p, ok in status if isinstance(ok, str)]
-    out: list[doctor.CheckResult] = []
     if missing:
         out.append(
             _check(
@@ -1962,7 +1971,6 @@ def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
             )
         )
     if unchecked:
-        root = expand(config.state_paths.root)
         theirs = "its" if len(unchecked) == 1 else "their"
         detail = f"not checked: this account cannot read {theirs} exclusion: " + ", ".join(
             f"{p} ({why})" for p, why in unchecked
