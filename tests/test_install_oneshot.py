@@ -225,6 +225,7 @@ case "$sub" in
   install-agent) exit "${STUB_AGENT_RC:-0}" ;;
   setup-report)
     [ -z "${STUB_REPORT_RC:-}" ] || { echo "stub setup-report failed" >&2; exit "$STUB_REPORT_RC"; }
+    [ -z "${STUB_REPORT_SLEEP:-}" ] || { : > "$STUB_LOG.reporting"; sleep "$STUB_REPORT_SLEEP"; }
     mkdir -p "$(dirname "$out")"
     # an older agentsync's report, as it is
     if [ -n "${STUB_REPORT_FILE:-}" ]; then cat "$STUB_REPORT_FILE" > "$out"
@@ -8631,6 +8632,55 @@ def test_a_signal_inside_add_source_keeps_its_held_error(
     assert stderr.index("error: install.sh was stopped by a signal") < stderr.index(error), stderr
     assert error in install_out(env).read_text(encoding="utf-8"), "the report reads install.out for it"
     assert [p.name for p in tmp.iterdir()] == [], "the held stderr and the mark are removed"
+
+
+@pytest.mark.parametrize("group", [False, True])
+def test_a_signal_while_the_report_is_written_still_ends_the_run(
+    env: dict[str, str], folder: Path, wheel: Path, group: bool
+) -> None:
+    """B13 round 21 Y16: on_exit cleared the EXIT trap and left HUP, INT and TERM on on_signal, so a SIGTERM
+    while the report ran (bash runs it once the $( ) returns) exited 143 with no report step line, no
+    bring-back.md, issue link or NEXT, and install.log kept the provisional "end rc=0": a later report said
+    the run ended 0. The signal is recorded, the run finishes, and it exits with the signal's code. To the
+    installer's pid alone, or to its whole group (the report child then dies and the fallback writes it)."""
+    friction_path(env).parent.mkdir(parents=True, exist_ok=True)
+    back = report_path(env).parent / "bring-back.md"
+    back.write_text("an earlier attempt's bring-back.md\n")
+    e = {**env, "STUB_REPORT_SLEEP": "3"}
+    proc = subprocess.Popen(
+        [BASH32, str(INSTALL_SH), str(wheel), "--source-local", str(folder), "--confirm-install-agent"],
+        env=e,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while not Path(env["STUB_LOG"] + ".reporting").exists():
+            assert proc.poll() is None and time.monotonic() < deadline, "the report never started"
+            time.sleep(0.05)
+        if group:
+            os.killpg(proc.pid, signal.SIGTERM)
+        else:
+            os.kill(proc.pid, signal.SIGTERM)  # what a coding tool's timeout sends
+        stdout, stderr = proc.communicate(timeout=60)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    assert proc.returncode == 143, stdout + stderr
+    assert stderr.count("error: install.sh was stopped by a signal (stopped by SIGTERM") == 1, stderr
+    lines = stdout.rstrip("\n").splitlines()
+    assert lines[-1].startswith(
+        "NEXT: this run was stopped while it wrote its report (stopped by SIGTERM, perhaps a tool timeout); "
+        f"it is safe to re-run: {rerun(wheel)}"
+    ), lines[-1]
+    assert any(ln.startswith("report: ") for ln in lines), stdout
+    log = install_log(env)
+    assert re.search(r" end rc=143 seconds=\d+$", log[-1]) and " step=report " in log[-2], log[-3:]
+    assert not any(" end rc=0 " in ln for ln in log), log
+    assert back.read_text() != "an earlier attempt's bring-back.md\n", "this run wrote bring-back.md"
 
 
 # ---- the report's issue link before NEXT (K3) --------------------------------------------------------------

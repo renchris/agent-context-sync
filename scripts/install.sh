@@ -990,6 +990,8 @@ NEXT_MSG=""    # the NEXT line the EXIT trap prints
 REPORT_BY=""   # agentsync when write_report's report is the installed agentsync's (step1_report_note)
 FAIL_NEXT=""   # the NEXT fail() writes in place of its own, set by a step that knows better (config_failed)
 RERUN=""       # the command a stopped run names (default: this script with the same arguments)
+EXITING=0      # 1 once on_exit runs: a signal then only sets SIG_RC (B13 round 21 Y16)
+SIG_RC=""      # the exit code of a signal that came while on_exit ran (129, 130 or 143)
 LAST_ERROR=""  # the last error message, for the shell report
 BACK_WHY=""    # why write_bring_back wrote no bring-back.md, for its warning (B13 round 14 Q19)
 BACK_UNREAD=0  # the kept patches write_bring_back could not read, for the NEXT (B13 round 14 Q20, Q29)
@@ -5449,6 +5451,14 @@ unanswered_listings() {
 on_exit() {
 	local rc=$? suffix="" link secs stopped=0 kept="$REPORT_PATH" back="${REPORT_PATH%/*}/bring-back.md" tell ver held wrote up uthem
 	trap - EXIT
+	# A signal from here on (a coding tool's timeout during the report) is recorded, and the run finishes:
+	# on_signal's exit came with the EXIT trap gone, so no report step line, bring-back.md, issue link or NEXT
+	# was written, and install.log kept the provisional "end rc=0" of a run that exited 143 (B13 round 21 Y16).
+	# The report child is not killed: bash runs a trap only once the $( ) returns, and with_timeout caps it.
+	EXITING=1
+	trap 'SIG_RC=129' HUP
+	trap 'SIG_RC=130' INT
+	trap 'SIG_RC=143' TERM
 	set +e
 	[ "$PARSED" -eq 1 ] || exit "$rc"
 	# add-source's held stderr, when a signal ended the run inside the call: bash runs the trap once the
@@ -5577,6 +5587,19 @@ on_exit() {
 			;;
 		esac
 	fi
+	# a signal while this ran: its code is the run's, with on_signal's error, and the NEXT says to run again
+	# first, before what the run had said (a second signal after on_signal's keeps that NEXT)
+	if [ -n "$SIG_RC" ]; then
+		rc="$SIG_RC"
+		case "$NEXT_MSG" in
+		"this run was stopped "*) ;;
+		*)
+			LAST_ERROR="install.sh was stopped by a signal ($(rc_meaning "$rc")) before it finished"
+			printf 'error: %s\n' "$LAST_ERROR" >&2
+			NEXT_MSG="this run was stopped while it wrote its report ($(rc_meaning "$rc")); it is safe to re-run: ${RERUN:-$SELF$RERUN_ARGS}${NEXT_MSG:+; the run had said: $NEXT_MSG}"
+			;;
+		esac
+	fi
 	finish_setup_log "$rc"
 	# Last, so it also covers what this run wrote and what the agent wrote before it: --report-only is the
 	# prompt's last command and comes right after the agent's last write to fix-request.md.
@@ -5607,6 +5630,11 @@ report_issue_link() {
 # A signal (a coding tool's timeout sends SIGTERM) still ends through on_exit: the log's end line, the report
 # and a NEXT line that says to run the same command again.
 on_signal() {
+	# on_exit has begun (a signal before it set its own traps): record it, and let it finish
+	[ "$EXITING" -eq 0 ] || {
+		SIG_RC="$1"
+		return 0
+	}
 	LAST_ERROR="install.sh was stopped by a signal ($(rc_meaning "$1")) before it finished"
 	printf 'error: %s\n' "$LAST_ERROR" >&2
 	NEXT_MSG="this run was stopped before it finished ($(rc_meaning "$1")); it is safe to re-run: ${RERUN:-$SELF$RERUN_ARGS}"
