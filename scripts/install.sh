@@ -993,6 +993,7 @@ RERUN=""       # the command a stopped run names (default: this script with the 
 LAST_ERROR=""  # the last error message, for the shell report
 BACK_WHY=""    # why write_bring_back wrote no bring-back.md, for its warning (B13 round 14 Q19)
 BACK_UNREAD=0  # the kept patches write_bring_back could not read, for the NEXT (B13 round 14 Q20, Q29)
+BACK_BRANCHES=0 # the local-work branches whose commits bring-back.md does not carry, for the NEXT (B13 round 21 Y23)
 DOCTOR_LOG=""  # this run's doctor output, for the shell report
 SYNC_OUT=""    # the first sync's stdout
 LOOP_OUT=""    # the closing status's output (the loop's NEXT)
@@ -4203,7 +4204,7 @@ write_bring_back() {
 	local prev at sha sent=0 skipped="" fix=0 nskip=0 unread=0 catfail=0 readable=() branches=0
 	local id nsat now notsent="" wasnot="" kept="$SETUP_DIR/local-work" up uthem sentat begin force
 	local wassent="" sentlist="" carried held nohash=0 lbr lhold outshown
-	BACK_WHY="" BACK_UNREAD=0
+	BACK_WHY="" BACK_UNREAD=0 BACK_BRANCHES=0
 	case "$shown" in
 	"$HOME"/*) shown='~'"${shown#"$HOME"}" ;;
 	esac
@@ -4417,7 +4418,7 @@ write_bring_back() {
 		fi
 	fi
 	say "bring back: $out (one file: report, fix request, local work)"
-	BACK_UNREAD="$unread"
+	BACK_UNREAD="$unread" BACK_BRANCHES="${branches:-0}"
 	# Step 2's run (no --report-only) says it as the person's, a WAITING ON YOU: line, the form the setup
 	# prompt's step 2 shows the person and does not act on; its NEXT, which drives the setup, is left alone.
 	# The report's run keeps the warning its NEXT points to ("see the warning above") (B13 round 18 V25). The
@@ -5533,6 +5534,15 @@ on_exit() {
 					up="$BACK_UNREAD kept patch files" uthem="them readable (chmod u+r on the files"
 					[ "$BACK_UNREAD" != 1 ] || { up="1 kept patch file" uthem="it readable (chmod u+r on the file"; }
 					NEXT_MSG="$back does not hold $up this account cannot read (see the warning above): make $uthem in $SETUP_DIR/local-work) and run $LOCAL_WORK_AGAIN again, then review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
+				fi
+				# Local-work branches with commits of their own and no patch (only counted when no patch is unread):
+				# only section 3 said how to add them (B13 round 21 Y23). Advice beside the review, never a step
+				# before it, as the cut-off clause below: a branch at an older commit of origin/main counts while
+				# format-patch writes nothing for it, so it comes back on every run. No branch is named.
+				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ "$BACK_BRANCHES" -gt 0 ]; then
+					up="$BACK_BRANCHES local-work branches"
+					[ "$BACK_BRANCHES" != 1 ] || up="1 local-work branch"
+					NEXT_MSG="$back does not carry the commits of $up (its section 3 says how to add them as patches, then run $LOCAL_WORK_AGAIN again; a branch that writes nothing holds no new commit); either way, review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
 				fi
 				# B13 round 19 W3: a part the report's time limit cut off (its doctor on a busy Mac) asked for the
 				# report again only inside the report. The NEXT the agent relays says so too, as advice beside the

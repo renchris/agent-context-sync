@@ -3266,6 +3266,46 @@ def test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_rev
     assert "cut off or not measured" not in last_line(cp), "a quoted note fakes no cut-off"
 
 
+@pytest.mark.parametrize("link", [True, False])
+@pytest.mark.parametrize("count", [1, 2])
+def test_local_work_branches_with_no_patch_are_named_in_the_next_line(
+    env: dict[str, str], link: bool, count: int
+) -> None:
+    """B13 round 21 Y23: with the setup folder's patches gone and local-work branches holding commits, only
+    bring-back.md's section 3 said how to add them; the NEXT the agent relays said review and copy back. It
+    says the file lacks those commits, by count and with no branch named, as advice beside the review (a
+    branch at an older published commit counts while format-patch writes nothing, so a step first would
+    loop)."""
+    home = Path(env["HOME"])
+    (home / ".local" / "bin").mkdir(parents=True)
+    _write_exe(home / ".local" / "bin" / "agentsync", STUB_AGENTSYNC)
+    heads = home / "src" / "agent-context-sync" / ".git" / "refs" / "heads"
+    heads.mkdir(parents=True)
+    for i in range(count):
+        (heads / f"local-work-20261020-22094{i}").write_text(f"{'ab'[i]}" * 40 + "\n")
+    e = env if link else {**env, "STUB_REPORT_NO_LINK": "1"}
+    cp = install_sh(e, "--report-only")
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    back = report_path(env).parent / "bring-back.md"
+    lbr = "1 local-work branch" if count == 1 else f"{count} local-work branches"
+    tail = ", or paste the setup report into the issue the link above opens" if link else ""
+    assert last_line(cp) == (
+        f"NEXT: {back} does not carry the commits of {lbr} (its section 3 says how to add them as patches, "
+        "then run ~/src/agent-context-sync/scripts/install.sh --report-only again; a branch that writes "
+        f"nothing holds no new commit); either way, review {back} and copy that one file back "
+        f"privately{tail} (nothing is sent for you) [setup report: {report_path(env)}]"
+    ), last_line(cp)
+    assert "20261020" not in cp.stdout, "no branch is named"
+    assert f"{lbr} {'holds' if count == 1 else 'hold'} commits this file does not carry" in back.read_text()
+    for ref in heads.iterdir():  # every branch at main's own commit: nothing is missing, the plain NEXT
+        ref.write_text("c" * 40 + "\n")
+    (heads / "main").write_text("c" * 40 + "\n")
+    cp = install_sh(e, "--report-only")
+    assert last_line(cp).startswith(f"NEXT: review {back} and copy that one file back privately"), last_line(
+        cp
+    )
+
+
 def test_two_unreadable_patches_are_counted_by_their_number(env: dict[str, str]) -> None:
     """B13 round 15 S65: the warning beside a known count read "1 patch file(s) ... does not hold them"; it
     takes the noun and pronoun of its count, two here (one is the test above)."""
