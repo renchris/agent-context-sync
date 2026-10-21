@@ -1566,7 +1566,11 @@ def _unread_words(
         return f"{said}; the state_dir lines say why"
     if isinstance(exc, ManifestPathError):  # its reason is kept apart from strerror (B13 round 20 X47)
         said = f"a file cannot be opened: {exc.reason}" if exc.reason else "a file cannot be opened"
-        return f"{said}; the state_dir lines say why" if isinstance(exc, ManifestOpenError) else said
+        if isinstance(exc, ManifestOpenError):
+            return f"{said}; the state_dir lines say why"
+        # no access matter: the line that FAILs the path, by its errno, none for a full disk (Z51)
+        check = _misplaced_check(config, exc) if config is not None else None
+        return f"{said}; the {check.name} [FAIL] line says why" if check is not None else said
     if isinstance(exc, OSError):
         said = f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
         # this account's access, which the line that judges the path names (B13 round 19 W64; round 21 Y43)
@@ -2890,14 +2894,67 @@ no owner: status's NEXT names the person only for the person's fix, and for this
 imperative, the agent's (B13 round 22 Z37: "whose NEXT says whose it is" was not kept there)."""
 
 
-def _state_next(args: argparse.Namespace) -> None:
-    """Print :data:`STATE_REFUSED_STEP` as a NEXT line for a ``sync`` with no ``--mode`` (an agent's or a
-    person's, never the LaunchAgent's), unless :data:`NO_NEXT_HINT_ENV` is 1 (install.sh names its own)."""
+STATE_MISPLACED_STEP = (
+    "a state file or folder is not where or what it should be, so this sync did not run: run "
+    f"`{loop.BIN} status` and do what its NEXT says; its [FAIL] line names the fix"
+)
+"""The NEXT a sync prints after the ``error: state:`` line of a state path that is not where or what it should
+be (:func:`_misplaced`): a folder where the manifest belongs, a file where the state folder belongs. Not
+:data:`STATE_REFUSED_STEP`'s "cannot open", the access framing round 20's X49 took off such a path (B13 round
+22 Z51)."""
+
+
+def _state_next(args: argparse.Namespace, step: str = STATE_REFUSED_STEP) -> None:
+    """Print ``step`` (:data:`STATE_REFUSED_STEP`) as a NEXT line for a ``sync`` with no ``--mode`` (an
+    agent's or a person's, never the LaunchAgent's), unless :data:`NO_NEXT_HINT_ENV` is 1 (install.sh names
+    its own)."""
     if getattr(args, "command", None) != "sync" or getattr(args, "mode", None):
         return
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         return
-    _out(loop.NEXT_PREFIX + STATE_REFUSED_STEP)
+    _out(loop.NEXT_PREFIX + step)
+
+
+def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
+    """The status FAIL of a state path ``exc`` refused for no access matter, by the path and errno refused,
+    never by the exception's class: state_dir.manifest's for something other than a file where the manifest
+    belongs (EISDIR on it), state_dir's for a file where the state folder or a folder above it belongs
+    (ENOTDIR, EEXIST); None for any other errno (a full disk), which no line FAILs, so no pointer names an
+    [ok] line (round 21 Y43; B13 round 22 Z51)."""
+    filename = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
+    if not isinstance(filename, str | bytes | os.PathLike):
+        return None
+    sp = config.state_paths
+    path = Path(os.path.realpath(os.fsdecode(filename)))
+    root = Path(os.path.realpath(expand(sp.root)))
+    if exc.errno == errno.EISDIR and path == Path(os.path.realpath(expand(sp.db))):
+        name = "state_dir.manifest"
+    elif exc.errno in (errno.ENOTDIR, errno.EEXIST) and (path == root or root.is_relative_to(path)):
+        name = "state_dir"
+    else:
+        return None
+    try:
+        results = doctor._check_state_dir(config)
+    except Exception as err:  # a file above the folder: its stat raises; status's backstop line, the same
+        results = [doctor.stopped(config, "state_dir", err)]
+    return next((r for r in results if r.name == name and not r.ok), None)
+
+
+def _misplaced(args: argparse.Namespace, exc: OSError) -> str | None:
+    """The ``error: state:`` line of a state path that is not where or what it should be, in the words and
+    with the fix of the status line that FAILs it (:func:`_misplaced_check`: ``<db> is a folder, not the
+    state file``), else None: never a raw traceback (a sync's lock opened a state folder that is a file, B13
+    round 22 Z51's verifier), and never "cannot be opened", the access words round 20's X49 took off such a
+    path and the setup report reads as this account's access."""
+    try:
+        config = _config(args)
+    except Exception:  # the error path: never a second error over the first
+        return None
+    result = _misplaced_check(config, exc)
+    if result is None:
+        return None
+    fix = f" (fix: {result.fix})" if result.fix else ""
+    return f"error: state: {result.detail}{fix}"
 
 
 def _manifest_open_fix(args: argparse.Namespace, exc: ManifestOpenError) -> str:
@@ -3054,6 +3111,21 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("state: %s", exc, exc_info=True)
         _err(f"error: state: {exc} (fix: {_manifest_open_fix(args, exc)})")
         _state_next(args)
+        return EXIT_FAILED
+    except (ManifestPathError, FileExistsError, NotADirectoryError) as exc:
+        # a state path that is not where or what it should be (a folder where the manifest belongs, a file
+        # where the state folder belongs): the fix of the status line that FAILs it and a NEXT naming status;
+        # a path no line FAILs (a full disk) keeps its one line, and a raw error elsewhere its traceback (B13
+        # round 22 Z51: no fix and no NEXT, and a sync's lock over a state folder that is a file a traceback)
+        said = _misplaced(args, exc)
+        if said is None:
+            if not isinstance(exc, ManifestPathError):
+                raise
+            _err(f"error: {exc}")
+            return EXIT_FAILED
+        _log.debug("state: %s", exc, exc_info=True)
+        _err(said)
+        _state_next(args, STATE_MISPLACED_STEP)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read

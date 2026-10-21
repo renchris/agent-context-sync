@@ -4141,7 +4141,9 @@ def test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix(
         err = capsys.readouterr().err
         assert "Traceback" not in err and "IsADirectoryError" not in err, err
         (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
-        assert line == f"error: {db} cannot be opened: Is a directory", line
+        # B13 round 22 Z51: the words and fix of the line that FAILs it, state_dir.manifest's, the person's
+        want = f"error: state: {db} is a folder, not the state file (fix: {doctor.MANIFEST_FIX})"
+        assert line == want, line
         assert cli.MANIFEST_OPEN_FIX not in err, err
         target = db
     else:  # a sync's lock opens the state folder first; the manifest's own open is what this range covers
@@ -4177,6 +4179,71 @@ def test_a_folder_where_the_manifest_belongs_fails_status(
     assert out[0].startswith("NEXT: the state_dir.manifest check failed"), out[0]
     named = {r.name: r for r in doctor.run_checks(initialised)}
     assert doctor.is_persons_fix(named["state_dir.manifest"].fix)
+
+
+def test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_and_next(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z51: with a folder where manifest.sqlite belongs, status FAILed state_dir.manifest, but
+    its ``cannot read the state`` line pointed nowhere, and sync, poll and curate printed ``error: <db> cannot
+    be opened: Is a directory`` with no fix and no NEXT; with a file where the state folder belongs, a sync's
+    lock ended on a raw FileExistsError traceback. The pointer, the words, the fix and the NEXT follow the
+    path and errno refused: the line that FAILs it; a full disk (ENOSPC), which no line FAILs, gets none of
+    them."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.mkdir(mode=0o700)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert (
+        "status: cannot read the state: a file cannot be opened: Is a directory; the state_dir.manifest "
+        "[FAIL] line says why"
+    ) in out, out
+    for argv in (["sync"], ["sync", "--mode", "poll"], ["curate"]):
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        said = capsys.readouterr()
+        assert "Traceback" not in said.err, said.err
+        (line,) = [ln for ln in said.err.splitlines() if ln.startswith("error: ")]
+        want = f"error: state: {db} is a folder, not the state file (fix: {doctor.MANIFEST_FIX})"
+        assert line == want and "cannot be opened" not in line, line
+        nexts = [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")]
+        assert nexts == ([f"NEXT: {cli.STATE_MISPLACED_STEP}"] if argv == ["sync"] else []), (argv, nexts)
+        assert "cannot open" not in cli.STATE_MISPLACED_STEP
+    # a full disk: no line FAILs it, so no pointer, no fix and no NEXT
+    full = ManifestPathError(
+        f"{db} cannot be opened: No space left on device", errno.ENOSPC, "No space left on device"
+    )
+    full.__cause__ = OSError(errno.ENOSPC, "No space left on device", str(db))
+    assert cli._unread_words(full, config=initialised) == "a file cannot be opened: No space left on device"
+    monkeypatch.setattr(cli, "_cmd_sync", lambda args: (_ for _ in ()).throw(full))
+    db.rmdir()
+    db.with_name("kept.sqlite").rename(db)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    said = capsys.readouterr()
+    assert said.err.strip() == f"error: {full}" and "NEXT: " not in said.out, said
+    monkeypatch.undo()
+    # a file where the state folder belongs: state_dir's fix, never the lock's traceback
+    root = expand(initialised.state_paths.root)
+    root.rename(root.with_name("kept-state"))
+    root.write_text("not a folder\n", encoding="utf-8")
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        said = capsys.readouterr()
+    finally:
+        root.unlink()
+        root.with_name("kept-state").rename(root)
+    assert "Traceback" not in said.err and "FileExistsError" not in said.err, said.err
+    (line,) = [ln for ln in said.err.splitlines() if ln.startswith("error: ")]
+    assert line == f"error: state: {root} is not a directory (fix: move {doctor._shell_path(root)} aside)", (
+        line
+    )
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.STATE_MISPLACED_STEP}"
+    ]
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")

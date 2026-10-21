@@ -27294,6 +27294,24 @@ line names the fix`, true in both cases; `_fail_step` is unchanged, as its words
 in three test files (the verifier's). Lane P was sent the words. Test:
 `test_cli.py::test_the_syncs_next_over_its_own_state_file_promises_no_owner_status_does_not_name`.
 
+**Z51: a state path that is not where or what it should be names its status line, fix and NEXT (`agentsync.cli`).**
+With a folder where manifest.sqlite belongs, status FAILed state_dir.manifest (round 21 Y47), but its `status:
+cannot read the state: a file cannot be opened: Is a directory` line pointed nowhere, and sync, poll and curate
+printed `error: <db> cannot be opened: Is a directory` with no fix and no NEXT, so nothing sent anyone to status;
+with a file where the state folder belongs, a sync's lock ended on a raw FileExistsError traceback (the verifier's
+side finding). `cli._misplaced_check` picks the status FAIL by the path and errno refused, never by the exception's
+class: state_dir.manifest's for EISDIR on the manifest, state_dir's for ENOTDIR or EEXIST on the state folder or a
+folder above it, none for any other errno (a full disk FAILs no line, so it gets no pointer, as round 21 Y43 ruled).
+`_unread_words` then ends `; the <check> [FAIL] line says why`, and `_main`'s arm for a `ManifestPathError`, a
+FileExistsError or a NotADirectoryError prints `error: state: <the line's detail> (fix: <its fix>)`, for example
+`error: state: <db> is a folder, not the state file (fix: <MANIFEST_FIX>)`, and an interactive sync adds
+`NEXT: a state file or folder is not where or what it should be, so this sync did not run: run
+\`~/.local/bin/agentsync status\` and do what its NEXT says; its [FAIL] line names the fix`
+(`cli.STATE_MISPLACED_STEP`). Neither says `cannot open` or `cannot be opened`: round 20's X49 took the access
+framing off such a path, and the setup report's `_STATE_OPEN_RE` reads that phrase as this account's access. A path
+no line FAILs keeps its one `error:` line (a ManifestPathError) or its traceback (any other raw error). Test:
+`test_cli.py::test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_and_next`.
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the
