@@ -3893,7 +3893,9 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
             (line,) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
             # B13 round 22 Z53: no manifest yet, so nothing is there to be damaged
             fix = f"{own}; the file itself is not damaged" if what == "file" else own
-            assert line == f"error: state: {db} cannot be opened: Permission denied (fix: {fix})", line
+            # B13 round 22 Z15: the folder's fix says the folder refused, not the file the line names
+            why = ": its folder refuses this account" if what == "folder" else ""
+            assert line == f"error: state: {db} cannot be opened: Permission denied{why} (fix: {fix})", line
             assert doctor.MANIFEST_FIX not in err and cli.MANIFEST_OPEN_FIX not in err, err
             nexts = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT: ")]
             assert nexts == ([f"NEXT: {cli.STATE_REFUSED_STEP}"] if argv == ["sync"] else []), (argv, nexts)
@@ -4085,6 +4087,38 @@ def test_a_manifest_on_a_read_only_volume_gets_the_persons_volume_fix_from_every
     made.__cause__ = OSError(errno.EROFS, "Read-only file system", str(elsewhere))
     fix = cli._manifest_open_fix(argparse.Namespace(config=cfg, command="sync"), made)
     assert fix == doctor.read_only_fix(elsewhere), fix
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+@pytest.mark.parametrize("what", ["folder", "above", "file"])
+def test_the_syncs_state_error_says_a_folder_refused_when_a_folder_did(
+    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+) -> None:
+    """B13 round 22 Z15 (round 22 ruling 3): with the state folder at 0000, or a folder above it refusing a
+    search, the sync's line named manifest.sqlite and its NEXT "a state file", while the fix was the
+    folder's. The path stays the one the system refused; the line says the folder refused it, and the NEXT
+    says a state file or its folder. A file of this account's at 0000 keeps the file's words."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = initialised.state_paths.db
+    target = {"folder": db.parent, "above": db.parent.parent, "file": db}[what]
+    was = target.stat().st_mode & 0o777
+    target.chmod(0o000)
+    try:
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        captured = capsys.readouterr()
+    finally:
+        target.chmod(was)
+    (line,) = [ln for ln in captured.err.splitlines() if ln.startswith("error: state: ")]
+    why = {
+        "folder": ": its folder refuses this account (fix: chmod 700 ",
+        "above": ": a folder above it refuses this account a search (fix: the person gives this account ",
+        "file": "Permission denied (fix: chmod 600 ",
+    }[what]
+    assert why in line and "Traceback" not in captured.err, line
+    assert f"NEXT: {cli.STATE_REFUSED_STEP}" in captured.out
+    assert cli.STATE_REFUSED_STEP.startswith("this account cannot open a state file or its folder, ")
 
 
 @pytest.mark.parametrize(
@@ -4349,8 +4383,12 @@ def test_a_state_folder_this_account_cannot_look_inside_is_one_line_with_the_fol
             err = capsys.readouterr().err
             assert "Traceback" not in err and "PermissionError" not in err, (argv, err)
             (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
+            # B13 round 22 Z15: a path in it says the folder refused it; the folder itself needs no word
             assert line.startswith("error: state: ") and line.endswith(
-                f"cannot be opened: Permission denied (fix: {fix})"
+                (
+                    f"cannot be opened: Permission denied: its folder refuses this account (fix: {fix})",
+                    f"{root} cannot be opened: Permission denied (fix: {fix})",
+                )
             ), (argv, line)
     finally:
         root.chmod(0o700)

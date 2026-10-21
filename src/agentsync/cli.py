@@ -2891,7 +2891,26 @@ def _state_refused(args: argparse.Namespace, exc: PermissionError) -> str | None
     if where is None:
         return None
     fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
-    return f"error: state: {where} cannot be opened: {exc.strerror or exc} (fix: {fix})"
+    why = _folder_refuses(where, fix)
+    return f"error: state: {where} cannot be opened: {exc.strerror or exc}{why} (fix: {fix})"
+
+
+def _folder_refuses(where: Path, fix: str) -> str:
+    """The cause, when what refused ``where`` is a folder and not ``where`` itself: the path in the line is
+    the one the system refused (manifest.sqlite), and its fix names the folder, so the words say which
+    refused (B13 round 22 Z15; round 22 ruling 3): ``: a folder above it refuses this account a search``
+    (doctor's ``_parent_fix``), ``: its folder refuses this account`` (``chmod 700`` of a folder other than
+    ``where``, or the folder's ACL fix). Empty otherwise."""
+    if fix.startswith("the person gives this account search access to "):
+        return ": a folder above it refuses this account a search"
+    if fix.startswith("the person gives this account read, write and search access to the folder "):
+        return (
+            "" if f"the folder {doctor._shell_path(where)} " in fix else ": its folder refuses this account"
+        )
+    if fix.startswith("chmod 700 "):
+        named = {doctor._shell_path(where), doctor._shell_path(os.path.realpath(where))}
+        return "" if fix.removeprefix("chmod 700 ") in named else ": its folder refuses this account"
+    return ""
 
 
 STATE_REFUSED_STEP = (
@@ -2902,7 +2921,8 @@ STATE_REFUSED_STEP = (
 another account's file is the person's sudo chown, which no NEXT hands the agent (B13 round 21 Y31: the sync
 printed no NEXT, so the setup prompt sent the agent to the report past this account's own chmod). It promises
 no owner: status's NEXT names the person only for the person's fix, and for this account's own chmod it is an
-imperative, the agent's (B13 round 22 Z37: "whose NEXT says whose it is" was not kept there)."""
+imperative, the agent's (B13 round 22 Z37: "whose NEXT says whose it is" was not kept there). "or its
+folder": a folder at 0000, or one above it, refuses as often as a file does (B13 round 22 Z15)."""
 
 
 STATE_MISPLACED_STEP = (
@@ -3135,7 +3155,13 @@ def _main(argv: Sequence[str] | None) -> int:
         # chown, an ACL or a folder above that refuses a search, the person's), a read-only volume the
         # person's volume fix (B13 round 21 Y31, Y69; round 22 Z47, Z78, Z52)
         _log.debug("state: %s", exc, exc_info=True)
-        _err(f"error: state: {exc} (fix: {_manifest_open_fix(args, exc)})")
+        fix = _manifest_open_fix(args, exc)
+        why = (
+            _folder_refuses(Path(os.fsdecode(cause.filename)), fix)
+            if isinstance(cause := exc.__cause__, PermissionError) and cause.filename is not None
+            else ""
+        )
+        _err(f"error: state: {exc}{why} (fix: {fix})")
         _state_next(args)
         return EXIT_FAILED
     except (ManifestPathError, FileExistsError, NotADirectoryError) as exc:
