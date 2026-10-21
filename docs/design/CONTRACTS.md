@@ -27312,6 +27312,20 @@ framing off such a path, and the setup report's `_STATE_OPEN_RE` reads that phra
 no line FAILs keeps its one `error:` line (a ManifestPathError) or its traceback (any other raw error). Test:
 `test_cli.py::test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_and_next`.
 
+**Z80: a -wal or -shm this account cannot write names every refused file, one fix and a NEXT (`agentsync.cli`,
+`agentsync.ops.doctor`).** With WAL frames left in manifest.sqlite-wal (a run killed before its checkpoint) and the
+-wal and -shm at 0400, a sync's first write raised SQLITE_READONLY, and the sqlite arm printed only `error:
+OperationalError: attempt to write a readonly database`, no fix and no NEXT, while status named `chmod 600` of
+both. After the damaged-file branch, an error `doctor.cannot_open` reads (CANTOPEN, PERM, READONLY) with a file
+`doctor.refused_state_files` lists (the manifest, -wal and -shm there that are another account's or that
+`os.access` refuses) prints `error: state: <each file> cannot be opened for writing by this account (fix: <fix>)`,
+exit 1, and an interactive sync adds `cli.STATE_REFUSED_STEP`. `doctor.refused_files_fix` gives one fix for them
+all, status's: `chmod 600` of every file when each is this account's own at a mode that refuses it (the verifier's:
+one file's chmod a run was a trap), else the first other's `state_path_fix` (another account's chown, an ACL or a
+read-only volume, the person's). A READONLY with no refused file (a folder it cannot write in) keeps sqlite's line.
+The setup report's `_refused_state_files` keeps its own copy (lane RA's file; the seam was sent). Test:
+`test_cli.py::test_a_wal_and_shm_this_account_cannot_write_name_both_files_one_fix_and_a_next` (real WAL frames).
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the

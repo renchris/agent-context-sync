@@ -3950,6 +3950,62 @@ def test_the_syncs_next_over_its_own_state_file_promises_no_owner_status_does_no
     ), out
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_wal_and_shm_this_account_cannot_write_name_both_files_one_fix_and_a_next(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z80: with WAL frames left in manifest.sqlite-wal (a run killed before its checkpoint) and
+    the -wal and -shm at 0400, a sync's write raised SQLITE_READONLY, and the CLI printed only ``error:
+    OperationalError: attempt to write a readonly database``, no fix and no NEXT, while status named ``chmod
+    600`` of both. The line names every refused file with one fix for them all (one chmod per run was a
+    trap) and the NEXT names status; a READONLY with no refused file keeps sqlite's line."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    root = db.parent
+    leave = (
+        "import os, sqlite3, sys\n"
+        "c = sqlite3.connect(sys.argv[1], isolation_level=None)\n"
+        "c.execute('PRAGMA wal_autocheckpoint=0')\n"
+        "c.execute(\"UPDATE sources SET kind = kind || 'x'\")\n"
+        "c.execute('UPDATE sources SET kind = substr(kind, 1, length(kind) - 1)')\n"
+        "os._exit(0)\n"
+    )
+    subprocess.run([sys.executable, "-I", "-c", leave, str(db)], check=True)
+    sides = [db.with_name(db.name + side) for side in ("-wal", "-shm")]
+    assert all(p.exists() and p.stat().st_size > 0 for p in sides), sides
+    for p in sides:
+        p.chmod(0o400)
+    try:
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        said = capsys.readouterr()
+        assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_FAILED
+        polled = capsys.readouterr()
+        _rc, out = _status(cfg, capsys)
+    finally:
+        for p in sides:
+            p.chmod(0o600)
+    fix = "chmod 600 " + " ".join(doctor._shell_path(root / p.name) for p in sides)
+    assert said.err.strip() == (
+        f"error: state: {sides[0]}, {sides[1]} cannot be opened for writing by this account (fix: {fix})"
+    ), said.err
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.STATE_REFUSED_STEP}"
+    ]
+    assert "NEXT: " not in polled.out and polled.err.strip().endswith(f"(fix: {fix})"), polled
+    (files,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.files ")]
+    assert files.endswith(f"(fix: {fix})"), files  # the same fix status gives
+    # a READONLY with no refused file (a folder it cannot write in): sqlite's own line, as before
+    readonly = sqlite3.OperationalError("attempt to write a readonly database")
+    readonly.sqlite_errorcode = sqlite3.SQLITE_READONLY  # type: ignore[attr-defined]
+    monkeypatch.setattr(cli, "_cmd_sync", lambda args: (_ for _ in ()).throw(readonly))
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    said = capsys.readouterr()
+    assert said.err.strip() == "error: OperationalError: attempt to write a readonly database", said.err
+    assert "NEXT: " not in said.out
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_a_manifest_behind_a_folder_that_refuses_a_search_is_still_not_damaged(
     initialised: Config, capsys: pytest.CaptureFixture[str]

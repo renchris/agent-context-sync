@@ -3006,6 +3006,22 @@ def _in_folder(filename: object, root: Path) -> Path | None:
     return path if real == folder or real.is_relative_to(folder) else None
 
 
+def _refused_files(args: argparse.Namespace) -> str | None:
+    """The ``error: state:`` line of a sqlite error that could not open or write the manifest when a file of
+    it is refused to this account (``doctor.refused_state_files``): every such file, with one fix for them all
+    (``doctor.refused_files_fix``); None when none is, so a folder it cannot write keeps sqlite's line."""
+    try:
+        config = _config(args)
+        files = doctor.refused_state_files(config)
+        fix = doctor.refused_files_fix(config, files) if files else ""
+    except Exception:  # the error path: never a second error over the first
+        return None
+    if not files:
+        return None
+    names = ", ".join(str(p) for p in files)
+    return f"error: state: {names} cannot be opened for writing by this account (fix: {fix})"
+
+
 def _state_db(args: argparse.Namespace) -> Path:
     """The manifest a command's database error came from: its config's, or the default state dir's when the
     config does not load."""
@@ -3153,6 +3169,14 @@ def _main(argv: Sequence[str] | None) -> int:
             doctor.record_unreadable(db, exc, getattr(args, "command", None))
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
+        said = _refused_files(args) if doctor.cannot_open(exc) else None
+        if said is not None:
+            # a -wal or -shm (or the manifest) this account cannot write: sqlite's READONLY gave the bare
+            # line below, no fix and no NEXT, while status named the chmod (B13 round 22 Z80); exit 1, not 65
+            _log.debug("state: %s", exc, exc_info=True)
+            _err(said)
+            _state_next(args)
+            return EXIT_FAILED
         if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its
             raise  # traceback (U72); so does any code no one listed (B13 round 18 V59: an allowlist)
         # a locked or busy database, a full disk, a read-only or failing volume, a file that will not

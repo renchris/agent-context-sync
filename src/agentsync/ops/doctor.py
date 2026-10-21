@@ -1200,6 +1200,39 @@ def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult |
     return _bad(name, detail, fix=state_path_fix(Path(os.path.realpath(root)), path))
 
 
+def refused_state_files(config: Config) -> list[Path]:
+    """The manifest, its -wal and its -shm, each there that this account cannot read and write: another
+    account's, or one ``os.access`` refuses (its mode, an ACL, a read-only volume), state_dir.files' own test.
+    One list for the CLI's error line and the setup report's (B13 round 22 Z80); a file it cannot see (a
+    folder that refuses a search) is not listed: the state_dir lines say that."""
+    db = expand(config.state_paths.db)
+    out: list[Path] = []
+    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        try:
+            st = p.lstat()
+        except OSError:
+            continue
+        if not stat.S_ISREG(st.st_mode):
+            continue
+        if st.st_uid != os.getuid() or not os.access(p, os.R_OK | os.W_OK):
+            out.append(p)
+    return out
+
+
+def refused_files_fix(config: Config, files: Sequence[Path]) -> str:
+    """One fix for every file of ``files`` (:func:`refused_state_files`), as status's state_dir.files FAIL
+    gives it: ``chmod 600`` of them all when each is this account's own at a mode that refuses it, so one
+    chmod leaves none for the next run (B13 round 22 Z80's verifier: one file's fix was the trap of fixing one
+    file a run); else the fix of the first that is not, another account's or one an ACL or a read-only volume
+    refuses, the person's (:func:`state_path_fix`)."""
+    root = expand(config.state_paths.root)
+    for p in files:
+        st = p.lstat()
+        if st.st_uid != os.getuid() or stat.S_IMODE(st.st_mode) & 0o600 == 0o600 or _read_only(p):
+            return state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(p)))
+    return "chmod 600 " + " ".join(_shell_path(root / p.name) for p in files)
+
+
 def _not_a_file(mode: int) -> str | None:
     """What an ``lstat`` mode is when it is neither a regular file nor a symlink (``a folder``, ``a socket``,
     ``a fifo``, ``not a regular file``), else None."""
