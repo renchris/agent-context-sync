@@ -2817,6 +2817,41 @@ def _state_refused(args: argparse.Namespace, exc: PermissionError) -> str | None
     return f"error: state: {where} cannot be opened: {exc.strerror or exc} (fix: {fix})"
 
 
+STATE_REFUSED_STEP = (
+    f"this account cannot open a state file, so this sync did not run: run `{loop.BIN} status`, whose [FAIL] "
+    "line names the fix and whose NEXT says whose it is"
+)
+"""The NEXT an interactive sync prints after its ``error: state:`` line: status, not the fix itself, since
+another account's file is the person's sudo chown, which no NEXT hands the agent (B13 round 21 Y31: the sync
+printed no NEXT, so the setup prompt sent the agent to the report past this account's own chmod)."""
+
+
+def _state_next(args: argparse.Namespace) -> None:
+    """Print :data:`STATE_REFUSED_STEP` as a NEXT line for a ``sync`` with no ``--mode`` (an agent's or a
+    person's, never the LaunchAgent's), unless :data:`NO_NEXT_HINT_ENV` is 1 (install.sh names its own)."""
+    if getattr(args, "command", None) != "sync" or getattr(args, "mode", None):
+        return
+    if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
+        return
+    _out(loop.NEXT_PREFIX + STATE_REFUSED_STEP)
+
+
+def _manifest_open_fix(args: argparse.Namespace, exc: ManifestOpenError) -> str:
+    """The fix of a manifest this account cannot open: ``doctor.state_path_fix`` of the path refused, as
+    status's state_dir lines give it, and that the file is not damaged (W65's guard against a move-aside);
+    :data:`MANIFEST_OPEN_FIX` for a refusal that is no PermissionError (a read-only volume) or a path outside
+    the state folder (B13 round 21 Y31, Y69)."""
+    cause = exc.__cause__
+    if not isinstance(cause, PermissionError):
+        return MANIFEST_OPEN_FIX
+    root = _state_root(args)
+    where = _in_folder(cause.filename, root)
+    if where is None:
+        return MANIFEST_OPEN_FIX
+    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
+    return f"{fix}; the file itself is not damaged"
+
+
 def _in_folder(filename: object, root: Path) -> Path | None:
     """``filename`` (an ``OSError``'s) as a path when it is ``root`` or lies under it, else None (both read
     through their links, so /var and /private/var are one folder)."""
@@ -2925,9 +2960,12 @@ def _main(argv: Sequence[str] | None) -> int:
         return EXIT_FAILED
     except ManifestOpenError as exc:
         # not 65: the file is not damaged, and MANIFEST_FIX's move-aside would throw good state away; exit 1,
-        # as V59 treats a file sqlite will not open (B13 round 19 W65)
+        # as V59 treats a file sqlite will not open (B13 round 19 W65). The fix is status's for the same
+        # file, by its cause (doctor.state_path_fix: this account's chmod 600 or 700, another account's the
+        # person's chown); a read-only volume keeps the generic words (B13 round 21 Y31, Y69)
         _log.debug("state: %s", exc, exc_info=True)
-        _err(f"error: state: {exc} (fix: {MANIFEST_OPEN_FIX})")
+        _err(f"error: state: {exc} (fix: {_manifest_open_fix(args, exc)})")
+        _state_next(args)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read
@@ -2938,11 +2976,14 @@ def _main(argv: Sequence[str] | None) -> int:
             raise
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
+        _state_next(args)
         return EXIT_FAILED
     except AgentSyncError as exc:
         # a governance file in the state folder this account cannot open (holds.json): the same line
         said = _state_refused(args, exc.__cause__) if isinstance(exc.__cause__, PermissionError) else None
         _err(said or f"error: {exc}")
+        if said:
+            _state_next(args)
         return EXIT_FAILED
     except sqlite3.DatabaseError as exc:
         # the manifest is the one database agentsync opens: a command no _state_readable wraps (exclude-empty,

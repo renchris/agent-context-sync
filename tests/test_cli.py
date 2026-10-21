@@ -3785,15 +3785,23 @@ def test_the_setup_reports_doctor_fails_a_manifest_damaged_under_a_table_as_stat
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
 @pytest.mark.parametrize("what", ["file", "folder"])
 def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
-    initialised: Config, capsys: pytest.CaptureFixture[str], what: str
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, what: str
 ) -> None:
     """B13 round 19 W65: a manifest this account cannot open (a root-owned file one sudo run left, a folder
     made read-only) ended ``sync`` and ``curate`` on a raw PermissionError traceback from ``os.open``, exit 1:
-    V59 covered only sqlite's errors. It is one ``error: state:`` line naming the file and an owner-and-mode
-    fix, exit 1: not 65, whose move-aside fix would throw away a manifest that is not damaged."""
+    V59 covered only sqlite's errors. It is one ``error: state:`` line naming the file and its fix, exit 1:
+    not 65, whose move-aside fix would throw away a manifest that is not damaged.
+
+    B13 round 21 Y31, Y69: that fix was W65's generic "owner and mode 600" while status named ``chmod 600
+    <file>`` (or ``chmod 700 <folder>``, or another account's file the person's chown), and the sync printed
+    no NEXT, so the setup prompt sent the agent to the report past its own chmod. The fix is
+    ``doctor.state_path_fix``'s, status's own, for sync, curate and add-source; an interactive sync adds a
+    NEXT naming status, never the fix itself (another account's is the person's sudo)."""
     cfg = str(initialised.config_path)
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
     db = initialised.state_paths.db
+    root = Path(os.path.realpath(expand(initialised.state_paths.root)))
+    folder = str(initialised.sources[0].path)  # type: ignore[union-attr]
     before = db.read_bytes()
     target = db
     if what == "folder":  # no file yet, in a folder this account cannot write: the open that creates it fails
@@ -3803,18 +3811,43 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
         target = db.parent
     target.chmod(0o500 if what == "folder" else 0o000)
     try:
+        own = f"chmod {'700' if what == 'folder' else '600'} {doctor._shell_path(target)}"
+        assert doctor.state_path_fix(root, Path(os.path.realpath(db))) == own
+        if what == "file":  # status's state_dir.files FAIL names the same fix
+            rc, out = _status(cfg, capsys)
+            (files,) = [ln for ln in out if ln.startswith("[FAIL] state_dir.files ")]
+            assert rc == cli.EXIT_FAILED and files.endswith(f"(fix: {own})"), files
         # curate opens no manifest that is not there yet
-        for argv in (["sync"], ["sync", "--mode", "poll"], *([["curate"]] if what == "file" else [])):
+        commands = (["sync"], ["sync", "--mode", "poll"], ["add-source", folder])
+        for argv in (*commands, *([["curate"]] if what == "file" else [])):
             capsys.readouterr()
             assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
-            err = capsys.readouterr().err
+            captured = capsys.readouterr()
+            err = captured.err
             assert "Traceback" not in err and "PermissionError" not in err, err
             (line,) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
-            assert (
-                line
-                == f"error: state: {db} cannot be opened: Permission denied (fix: {cli.MANIFEST_OPEN_FIX})"
-            )
-            assert doctor.MANIFEST_FIX not in err, err
+            fix = f"{own}; the file itself is not damaged"
+            assert line == f"error: state: {db} cannot be opened: Permission denied (fix: {fix})", line
+            assert doctor.MANIFEST_FIX not in err and cli.MANIFEST_OPEN_FIX not in err, err
+            nexts = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT: ")]
+            assert nexts == ([f"NEXT: {cli.STATE_REFUSED_STEP}"] if argv == ["sync"] else []), (argv, nexts)
+        # install.sh's run names its own NEXT
+        monkeypatch.setenv("AGENTSYNC_NO_NEXT_HINT", "1")
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        assert "NEXT: " not in capsys.readouterr().out
+        monkeypatch.delenv("AGENTSYNC_NO_NEXT_HINT")
+        # another account's file (a sudo sync's): the person's chown, and the NEXT still names only status
+        me = os.getuid()
+        monkeypatch.setattr(doctor.os, "getuid", lambda: me + 1)
+        capsys.readouterr()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        captured = capsys.readouterr()
+        (line,) = [ln for ln in captured.err.splitlines() if ln.startswith("error: state: ")]
+        assert line.endswith(f"(fix: {doctor._persons_chown(root)}; the file itself is not damaged)"), line
+        assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1])
+        (step,) = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT: ")]
+        assert "sudo" not in step and "chown" not in step and "chmod" not in step, step
+        monkeypatch.undo()
     finally:
         target.chmod(0o700 if what == "folder" else 0o600)
     if what == "folder":
