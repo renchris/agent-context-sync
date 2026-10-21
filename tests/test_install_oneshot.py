@@ -2300,6 +2300,65 @@ def test_the_shell_report_has_the_install_source_line_the_git_quote_promises(
     assert "contoso-mirror" not in text
 
 
+_MIRROR_URL = "https://git.contoso-mirror.invalid:8443/contoso/agent-context-sync.git"
+_GITHUB_URL = "https://github.com/renchris/agent-context-sync.git"
+
+
+@pytest.mark.parametrize(
+    ("remote", "label"),
+    [
+        (f'[remote "origin"] url = {_MIRROR_URL}\n', "other (redacted)"),
+        (f'[remote "origin"] url = {_GITHUB_URL}\n', "github.com/renchris/agent-context-sync"),
+        # a url on the header line, then a later one: the last url read wins, as in git
+        (
+            f'[remote "origin"] url = {_MIRROR_URL}\n\turl = {_GITHUB_URL}\n',
+            "github.com/renchris/agent-context-sync",
+        ),
+        # a comment after the header is no url
+        (f'[remote "origin"] # url = {_GITHUB_URL}\n\turl = {_MIRROR_URL}\n', "other (redacted)"),
+        # the older dotted section git still applies, its name lowercased (B13 round 22 Z76)
+        (f"[remote.origin]\n\turl = {_MIRROR_URL}\n", "other (redacted)"),
+        (f"[Remote.Origin] url = {_GITHUB_URL}\n", "github.com/renchris/agent-context-sync"),
+        # another remote's url on its header line is not origin's
+        (
+            f'[remote "origin"]\n\turl = {_MIRROR_URL}\n[remote "up"] url = {_GITHUB_URL}\n',
+            "other (redacted)",
+        ),
+    ],
+    ids=["mirror", "github", "last-wins", "comment", "dotted", "dotted-one-line", "other-remote"],
+)
+def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, remote: str, label: str
+) -> None:
+    """B13 round 22 Z1, Z25: git applies ``[remote "origin"] url = <url>`` written on the section's header
+    line, and the agentsync report reads it through ``git config --get remote.origin.url``, but the shell's
+    install source line threw the header line's rest away and said ``origin: none``. Both reports now give
+    the same label from a real checkout; the URL never shows."""
+    repo = Path(env["HOME"]) / "src" / "agent-context-sync"
+    repo.mkdir(parents=True)
+    git = ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=t", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q", "-b", "main"], check=True, env=env)
+    (repo / "a.txt").write_text("one\n", encoding="utf-8")
+    subprocess.run([*git, "add", "a.txt"], check=True, env=env)
+    subprocess.run([*git, "commit", "-q", "-m", "one"], check=True, env=env)
+    with (repo / ".git" / "config").open("a", encoding="utf-8") as fh:
+        fh.write(remote)
+    said = subprocess.run(
+        [*git, "config", "--get", "remote.origin.url"], capture_output=True, text=True, env=env, check=True
+    )
+    assert setup_report.origin_label(said.stdout.strip()) == label, "git reads the form as the test expects"
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text(encoding="utf-8")
+    assert f"- install source: checkout ~/src/agent-context-sync · origin: {label}\n" in text, text
+    assert "contoso-mirror" not in text
+    monkeypatch.setenv("HOME", env["HOME"])
+    run = setup_report._Run(Path(env["HOME"]) / "none.toml", setup_report.ReportHooks(), 12.0)
+    # the label only: with two urls `remote get-url` gives the first, so the agentsync report also says a
+    # rewrite sends it elsewhere on last-wins (its own reading, not this line's)
+    assert f" · origin: {label}" in setup_report._checkout_facts(run, repo), "the agentsync report's label"
+
+
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     env: dict[str, str], folder: Path
 ) -> None:
@@ -14151,7 +14210,20 @@ _TWO_LINE_GIT = (
 )
 
 
-@pytest.mark.parametrize("config", [_ONE_LINE_GIT, _TWO_LINE_GIT], ids=["one-line", "two-line"])
+@pytest.mark.parametrize(
+    "config",
+    [
+        _ONE_LINE_GIT,
+        _TWO_LINE_GIT,
+        # B13 round 22 Z75: a remote name holding a quote, which git writes escaped
+        _ONE_LINE_GIT.replace('"origin"', '"co\\"x"'),
+        _TWO_LINE_GIT.replace('"origin"', '"co\\"x"'),
+        # B13 round 22 Z76: the older dotted section, which git still applies
+        _TWO_LINE_GIT.replace('[remote "origin"]', "[remote.origin]"),
+        _ONE_LINE_GIT.replace('[remote "origin"]', "[Remote.Origin]"),
+    ],
+    ids=["one-line", "two-line", "quoted-one-line", "quoted-two-line", "dotted-two-line", "dotted-one-line"],
+)
 def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_shell_report(
     env: dict[str, str], monkeypatch: pytest.MonkeyPatch, config: str
 ) -> None:
@@ -14171,8 +14243,10 @@ def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_sh
     assert shell == (
         "fatal: unable to access 'https://<proxy-2>/<proxy-3>/': 403 through http://<proxy-1>:8080"
     ), shell
-    # B13 round 21 Y1, Y36 (lane RA): the Python readers read the header line's key too, so both forms agree
-    assert python == shell, "the numbers the agentsync report gives"
+    # B13 round 21 Y1, Y36 (lane RA): the Python readers read the header line's key too, so both forms agree;
+    # round 22 Z76's dotted section is lane RA's half in setup_report._git_remotes
+    if "[remote." not in config.lower() or setup_report._git_remotes():
+        assert python == shell, "the numbers the agentsync report gives"
 
 
 def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: Path) -> None:
@@ -14188,6 +14262,18 @@ def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: 
         "[http]proxy=gw.fabrikam-eng.invalid:8080\n"
         '[branch "main"] url = https://not-a-remote.fabrikam-eng.invalid/x.git\n'
         '[remote "up"]\n\turl = git@ssh.fabrikam-eng.invalid:team/x.git\n'
+        # B13 round 22 Z75: a quoted subsection holding an escaped quote, beside a plain one, so a sed that
+        # reads no header line at all (BSD sed has no \|) is caught
+        '[http "https://q\\"z.fabrikam-eng.invalid"] proxy = http://p4.fabrikam-eng.invalid:3128\n'
+        '[http "https://ok.fabrikam-eng.invalid"] proxy = http://p5.fabrikam-eng.invalid:3128\n'
+        '[remote "co\\"x"]\n\turl = https://q1.fabrikam-eng.invalid/a.git\n'
+        '[remote "co\\"y"] url = https://q2.fabrikam-eng.invalid/a.git\n'
+        # Z76: the dotted form, a dotted name with a subsection, and two that are no remote
+        "[remote.origin]\n\turl = https://d1.fabrikam-eng.invalid/a.git\n"
+        "[Remote.Up] url = git@d2.fabrikam-eng.invalid:team/x.git\n"
+        '[remote.a "b"] url = https://d3.fabrikam-eng.invalid/a.git\n'
+        "[remote.]\n\turl = https://n1.fabrikam-eng.invalid/a.git\n"
+        "[remotex.y]\n\turl = https://n2.fabrikam-eng.invalid/a.git\n"
     )
     script = INSTALL_SH.read_text(encoding="utf-8")
     fns = "".join(
@@ -14206,10 +14292,20 @@ def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: 
         env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
     )
     proxies, remotes = cp.stdout.split("--\n")
-    assert proxies.splitlines() == ["http://p2.fabrikam-eng.invalid:3128", "gw.fabrikam-eng.invalid:8080"]
+    assert proxies.splitlines() == [
+        "http://p2.fabrikam-eng.invalid:3128",
+        "gw.fabrikam-eng.invalid:8080",
+        "http://p4.fabrikam-eng.invalid:3128",
+        "http://p5.fabrikam-eng.invalid:3128",
+    ]
     assert remotes.splitlines() == [
         "git.fabrikam-eng.invalid\thttps://git.fabrikam-eng.invalid/team/kb.git",
         "ssh.fabrikam-eng.invalid\tgit@ssh.fabrikam-eng.invalid:team/x.git",
+        "q1.fabrikam-eng.invalid\thttps://q1.fabrikam-eng.invalid/a.git",
+        "q2.fabrikam-eng.invalid\thttps://q2.fabrikam-eng.invalid/a.git",
+        "d1.fabrikam-eng.invalid\thttps://d1.fabrikam-eng.invalid/a.git",
+        "d2.fabrikam-eng.invalid\tgit@d2.fabrikam-eng.invalid:team/x.git",
+        "d3.fabrikam-eng.invalid\thttps://d3.fabrikam-eng.invalid/a.git",
     ]
 
 

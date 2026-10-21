@@ -352,14 +352,16 @@ friction_append() {
 # the global ones and the repository config of two checkouts (checkout_git_configs, a linked worktree too):
 # the one holding this script, which agentsync is installed from, and the one the prompt clones. Read as files: the logged git error names git's proxy, and step 1 may have stopped
 # with no git. An empty "proxy =" (git's off switch) prints nothing. A key on its section's header line
-# ("[http] proxy = ..."), which git applies, is read after the header (B13 round 21 Y64, as round 20 X8).
+# ("[http] proxy = ..."), which git applies, is read after the header (B13 round 21 Y64, as round 20 X8), a
+# quoted subsection holding an escaped quote too (round 22 Z75: BSD sed has no \|, so a nested group, never
+# an alternation, which would read no header line at all).
 git_proxy_values() {
 	local g
 	git_config_files | while IFS= read -r g; do
 		# An unreadable file is skipped: under set -e a failed sed would end the caller's whole list (the
 		# LaunchAgent's proxies after it went unread).
 		[ ! -f "$g" ] ||
-			LC_ALL=C sed -n 's/^[[:space:]]*\(\[[[:space:]]*[A-Za-z0-9.-]\{1,\}\([[:space:]]\{1,\}"[^"]*"\)\{0,1\}[[:space:]]*\][[:space:]]*\)\{0,1\}[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\3/p' "$g" ||
+			LC_ALL=C sed -n 's/^[[:space:]]*\(\[[[:space:]]*[A-Za-z0-9.-]\{1,\}\([[:space:]]\{1,\}"\([^"\\]*\\.\)*[^"\\]*"\)\{0,1\}[[:space:]]*\][[:space:]]*\)\{0,1\}[Pp][Rr][Oo][Xx][Yy][[:space:]]*=[[:space:]]*"\{0,1\}\([^"[:space:];#][^"[:space:];#]*\).*/\4/p' "$g" ||
 			true
 	done 2>/dev/null
 }
@@ -451,7 +453,9 @@ git_remote_entries() { # host TAB url, one a line; git_remote_hosts and git_remo
 			}
 			/^[ \t]*\[/ {
 				remote = 0
-				if (match($0, /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"[^"]*"[ \t]*\]/)) {
+				# a quoted name may hold an escaped quote, [remote "co\"x"] (B13 round 22 Z75), and git still
+				# applies the older dotted [remote.<name>] (Z76), as setup_report._git_remotes reads both
+				if (match($0, /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee]([ \t]+"(\\.|[^"\\])*"|\.[A-Za-z0-9.-]+([ \t]+"(\\.|[^"\\])*")?)[ \t]*\]/)) {
 					remote = 1
 					# [remote "<name>"] url = <url> on one line, which git applies: the rest after the matched
 					# header (B13 round 21 Y64, as round 20 X8 for insteadOf)
@@ -3220,10 +3224,19 @@ fallback_install_source_line() {
 	while IFS= read -r g; do
 		[ -f "$g" ] || continue
 		v="$(LC_ALL=C awk '
-			/^[ \t]*\[/ { o = ($0 ~ /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee][ \t]+"origin"[ \t]*\]/); next }
-			o && tolower($0) ~ /^[ \t]*url[ \t]*=/ {
-				u = $0; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u); last = u
+			function key(line,    u) { # a url key of [remote "origin"]: the last one read wins, as in git
+				if (tolower(line) !~ /^[ \t]*url[ \t]*=/) return
+				u = line; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u); last = u
 			}
+			# [remote "origin"] url = <url> on one line, which git applies, is read after the matched header, as
+			# git_remote_entries reads it (B13 round 22 Z1, Z25); so is the older [remote.origin], whose name git
+			# lowercases (Z76)
+			/^[ \t]*\[/ {
+				o = match($0, /^[ \t]*\[[ \t]*[Rr][Ee][Mm][Oo][Tt][Ee]([ \t]+"origin"|\.[Oo][Rr][Ii][Gg][Ii][Nn])[ \t]*\]/)
+				if (o) key(substr($0, RSTART + RLENGTH))
+				next
+			}
+			o { key($0) }
 			END { if (last != "") print last }
 		' "$g" 2>/dev/null || true)"
 		[ -z "$v" ] || url="$v"
