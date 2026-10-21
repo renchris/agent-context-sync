@@ -1036,11 +1036,13 @@ def _persons_chown(root: Path) -> str:
 
 
 def _search_fix(root: Path) -> str:
-    """The fix of a state folder this account owns at 0700 that still refuses it a look inside."""
+    """The fix of a state folder this account owns at 0700 that still refuses it a look inside: an ACL or a
+    privacy setting, the person's, never a chmod of the agent's, so its first words are "the person " (B13
+    round 21, the ownership rule: an ACL deny stays the person's, as install.sh's step 1 tail says)."""
     return (
-        f"give this account read, write and search access to the folder {_shell_path(root)} (its owner "
-        f"and mode are right, so an ACL or a privacy setting refuses it: ls -led {_shell_path(root)} shows "
-        f"an ACL)"
+        f"the person gives this account read, write and search access to the folder {_shell_path(root)} "
+        f"(its owner and mode are right, so an ACL or a privacy setting refuses it: ls -led "
+        f"{_shell_path(root)} shows an ACL)"
     )
 
 
@@ -1050,6 +1052,8 @@ def state_folder_fix(root: Path) -> str:
     round 20 X73: W65's "owner and mode 600" still refuses a folder a search)."""
     try:
         st = root.stat()
+    except PermissionError:  # a folder above it refuses a search: the person's, as an ACL is (round 21)
+        return f"the person makes {_shell_path(root)} this account's folder at mode 700, then run again"
     except OSError:
         return f"make {_shell_path(root)} this account's folder at mode 700, then run again"
     if st.st_uid != os.getuid():

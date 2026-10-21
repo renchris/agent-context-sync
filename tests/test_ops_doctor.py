@@ -1317,6 +1317,33 @@ def test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_th
     assert not files.ok and files.detail == f"cannot look inside {root}: Permission denied", files
     assert files.fix is not None and "chmod 600" not in files.fix and doctor._shell_path(root) in files.fix
     assert doctor.state_folder_fix(root) == files.fix
+    # B13 round 21, the ownership rule: an ACL deny is the person's, so no NEXT hands it to the agent
+    assert doctor.is_persons_fix(files.fix), files.fix
+    assert cli._fail_step(files).startswith("the state_dir.files check failed: its fix on the [FAIL] line ")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons(tmp_path: Path) -> None:
+    """B13 round 21, the ownership rule (lane P's seam note): a state folder whose parent refuses this account
+    a search was given "make <root> this account's folder at mode 700", which ``is_persons_fix`` read as the
+    agent's, while install.sh's step 1 tail calls it the person's. Its fix starts "the person "; this
+    account's own folder at a wrong mode keeps its ``chmod 700``, the agent's."""
+    parent = tmp_path / "shut"
+    root = parent / "state"
+    root.mkdir(parents=True, mode=0o700)
+    root.chmod(0o755)
+    assert doctor.state_folder_fix(root) == f"chmod 700 {doctor._shell_path(root)}"
+    assert not doctor.is_persons_fix(doctor.state_folder_fix(root))
+    parent.chmod(0)
+    try:
+        fix = doctor.state_folder_fix(root)
+    finally:
+        parent.chmod(0o700)
+    assert (
+        fix
+        == f"the person makes {doctor._shell_path(root)} this account's folder at mode 700, then run again"
+    )
+    assert doctor.is_persons_fix(fix)
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
