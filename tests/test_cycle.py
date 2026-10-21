@@ -4313,7 +4313,7 @@ def test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current(
     ], out
     assert "may show again" not in out and "until then" not in out
     assert _run_record(sample_config)["legacy_retried"] == 1
-    assert "legacy_cleared" not in _run_record(sample_config)
+    assert _run_record(sample_config)["legacy_cleared"] == 1  # B13 round 22 Z35: the record keeps it
     with Manifest(sample_config.state_paths.db) as m:
         row = m.item_by_path(SID, rel)
     assert row is not None and row.state is RowState.LIVE, row

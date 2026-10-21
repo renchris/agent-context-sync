@@ -10566,6 +10566,23 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         "source from that one on, so an old conversion error can show in those runs" in " ".join(part.split())
     ), part
     assert part.count("tried again after an upgrade") == 1
+    # B13 round 22 Z35: a run that made every one current says so, with no old error that can show; one that
+    # made some current keeps the retry words for the rest; an older build's record, with no count, as before
+    for counts, want, retry in (
+        ({"legacy_retried": 1, "legacy_cleared": 1}, "run 4, 1 file, which that run converted.", False),
+        ({"legacy_retried": 3, "legacy_cleared": 1}, "run 4, 3 files (1 that run converted).", True),
+        ({"legacy_retried": 2, "legacy_cleared": 5}, "run 4, 2 files, which that run converted.", False),
+    ):
+        seed = Seed(fake_mac["config"])
+        seed.m._db.execute(
+            "UPDATE runs SET counts_json = ? WHERE run_id = 4", (json.dumps({"converted": 1, **counts}),)
+        )
+        seed.close()
+        part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+        assert (
+            f"- tried again after an upgrade: {want} An older build had given up on these conversions" in part
+        )
+        assert ("an old conversion error can show in those runs" in part) == retry, part
 
 
 @pytest.mark.parametrize(("last_used", "said"), [(5, "the newest run (5)"), (4, "the run before it")])

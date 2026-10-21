@@ -8169,12 +8169,31 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
     if upgraded:
         # the one-time retry of failures an older build settled, which may have run in a LaunchAgent cycle
         # nobody watched: it is why an old error is back in the runs after it (B13 round 19 W18)
-        each = "; ".join(f"run {x.run_id}, {_plural(x.n('legacy_retried'), 'file')}" for x in upgraded)
+        # B13 round 22 Z35: the run's own record of the ones it made current, which no old error can show for;
+        # "that run converted", never "now current": the report is read days later
+        def tried(x: _RunRow) -> tuple[str, int]:
+            retried = x.n("legacy_retried")
+            cleared = min(x.n("legacy_cleared"), retried)
+            if cleared == retried:
+                return f"run {x.run_id}, {_plural(retried, 'file')}, which that run converted", 0
+            if cleared:
+                return (
+                    f"run {x.run_id}, {_plural(retried, 'file')} ({cleared} that run converted)",
+                    retried - cleared,
+                )
+            return f"run {x.run_id}, {_plural(retried, 'file')}", retried
+
+        said = [tried(x) for x in upgraded]
+        each = "; ".join(words for words, _rest in said)
+        retry = (
+            "; this "
+            "build tries each again from the same bytes in up to 2 runs of its source from that one on, so "
+            "an old conversion error can show in those runs"
+        )
         out += [
             "",
-            f"- tried again after an upgrade: {each}. An older build had given up on these conversions; this "
-            "build tries each again from the same bytes in up to 2 runs of its source from that one on, so "
-            "an old conversion error can show in those runs",
+            f"- tried again after an upgrade: {each}. An older build had given up on these conversions"
+            + (retry if any(rest for _words, rest in said) else ""),
         ]
     newest = runs[0].run_id
     again = dict.fromkeys((newest, newest - 1), 0)
