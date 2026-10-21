@@ -1134,9 +1134,15 @@ def state_folder_fix(root: Path) -> str:
         return f"make {_shell_path(root)} this account's folder at mode 700, then run again"
     if st.st_uid != os.getuid():
         return _persons_chown(root)
+    if _read_only(root):  # before the mode: no chmod writes there (B13 round 22 Z78)
+        return _read_only_fix(root)
+    # its mode already gives the owner access and it still refuses: an ACL, the person's, whatever its group
+    # and other bits, which a chmod 700 would fix and still leave it refused (B13 round 22 Z64)
+    if st.st_mode & 0o700 == 0o700 and not os.access(root, os.R_OK | os.W_OK | os.X_OK):
+        return _search_fix(root)
     if stat.S_IMODE(st.st_mode) != 0o700:
         return f"chmod 700 {_shell_path(root)}"
-    return _read_only_fix(root) if _read_only(root) else _search_fix(root)
+    return _search_fix(root)
 
 
 def state_path_fix(root: Path, path: Path) -> str:
@@ -1164,15 +1170,18 @@ def state_path_fix(root: Path, path: Path) -> str:
             if not os.access(at, os.R_OK | os.W_OK | os.X_OK):
                 if at == root:
                     return state_folder_fix(root)
-                # its mode already gives the owner access: a read-only volume or an ACL, the person's (round
-                # 21, lane P's measure)
+                if _read_only(at):  # before the mode: no chmod writes there (B13 round 22 Z78)
+                    return _read_only_fix(at)
+                # its mode already gives the owner access: an ACL, the person's (round 21, lane P's measure)
                 if mode & 0o700 != 0o700:
                     return f"chmod 700 {_shell_path(at)}"
-                return _read_only_fix(at) if _read_only(at) else _search_fix(at)
+                return _search_fix(at)
         elif not os.access(at, os.R_OK | os.W_OK):
+            if _read_only(at):  # (Z78)
+                return _read_only_fix(at)
             if mode & 0o600 != 0o600:
                 return f"chmod 600 {_shell_path(at)}"
-            return _read_only_fix(at) if _read_only(at) else _search_fix(at, folder=False)
+            return _search_fix(at, folder=False)
     return state_folder_fix(root)
 
 
@@ -1318,12 +1327,14 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         except (
             PermissionError
         ) as exc:  # no search of the folder: no file in it can be judged (B13 round 20 X73)
-            if out[-1].ok:  # a folder this account owns at 0700 that still refuses it: an ACL, a sandbox
+            # a folder this account owns whose mode gives it access that still refuses it: an ACL, a sandbox;
+            # at 0755 too, beside its chmod 700 line, which would leave it refused (B13 round 22 Z64)
+            if st.st_uid == os.getuid() and mode & 0o700 == 0o700:
                 out.append(
                     _bad(
                         "state_dir.files",
                         f"cannot look inside {root}: {exc.strerror or exc}",
-                        fix=_search_fix(root),
+                        fix=state_folder_fix(root),
                     )
                 )
             return out  # else state_dir's owner or mode FAIL above is the answer, with its fix

@@ -1520,6 +1520,96 @@ def test_a_log_folder_in_a_state_folder_under_a_folder_that_refuses_a_search_is_
     assert other.detail.startswith("could not read "), other
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_an_own_state_folder_at_0755_that_still_refuses_it_gets_the_persons_fix_beside_its_chmod(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z64: an own state folder at 0755 that an ACL refuses got ``chmod 700`` alone from status,
+    the agent's, which leaves it refused, while install.sh's step 1 and step 2 (``mode & 0o700``) call it the
+    person's. ``state_folder_fix`` tests the access before the mode, and state_dir keeps its loose-mode line
+    beside the person's ``cannot look inside`` line; an accessible own folder at 0755 is still ``chmod
+    700``."""
+    root = sample_config.state_paths.root
+    sample_config.state_paths.db.write_bytes(b"")
+    root.chmod(0o755)
+    try:
+        assert doctor.state_folder_fix(root) == f"chmod 700 {doctor._shell_path(root)}"  # nothing refuses
+        real_access, real_lstat = os.access, Path.lstat
+        monkeypatch.setattr(doctor.os, "access", lambda p, m: False if Path(p) == root else real_access(p, m))
+
+        def refused(self: Path) -> os.stat_result:
+            if self.parent == root:
+                raise PermissionError(errno.EACCES, "Permission denied", str(self))
+            return real_lstat(self)
+
+        monkeypatch.setattr(Path, "lstat", refused)
+        fix = doctor.state_folder_fix(root)
+        named = {(r.name, r.fix): r for r in doctor._check_state_dir(sample_config)}
+    finally:
+        monkeypatch.undo()
+        root.chmod(0o700)
+    assert fix == doctor._search_fix(root) and doctor.is_persons_fix(fix), fix
+    assert ("state_dir", f"chmod 700 {doctor._shell_path(root)}") in named, named
+    files = named[("state_dir.files", fix)]
+    assert files.detail == f"cannot look inside {root}: Permission denied", files
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="macOS ACLs; root ignores them")
+def test_an_own_state_folder_at_0755_an_acl_refuses_is_the_persons_as_install_sh_says(
+    sample_config: Config,
+) -> None:
+    """B13 round 22 Z64, measured: ``chmod +a 'everyone deny search,list,add_file,delete_child'`` on an own
+    folder at 0755 holding a manifest. install.sh's step 1 and step 2 read ``mode & 0o700``, the person's."""
+    root = sample_config.state_paths.root
+    sample_config.state_paths.db.write_bytes(b"")
+    root.chmod(0o755)
+    deny = "everyone deny search,list,add_file,delete_child"
+    subprocess.run(["/bin/chmod", "+a", deny, str(root)], check=True)
+    try:
+        fix = doctor.state_folder_fix(root)
+        results = doctor._check_state_dir(sample_config)
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(root)], check=True)
+        root.chmod(0o700)
+    assert doctor.is_persons_fix(fix) and "chmod" not in fix, fix
+    assert [(r.name, r.fix) for r in results] == [
+        ("state_dir", f"chmod 700 {doctor._shell_path(root)}"),
+        ("state_dir.files", fix),
+    ], results
+
+
+@pytest.mark.skipif(not hasattr(os, "ST_RDONLY"), reason="statvfs flags")
+def test_a_state_folder_on_a_read_only_volume_gets_the_volume_fix_whatever_its_mode(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z78: a state folder at 0755 on a read-only volume got ``chmod 700``, which fails there,
+    as the mode was tested before the volume; so did a folder or file below it at a wrong mode. The volume
+    fix, the person's, comes first."""
+    root = sample_config.state_paths.root
+    below = root / "governance"
+    below.mkdir(mode=0o700)
+    queue = below / "purge-queue.json"
+    queue.write_text("{}\n", encoding="utf-8")
+    root.chmod(0o755)
+    below.chmod(0o500)
+    queue.chmod(0o400)
+    try:
+        monkeypatch.setattr(doctor, "_read_only", lambda p: True)
+        folder = doctor.state_folder_fix(root)
+        real_access = os.access
+        monkeypatch.setattr(doctor.os, "access", lambda p, m: True if Path(p) == root else real_access(p, m))
+        sub = doctor.state_path_fix(root, below / "x")
+        below.chmod(0o700)
+        file = doctor.state_path_fix(root, queue)
+    finally:
+        below.chmod(0o700)
+        root.chmod(0o700)
+    assert folder == doctor._read_only_fix(root), folder
+    assert sub == doctor._read_only_fix(below), sub
+    assert file == doctor._read_only_fix(queue), file
+    assert all(doctor.is_persons_fix(f) for f in (folder, sub, file))
+
+
 @pytest.mark.skipif(not hasattr(os, "ST_RDONLY"), reason="statvfs flags")
 def test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch

@@ -27247,6 +27247,17 @@ whose owner-and-mode claim and `ls -led` hint fail when the `stat` is refused). 
 `test_ops_doctor.py::test_the_parent_fix_names_a_chmod_only_for_this_accounts_own_folder_shut_by_its_mode` and
 `test_ops_doctor.py::test_a_state_folder_whose_own_acl_denies_readattr_is_named_not_its_parent` (macOS).
 
+**Z64: an own state folder at 0755 that still refuses this account is the person's beside its chmod
+(`agentsync.ops.doctor`).** `state_folder_fix` tested `S_IMODE != 0o700` before any access, so an own folder at
+0755 that an ACL refuses got only `chmod 700`, the agent's, which leaves it refused, while install.sh's step 1 and
+step 2 (`mode & 0o700`) call it the person's. When the owner bits already give access and the folder still refuses
+(`os.access`), the fix is the person's access fix, whatever the group and other bits; an accessible own folder at
+0755 keeps `chmod 700`. state_dir keeps its loose-mode FAIL, and when its look inside is refused under owner bits
+that give access it adds the `cannot look inside <root>` line with that fix (it was added only over a 0700 folder),
+so status prints the person's fix install.sh's `state-refused` tail promises. install.sh's tests are unchanged.
+Tests: `test_ops_doctor.py::test_an_own_state_folder_at_0755_that_still_refuses_it_gets_the_persons_fix_beside_its_chmod`
+and `test_ops_doctor.py::test_an_own_state_folder_at_0755_an_acl_refuses_is_the_persons_as_install_sh_says` (macOS).
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the
