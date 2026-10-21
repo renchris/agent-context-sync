@@ -16064,6 +16064,8 @@ private, Downloads only the shell's). An organisation is unaffected; `Status` st
 `test_the_shell_report_leaves_a_report_with_a_generic_folder_public`.
 Amended 2026-10-13, §16.70 H39: the skip covers every pair that shares a generic folder's placeholder, its slug
 id (G8) included.
+Amended 2026-10-21, §16.153 Y7, Y72: a folder or library made of coding-agent product words only (`Copilot`,
+`github-copilot`) is skipped the same way in both reports.
 
 **G49: OneDrive's organisation stays <org-1> beside a custom-domain tenant.** Amends §16.58 F42: the custom-domain
 `graph.tenant` is registered whole after the organisations, not before them, so the first CloudStorage entry's
@@ -22745,6 +22747,7 @@ Tests: `test_the_shell_report_says_step_1_kept_local_work_in_counts_only` (2 and
 `test_deploy_pack.py::test_the_guide_names_the_late_listing_and_the_local_work_line`.
 Amended 2026-10-19, §16.129 U38: the Summary label keeps no `(es)`: `- local-work branches in the checkout: N with
 commits of their own`, and `1 with commits of its own` for one.
+Amended 2026-10-21, §16.153 Y23: the `--report-only` NEXT says so too, beside the review.
 
 **A re-run names no folder the config step added, and quotes a spaced one** (T22, T35). Every add-source failure stops
 the run, so once the config step ends each `--source-local` folder is in the config, and the NEXTs after it re-run
@@ -25946,6 +25949,8 @@ friction log's Agent line and the link's agent field in both reports, a path in 
 `<folder-N>`, the legend clause) and `test_the_shell_report_keeps_a_listed_coding_agent_or_generic_folder_name`
 (a configured Copilot: the Summary's agent field, the link, the stated prefix kept, the path redacted), and
 `test_the_shells_agent_spans_keep_only_a_product_word_standing_alone` (the review's cases, the pairs stubbed).
+Amended 2026-10-21, §16.153 Y7, Y72: the two reports' public/private rule for a product-word folder is one now,
+as G48 meant: both stay public.
 
 ### 16.148 Round 20: setup prompt v29, step 1's state-file tails and an unopenable manifest (2026-10-20, wave B13 round 20 lane P)
 
@@ -26375,7 +26380,75 @@ Reserved for round 21 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
-Reserved for round 21 lane RB of B13.
+The B13 round 21 items of lane RB (specs `round21/items/Y<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): Y7, Y8, Y16, Y23, Y64, Y66, Y72. Y7 and Y72 are one defect, built once.
+
+**A folder named only by coding-agent product words leaves both reports public** (Y7, Y72; amends §16.64 G48,
+§16.147 X40). With a configured `Copilot` or `Codex` folder the agentsync report was private only, since
+`report_words()` reads every `_AGENT_WORDS` word from its literals, while the shell's printed text holds none of
+them in lower case, so the shell report kept the public issue link. The two items proposed opposite fixes. Y7's
+verifier measured that a private shell report drops the link for every such folder and protects nothing: the
+placeholder reads back as a product's name, which the agent's name prints anyway, as G48 reasons for Documents.
+So both readers exempt the name by rule: `Redactor.add` counts a folder or library for which `_agent_words` holds
+as generic, and `fallback_redaction` skips a `<folder-N>` pair whose value is an `agent_words_name`; the value is
+still redacted. Y72's word list is built too: `_OUTPUT_WORDS` and `output_word` add codex, copilot, cursor and
+gemini, which changes nothing in the agentsync report (they are its report words already) and makes a one-word
+organisation named so private in both reports, where only the agentsync report was. An organisation stays
+outside the exemption, as under G48. Tests: `test_report_redaction.py::
+test_a_folder_named_only_by_product_words_leaves_both_reports_public` (Copilot beside the Copilot agent and
+another, Codex, `GitHub Copilot`; a Status folder still private in both) and
+`test_an_organisation_named_by_a_product_word_makes_both_reports_private`.
+
+**The `<path>` legend item says only a relative argument is one** (Y8). The item said a `--source-local` argument
+in install.log that names no CloudStorage folder, but `logged_source_local` sends only a relative argument to
+`<path>`; a `~/` or absolute one is matched by the configured folders (`~/Projects/<folder-N>`). It reads `a
+relative --source-local argument in install.log (which records no working directory) whose first part is not a
+CloudStorage entry`, and its dollar-quote examples name a tab or another control character and, under the C
+locale, any character outside ASCII. No "configured folder" clause: a relative argument naming one is still
+`<path>`. Tests: `test_the_path_legend_says_only_a_relative_argument_is_one` (a relative word, a configured `~/`
+word, a tab word) and `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+
+**A signal while the report is written is recorded, and the run finishes with its code** (Y16). `on_exit` cleared
+the EXIT trap and left HUP, INT and TERM on `on_signal`, whose `exit` (once the report's `$( )` returned) skipped
+the report step line, bring-back.md, the issue link, the NEXT and `finish_setup_log`, so install.log kept the
+provisional `end rc=0` of a run that exited 143 and a later report said it ended 0. `on_exit` sets `EXITING` and
+traps the three to `SIG_RC` (129, 130, 143); `on_signal` only records once `EXITING` is set. The run finishes;
+then `rc` is the signal's, the error line `on_signal` prints is printed once, and the NEXT reads `this run was
+stopped while it wrote its report (<rc_meaning>); it is safe to re-run: <command>; the run had said: <its NEXT>`
+(a NEXT `on_signal` set is kept). Corrected by measurement: the verifier's `stopped by <rc_meaning>` repeated
+"stopped by", which `rc_meaning` already says. The report child is not killed: bash runs no trap inside the
+`$( )`, and `with_timeout` caps it at 120 s. Test: `test_a_signal_while_the_report_is_written_still_ends_the_run`
+(to the installer's pid alone and to its group; `STUB_REPORT_SLEEP` in the stub).
+
+**The report's NEXT says bring-back.md lacks the local-work branches' commits** (Y23; amends §16.123 T82). With no
+patch and branches holding commits of their own, only section 3 said how to add them. `write_bring_back` sets
+`BACK_BRANCHES` beside `BACK_UNREAD`, and the `--report-only` NEXT reads `<file> does not carry the commits of N
+local-work branch(es) (its section 3 says how to add them as patches, then run <LOCAL_WORK_AGAIN> again; a branch
+that writes nothing holds no new commit); either way, review <file> and copy that one file back privately[, or
+paste ...] (nothing is sent for you)`, with the count's noun and no branch named. It is advice beside the review,
+never a step before it: a branch at an older commit of origin/main counts while format-patch writes nothing, so it
+comes back on every run. The unreadable-patch case never overlaps it, and the cut-off clause still wraps it. Test:
+`test_local_work_branches_with_no_patch_are_named_in_the_next_line` (1 and 2 branches, with the link and without,
+and the plain NEXT once every branch is at main's commit).
+
+**A git remote or proxy on its section's header line is read** (Y64). git applies `[remote "origin"] url = ...`
+and `[http] proxy = ...` written on the header line, but `git_remote_entries` skipped every header line and
+`git_proxy_values` read a key only at a line's start, so a 403 line kept the remote's host and company path in
+clear beside the public link. The remote reader runs its url rule on the rest after the matched header (an awk
+function both paths share), as round 20 X8 did for insteadOf; the proxy reader takes an optional header (a
+section name, an optional quoted subsection) before the key, and an empty `proxy =` still gives nothing. The
+Python readers are lane RA's (Y1, Y36), with the same header shape, so both forms number `<proxy-N>` alike. Tests:
+`test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_shell_report` (one-line and two-line
+give the same placeholders; the two-line form equals the agentsync report's) and
+`test_the_shell_git_readers_read_a_key_on_its_sections_header_line`.
+
+**The cut-off NEXT reads its marker only on the Summary's doctor and evidence lines** (Y66). The grep read the
+whole report, so a friction note quoting `_IDLE_AGAIN` faked a cut-off NEXT; the finder's fix (the Summary only)
+was measured incomplete, as the Summary repeats agent notes word for word. It reads `^- (doctor|evidence): .*write
+the report again when this Mac is idle`, the two lines that write it. The deploy pack asserts the prompt's keyed
+words are install.sh's own NEXT, as the unreadable-patch clause's are. Tests:
+`test_a_report_the_time_limit_cut_off_says_so_in_its_next_line_beside_the_review` (a note quoting the advice in
+the Summary and the friction log) and `test_deploy_pack.py::test_prompt_routes_changes_to_the_source_not_the_checkout`.
 
 ### 16.154 Round 21: setup prompt v30 and the agent's chmod of its own state (2026-10-20, wave B13 round 21 lane P)
 
