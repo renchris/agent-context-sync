@@ -15200,6 +15200,9 @@ whose converter id is not `none`: a binary .msg read, then withheld by a label r
 by its name and that sync's [policy] change queued it, not a later sync while
 `policy_rescreen_pending` stays set; a stub of
 a file no converter claims still does not.
+Amended 2026-10-21, §16.156 Y73: or a later sync that converts a stub a [policy] change queued and the sync
+before left (the `rescreen-stubs` record, kept until the stub is converted); still never by
+`policy_rescreen_pending`.
 
 **F12, F45: the report's Doctor section points at its Loop line (`agentsync.ops.doctor`, `agentsync.cli`).**
 `doctor._LISTING_YOURS_NOTE` (`... the WAITING ON YOU lines at the end of this run say whether it still is`) stays
@@ -26278,6 +26281,9 @@ convert (online-only, out of time) is left out of S in the sync that does, as be
 `test_cycle.py::test_the_sync_line_after_a_label_rule_is_lifted_names_every_conversion_it_counts` (an image
 and a binary .msg, then the image alone: no rule, the rule, the rule removed; S equals N and no `reread`),
 `test_cycle.py::test_an_image_stub_converted_after_a_rule_changes_sync_is_no_re_screen`.
+Amended 2026-10-21, §16.156 Y73: a queued stub that sync does not convert is now counted in S by the sync that
+does (`rescreen-stubs` replaces `_rescreen_queued`); a re-read, as an online-only stub's later conversion is,
+stays out of S.
 
 **The upgrade's retry note counts tries in each file's own source (X53; `agentsync.cli`,
 `agentsync.setup_report`; dated line at §16.144 W18).** `retry_settled_failures` moves the settled failures of
@@ -26299,6 +26305,8 @@ W38).** `ocr._entry`, `ocr._main`, `media._main` and `speech._main` said exit 1 
 also exits 1 when the probe after a good build answers `failed` (V6); install.sh already says `not built, or
 built and failing its probe`. The four now say so. Two finders, one defect, built once. Docstrings only, with no
 test that could fail.
+Amended 2026-10-21, §16.156 Y55: that exit 1 dates from each helper's first build (§16.25 for OCR), not V6, which
+changed only install.sh; install.sh has read it as not ready since §16.135 V6 and §16.141 W38.
 
 **The recording tests' docstring and W70 name CI's limit (X58).** One defect with lane D's X61 (§16.151), built
 once there: `_wide_limit` and §16.144 W70 name the ci job's 40 minutes and
@@ -26528,7 +26536,65 @@ Reserved for round 21 lane B of B13.
 
 ### 16.156 Round 21: the convert retry clause, helper docstrings and rescreened stubs (2026-10-20, wave B13 round 21 lane E)
 
-Reserved for round 21 lane E of B13.
+Round 21's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `round21/items/Y<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-21, §16.156 Y<n>`.
+
+**A withheld stub a rule change queued is re-screened in the sync that converts it (Y73; `agentsync.cycle`,
+`agentsync.manifest`; corrects §16.150 X34; dated line at §16.57 F35).** X34 counted a stub a label rule
+withheld by its name in S only in the cycle whose [policy] change queued it (`_rescreen_queued`), so one that
+cycle left for later (the cycle's OCR time used up, `_ocr_waits`) was counted in N and in no clause by the sync
+that converted it: `converted 1,
+deferred 0 online-only, read again 4`. §16.150's "left out of S in the sync that does, as before" no longer
+holds. `Manifest.mark_for_rescreen` takes a keyword-only `queued` set, to which it adds the (source_id,
+stable_id) of every row its withheld arm marks (its return value, the row count, is unchanged), and
+`_check_policy_change` adds them to the meta key `rescreen-stubs` (`_RESCREEN_STUBS_META`, a JSON object
+`{source_id: [stable_id, ...]}`), merged with what an earlier change queued. An image is recorded only when
+this cycle has an OCR engine (`images_readable`): without one its `no converter for .png` stub is no label
+rule's, and OCR, not the rule change, converts it once the engine is there. `_rescreened_stub` reads that record
+in place of the flag. A conversion takes the stub out, and the record is stored after each source's pass and
+after the recording pass, one write per source rather than one per file. Each cycle reads it once, in `_check_policy_change`
+before any verdict moves, and drops an entry whose row is gone, is no withheld refused stub, or has a verdict that
+is no work (converted, or settled with no read under a rule still on), and the entries of a source no longer
+configured. No "cleared on new bytes" rule: a stub withheld by its name never had a hash read, and an edit before
+the conversion is still a conversion the rule change forced. A re-read (`reread=True`) is never in S, as before:
+an online-only stub converted in a later sync is read by the re-read pass and named in the first-read clause.
+The clause install.sh's `SYNC_SUMMARY_RE` and `_CONVERTED_LINE_RE` parse is unchanged. No migration: a stub an
+older build queued and left is not in the record, so the sync that converts it counts it in N alone, once, as
+before. Test:
+`test_cycle.py::test_a_withheld_stub_a_rule_change_queued_is_re_screened_in_the_sync_that_converts_it` (an
+image withheld by its name under the rule with no byte read; the rule lifted in a sync with no OCR time, which
+leaves it deferred; the next sync converts it with S = N = 1, no first read, and the record left empty), and
+X34's two tests unchanged.
+
+**The sync line's docstring and the run report's comment say what S counts (Y53; `agentsync.cli`,
+`agentsync.model`).** `_print_report`'s docstring said a re-screen "runs the converter on the same bytes", and
+`CycleReport.rescreened`'s comment "a re-screen of the same bytes"; since X34, S also counts a stub a label rule
+withheld by its name, whose conversion may be the first read of its bytes (only when the file arrived while the
+rule was on). Both now say a re-screen converts a file again for the rule change: the bytes its pages were made
+from, or a stub a label rule withheld by its name that a [policy] change queued, this run's or an earlier
+one's (Y73), never a re-read, so not in R or the run record's `reread`. A docstring and a comment only, with no
+test that could fail.
+
+**doctor drops the retry clause the helper writers write (Y54; `agentsync.skill`, `agentsync.convert.ocr`,
+`agentsync.convert.speech`, `agentsync.ops.doctor`).** doctor's `_RETRY_CLAUSE`, which `_helper_detail` strips
+with an exact `removesuffix` (X20), was a fourth copy of the clause `ocr._signal_reason`, ocr's swiftc time-out
+(the OCR and media helpers) and `speech._TIMED_OUT` write, so a reworded writer clause would have been said twice
+again in doctor's line with no test failing. One constant, `skill.HELPER_RETRY_CLAUSE` (`; <INSTALL_SH> tries
+the build again on its next run`), is used by all four; doctor imports it from `skill`, never from `convert` at
+module level, so doctor still imports and gives its line when convert is broken. The OCR and media doctor test
+builds its marker through `ocr._build` with the real `_compile` (`_tool` stubbed to name present tools,
+`_run_build` raising `TimeoutExpired`), not a copy of the words, so it needs no swiftc. Test:
+`test_ops_doctor.py::test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`
+(the verifier's rewording of ocr's clause turns it red).
+
+**Exit 1 for a built helper that fails its probe dates from each helper's first build (Y55;
+`agentsync.convert.ocr`; corrects §16.150 X57).** §16.150 said `_entry` "also exits 1 when the probe after a good
+build answers `failed` (V6)", and `ocr._entry`'s docstring cited "B13 round 18 V6, round 20 X57". That exit was
+there in the OCR engine's first commit (§16.25: `return 0 if state == "ready" else 1`); V6 (§16.135) changed
+only install.sh, which has read the exit as not ready since V6 and §16.141 W38. `_entry`'s docstring now says so,
+"since each helper's first build" (media and speech first built in §16.34 and §16.35), and `ocr._main`'s
+docstring, reflowed by X84 with a break at 63 and 40 columns, is rewrapped to the file's width. Docstrings only,
+with no test that could fail; the dated-line pins of §16.150 X57 match as before.
 
 ### 16.157 Round 21: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 21 lane D)
 
