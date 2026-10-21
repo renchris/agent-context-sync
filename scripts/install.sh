@@ -3324,6 +3324,32 @@ fallback_install_source_line() {
 	fi
 	say "- install source: checkout ~/src/agent-context-sync · origin: $label$said"
 }
+# The NEXT line of the run of install.log's last step= line, from that run's block of install.out (B13 round 22
+# Z82): install.log says only that a step failed (step=config ... config_err=state-owner), and the owner and
+# the command are in the NEXT the agentsync report quotes. The run's own block only, so an older run's fix is
+# never shown; none for this run, whose NEXT comes after its report. Its lead-in holds no " (install.out",
+# which a stopped copy's relabelling keys on. The body's redaction cuts its re-run's --source-local folders.
+fallback_next_line() {
+	local r v=""
+	r="$(LC_ALL=C awk '/ step=/ && match($0, /run=[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-[0-9]+/) {
+		r = substr($0, RSTART + 4, RLENGTH - 4)
+	} END { print r }' "$SETUP_LOG" 2>/dev/null || true)"
+	[ -n "$r" ] && [ "$r" != "${RUN_ID:-}" ] || return 0
+	[ ! -r "$INSTALL_OUT" ] || v="$(LC_ALL=C awk -v id="$r" '
+		index($0, "# run=") == 1 { mine = index($0, "# run=" id " ") == 1; next }
+		mine && index($0, "NEXT: ") == 1 { v = $0 }
+		END { print v }' "$INSTALL_OUT" 2>/dev/null || true)"
+	say ""
+	if [ -z "$v" ]; then
+		say "No NEXT line of that run in install.out."
+		return 0
+	fi
+	say "The last install run's NEXT line, from the copy of its output:"
+	say ""
+	say "~~~"
+	printf '%s\n' "$v" | LC_ALL=C sed 's/~~~/~ ~ ~/g'
+	say "~~~"
+}
 # The shell report's body (redact_stream redacts it): the same headings as `agentsync setup-report`.
 # The sha REF names in the checkout GIT, read from its ref files with no git process: the loose file first, else
 # its packed-refs line; empty when neither holds it.
@@ -3558,6 +3584,7 @@ fallback_body() {
 			say "~~~"
 			tail -60 "$SETUP_LOG" | LC_ALL=C awk '{ print }'
 			say "~~~"
+			fallback_next_line
 		fi
 	else
 		say "No install log at $SETUP_LOG."

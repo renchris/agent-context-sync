@@ -2768,6 +2768,57 @@ def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_re
         assert re.sub(r"<folder-\d+>", "<folder-N>", arg) == re.sub(r"<folder-\d+>", "<folder-N>", shown[run])
 
 
+@pytest.mark.parametrize("same_run", [True, False])
+def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
+    env: dict[str, str], same_run: bool
+) -> None:
+    """B13 round 22 Z82: with no agentsync the shell report quoted only install.log
+    (``step=config rc=1 result=failed config_err=state-owner``) and said Doctor and Status were not run, so it
+    named neither the owner nor the command the agentsync report quotes from step 2's NEXT. It now quotes the
+    NEXT line of that run's own block of install.out, its re-run's folder cut as the Installer lines cut it;
+    an older run's NEXT is never shown."""
+    home = Path(env["HOME"])
+    setup = home / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    board = f"{home}/Clients/Contoso Board"
+    word = subprocess.run(
+        [BASH32, "-c", 'printf "%q" "$1"', "_", board], capture_output=True, text=True, check=True
+    ).stdout
+    run = "20261010T010000Z-4242"
+    (setup / "install.log").write_text(
+        f"2026-10-10T01:00:00Z run={run} start install.sh compat=10 commit=- kind=- source=- "
+        f"args=--source-local {word}\n"
+        f"2026-10-10T01:00:05Z run={run} step=config seconds=1 rc=1 result=failed config_err=state-owner\n"
+    )
+    said = (
+        "NEXT: step 2 stopped at its config step: agentsync's state folder is owned by another account, so "
+        "this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no "
+        f'sudo), then run ~/src/agent-context-sync/scripts/install.sh --source-local "{board}"'
+    )
+    out_run = run if same_run else "20261009T010000Z-77"
+    (setup / "install.out").write_text(
+        f"# run={out_run} 2026-10-10T01:00:00Z install.sh --source-local {word}\nstep 2 ...\n{said}\n"
+    )
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    text = report_path(env).read_text()
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    assert "Board" not in text and "Board" not in (report_path(env).parent / "bring-back.md").read_text()
+    if same_run:
+        assert (
+            "The last install run's NEXT line, from the copy of its output:\n\n~~~\nNEXT: step 2 stopped at "
+            in installer
+        ), installer
+        assert (
+            "(a sudo chown; the agent runs no sudo), then run ~/src/agent-context-sync/scripts/install.sh "
+            '--source-local "~/<path>"\n~~~\n' in installer
+        ), installer
+        assert " (install.out" not in installer, "a stopped copy's relabelling keys on it"
+    else:
+        assert "No NEXT line of that run in install.out.\n" in installer, installer
+        assert "sudo chown" not in text, "an older run's fix is never shown"
+
+
 _LEGEND_KINDS = (
     "~",
     "<tmp>",
