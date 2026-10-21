@@ -1344,6 +1344,30 @@ def test_a_state_folder_this_account_cannot_look_inside_fails_by_its_mode_and_th
     assert cli._fail_step(files).startswith("the state_dir.files check failed: its fix on the [FAIL] line ")
 
 
+@pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="macOS ACLs; root ignores them")
+def test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons(sample_config: Config) -> None:
+    """B13 round 21, the ownership rule (lane P's measure): a 0600 manifest an ACL denies this account read
+    and write got ``chmod 600 <db>``, which changes nothing, from state_dir.files and ``state_path_fix``. An
+    own file whose mode already gives it access is refused by an ACL or a privacy setting: the person's."""
+    root, db = sample_config.state_paths.root, sample_config.state_paths.db
+    with Manifest(db) as manifest:
+        manifest.sync_sources(list(sample_config.sources))
+    db.chmod(0o600)
+    user = os.environ.get("USER") or os.getlogin()
+    subprocess.run(["/bin/chmod", "+a", f"user:{user} deny read,write", str(db)], check=True)
+    try:
+        assert not os.access(db, os.R_OK | os.W_OK), "the ACL is in force"
+        named = by_name(run_checks(sample_config))
+        fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(db)))
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(db)], check=True)
+    files = named["state_dir.files"]
+    assert not files.ok and files.detail.endswith(f"by an ACL or a privacy setting: {db.name} (0600)"), files
+    assert files.fix == doctor._search_fix(db, folder=False) and doctor.is_persons_fix(files.fix), files.fix
+    assert "chmod" not in files.fix and "state_dir.manifest" not in named
+    assert doctor.is_persons_fix(fix) and "chmod 600" not in fix, fix
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons(tmp_path: Path) -> None:
     """B13 round 21, the ownership rule (lane P's seam note): a state folder whose parent refuses this account

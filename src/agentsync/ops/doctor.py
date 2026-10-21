@@ -1038,10 +1038,17 @@ def _persons_chown(root: Path) -> str:
     return f"the person runs sudo chown -R {os.getuid()} {_shell_path(root)} (the agent runs no sudo)"
 
 
-def _search_fix(root: Path) -> str:
-    """The fix of a state folder this account owns at 0700 that still refuses it a look inside: an ACL or a
-    privacy setting, the person's, never a chmod of the agent's, so its first words are "the person " (B13
-    round 21, the ownership rule: an ACL deny stays the person's, as install.sh's step 1 tail says)."""
+def _search_fix(root: Path, *, folder: bool = True) -> str:
+    """The fix of a state folder (or, ``folder`` False, a file) this account owns, whose mode already gives
+    it access, that still refuses it: an ACL or a privacy setting, the person's, never a chmod of the agent's,
+    which would change nothing, so its first words are "the person " (B13 round 21, the ownership rule: an
+    ACL deny stays the person's, as install.sh's step 1 tail says; lane P measured a file's)."""
+    if not folder:
+        return (
+            f"the person gives this account read and write access to the file {_shell_path(root)} (its "
+            f"owner and mode are right, so an ACL or a privacy setting refuses it: ls -le "
+            f"{_shell_path(root)} shows an ACL)"
+        )
     return (
         f"the person gives this account read, write and search access to the folder {_shell_path(root)} "
         f"(its owner and mode are right, so an ACL or a privacy setting refuses it: ls -led "
@@ -1086,11 +1093,15 @@ def state_path_fix(root: Path, path: Path) -> str:
             return state_folder_fix(root)
         if st.st_uid != os.getuid():
             return _persons_chown(root)
+        mode = stat.S_IMODE(st.st_mode)
         if stat.S_ISDIR(st.st_mode):
             if not os.access(at, os.R_OK | os.W_OK | os.X_OK):
-                return state_folder_fix(root) if at == root else f"chmod 700 {_shell_path(at)}"
+                if at == root:
+                    return state_folder_fix(root)
+                # its mode already gives the owner access: an ACL, the person's (round 21, lane P's measure)
+                return _search_fix(at) if mode & 0o700 == 0o700 else f"chmod 700 {_shell_path(at)}"
         elif not os.access(at, os.R_OK | os.W_OK):
-            return f"chmod 600 {_shell_path(at)}"
+            return _search_fix(at, folder=False) if mode & 0o600 == 0o600 else f"chmod 600 {_shell_path(at)}"
     return state_folder_fix(root)
 
 
@@ -1195,6 +1206,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     modes: list[str] = []
     others: list[str] = []  # another account's (a sudo sync): only the whole folder's chown leaves none
     shut: list[str] = []  # this account's, with no read or no write for it (chmod 000, 0400)
+    denied: list[Path] = []  # this account's at a mode that gives it access, refused anyway: an ACL
     nonfile: list[CheckResult] = []  # a folder, socket or fifo where a state file belongs
     for p in (
         sp.db,
@@ -1235,7 +1247,10 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         if fst.st_uid != os.getuid():
             others.append(f"{p.name} (owner uid {fst.st_uid}, mode {m:04o})")
         elif not os.access(p, os.R_OK | os.W_OK):
-            shut.append(f"{p.name} ({m:04o})")
+            if m & 0o600 == 0o600:  # a chmod 600 would change nothing (B13 round 21, lane P's measure)
+                denied.append(expand(p))
+            else:
+                shut.append(f"{p.name} ({m:04o})")
         elif m & 0o077:
             loose.append(f"{p.name} ({m:04o})")
     out += nonfile
@@ -1257,6 +1272,13 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 fix=f"chmod 600 {paths}",
             )
         )
+    if not others:  # each its own line: an ACL is the person's, a chmod above the agent's
+        for p in denied:
+            m = stat.S_IMODE(p.lstat().st_mode)
+            detail = f"refused to this account by an ACL or a privacy setting: {p.name} ({m:04o})"
+            out.append(_bad("state_dir.files", detail, fix=_search_fix(p, folder=False)))
+    if others or shut or denied:
+        pass  # the lines above are the answer, with their fixes
     elif loose:
         paths = " ".join(_shell_path(root / n.split(" ")[0]) for n in loose)
         out.append(
@@ -1271,7 +1293,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
     # named left two more to fix; after it, the next status probes and any side file is created 0600
-    blocked = {n.split(" ")[0] for n in others + shut}
+    blocked = {n.split(" ")[0] for n in others + shut} | {p.name for p in denied}
     if sp.db.name in present and sp.db.name not in blocked:
         out += _check_manifest_readable(expand(sp.db))
     return out
