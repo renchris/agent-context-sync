@@ -134,6 +134,27 @@ def test_help_documents_every_exit_code(capsys: pytest.CaptureFixture[str]) -> N
     assert "75  skipped" in capsys.readouterr().out
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_curates_help_says_it_exits_1_on_a_state_file_this_account_cannot_open(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y75: curate's help said "rc 1 only on a blocking finding", while the exit-code list on the
+    same screen says 1 is also a state file this account cannot open, which curate exits 1 on."""
+    assert cli.main(["--help"]) == 0
+    out = " ".join(capsys.readouterr().out.split())  # argparse wraps help text
+    assert "only on a blocking finding" not in out
+    # the words are lane D's Y76 (one defect, built once there): its test pins them
+    assert "rc 1 on a blocking finding or a state file this account cannot open, never on rows" in out
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    db.chmod(0o400)
+    try:
+        assert cli.main(["curate", "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        db.chmod(0o600)
+
+
 def test_help_text_names_every_command_to_run_by_its_full_path(capsys: pytest.CaptureFixture[str]) -> None:
     """B13 round 6 G79: F95 named every printed command by ~/.local/bin/agentsync, which works with that
     folder off PATH, but left the --help epilog, the hidden commands' help and the sources.toml header bare;
