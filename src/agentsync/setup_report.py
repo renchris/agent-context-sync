@@ -6288,10 +6288,20 @@ class _Labels:
         return self._shown[text]
 
 
-_CANNOT_OPEN_CODES = frozenset({sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_PERM, sqlite3.SQLITE_READONLY})
-"""sqlite's SQLITE_CANTOPEN, SQLITE_PERM and SQLITE_READONLY: a state file this account cannot open or write,
-by its owner, its mode or its folder's, never a damaged one (B13 round 19 W64). Named, never numbered: the
-numbers once held 23, SQLITE_AUTH, where PERM is 3 (B13 round 20 X42, X60)."""
+def _cannot_open(exc: BaseException | None) -> bool:
+    """Whether ``exc`` is sqlite's CANTOPEN, PERM or READONLY: a state file this account cannot open or write,
+    by its owner, its mode or its folder's, never a damaged one (B13 round 19 W64). Read from
+    ``doctor.cannot_open``, the one set status's words read too (B13 round 21 Y48, Y71: a copy here was a
+    second set to drift, as the numbers once held 23, SQLITE_AUTH, for PERM); False when doctor does not
+    import, so the report still writes, and the file's own access test in :func:`_state_shut` answers."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        return isinstance(exc, sqlite3.Error) and doctor.cannot_open(exc)
+    except Exception:
+        return False
+
+
 _STATE_SHUT = "the state file cannot be opened by this account: see Doctor's state_dir lines"
 """:func:`_why_not_read`'s words for it: doctor's state_dir (the folder) or state_dir.files (the file) says
 which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W64)."""
@@ -6320,8 +6330,7 @@ def _why_not_read(exc: BaseException) -> str:
         # status's test (``doctor.contended``, B13 round 18 V60), and the words for an error with no code
         if doctor.contended(exc) or "locked" in said or "busy" in said:
             return "the state file is busy: a sync holds it"
-        code = getattr(exc, "sqlite_errorcode", None)
-        if isinstance(code, int) and code & 0xFF in _CANNOT_OPEN_CODES:
+        if _cannot_open(exc):
             return _STATE_SHUT
         return "the state file cannot be read: see Doctor's state_dir.manifest line"
     if isinstance(exc, (TimeoutError, CallTimedOutError)):
@@ -9233,8 +9242,7 @@ def _state_unreadable(c: Config, read_error: BaseException | None = None) -> boo
             return True
         # B13 round 20 X14: damage only a command's read reached, kept while the file is the same, FAILs
         # state_dir.manifest with the loop's read succeeding; that FAIL is the person's too
-        recorded = getattr(doctor, "recorded_unreadable", None)
-        return recorded is not None and recorded(db) is not None
+        return doctor.recorded_unreadable(db) is not None  # B13 round 21 Y39: no absent-name guard (X45)
     except Exception:  # a reader that fails says nothing about the file
         return False
 
@@ -9259,6 +9267,9 @@ def _helpers_timed_out(c: Config) -> dict[str, str]:
 
 
 _PERSONS = " (the person's; see Doctor)"
+_AGENTS = " (the agent's; see Doctor)"
+"""The label of a state file or folder this account cannot open whose fix is its own chmod (B13 round 21 Y3:
+the agent's, as status's [FAIL] fix, step 1's tail and the setup prompt say; :func:`_shut_whose`)."""
 _STOP_WORDS = "from the sign-in stop"
 _CONFIG_WORDS = "from the configuration a sync refuses"
 _REMOTE_WORDS = "from a docs-repo remote [governance] does not allow"
@@ -9298,29 +9309,17 @@ class _DoctorSort:
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
     """``"file"`` or ``"folder"`` when the report's own read finds a state file this account cannot open,
     else ``""`` (B13 round 20 X28): ``read_error`` (the Doctor hook's read of the loop's state, or the
-    evidence read's) is a ``ManifestOpenError`` or sqlite's CANTOPEN, PERM or READONLY
-    (:data:`_CANNOT_OPEN_CODES`), or the file (or its -wal or -shm) is another account's or fails
-    ``os.access`` for reading and writing (doctor's own test for state_dir.files); ``"folder"`` when its
-    folder cannot be searched. Keyed
-    on the file, never on doctor's words. A failed test says nothing: ``""``."""
+    evidence read's) is a ``ManifestOpenError`` or sqlite's CANTOPEN, PERM or READONLY (:func:`_cannot_open`,
+    doctor's ``CANNOT_OPEN_CODES``), or :func:`_refused_state_files` finds one; ``"folder"`` when its folder
+    cannot be searched. Keyed on the file, never on doctor's words. A failed test says nothing: ``""``."""
     from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
 
     try:
         db = expand(c.state_paths.db)
         if db.parent.is_dir() and not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
             return "folder"
-        code = getattr(read_error, "sqlite_errorcode", None)
-        if isinstance(read_error, ManifestOpenError) or (
-            isinstance(read_error, sqlite3.Error)
-            and isinstance(code, int)
-            and code & 0xFF in _CANNOT_OPEN_CODES
-        ):
+        if isinstance(read_error, ManifestOpenError) or _cannot_open(read_error) or _refused_state_files(db):
             return "file"
-        for name in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):  # doctor's files
-            if name.exists() and (
-                name.stat().st_uid != os.getuid() or not os.access(name, os.R_OK | os.W_OK)
-            ):
-                return "file"
     except Exception:  # a test that fails says nothing about the file
         return ""
     return ""
@@ -9360,15 +9359,37 @@ def _refused_files(c: Config) -> dict[str, bool]:
     return out
 
 
-def _names_only_state(detail: str, c: Config | None) -> bool:
-    """Whether doctor's ``governance.time_machine`` warn lists only the state file (its -wal and -shm are left
-    out by doctor): each path after ``not excluded from Time Machine:`` ends in the manifest's name."""
-    head = "not excluded from Time Machine: "
-    if c is None or not detail.startswith(head):
-        return False
-    name = expand(c.state_paths.db).name
-    paths = [p.strip() for p in detail[len(head) :].split(", ") if p.strip()]
-    return bool(paths) and all(p == name or p.endswith("/" + name) for p in paths)
+def _refused_state_files(db: Path) -> list[Path]:
+    """The manifest, its -wal and its -shm (doctor's files), each that is another account's or fails
+    ``os.access`` for reading and writing: doctor's own test for state_dir.files. A failed stat raises."""
+    out: list[Path] = []
+    for name in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        if name.exists() and (name.stat().st_uid != os.getuid() or not os.access(name, os.R_OK | os.W_OK)):
+            out.append(name)
+    return out
+
+
+def _shut_whose(c: Config, shut: str) -> str:
+    """Whose fix the state folder or file :func:`_state_shut` found shut is, as the Doctor line's bucket
+    says it: :data:`_PERSONS` when doctor's own fix for it is the person's (``doctor.is_persons_fix`` of
+    ``state_folder_fix`` for the folder, ``state_path_fix`` for each refused file: another account's, a sudo
+    chown), else :data:`_AGENTS`, this account's chmod (B13 round 21 Y3, Y9, Y21, Y25, Y30, Y34: the label was
+    the person's for every one, while status's [FAIL] fix, step 1's tail and the setup prompt make this
+    account's own chmod the agent's). Read from doctor, never copied, so the report names the owner status
+    does; no "chmod" in the words, as a fix doctor gives is not always one. The person's when it cannot be
+    read."""
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        root = expand(c.state_paths.root)
+        db = expand(c.state_paths.db)
+        if shut == "folder":
+            fixes = [doctor.state_folder_fix(root)]
+        else:
+            fixes = [doctor.state_path_fix(root, p) for p in _refused_state_files(db) or [db]]
+        return _PERSONS if any(doctor.is_persons_fix(f) for f in fixes) else _AGENTS
+    except Exception:
+        return _PERSONS
 
 
 def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
@@ -9402,6 +9423,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     read_error = read_error or r.evidence_unreadable  # damage only the evidence read reached (W41)
     unreadable = r.config is not None and _state_unreadable(r.config, read_error)
     shut = "" if unreadable or r.config is None else _state_shut(r.config, read_error)
+    whose = _shut_whose(r.config, shut) if shut and r.config is not None else _PERSONS
     from_state: list[str] = []
     from_shut: list[str] = []
     refused = _refused_files(r.config) if r.config is not None else {}
@@ -9438,11 +9460,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             fails.append((name, _STATE_UNREAD_WORDS))
             continue
         # B13 round 20 X28: one this account cannot open (its owner, its mode or its folder's) is no damage,
-        # and doctor FAILs state_dir.files (or state_dir, for a folder it cannot search) for it: the person's
-        # too, read from the report's own access test of the file, never from doctor's words. A
-        # state_dir.files FAIL for a file others can read leaves it open to this account: still unexpected
+        # and doctor FAILs state_dir.files (or state_dir, for a folder it cannot search) for it, read from the
+        # report's own access test of the file, never from doctor's words. A state_dir.files FAIL for a file
+        # others can read leaves it open to this account: still unexpected. Round 21 Y3: whose, as doctor's
+        # own fix for it says (another account's is the person's; this account's chmod, the agent's)
         if shut and tag == "FAIL" and (name == "state_dir.files" or (name, shut) == ("state_dir", "folder")):
-            from_shut.append(f"{name} FAIL{_PERSONS}")
+            from_shut.append(f"{name} FAIL{whose}")
             fails.append((name, _STATE_SHUT_WORDS))
             continue
         # B13 round 21 Y45, Y43: a lock, heartbeat, holds.json or purge queue this account cannot open FAILs
@@ -9464,17 +9487,6 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
                 from_state.append(f"{name} warn (not judged: the state file cannot be read)")
             else:
                 from_shut.append(f"{name} warn (not judged: this account cannot open the state file)")
-            continue
-        # B13 round 20 X28: the Time Machine attribute of a file this account cannot open cannot be read, so
-        # doctor called it not excluded; only when every path it names is that file (lane B's X12 makes doctor
-        # say "not checked" for it, and then no such warn comes)
-        if (
-            shut
-            and tag == "warn"
-            and name == "governance.time_machine"
-            and _names_only_state(detail, r.config)
-        ):
-            from_shut.append(f"{name} warn (not judged: this account cannot read the state file)")
             continue
         # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
         # never expected, and not unexpected either: install.sh builds it again; the OCR and media helpers'

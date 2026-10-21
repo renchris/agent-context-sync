@@ -25708,6 +25708,10 @@ by bucket. Tests: `test_the_fail_of_a_state_file_this_account_cannot_open_has_it
 `test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket`. **Amended 2026-10-20, §16.157 Y40 (by
 §16.149 X15, X46):** the warn in that bucket reads `heartbeat.<id> warn (not judged: this account cannot open the
 state file)`; a file this account cannot open is not one the loop read and found damaged.
+Amended 2026-10-20, §16.152 Y3, Y9, Y21, Y25, Y30, Y34: the label is whose fix doctor gives: `(the person's; see
+Doctor)` for another account's file or folder, `(the agent's; see Doctor)` for this account's own chmod.
+Amended 2026-10-20, §16.152 Y39, Y50, Y63, Y78: the interim rule is gone (`_names_only_state`); since X12 a
+`governance.time_machine` warn names an exclusion doctor read and found missing, and it stays unexpected.
 
 **The agent's name keeps its product word where a step 1 line states it, and before a hyphen** (X38, X39; amends
 §16.140 W17 and §16.58 F4). A step 1 line states its agent at its text's start (`prompt v28, <agent>:`), and the
@@ -25740,6 +25744,8 @@ installs no authorizer), keeps the generic words. Lane B's round 20 X48 names th
 lookup of `ManifestOpenError` by name, for a build before it landed, was dead code; it is imported, and the
 camel-case scan's allow-list entry for the name is gone. Test:
 `test_a_state_file_this_account_cannot_open_is_told_by_sqlites_named_codes`.
+Amended 2026-10-20, §16.152 Y48, Y71: the report keeps no set of its own; `_cannot_open` reads
+`doctor.cannot_open`.
 
 **Exit 71's meaning has no bracket inside its callers' and names the run to repeat** (X44; amends §16.145 W72).
 `decode_exit('71')` read `71 (the launcher could not start agentsync (a SPAWN_FAILED line ...): ...)` and
@@ -26443,7 +26449,38 @@ in place. Test: `test_w41s_measurement_counts_the_tables_the_test_damages`, whic
 
 ### 16.152 Round 21: setup report (2026-10-20, wave B13 round 21 lane RA)
 
-Reserved for round 21 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 21").
+Lane RA's round 21 items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `round21/items/Y<n>.md`, the
+verifier's corrected fix built): Y1, Y2, Y3, Y5, Y6, Y9, Y12, Y13, Y15, Y17, Y18, Y19, Y21, Y22, Y25, Y30, Y32,
+Y34, Y35, Y36, Y37, Y38, Y39, Y46, Y48, Y50, Y56, Y62, Y63, Y70, Y71 and Y78. Items that describe one defect are
+built once: Y3, Y9, Y21, Y25, Y30 and Y34; Y39, Y50, Y63 and Y78; Y48 and Y71; Y35, Y46 and Y56; Y1 and Y36; Y15
+and Y37. Where an item changes what an older section states, that section has a dated line (`Amended 2026-10-20,
+§16.152 Y<n>`).
+
+**A state file this account cannot open is the agent's in the doctor bucket when its fix is this account's
+chmod** (Y3, Y9, Y21, Y25, Y30, Y34; amends §16.146 X28). The bucket labelled every FAIL it took `(the person's;
+see Doctor)`, while status's [FAIL] fix for this account's own file at 0000 is `chmod 600 <file>`, step 1's tail
+says the chmod is the agent's to run, and the setup prompt makes only a damaged or another account's state file
+the person's. The round's ownership rule: this account's own file or folder shut by its own mode is the agent's
+chmod; another account's, an ACL deny or an unsearchable parent is the person's. `_shut_whose` reads the owner
+from doctor's own fix, never a copy of its test: `doctor.is_persons_fix` of `doctor.state_folder_fix` for a folder,
+of `doctor.state_path_fix` for each refused file (the manifest, its -wal and -shm that are another account's or fail
+`os.access` for reading and writing: `_refused_state_files`). The person's gives `(the person's; see Doctor)`; else
+`(the agent's; see Doctor)`, with no "chmod", since a fix doctor gives is not always one. A fix that cannot be read
+keeps the person's. Tests: `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`
+(the file at 0000, then the folder at 0000), `test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket`.
+
+**The cannot-open codes are doctor's, and the interim Time Machine rule is gone** (Y48, Y71, Y39, Y50, Y63, Y78;
+amends §16.146 X28 and §16.146 X42). `setup_report._CANNOT_OPEN_CODES` was a second copy of
+`doctor.CANNOT_OPEN_CODES`, the kind of hand-kept set that once held SQLITE_AUTH for PERM. `_cannot_open` reads
+`doctor.cannot_open` lazily and is False when doctor does not import, so the report still writes and
+`_state_shut`'s own access test of the file still answers. Y39, Y50, Y63, Y78: `_names_only_state` and its
+`_sort_doctor` branch filed a `governance.time_machine` warn as `not judged: this account cannot read the state
+file`. Since round 20 X12 doctor says "not checked" for a file it cannot read, and the rule's parse never matched
+the detail the report keeps (it ends in doctor's `(fix: ...)`), so it fired only on a test's hand-built warn; a
+warn that still comes names an exclusion doctor read and found missing, and it stays unexpected. Y39: the
+`getattr(doctor, "recorded_unreadable", None)` guard for a name that exists is gone, as X45 removed one for
+`ManifestOpenError`. Tests: `test_the_cannot_open_codes_are_doctors`,
+`test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

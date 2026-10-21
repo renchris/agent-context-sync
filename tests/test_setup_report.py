@@ -13845,29 +13845,78 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
     assert "from the state file" not in line, line
     assert "1 unexpected doctor FAIL: state_dir.files" in outcome, outcome
     extra.clear()
-    # until lane B's X12 says "not checked", doctor calls the file it cannot read not excluded from Time
-    # Machine: that warn is the shut file's only when the state file is all it names
+    # B13 round 21 Y39, Y50, Y63, Y78: since X12 doctor says "not checked" for a file it cannot read, so a
+    # "not excluded from Time Machine" warn names an exclusion doctor read and found missing: unexpected,
+    # never "not judged" in the shut file's bucket (the interim rule that filed it there is gone)
     tm = "governance.time_machine"
     extra.append(doctor.CheckResult(tm, False, f"not excluded from Time Machine: {db}", doctor.Severity.WARN))
     db.chmod(0o000)
     try:
         line, outcome = summary()
-        extra[0] = doctor.CheckResult(
-            tm, False, f"not excluded from Time Machine: {db.parent}/x, {db}", doctor.Severity.WARN
-        )
-        more, _outcome = summary()
     finally:
         db.chmod(0o600)
+    # B13 round 21 Y3, Y9, Y21, Y25, Y30, Y34: this account's own file at 0000 is its chmod, the agent's, as
+    # status's [FAIL] fix (chmod 600), step 1's tail and the setup prompt say; never the person's
     bucket = (
-        " · from the state file this account cannot open (3 checks): state_dir.files FAIL (the person's; see "
-        "Doctor), heartbeat.x warn (not judged: this account cannot open the state file), "
-        "governance.time_machine warn (not judged: this account cannot read the state file) · unexpected 0"
+        " · from the state file this account cannot open (2 checks): state_dir.files FAIL (the agent's; see "
+        "Doctor), heartbeat.x warn (not judged: this account cannot open the state file) · unexpected 1: "
+        "governance.time_machine warn"
     )
     assert line.endswith(bucket), line
-    assert more.endswith(" · unexpected 1: governance.time_machine warn"), more
+    assert "the person's" not in line, line
     assert "yours" not in line and "cannot be read" not in line, line
     assert "unexpected doctor FAIL" not in outcome, outcome
-    assert "state_dir.files (from the state file this account cannot open)" in outcome, outcome
+    assert "state_dir.files" in outcome and "from the state file this account cannot open" in outcome, outcome
+    extra.clear()
+    # the state folder at 0000 (this account's): doctor's fix is chmod 700, the agent's too
+    folder = db.parent
+    folder.chmod(0o000)
+    try:
+        line, _outcome = summary()
+    finally:
+        folder.chmod(0o700)
+    assert "from the state file this account cannot open (" in line, line
+    assert "state_dir FAIL (the agent's; see Doctor)" in line and "the person's" not in line, line
+
+
+def test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y3, Y9, Y21, Y25, Y30, Y34: the bucket's owner is doctor's own fix for what is shut
+    (``is_persons_fix`` of ``state_path_fix`` or ``state_folder_fix``): another account's file or folder (a
+    sudo sync) is the person's sudo chown; this account's, its chmod, the agent's."""
+    cfg = load_config(fake_mac["config"])
+    db = expand(cfg.state_paths.db)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.write_bytes(b"")
+    db.chmod(0o600)
+    assert setup_report._shut_whose(cfg, "file") == setup_report._AGENTS
+    db.chmod(0o000)
+    try:
+        assert setup_report._shut_whose(cfg, "file") == setup_report._AGENTS
+        assert setup_report._shut_whose(cfg, "folder") == setup_report._AGENTS  # 0700: not the person's chown
+        real = os.getuid()
+        monkeypatch.setattr(os, "getuid", lambda: real + 1)  # every file reads as another account's
+        assert setup_report._shut_whose(cfg, "file") == setup_report._PERSONS
+        assert setup_report._shut_whose(cfg, "folder") == setup_report._PERSONS
+        root = expand(cfg.state_paths.root)
+        assert doctor.is_persons_fix(doctor.state_path_fix(root, db))  # the same verdict doctor's fix gives
+    finally:
+        db.chmod(0o600)
+
+
+def test_the_cannot_open_codes_are_doctors() -> None:
+    """B13 round 21 Y48, Y71: the report kept its own copy of doctor's CANNOT_OPEN_CODES, a second set to
+    drift. It reads doctor's: a code doctor adds is the report's too."""
+    assert not hasattr(setup_report, "_CANNOT_OPEN_CODES")
+    exc = sqlite3.OperationalError("disk I/O error")
+    exc.sqlite_errorcode = sqlite3.SQLITE_IOERR  # type: ignore[attr-defined]
+    assert setup_report._why_not_read(exc) != setup_report._STATE_SHUT
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(doctor, "CANNOT_OPEN_CODES", doctor.CANNOT_OPEN_CODES | {sqlite3.SQLITE_IOERR})
+        assert setup_report._why_not_read(exc) == setup_report._STATE_SHUT
+    exc.sqlite_errorcode = sqlite3.SQLITE_PERM | 0x100  # type: ignore[attr-defined]
+    assert setup_report._why_not_read(exc) == setup_report._STATE_SHUT
 
 
 @pytest.mark.usefixtures("roomy_calls")
