@@ -2887,8 +2887,12 @@ class _Cycle:
             except (OSError, ValueError) as exc:
                 log.warning("heartbeat for %s not written: %s", acc.src.id, exc)
         counts = Counter(c.op.value for c in self.changes)
-        if self._tally["legacy_retried"]:  # B13 round 22 Z35: the record says how many this run made current
-            self._tally["legacy_cleared"] = min(report.legacy_cleared, self._tally["legacy_retried"])
+        if retried := self._tally[
+            "legacy_retried"
+        ]:  # B13 round 22 Z35: the record says what this run made of them
+            cleared = min(report.legacy_cleared, retried)
+            self._tally["legacy_cleared"] = cleared
+            self._tally["legacy_settled"] = min(report.legacy_settled, retried - cleared)
         counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
@@ -2955,9 +2959,10 @@ class _Cycle:
         up or, while its converter still cannot start, left it unread, a wait that run counts in
         ``converter_waiting``; B13 round 18 V62, V67, V75, round 19 W53); ``legacy_retried``: failures an
         older build had settled for good that this run gave the bounded retries again (round 19 W18);
-        ``legacy_cleared``: of those, the ones this run made current (``_legacy_cleared``), so the report,
-        read days later, says that run converted them and keeps the retry words for the rest (B13 round 22
-        Z35; never more than ``legacy_retried``);
+        ``legacy_cleared`` and ``legacy_settled``: of those, the ones this run made current and the ones it
+        settled with no retry left (``_legacy_outcomes``), so the report, read days later, says so and keeps
+        the retry words for the rest (B13 round 22 Z35, after Z55's note; together never more than
+        ``legacy_retried``);
         ``converted_unreadable``: of those, conversions whose
         result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:

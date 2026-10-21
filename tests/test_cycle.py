@@ -4380,7 +4380,7 @@ def test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again
     assert "now current" not in out and "may show again" not in out
     assert tries == [outcome], tries
     assert _run_record(sample_config)["legacy_retried"] == 1
-    assert "legacy_settled" not in _run_record(sample_config)
+    assert _run_record(sample_config)["legacy_settled"] == 1  # B13 round 22 Z35: the report reads it
     with Manifest(sample_config.state_paths.db) as m:
         row = m.item_by_path(SID, rel)
     want = RowState.QUARANTINED if outcome == "unreadable" else RowState.REFUSED

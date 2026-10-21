@@ -506,8 +506,9 @@ class CycleReport:
     # current", the retry words only for the rest (B13 round 21 Y28), and the run record keeps the count
     # (``legacy_cleared``), so the setup report says it too (B13 round 22 Z35)
     legacy_cleared: int = 0
-    # of those, the ones this run settled with no retry left (unreadable, refused, removed), for the note
-    # alone as well: "tried again in this sync and is settled", never the retry words (B13 round 22 Z55)
+    # of those, the ones this run settled with no retry left (unreadable, refused, removed): "tried again in
+    # this sync and is settled", never the retry words (B13 round 22 Z55); the run record keeps it as well
+    # (``legacy_settled``), so the report gives them no retry words either (B13 round 22 Z35)
     legacy_settled: int = 0
 
 

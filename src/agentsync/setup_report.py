@@ -8184,14 +8184,17 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         def tried(x: _RunRow) -> tuple[str, int]:
             retried = x.n("legacy_retried")
             cleared = min(x.n("legacy_cleared"), retried)
-            if cleared == retried:
-                return f"run {x.run_id}, {_plural(retried, 'file')}, which that run converted", 0
-            if cleared:
-                return (
-                    f"run {x.run_id}, {_plural(retried, 'file')} ({cleared} that run converted)",
-                    retried - cleared,
-                )
-            return f"run {x.run_id}, {_plural(retried, 'file')}", retried
+            settled = min(x.n("legacy_settled"), retried - cleared)  # Z55's: no retry left, no retry words
+            done = [
+                f"{n} that run {verb}"
+                for n, verb in ((cleared, "converted"), (settled, "settled with no try left"))
+                if n
+            ]
+            rest = retried - cleared - settled
+            head = f"run {x.run_id}, {_plural(retried, 'file')}"
+            if not rest and len(done) == 1:
+                return f"{head}, which {done[0].split(' ', 1)[1]}", 0
+            return (f"{head} ({', '.join(done)})" if done else head), rest
 
         said = [tried(x) for x in upgraded]
         each = "; ".join(words for words, _rest in said)

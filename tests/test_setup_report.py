@@ -10577,6 +10577,21 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         ({"legacy_retried": 1, "legacy_cleared": 1}, "run 4, 1 file, which that run converted.", False),
         ({"legacy_retried": 3, "legacy_cleared": 1}, "run 4, 3 files (1 that run converted).", True),
         ({"legacy_retried": 2, "legacy_cleared": 5}, "run 4, 2 files, which that run converted.", False),
+        (
+            {"legacy_retried": 1, "legacy_settled": 1},
+            "run 4, 1 file, which that run settled with no try left.",
+            False,
+        ),
+        (
+            {"legacy_retried": 3, "legacy_cleared": 1, "legacy_settled": 1},
+            "run 4, 3 files (1 that run converted, 1 that run settled with no try left).",
+            True,
+        ),
+        (
+            {"legacy_retried": 2, "legacy_cleared": 1, "legacy_settled": 1},
+            "run 4, 2 files (1 that run converted, 1 that run settled with no try left).",
+            False,
+        ),
     ):
         seed = Seed(fake_mac["config"])
         seed.m._db.execute(

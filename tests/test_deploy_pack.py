@@ -5784,9 +5784,13 @@ _ROUND_21_B_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: Y49's at §16.12's governance paragraph, recording §16.149 X4's change, and
 Y20's beside §16.32's `<run again>` table."""
 
-_ROUND_22_RA_PARAGRAPH_AMENDS = (("16.28", "| `legacy_cleared` |", "§16.158 Z35"),)
+_ROUND_22_RA_PARAGRAPH_AMENDS = (
+    ("16.28", "| `legacy_cleared` |", "§16.158 Z35"),
+    ("16.28", "| `legacy_settled` |", "§16.158 Z35"),
+)
 """Round 22 lane RA's dated line at a section its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: Z35's `legacy_cleared` row in §16.28's run-record table."""
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: Z35's `legacy_cleared` and `legacy_settled` rows in §16.28's run-record
+table."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),

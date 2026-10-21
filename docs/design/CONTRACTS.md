@@ -8105,6 +8105,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `converted_failed` | of those, conversions that failed, counted in the run they failed in. The file then has its `conversion failed` stub and no later run converts it until its bytes change (**Amended 2026-10-19, §16.138 V62, V67 (by §16.132 U3):** the same bytes are converted again in up to `_CONVERT_RETRIES` (2) later runs and counted in each; one whose converter could not start is converted, uncounted against the retries, in the first run in which it starts; see the not-retried bullet below) |
 | `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run. **Amended 2026-10-21, §16.162 Z57:** the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28) |
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
+| `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -27236,8 +27237,11 @@ dated line there. Tests: `test_a_cut_off_doctor_names_its_check_and_the_load_and
 `test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it`.
 
 **The upgrade's retry note says which files that run converted** (Z35; amends §16.28 and §16.155 Y28). The run
-record keeps `legacy_cleared`; the report's bullet reads `run N, 1 file, which that run converted` with no
-old-error clause when every one cleared, `run N, 3 files (1 that run converted)` with it for the rest. Tests:
+record keeps `legacy_cleared`, and `legacy_settled` beside it (lane E's §16.162 Z55 outcome: no retry left); the
+report's bullet reads `run N, 1 file, which that run converted` (or `which that run settled with no try left`) with
+no old-error clause when no file is left to retry, `run N, 3 files (1 that run converted, 1 that run settled with
+no try left)` with it for the rest. So the run-record count §16.155 Y28 and §16.162 Z55 ruled out is kept for both
+(lane E agreed; its section is landed and left as written, this line is the correction). Tests:
 `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`,
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current`.
 
