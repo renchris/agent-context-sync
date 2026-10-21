@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import plistlib
+import pwd
 import re
 import shutil
 import sqlite3
@@ -14755,7 +14756,11 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
     """B13 round 21 Y45 (and Y43's lock): holds.json at 0000 put ``GovernanceError:`` in the Loop line and its
     governance.hold FAIL in ``unexpected``: the only cannot-open bucket was the manifest's. Keyed on the
     report's own access test of each file the lock, heartbeat, hold and purge-queue checks read: a bucket of
-    its own, "the person's" only for another account's file (this account's chmod is the agent's)."""
+    its own, "the person's" only for another account's file (this account's chmod is the agent's).
+
+    Round 22 Z8 (probes HB, LK): that bucket gave this account's own file no owner, while the state file's
+    bucket says "(the agent's; see Doctor)"; it says the agent's now, the heartbeat's too, and an ACL on this
+    account's own file, whose fix doctor gives as the person's, says the person's."""
     from agentsync import governance  # noqa: PLC0415
 
     real = cli._status_checks
@@ -14774,10 +14779,12 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
     holds.parent.mkdir(parents=True, exist_ok=True)
     holds.write_text('{"holds": []}\n', encoding="utf-8")
     queue.write_text('{"queue": []}\n', encoding="utf-8")
+    assert expand(paths.heartbeat).is_file()
     for check, target in (
         ("governance.hold", holds),
         ("governance.purge_queue", queue),
         ("lock", expand(paths.lock)),
+        ("heartbeat", expand(paths.heartbeat)),
     ):
         target.chmod(0)
         try:
@@ -14806,7 +14813,8 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
         refused = setup_report._refused_files(config)
     finally:
         holds.parent.chmod(0o700)
-    assert refused == {"governance.hold": False, "governance.purge_queue": False}, refused
+    agents = setup_report._AGENTS
+    assert refused == {"governance.hold": agents, "governance.purge_queue": agents}, refused
     me = os.getuid()
     holds.chmod(0)
     try:
@@ -14815,7 +14823,18 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
     finally:
         monkeypatch.undo()
         holds.chmod(0o600)
-    assert refused["governance.hold"] is True, refused
+    assert refused["governance.hold"] == setup_report._PERSONS, refused
+    # an ACL that refuses this account its own 0600 heartbeat: doctor's fix is the person's, so is the bucket
+    hb = expand(paths.heartbeat)
+    me_name = pwd.getpwuid(me).pw_name
+    acl = subprocess.run(["/bin/chmod", "+a", f"user:{me_name} deny read,write", str(hb)], check=False)
+    try:
+        if acl.returncode != 0 or os.access(hb, os.R_OK):
+            pytest.skip("no ACL that refuses the owner here")
+        refused = setup_report._refused_files(config)
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(hb)], check=False)
+    assert refused == {"heartbeat": setup_report._PERSONS}, refused
     # B13 round 22 Z39: a GovernanceError from a PermissionError is worded by its OSError (Y38), one branch
     from agentsync.governance import GovernanceError  # noqa: PLC0415
 

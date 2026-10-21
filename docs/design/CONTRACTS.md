@@ -26821,6 +26821,10 @@ chmod status prints, the chmod run as written, then a pass) and `test_a_side_fil
 (an empty `-wal`, a `-shm` in use and a `-wal` with committed frames: init passes each time; status fails on the last
 two with its chmod 600).
 
+Amended 2026-10-21, §16.160 Z36: the side tails say `step 2 stops at its status step on the -wal or -shm of
+agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which ...`, and
+`state-side-access` ends `the agent's to run, once, when step 2 stops on it`; that stop's NEXT names the chmod.
+
 **Setup prompt v30** (Y4, Y24, Y59). Version 30 everywhere the bump list names it (README block, `PROMPT`,
 `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, the form's placeholder, the version pins in tests/test_install_oneshot.py and
 tests/test_setup_report.py, setup-feedback K54). Step 2, right after its [FAIL] rule: `A chmod 600 or chmod 700 of
@@ -26897,6 +26901,10 @@ Amended 2026-10-21, §16.158 Z32, Z43, Z39: each FAIL in that bucket carries its
 for this account's own chmod as the state file's bucket says it. CORRECTED (2026-10-21): `_why_not_read` words a
 `GovernanceError` from an OSError by that OSError (§16.152 Y38), never its class; the file's name is status's
 (`cli._unread_words`), not the report's.
+
+Amended 2026-10-21, §16.160 Z8: the bucket names this account's own file `(the agent's; see Doctor)` when doctor's fix
+for it is its chmod 600 or chmod 700, as the state file's bucket does; `_refused_files` returns whose, read from that
+fix (an ACL's or a read-only volume's is the person's).
 
 **Y47: a folder where the manifest belongs fails status (`agentsync.ops.doctor`, `agentsync.setup_report`; amends
 §16.149 X49).** With manifest.sqlite a 0700 folder every sync exited 1 (`cannot be opened: Is a directory`) while
@@ -27365,6 +27373,39 @@ an older installed build reads it too), so it is `state-refused`, the person's. 
 already set up" says the same. Tests (a shim whose `os.statvfs` and `os.access` read the state folder as mounted
 read-only; CI cannot attach a disk image everywhere): `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
 (PM-ro, PM-ro-mode, PM-ro-wal) and `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (ro, ro-mode).
+
+**Step 2's status step names the agent's chmod of any state file** (Z8, Z36, Z59; amends §16.154 Y57 and §16.155
+Y45). A lock or heartbeat file at 0000 (probes HB, LK), a governance file, or a 0400 `-wal` that holds frames (probes
+70-72) stops step 2 past its config step, at its status step, on `[FAIL] lock`, `[FAIL] heartbeat`,
+`[FAIL] governance.*` or `[FAIL] state_dir.files` with doctor's `chmod 600 <path>`; its NEXT was `fix the [FAIL]
+lines above (each names its fix), then re-run`, and v30 granted that chmod only on a NEXT or a `state_dir` line, so
+a literal agent reported `failed at step 2`. `state_chmods`, a read by the agentsync step 2 installed (`-I`, a 10 s
+timeout, the [FAIL] lines as its argument), returns one command when every line `blocking_fails` keeps is a state
+check (`state_dir` and its parts, `lock`, `heartbeat`, `governance.*`) whose fix is one `chmod 600` or `chmod 700`
+of paths that resolve inside the config's state folder: the folders' `chmod 700` first, then one `chmod 600` of
+every file, each path in doctor's `_shell_path` form. Then, after the person's branch, the status step's NEXT is
+`agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance
+file) has a mode this account cannot open (a mode, not damage; the [FAIL] lines above name it): the fix is the
+agent's: run <chmods> once, then re-run: <install.sh ...>; if it stops the same way again, show the person those
+lines and go on to the report`, and the closing status's NEXT the same with `then run <agentsync> sync and follow its
+NEXT line`. A mix with any other [FAIL], a fix that is more than one chmod or names a path outside the state folder
+(a source folder's `chmod u+rx`, the docs repo's `chmod -R go-rwx` and git config), and an installed build without
+`_shell_path` keep `fix the [FAIL] lines above`; an ACL's fix is the person's NEXT as before. The verifier's
+caution is kept: no bare grep for `chmod`. The prompt's grant widens to these lines too (v31, below). Z36: step 1's
+side tails said `step 2's status may fail on the -wal or -shm`, not the `step 2 stops on` the prompt relays; they
+say `step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes
+or is in use (an empty one may not stop it), which ...` (a condition is kept: an empty one passes, Y57), and
+`state-side-access` ends `the agent's to run, once, when step 2 stops on it`. Z8's report half: the lock, heartbeat
+and governance bucket (`_refused_files`) gave this account's own file no owner while the state file's bucket said
+`(the agent's; see Doctor)`; it now returns whose, from doctor's fix: `_PERSONS` for a person's fix (another
+account's, an ACL, a read-only volume), `_AGENTS` for a `chmod 600` or `chmod 700`, else nothing. Tests:
+`test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts_own_state` (heartbeat, lock and -wal,
+governance folder and file, ACL, mixed, outside path, source chmod, an older build, the closing status), with the
+real agentsync `test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod` (lock, heartbeat: the
+chmod as written, then a pass) and `test_a_side_file_this_account_cannot_write_is_no_config_step_stop` (the same for
+a -shm in use and a -wal with frames), and
+`test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket` (the
+agent's label, the heartbeat's, an ACL's the person's).
 
 **The person's kinds name every state refusal no chmod fixes** (Z65, with lane B's Z83, Z17 and Z48 built here once;
 amends §16.148 X26). An ACL on this account's own 0600 manifest gave status a NEXT whose kinds said `a state file that

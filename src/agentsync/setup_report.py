@@ -9742,15 +9742,18 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
     return ""
 
 
-def _refused_files(c: Config) -> dict[str, bool]:
-    """``{check: another account's}`` for each state file a doctor check reads by name, the lock, the
-    heartbeat, holds.json and the purge queue, that exists and this account cannot read (``os.access``) or
-    another account owns (B13 round 21 Y45: their FAILs were "unexpected"). Keyed on the report's own test of
-    the file, never on doctor's words; a test that fails, a shut folder's included, says nothing."""
+def _refused_files(c: Config) -> dict[str, str]:
+    """``{check: whose}`` for each state file a doctor check reads by name, the lock, the heartbeat,
+    holds.json and the purge queue, that exists and this account cannot read (``os.access``) or another
+    account owns (B13 round 21 Y45: their FAILs were "unexpected"): :data:`_PERSONS` when doctor's fix for it
+    is the person's, :data:`_AGENTS` when it is this account's chmod 600 or chmod 700 (B13 round 22 Z8: the
+    bucket gave that one no owner, while the state file's says the agent's), else nothing. Keyed on the
+    report's own test of the file, never on doctor's words; a test that fails, a shut folder's included, says
+    nothing."""
     from agentsync import governance  # noqa: PLC0415 - lazy, as the doctor reads are
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
-    out: dict[str, bool] = {}
+    out: dict[str, str] = {}
     sp = c.state_paths
     root = expand(sp.root)
     for name, path in (
@@ -9770,7 +9773,10 @@ def _refused_files(c: Config) -> dict[str, bool]:
                 # whose: the fix doctor's FAIL gives (state_path_fix), the person's for another account's
                 # file, an ACL or a read-only volume, never by the owner alone (lane B's reviewer)
                 fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(path)))
-                out[name] = doctor.is_persons_fix(fix)
+                if doctor.is_persons_fix(fix):
+                    out[name] = _PERSONS
+                else:
+                    out[name] = _AGENTS if fix.startswith(("chmod 600 ", "chmod 700 ")) else ""
         except Exception:  # a test that fails says nothing about the file
             continue
     return out
@@ -9920,9 +9926,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             continue
         # B13 round 21 Y45, Y43: a lock, heartbeat, holds.json or purge queue this account cannot open FAILs
         # its own check with state_path_fix's fix; round 22 Z32, Z43: its owner always named, as the state
-        # file's bucket names it (the person's by doctor's own fix, else this account's chmod, the agent's)
+        # file's bucket names it; Z8: whose, as that fix says (this account's chmod the agent's; an ACL's or a
+        # read-only volume's the person's; any other fix no owner)
         if tag == "FAIL" and name in refused:
-            from_refused.append(f"{name} FAIL{_PERSONS if refused[name] else _AGENTS}")
+            from_refused.append(f"{name} FAIL{refused[name]}")
             fails.append((name, _REFUSED_WORDS))
             continue
         if (

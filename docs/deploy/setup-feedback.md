@@ -615,15 +615,18 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `state-refused`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
   account is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a volume
   mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines`; and for
-  a -wal or -shm, `state-side-owner`, `; step 2's status may fail on the -wal or -shm of agentsync's state file,
-  which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
-  ~/.local/bin/agentsync status prints it on its state_dir.files line`, or `state-side-access`, `; step 2's status
-  may fail on the -wal or -shm of agentsync's state file, which this account cannot write (a mode, not damage): the
-  chmod that fixes it is the agent's to run, once, and ~/.local/bin/agentsync status prints it on its
-  state_dir.files line` ("may": an empty one leaves no stop once the manifest is opened), or, when an ACL refuses
-  one its mode allows, `state-side-refused`, `; step 2's status may fail on the -wal or -shm of agentsync's state
-  file, which this account is refused though its mode allows it (an ACL, or a volume mounted read-only; not damage):
-  fixing that is the person's,
+  a -wal or -shm, `state-side-owner`, `; step 2 stops at its status step on the -wal or -shm of agentsync's state
+  file while it holds unwritten changes or is in use (an empty one may not stop it), which another account owns (not
+  damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status
+  prints it on its state_dir.files line`, or `state-side-access`, `; step 2 stops at its status step on the -wal or
+  -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which
+  this account cannot write (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2
+  stops on it, and ~/.local/bin/agentsync status prints it on its state_dir.files line` (the condition: an empty one
+  leaves no stop once the manifest is opened; until round 22 Z36 it read "step 2's status may fail on", not the
+  "step 2 stops on" the prompt relays), or, when an ACL refuses one its mode allows, `state-side-refused`, `; step 2
+  stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in
+  use (an empty one may not stop it), which this account is refused though its mode allows it (an ACL, or a volume
+  mounted read-only; not damage): fixing that is the person's,
   and ~/.local/bin/agentsync status prints it on its state_dir.files line`. A folder or file whose own mode already
   allows this account is refused by an ACL or a sandbox, which no chmod changes: `state-refused` (or
   `state-side-refused`), the person's; so is one on a volume mounted read-only, whatever its mode, since a chmod
@@ -632,7 +635,12 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `NEXT:` (`agentsync's state folder or a file in it has a mode this account cannot open ...: the fix is the
   agent's: run chmod 600 <file> once, then re-run: ...`, with the -wal and -shm its mode refuses too, as
   status's `state_dir.files` names them, or `chmod 700 <folder>`), or the person's for
-  `state-refused`. When step 2 would reinstall agentsync first
+  `state-refused`. A -wal or -shm, the lock, the heartbeat or a governance file stops step 2 past its config step,
+  at its status step: when every [FAIL] that stops it there is such a state check whose fix is this account's
+  chmod 600 or chmod 700 of paths in the state folder, its `NEXT:` names them the same way (`agentsync's state folder
+  or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance file) has a mode this
+  account cannot open ...: the fix is the agent's: run <the chmods> once, then re-run: ...`; round 22 Z8, Z36, Z59);
+  a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. When step 2 would reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it
   too, step 2 stops at its config step on <what>: ...`. The tail is on every list whose `NEXT:` points to step 2,

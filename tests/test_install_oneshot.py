@@ -7295,6 +7295,14 @@ def _acl_deny(path: Path) -> None:
         pytest.skip("no ACL that refuses the owner here")
 
 
+SIDE_STOPS = (
+    "; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds "
+    "unwritten changes or is in use (an empty one may not stop it), "
+)
+"""Step 1's words for a -wal or -shm this account cannot open (B13 round 21 Y57; round 22 Z36: "step 2's
+status may fail on" was not the "step 2 stops on" the prompt relays, and an empty one may still pass)."""
+
+
 STATE_OPEN_TAIL = {
     "state-access": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
@@ -7313,19 +7321,18 @@ STATE_OPEN_TAIL = {
         "status prints it on its state_dir lines"
     ),
     "state-side-owner": (
-        "; step 2's status may fail on the -wal or -shm of agentsync's state file, which another account "
-        "owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and "
-        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+        f"{SIDE_STOPS}which another account owns (not damage): fixing that is the person's (a sudo chown; "
+        "the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
     "state-side-access": (
-        "; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account cannot "
-        "write (a mode, not damage): the chmod that fixes it is the agent's to run, once, and "
-        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+        f"{SIDE_STOPS}which this account cannot write (a mode, not damage): the chmod that fixes it is the "
+        "agent's to run, once, when step 2 stops on it, and ~/.local/bin/agentsync status prints it on its "
+        "state_dir.files line"
     ),
     "state-side-refused": (
-        "; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account is "
-        "refused though its mode allows it (an ACL, or a volume mounted read-only; not damage): fixing that "
-        "is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line"
+        f"{SIDE_STOPS}which this account is refused though its mode allows it (an ACL, or a volume mounted "
+        "read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on "
+        "its state_dir.files line"
     ),
 }
 """Step 1's tails for a state folder or file this account cannot open (B13 round 20 X9, X29), by the owner of
@@ -8434,6 +8441,146 @@ def test_a_side_file_this_account_cannot_write_is_no_config_step_stop(
     assert cp.returncode == 1, cp.stdout + cp.stderr
     failed = [ln for ln in cp.stdout.splitlines() if ln.startswith("[FAIL] state_dir.files")]
     assert failed and "(fix: chmod 600 " in failed[0], cp.stdout
+    # round 22 Z36: the stop is at step 2's status step, which named no chmod ("fix the [FAIL] lines above");
+    # its NEXT names this account's own chmod, the agent's, and that chmod as written lets step 2 pass
+    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-side-access"]), last_line(listed)
+    fix = failed[0].rsplit(" (fix: ", 1)[1].removesuffix(")")
+    assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    for f in shut:
+        f.chmod(0o400)
+    subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+STATE_CHMODS_NEXT = (
+    "NEXT: agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat "
+    "or a governance file) has a mode this account cannot open (a mode, not damage; the [FAIL] lines above "
+    "name it): the fix is the agent's: run {fix} once, then re-run: {rerun}; if it stops the same way again, "
+    "show the person those lines and go on to the report"
+)
+"""Step 2's NEXT when every [FAIL] that stops its status step is a chmod of this account's own state (B13
+round 22 Z8, Z36, Z59): the lock, the heartbeat, a governance file or a -wal or -shm stop it there, past the
+config step, and got "fix the [FAIL] lines above"."""
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["heartbeat", "lock-and-wal", "governance", "acl", "mixed", "outside", "source", "older", "closing"],
+)
+def test_status_steps_next_names_the_chmod_only_when_every_stop_is_this_accounts_own_state(
+    env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 22 Z8, Z36, Z59: the status step's NEXT names the chmods its [FAIL] lines give only when
+    every line that stops the run is a state check (state_dir and its parts, lock, heartbeat, governance.*)
+    whose fix is one chmod 600 or chmod 700 of paths in the state folder: the folders' chmod 700, then one
+    chmod 600 of every file. An ACL's fix is the person's NEXT; a mix with any other [FAIL], a chmod of a
+    path outside the state folder or of a source folder (chmod u+rx), and an installed build without doctor's
+    _shell_path keep "fix the [FAIL] lines above". The closing status names the chmod too, then the sync."""
+    env = {**env, "AGENTSYNC_OCR": "0"}  # no helper build under the real interpreter
+    if case == "older":
+        _tool_python_without(env, "agentsync.ops.doctor", "_shell_path")
+    else:
+        _tool_python(env)
+    _write_config(env, _inbox(env))
+    root = _state_db(env).parent
+
+    def fail(name: str, path: Path, fix: str) -> str:
+        return doctor.format_results([doctor.CheckResult(name, False, f"{path} cannot be opened", fix=fix)])
+
+    def chmod(mode: str, *paths: Path) -> str:
+        with patch.dict(os.environ, {"HOME": env["HOME"]}):  # ~/'...', as status prints it in that home
+            return f"chmod {mode} " + " ".join(doctor._shell_path(p) for p in paths)
+
+    hb, lock, wal = root / "heartbeat.json", root / "agentsync.lock", root / "manifest.sqlite-wal"
+    gov = root / "governance"
+    lines = {
+        "heartbeat": [fail("heartbeat", hb, chmod("600", hb))],
+        "lock-and-wal": [
+            fail("lock", lock, chmod("600", lock)),
+            fail("state_dir.files", wal, chmod("600", wal)),
+        ],
+        "governance": [
+            fail("governance.hold", gov / "holds.json", chmod("600", gov / "holds.json")),
+            fail("governance.purge_queue", gov, chmod("700", gov)),
+        ],
+        "acl": [fail("heartbeat", hb, doctor._search_fix(hb, folder=False))],
+        "mixed": [
+            fail("heartbeat", hb, chmod("600", hb)),
+            fail("source.alpha.root", Path("/x"), "fix path in [[source]] alpha, or sync it in OneDrive"),
+        ],
+        "outside": [fail("heartbeat", hb, chmod("600", Path(env["HOME"]) / "elsewhere.json"))],
+        "source": [fail("source.alpha.listable", Path("/x"), "chmod u+rx /x")],
+        "older": [fail("heartbeat", hb, chmod("600", hb))],
+    }
+    rerun = f"{INSTALL_SH} {wheel}"
+    if case == "closing":
+        out = "NEXT: the lock check failed: do what the fix on its [FAIL] line below says\n" + fail(
+            "lock", lock, chmod("600", lock)
+        )
+        cp = install_sh({**env, "STUB_STATUS_OUT": out, "STUB_STATUS_RC": "1"}, str(wheel))
+        assert cp.returncode == 1, cp.stdout + cp.stderr
+        assert last_line(cp).startswith(
+            STATE_CHMODS_NEXT.split(" once, ", maxsplit=1)[0].format(fix=chmod("600", lock))
+            + f" once, then run {env['HOME']}/.local/bin/agentsync sync and follow its NEXT line; if it "
+            "stops the same way again, show the person those lines and go on to the report"
+        ), last_line(cp)
+        return
+    cp = install_sh({**env, "STUB_DOCTOR_OUT": "\n".join(lines[case]), "STUB_DOCTOR_RC": "1"}, str(wheel))
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert one_next(cp), cp.stdout
+    fix = {
+        "heartbeat": chmod("600", hb),
+        "lock-and-wal": chmod("600", lock, wal),
+        "governance": f"{chmod('700', gov)} && {chmod('600', gov / 'holds.json')}",
+    }.get(case)
+    if fix:
+        assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+    elif case == "acl":
+        assert last_line(cp).startswith(f"{PERSONS_NEXT}the next run is: {rerun}"), last_line(cp)
+    else:
+        assert last_line(cp).startswith(
+            f"NEXT: fix the [FAIL] lines above (each names its fix), then re-run: {rerun}"
+        )
+
+
+@pytest.mark.parametrize("shut", ["lock", "heartbeat"])
+def test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod(
+    real_env: dict[str, str], wheel: Path, shut: str
+) -> None:
+    """B13 round 22 Z8, Z59 (probes HB, LK), with the real agentsync: a lock or heartbeat file at mode 0000
+    stops step 2's status on "[FAIL] lock" or "[FAIL] heartbeat" with doctor's chmod 600, and its NEXT was
+    "fix the [FAIL] lines above (each names its fix), then re-run", while the prompt granted the chmod only on
+    a NEXT or a state_dir line: a literal agent reported "failed at step 2". The NEXT names the chmod as the
+    agent's, once, and that chmod as written lets the re-run pass."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    target = db.with_name({"lock": "agentsync.lock", "heartbeat": "heartbeat.json"}[shut])
+    assert target.is_file(), sorted(p.name for p in db.parent.iterdir())
+    target.chmod(0)
+    try:
+        cp = install_sh(env, str(wheel))
+    finally:
+        target.chmod(0o600)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    failed = [ln for ln in cp.stdout.splitlines() if ln.startswith(f"[FAIL] {shut} ")]
+    fix = f"chmod 600 ~/'Library/Application Support/agentsync/{target.name}'"
+    assert failed and failed[0].endswith(f"(fix: {fix})"), cp.stdout
+    assert last_line(cp).startswith(STATE_CHMODS_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    assert "sudo" not in last_line(cp) and "chown" not in last_line(cp), last_line(cp)
+    target.chmod(0)
+    subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
 
 
 def test_no_next_names_the_percent_q_args() -> None:

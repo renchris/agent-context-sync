@@ -6428,14 +6428,16 @@ list_folders() {
 		# round 22 Z79) is the person's too. The
 		# noun covers the folder (round 21 Y14). A -wal or -shm is no config step's stop: init passes, and an
 		# empty one leaves no stop once the manifest is opened, while one that holds frames or a -shm in use
-		# fails status and the sync, so its clause says "may" and names status (round 21 Y57).
+		# fails status and the sync, so its clause names status and keeps that condition (round 21 Y57). It said
+		# "may fail" where the prompt relays what "step 2 stops on": it says "stops at its status step ... while
+		# it holds unwritten changes or is in use", as the config step's tails say "stops" (round 22 Z36).
 		stail=""
 		case ",$cerr," in *",state-owner,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-access,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-refused,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
-		case ",$cerr," in *",state-side-owner,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
-		case ",$cerr," in *",state-side-access,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account cannot write (a mode, not damage): the chmod that fixes it is the agent's to run, once, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
-		case ",$cerr," in *",state-side-refused,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account is refused though its mode allows it (an ACL, or a volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-side-owner,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-side-access,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account cannot write (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2 stops on it, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-side-refused,"*) stail="; step 2 stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which this account is refused though its mode allows it (an ACL, or a volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
 			:
@@ -7460,6 +7462,52 @@ persons_fails() {
 	b="$(blocking_fails "$1")"
 	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at |set \[convert\] pandoc_path |check or replace the pandoc at \[convert\] pandoc_path )' >/dev/null
 }
+# The chmods the [FAIL] lines of status output $1 that stop the run name, when every one of those lines is a
+# check of agentsync's state (state_dir and its parts, lock, heartbeat, governance.*) whose fix is one chmod 600
+# or chmod 700 of paths in its state folder, as doctor.state_path_fix gives this account's own: one command, the
+# folders' chmod 700 first, then one chmod 600 of every file. Empty when any other [FAIL] stops the run, a fix
+# is more than that one chmod or names a path outside the state folder (a source folder's chmod u+rx, the docs
+# repo's chmod -R go-rwx then a git config), or the installed build cannot say. The lock, the heartbeat, a
+# governance file and a -wal or -shm stop step 2 here, past the config step, and their chmod got "fix the [FAIL]
+# lines above", while the prompt granted it only on a NEXT or a state_dir line (B13 round 22 Z8, Z36, Z59). Read
+# by the agentsync step 2 installed (-I), each path resolved against its config's state folder; the lines are
+# its argument, since with_timeout's background job reads no stdin.
+state_chmods() { # STATUS_OUTPUT
+	local b
+	b="$(blocking_fails "$1")"
+	[ -n "$b" ] && [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ] || return 0
+	with_timeout 10 "$TOOL_PY" -I -c '
+import os, re, shlex, sys
+from pathlib import Path
+from agentsync.config import load_config
+from agentsync.ops.doctor import _shell_path
+from agentsync.paths import expand
+
+db = expand(load_config(Path(sys.argv[1])).state_paths.db)
+root = os.path.realpath(db.parent)
+line = re.compile(
+    "^\\[FAIL\\] (state_dir(\\.[a-z_]+)?|lock|heartbeat|governance\\.[a-z_]+) +— .* \\(fix: (chmod [^;&|()<>\\x24\\x60]+)\\)$"
+)
+want = {"700": [], "600": []}
+for text in sys.argv[2].splitlines():
+    m = line.match(text)
+    if not m:
+        sys.exit(0)
+    words = shlex.split(m.group(3))
+    if len(words) < 3 or words[1] not in want:
+        sys.exit(0)
+    for word in words[2:]:
+        path = os.path.expanduser(word)
+        real = os.path.realpath(path)
+        if not os.path.isabs(path) or not (real == root or real.startswith(root + os.sep)):
+            sys.exit(0)
+        if path not in want[words[1]]:
+            want[words[1]].append(path)
+runs = ["chmod %s %s" % (mode, " ".join(_shell_path(p) for p in want[mode])) for mode in ("700", "600") if want[mode]]
+print(" && ".join(runs))
+' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
+}
+STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance file) has a mode this account cannot open (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
 PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
@@ -7951,7 +7999,7 @@ cleared_listings() {
 	done
 }
 loop_next() { # sets next, and EXIT_RC to 1 when that status found something that stops the loop
-	local fails blocking held waits
+	local fails blocking held waits chmods
 	LOOP_OUT="$(mktemp)"
 	with_progress "status" loop_status_run || true # its exit status is its [FAIL] lines
 	cleared_listings
@@ -7965,6 +8013,8 @@ loop_next() { # sets next, and EXIT_RC to 1 when that status found something tha
 	[ -z "$held" ] || EXIT_RC=1 # a listing macOS holds for an Allow click in this terminal (field N8b)
 	if [ -n "$blocking" ] && persons_fails "$LOOP_OUT"; then
 		next="$PERSONS_FAILS, run $AGENTSYNC sync and follow its NEXT line"
+	elif [ -n "$blocking" ] && chmods="$(state_chmods "$LOOP_OUT")" && [ -n "$chmods" ]; then
+		next="$STATE_CHMODS $chmods once, then run $AGENTSYNC sync and follow its NEXT line; if it stops the same way again, show the person those lines and go on to the report"
 	elif [ -n "$blocking" ] || { [ -n "$fails" ] && [ -z "$held" ]; }; then # its NEXT points at a [FAIL] line "below"
 		next="fix the [FAIL] lines above (each names its fix), then run $AGENTSYNC sync and follow its NEXT line"
 	elif [ -n "$held" ]; then # the held listing is the NEXT, so its WAITING line is not printed twice
@@ -7987,6 +8037,9 @@ elif [ "$CONFIG_STATE" = "created" ] && [ "$HAVE_SOURCES" -eq 0 ]; then
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && persons_fails "$DOCTOR_LOG"; then
 	EXIT_RC=1
 	next="$PERSONS_FAILS, the next run is: $SELF$RERUN_ARGS"
+elif [ "$DOCTOR_BLOCKS" -eq 1 ] && chmods="$(state_chmods "$DOCTOR_LOG")" && [ -n "$chmods" ]; then
+	EXIT_RC=1 # this account's own state at a mode that refuses it: the agent's chmod, as config_failed names it
+	next="$STATE_CHMODS $chmods once, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person those lines and go on to the report"
 elif [ "$DOCTOR_BLOCKS" -eq 1 ] && ! grep -q '^\[FAIL' "$DOCTOR_LOG" 2>/dev/null; then
 	# status exited non-zero with no [FAIL] line (note=status-error, B13 round 14 Q50): a re-run fails the same
 	# way, and a signal or a timeout prints no error, so the NEXT promises none (B13 round 15 S33, S58, S62)
