@@ -1702,11 +1702,17 @@ PERSONS_FIX_RE = re.compile(
 # The kinds of fix PERSONS_FIX_RE reads, in the words of install.sh's PERSONS_FAILS: cli's rule 1 NEXT and
 # the setup report's installer-output count name them; tests pin it to PERSONS_FAILS and to the report's own
 # copy (B13 round 16 T5, T9; round 17 U11, U19, U45, U52, U86). "A state file that is damaged or another
-# account's" since round 20 X26: one of this account's own that it cannot open is a chmod, the agent's.
+# account's" since round 20 X26: one of this account's own that it cannot open is a chmod, the agent's, only
+# when its own mode is why. Since round 22 (Z65, Z83, Z17, Z48; round 21's ownership rule, lane B's words) the
+# kind also names a state file that is not a file (MANIFEST_FIX: a folder where the manifest belongs), the
+# state folder, and the refusals no chmod fixes, each the person's: an ACL or a privacy setting (_search_fix),
+# a folder above it that refuses a search (_parent_fix), a read-only volume (_read_only_fix).
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged or another "
-    "account's, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
+    "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another "
+    "account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or "
+    "a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc "
+    "copy"
 )
 
 

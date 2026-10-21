@@ -2983,9 +2983,35 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
     "path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or "
-    "allow, a state file that is damaged or another account's, a sign-in, a [convert] pandoc_path, Rosetta "
-    "to install or a native pandoc copy), not a step for the agent: show it to them"
+    "allow, a state file that is damaged, another account's or not a file, or a state file or folder that an "
+    "ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] "
+    "pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent: show it to them"
 )
+
+
+def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Path) -> None:
+    """B13 round 22 Z65, Z83: an ACL on this account's own 0600 manifest got a NEXT whose kinds named only "a
+    state file that is damaged or another account's", above a fix for neither. Each state fix round 21 made
+    the person's (an ACL or a privacy setting on a file or on the folder, a folder above it that refuses a
+    search, a read-only volume) is the person's, as is a manifest that is not a file, and the NEXT's kinds
+    name the state folder and each of them (lane B's words)."""
+    kind = (
+        "a state file that is damaged, another account's or not a file, or a state file or folder that an "
+        "ACL, a privacy setting, a folder above it or a read-only volume refuses"
+    )
+    assert kind in cli.PERSONS_KINDS
+    root = tmp_path / "state"
+    root.mkdir()
+    for fix in (
+        doctor.MANIFEST_FIX,
+        doctor._search_fix(root / "manifest.sqlite", folder=False),
+        doctor._search_fix(root),
+        doctor._parent_fix(root),
+        doctor._read_only_fix(root),
+    ):
+        assert doctor.is_persons_fix(fix), fix
+        step = cli._fail_step(doctor.CheckResult("state_dir", False, "refused", fix=fix))
+        assert step == f"the state_dir check failed: {PERSONS_STEP}" and kind in step, step
 
 
 def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_in_status(

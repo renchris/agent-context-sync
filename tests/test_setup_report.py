@@ -3927,7 +3927,10 @@ def test_the_persons_clause_names_every_kind_the_rule_reads() -> None:
     assert counts == {"NEXT:": 1, setup_report.PERSONS_FIX: 2}, counts
     text = setup_report._instruction_text(counts, 4, 1)
     assert f"2 lines whose fix: is the person's ({doctor.PERSONS_KINDS}; not hints for the agent)" in text
-    assert "a [policy] or [governance] value" in text and "a state file that is damaged or" in text, text
+    assert (
+        "a [policy] or [governance] value" in text
+        and "or a state file or folder that an ACL, a privacy setting" in text
+    ), text
 
 
 def test_a_persons_fix_on_an_error_line_is_not_a_hint_when_its_next_says_so() -> None:

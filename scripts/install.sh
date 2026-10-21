@@ -171,9 +171,10 @@
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
 #      [FAIL] that stops them is the person's (a folder or file to put back or sync, a [[source]] path or
 #      sentinel, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to
-#      remove or allow, a state file that is damaged or another account's, a sign-in, a [convert] pandoc_path,
-#      Rosetta to install or a native pandoc copy), the NEXT says so and sends the agent on to the report
-#      (B13 round 13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53)
+#      remove or allow, a state file that is damaged, another account's or not a file, or a state file or
+#      folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a
+#      [convert] pandoc_path, Rosetta to install or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round
+#      13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -7459,7 +7460,7 @@ persons_fails() {
 	b="$(blocking_fails "$1")"
 	[ -n "$b" ] && ! printf '%s\n' "$b" | LC_ALL=C grep -Ev ' \(fix: (fix path in \[\[source\]\]|point \[\[source\]\] |set path in the \[\[source\]\] |restore |sign in to |/.* is (missing|empty) while (OneDrive-|another )|put the \[\[source\]\] block back |the person |Rosetta is yours to install|the native pandoc copy at |set \[convert\] pandoc_path |check or replace the pandoc at \[convert\] pandoc_path )' >/dev/null
 }
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged or another account's, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

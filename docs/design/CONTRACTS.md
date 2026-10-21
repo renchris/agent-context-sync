@@ -26110,6 +26110,11 @@ Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step1_
 `test_prompt_routes_changes_to_the_source_not_the_checkout` (`CUT_OFF_TOLD`),
 `test_the_persons_clause_names_every_kind_the_rule_reads`.
 
+Amended 2026-10-21, §16.160 Z65: the state kind in `doctor.PERSONS_KINDS`, `setup_report._PERSONS_KINDS_COPY` and
+`PERSONS_FAILS` reads `a state file that is damaged, another account's or not a file, or a state file or folder that
+an ACL, a privacy setting, a folder above it or a read-only volume refuses`; this account's own at a mode that
+refuses it stays the agent's chmod.
+
 ### 16.149 Round 20: an unopenable manifest, index-root damage and staging's exclusion (2026-10-20, wave B13 round 20 lane B)
 
 Round 20's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 20"; specs `round20/items/X<n>.md`), each the
@@ -27360,6 +27365,23 @@ an older installed build reads it too), so it is `state-refused`, the person's. 
 already set up" says the same. Tests (a shim whose `os.statvfs` and `os.access` read the state folder as mounted
 read-only; CI cannot attach a disk image everywhere): `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
 (PM-ro, PM-ro-mode, PM-ro-wal) and `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (ro, ro-mode).
+
+**The person's kinds name every state refusal no chmod fixes** (Z65, with lane B's Z83, Z17 and Z48 built here once;
+amends §16.148 X26). An ACL on this account's own 0600 manifest gave status a NEXT whose kinds said `a state file that
+is damaged or another account's`, above a fix that is neither; round 21 also made a folder above the state folder
+and a read-only volume the person's, and an ACL on the folder itself. The state kind, in every copy in one commit
+(the lead's ruling: tests pin `PERSONS_FAILS` and the report's copy to `doctor.PERSONS_KINDS`, so the copies cannot
+land apart): `a state file that is damaged, another account's or not a file, or a state file or folder that an ACL,
+a privacy setting, a folder above it or a read-only volume refuses` (lane B's words, which own doctor's list: Z17's
+verifier's, which also name a manifest that is not a file, `MANIFEST_FIX`'s case; Z65's and Z83's named the same
+refusals) in
+`doctor.PERSONS_KINDS` and its comment, `setup_report._PERSONS_KINDS_COPY`, install.sh's `PERSONS_FAILS` and its
+header list (`--help`), and the test literals. `PERSONS_FIX_RE` and every owner rule are unchanged: those fixes
+start `the person ` already. A chmod of this account's own file at a mode that refuses it stays the agent's (the
+words name a cause no chmod changes). Test: `test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes`
+(`MANIFEST_FIX`, `_search_fix` for a file and a folder, `_parent_fix`, `_read_only_fix`: each the person's, its
+NEXT naming the kind), with the equality pins `test_doctors_persons_fix_words_are_install_shs` and
+`test_the_persons_clause_names_every_kind_the_rule_reads`.
 
 ### 16.161 Round 22: an unsearchable parent, the person's kinds and the state errors in cli and doctor (2026-10-21, wave B13 round 22 lane B)
 

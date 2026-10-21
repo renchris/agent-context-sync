@@ -4966,8 +4966,10 @@ config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no
 
 _PERSONS_KINDS_COPY = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
-    "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged or another "
-    "account's, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy"
+    "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another "
+    "account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or "
+    "a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc "
+    "copy"
 )
 """``doctor.PERSONS_KINDS``, for a report written while doctor does not import (a test keeps them equal)."""
 
