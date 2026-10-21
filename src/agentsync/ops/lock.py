@@ -390,7 +390,7 @@ class SingleWriterLock:
                 # a sync the background job did not start prints its own "note: a stale lock from a dead run
                 # was broken" line, so the WARNING repeated it on the same terminal: debug there (-vv); the
                 # job keeps it for its err.log, and a caller with no started_by (exclude-empty, governance,
-                # purge) has no other line (B13 round 21 Y27, as §16.143 W13 and §16.151 X16)
+                # purge) has no other line (B13 round 21 Y27, as §16.143 W13 and §16.149 X16)
                 level = logging.DEBUG if self._started_by == STARTED_BY_OTHER else logging.WARNING
                 log.log(
                     level,

@@ -4875,7 +4875,7 @@ older_report_facts() { # DIR
 # bracket, the expected-turns line, and the stopped app's source FAILs in the doctor line's "from the sign-in
 # stop" bucket, as setup_report._sign_in_stop_fails takes them. Its Loop NEXT and Doctor part stay as the
 # installed build wrote them: doctor stays one build (a checkout's renderer over an old install mixed two
-# builds, §16.110 Q27).
+# builds, §16.111 Q27).
 older_report_rewrite() { # MODE
 	local named cp=0 note="${S1_NOTE:-}" apps="${S1_APPS:-}" cause="${S1_CAUSE:-}" turns="${S1_TURNS:-}" item="${S1_ITEM:-}"
 	local cmd="${S1_CMD:-}" at="${S1_AT:-}" fline="${S1_FLINE:-}" one="${S1_ONE:-}"

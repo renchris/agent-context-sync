@@ -7751,6 +7751,33 @@ def test_a_round_19_or_later_citation_names_a_section_that_holds_its_item() -> N
     assert "§16.134 V4 gives a slow doctor at least `_DOCTOR_GRACE_S`" in " ".join(sections["16.145"].split())
 
 
+def test_a_code_comments_contracts_citation_names_a_section_that_holds_its_item() -> None:
+    """B13 round 22 Z68: a comment in ops/lock.py cited "§16.151 X16", which §16.149 holds (the spec's slip,
+    which §16.155 Y27's own entry had corrected), and the CONTRACTS-only scan above never read code. Every
+    ``§16.N <item>`` in src/ and scripts/ names an item section N holds, by that scan's rule; two more were
+    wrong and are corrected (setup_report's §16.97 M3 is §16.93's, install.sh's §16.110 Q27 §16.111's)."""
+    sections = dict(_contracts_numbered_sections())
+    cite = r"§(16\.\d+)(?:'s)? ((?:[A-Z]\d+)(?:(?:, | and )[A-Z]\d+)*)\b"
+    marker = r"Amended\s+\d{4}-\d\d-\d\d,\s+§16\.\d+(?:'s)? [A-Z]\d+(?:(?:, | and )[A-Z]\d+)*"
+
+    def own(text: str) -> str:
+        spans = [m.span() for m in re.finditer(marker, text)]
+        return re.sub(cite, lambda m: m[0] if any(a <= m.start() < b for a, b in spans) else "", text)
+
+    holds = {number: own(text) for number, text in sections.items()}
+    files = [*sorted((ROOT / "src").rglob("*.py")), *sorted((ROOT / "scripts").glob("*.sh"))]
+    read, wrong = 0, []
+    for path in files:
+        for at, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for found in re.finditer(cite, line):
+                for item in re.findall(r"[A-Z]\d+", found.group(2)):
+                    read += 1
+                    if not re.search(rf"\b{item}\b", holds.get(found.group(1), "")):
+                        wrong.append(f"{path.relative_to(ROOT)}:{at}: {found.group(0)}")
+    assert read >= 20, "the scan is broken"
+    assert wrong == [], wrong
+
+
 def _guide_line(name: str) -> str:
     """The whole line of the setup-feedback guide's row ``| <name> |``."""
     text = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")

@@ -27341,6 +27341,13 @@ read-only volume, the person's). A READONLY with no refused file (a folder it ca
 The setup report's `_refused_state_files` keeps its own copy (lane RA's file; the seam was sent). Test:
 `test_cli.py::test_a_wal_and_shm_this_account_cannot_write_name_both_files_one_fix_and_a_next` (real WAL frames).
 
+**Z68: a code comment's CONTRACTS citation names the section that holds its item (`agentsync.ops.lock`).** A comment
+in `ops/lock.py` cited `§16.151 X16`; X16 is §16.149's (§16.155 Y27's own entry had already said so), and the
+citation scan (round 21 Y77) read only CONTRACTS. The comment reads `§16.149 X16`, and a test reads every `§16.N
+<item>` in `src/` and `scripts/` by the same rule, which found two more: setup_report's `§16.97 M3` is §16.93's and
+install.sh's `§16.110 Q27` is §16.111's (comment-only hunks in lanes RA's and RB's files). Test:
+`test_deploy_pack.py::test_a_code_comments_contracts_citation_names_a_section_that_holds_its_item`.
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the

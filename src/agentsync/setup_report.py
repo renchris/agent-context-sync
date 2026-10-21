@@ -11138,7 +11138,7 @@ def residue_by_section(report: str, *, ignore: frozenset[str] = frozenset()) -> 
 
 _KEPT_GENERIC = "a name every OneDrive has, such as Documents"
 _KEPT_AGENT = "one made of coding-agent product words, such as Copilot or GitHub Copilot"
-"""The folder legend's list-only clause names these, as the shell report's does (CONTRACTS §16.97 M3), less
+"""The folder legend's list-only clause names these, as the shell report's does (CONTRACTS §16.93 M3), less
 "Google", which is no report word: a new one would change how an organisation or folder of that name is
 matched (B13 round 12 N3). Only the kind the body shows is named, as the shell's since §16.99 N45."""
 
