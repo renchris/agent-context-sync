@@ -925,3 +925,50 @@ def test_an_organisation_named_by_a_product_word_stays_private_after_a_library_o
     assert "Private only:" in text and setup_report.ISSUE_URL not in text, text.split("\n## Redaction\n", 1)[
         1
     ]
+
+
+def test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 22 Z21, Z28: an ``[agentsync]`` table moving the state, docs, cache or log folder printed
+    their names in clear in Configuration, Doctor, Environment and Recent errors: the redactor registered
+    none of them. Each is registered from its first folder that names something, and the report's own words
+    and agentsync's default locations still read in clear."""
+    home = Path(env["HOME"])
+    monkeypatch.setenv("HOME", env["HOME"])
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    moved = {
+        "docs_repo": "~/Northwind Data/agent-context",
+        "state_dir": "~/Fabrikam Ops/agentsync-state",
+        "cache_dir": "~/Adatum Cache",
+        "log_dir": "~/Tailspin Logs/al",
+    }
+    for value in moved.values():
+        (home / value.removeprefix("~/")).mkdir(parents=True)
+    cfg.write_text("[agentsync]\n" + "".join(f'{k} = "{v}"\n' for k, v in moved.items()), encoding="utf-8")
+    text, red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    for name in ("Northwind", "Fabrikam", "Adatum", "Tailspin"):
+        assert name.casefold() not in text.casefold(), [ln for ln in text.splitlines() if name in ln]
+    conf = text.split("\n## Configuration\n", 1)[1].split("\n## ", 1)[0]
+    assert re.search(r"- state dir: ~/<folder-\d+> \(exists\)", conf), conf
+    assert re.search(r"- docs repo: ~/<folder-\d+> \(", conf), conf
+    # what agentsync's own words and default locations read as, with folders moved inside them
+    own = {
+        "~/agent-context/docs-alt": ["docs-alt"],
+        "~/Library/Application Support/agentsync2": [],
+        "~/.local/state/agentsync-x": [],
+        "~/work/agentsync": [],
+        "~/Library/Caches/Contoso": ["Contoso"],
+        "~/Library/Application Support/agentsync": [],
+    }
+    for value, want in own.items():
+        path = home / value.removeprefix("~/")
+        assert setup_report._own_folder_values(path, home / "x") == want, value
+    assert setup_report._own_folder_values(home / "y", home / "y") == []  # at its default: nothing
+    clear = (
+        "agent-context-sync reads ~/Library/Application Support/agentsync/manifest.sqlite and "
+        "~/Library/Caches/agentsync; the state file"
+    )
+    assert red.redact(clear) == clear

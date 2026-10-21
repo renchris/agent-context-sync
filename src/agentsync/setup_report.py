@@ -62,7 +62,9 @@ readable) and every configured source folder path component (``<folder-N>``; a c
 product words is kept as a word of the agent's name, where the report prints that name), a configured source
 folder elsewhere under the home folder from its project folder down, and that project folder's name
 (``<folder-N>`` too; the inbox kept beside the docs repo is agentsync's own, and so is every folder beside it
-unless that parent is itself a generic folder such as ``~/Documents``), every configured source id but
+unless that parent is itself a generic folder such as ``~/Documents``), agentsync's own state, docs, cache or
+log folder where sources.toml's ``[agentsync]`` table moves it, from the first folder that names something
+(``<folder-N>``: :func:`_own_folder_values`), every configured source id but
 agentsync's own words such as ``inbox`` or ``mail`` (``<source-N>``), email addresses (``<email-N>``), GUIDs
 (``<guid-N>``), hex fingerprints of 16 or more digits such as launcher cdhashes (``<hash-N>``), docs-repo
 commit ids (``<commit-N>``), the serial number (``<serial>``), this Mac's host and computer names
@@ -147,8 +149,11 @@ from agentsync.materialise import file_provider_marker
 from agentsync.ops.lock import Stage
 from agentsync.paths import (
     TEMPORARY_ROOTS,
+    default_cache_dir,
     default_config_path,
     default_docs_repo,
+    default_log_dir,
+    default_state_dir,
     expand,
     is_temporary,
     provider_link_resolved,
@@ -864,8 +869,8 @@ _LEGEND = {
     "org": "<org-N> organization",
     "library": "<library-N> SharePoint library",
     "folder": (
-        "<folder-N> folder (under ~/Library/CloudStorage, or a configured source's folder; a number can be "
-        "missing)"
+        "<folder-N> folder (under ~/Library/CloudStorage, a configured source's folder, or agentsync's own "
+        "state, docs, cache or log folder where sources.toml moves it; a number can be missing)"
     ),
     "source": (
         "<source-N> source id (a configured one, or one the manifest still holds; a number can be missing)"
@@ -3780,6 +3785,51 @@ def _project_values(path: Path) -> list[str]:
     return ["/".join(parts), parts[0]] if len(parts) > 1 else parts
 
 
+_OWN_CONTAINERS = frozenset({"library", "application support", "caches", "logs", "agent-context"})
+"""Folders below the home folder that hold agentsync's own default locations (lower-case)."""
+_WORD_SPLIT_RE = re.compile(r"[^0-9a-z]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])")
+
+
+def _own_word_folder(name: str) -> bool:
+    """Whether a folder's name is made only of words the report prints or coding-agent product words (each
+    word of 3 letters or more; digits and shorter words count as such): ``state``, ``agentsync-x``,
+    ``agentsync2``. Registered, it would replace the report's own words (B13 round 22 Z21, Z28)."""
+    words = [w for w in _WORD_SPLIT_RE.split(name.casefold()) if w]
+    return all(len(w) < 3 or w.isdigit() or w in report_words() or w in _AGENT_WORDS for w in words)
+
+
+def _own_folder_values(path: Path, default: Path) -> list[str]:
+    """What to register for one of agentsync's own folders (state, docs, cache, log) that sources.toml moves
+    from its default (B13 round 22 Z21, Z28: a folder name there printed in clear in Configuration, Doctor,
+    Environment and Recent errors, in a report said to be redacted): nothing at its default; below the home
+    folder, the path from its first folder that names something, and that folder alone, after the leading
+    containers (:data:`_GENERIC_HOME_DIRS`, dot folders, :data:`_OWN_CONTAINERS`, and a name made only of
+    report or product words, :func:`_own_word_folder`); anywhere else, the whole path. Never
+    :func:`_project_values` as it stands: it registers ``agent-context`` or ``Application Support`` alone,
+    which would cut ``agent-context-sync`` and the default paths Doctor prints."""
+    forms = {path}
+    with contextlib.suppress(OSError, RuntimeError):
+        forms.add(path.resolve())
+    if default in forms or default.resolve() in forms:
+        return []
+    home = Path.home()
+    parts: list[str] | None = None
+    for base in (home, home.resolve()):
+        with contextlib.suppress(ValueError):
+            parts = list(path.relative_to(base).parts)
+            break
+    if parts is None:
+        return [str(path)]
+    while parts and (
+        parts[0].casefold() in _GENERIC_HOME_DIRS
+        or parts[0].startswith(".")
+        or parts[0].casefold() in _OWN_CONTAINERS
+        or _own_word_folder(parts[0])
+    ):
+        parts.pop(0)
+    return ["/".join(parts), parts[0]] if len(parts) > 1 else parts
+
+
 _UNCONFIGURED_IDS_S = 2.0  # the manifest's and the purge queue's ids, for redaction
 
 
@@ -4072,6 +4122,18 @@ def _build_redactor(r: _Run) -> Redactor:
             joined = len(_tokens(value)) >= 2 and _norm(value) in report_words()
             red.add("folder", value, ignore_case=True, fuzzy="/" not in value and not joined)
             _alias_escaped(red, value)
+    # B13 round 22 Z21, Z28: agentsync's own folders where sources.toml moves them, after the source folders,
+    # so theirs keep their numbers; whole-word literals, never fuzzy
+    if r.config is not None:
+        for own_dir, default in (
+            (r.config.state_dir, default_state_dir()),
+            (r.config.docs_repo, default_docs_repo()),
+            (r.config.cache_dir, default_cache_dir()),
+            (r.config.log_dir, default_log_dir()),
+        ):
+            for value in _own_folder_values(expand(own_dir), expand(default)):
+                red.add("folder", value, ignore_case=True)
+                _alias_escaped(red, value)
     # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
