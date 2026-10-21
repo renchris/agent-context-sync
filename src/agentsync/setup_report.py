@@ -6326,6 +6326,11 @@ def _why_not_read(exc: BaseException) -> str:
         return "the plist cannot be parsed"
     if isinstance(exc, OSError):
         return f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
+    cause = exc.__cause__
+    if isinstance(cause, PermissionError) and cause.filename is not None:
+        # a governance file in the state folder this account cannot open (holds.json, the purge queue): its
+        # name and the system's words, as status says them, never "GovernanceError" (B13 round 21 Y45)
+        return f"{Path(os.fsdecode(cause.filename)).name} cannot be opened: {cause.strerror or 'refused'}"
     return f"an unexpected error: {type(exc).__name__}"
 
 
@@ -9255,6 +9260,11 @@ _STATE_UNREAD_WORDS = "from the state file that cannot be read"
 _STATE_SHUT_WORDS = "from the state file this account cannot open"
 """The Doctor line's bucket for a state file :func:`_state_shut` finds this account cannot open (B13 round 20
 X28): apart from :data:`_STATE_UNREAD_WORDS`, a damaged one, whose fix differs."""
+_REFUSED_WORDS = "from a file in the state folder this account cannot open"
+"""The Doctor line's bucket for the lock, heartbeat, holds.json or purge-queue FAIL of a file
+:func:`_refused_files` finds this account cannot open (B13 round 21 Y45, Y43): not the manifest, which
+:data:`_STATE_SHUT_WORDS` names; "the person's" only for another account's file, as a chmod of this
+account's own is the agent's (the round 21 ownership rule)."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -9273,6 +9283,7 @@ class _DoctorSort:
     from_remote: list[str]
     from_state: list[str]
     from_shut: list[str]
+    from_refused: list[str]
     from_helpers: list[str]
     fails: list[tuple[str, str | None]]
 
@@ -9306,6 +9317,33 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
     except Exception:  # a test that fails says nothing about the file
         return ""
     return ""
+
+
+def _refused_files(c: Config) -> dict[str, bool]:
+    """``{check: another account's}`` for each state file a doctor check reads by name, the lock, the
+    heartbeat, holds.json and the purge queue, that exists and this account cannot read (``os.access``) or
+    another account owns (B13 round 21 Y45: their FAILs were "unexpected"). Keyed on the report's own test of
+    the file, never on doctor's words; a test that fails, a shut folder's included, says nothing."""
+    from agentsync import governance  # noqa: PLC0415 - lazy, as the doctor reads are
+
+    out: dict[str, bool] = {}
+    sp = c.state_paths
+    root = expand(sp.root)
+    for name, path in (
+        ("lock", expand(sp.lock)),
+        ("heartbeat", expand(sp.heartbeat)),
+        ("governance.hold", governance._holds_file(root)),
+        ("governance.purge_queue", governance._queue_file(root)),
+    ):
+        try:
+            if not path.exists():
+                continue
+            theirs = path.stat().st_uid != os.getuid()
+            if theirs or not os.access(path, os.R_OK):
+                out[name] = theirs
+        except Exception:  # a test that fails says nothing about the file
+            continue
+    return out
 
 
 def _names_only_state(detail: str, c: Config | None) -> bool:
@@ -9352,6 +9390,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     shut = "" if unreadable or r.config is None else _state_shut(r.config, read_error)
     from_state: list[str] = []
     from_shut: list[str] = []
+    refused = _refused_files(r.config) if r.config is not None else {}
+    from_refused: list[str] = []
     timed_out = _helpers_timed_out(r.config) if r.config is not None else {}
     from_helpers: list[str] = []
     fails: list[tuple[str, str | None]] = []
@@ -9390,6 +9430,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if shut and tag == "FAIL" and (name == "state_dir.files" or (name, shut) == ("state_dir", "folder")):
             from_shut.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_SHUT_WORDS))
+            continue
+        # B13 round 21 Y45, Y43: a lock, heartbeat, holds.json or purge queue this account cannot open FAILs
+        # its own check with state_path_fix's fix; the person's only when another account owns it
+        if tag == "FAIL" and name in refused:
+            from_refused.append(f"{name} FAIL{_PERSONS if refused[name] else ''}")
+            fails.append((name, _REFUSED_WORDS))
             continue
         if (
             (unreadable or shut)
@@ -9449,6 +9495,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_remote,
         from_state,
         from_shut,
+        from_refused,
         from_helpers,
         [(name, gone_words if why == _GONE else why) for name, why in fails],
     )
@@ -9526,6 +9573,10 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
     if from_shut:  # B13 round 20 X28
         parts.append(f"{_STATE_SHUT_WORDS} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
+    if sort.from_refused:  # B13 round 21 Y45
+        parts.append(
+            f"{_REFUSED_WORDS} ({_plural(len(sort.from_refused), 'check')}): " + ", ".join(sort.from_refused)
+        )
     if from_helpers:
         one = len(from_helpers) == 1
         parts.append(

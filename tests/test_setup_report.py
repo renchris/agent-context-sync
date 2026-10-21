@@ -13849,6 +13849,55 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
 
 
 @pytest.mark.usefixtures("roomy_calls")
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y45 (and Y43's lock): holds.json at 0000 put ``GovernanceError:`` in the Loop line and its
+    governance.hold FAIL in ``unexpected``: the only cannot-open bucket was the manifest's. Keyed on the
+    report's own access test of each file the lock, heartbeat, hold and purge-queue checks read: a bucket of
+    its own, "the person's" only for another account's file (this account's chmod is the agent's)."""
+    from agentsync import governance  # noqa: PLC0415
+
+    real = cli._status_checks
+    named = ("lock", "heartbeat", "governance.hold", "governance.purge_queue")
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name in named]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    paths = load_config(cfg).state_paths
+    root = expand(paths.root)
+    holds, queue = governance._holds_file(root), governance._queue_file(root)
+    holds.parent.mkdir(parents=True, exist_ok=True)
+    holds.write_text('{"holds": []}\n', encoding="utf-8")
+    queue.write_text('{"queue": []}\n', encoding="utf-8")
+    for check, target in (
+        ("governance.hold", holds),
+        ("governance.purge_queue", queue),
+        ("lock", expand(paths.lock)),
+    ):
+        target.chmod(0)
+        try:
+            _rc, text, _ = report(tmp_path, cfg)
+        finally:
+            target.chmod(0o600)
+        summary = section(text, "Summary")
+        line = _line(summary, "- doctor: ")
+        bucket = f" · from a file in the state folder this account cannot open (1 check): {check} FAIL · "
+        assert bucket in line and line.endswith(" · unexpected 0"), line
+        assert "the person's" not in line, line
+        assert "Error:" not in _line(summary, "- Loop: "), summary
+        assert "GovernanceError" not in text, [ln for ln in text.splitlines() if "GovernanceError" in ln]
+        outcome = _line(summary, "- **outcome: ")
+        assert "unexpected doctor FAIL" not in outcome, outcome
+    assert "holds.json cannot be opened: Permission denied" not in text  # the last report is the lock's
+
+
+@pytest.mark.usefixtures("roomy_calls")
 def test_the_fail_of_a_configuration_a_sync_refuses_has_its_own_doctor_bucket(
     fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

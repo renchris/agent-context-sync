@@ -4108,6 +4108,39 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix(
             target.chmod(0o600)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y45: holds.json (or purge-queue.json) at 0000 made status say ``cannot read the state:
+    GovernanceError: ...``, a Python class name the setup report copied into its Loop line: ``_unread_words``
+    missed an AgentSyncError caused by a PermissionError. It says the file's name and the system's words, and
+    points at the check whose line FAILs, never one that passed."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = expand(initialised.state_paths.root)
+    for check, target, body in (
+        ("governance.hold", governance._holds_file(root), '{"holds": []}\n'),
+        ("governance.purge_queue", governance._queue_file(root), '{"queue": []}\n'),
+    ):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+        target.chmod(0)
+        try:
+            capsys.readouterr()
+            rc, out = _status(cfg, capsys)
+        finally:
+            target.chmod(0o600)
+        assert rc == cli.EXIT_FAILED, out
+        said = [ln for ln in out if "cannot read the state" in ln]
+        want = f"{target.name} cannot be opened: Permission denied; the {check} [FAIL] line says why"
+        assert said and all(ln.endswith(want) for ln in said), said
+        assert not any("Error:" in ln for ln in said), said
+        (fail,) = [ln for ln in out if ln.startswith(f"[FAIL] {check} ")]
+        assert fail.endswith(f"(fix: chmod 600 {doctor._shell_path(Path(os.path.realpath(target)))})"), fail
+        target.unlink()
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read
