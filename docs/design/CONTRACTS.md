@@ -25554,7 +25554,9 @@ field's 60 s (`test_the_time_limit_is_fixed_from_counts_before_the_frames_are_re
 0`) and two more whose subject is the limit. Not the `timing` marker, which would skip them in every busy land
 gate. Other files that drive recordings through `fake_media` keep the field's limit. Tests:
 `test_convert_recording.py::test_a_recording_test_reads_under_the_wide_limit_unless_its_subject_is_the_limit`,
-`test_convert_recording.py::test_a_test_marked_real_limit_keeps_the_fields_limit`.
+`test_convert_recording.py::test_a_test_marked_real_limit_keeps_the_fields_limit`. **Amended 2026-10-20, §16.157
+Y68:** the bound is now well under the ci job's 45 minutes, `timeout-minutes` in ci.yml, raised from 40 after one
+job took 33:53.
 
 ### 16.145 Round 19: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 19 lane D)
 
@@ -26426,6 +26428,14 @@ back:` or issue link line, and adds `the last setup attempt was a copy of the pr
 `--report-only` routes it, and that any step 1 run resolves a step 1 error; its stopped-copy bullet and its
 "Failed at step N" bullet say both now. Test: `test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does`,
 which reads the NEXT clause from install.sh and the end-line filter from `setup_report.stopping_error`.
+
+**CI's limit keeps 10 minutes above its slowest job** (Y68; dated line at §16.144 W70). Round 20's ten ci jobs
+(34818253 to 20612f1f, read with `gh run view --json jobs`) took 21:17 to 26:13 but one, 33:53 (64380e08, pytest's
+step 33:14, with timing tests skipped at a load of 5 to 8 per core), 6 minutes under the limit of 40. ci.yml's
+`timeout-minutes` is 45, its note gives those times, CLAUDE.md gives `about 21 to 26 minutes` with that run beside
+it, and `docs/lanes/COMMON.md` says the same; `_wide_limit` and W70 name 45, W70 by a dated line (§16.145 W80's and
+§16.151 X63's 40 stay, as their rounds' record). Tests: `test_claude_md_gives_cis_time_and_its_limit`, which holds
+the limit 10 minutes above 26 and above 34, and `test_the_recording_tests_limit_names_cis_own_limit`.
 
 **§9's exit-code list names 65 and a state file this account cannot open** (Y76; dated line under §9's exit-code
 list). The list had no 65, which since §16.125 T12 init, add-source and every command that runs a cycle return at

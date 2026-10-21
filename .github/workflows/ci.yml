@@ -19,7 +19,9 @@ name: ci
 # and the same 5120 tests and source took 24:00 on one run and 20:59 on the next (pytest's step 23:32 and 20:23;
 # 6e7ae244, fba3908a: docs and three test regexes apart), so the runner's own spread (about 3 minutes) and a
 # round's new tests left too little margin. No test added in the jump was an outlier to cut. Round 19's jobs then
-# took 20:59 to 24:46 (B13 round 20 X63), the range CLAUDE.md gives.
+# took 20:59 to 24:46 (B13 round 20 X63). Round 20's ten jobs (34818253 to 20612f1f) took 21:17 to 26:13 but one,
+# 33:53 (64380e08, pytest's step 33:14, with timing tests skipped at a load of 5 to 8 per core), 6 minutes under
+# the limit of 40, so it is 45: 10 minutes above that job too (B13 round 21 Y68). CLAUDE.md gives the range.
 on:
   workflow_dispatch:
   push:
@@ -36,7 +38,7 @@ concurrency:
 jobs:
   test:
     runs-on: macos-15
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

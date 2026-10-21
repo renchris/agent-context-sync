@@ -199,23 +199,27 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     and 20:23 on the next; the range is the measured one, and the limit keeps at least 10 minutes above its
     top. B13 round 20 X63: 23:32 and 20:23 were pytest's step, not the job, which took 24:00 and 20:59, and
     round 19's jobs took 20:59 to 24:46, so "19 to 24" named no job and one ran past its top: the range is
-    the jobs' own, 21 to 25."""
+    the jobs' own, 21 to 25. B13 round 21 Y68: round 20's jobs took 21:17 to 26:13 but one, 33:53 on a
+    loaded runner, 6 minutes under the limit of 40: the range is 21 to 26 with that run beside it, and the
+    limit, 45, keeps 10 minutes above the slowest job seen."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
     assert "about 6 minutes" not in guide and "about 15 to 20 minutes" not in guide
     assert "about 19 to 24 minutes" not in guide and "23.5" not in guide
+    assert "about 21 to 25 minutes" not in guide
     assert (
-        "`ci` takes about 21 to 25 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
-        " the same tests and source ran 24 and then 21 minutes on two runs), plus any wait for a macOS"
-        " runner; the job's"
+        "`ci` takes about 21 to 26 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
+        " the same tests and source ran 24 and then 21 minutes on two runs; one run took 34 on a runner"
+        " loaded 5 to 8 per core), plus any wait for a macOS runner; the job's"
         f" limit is {limit} minutes (`timeout-minutes` in ci.yml)."
     ) in guide
-    assert int(limit) - 25 >= 10
+    assert int(limit) - 26 >= 10 and int(limit) - 34 >= 10
     # the workflow's own note gives the job's times, and pytest's step only as such
-    assert "took 24:00 on one run and 20:59 on the next (pytest's step 23:32 and 20:23" in " ".join(
-        line.lstrip("# ") for line in ci.splitlines() if line.startswith("#")
-    )
+    note = " ".join(line.lstrip("# ") for line in ci.splitlines() if line.startswith("#"))
+    assert "took 24:00 on one run and 20:59 on the next (pytest's step 23:32 and 20:23" in note
+    assert "took 21:17 to 26:13 but one, 33:53 (64380e08, pytest's step 33:14," in note
+    assert f"6 minutes under the limit of 40, so it is {limit}: 10 minutes above that job too" in note
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:
