@@ -6941,7 +6941,7 @@ def test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it(
     monkeypatch.setattr(os, "getloadavg", lambda: (64.1, 40.0, 30.0))
     monkeypatch.setattr(os, "cpu_count", lambda: 10)
     idle = setup_report._IDLE_AGAIN
-    for at, busy in ((None, True), (None, False), ("pandoc", True)):
+    for at, busy in ((None, True), (None, False), ("pandoc", True), ("", True)):
         r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(doctor_at=lambda at=at: at), 5.0)
         r.facts.doctor_cut_off = 19.0
         r.facts.doctor_cut_off_moved = True
@@ -6960,6 +6960,11 @@ def test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it(
         elif at is None:
             assert "it had not started its checks (it was reading the loop state); the 1-minute" in line, line
             assert "a check" not in line, line
+        elif (
+            at == ""
+        ):  # every check ran (the hook's ""): no read of the loop state, no sync to blame (review)
+            assert "reading the loop state" not in line and "a sync held" not in line, line
+            assert "a check is slow or hung" in line, line
         else:
             assert "it was in the pandoc check; the 1-minute load" in line and "a sync held" not in line, line
         assert doctor_section == ""
@@ -12190,6 +12195,13 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     db.rmdir()
     _rc, text, _ = report(tmp_path, cfg)
     assert "- no manifest yet (no sync has run)" in text  # a plain missing manifest says so still
+    db.symlink_to(db.name)  # a link to itself: no file either, as is_file read it (review)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        db.unlink()
+    assert f"- not measured ({setup_report._STATE_NOT_FILE})" in section(text, "Status")
+    assert "symbolic links" not in text, [ln for ln in text.splitlines() if "symbolic links" in ln]
 
 
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])

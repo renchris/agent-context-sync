@@ -3195,6 +3195,9 @@ class _Facts:
     # (B13 round 21 Y22): Doctor and the Summary say the same figures; None when not read
     doctor_cut_off_load: tuple[float, int] | None = None
     doctor_cut_off_at: str | None = None
+    # the doctor hook said no group had started (None, never "", which is every check ran): it was in its read
+    # of the loop's state (B13 round 22 Z18)
+    doctor_cut_off_reading: bool = False
     evidence: int | None = None  # lines of the evidence parts that say "not measured"; None: parts not run
     # those lines by why (the words in their bracket; a bare one is the time limit's), B13 round 18 V15, V35
     evidence_why: Counter[str] = dataclasses.field(default_factory=Counter)
@@ -4473,6 +4476,8 @@ def _last_rescreen(r: _Run) -> str:
     except OSError as exc:
         if isinstance(exc, PermissionError):  # B13 round 22 Z15: the folder's words when it is the folder
             return f"not read ({_STATE_FOLDER_SHUT if _state_folder_shut(db) else _STATE_SHUT})"
+        if exc.errno == errno.ELOOP:  # a symlink loop is no file (B13 round 22 Z12's review)
+            return f"not read ({_STATE_NOT_FILE})"
         return f"not read ({_why_not_read(exc)})"
     if (
         not db.is_file()
@@ -5816,6 +5821,7 @@ def _read_cut_off(r: _Run) -> None:
         with contextlib.suppress(Exception):
             at = r.hooks.doctor_at()
             r.facts.doctor_cut_off_at = at if isinstance(at, str) and at else None
+            r.facts.doctor_cut_off_reading = at is None
 
 
 def _cut_off_words(r: _Run) -> str:
@@ -5833,7 +5839,7 @@ def _cut_off_words(r: _Run) -> str:
     facts: list[str] = []
     at = r.facts.doctor_cut_off_at
     busy = bool(r.facts.evidence_why.get(_BUSY_WHY))
-    reading = r.hooks.doctor_at is not None and not at
+    reading = r.facts.doctor_cut_off_reading and not at
     if reading:
         facts.append(
             "it was reading the loop state, which a sync held (the state file is busy)"
@@ -6428,6 +6434,10 @@ class _Mirror:
                 except FileNotFoundError:
                     raise _NoManifestError from None
                 except NotADirectoryError:  # a file where a folder on its way belongs
+                    raise _StateNotFileError from None
+                except OSError as exc:
+                    if exc.errno != errno.ELOOP:  # a symlink loop is no file either, as is_file read it
+                        raise
                     raise _StateNotFileError from None
                 if not stat.S_ISREG(st.st_mode):
                     raise _StateNotFileError
@@ -10709,6 +10719,14 @@ def _folders_line(
     late_installs = [run for run in installs if run in late]
     if stopped and late_installs:
         return _stopped_folders_line(r, [run for run in runs if run not in late], late_installs, gone, scoped)
+    return _chained_folders_line(installs, late, gone=gone, scoped=scoped)
+
+
+def _chained_folders_line(
+    installs: Sequence[InstallRun], late: Sequence[InstallRun], *, gone: str, scoped: bool
+) -> str | None:
+    """:func:`_folders_line`'s chain over ``installs`` with ``late`` the runs after the end line and ``gone``
+    the not-on-disk clause ("" for none)."""
     # a last run after the end line joins the chain when its config step added nothing: a retry that only
     # confirms what an earlier run wrote (B13 round 18 V37); one that added a folder is the last run's alone
     retry = bool(late) and installs[-1] in late and not _kept_added(installs[-1])[1]
@@ -10745,7 +10763,8 @@ def _stopped_folders_line(
     if not install_runs_only(inside):
         before = "no install run during this attempt"
     else:
-        said = _folders_line(r, inside, None, scoped=scoped)
+        # no not-on-disk clause here: the late part carries it once (review)
+        said = _chained_folders_line(install_runs_only(inside), [], gone="", scoped=scoped)
         before = (
             "no counts logged during this attempt"
             if said is None
