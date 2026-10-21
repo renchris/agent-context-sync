@@ -43,7 +43,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from agentsync import (
     __version__,
@@ -1523,6 +1523,19 @@ def _says_why(config: Config | None, filename: object) -> str | None:
     return f"the {check} [FAIL] line says why" if check else None
 
 
+def _folder_refused(exc: Exception, config: Config | None) -> TypeGuard[OSError]:
+    """Whether ``exc`` is this account's refused access (EACCES, EPERM) to a path in the state folder while
+    the folder, or a folder above it, refuses it a look inside (``doctor.state_folder_shut``): the folder's
+    fault, not a file's. Keyed on the folder, never on the path refused, which is a file in it (the lock);
+    a manifest at 0000 in a folder at 0700 stays a file (B13 round 22 Z5)."""
+    if config is None or not isinstance(exc, OSError) or exc.errno not in (errno.EACCES, errno.EPERM):
+        return False
+    filename = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
+    if filename is not None and _says_why(config, filename) is None:
+        return False
+    return doctor.state_folder_shut(config)
+
+
 def _unread_words(
     exc: Exception, *, refused: str = "governance.config or policy", config: Config | None = None
 ) -> str:
@@ -1544,6 +1557,14 @@ def _unread_words(
         return f"the state file cannot be opened: {exc}; the state_dir lines say why"
     if isinstance(exc, sqlite3.Error):
         return f"the state file cannot be read: {exc}"
+    if _folder_refused(exc, config):
+        # the state folder, or a folder above it, refuses a look inside: "a file" named the lock the first
+        # read was refused at, beside status's state_dir lines that name the folder (B13 round 22 Z5)
+        reason = exc.reason if isinstance(exc, ManifestPathError) else exc.strerror
+        said = (
+            f"the state folder cannot be opened: {reason}" if reason else "the state folder cannot be opened"
+        )
+        return f"{said}; the state_dir lines say why"
     if isinstance(exc, ManifestPathError):  # its reason is kept apart from strerror (B13 round 20 X47)
         said = f"a file cannot be opened: {exc.reason}" if exc.reason else "a file cannot be opened"
         return f"{said}; the state_dir lines say why" if isinstance(exc, ManifestOpenError) else said

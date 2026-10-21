@@ -3982,6 +3982,41 @@ def test_a_manifest_this_account_cannot_open_keeps_its_reason(tmp_path: Path) ->
         assert str(raised.value) == f"{db} cannot be opened: Permission denied"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+@pytest.mark.parametrize("shut", ["state folder", "folder above", "manifest"])
+def test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a_file_does(
+    initialised: Config, capsys: pytest.CaptureFixture[str], shut: str
+) -> None:
+    """B13 round 22 Z5: with the state folder at 0000, or a folder above it that refuses a search, status
+    said "cannot read the state: a file cannot be opened", since its first read was refused at the lock, a
+    file, while every other line named the folder. Keyed on the folder (``doctor.state_folder_shut``), the
+    words name it; a manifest at 0000 in a folder at 0700 is still a file."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = expand(initialised.state_paths.root)
+    db = expand(initialised.state_paths.db)
+    for side in ("-wal", "-shm"):
+        db.with_name(db.name + side).unlink(missing_ok=True)
+    target = {"state folder": root, "folder above": root.parent, "manifest": db}[shut]
+    mode = stat.S_IMODE(target.stat().st_mode)
+    capsys.readouterr()
+    target.chmod(0)
+    try:
+        _rc, out = _status(cfg, capsys)
+        lock = expand(initialised.state_paths.lock)
+        words = cli._unread_words(
+            PermissionError(errno.EACCES, "Permission denied", str(lock)), config=initialised
+        )
+    finally:
+        target.chmod(mode)
+    (line,) = [ln for ln in out if ln.startswith("status: cannot read the state: ")]
+    what = "a file" if shut == "manifest" else "the state folder"
+    want = f"{what} cannot be opened: Permission denied; the state_dir lines say why"
+    assert line == f"status: cannot read the state: {want}", line
+    if shut != "manifest":  # the lock, a file, refused because of the folder
+        assert words == want, words
+
+
 @pytest.mark.parametrize("layout", ["manifest is a folder", "state folder is a file"])
 def test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str], layout: str
