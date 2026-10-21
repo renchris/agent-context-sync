@@ -1415,7 +1415,8 @@ def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons
         parent.chmod(0o700)
     want = (
         f"the person gives this account search access to {doctor._shell_path(parent)}, a folder above "
-        f"{doctor._shell_path(root)} that refuses it one, then run again"
+        f"{doctor._shell_path(root)} that refuses it one, then run the same command again; it is this "
+        f"account's own folder at mode 0000, so chmod u+rwx {doctor._shell_path(parent)} gives it"
     )
     assert fix == want and doctor.is_persons_fix(fix), fix
     # status says the same (the reviewer's: its bare stat fell to the generic "report it" FAIL), and sync's
@@ -1424,6 +1425,64 @@ def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons
     assert (state.name, state.ok, state.fix) == ("state_dir", False, want), state
     assert state.detail == f"cannot reach {root}: Permission denied", state
     assert refused == want
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_the_parent_fix_names_a_chmod_only_for_this_accounts_own_folder_shut_by_its_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z14, Z72: the fix of a state folder this account cannot reach named no command, though
+    a ``chmod u+rwx`` of this account's own folder at 0000 above it is the whole fix; and with no folder above
+    refusing (an ACL on the state folder itself) it named the parent, which refuses nothing. It stays the
+    person's either way, by the round 21 ownership rule."""
+    parent = tmp_path / "shut"
+    root = parent / "state"
+    root.mkdir(parents=True, mode=0o700)
+    parent.chmod(0o600)  # read but no search: the mode refuses it
+    try:
+        own = doctor._parent_fix(root)
+        real_getuid = os.getuid()
+        monkeypatch.setattr(doctor.os, "getuid", lambda: real_getuid + 1)
+        theirs = doctor._parent_fix(root)
+        monkeypatch.undo()
+    finally:
+        parent.chmod(0o700)
+    tail = f"; it is this account's own folder at mode 0600, so chmod u+rwx {doctor._shell_path(parent)}"
+    assert own.endswith(f"{tail} gives it"), own
+    assert theirs.endswith("that refuses it one, then run the same command again"), theirs
+    # an ACL that refuses the search at mode 0700: a chmod changes nothing, so none is named
+    real_access = os.access
+    monkeypatch.setattr(doctor.os, "access", lambda p, m: False if Path(p) == parent else real_access(p, m))
+    acl = doctor._parent_fix(root)
+    assert acl.endswith("then run the same command again") and "chmod" not in acl, acl
+    # no folder above refuses: the folder itself, never its parent
+    monkeypatch.setattr(doctor.os, "access", lambda p, m: True)
+    itself = doctor._parent_fix(root)
+    assert itself == (
+        "the person gives this account read-attributes, read, write and search access to the folder "
+        f"{doctor._shell_path(root)}; every folder above it allows a search, so an ACL or a privacy setting "
+        f"on the folder itself refuses it, and chmod -N {doctor._shell_path(root)} removes its ACL"
+    ), itself
+    for fix in (own, theirs, acl, itself):
+        assert doctor.is_persons_fix(fix) and "(" not in fix, fix
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="macOS ACLs; root ignores them")
+def test_a_state_folder_whose_own_acl_denies_readattr_is_named_not_its_parent(sample_config: Config) -> None:
+    """B13 round 22 Z72, measured: a 0700 state folder this account owns with an ACL that denies it readattr
+    refuses its ``stat``, so state_dir said to ask for a search of its parent, which allows one."""
+    root = sample_config.state_paths.root
+    user = os.environ.get("USER") or os.getlogin()
+    subprocess.run(["/bin/chmod", "+a", f"user:{user} deny readattr", str(root)], check=True)
+    try:
+        results = doctor._check_state_dir(sample_config)
+        fix = doctor.state_folder_fix(root)
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(root)], check=True)
+    (state,) = results
+    assert not state.ok and state.fix == fix == doctor._parent_fix(root), state
+    head = "the person gives this account read-attributes, read, write and search access to the folder"
+    assert fix.startswith(f"{head} {doctor._shell_path(root)}; "), fix
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
@@ -1446,6 +1505,7 @@ def test_a_log_folder_in_a_state_folder_under_a_folder_that_refuses_a_search_is_
         refused = doctor.stopped(
             config, "lock", PermissionError(errno.EACCES, "Permission denied", str(root))
         )
+        want = doctor._parent_fix(root)
     finally:
         parent.chmod(0o700)
     named = by_name(results)
@@ -1453,7 +1513,7 @@ def test_a_log_folder_in_a_state_folder_under_a_folder_that_refuses_a_search_is_
     errors = [r for r in results if not r.ok and r.severity is Severity.ERROR]
     assert [r.name for r in errors] == ["state_dir"], errors
     assert not any("could not read" in r.detail for r in results), results
-    assert (refused.name, refused.ok) == ("lock", False) and refused.fix == doctor._parent_fix(root), refused
+    assert (refused.name, refused.ok) == ("lock", False) and refused.fix == want, refused
     assert doctor.is_persons_fix(refused.fix)
     # any other error keeps the generic line
     other = doctor.stopped(config, "lock", OSError(errno.EIO, "Input/output error", str(tmp_path / "x")))

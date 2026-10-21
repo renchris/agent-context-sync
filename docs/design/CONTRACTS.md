@@ -27229,6 +27229,24 @@ person's, which is all `PERSONS_FIX_RE`, the report and install.sh's persons_fai
 it again as it is)` is left as written: the deploy guide and §16.32's row quote it, and the verifier made it
 optional. Test: `test_ops_doctor.py::test_the_system_error_and_state_owner_fixes_nest_no_bracket`.
 
+**Z14, Z72: the parent fix names a chmod only for this account's own folder shut by its mode, and the folder itself
+when nothing above refuses (`agentsync.ops.doctor`).** `_parent_fix`, the fix of a state folder whose `stat` this
+account is refused (state_dir's `cannot reach` line, `state_folder_fix` and through it `state_path_fix`), said only
+`the person gives this account search access to <folder>, a folder above <root> that refuses it one, then run again`:
+no command, though a `chmod u+rwx` of this account's own folder at 0000 is the whole fix (Z14), and with no folder
+above refusing, `_unsearchable_above` fell back to the parent, which refuses nothing (Z72, an ACL that denies the
+state folder readattr). It ends `then run the same command again`; when `lstat` of the refusing folder shows this
+account's own folder with no owner search bit, it adds `; it is this account's own folder at mode <mode>, so chmod
+u+rwx <folder> gives it` (u+rwx, not 700, keeps a home folder's group and other bits); another account's folder, an
+ACL or a privacy setting gets no command, as a chmod changes nothing. With no folder above refusing,
+`_unsearchable_above` returns None and the fix names the folder itself: `the person gives this account
+read-attributes, read, write and search access to the folder <root>; every folder above it allows a search, so an
+ACL or a privacy setting on the folder itself refuses it, and chmod -N <root> removes its ACL` (not `_search_fix`,
+whose owner-and-mode claim and `ls -led` hint fail when the `stat` is refused). Every form still starts `the person
+`, the round 21 ownership rule. Tests:
+`test_ops_doctor.py::test_the_parent_fix_names_a_chmod_only_for_this_accounts_own_folder_shut_by_its_mode` and
+`test_ops_doctor.py::test_a_state_folder_whose_own_acl_denies_readattr_is_named_not_its_parent` (macOS).
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the

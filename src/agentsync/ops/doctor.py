@@ -1067,24 +1067,44 @@ def _search_fix(root: Path, *, folder: bool = True) -> str:
     )
 
 
-def _unsearchable_above(root: Path) -> Path:
-    """The first folder above ``root``, from ``/`` down, that refuses this account a search, else its
-    parent."""
+def _unsearchable_above(root: Path) -> Path | None:
+    """The first folder above ``root``, from ``/`` down, that refuses this account a search; None when every
+    one allows it (B13 round 22 Z72: its parent stood in, a folder that refuses nothing)."""
     for above in reversed(root.parents):
         if not os.access(above, os.X_OK):
             return above
-    return root.parent
+    return None
 
 
 def _parent_fix(root: Path) -> str:
-    """The fix of a state folder this account cannot reach because a folder above it refuses a search: the
-    person's (the round 21 ownership rule), naming that folder, not the state folder, which is not the one
-    refusing (B13 round 21 lane B's reviewer)."""
+    """The fix of a state folder this account cannot reach (its ``stat`` refused): the person's (the round 21
+    ownership rule). A folder above it that refuses a search is named, not the state folder (B13 round 21
+    lane B's reviewer), with a ``chmod u+rwx`` of it when it is this account's own folder whose own mode
+    refuses the search, which is the whole fix (B13 round 22 Z14; u+rwx, not 700, keeps the group and other
+    bits a home folder may carry on purpose); none, as another account's, an ACL or a privacy setting
+    refuses whatever its mode. With no folder above refusing, an ACL or a privacy setting on the folder itself
+    refuses it, which neither its owner nor its mode can show, as ``ls -led`` is refused too (B13 round 22
+    Z72)."""
     above = _unsearchable_above(root)
-    return (
+    if above is None:
+        return (
+            "the person gives this account read-attributes, read, write and search access to the folder "
+            f"{_shell_path(root)}; every folder above it allows a search, so an ACL or a privacy setting on "
+            f"the folder itself refuses it, and chmod -N {_shell_path(root)} removes its ACL"
+        )
+    fix = (
         f"the person gives this account search access to {_shell_path(above)}, a folder above "
-        f"{_shell_path(root)} that refuses it one, then run again"
+        f"{_shell_path(root)} that refuses it one, then run the same command again"
     )
+    try:
+        st = above.lstat()  # every folder above it allows a search, so this one is seen
+    except OSError:
+        return fix
+    if st.st_uid == os.getuid() and not st.st_mode & stat.S_IXUSR:
+        mode = stat.S_IMODE(st.st_mode)
+        own = f"it is this account's own folder at mode {mode:04o}"
+        fix += f"; {own}, so chmod u+rwx {_shell_path(above)} gives it"
+    return fix
 
 
 def _read_only(path: Path) -> bool:
