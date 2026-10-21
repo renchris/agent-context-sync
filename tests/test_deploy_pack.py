@@ -5767,6 +5767,14 @@ _ROUND_20_RB_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: X36's at §16.32's `with_progress` clock bullet, X19's at §16.47's stopped
 copy's report (its R17 and R18 are in the heading alone)."""
 
+_ROUND_21_B_PARAGRAPH_AMENDS = (
+    ("16.12", "**Governance (security-governance-10/11/14).**", "§16.155 Y49 (by §16.149 X4)"),
+    ("16.32", "Its fix has two parts, `<run again>; if this line comes back: <then>`:", "§16.155 Y20"),
+)
+"""Round 21 lane B's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: Y49's at §16.12's governance paragraph, recording §16.149 X4's change, and
+Y20's beside §16.32's `<run again>` table."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -5826,7 +5834,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.14. Round 20's §16.151 (lane D) three: X56's two in §9 and X64's at §16.28, and §16.147 (lane RB)
     two: X36's at §16.32's `with_progress` clock bullet and X19's at §16.47's stopped copy's report,
     and §16.150 (lane E) three: X57's at §16.25, §16.34 and §16.35. Round 21's §16.157 (lane D) two: Y76's
-    under §9's exit-code list and Y60's at §16.28's Configuration paragraph.
+    under §9's exit-code list and Y60's at §16.28's Configuration paragraph, and §16.155 (lane B) two:
+    Y49's at §16.12's governance paragraph and Y20's at §16.32's `<run again>` table.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5844,6 +5853,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_20_RB_PARAGRAPH_AMENDS)) == len(_ROUND_20_RB_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_20_E_PARAGRAPH_AMENDS)) == len(_ROUND_20_E_PARAGRAPH_AMENDS) == 3
     assert len(_pinned_dated_lines(_ROUND_21_D_PARAGRAPH_AMENDS)) == len(_ROUND_21_D_PARAGRAPH_AMENDS) == 2
+    assert len(_pinned_dated_lines(_ROUND_21_B_PARAGRAPH_AMENDS)) == len(_ROUND_21_B_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5870,6 +5880,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_20_RB_PARAGRAPH_AMENDS,
         *_ROUND_20_E_PARAGRAPH_AMENDS,
         *_ROUND_21_D_PARAGRAPH_AMENDS,
+        *_ROUND_21_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -7831,11 +7842,13 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     from agentsync.ops import doctor  # noqa: PLC0415
 
     head = doctor.AGAIN_UNDER_INSTALL_SH.replace(doctor.INSTALL_SH, "<install.sh>")
-    # B13 round 20 X21 (lane B) changed the head after X68's line: X68 quotes round 19's, X21 the current
-    assert head.startswith("run <install.sh> again (it keeps the folders already synced")
+    # B13 round 20 X21 (lane B) changed the head after X68's line: X68 quotes round 19's, X21 round 20's, and
+    # B13 round 21 Y20 (lane B) the current, with no bracket of its own
+    assert head.startswith("run <install.sh> again without --report-only, which builds nothing")
     claims, _bare, _held, _unheld = _dated_line_scan()
     assert ("16.151", ["X68"], "16.132", "U78") in claims
     assert ("16.149", ["X20", "X21"], "16.132", "U78") in claims
+    assert ("16.155", ["Y20"], "16.132", "U78") in claims
     u78 = " ".join(
         _contracts_section(
             "**A time-out under install.sh does not name the same re-run twice", "\n\n"
@@ -7845,7 +7858,27 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     round_19 += " (not --report-only, which builds nothing)"
     x68 = f"§16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `{round_19}`"
     assert x68 in u78
-    assert f"§16.149 X21: under install.sh `_again_fix` starts `{head}`" in u78
+    round_20 = "run <install.sh> again (it keeps the folders already synced; not --report-only, which builds"
+    round_20 += " nothing)"
+    assert f"§16.149 X21: under install.sh `_again_fix` starts `{round_20}`" in u78
+    assert f"§16.155 Y20: under install.sh `_again_fix` starts `{head}`" in u78
+
+
+def test_y49s_line_says_staging_is_emptied_in_place() -> None:
+    """B13 round 21 Y49: since round 20 X4 `cycle._clear_staging` empties staging in place, but
+    `tm_exclude.set_exclusion`'s docstring and §16.12's governance paragraph still gave "recreated every
+    cycle" as the setxattr's reason. The docstring names the callers that spare a `tmutil` call, and §16.12
+    has the dated line (its text is kept as written)."""
+    from agentsync import tm_exclude  # noqa: PLC0415
+
+    doc = " ".join((tm_exclude.set_exclusion.__doc__ or "").split())
+    assert "is recreated every cycle" not in doc and "cycle._clear_staging" in doc, doc
+    assert "ensure_time_machine_exclusions" in doc
+    governance = " ".join(
+        _contracts_section("**Governance (security-governance-10/11/14).**", "\n\n").split()
+    )
+    assert "§16.155 Y49 (by §16.149 X4): `staging/` is no longer recreated" in governance
+    assert len(_pinned_dated_lines(_ROUND_21_B_PARAGRAPH_AMENDS[:1])) == 1
 
 
 def test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does() -> None:

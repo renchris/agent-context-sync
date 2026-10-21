@@ -1050,6 +1050,7 @@ class CycleReport:
     rescreen_left: int = 0  # 2026-10-18 (§16.125 T33; round 16 lane B)
     converter_down: bool = False  # 2026-10-19 (§16.138 V57): a converter could not start for a file this run
     legacy_retried: int = 0  # 2026-10-20 (§16.144 W18): an older build's settled failures retried from this run
+    legacy_cleared: int = 0  # 2026-10-21 (§16.155 Y28): of those, the ones this run made current (the note's)
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -4883,6 +4884,9 @@ and a `tmutil` call costs ~11 s; the xattr code lives in the leaf module `agents
 KISS K12) and doctor
 `governance.time_machine`. `remote_allowed` parses both URLs (scheme, userinfo, host equal; path at a `/`
 boundary); `parse_governance` rejects a prefix that is not a URL or carries a password.
+Amended 2026-10-21, §16.155 Y49 (by §16.149 X4): `staging/` is no longer recreated: `cycle._clear_staging` empties
+it in place, so it keeps its inode and exclusion xattr, and sets the exclusion again at once each cycle; the direct
+setxattr still spares that call the ~11 s `tmutil` costs.
 
 **Cycle (correctness-*).** A provider tombstone's `extra["removed"|"removed_reason"]` is kept on the row;
 `moved:*`, `moved-out-of-scope` and `excluded` tombstone as reason `moved` (`# [MOVED OUT OF SCOPE]`, no purge);
@@ -10017,6 +10021,9 @@ with the options of the run that installed agentsync (not --report-only, which b
 (`doctor.AGAIN_UNDER_INSTALL_SH`); the row below no longer holds.
 Amended 2026-10-20, §16.149 X21: `run scripts/install.sh again (it keeps the folders already synced; not
 --report-only, which builds nothing)`, with no options repeated.
+Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without --report-only, which builds nothing; a plain
+run keeps the folders already synced`, and every other check's `<then>` is `report it: the program does not answer
+on this Mac, and no setup step clears that`: no bracket inside the line's `(fix: ...)`.
 
 | Where | `<run again>` |
 |---|---|
@@ -23959,6 +23966,8 @@ with the options of the run that installed agentsync (not --report-only, which b
 (`doctor.AGAIN_UNDER_INSTALL_SH`), not `run the same <installer> command again ...`; the fallback above is unchanged.
 Amended 2026-10-20, §16.149 X21: under install.sh `_again_fix` starts `run <install.sh> again (it keeps the folders
 already synced; not --report-only, which builds nothing)`, with no options repeated.
+Amended 2026-10-21, §16.155 Y20: under install.sh `_again_fix` starts `run <install.sh> again without
+--report-only, which builds nothing; a plain run keeps the folders already synced`, with no bracket of its own.
 
 **A native or configured pandoc's time-out gives the busy Mac's reason (U104; `agentsync.ops.doctor`; dated line
 at §16.126 T17, T77).** It gave none, and round 16 left T77's optional part unrecorded. `_PANDOC_BUSY_START` is `any
@@ -24563,6 +24572,8 @@ names it)`, which no NEXT line made true for a warn.
 Amended 2026-10-20, §16.149 X20, X21: the line drops the marker's retry clause where the fix says the re-run, and
 under install.sh the fix starts `run <install.sh> again (it keeps the folders already synced; not --report-only,
 which builds nothing)`.
+Amended 2026-10-21, §16.155 Y20: under install.sh the fix starts `run <install.sh> again without --report-only,
+which builds nothing; a plain run keeps the folders already synced`, no bracket inside the line's `(fix: ...)`.
 
 **V7 (and V8's command): one add-back for a vanished source in doctor, the sync and the report
 (`agentsync.cycle`, `agentsync.ops.doctor`, `agentsync.setup_report`).** `cycle.vanished_add_backs(config,
@@ -25270,6 +25281,9 @@ sync still drops it (§16.68 H31). W30's "log file only" has no file to map onto
 have emptied Recent errors of background skips, so neither is built. One defect from two finders, built once.
 Tests: `test_cli.py::test_a_foreground_skip_is_said_once_in_the_wait_lines_words`, and
 `test_lock_held_warning_names_the_holder_and_repeats_verbatim` under the job's `XPC_SERVICE_NAME`.
+Amended 2026-10-21, §16.155 Y27: so is a stale lock a sync breaks: `SingleWriterLock.acquire` logs `breaking stale
+lock left by ...` at DEBUG for a sync the background job did not start, whose report prints the `note:` line, and
+keeps the WARNING for the job and for a caller with no `started_by`.
 
 **W14, W30: the skip names an empty body as the wait did (`agentsync.cli`, `agentsync.cycle`; amends §16.68 H31
 and §16.137 V40).** The wait read `the lock is held by install.sh while it reinstalls agentsync, ...` and the skip
@@ -25311,6 +25325,8 @@ under `--report-only`. Tests: `RUN_AGAIN_INSTALL` in `test_ops_doctor.py` and th
 `test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
 Amended 2026-10-20, §16.149 X21: `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again (it keeps the folders
 already synced; not --report-only, which builds nothing)`.
+Amended 2026-10-21, §16.155 Y20: it is `run <install.sh> again without --report-only, which builds nothing; a plain
+run keeps the folders already synced`, with no bracket of its own.
 
 **W47: the run line's docstring gives the converter-waiting count its own letter (`agentsync.cli`).** Round 18's
 V13 named it W in `_print_report`'s docstring, whose next sentences use W for the withheld-unread count ("with R
@@ -25360,6 +25376,10 @@ defects. Status's owner and mode FAIL is lane RA's W64 (§16.140), which this li
 Amended 2026-10-20, §16.149 X47, X49: the error keeps the system's words as its own `reason` (status: `a file
 cannot be opened: <reason>; the state_dir lines say why`), and only EACCES, EPERM and EROFS are
 `ManifestOpenError` with this fix; any other errno is its base `ManifestPathError`, one `error:` line with no fix.
+Amended 2026-10-21, §16.155 Y31, Y69: the fix is status's for the same path, `doctor.state_path_fix` (`chmod 600
+<db>`, `chmod 700 <folder>`, another account's the person's chown), then `; the file itself is not damaged`; only a
+refusal that is no PermissionError (a read-only volume) keeps `MANIFEST_OPEN_FIX`. An interactive sync adds a NEXT
+naming status.
 
 **W41: damage under any table fails status and stops the sync (`agentsync.cycle`, `agentsync.ops.doctor`,
 `agentsync.cli`, `agentsync.setup_report`; amends §16.131 U64, §16.129 U55 and §16.133 U84).** Damage under the cache or outputs table left
@@ -25441,6 +25461,9 @@ Amended 2026-10-20, §16.150 X53: the note reads `tried again, up to 2 times in 
 on` (`of their sources` for more than one) and the report's bullet `in up to 2 runs of its source from that one on`:
 the move takes every source's failures, and a source this sync does not read (paused, `reconcile --source`, no Graph
 client, the time limit) tries its files in its own later syncs.
+Amended 2026-10-21, §16.155 Y28: the note is split by outcome; the rows this sync made current read `note: N
+conversion(s) an older build gave up on was/were tried again in this sync and is/are now current`, and the retry
+words, for the rest, end `may show again until those tries are used`.
 
 **The run tally's docstring names the wait (W53; `agentsync.cycle`).** `_Cycle._run_tally` still said "a later run
 with none converted the file or gave it up", the sentence V75 corrected in the run record bullet, the report and
@@ -26066,6 +26089,10 @@ one-line `error: state:` must not print, so the system's words are the error's o
 with no fix line: not an `OSError` left raw, which no arm of `cli._main` catches and would be a traceback again.
 Tests: `test_cli.py::test_a_manifest_this_account_cannot_open_keeps_its_reason` and
 `test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix` (both layouts).
+Amended 2026-10-21, §16.155 Y31, Y69: the access fix of an EACCES or EPERM is `doctor.state_path_fix`'s, as
+status's.
+Amended 2026-10-21, §16.155 Y47: a folder where the manifest belongs FAILs `state_dir.manifest` in status too,
+which then exits 1.
 
 **X50: damage under an index root fails status before any sync (`agentsync.ops.doctor`; amends §16.143 W41,
 §16.136 V21 and §16.142 W1).**
@@ -26133,6 +26160,20 @@ the whole check. Tests:
 poll, curate), `test_a_file_in_the_state_folder_this_account_cannot_open_gets_its_own_fix`,
 `test_a_state_path_another_account_owns_gets_the_persons_chown` and
 `test_a_permission_error_outside_the_state_folder_keeps_its_traceback`.
+Amended 2026-10-21, §16.155 Y11, Y26: `sources.shared_content` reads the manifest too: with two sources it says
+`STATE_FOLDER_UNCHECKED`, and its look for the manifest is inside its `try`.
+Amended 2026-10-21, §16.155 Y42: so does graph.auth, whose token cache is in the folder; graph.client_id and
+graph.config still run, and a cache file at 0000 in an open folder gets `state_path_fix`'s fix, never a logout.
+Amended 2026-10-21, §16.155 Y43: the lock and heartbeat checks give a file this account cannot open the same FAIL
+(`doctor.refused_state_path`, which `cli._refused_check` calls), and `status: cannot read the state:` points at the
+line that judges the path.
+Amended 2026-10-21, §16.155 Y44: the config-level hold is sources.toml's, so it is shown first either way; only the
+state holds say not checked or FAIL.
+Amended 2026-10-21, §16.155 Y45: status's words for a governance file it cannot open are `<name> cannot be opened:
+<reason>; the <check> [FAIL] line says why`, and the report has a bucket for its FAIL.
+Amended 2026-10-21, §16.155 Y31, Y69: the access fix of an own folder at 0700, or an own file or subfolder whose
+mode already gives access, refused anyway (an ACL), and of a folder whose parent refuses a search, starts `the
+person `: the person's, by the round 21 ownership rule.
 
 **X12, X27: a path whose exclusion this account cannot read is not checked, never not excluded
 (`agentsync.tm_exclude`, `agentsync.governance`, `agentsync.cli`).** `tm_exclude.has_xattr` read every getxattr
@@ -26147,6 +26188,8 @@ read its exclusion: <path> (<reason>)`, plus `; the state_dir lines say why` whe
 the `tenant-data paths excluded` line is printed only when neither applies. Lane RA's X28, in §16.146, needs no
 time_machine case of its own. Test:
 `test_cli.py::test_a_state_file_this_account_cannot_open_is_not_checked_never_not_excluded` (macOS).
+Amended 2026-10-21, §16.155 Y51: over a state folder this account cannot search, its paths get one
+`STATE_FOLDER_UNCHECKED` line, as governance.hold's, and only the paths outside it are judged.
 
 **X14, X15, X46: the listing note over a state file that cannot be read makes no claim about the loop, and an
 unopenable one has its own (`agentsync.cli`, `agentsync.ops.doctor`, `agentsync.setup_report`; amends §16.143
@@ -26189,6 +26232,9 @@ WARNING, which is a background job's only record in its err.log, and so does sta
 lines of `test_cli.py::test_a_manifest_this_account_cannot_open_fails_state_dir_files_and_the_report_points_at_it`,
 `test_a_failed_loop_read_with_no_fail_still_logs_its_warning` and
 `test_loop.py::test_next_lines_keeps_its_warning_unless_a_caller_says_a_fail_explains_it`.
+Amended 2026-10-21, §16.155 Y27, Y43: the lock's stale-lock WARNING is DEBUG under a sync that prints its own note,
+and status's read of a heartbeat its heartbeat line names logs `heartbeat unreadable` at DEBUG
+(`cycle.source_statuses`, `quiet`).
 
 **X4, X13: staging keeps its Time Machine exclusion through every exit (`agentsync.cycle`).** Every cycle
 emptied staging by rmtree and mkdir, so the folder lost its exclusion xattr until `cli._run_report`'s
@@ -26218,6 +26264,9 @@ with no --source-local keeps the config's folders and background sync is the ope
 Tests: `RUN_AGAIN_INSTALL` and the X20 lines of
 `test_ops_doctor.py::test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one` and
 `test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one`.
+Amended 2026-10-21, §16.155 Y20: `doctor.AGAIN_UNDER_INSTALL_SH` is `run <install.sh> again without --report-only,
+which builds nothing; a plain run keeps the folders already synced`: its bracket sat inside every line's `(fix:
+...)`.
 
 **X55: the lock wait names a holder whose body does not parse in fixed words (`agentsync.ops.lock`; amends §16.143
 W29).** `_wait_words` gave such a body `_describe_holder`'s words, so the line nested its bracket and printed the
@@ -26298,6 +26347,8 @@ migration. Tests: `test_cycle.py::test_the_upgrades_retry_note_counts_a_source_t
 (a paused source's failure: counted, not tried, then tried twice in that source's later syncs, no note again),
 `test_cycle.py::test_the_upgrades_retry_of_an_older_builds_failure_says_so_once` and
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the words).
+Amended 2026-10-21, §16.155 Y28: those words are for the rows that failed again or were not read; `until then`
+reads `until those tries are used`, and a row this sync made current has its own note.
 
 **The helper modules' docstrings say what exit 1 means (X57, X84; `agentsync.convert.ocr`,
 `agentsync.convert.media`, `agentsync.convert.speech`; dated lines at §16.25, §16.34, §16.35 and §16.141
@@ -26383,6 +26434,9 @@ deploy guide's list says 1 is also another error the job's log names in one line
 fix (owner and mode 600, the file is not damaged, so it is not moved aside); `setup_report.EXIT_MEANINGS[1]` and
 `--help`'s list name it too. `curate` on the same file printed the line and exited 0 in the verifier's run, so
 nothing says it exits 1. Test: `test_exit_1_names_a_state_file_this_account_cannot_open`.
+Amended 2026-10-21, §16.155 Y31, Y69, Y75: curate exits 1 on that file too (measured on a 0400 and a 0000
+manifest), its `--help` line says `rc 1 on a blocking finding or an error, such as a state file this account cannot
+open`, and the line's fix is status's, `doctor.state_path_fix`.
 
 **W41's measurement adds up** (X70). §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, less
 three that passed; the verifier's re-run gave 13 failed of 16 cases: 11 tables and both last-leaf cases. Corrected
@@ -26532,7 +26586,152 @@ is yours once step 2 stops on it`) is unchanged: step 2 now says when. Tests:
 
 ### 16.155 Round 21: a shut state folder, state_path_fix in every error and the lock's words (2026-10-20, wave B13 round 21 lane B)
 
-Reserved for round 21 lane B of B13.
+Round 21's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `round21/items/Y<n>.md`), each the
+verifier's corrected fix, under the round's ownership rule: a state file or folder this account owns but cannot open
+by its own mode is the agent's `chmod 600` or `chmod 700` (`doctor.state_path_fix`), and one another account owns,
+an ACL deny or a folder whose parent refuses a search is the person's. A dated line this round writes reads
+`Amended 2026-10-21, §16.155 Y<n>`.
+
+**Y11, Y26: shared content over a shut state folder says not checked (`agentsync.ops.doctor`; amends §16.149
+X73).** X73's configs had one source, so `_check_shared_content` returned before its `db.exists()`, which on Python
+3.11 raises EACCES over a folder this account cannot search: with two live sources status gave a second, generic
+`could not read <db> ... report it` FAIL beside state_dir's, and the report filed it as unexpected. With two
+non-inbox sources it says `STATE_FOLDER_UNCHECKED`, as its siblings do, and its look for the manifest is inside its
+`try`; one source prints nothing, as before, and a manifest at 0000 in a searchable folder still gives nothing. One
+defect from two finders, built once. Test:
+`test_ops_doctor.py::test_two_sources_over_a_shut_state_folder_say_not_checked_for_shared_content`.
+
+**Y42: the token cache over a shut state folder is not checked, not a logout (`agentsync.ops.doctor`; amends
+§16.149 X73).** The graph check's MSAL read of `msal_token_cache.bin` raised PermissionError over a folder at 0000,
+so graph.auth FAILed (a live Graph source) with `logout && login`, which stops on the same refusal, and with
+another account's folder `cli._fail_steps` put that agent's step ahead of the person's chown. An error
+`doctor.state_unopenable` reads as the state folder's is the not-checked [info] line over a shut folder, and, for a
+cache file at 0000 in an open folder, `cannot read the token cache: <reason>` with `state_path_fix`'s fix.
+graph.client_id and graph.config still run (the verifier's: not the whole group in `_STATE_FOLDER_GROUPS`, whose
+docstring now names the three checks that say the line from inside). Test:
+`test_ops_doctor.py::test_a_token_cache_this_account_cannot_open_is_the_state_folders_not_a_logout`.
+
+**Y43: a lock or heartbeat this account cannot open names its own fix (`agentsync.ops.doctor`, `agentsync.cli`,
+`agentsync.cycle`; amends §16.149 X73 and §16.149 X16).** `agentsync.lock` or `heartbeat.json` at 0000 gave status
+the generic `could not read ... report it` FAIL while sync named `chmod 600`; the trailing `status: cannot read the
+state:` line said `the state_dir lines say why` over state_dir lines that read [ok]; and the heartbeat added a
+timestamped `WARNING agentsync.cycle`. `doctor.refused_state_path(config, name, exc)` is the one FAIL for a refused
+path in the state folder, `<path> cannot be opened: <reason>` with `state_path_fix`'s fix (this account's `chmod
+600`, another account's the person's chown), and `_check_lock`, `_check_heartbeat` and `cli._refused_check` use it.
+`cli._says_why` points the line at the check that judges the path: the state_dir lines for the folder, a shut
+folder and state_dir.files' set, else the lock, heartbeat, governance.hold or governance.purge_queue [FAIL] line,
+else nothing. Status's read of the heartbeat logs at DEBUG (`cycle.source_statuses(quiet=True)`). `state_dir.files`
+is not widened to every entry (the verifier's). Test:
+`test_cli.py::test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix` (this account's and another's).
+
+**Y44: a config hold shows over a state folder status cannot open (`agentsync.governance`, `agentsync.cli`; amends
+§16.149 X73).** With the state folder shut, status printed only governance.hold's not-checked line and hid a legal
+hold sources.toml sets; so did holds.json at 0000. `governance.config_holds(gov)` and `state_holds(state_dir)`
+split `active_holds` (unchanged), and status shows the config hold first either way. Test:
+`test_cli.py::test_a_config_hold_shows_over_a_state_folder_status_cannot_open`.
+
+**Y45: a lock or governance file this account cannot open is named in words and has its own doctor bucket
+(`agentsync.cli`, `agentsync.setup_report`; amends §16.149 X73).** holds.json at 0000 made status say `cannot read
+the state: GovernanceError: ...`, which the report copied into its Loop line, and the report counted the
+governance.hold FAIL unexpected. `cli._unread_words` says an AgentSyncError caused by a PermissionError as `<file
+name> cannot be opened: <reason>; the <check> [FAIL] line says why`, the check by the file (purge-queue.json is
+governance.purge_queue's, never a check that passed; a file no line judges gets no pointer, not the verifier's
+`state_dir lines`, which Y43 found false). `setup_report._refused_files`, the report's own access test of the lock,
+the heartbeat, holds.json and the purge queue, sorts their FAILs into `from a file in the state folder this account
+cannot open (N checks)`, `(the person's; see Doctor)` only for another account's file, and `_why_not_read` says the
+file's name, not the class. Tests:
+`test_cli.py::test_a_governance_file_this_account_cannot_open_is_named_in_words_with_its_check` and
+`test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket`.
+
+**Y47: a folder where the manifest belongs fails status (`agentsync.ops.doctor`, `agentsync.setup_report`; amends
+§16.149 X49).** With manifest.sqlite a 0700 folder every sync exited 1 (`cannot be opened: Is a directory`) while
+status read `[ok] state_dir.files — manifest.sqlite (0700): this account's alone`, exited 0 with no NEXT, and the
+report's last re-screen pointed at a `state_dir.manifest` line doctor never printed (sqlite's IOERR on its raw
+connect, not `ManifestPathError`, as the finder thought). `_check_state_dir` FAILs an entry whose `lstat` is no
+regular file and no symlink before its owner and mode: `state_dir.manifest — <db> is a folder, not the state file`
+with `MANIFEST_FIX` (a side file: `state_dir.files`, the person moves it aside), never probed; a symlink keeps its
+loose-mode FAIL. `_last_rescreen` reads `not read (the state file is not a file: see Doctor's state_dir.manifest
+line)`. Tests: `test_cli.py::test_a_folder_where_the_manifest_belongs_fails_status` and
+`test_setup_report.py::test_the_last_rescreen_of_a_folder_where_the_manifest_belongs_points_at_its_doctor_line`.
+
+**Y51: the Time Machine line over a shut state folder says not checked once (`agentsync.cli`; amends §16.149
+X12).** Over a folder this account cannot search, governance.time_machine listed every state path as `Permission
+denied`, a teams/ that does not exist included, while its siblings said `STATE_FOLDER_UNCHECKED`. The folder's
+paths get that one line, the paths outside it are still judged (a missing exclusion warns beside it), and the line
+keeps `tenant-data paths excluded` off a folder nobody checked. Test:
+`test_cli.py::test_the_time_machine_line_over_a_shut_state_folder_says_not_checked_once` (macOS).
+
+**Y31, Y69: a manifest this account cannot open gets status's fix and a NEXT (`agentsync.cli`,
+`agentsync.ops.doctor`; amends §16.143 W65, §16.149 X47, X73 and §16.151 X69).** sync, curate and add-source
+printed W65's generic `give this account read and write access ...` where status named `chmod 600 <db>` (or `chmod
+700 <folder>`, or another account's file the person's chown), and the sync printed no NEXT, so the setup prompt
+sent the agent to the report past its own chmod. `cli._manifest_open_fix` gives `doctor.state_path_fix`'s fix for a
+PermissionError cause, then `; the file itself is not damaged`; a read-only volume keeps `MANIFEST_OPEN_FIX`. After
+an `error: state:` line (this one, X73's PermissionError arm, a refused governance file) a `sync` with no `--mode`
+and no `AGENTSYNC_NO_NEXT_HINT=1` prints `NEXT: this account cannot open a state file, so this sync did not run:
+run \`~/.local/bin/agentsync status\`, whose [FAIL] line names the fix and whose NEXT says whose it is`
+(`cli.STATE_REFUSED_STEP`), never the fix itself, which for another account's file is the person's sudo. The
+ownership rule, from lane P's two seam notes: `doctor._search_fix`, the access fix of an own folder at 0700 an ACL
+refuses, starts `the person gives this account read, write and search access ...`, and `state_folder_fix` for a
+folder whose parent refuses a search `the person makes <root> this account's folder at mode 700, then run again`,
+so `is_persons_fix` reads both as the person's; an own file (or subfolder) whose mode already gives this account
+access, refused anyway, gets the person's ACL fix from `state_path_fix` and its own `state_dir.files — refused to
+this account by an ACL or a privacy setting: <file> (<mode>)` line, never a `chmod 600` that changes nothing. One
+defect from two finders, built once. Tests:
+`test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (file and folder; sync, poll,
+add-source and curate; another account's file),
+`test_ops_doctor.py::test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons` and
+`test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons` (macOS).
+
+**Y75: curate's help says it exits 1 on an error too (`agentsync.cli`; amends §16.151 X69).** Its line said `rc 1
+only on a blocking finding` above an exit-code list that says 1 is also a state file this account cannot open,
+which curate exits 1 on. It reads `rc 1 on a blocking finding or an error, such as a state file this account cannot
+open; rows alone exit 0`, as `_cmd_curate`'s docstring does. §16.16's line, which a test pins, and the README's
+dated history entry are left as written. Test:
+`test_cli.py::test_curates_help_says_it_exits_1_on_a_state_file_this_account_cannot_open`.
+
+**Y20: the install.sh re-run fix nests no bracket (`agentsync.ops.doctor`; amends §16.32, §16.132 U78, §16.137 V5,
+§16.143 W19 and §16.149 X21).** Every doctor line wraps its fix in `(fix: ...)`, and
+`doctor.AGAIN_UNDER_INSTALL_SH`, `run <install.sh> again (it keeps the folders already synced; not --report-only,
+which builds nothing)`, and `_STILL_NO_ANSWER`, `report it (the program does not answer ...)`, put a bracket inside
+it, against round 20's X7 and X44. They read `run <install.sh> again without --report-only, which builds nothing; a
+plain run keeps the folders already synced` and `report it: the program does not answer on this Mac, and no setup
+step clears that`; "not --report-only" stays an instruction. The setup-feedback guide's two quotes say the same.
+Test: `test_ops_doctor.py::test_the_install_sh_rerun_and_still_no_answer_fixes_nest_no_bracket`, and
+`RUN_AGAIN_INSTALL` and `STILL_NO_ANSWER` in that file.
+
+**Y27: a foreground sync's stale-lock break is its note alone (`agentsync.ops.lock`; amends §16.143 W13 and §16.149
+X16).** A sync that broke a stale lock printed a timestamped `WARNING agentsync.ops.lock: ... breaking stale lock
+left by 'not a lock body'` line beside its own `note: a stale lock from a dead run was broken`.
+`SingleWriterLock.acquire` picks the level by its own `started_by`: DEBUG for `STARTED_BY_OTHER`, the sync whose
+report prints the note; WARNING for the background job (its err.log) and for a caller with none (exclude-empty,
+governance's lock, purge), which prints no note, so the verifier's objection to a lock that knows no foreground
+holds. (The spec placed X16 in §16.151; it is in §16.149.) Tests:
+`test_ops_lock.py::test_a_stale_lock_is_a_warning_only_where_no_other_line_says_so` and
+`test_cli.py::test_a_foreground_sync_that_breaks_a_stale_lock_says_it_once`.
+
+**Y28: the upgrade's retry note says a conversion it made current is current (`agentsync.cycle`,
+`agentsync.manifest`, `agentsync.model`, `agentsync.cli`; amends §16.144 W18 and §16.150 X53).** The upgrade's sync
+said `1 conversion an older build gave up on is tried again ... its error may show again until then` in the sync
+that converted it: the note counted the rows the move took. `Manifest.retry_settled_failure_rows` returns the moved
+rows (`retry_settled_failures` counts them), the cycle counts those it made live as `CycleReport.legacy_cleared`
+(no run-record count; `legacy_retried` is unchanged), and the sync prints `note: N conversion(s) an older build
+gave up on was/were tried again in this sync and is/are now current` for them and the retry words, ending `until
+those tries are used`, for the rest; both keep `an older build gave up on `, which install.sh greps. Test:
+`test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current`, and the retry words in
+its two siblings and `test_install_oneshot.py`.
+
+**Y33: the root guide names the inbox by ~ under a home reached through a link (`agentsync.publish`).** Under a
+HOME reached through a link (/tmp is /private/tmp) the docs repo's AGENTS.md and CLAUDE.md named the inbox by its
+full resolved path: the kept folder is canonical, and `publish._display_path` tried only the HOME as written. It
+tries the resolved home too, and never resolves the path itself. Test:
+`test_publish.py::test_root_guide_names_the_inbox_by_the_home_under_a_home_reached_through_a_link`, which checks
+the literal, not `_display_path`'s own output.
+
+**Y49: tm_exclude and §16.12 no longer say staging is recreated (`agentsync.tm_exclude`; amends §16.12).**
+`set_exclusion`'s docstring and §16.12's governance paragraph gave recreation every cycle as the setxattr's reason;
+since §16.149 X4 `cycle._clear_staging` empties staging in place and re-excludes it. The docstring names the two
+callers, and §16.12 has a dated line. Test: `test_deploy_pack.py::test_y49s_line_says_staging_is_emptied_in_place`.
 
 ### 16.156 Round 21: the convert retry clause, helper docstrings and rescreened stubs (2026-10-20, wave B13 round 21 lane E)
 

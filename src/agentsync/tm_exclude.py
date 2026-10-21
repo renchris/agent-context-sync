@@ -67,7 +67,9 @@ def has_xattr(path: Path, name: str) -> bool:
 def set_exclusion(path: Path) -> bool:
     """Write the sticky exclusion xattr directly with setxattr(2): instant, where ``tmutil`` takes ~11 s.
 
-    ``staging/`` is recreated every cycle, so without this each cycle paid one ``tmutil`` call."""
+    ``cycle._clear_staging`` re-excludes ``staging/`` every cycle, and
+    ``governance.ensure_time_machine_exclusions`` writes every missing one, so neither pays a ``tmutil`` call
+    (B13 round 21 Y49: since round 20 X4 staging is emptied in place, not recreated)."""
     buf = TM_EXCLUDE_VALUE
     rc = _libc_xattr().setxattr(os.fsencode(path), TM_EXCLUDE_XATTR.encode(), buf, len(buf), 0, 0x0001)
     return int(rc) == 0 and has_xattr(path, TM_EXCLUDE_XATTR)
