@@ -586,7 +586,7 @@ def test_a_background_run_that_cannot_read_the_state_names_the_persons_fix(
     )
     assert cp.returncode == 1
     said = (
-        "the first background run exited 65 (the state file (manifest.sqlite) cannot be read: the person's "
+        "the first background run exited 65 (the state file, manifest.sqlite, cannot be read: the person's "
     )
     said += "to fix)"
     assert said in cp.stderr, cp.stderr
@@ -1048,7 +1048,7 @@ def test_first_sync_failure_fails_the_run_before_the_agent(
     assert not any(c.startswith(("agentsync install-agent", "launchctl")) for c in got)
     meaning = {
         "78": "configuration invalid",
-        "65": "the state file (manifest.sqlite) cannot be read: the person's to fix",
+        "65": "the state file, manifest.sqlite, cannot be read: the person's to fix",
         "1": "failed",
     }[rc]
     assert f"the first sync (agentsync sync --once) exited {rc} ({meaning})" in cp.stderr
@@ -8961,7 +8961,7 @@ def test_a_signal_exit_is_named_by_its_signal() -> None:
         "exit 200",
         "failed",
         "the launcher refused the job: its program is not the one it starts, or an option is wrong",
-        "the state file (manifest.sqlite) cannot be read: the person's to fix",  # B13 round 17 U55, U65
+        "the state file, manifest.sqlite, cannot be read: the person's to fix",  # B13 round 17 U55, U65; Y62
     ]
 
 

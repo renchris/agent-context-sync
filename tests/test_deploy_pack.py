@@ -6010,7 +6010,7 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     every run on it), which none of the three decoded: the report printed a bare 71 and install.sh
     `exit 71`."""
     from agentsync import cli, setup_report  # noqa: PLC0415
-    from agentsync.ops import launchd  # noqa: PLC0415
+    from agentsync.ops import doctor, launchd  # noqa: PLC0415
 
     codes = {v for k, v in vars(cli).items() if k.startswith("EXIT_") and isinstance(v, int)}
     assert {0, 1, 2, 65, 75, 77, 78, 79} <= codes, "the scan is broken"
@@ -6053,24 +6053,35 @@ def test_every_exit_code_a_job_reports_has_its_meaning_everywhere() -> None:
     assert "(" not in spawn_failed and ")" not in spawn_failed, spawn_failed
     decoded = setup_report.decode_exit(str(spawn))
     assert decoded == f"{spawn} ({spawn_failed})" and decoded.count("(") == 1, decoded
+    # B13 round 21 Y35, Y46, Y56: round 19's "the options of the run that installed agentsync", which round
+    # 20 X21 dropped from doctor's AGAIN_UNDER_INSTALL_SH, under a comment saying the two match. A 71 at every
+    # run is a job pinned to a Python that moved: the re-pin, which doctor's plain run does not do
     assert (
-        "a 71 at every run means run install.sh again with the options of the run that installed agentsync,"
-        " not --report-only, which builds nothing" in spawn_failed
+        "a 71 at every run means run ~/.local/bin/agentsync install-agent, which points the job at the Python"
+        " agentsync now runs in, or install.sh again with --confirm-install-agent, not --report-only, which"
+        " builds nothing" in spawn_failed
     )
+    assert "options of the run" not in spawn_failed
+    keeps = doctor.AGAIN_UNDER_INSTALL_SH.split(" (", 1)[1].split(";", 1)[0]  # the plain run's own words
+    assert keeps == "it keeps the folders already synced" and keeps not in spawn_failed
     assert "re-run the install command" not in spawn_failed
     assert (
         "`71` the launcher could not start agentsync: the Python it runs is missing or not executable (a"
         " `SPAWN_FAILED` line in the job's error log" in listed
     )
     assert (
-        "a 71 at every run means run `install.sh` again with the options of the run that installed agentsync,"
-        " not `--report-only`, which builds nothing · `75`" in listed
+        "a 71 at every run means run `~/.local/bin/agentsync install-agent`, which points the job at the"
+        " Python agentsync now runs in, or `install.sh` again with `--confirm-install-agent`, not"
+        " `--report-only`, which builds nothing · `75`" in listed
     )
     assert (
         "`65` the state file (`manifest.sqlite`) is no database or a damaged one: you, not an agent" in listed
     )
     assert f"`64` {setup_report.EXIT_MEANINGS[64]} (a `PROGRAM_REFUSED` or `USAGE` line" in listed
-    assert "(sources.toml or policy.toml)" in setup_report.EXIT_MEANINGS[78]
+    assert setup_report.EXIT_MEANINGS[78] == "configuration invalid: sources.toml or policy.toml"
+    # B13 round 21 Y62: 1, 65, 77 and 78 nested a bracket in decode_exit's own, the shape X44 removed from 71
+    assert all("(" not in m and ")" not in m for m in setup_report.EXIT_MEANINGS.values())
+    assert all(setup_report.decode_exit(str(k)).count("(") == 1 for k in setup_report.EXIT_MEANINGS)
     assert "`78` bad `sources.toml` or `policy.toml` ·" in listed
 
 

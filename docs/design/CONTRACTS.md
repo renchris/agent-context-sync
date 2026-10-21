@@ -24090,6 +24090,8 @@ no `state_dir.manifest` line, though status's detail read of the sources prints 
 ...`.
 Amended 2026-10-20, §16.143 W41: status's own probe now reads each table's first row, so damage under the cursors
 table has the `state_dir.manifest` FAIL too.
+Amended 2026-10-20, §16.152 Y62: the two maps read `the state file, manifest.sqlite, cannot be read: the person's
+to fix`, with no bracket inside the one their callers put it in.
 
 **The guides say a git remote's host is redacted and kept** (U85). Since §16.123 T88 both readers redact the host of
 a git remote's URL as a `<proxy-N>`, and `--log-start` and `--log` write it to `setup/proxy-hosts`
@@ -25643,6 +25645,8 @@ main.swift beside 64 and 80, and the §16.14 pin in `_ROUND_19_D_PARAGRAPH_AMEND
 Amended 2026-10-20, §16.146 X44: the meaning holds no bracket (its callers put it in one) and says which run
 to repeat: `a 71 at every run means run install.sh again with the options of the run that installed
 agentsync, not --report-only, which builds nothing`; the guide says the same.
+Amended 2026-10-20, §16.152 Y35, Y46, Y56: the run is the job's re-pin, `~/.local/bin/agentsync install-agent`
+or install.sh with `--confirm-install-agent`, never round 19's "options of the run that installed agentsync".
 
 **CI's time and its limit** (W80). CLAUDE.md said `ci` takes 15 to 20 minutes; the four green runs on main before
 this round took 23 to 24 of the job's 30 (pytest 22:25 to 23:32 at 5105 to 5120 tests). The verifier asked first
@@ -25760,6 +25764,8 @@ during a reinstall is expected, a 71 at every run means run install.sh again wit
 installed agentsync, not --report-only, which builds nothing` (doctor's `AGAIN_UNDER_INSTALL_SH` as a comma
 clause, since its own bracket would nest). The deploy guide's list says the same run. Test:
 `test_every_exit_code_a_job_reports_has_its_meaning_everywhere`.
+Amended 2026-10-20, §16.152 Y35, Y46, Y56: it is not doctor's `AGAIN_UNDER_INSTALL_SH`, which round 20 X21 made a
+plain run that leaves the LaunchAgent as it is; 71 names the job's re-pin (`install-agent`).
 
 **The Loop line says beside its NEXT when the report's read found the state file damaged** (X80; amends §16.143
 W41). With damage only the evidence read reached, Doctor had the state_dir.manifest FAIL while the Loop line gave
@@ -26545,6 +26551,23 @@ registers each folder value's JSON spelling, when it differs, as an alias of the
 (`Redactor.alias`: exact, one number for one folder), at the CloudStorage components, the project folders and an
 unconfigured source's recorded root; a `"` or `\` in a name is the same. Test:
 `test_a_folder_name_with_a_tab_is_redacted_in_add_sources_escaped_spelling`.
+
+**Exit 71's meaning names the job's re-pin, and no exit meaning nests a bracket** (Y35, Y46, Y56, Y62; amends
+§16.145 W72, §16.146 X44 and §16.133 U84). `EXIT_MEANINGS[71]` and `rc_meaning 71` said `run install.sh again
+with the options of the run that installed agentsync`, under a comment calling it doctor's
+`AGAIN_UNDER_INSTALL_SH`, which round 20 X21 changed to a plain run because those options were never shown. 71's
+fix is not that plain run: it leaves the LaunchAgent as it is (install.sh's agent step), so a job pinned to a
+Python that moved stays at 71, and doctor's own fix for a missing job interpreter is `install-agent`. One
+paren-free literal in both twins: `... a 71 at every run means run ~/.local/bin/agentsync install-agent, which
+points the job at the Python agentsync now runs in, or install.sh again with --confirm-install-agent, not
+--report-only, which builds nothing`; the deploy guide says the same in backticks, and the comment says why the
+two differ. Building X21's plain run was not done: it would leave a moved pin at 71 (Y35's own words, a plain run
+first, were measured worse by Y56's verifier for that case). Y62: `decode_exit` wraps each meaning in a bracket,
+and 1, 65, 77 and 78 held one of their own: `...; the line in Recent errors names the cause and fix`, `the state
+file, manifest.sqlite, cannot be read: the person's to fix` (install.sh's 65 too), `sign-in required: run
+~/.local/bin/agentsync graph login`, `configuration invalid: sources.toml or policy.toml`. Test:
+`test_every_exit_code_a_job_reports_has_its_meaning_everywhere` (no meaning holds a bracket; every decode holds
+one; 71 does not hold the plain run's `it keeps the folders already synced`).
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 

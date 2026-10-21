@@ -403,23 +403,27 @@ FRICTION_MAX_BYTES = 256 * 1024
 EXIT_MEANINGS = {
     0: "ok",
     1: (  # B13 round 20 X69: since round 19 W65 a manifest this account cannot open exits 1 too
-        "failed: a source failed, a blocking lint fired, or the state file cannot be opened by this account"
-        " (the line in Recent errors names the cause and fix)"
+        "failed: a source failed, a blocking lint fired, or the state file cannot be opened by this account;"
+        " the line in Recent errors names the cause and fix"
     ),
     2: "usage error",
     64: "the launcher refused the job: its program is not the one it starts, or an option is wrong",
-    65: "the state file (manifest.sqlite) cannot be read: the person's to fix",  # B13 round 17 U55, U65
+    65: "the state file, manifest.sqlite, cannot be read: the person's to fix",  # B13 round 17 U55, U65
     # B13 round 19 W72: the launcher's exOSErr, SPAWN_FAILED (and WAIT_FAILED). No bracket inside: its callers
-    # put it in one, and the run to repeat is named, as doctor's AGAIN_UNDER_INSTALL_SH does (round 20 X44)
+    # put it in one (round 20 X44; round 21 Y62, every meaning). The fix is the job's re-pin, unlike doctor's
+    # AGAIN_UNDER_INSTALL_SH, the plain run round 20 X21 names: that run leaves the LaunchAgent as it is
+    # (install.sh's agent step), so a job pinned to a Python that moved stays at 71, and install-agent is
+    # doctor's own fix for a missing job interpreter (B13 round 21 Y35, Y46, Y56)
     71: (
         "the launcher could not start agentsync: the Python it runs is missing or not executable, and a"
         " SPAWN_FAILED line in the job's error log names the program and the error; one 71 during a reinstall"
-        " is expected, a 71 at every run means run install.sh again with the options of the run that"
-        " installed agentsync, not --report-only, which builds nothing"
+        " is expected, a 71 at every run means run ~/.local/bin/agentsync install-agent, which points the job"
+        " at the Python agentsync now runs in, or install.sh again with --confirm-install-agent, not"
+        " --report-only, which builds nothing"
     ),
     75: "skipped: another cycle held the lock; launchd retries",
-    77: f"sign-in required ({AGENTSYNC_BIN} graph login)",
-    78: "configuration invalid (sources.toml or policy.toml)",
+    77: f"sign-in required: run {AGENTSYNC_BIN} graph login",
+    78: "configuration invalid: sources.toml or policy.toml",
     79: "TCC_PENDING: the launcher waited for the Allow prompt and timed out",
     80: "TCC_DENIED: access to the synced folder was denied",
 }

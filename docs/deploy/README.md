@@ -215,8 +215,9 @@ the fix) · `65` the state file (`manifest.sqlite`) is no database or a damaged 
 you, not an agent, fix it (the message names the file and the fix; `~/.local/bin/agentsync sync` prints it again)
 · `71` the launcher could not start agentsync: the Python it runs is missing or not executable (a
 `SPAWN_FAILED` line in the job's error log names the program and the error); one 71 during a reinstall is expected,
-a 71 at every run means run `install.sh` again with the options of the run that installed agentsync, not
-`--report-only`, which builds nothing · `75` another cycle holds the lock · `77` sign-in needed or blocked (the
+a 71 at every run means run `~/.local/bin/agentsync install-agent`, which points the job at the Python agentsync
+now runs in, or `install.sh` again with `--confirm-install-agent`, not `--report-only`, which builds nothing ·
+`75` another cycle holds the lock · `77` sign-in needed or blocked (the
 message names the IT action) · `78` bad `sources.toml` or `policy.toml` · `79` waiting for the Allow click · `80` (the launcher's
 canary check) access was denied, `TCC_DENIED`: you, not an agent, turn on agentsync-launcher in System Settings >
 Privacy & Security > Files and Folders, then re-run the install command. Logs are in `~/Library/Logs/agentsync/`.

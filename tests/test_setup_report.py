@@ -2417,7 +2417,7 @@ def test_background_runs_decode_exit_codes_and_ownership(
     )
     # B13 round 17 U55, U65: agentsync --help lists 65, the manifest it cannot read, which read as a bare 65
     assert setup_report.decode_exit("65") == (
-        "65 (the state file (manifest.sqlite) cannot be read: the person's to fix)"
+        "65 (the state file, manifest.sqlite, cannot be read: the person's to fix)"
     )
 
 
