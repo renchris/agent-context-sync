@@ -1403,6 +1403,40 @@ def test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons
     assert refused == want
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_log_folder_in_a_state_folder_under_a_folder_that_refuses_a_search_is_not_checked(
+    tmp_path: Path, sample_config: Config
+) -> None:
+    """B13 round 22 Z60: with a log_dir set inside the state folder (this config's), the logs and
+    permissions checks stopped on its ``is_dir`` and ``exists`` under a folder above that refuses a search,
+    generic "report it" FAILs, read as the agent's, which took status's NEXT. The log folder is not
+    checked, and a check that still stops on a path in the state folder gets that path's fix (``stopped``),
+    here the person's."""
+    parent = tmp_path / "shut"
+    root = parent / "state"
+    root.mkdir(parents=True, mode=0o700)
+    config = dataclasses.replace(sample_config, state_dir=root, log_dir=root / "logs")
+    (root / "logs").mkdir(mode=0o700)
+    parent.chmod(0)
+    try:
+        results = run_checks(config)
+        refused = doctor.stopped(
+            config, "lock", PermissionError(errno.EACCES, "Permission denied", str(root))
+        )
+    finally:
+        parent.chmod(0o700)
+    named = by_name(results)
+    assert named["logs"].severity is Severity.INFO and named["logs"].detail == doctor.STATE_FOLDER_UNCHECKED
+    errors = [r for r in results if not r.ok and r.severity is Severity.ERROR]
+    assert [r.name for r in errors] == ["state_dir"], errors
+    assert not any("could not read" in r.detail for r in results), results
+    assert (refused.name, refused.ok) == ("lock", False) and refused.fix == doctor._parent_fix(root), refused
+    assert doctor.is_persons_fix(refused.fix)
+    # any other error keeps the generic line
+    other = doctor.stopped(config, "lock", OSError(errno.EIO, "Input/output error", str(tmp_path / "x")))
+    assert other.detail.startswith("could not read "), other
+
+
 @pytest.mark.skipif(not hasattr(os, "ST_RDONLY"), reason="statvfs flags")
 def test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch

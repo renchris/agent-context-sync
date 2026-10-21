@@ -514,9 +514,17 @@ def _fda_fix(image: Path) -> str:
 
 
 def _nearest_existing(path: Path) -> Path:
-    """``path`` or its closest existing ancestor."""
+    """``path`` or its closest ancestor this account can see. A folder above it that refuses a search makes
+    ``exists()`` raise PermissionError on Python 3.11, which ended the disk check in a generic "report it"
+    FAIL that took status's NEXT from state_dir's, the person's; the walk steps past it to the folder that
+    refuses, whose ``statvfs`` needs a search only of the folders above it (B13 round 22 Z73, Z3, Z34)."""
     p = expand(path)
-    while not p.exists() and p != p.parent:
+    while p != p.parent:
+        try:
+            if p.exists():
+                break
+        except OSError:
+            pass
         p = p.parent
     return p
 
@@ -1199,6 +1207,29 @@ STATE_FOLDER_UNCHECKED = (
 )
 """The [info] line of a check that reads the state folder, when :func:`state_folder_shut` (B13 round 20
 X73)."""
+
+
+def _in_shut_state_folder(config: Config, path: Path) -> bool:
+    """Whether ``path`` is the state folder or lies in it while :func:`state_folder_shut`: a ``log_dir`` or
+    ``cache_dir`` set there cannot be read either, and its check says :data:`STATE_FOLDER_UNCHECKED`, not a
+    generic FAIL whose agent's fix took status's NEXT (B13 round 22 Z60)."""
+    root = expand(config.state_paths.root)
+    return (path == root or path.is_relative_to(root)) and state_folder_shut(config)
+
+
+def stopped(config: Config, name: str, exc: Exception) -> CheckResult:
+    """The result of the check ``name`` that raised ``exc``: a path in the state folder this account was
+    refused (a folder above it that refuses a search, a mode, an ACL) is that path's FAIL with its fix
+    (:func:`refused_state_path`), so status's NEXT says whose it is; anything else :func:`unfinished`. The
+    backstop of :func:`run_checks` and status's own checks (B13 round 22 Z60: a crash under a folder above the
+    state folder gave the generic "report it" fix, read as the agent's, which took the NEXT from state_dir's
+    person's fix)."""
+    if isinstance(exc, OSError):
+        refused = refused_state_path(config, name, exc)
+        if refused is not None:
+            log.info("doctor: check %s stopped on a refused state path", name, exc_info=exc)
+            return refused
+    return unfinished(name, exc)
 
 
 def _check_state_dir(config: Config) -> list[CheckResult]:
@@ -2710,6 +2741,8 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int 
 def _check_logs(config: Config) -> list[CheckResult]:
     """launchd never rotates StandardOut/ErrorPath: warn before a log grows without bound."""
     log_dir = expand(config.log_dir)
+    if _in_shut_state_folder(config, log_dir):  # its state_dir FAIL is the answer (B13 round 22 Z60)
+        return [_bad("logs", STATE_FOLDER_UNCHECKED, Severity.INFO)]
     if not log_dir.is_dir():
         return [_ok("logs", f"{log_dir} does not exist yet")]
     files = sorted(p for p in log_dir.glob("*.log") if p.is_file())
@@ -2774,6 +2807,8 @@ def _check_permissions(config: Config) -> list[CheckResult]:
         ("cache_dir", expand(config.cache_dir), default_cache_dir()),
         ("log_dir", expand(config.log_dir), default_log_dir()),
     ):
+        if _in_shut_state_folder(config, folder):  # no walk can enter it; state_dir says why (Z60)
+            continue
         if not _holds_home(folder):
             roots.append(folder)
             continue
@@ -2899,7 +2934,7 @@ def run_checks(
         try:
             results.extend(run(config))
         except Exception as exc:
-            results.append(unfinished(group, exc))
+            results.append(stopped(config, group, exc))
     return results
 
 

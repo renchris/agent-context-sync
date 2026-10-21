@@ -4124,6 +4124,64 @@ def test_a_config_hold_shows_over_a_state_folder_status_cannot_open(
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fail_the_persons(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 22 Z3, Z9, Z26, Z34, Z46, Z60, Z73, one defect built once: with ~/Library/Application
+    Support at 0000, ``Path.exists`` and ``is_dir`` raise PermissionError on Python 3.11, so disk
+    (``_nearest_existing``) and governance (the Time Machine check's backups lookup) each gave a generic
+    "could not read ... report it" FAIL, read as the agent's, which took status's NEXT from state_dir's, the
+    person's; governance's crash hid the config hold and governance.remote too. One FAIL is left, state_dir's,
+    and the NEXT names it as the person's; disk is measured at the folder that refuses, and governance is
+    still judged."""
+    if sys.platform == "darwin":
+        monkeypatch.setenv("AGENTSYNC_TM_EXCLUDE", "1")  # every test sets 0; a Mac runs it (Z46)
+    cfg = str(initialised.config_path)
+    path = initialised.config_path
+    text = '\n[governance]\nhold = true\nhold_reason = "Contoso matter 7"\nhold_owner = "Contoso legal"\n'
+    path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = expand(initialised.state_paths.root)
+    above = root.parent
+    assert root.is_relative_to(Path.home()) and above != Path.home(), root
+    capsys.readouterr()
+    above.chmod(0)
+    try:
+        rc, out = _status(cfg, capsys)
+        named = {r.name: r for r in doctor.run_checks(initialised)}
+    finally:
+        above.chmod(0o700)
+    fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1, fails
+    assert re.match(r"\[FAIL\] state_dir +— cannot reach ", fails[0]), fails
+    assert f"{root}: Permission denied (fix: the person " in fails[0], fails
+    assert out[0].startswith(
+        "NEXT: the state_dir check failed: its fix on the [FAIL] line below is the person's"
+    )
+    assert not any("could not read" in ln or "report it" in ln for ln in out), out
+    for disk in ("disk.state", "disk.docs"):
+        assert named[disk].ok, named[disk]
+    assert named["disk.state"].detail.endswith(f" free at {above}"), named["disk.state"]
+    assert [ln for ln in out if ln.startswith("[ok  ] governance.remote ")], out
+    assert [ln for ln in out if ln.startswith("[ok  ] governance.hold ") and "Contoso matter 7" in ln], out
+    if sys.platform == "darwin":
+        assert [
+            ln
+            for ln in out
+            if ln.startswith("[info] governance.time_machine ") and doctor.STATE_FOLDER_UNCHECKED in ln
+        ], out
+    # the state folder itself at 0000 (its parent searchable) is still measured there, as before
+    root.chmod(0)
+    try:
+        named = {r.name: r for r in doctor.run_checks(initialised)}
+    finally:
+        root.chmod(0o700)
+    assert named["disk.state"].ok and named["disk.state"].detail.endswith(f" free at {root}"), named[
+        "disk.state"
+    ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_two_sources_over_a_shut_state_folder_give_status_one_fail(
     initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

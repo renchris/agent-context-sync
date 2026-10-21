@@ -3000,8 +3000,18 @@ def time_machine_exclusions(config: Config) -> tuple[Path, ...]:
     docs repo's ``.git`` (every version of every mirror page: a purge cannot reach a backup), the converter
     cache, the SQLite manifest, its ``-wal``/``-shm`` siblings and any pre-migration ``<db>.pre-v*`` copy (the
     same rows and cursors; KISS K12), the Teams store and staging (curated topics/ stay backed up as worktree
-    files)."""
+    files).
+
+    A folder above the state folder that refuses this account a search makes the backups' lookup raise
+    PermissionError: none is listed, and status's not-checked line covers the state folder's paths. Only
+    here: purge and the cycle still stop on it, so no pre-migration copy that holds purged rows is passed
+    over unseen (B13 round 22 Z46, Z9: the whole governance check became one generic FAIL, the config hold
+    and governance.remote with it)."""
     sp = config.state_paths
+    try:
+        backups = migration_backups(sp.db)
+    except PermissionError:
+        backups = []
     return (
         expand(config.docs_repo) / "mirror",
         expand(config.docs_repo) / "archive",
@@ -3012,7 +3022,7 @@ def time_machine_exclusions(config: Config) -> tuple[Path, ...]:
         sp.db.with_name(sp.db.name + "-shm"),
         sp.teams_store,
         sp.staging,
-        *migration_backups(sp.db),
+        *backups,
     )
 
 

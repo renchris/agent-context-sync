@@ -2038,7 +2038,10 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         else:
             out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
     if sys.platform == "darwin" and os.environ.get("AGENTSYNC_TM_EXCLUDE", "1") != "0":
-        out += _time_machine_checks(config)
+        try:
+            out += _time_machine_checks(config)
+        except OSError as exc:  # its own line, never the hold lines above with it (B13 round 22 Z46)
+            out.append(doctor.stopped(config, "governance.time_machine", exc))
     try:
         state, detail = governance.compaction_state(config.docs_repo, gov)
     except AgentSyncError as exc:
@@ -2250,7 +2253,7 @@ def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.Check
         try:
             out += fn()
         except Exception as exc:  # one broken check must not hide the others
-            out.append(doctor.unfinished(name, exc))
+            out.append(doctor.stopped(config, name, exc))
     return out
 
 
