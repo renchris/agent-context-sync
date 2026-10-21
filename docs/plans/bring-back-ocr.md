@@ -1462,6 +1462,46 @@ new one for the pane before the successor's first turn, so no ping was lost.
 Round 22: the round 21 workflow with prompt v30 on this section's landed tip, BASE `20612f1f` (ids Z<n>, outputs
 `round22/`); scenario C plays the v29 and v28 blocks.
 
+### B13 round 22: v30 rehearsal, cross-lane review, harvest (2026-10-21)
+
+Run `wf_b85edcf6-a9f` on `f84c8c01` (102 agents, 0 errors, 55 minutes). All six scenarios pass their EXPECTED: the
+new Mac and the field Mac are "fully one command", every v29 and v28 copy is refused in step 1 with exit 2, and the
+git stop, the reinstall during a sync and the empty-folder alarm run as the prompt says; every round 21 fix a
+rehearsal re-checked holds on real output, and v30's chmod clause clears a manifest, the state folder, a configured
+state_dir and a -wal at 0000 or 0400. 91 findings, none merged, 88 confirmed (2 turns, 29 wrong, 57 small), 3
+refused (Z16 is not a defect; Z85 and Z87 report that readers agree). The lead confirmed Z86 against its verifier's
+"not real": that verdict refuted the finder's "no defect" while measuring a Y7 regression. Seven need prompt text, so
+the next prompt is v31.
+The turns and most wrongs are round 21's ownership rule left short in two places. v30 grants the chmod for the
+manifest and the state folder, but a lock, heartbeat or governance file at 0000 still stops step 2 (Z8, Z59, the
+turns). A folder ABOVE the state folder that refuses a search crashes doctor's disk and governance checks, sends
+status's NEXT to disk's generic fix and replaces the report's Configuration with a raw PermissionError (Z3, Z9, Z10,
+Z26, Z27, Z34, Z40, Z41, Z46, Z60, Z61, Z73, Z74). Lead rulings for round 22 (in `lanes/COMMON21.md`): (1) the agent's
+chmod covers every file agentsync keeps under its state folder, and a 0000 folder holding a 0000 file takes both
+chmods in one pass before the re-run; (2) an unsearchable parent is one FAIL, the person's, with every check that
+needs the state folder "not checked" and nothing raised; (3) the words name the folder when a folder refuses. The
+others: a removed outside-CloudStorage --source-local folder in clear in the shell report (Z2, Z13, Z29, Z42, Z77),
+the shell report's git readers (Z1, Z25, Z75, Z76), a configured state_dir name in clear (Z21, Z28), a folder where
+the manifest belongs (Z11, Z12, Z51, Z53), a read-only volume (Z47, Z78, Z79), a product-word organisation made
+public by a site library of the same word (Z86) and a refused purge queue's traceback (Z54, older than round 21).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88 over rounds 2
+and 4 to 22; turns 0 for seven rounds, then 1, then 2; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22,
+25, 24, 8, 21, 15, 29 (about 8 distinct). Round 21's rule was built for the cases its findings named; each reader
+missed the neighbouring ones, so this round states the rule for every state file and for the parent.
+
+Lanes (`--account auto`, CONTRACTS §16.158 to §16.163, brief `lanes/COMMON21.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r22-land.lock`; scratch under `round22/`): RA 28 (the
+report under an unsearchable parent, folder words, a manifest folder, the state_dir name, a stopped copy's time and
+folders lines, the buckets' owners, [remote.origin], Z86), RB 12 (the shell report's removed --source-local folder,
+its git readers, the --report-only NEXT, the fallback's state stop, Y66's guard test), P 10 (prompt v31, the chmod of
+every state file, the person's kinds, a manifest folder and a read-only volume in step 1 and step 2), B 26 (doctor's
+disk and governance under an unsearchable parent, the person's kinds, cli's state errors for a manifest folder, a
+read-only volume and a -wal, nested brackets, the purge queue's traceback, the stale-lock note), E 5 (the upgrade
+retry note, dead retry code and its docstrings), D 7 (guides, CONTRACTS citations, CLAUDE.md's CI time). Lead: Z91
+(round 21's /tmp leftovers, the round 22 harvest's scratch and the v29 sandboxes, 87 names, removed with none
+skipped).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

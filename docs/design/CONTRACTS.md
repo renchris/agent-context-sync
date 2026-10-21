@@ -27060,3 +27060,27 @@ its home; it now counts only a mention outside such a citation (a dated line's o
 section, and that found one more: §16.123 T24 (in §16.139). Two lines that name a section's citation of an item,
 not its home, are listed by name in the test. Test:
 `test_a_round_19_or_later_citation_names_a_section_that_holds_its_item`.
+
+### 16.158 Round 22: setup report (2026-10-21, wave B13 round 22 lane RA)
+
+Reserved for round 22 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 22").
+
+### 16.159 Round 22: installer, the shell report's redaction and git readers (2026-10-21, wave B13 round 22 lane RB)
+
+Reserved for round 22 lane RB of B13.
+
+### 16.160 Round 22: setup prompt v31 and the chmod of every state file (2026-10-21, wave B13 round 22 lane P)
+
+Reserved for round 22 lane P of B13.
+
+### 16.161 Round 22: an unsearchable parent, the person's kinds and the state errors in cli and doctor (2026-10-21, wave B13 round 22 lane B)
+
+Reserved for round 22 lane B of B13.
+
+### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
+
+Reserved for round 22 lane E of B13.
+
+### 16.163 Round 22: deploy docs, CONTRACTS citations and CLAUDE.md's CI time (2026-10-21, wave B13 round 22 lane D)
+
+Reserved for round 22 lane D of B13.
