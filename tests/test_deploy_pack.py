@@ -7896,9 +7896,11 @@ def test_y49s_line_says_staging_is_emptied_in_place() -> None:
 def test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does() -> None:
     """B13 round 21 Y61: since round 20 X19 any run that writes a report after a copy install.sh stopped at
     step 1, with no --log-start since (a plain install.sh included), writes stopped-copy-report.md and adds a
-    clause to its own NEXT, and only a run started by that attempt's end line resolves the stop; the guide
-    said only `--report-only` routes it, and that any step 1 run resolves a step 1 error. The clause is read
-    from install.sh and the filter from the report."""
+    clause to its own NEXT, and since round 21 Y17 no run resolves the stop; the guide said only
+    `--report-only` routes it, and that any step 1 run resolves a step 1 error. The clause is read from
+    install.sh and Y17's no-resolve arm from `setup_report.stopping_error`. B13 round 22 Z62: §16.157's
+    Y61 paragraph still gave X19's end-line rule, which Y17 had removed; its dated line says no run resolves
+    it."""
     from agentsync import setup_report  # noqa: PLC0415
 
     install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
@@ -7922,6 +7924,108 @@ def test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does() -> 
     assert "Since 2026-10-20 (CONTRACTS §16.147, X19), any other run that writes a report after such" in guide
     assert "(a plain `install.sh` the stopped copy's Doctor asked for, say), routes it the same way" in guide
     assert f"It keeps its own `NEXT:` and adds (after a `; ` when there is one) `{added.group(1)}`." in guide
+    y61 = dict(_contracts_numbered_sections())["16.157"].split(
+        "**The guide routes a report after a stopped", 1
+    )[1]
+    y61 = " ".join(y61.split("\n**", 1)[0].split())
+    assert y61.endswith(
+        "Amended 2026-10-21, §16.163 Z62 (by §16.152 Y17): no run resolves the stop, a run in the end line's"
+        " own second included; a re-run with the right copy opens an attempt of its own."
+    )
+
+
+def test_the_guides_private_only_rule_names_the_product_word_exception() -> None:
+    """B13 round 22 Z63: since round 21 Y7, Y72 a configured folder or library named only with coding-agent
+    product words is redacted but makes neither report private, yet the guide's Private-only rule named only a
+    drive's own folders (`Documents`) as the exception. The new sentence's examples are checked against
+    `setup_report._agent_words` and a `Redactor`, and none is a name of two words, which never made a report
+    private."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    page = _page("docs/deploy/setup-feedback.md")
+    found = re.search(
+        r"So, since 2026-10-21, is one named only with coding-agent product words \(([^;)]*); the words are"
+        r" ([a-z, ]+), \[CONTRACTS §16\.153\]\(\.\./design/CONTRACTS\.md\) Y7, Y72\): it is still redacted,"
+        r" but it does not make either report private\.",
+        page,
+    )
+    assert found is not None
+    words = set(re.split(r", (?:and )?| and ", found.group(2)))
+    assert words == setup_report._AGENT_WORDS
+    examples = re.findall(r"`([^`]*)`", found.group(1))
+    assert examples
+    for name in examples:
+        assert " " not in name and setup_report._agent_words(name), name
+        red = setup_report.Redactor()
+        red.add("folder", name)
+        red.redact(f"the {name.lower()} of this report and {name}")
+        assert not red.word_named_shown, name
+    # a word the report prints that is no product word still makes it private: the exception is the words'
+    red = setup_report.Redactor()
+    red.add("folder", "Status")
+    red.redact("Status")
+    assert red.word_named_shown
+
+
+def test_the_guides_stopped_copy_bullet_follows_the_end_line_filter() -> None:
+    """B13 round 22 Z69: the stopped-copy bullet and the K28 row said an attempt with an install.sh run in it
+    is read by the usual rules, while since round 21 Y18 `_stopped_before_the_list` leaves out a plain install
+    run from the attempt's end line on (the stand-alone run the stopped copy's Doctor asks for). The filter is
+    read from the report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report._stopped_before_the_list)
+    assert (
+        "inside = [r for r in runs if r.list_only or end is None or r.started is None or r.started < end]"
+        in (source)
+    )
+    page = _page("docs/deploy/setup-feedback.md")
+    assert "an attempt with an `install.sh` run in it (the agent listed the folders all the same)" not in page
+    assert "with no `install.sh` run in it, counts no folder question" not in page
+    assert (
+        "and so is a folder list the agent ran all the same, whenever it started: that list puts the attempt"
+        " back under the usual rules. A plain `install.sh` run from the attempt's end line on (the"
+        " stand-alone run the stopped copy's Doctor asks for) does not." in page
+    )
+    assert (
+        "with no folder list in it (a stand-alone install.sh run after its end line does not count, §16.152"
+        " Y18), counts no folder question" in page
+    )
+
+
+def test_the_guides_path_row_quotes_the_shell_reports_legend() -> None:
+    """B13 round 22 Z70: since round 21 Y8 the shell report's `<path>` legend says install.log dollar-quotes a
+    name with a tab or another control character, a curly apostrophe, an en dash or an accent (under the C
+    locale, any character outside ASCII); the guide's `<path>` row still said a curly apostrophe, a dash or an
+    accent. The legend's words are read from install.sh."""
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    block = install.split('case "$used" in *" <path> "*)', 1)[1].split(";;", 1)[0]
+    said = " ".join(" ".join(re.findall(r'^\s*say "  ?(.*)"$', block, re.M)).split())
+    legend = re.search(r"which install\.log uses (for a name with [^)]*\))", said)
+    assert legend is not None
+    guide = (ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8")
+    row = next(line for line in guide.splitlines() if line.startswith("| `<path>` |"))
+    assert "how install.log writes a name with a curly apostrophe, a dash or an accent" not in row
+    assert f"every `$'...'` word, which install.log writes {legend.group(1)}," in row
+
+
+def test_readme_section_4_says_curate_exits_1_on_a_state_it_cannot_open() -> None:
+    """B13 round 22 Z66: README §4's 2026-10-04 line says curate exits 1 only on a blocking finding, true when
+    written; since round 19 W65 and round 20 X73 a state file or the state folder this account cannot open
+    exits 1 too (round 21 Y76 told §9 and curate's help). The dated line stays, and a later CORRECTED line
+    says the rest, as curate's help line, read from `cli`, does."""
+    from agentsync import cli  # noqa: PLC0415
+
+    source = " ".join(inspect.getsource(cli).replace('"\n        "', "").split())
+    assert "(rc 1 on a blocking finding or a state file this account cannot open, never on rows)" in source
+    readme = _page("README.md")
+    old = readme.index("**CORRECTED (2026-10-04):** `agentsync refresh-queue` is now a hidden alias")
+    new = readme.index(
+        "**CORRECTED (2026-10-21, B13 round 22):** curate also exits 1 when a state file or the state folder"
+        " cannot be opened by this account"
+    )
+    assert old < new
+    assert "Work rows still exit 0, so the work list is still the rows, not the exit code." in readme[new:]
 
 
 def test_section_9s_exit_codes_name_65_and_a_state_file_this_account_cannot_open() -> None:

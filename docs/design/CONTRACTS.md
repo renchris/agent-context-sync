@@ -27032,6 +27032,9 @@ back:` or issue link line, and adds `the last setup attempt was a copy of the pr
 "Failed at step N" bullet say both now. Test: `test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does`,
 which reads the NEXT clause from install.sh and the end-line filter from `setup_report.stopping_error`.
 
+Amended 2026-10-21, §16.163 Z62 (by §16.152 Y17): no run resolves the stop, a run in the end line's own second
+included; a re-run with the right copy opens an attempt of its own.
+
 **CI's limit keeps 10 minutes above its slowest job** (Y68; dated line at §16.144 W70). Round 20's ten ci jobs
 (34818253 to 20612f1f, read with `gh run view --json jobs`) took 21:17 to 26:13 but one, 33:53 (64380e08, pytest's
 step 33:14, with timing tests skipped at a load of 5 to 8 per core), 6 minutes under the limit of 40. ci.yml's
@@ -27083,4 +27086,38 @@ Reserved for round 22 lane E of B13.
 
 ### 16.163 Round 22: deploy docs, CONTRACTS citations and CLAUDE.md's CI time (2026-10-21, wave B13 round 22 lane D)
 
-Reserved for round 22 lane D of B13.
+Lane D's round 22 items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the
+verifier's corrected fix built): Z62, Z63, Z66, Z67, Z69, Z70 and Z88. Z67 and Z88 are one defect, built once. None
+makes things worse.
+
+**§16.157 Y61 still gave X19's end-line rule** (Z62; dated line at §16.157 Y61). Round 21 lane D's paragraph said
+only a run started by the attempt's end line resolves a copy install.sh stopped at step 1, the §16.147 X19 rule that
+§16.152 Y17 had already removed: `stopping_error` resolves such a stop by no run. The paragraph keeps its words and
+gets a dated line, and the test's docstring says Y17's rule. Test:
+`test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does`, which reads the dated line from §16.157.
+
+**The guide's Private-only rule names the product-word exception** (Z63; `docs/deploy/setup-feedback.md`). Since
+§16.153 Y7, Y72 a configured folder or library named only with coding-agent product words (`Copilot`, `Cursor`,
+`GitHub`) is redacted but makes neither report private, as a drive's own `Documents` does not; the guide named only
+the drive folders as the exception. A sentence after that one names it; a name of two words (`GitHub Copilot`) is no
+example, since it is no word the report prints and never made a report private. Test:
+`test_the_guides_private_only_rule_names_the_product_word_exception`, which checks each example with
+`setup_report._agent_words` and a `Redactor`.
+
+**README §4 says curate exits 1 on a state it cannot open** (Z66; `README.md`). Its 2026-10-04 line says curate
+exits 1 only on a blocking finding, true when written; since W65 and §16.149 X73 a state file or the state folder
+this account cannot open exits 1 too, as §16.157 Y76 told §9 and curate's help. The dated line stays, and a
+`CORRECTED (2026-10-21, B13 round 22)` line after §4's run says the rest. Test:
+`test_readme_section_4_says_curate_exits_1_on_a_state_it_cannot_open`, which reads the help line from `cli`.
+
+**The guide's stopped-copy bullet and K28 row follow Y18** (Z69; `docs/deploy/setup-feedback.md`). They said an
+attempt with an install.sh run in it is read by the usual rules; since §16.152 Y18 `_stopped_before_the_list`
+leaves out a plain install run from the attempt's end line on (the stand-alone run the stopped copy's Doctor asks
+for), so only a folder list, whenever it started, or a run started before the end line puts the attempt back.
+Test: `test_the_guides_stopped_copy_bullet_follows_the_end_line_filter`, which reads the filter from the report.
+
+**The guide's `<path>` row quotes the shell report's legend** (Z70; `docs/deploy/setup-feedback.md`). Since §16.153
+Y8 the legend says install.log dollar-quotes a name with a tab or another control character, a curly apostrophe, an
+en dash or an accent (under the C locale, any character outside ASCII); the row still said a curly apostrophe, a
+dash or an accent. It quotes the legend now (§16.46 R7's quote stays as its record). Test:
+`test_the_guides_path_row_quotes_the_shell_reports_legend`, which reads the legend from install.sh.

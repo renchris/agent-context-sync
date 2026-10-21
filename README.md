@@ -943,6 +943,10 @@ the docs repo's `README.md`; `~/.local/bin/agentsync curate` lists the rows, and
 --stat -- docs/mirror` and a shell refresh-queue script run over `docs/DEPENDS.tsv`; it now shows the
 implementation's.
 
+**CORRECTED (2026-10-21, B13 round 22):** curate also exits 1 when a state file or the state folder cannot be opened
+by this account (a manifest a `sudo` run left owned by root, say; since B13 round 19 W65 and round 20 X73, CONTRACTS
+§16.157 Y76). Work rows still exit 0, so the work list is still the rows, not the exit code.
+
 The refresh queue is one awk pass over a generated `DEPENDS.tsv`: 0.08–0.12 s over 1,600 rows
 ([C11 §3](docs/design/receipts/verify/C11-local-walk.md)). It reports `STALE`, `SOURCE-DELETED` and `SOURCE-UNREADABLE`
 separately because each needs a different action ([design §4.5](docs/design/agent-context-sync.md#45-l4--curation-incrementally)).
