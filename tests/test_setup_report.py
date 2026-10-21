@@ -10946,9 +10946,8 @@ def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
     for title in ("Quarantine by reason", "Empty cloud folders", "Repeat conversions"):
         assert parts[title].strip() == f"- {setup_report.NOT_MEASURED}", title
     assert (
-        '- evidence: 5 lines at the end of Status say "not measured": write the report again when this Mac '
-        "is idle (`~/src/agent-context-sync/scripts/install.sh --report-only`) before sending it\n"
-        in section(text, "Summary")
+        '- evidence: 5 lines at the end of Status say "not measured" because the report\'s time limit cut '
+        f"them off: {setup_report._IDLE_AGAIN}\n" in section(text, "Summary")
     )
 
 
