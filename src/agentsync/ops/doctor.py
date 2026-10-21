@@ -1823,6 +1823,22 @@ def _check_graph(config: Config) -> list[CheckResult]:
         )
         return out
     except Exception as exc:  # MSAL / Keychain errors are many; each is a diagnosis, not a crash
+        # the token cache is a file in the state folder: a folder this account cannot search says not
+        # checked, as the lock's line does, and a cache file it cannot open gets that file's own fix, never
+        # a logout, which stops on the same refusal (B13 round 21 Y42)
+        root = expand(config.state_paths.root)
+        if isinstance(exc, OSError) and exc.filename is not None and state_unopenable(exc, root):
+            if state_folder_shut(config):
+                out.append(_bad("graph.auth", STATE_FOLDER_UNCHECKED, Severity.INFO))
+            else:
+                path = Path(os.path.realpath(os.fsdecode(exc.filename)))
+                fix = state_path_fix(Path(os.path.realpath(root)), path)
+                out.append(
+                    _bad(
+                        "graph.auth", f"cannot read the token cache: {exc.strerror or exc}", severity, fix=fix
+                    )
+                )
+            return out
         out.append(
             _bad(
                 "graph.auth",
@@ -2761,7 +2777,10 @@ def run_checks(
 
 _STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat"})
 """The checks that read files in the state folder (the manifest, the lock, the heartbeat): over a folder this
-account cannot search each says :data:`STATE_FOLDER_UNCHECKED` (B13 round 20 X73)."""
+account cannot search each says :data:`STATE_FOLDER_UNCHECKED` (B13 round 20 X73). Three more read it and say
+the same line from inside their own check, so the rest of each still runs: graph's ``graph.auth`` (the token
+cache; graph.client_id and graph.config do not read the folder), ``sources.shared_content`` (only with two
+sources to compare) and status's governance lines (B13 round 21 Y11, Y26, Y42, Y44, Y51)."""
 
 _TAGS = {Severity.ERROR: "FAIL", Severity.WARN: "warn", Severity.INFO: "info"}
 

@@ -1823,6 +1823,56 @@ def test_graph_auth_probe_errors(
     assert r["graph.auth"].severity is Severity.WARN
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_token_cache_this_account_cannot_open_is_the_state_folders_not_a_logout(
+    sample_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y42: X73's not-checked list left out the graph check, whose MSAL read of the token cache
+    in the state folder raised PermissionError over a folder at 0000, so graph.auth FAILed (a live Graph
+    source) with ``logout && login``, which stops on the same refusal; and with another account's folder,
+    ``_fail_steps`` put that agent's step ahead of the person's chown. Over a shut folder graph.auth is the
+    not-checked [info] line; a cache file at 0000 in an open folder gets that file's ``chmod 600``."""
+    cfg = graph_config(tmp_path, sample_config)
+    root = expand(cfg.state_paths.root)
+    cache = expand(cfg.state_paths.token_cache_fallback)
+    cache.write_bytes(b"{}")
+
+    def msal(_cfg: Config) -> doctor._AuthProbe:
+        cache.read_bytes()  # MSAL's file fallback load, which a shut folder or a 0000 file refuses
+        return doctor._AuthProbe(True, "chris@example.com", "file-0600")
+
+    monkeypatch.setattr(doctor, "_auth_status", msal)
+    root.chmod(0)
+    try:
+        results = run_checks(cfg)
+        r = by_name(results)
+        assert r["graph.client_id"].ok
+        auth = r["graph.auth"]
+        assert (auth.ok, auth.severity, auth.detail, auth.fix) == (
+            False,
+            Severity.INFO,
+            doctor.STATE_FOLDER_UNCHECKED,
+            None,
+        ), auth
+        assert not any(s.startswith("the graph.auth ") for s in cli._fail_steps(results))
+        me = os.getuid()
+        with monkeypatch.context() as other:  # another account's folder: the person's chown is the one step
+            other.setattr(doctor.os, "getuid", lambda: me + 1)
+            steps = cli._fail_steps(run_checks(cfg))
+        assert not any("graph.auth" in s for s in steps), steps
+    finally:
+        root.chmod(0o700)
+    cache.chmod(0)
+    try:
+        auth = by_name(run_checks(cfg))["graph.auth"]
+    finally:
+        cache.chmod(0o600)
+    assert not auth.ok and auth.severity is Severity.ERROR, auth
+    assert auth.detail == "cannot read the token cache: Permission denied", auth
+    assert auth.fix == f"chmod 600 {doctor._shell_path(Path(os.path.realpath(cache)))}", auth
+    assert "logout" not in (auth.fix or "")
+
+
 # ------------------------------------------------------------------------------------------------ disk
 
 
