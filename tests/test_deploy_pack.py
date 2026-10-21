@@ -201,25 +201,34 @@ def test_claude_md_gives_cis_time_and_its_limit() -> None:
     round 19's jobs took 20:59 to 24:46, so "19 to 24" named no job and one ran past its top: the range is
     the jobs' own, 21 to 25. B13 round 21 Y68: round 20's jobs took 21:17 to 26:13 but one, 33:53 on a
     loaded runner, 6 minutes under the limit of 40: the range is 21 to 26 with that run beside it, and the
-    limit, 45, keeps 10 minutes above the slowest job seen."""
+    limit, 45, keeps 10 minutes above the slowest job seen. B13 round 22 Z67, Z88 (one defect): the eight jobs
+    after round 20's (eaed1034 to fcafd734) took 18:05 to 28:34, six of them past 26 and one under 21, so
+    a reader timing the read-back by "21 to 26" would think a healthy 28-minute job stuck: the range is 18
+    to 29, and ci.yml's note adds those times after round 20's, which it keeps."""
     guide = " ".join((ROOT / "CLAUDE.md").read_text(encoding="utf-8").split())
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     [limit] = re.findall(r"^jobs:\n  test:\n(?:    .*\n)*?    timeout-minutes: (\d+)\n", ci, re.M)
     assert "about 6 minutes" not in guide and "about 15 to 20 minutes" not in guide
     assert "about 19 to 24 minutes" not in guide and "23.5" not in guide
-    assert "about 21 to 25 minutes" not in guide
+    assert "about 21 to 25 minutes" not in guide and "about 21 to 26 minutes" not in guide
     assert (
-        "`ci` takes about 21 to 26 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
-        " the same tests and source ran 24 and then 21 minutes on two runs; one run took 34 on a runner"
-        " loaded 5 to 8 per core), plus any wait for a macOS runner; the job's"
-        f" limit is {limit} minutes (`timeout-minutes` in ci.yml)."
+        "`ci` takes about 18 to 29 minutes once its job starts (measured October 2026; 24 at 5120 tests, and"
+        " the same tests and source ran 24 and then 21 minutes on two runs; the eight jobs from eaed1034 to"
+        " fcafd734 took 18:05 to 28:34; one run took 34 on a runner loaded 5 to 8 per core), plus any wait"
+        f" for a macOS runner (one waited 21 minutes); the job's limit is {limit} minutes (`timeout-minutes`"
+        " in ci.yml)."
     ) in guide
-    assert int(limit) - 26 >= 10 and int(limit) - 34 >= 10
+    assert int(limit) - 29 >= 10 and int(limit) - 34 >= 10
+    lanes = _page("docs/lanes/COMMON.md")
+    assert "CI takes 18 to 29 minutes a run (one ran 34 on a loaded runner); its limit is 45" in lanes
+    assert "21 to 26 minutes" not in lanes and f"its limit is {limit} " in lanes
     # the workflow's own note gives the job's times, and pytest's step only as such
     note = " ".join(line.lstrip("# ") for line in ci.splitlines() if line.startswith("#"))
     assert "took 24:00 on one run and 20:59 on the next (pytest's step 23:32 and 20:23" in note
     assert "took 21:17 to 26:13 but one, 33:53 (64380e08, pytest's step 33:14," in note
     assert f"6 minutes under the limit of 40, so it is {limit}: 10 minutes above that job too" in note
+    assert "(eaed1034 to fcafd734) took 18:05 to 28:34, all green on attempt 1" in note
+    assert f"so {limit} stays {int(limit) - 29} minutes above them (B13 round 22 Z67, Z88)" in note
 
 
 def test_pppc_profile_parses_and_keeps_its_placeholders() -> None:

@@ -27043,6 +27043,9 @@ it, and `docs/lanes/COMMON.md` says the same; `_wide_limit` and W70 name 45, W70
 §16.151 X63's 40 stay, as their rounds' record). Tests: `test_claude_md_gives_cis_time_and_its_limit`, which holds
 the limit 10 minutes above 26 and above 34, and `test_the_recording_tests_limit_names_cis_own_limit`.
 
+Amended 2026-10-21, §16.163 Z67, Z88: the eight jobs after round 20's (eaed1034 to fcafd734) took 18:05 to 28:34, so
+CLAUDE.md and `docs/lanes/COMMON.md` give `about 18 to 29 minutes`, and the limit of 45 stays 16 minutes above them.
+
 **§9's exit-code list names 65 and a state file this account cannot open** (Y76; dated line under §9's exit-code
 list). The list had no 65, which since §16.125 T12 init, add-source and every command that runs a cycle return at
 `_state_readable` (its probe widened by §16.143 W41 and §16.149 X50) and since §16.131 U66 curate, purge and
@@ -27109,6 +27112,12 @@ exits 1 only on a blocking finding, true when written; since W65 and §16.149 X7
 this account cannot open exits 1 too, as §16.157 Y76 told §9 and curate's help. The dated line stays, and a
 `CORRECTED (2026-10-21, B13 round 22)` line after §4's run says the rest. Test:
 `test_readme_section_4_says_curate_exits_1_on_a_state_it_cannot_open`, which reads the help line from `cli`.
+
+**CI's time is the time of round 21's jobs** (Z67, Z88; dated line at §16.157 Y68). The eight ci jobs after round
+20's (eaed1034 to fcafd734, read with `gh run view --json jobs`) took 18:05 to 28:34, all green on attempt 1, and
+six of them past the 26 CLAUDE.md gave; one waited 21 minutes for a runner. CLAUDE.md gives `about 18 to 29
+minutes` with the 34-minute run beside it, `docs/lanes/COMMON.md` says the same, and ci.yml's note adds a sentence
+after round 20's. The limit stays 45, 16 minutes above 29. Test: `test_claude_md_gives_cis_time_and_its_limit`.
 
 **The guide's stopped-copy bullet and K28 row follow Y18** (Z69; `docs/deploy/setup-feedback.md`). They said an
 attempt with an install.sh run in it is read by the usual rules; since §16.152 Y18 `_stopped_before_the_list`

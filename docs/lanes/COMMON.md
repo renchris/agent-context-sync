@@ -114,7 +114,7 @@ CI it could not read: `nothing pushed` before the push (retry), `LANDED` after i
 Trunk (round 11 M87): ship-land checks trunk's CI before it pushes and stops on red (exit 6). If trunk is red, do not
 edit failing tests outside your lane's files: message the lead and the lane that landed them with the run id and the
 tests (`gh run view <id> --log-failed`), then wait for the owner's fix. The lane that landed a test that is red on CI
-owns its fix until main is green, even after other lanes land on top. CI takes 21 to 26 minutes a run (one ran 34 on a loaded runner); its limit is 45 (W80, round 21 Y68).
+owns its fix until main is green, even after other lanes land on top. CI takes 18 to 29 minutes a run (one ran 34 on a loaded runner); its limit is 45 (W80, round 21 Y68, round 22 Z67).
 
 Makes things worse: 13 round 22 items carry "a fix makes things worse? True" (Z3, Z6, Z21, Z26, Z28, Z33, Z34,
 Z44, Z51, Z53, Z60, Z75, Z84). For each, the verifier's corrected fix is one that does not: read its "Verifier" part
