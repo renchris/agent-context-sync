@@ -597,7 +597,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (30, "11677bc0fe6ab44972692684d4ea471d538195076b917c80be85a8d30c6e36dd")
+PROMPT = (31, "87a111840a59eb6f7830c0a4b02d82017eac607878487f5d88c3dccf5abc5ff8")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -1234,11 +1234,12 @@ def test_prompt_routes_changes_to_the_source_not_the_checkout() -> None:
     # a copy that is not the installer's could leave an earlier session's. The clause follows whether a report
     # ran.
     assert " ".join(finish.split()).endswith(
-        "step 1 kept; a patch an earlier report carried is not repeated, only listed there, by its hash when "
+        "step 1 kept, or a note of the commits it could not carry; a patch an earlier report carried is not "
+        "repeated, only listed there, by its hash when "
         "it can be read); if the "
         "report's run printed that bring-back.md could not be written, say so, do not name "
         "~/agent-context/bring-back.md, and name the files the NEXT: line says to copy back instead; "
-        f"{UNREAD_PATCH_TOLD} {CUT_OFF_TOLD} if no "
+        f"{UNREAD_PATCH_TOLD} {LOCAL_WORK_TOLD} {CUT_OFF_TOLD} if no "
         'report ran this session, or you are waiting for my folder answer, say "none" for that file instead, '
         "and do not point me to an older bring-back.md."
     )
@@ -3060,8 +3061,9 @@ FAIL_IS_MINE = (
     " line or a"
     " [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, rename or"
     " sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to replace or"
-    " remove, a docs-repo remote to remove or allow, a state file that is damaged or another account's) is"
-    " mine too: show it"
+    " remove, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a"
+    " file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume"
+    " refuses) is mine too: show it"
     " to me and do not make that edit or"
     " run its command. Otherwise, re-running the install.sh command its fix names is yours, once, even when"
     " the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays mine: if the"
@@ -3077,20 +3079,52 @@ install.sh command, once, and only for a fix that is not the person's: never Ros
 sign-in's ``agentsync status`` before the sign-in, or ``agentsync install-agent`` (B13 round 16 review).
 Lane B added a state file that cannot be read (its T12). Since v29 a state file that is damaged or another
 account's (B13 round 20 X26): a file of this account's own that it cannot open is a chmod the agent runs, the
-fix doctor's state_dir.files line names, while "cannot be read" read as covering it."""
+fix doctor's state_dir.files line names, while "cannot be read" read as covering it. Since v31 the kind is
+doctor.PERSONS_KINDS's (B13 round 22 Z65, lane B's words): a state file that is not a file, and a state file
+or folder an ACL, a privacy setting, a folder above it or a read-only volume refuses."""
 
 STATE_CHMOD_IS_YOURS = (
-    "A chmod 600 or chmod 700 of agentsync's own state folder or a file in it is yours too, once, when the"
-    " NEXT: line or a [FAIL] state_dir line names it as the fix: run it as written, then the same install.sh"
-    " command again; if it stops the same way, show me, log it and go to step 3's report. A sudo or a chown"
-    " stays mine."
+    "Each chmod 600 or chmod 700 of agentsync's own state folder or a file in it (the manifest, its -wal or"
+    " -shm, the lock, the heartbeat or a governance file) that the NEXT: line or any [FAIL] line (state_dir,"
+    " lock, heartbeat or governance) names as the fix is yours too, once each, in one pass: run each as"
+    " written, a folder's first; if the NEXT: line also says to run ~/.local/bin/agentsync status (a shut"
+    " folder hides its files' modes), run it, then each such chmod its [FAIL] lines name; then run the same"
+    " install.sh command again. If the re-run names a chmod you already ran, show me, log it and go to step"
+    " 3's report; a new one it names is yours the same way. A sudo or a chown stays mine."
 )
 """Step 2's words, since v30, for a state folder or file of this account's own that it cannot open (B13 round
 21 Y4, Y24, Y59; the lead's ownership rule): step 1 said that chmod is the agent's once step 2 stops on it,
 but step 2 let the agent follow a failed run's NEXT only when it was an install.sh or agentsync command or a
 click, and its [FAIL] rule only re-ran install.sh, so a literal reading logged "failed at step 2" and handed
 the person the chmod. The grant is tied to the NEXT: or [FAIL] line's own words, so a later paste needs no
-memory of step 1, and it is one chmod, once; sudo and chown stay the person's."""
+memory of step 1, and it is one chmod, once; sudo and chown stay the person's. Since v31 (B13 round 22 Z59,
+Z8, Z81; the lead's ruling 1) it covers every state file, the lock, the heartbeat and the governance files
+included, on any [FAIL] line that names it, and "once" is one pass, each chmod once, a folder's first: a shut
+folder hides its files' modes, so its NEXT adds status, whose [FAIL] lines name them."""
+
+STEP3_STATE_CHMOD_IS_YOURS = (
+    "A chmod 600 or chmod 700 that a [FAIL] line (state_dir, lock, heartbeat or governance) names as the fix"
+    " of agentsync's own state folder or a file in it is yours here too, once each in this step, as in step"
+    " 2: run it as written, then the sync again. If the sync stops on a chmod you already ran, show me, log"
+    " it as a step 3 error and go to the report. A sudo or a chown stays mine."
+)
+"""Step 3's words, since v31, for the same chmod when a sync, then status, stops on it (B13 round 22 Z38):
+v30 named it only in step 2, which ends in "the same install.sh command again", so step 3 had neither the
+"once" bound nor what to run after it. "Once each in this step", so a chmod spent in step 2 does not use up
+step 3's."""
+
+LOCAL_WORK_TOLD = (
+    "if the report's NEXT: line says bring-back.md does not carry the commits of some local-work branches,"
+    " name ~/agent-context/bring-back.md and then tell me, in that line's words, how many local-work branches"
+    " it does not carry, that its section 3 says how I may add them as patches and run"
+    " ~/src/agent-context-sync/scripts/install.sh --report-only again, and that either way I review the file"
+    " and copy it back; name no branch; do not add the patches or run the report again yourself;"
+)
+"""The finish's words, since v31, for the report's NEXT on a local-work branch whose commits bring-back.md
+does not carry (B13 round 22 Z30, Z71, one defect: round 21 Y23's NEXT had no relay). Before the cut-off
+clause, which still applies, since the cut-off NEXT wraps this one ("either way"); no branch is named, as a
+branch's name can carry a work name, and the agent adds nothing and runs no report, the report being its last
+command."""
 
 
 def test_readme_prompt_asks_a_mac_already_set_up_for_no_folder() -> None:
@@ -7613,8 +7647,16 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
     assert step2.count(STATE_CHMOD_IS_YOURS) == 1
     assert f"{FAIL_IS_MINE} {STATE_CHMOD_IS_YOURS} " in step2, "right after the [FAIL] rule it widens"
     assert (
-        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me or that chmod (but after"
+        f"{PERSONS_NEXT} it is an install.sh or agentsync command, a click for me or those chmods (but after"
         in step2
+    )
+    # B13 round 22 Z59, Z8: install.sh's status step names the chmods of any state check; Z81: a folder's NEXT
+    # adds the status the grant's "if the NEXT: line also says to run" reads
+    assert "~/.local/bin/agentsync status and each chmod 600 or chmod 700 its [FAIL] lines name" in (
+        SCRIPTS[0].read_text(encoding="utf-8")
+    )
+    assert r"(state_dir(\\.[a-z_]+)?|lock|heartbeat|governance\\.[a-z_]+)" in SCRIPTS[0].read_text(
+        encoding="utf-8"
     )
     script = SCRIPTS[0].read_text(encoding="utf-8")
     body = script.split("\nstate_open_fix() {", 1)[1].split("\n}\n", 1)[0]
@@ -7628,6 +7670,30 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
 
     fix = inspect.getsource(doctor.state_path_fix) + inspect.getsource(doctor.state_folder_fix)
     assert 'f"chmod 600 {_shell_path(at)}"' in fix and 'f"chmod 700 {_shell_path(' in fix
+
+
+def test_readme_step3_gives_the_agent_the_same_chmod() -> None:
+    """B13 round 22 Z38 (rehearsal F, home 2, h2-60 to h2-63): a manifest at 0000 at a step 3 sync stops
+    the sync, then status, on its chmod 600; only step 2 named that chmod, ending "then the same install.sh
+    command again", so step 3 had neither the bound nor what to run after it. Step 3 grants it once each in
+    that step, after the sentence that keeps a [FAIL] fix of the person's theirs, with the sync as what comes
+    next."""
+    step3 = " ".join(_prompt_steps()[3].split())
+    assert step3.count(STEP3_STATE_CHMOD_IS_YOURS) == 1
+    assert (
+        f"and a [FAIL] fix that is mine (step 2) stays mine. {STEP3_STATE_CHMOD_IS_YOURS} The steps" in step3
+    )
+
+
+def test_readme_finish_relays_the_local_work_next() -> None:
+    """B13 round 22 Z30, Z71 (probe rs): the report's NEXT for a local-work branch whose commits bring-back.md
+    does not carry, round 21 Y23's, had no clause in the finish, which relays the report's own NEXT only by
+    case: an agent named bring-back.md and dropped the branch advice. The clause keys on install.sh's own
+    words and stands before the cut-off clause, which wraps that NEXT."""
+    finish = " ".join(_prompt_steps()[3].rsplit("Finish with:", 1)[1].split())
+    assert f"{LOCAL_WORK_TOLD} {CUT_OFF_TOLD}" in finish
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "$back does not carry the commits of " in script and "its section 3 says how to add them" in script
 
 
 def test_readme_step2_does_not_log_a_failed_run_whose_next_it_follows() -> None:

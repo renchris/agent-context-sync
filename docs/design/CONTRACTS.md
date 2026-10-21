@@ -26840,6 +26840,10 @@ step 2's status, whose NEXT stays `fix the [FAIL] lines above` (Y59). Step 1's s
 is yours once step 2 stops on it`) is unchanged: step 2 now says when. Tests:
 `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_gives_the_agent_the_chmod_of_its_own_state`.
 
+Amended 2026-10-21, §16.160 Z59: v31's grant names each chmod 600 or chmod 700 of a state file or folder that the NEXT:
+line or any [FAIL] line (state_dir, lock, heartbeat or governance) names, once each in one pass, a folder's first,
+with the status a shut folder's NEXT names; the non-zero rule reads `those chmods`.
+
 ### 16.155 Round 21: a shut state folder, state_path_fix in every error and the lock's words (2026-10-20, wave B13 round 21 lane B)
 
 Round 21's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `round21/items/Y<n>.md`), each the
@@ -27446,6 +27450,40 @@ grant says the same (v31, below). Test, with the real agentsync:
 manifest's chmod 600 alone, both run as written, then a pass), with the folder cases of
 `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` and
 `test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says`.
+
+**Setup prompt v31** (Z59, Z81, Z38, Z65, Z30, Z71; amends §16.154 Y59). Version 31 everywhere the bump list names it
+(README block, `PROMPT`, `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION` and its docstrings, the form's placeholder, the
+version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback's version mentions and
+its row K55). No other lane sent prompt words this round: lane B's Z83 words are the person's kinds, built here as
+Z65's; lane B's new `STATE_REFUSED_STEP` and fix words are not quoted by the prompt.
+- Step 2's grant (Z59, Z8, Z81; the lead's ruling 1): `Each chmod 600 or chmod 700 of agentsync's own state folder or
+  a file in it (the manifest, its -wal or -shm, the lock, the heartbeat or a governance file) that the NEXT: line or
+  any [FAIL] line (state_dir, lock, heartbeat or governance) names as the fix is yours too, once each, in one pass:
+  run each as written, a folder's first; if the NEXT: line also says to run ~/.local/bin/agentsync status (a shut
+  folder hides its files' modes), run it, then each such chmod its [FAIL] lines name; then run the same install.sh
+  command again. If the re-run names a chmod you already ran, show me, log it and go to step 3's report; a new one it
+  names is yours the same way. A sudo or a chown stays mine.` v30's covered only a `state_dir` line, so a lock,
+  heartbeat or governance file at 0000 read as the person's; its "once" read as one chmod, while a shut folder
+  holding a shut file needs two. The bound is a repeat of a chmod already run (the state paths are a fixed, finite
+  set; Z81's verifier). The non-zero rule's `that chmod` reads `those chmods`.
+- Step 2's person's kinds (Z65): `a state file that is damaged, another account's or not a file, or a state file or
+  folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses`, as `doctor.PERSONS_KINDS`.
+- Step 3 (Z38), after `a [FAIL] fix that is mine (step 2) stays mine.`: `A chmod 600 or chmod 700 that a [FAIL] line
+  (state_dir, lock, heartbeat or governance) names as the fix of agentsync's own state folder or a file in it is
+  yours here too, once each in this step, as in step 2: run it as written, then the sync again. If the sync stops on
+  a chmod you already ran, show me, log it as a step 3 error and go to the report. A sudo or a chown stays mine.`
+  v30 named the chmod only in step 2, ending in the install.sh re-run.
+- The finish (Z30, Z71, one defect: round 21 Y23's NEXT had no relay), before the cut-off clause, which still
+  applies since the cut-off NEXT wraps this one: `if the report's NEXT: line says bring-back.md does not carry the
+  commits of some local-work branches, name ~/agent-context/bring-back.md and then tell me, in that line's words,
+  how many local-work branches it does not carry, that its section 3 says how I may add them as patches and run
+  ~/src/agent-context-sync/scripts/install.sh --report-only again, and that either way I review the file and copy it
+  back; name no branch; do not add the patches or run the report again yourself;`; and the file's parenthesis adds
+  `or a note of the commits it could not carry`.
+Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_gives_the_agent_the_chmod_of_its_own_state`
+(`STATE_CHMOD_IS_YOURS`, `FAIL_IS_MINE`), `test_readme_step3_gives_the_agent_the_same_chmod`
+(`STEP3_STATE_CHMOD_IS_YOURS`), `test_readme_finish_relays_the_local_work_next` (`LOCAL_WORK_TOLD`, keyed on
+install.sh's `$back does not carry the commits of`).
 
 **The person's kinds name every state refusal no chmod fixes** (Z65, with lane B's Z83, Z17 and Z48 built here once;
 amends §16.148 X26). An ACL on this account's own 0600 manifest gave status a NEXT whose kinds said `a state file that
