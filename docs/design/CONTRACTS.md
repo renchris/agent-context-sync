@@ -27366,6 +27366,26 @@ claim, prints `note: a stale lock from a dead run was broken; this sync stopped 
 before. Never "every source ran a full pass" (none may have run), and the job's run adds nothing (its err.log keeps
 the WARNING). Test: `test_cli.py::test_a_foreground_sync_that_breaks_a_stale_lock_and_then_stops_says_it_once`.
 
+**Z54: a refused purge queue keeps the deletion and queues it next pass (`agentsync.cycle`).** With
+`governance/purge-queue.json` at 0000, `_removals` tombstoned a confirmed upstream deletion before
+`governance.enqueue_purge` raised, the source failed on `GovernanceError: ...` with a traceback, its alarm still
+said `(deleted upstream; purge queued)`, and the next pass found a tombstone, so the purge (C15 req 38) was never
+queued and nothing said so. The purge is queued before the tombstone; a refused queue (a GovernanceError or an
+OSError) keeps the row a deletion candidate, so the next complete pass confirms it and queues it, and the rest of
+that pass's purges are kept the same way. The source fails in words, `purge queue: purge-queue.json cannot be
+opened: Permission denied; fix: <state_path_fix>` (status's fix, round 21 Y45, given only for an access errno),
+logged at error with no traceback and recorded on the pass's row, and its cursor is not kept, so a Graph delta that
+carried a provider's deletion, which arrives once, is read again next pass (lane B's reviewer: the failed source's
+cursor was still promoted and the row stayed live). The alarm reads `<n> file(s) deleted upstream kept their
+page(s): purge NOT queued; retried next pass`, or, when the deletions were an operator's accept over a tripped
+breaker, `...; the breaker still holds them: run \`~/.local/bin/agentsync accept-deletions <id>\` again once the
+queue opens`, as the breaker is cleared only once the purges are queued, so the accept is not spent. A purge that
+reached the queue before its audit line was refused counts as queued (the row is tombstoned) and the source fails
+on `purge audit: ...`. The two-pass alarm (`... deleted upstream; purge queued`) is said after the queue answers, of
+the files whose purge was queued. Not a catch-and-carry-on: the tombstone never stands without its purge (the
+verifier's). Tests: `test_cycle.py::test_a_purge_queue_this_account_cannot_open_keeps_the_deletion_and_queues_it_next_pass`
+(local, three passes) and `test_review_fixes.py::test_a_refused_purge_queue_replays_a_graph_delta_that_carried_the_deletion`.
+
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
 Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the

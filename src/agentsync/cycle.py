@@ -127,6 +127,7 @@ from agentsync.graph.errors import AuthBlockedError
 from agentsync.graph.mail import MailArm
 from agentsync.graph.teams import TeamsArm
 from agentsync.manifest import (
+    ACCESS_ERRNOS,
     ItemRow,
     Manifest,
     OutputRow,
@@ -4418,6 +4419,9 @@ class _Cycle:
         candidates the config no longer covers (or that an earlier root listed) and no other."""
         scan_items = scan_items or {}
         today = self.today()
+        confirmed_now: list[str] = []  # files _confirmed_absent confirmed this pass
+        breaker_held = False  # a tripped breaker these confirmed deletions clear once their purges are queued
+        said_now = False  # whether their alarm is this method's (local/inbox, two passes)
         if src.kind in (SourceKind.LOCAL, SourceKind.INBOX):
             self.manifest.clear_absent_marks(src.id, self.run_id)
         scope_key = _SCOPE_CHANGE_META + src.id
@@ -4486,9 +4490,12 @@ class _Cycle:
             else:
                 confirmed = self._confirmed_absent(src, absent, rows_before, acc)
                 removals += [(sid, "deleted-upstream") for sid in confirmed]
+                confirmed_now = list(confirmed)
+                local = src.kind in (SourceKind.LOCAL, SourceKind.INBOX)
+                said_now = local and src.id not in self.accept_deletions
                 srow = self.manifest.get_source(src.id)
-                if srow is not None and srow.breaker_tripped_at is not None:
-                    self.manifest.clear_breaker(src.id)
+                # cleared once the purges are queued: a refused queue keeps an operator's accept unspent
+                breaker_held = srow is not None and srow.breaker_tripped_at is not None
         elif src.id in self.accept_deletions:
             srow = self.manifest.get_source(src.id)
             held = srow is not None and srow.breaker_tripped_at is not None
@@ -4514,7 +4521,35 @@ class _Cycle:
         if scope_changed and complete_full:
             self.manifest.set_meta(scope_key, "")
         last_commit = gitops.head_sha(self.repo) if removals else None
+        refused: str | None = None  # the purge queue's refusal, in words
+        kept: set[str] = set()  # confirmed deletions whose purge was refused
         for stable_id, reason in sorted(set(removals)):
+            if reason == "deleted-upstream" and self.gov.purge_on_upstream_delete:
+                # C15 req 38: a confirmed deletion (explicit, or absent past the breaker) queues a purge; the
+                # history rewrite itself runs only from `agentsync purge --queue` (operator-scheduled). Queued
+                # BEFORE the tombstone: a refused queue left the row a tombstone, which no later pass confirms
+                # again, so its purge was lost for good; the row stays a deletion candidate, and the next
+                # complete pass confirms it and queues it then (B13 round 22 Z54)
+                if refused is None:
+                    try:
+                        governance.enqueue_purge(
+                            self.config.state_paths.root,
+                            governance.PurgeSelector(source_id=src.id, stable_id=stable_id),
+                            governance.PurgeReason.UPSTREAM_DELETED,
+                            now=self.now(),
+                        )
+                    except (governance.GovernanceError, OSError) as exc:
+                        refused = self._queue_refused(exc)
+                        if self._queued(src.id, stable_id):  # written, then its audit line refused
+                            log.error(
+                                "source %s: purge queued, its audit line not written: %s", src.id, refused
+                            )
+                            acc.failed = True
+                            acc.errors.append(_one_line(f"purge audit: {refused}"))
+                            refused = None
+                if refused is not None:
+                    kept.add(stable_id)
+                    continue
             self.changes += self.publisher.tombstone(
                 src.id,
                 stable_id,
@@ -4524,16 +4559,58 @@ class _Cycle:
                 last_commit=last_commit,
                 archive=self.gov.archive,
             )
-            if reason == "deleted-upstream" and self.gov.purge_on_upstream_delete:
-                # C15 req 38: a confirmed deletion (explicit, or absent past the breaker) queues a purge; the
-                # history rewrite itself runs only from `agentsync purge --queue` (operator-scheduled).
-                governance.enqueue_purge(
-                    self.config.state_paths.root,
-                    governance.PurgeSelector(source_id=src.id, stable_id=stable_id),
-                    governance.PurgeReason.UPSTREAM_DELETED,
-                    now=self.now(),
-                )
         self.changes += self.publisher.reap(today)
+        if breaker_held and refused is None:
+            self.manifest.clear_breaker(src.id)
+        if said_now:
+            self._absent_alarm([sid for sid in confirmed_now if sid not in kept], acc)
+        if refused is not None:
+            # this source fails, in words: no type name, no traceback, and no "purge queued" (Z54). Its cursor
+            # is not kept, so a delta that carried a provider's deletion is read again next pass (the generic
+            # handler's rule), and the pass's row records the error (the reviewer's)
+            log.error("source %s: purge queue: %s", src.id, refused)
+            acc.failed = True
+            acc.errors.append(_one_line(f"purge queue: {refused}"))
+            acc.absent_removed -= len(kept & set(confirmed_now))
+            self.manifest.stage_cursor(src.id, None, self.run_id)
+            self._record_error(src, acc, _one_line(f"purge queue: {refused}"))
+            again = (
+                f"the breaker still holds them: run `{skill.AGENTSYNC_BIN} accept-deletions {src.id}` again "
+                "once the queue opens"
+                if breaker_held or src.id in self.accept_deletions
+                else "retried next pass"
+            )
+            acc.alarms.append(
+                f"{plural(len(kept), 'file')} deleted upstream kept {'its' if len(kept) == 1 else 'their'} "
+                f"page(s): purge NOT queued; {again}"
+            )
+
+    def _queued(self, source_id: str, stable_id: str) -> bool:
+        """Whether the purge of ``stable_id`` is in the queue now (never raises: a queue it cannot read is
+        no queued purge)."""
+        selector = governance.PurgeSelector(source_id=source_id, stable_id=stable_id)
+        try:
+            return any(
+                q.selector == selector for q in governance.pending_purges(self.config.state_paths.root)
+            )
+        except Exception:
+            return False
+
+    def _queue_refused(self, exc: Exception) -> str:
+        """The purge queue's refusal in words: a file this account cannot open, by its name, the system's
+        words and the state folder's fix for it (status's, round 21 Y45), else the error's own message."""
+        from agentsync.ops import doctor  # noqa: PLC0415 - doctor imports this module
+
+        cause = exc if isinstance(exc, OSError) else exc.__cause__
+        access = (
+            isinstance(cause, OSError) and cause.errno in ACCESS_ERRNOS
+        )  # else no access fix (reviewer's)
+        if access and isinstance(cause, OSError) and isinstance(cause.filename, str | bytes | os.PathLike):
+            path = Path(os.path.realpath(os.fsdecode(cause.filename)))
+            root = Path(os.path.realpath(expand(self.config.state_paths.root)))
+            fix = doctor.state_path_fix(root, path)
+            return f"{path.name} cannot be opened: {cause.strerror or cause}; fix: {fix}"
+        return _one_line(str(exc))
 
     def _confirmed_absent(
         self,
@@ -4568,15 +4645,21 @@ class _Cycle:
                 f"{'its' if len(first) == 1 else 'their'} page(s) become deletion notice(s) only if still "
                 "absent next pass"
             )
-        if confirmed:
-            acc.absent_removed += len(confirmed)
-            purge = "; purge queued" if self.gov.purge_on_upstream_delete else ""  # off under archive
-            acc.alarms.append(
-                f"{plural(len(confirmed), 'file')} still absent from this complete pass: "
-                f"{'its' if len(confirmed) == 1 else 'their'} page(s) are now deletion notice(s) (deleted "
-                f"upstream{purge})"
-            )
+        acc.absent_removed += len(confirmed)  # its alarm comes after the purge is queued (_absent_alarm)
         return confirmed
+
+    def _absent_alarm(self, removed: Sequence[str], acc: _SourceAcc) -> None:
+        """The alarm of the files :meth:`_confirmed_absent` confirmed whose pages are now deletion notices,
+        said after their purge was queued, so "purge queued" is never said of one the queue refused (B13
+        round 22 Z54)."""
+        if not removed:
+            return
+        purge = "; purge queued" if self.gov.purge_on_upstream_delete else ""  # off under archive
+        acc.alarms.append(
+            f"{plural(len(removed), 'file')} still absent from this complete pass: "
+            f"{'its' if len(removed) == 1 else 'their'} page(s) are now deletion notice(s) (deleted "
+            f"upstream{purge})"
+        )
 
     def _retire(self, src: SourceConfig, acc: _SourceAcc) -> None:
         """Retirement: tombstone the whole source in this (labelled) commit, exempt from the breaker."""

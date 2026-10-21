@@ -1674,3 +1674,44 @@ def test_a_file_that_came_back_needs_two_fresh_absences_again(tmp_path: Path) ->
     doc.unlink()
     assert run(config).changes == ()  # a fresh first absence
     assert ops(run(config)) == [("D", "mirror/src/doc.md")]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_refused_purge_queue_replays_a_graph_delta_that_carried_the_deletion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z54, lane B's reviewer: on a Graph drive the deletion arrives once, in the delta that
+    carries the provider's tombstone. With the purge queue refused, the source failed but its cursor was
+    still promoted, so the next delta never carried the deletion again and the row stayed live with no
+    purge. A refused queue keeps the old cursor, so the next pass reads that delta again and queues it."""
+    arm = FakeArm({"A": ("a.md", "ROOT", b"# A\n\nalpha\n"), "B": ("b.md", "ROOT", b"# B\n\nbravo\n")})
+    config, go = drive_env(tmp_path, arm, monkeypatch)
+    cursors: list[str | None] = []
+    real_scan = arm.scan
+
+    def scan(cursor: str | None, *, full: bool) -> ScanResult:
+        cursors.append(cursor)
+        return real_scan(cursor, full=full)
+
+    monkeypatch.setattr(arm, "scan", scan)
+    assert go().exit_code == 0
+    root = config.state_paths.root
+    governance._write_queue(root, [])
+    queue = governance._queue_file(root)
+    queue.chmod(0)
+    arm.next_items = [tomb("A", "a.md", "deleted")]
+    try:
+        refused = go()
+    finally:
+        queue.chmod(0o600)
+    rep = next(s for s in refused.sources if s.source_id == DRIVE)
+    assert refused.exit_code == 1 and rep.errors and rep.errors[0].startswith("purge queue: "), rep.errors
+    assert "1 file deleted upstream kept its page(s): purge NOT queued; retried next pass" in rep.alarms
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_item(DRIVE, "A").state is RowState.LIVE  # type: ignore[union-attr]
+    arm.next_items = [tomb("A", "a.md", "deleted")]  # what a delta from the kept cursor carries again
+    again = go()
+    assert cursors[-1] == cursors[-2], cursors  # read from the same cursor
+    assert again.exit_code == 0 and queued(config) == [("A", "upstream-deleted")], queued(config)
+    with Manifest(config.state_paths.db) as m:
+        assert m.get_item(DRIVE, "A").state is RowState.TOMBSTONE  # type: ignore[union-attr]

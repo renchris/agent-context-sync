@@ -258,6 +258,44 @@ def test_head_moved_by_hand_resets_generated_paths_and_republishes(sample_config
     assert porcelain(repo) == ""
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_purge_queue_this_account_cannot_open_keeps_the_deletion_and_queues_it_next_pass(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 22 Z54: with purge-queue.json at 0000, the confirming pass tombstoned the file before its
+    purge was queued, then failed on a GovernanceError traceback while its alarm said "purge queued"; the
+    next pass found a tombstone, so the purge was never queued. The purge is queued before the tombstone: a
+    refused queue fails the source in words, keeps the page and says the purge was not queued, and the next
+    complete pass confirms the file again and queues it."""
+    root = sample_config.state_paths.root
+    repo = sample_config.docs_repo
+    page = f"mirror/{SID}/projects/sample.txt.md"
+    run(sample_config)
+    (local_source_dir / "projects" / "sample.txt").unlink()
+    run(sample_config)  # the first complete pass that misses it marks it absent
+    governance._write_queue(root, [])
+    queue = governance._queue_file(root)
+    queue.chmod(0)
+    try:
+        refused = run(sample_config, mode=CycleMode.RECONCILE)
+        fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(queue)))
+    finally:
+        queue.chmod(0o600)
+    rep = source_report(refused)
+    assert fix.startswith("chmod 600 "), fix  # status's own fix for this account's file at 0000
+    assert refused.exit_code == 1 and rep.errors == (
+        f"purge queue: purge-queue.json cannot be opened: Permission denied; fix: {fix}",
+    ), rep.errors
+    assert not any("purge queued" in a or "GovernanceError" in a for a in rep.alarms), rep.alarms
+    assert "1 file deleted upstream kept its page(s): purge NOT queued; retried next pass" in rep.alarms
+    assert "status: deleted" not in (repo / page).read_text(encoding="utf-8")
+    again = run(sample_config, mode=CycleMode.RECONCILE)
+    assert again.exit_code == 0, source_report(again).errors
+    queued = governance.pending_purges(root)
+    assert len(queued) == 1 and queued[0].selector.source_id == SID, queued
+    assert any("(deleted upstream; purge queued)" in a for a in source_report(again).alarms)
+
+
 def test_archive_on_upstream_delete_survives_a_head_moved_by_hand(
     sample_config: Config, local_source_dir: Path
 ) -> None:
