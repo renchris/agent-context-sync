@@ -26537,6 +26537,15 @@ time, so an empty `proxy =` still takes nothing from the next line. Read order i
 (lane RB's Y64, §16.153) number the same `<proxy-N>`. Test:
 `test_a_git_proxy_or_remote_on_its_sections_header_line_is_read_and_redacted`.
 
+**A folder name with a TAB is redacted in add-source's escaped spelling** (Y2). add-source echoes the block it
+adds with the path as a TOML string (`json.dumps(..., ensure_ascii=False)`), so a TAB in a folder's name reads
+`path = "~/Projects/<name with \t>"` in install.out, and the report's excerpt printed it in clear while every other
+spelling read `<folder-N>` (the regex has a literal TAB, and matching deletes backslashes). `_alias_escaped`
+registers each folder value's JSON spelling, when it differs, as an alias of the placeholder the value already has
+(`Redactor.alias`: exact, one number for one folder), at the CloudStorage components, the project folders and an
+unconfigured source's recorded root; a `"` or `\` in a name is the same. Test:
+`test_a_folder_name_with_a_tab_is_redacted_in_add_sources_escaped_spelling`.
+
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
 The B13 round 21 items of lane RB (specs `round21/items/Y<n>.md`, the verifier's corrected fix built unless a

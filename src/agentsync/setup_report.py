@@ -3804,6 +3804,17 @@ def _unconfigured_roots(config: Config, ids: Sequence[str]) -> list[Path]:
     return [Path(root) for root in sorted(roots) if root]
 
 
+def _alias_escaped(red: Redactor, value: str) -> None:
+    """Register ``value``'s spelling in a JSON or TOML string, as add-source echoes the path it adds
+    (``path = "~/Projects/Zephyrine\\tQuarry"``, ``config``'s ``json.dumps(..., ensure_ascii=False)``), under
+    the placeholder ``value`` already has (B13 round 21 Y2: a TAB, a ``"`` or a ``\\`` in a folder's name left
+    that echo in clear in install.out's excerpt, the other spellings redacted). An alias, never a second
+    number for one folder; nothing for a name with none of those characters."""
+    escaped = json.dumps(value, ensure_ascii=False)[1:-1]
+    if escaped != value:
+        red.alias(escaped, value)
+
+
 def _build_redactor(r: _Run) -> Redactor:
     """Register everything this Mac's report could name (see the module docstring)."""
     red = Redactor()
@@ -3960,6 +3971,7 @@ def _build_redactor(r: _Run) -> Redactor:
             red.add("library", comps[0], fuzzy=True)
         for c in comps[1:] if shared else comps:
             red.add("folder", c, fuzzy=True)
+            _alias_escaped(red, c)
     # Every folder the setup prompt's listing showed, configured or not (the agent may have quoted them).
     listing_ok = True
     late: queue.Queue[list[tuple[str, int, str]]] = queue.Queue(maxsize=1)
@@ -4011,6 +4023,7 @@ def _build_redactor(r: _Run) -> Redactor:
             # stays one literal
             joined = len(_tokens(value)) >= 2 and _norm(value) in report_words()
             red.add("folder", value, ignore_case=True, fuzzy="/" not in value and not joined)
+            _alias_escaped(red, value)
     # Every configured id: an inbox or project source has one too, and a folder word inside an unregistered
     # id left it half-redacted (``<prefix>-<folder-N>-mail``, field report 2026-10-06).
     cloud_ids = {sid for sid, _provider, _comps in cloud_sources}
@@ -4048,9 +4061,11 @@ def _build_redactor(r: _Run) -> Redactor:
                         red.add("library", comps[0], fuzzy=True)
                     for c in comps[1:] if shared else comps:
                         red.add("folder", c, fuzzy=True)
+                        _alias_escaped(red, c)
                 elif not any(root.is_relative_to(o) for o in own):
                     for value in _project_values(root):
                         red.add("folder", value, ignore_case=True)
+                        _alias_escaped(red, value)
     for host in _proxy_hosts(_proxy_urls(r)):
         _add_proxy_host(red, host)
     # A cloud proxy's PAC path can name the customer (``/<domain>/proxy.pac``, ``?customer=``): the PAC URL

@@ -1191,6 +1191,36 @@ def test_a_vanished_sources_id_is_a_placeholder_in_every_section(
     assert "(not in the config, " not in text, "no second name for it anywhere"
 
 
+def test_a_folder_name_with_a_tab_is_redacted_in_add_sources_escaped_spelling(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 21 Y2: add-source echoes the block it adds with the path as a TOML string, so a TAB in the
+    folder's name reads ``path = "~/Projects/Zephyrine\\tQuarry"`` in install.out, and the report's excerpt
+    showed that spelling in clear while every other one read ``<folder-N>``. The escaped spelling is an alias
+    of the folder's own placeholder: one number, and a ``"`` or ``\\`` in a name is the same."""
+    cfg = fake_mac["config"]
+    folder = fake_mac["home"] / "Projects" / "Zephyrine\tQuarry"
+    folder.mkdir(parents=True)
+    capsys.readouterr()
+    assert cli.main(["add-source", str(folder), "--config", str(cfg)]) == 0
+    echoed = capsys.readouterr().out
+    assert 'Zephyrine\\tQuarry"' in echoed, echoed  # the leak this test guards
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + echoed,
+        encoding="utf-8",
+    )
+    rc, text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    leaked = [ln for ln in text.splitlines() if "zephyrine" in ln.lower() or "quarry" in ln.lower()]
+    assert leaked == [], leaked
+    red = setup_report.Redactor()
+    for name in ('Kestrel "North" Plans', "Contoso\\Ledger"):
+        red.add("folder", name, ignore_case=True, fuzzy=True)
+        setup_report._alias_escaped(red, name)
+    said = red.redact('path = "~/P/Kestrel \\"North\\" Plans" and "~/P/Contoso\\\\Ledger"; the north plans')
+    assert said == 'path = "~/P/<folder-1>" and "~/P/<folder-2>"; the north plans', said
+
+
 def test_an_unconfigured_id_the_redactor_does_not_know_keeps_its_fallback_label() -> None:
     """B13 round 17 U8, U23, U44: an id the Redactor never registered (an unreadable manifest, a timed-out
     read, a word the report prints) is never shown in clear: it keeps ``(not in the config, N)``, numbered
