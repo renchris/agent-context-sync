@@ -14158,8 +14158,8 @@ def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_sh
     """B13 round 21 Y64: git applies ``[remote "origin"] url = ...`` and ``[http] proxy = ...`` written on
     the section's header line, but git_remote_entries skipped every header line and git_proxy_values read a
     key only at a line's start, so a 403 line kept the remote's host and company path in clear beside the
-    public issue link. Both forms give the same placeholders (the two-line form's numbers); the Python
-    readers are lane RA's (Y1, Y36)."""
+    public issue link. Both forms give the same placeholders (the two-line form's numbers), in both reports:
+    the Python readers are lane RA's (Y1, Y36)."""
     for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
         monkeypatch.delenv(k, raising=False)
     (Path(env["HOME"]) / ".gitconfig").write_text(config)
@@ -14171,8 +14171,8 @@ def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_sh
     assert shell == (
         "fatal: unable to access 'https://<proxy-2>/<proxy-3>/': 403 through http://<proxy-1>:8080"
     ), shell
-    if config == _TWO_LINE_GIT:
-        assert python == shell, "the numbers the agentsync report gives"
+    # B13 round 21 Y1, Y36 (lane RA): the Python readers read the header line's key too, so both forms agree
+    assert python == shell, "the numbers the agentsync report gives"
 
 
 def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: Path) -> None:
