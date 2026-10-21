@@ -26665,6 +26665,9 @@ CloudStorage entry`, and its dollar-quote examples name a tab or another control
 locale, any character outside ASCII. No "configured folder" clause: a relative argument naming one is still
 `<path>`. Tests: `test_the_path_legend_says_only_a_relative_argument_is_one` (a relative word, a configured `~/`
 word, a tab word) and `test_the_shell_report_reads_past_a_dollar_quoted_install_log_word`.
+Amended 2026-10-21, §16.159 Z2, Z13, Z29, Z42, Z77: a `~/` or absolute argument outside CloudStorage that names no
+configured folder is `<path>` too, cut at its first part that is not a fixed macOS folder or one every home or
+drive has, as the agentsync report cuts it; the item says so.
 
 **A signal while the report is written is recorded, and the run finishes with its code** (Y16). `on_exit` cleared
 the EXIT trap and left HUP, INT and TERM on `on_signal`, whose `exit` (once the report's `$( )` returned) skipped
@@ -27073,7 +27076,89 @@ Reserved for round 22 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round
 
 ### 16.159 Round 22: installer, the shell report's redaction and git readers (2026-10-21, wave B13 round 22 lane RB)
 
-Reserved for round 22 lane RB of B13.
+The B13 round 22 items of lane RB (specs `round22/items/Z<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): Z1, Z2, Z13, Z25, Z29, Z42, Z44, Z75, Z76, Z77, Z82 and Z90. Z1 and Z25 are one
+defect, and Z2, Z13, Z29, Z42 and Z77 are one, each built once. Z76's `setup_report._git_remotes` half is lane RA's
+(§16.158). None makes things worse: Z44's and Z75's verifiers marked the finder's fix as worse, and their corrected
+fixes, built here, are not.
+
+**The install source line reads a url on its section's header line** (Z1, Z25). git applies `[remote "origin"]
+url = <url>` on one line, and the agentsync report reads it through `git config --get remote.origin.url`, but
+`fallback_install_source_line`'s awk threw the rest of the header line away (its `next`) and said `origin: none`.
+The header is matched with `match()` and its rest read as a key line by the same `key()` as the lines after it, as
+`git_remote_entries` reads it since §16.153 Y64: the last url read wins, in file order, and a comment or a `fetch`
+key after the header is no url. Tests: `test_install_oneshot.py::
+test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports` (a mirror and a GitHub url
+on the header line, a later url line that wins, a comment, another remote's url on its header line), which also
+reads the agentsync report's label on the same real checkout.
+
+**A quoted remote name or http subsection may hold an escaped quote** (Z75). `git remote add 'co"x' <url>`
+writes `[remote "co\"x"]`; `git_remote_entries`' `"[^"]*"` stopped at the escaped quote, so the section was no
+remote and git's error printed its host and path in clear in the public shell report, which
+`setup_report._GIT_SECTION_RE` reads. The awk match is `"(\\.|[^"\\])*"`. `git_proxy_values`' sed takes the
+same subsection as a nested group with no alternation, `"\([^"\\]*\\.\)*[^"\\]*"`, and its value is `\4`:
+BSD sed's basic regular expressions have no `\|`, and a sed using it reads no header line at all, the leak §16.153
+Y64 closed. The insteadOf readers are left as they are: a quote in a URL base has no use (the verifier's part 3).
+Tests: the quoted rows of `test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_shell_report`
+and of `test_the_shell_git_readers_read_a_key_on_its_sections_header_line`, which reads a quoted `[http "..."]
+proxy =` beside a plain one.
+
+**The older dotted `[remote.<name>]` section is a remote** (Z76). git still applies `[remote.origin]` and
+`[Remote.Upstream] url = ...` (it lowercases the dotted name), and its fetch error names the url's host, but
+neither shell reader read the form. `git_remote_entries`' header is `[remote "<name>"]`, `[remote.<name>]` or
+`[remote.<name> "<sub>"]` (the dotted name's characters are git's, `[A-Za-z0-9.-]`), its key on the header line
+read as before; `fallback_install_source_line` reads `[remote.origin]` in any case. `[remote.]` and `[remotex.y]`
+are no remote. The proxy readers and `[http.<url>]` are not touched: git refuses a dotted URL subsection as a bad
+config line, and both proxy readers already read every `proxy =` line. Tests: the dotted rows of the two tests
+above and of the install source line test.
+
+**A cut-off report with local-work branches says "either way" once** (Z44). The cut-off clause (§16.153 Y66)
+joined round 21 Y23's branch NEXT with `; either way, `, and that NEXT holds its own before the review. It joins
+with `; also, ` when the NEXT already holds one, so both pieces of advice come before the one `either way, review`;
+Y23's words stay, since the finder's `then review` would make the review a step after adding the patches and
+re-running, which loops on a branch at an older commit of origin/main. Test:
+`test_a_cut_off_report_with_local_work_branches_says_either_way_once`.
+
+**An unconfigured `~/` or absolute `--source-local` argument is cut to `<path>`** (Z2, Z13, Z29, Z42, Z77; amends
+§16.153 Y8). `logged_source_local` put such an argument in `known`, which only `folder_parts` reads, and it skips
+every path outside CloudStorage, while `project_values` ran only on configured and add-back folders. So a failed
+run's argument, or a source whose `[[source]]` block was removed, printed in clear in the shell report's Installer
+lines and in bring-back.md beside the public link, where the agentsync report cuts it
+(`_source_local_shown`). `redaction_pairs` now cuts each one outside CloudStorage that is no configured or add-back
+folder and not agentsync's own, as that function does: kept up to its first part that is not `~`, a
+`_PATH_COMPONENTS` folder, a `generic_folder` or a `generic_home_dir`, then `<path>`, so `~/Projects/<path>`,
+`/Volumes/<path>`, `~/<path>` and `/<path>`; the home itself is `~`, and a part that is a folder registered above
+reads as its `<folder-N>`, as the agentsync report redacts the line before it cuts. It is the argument's pair only
+(its `printf %q` form, the UTF-8 one and `shown_arg`'s in its quotes, each for the logged, `$HOME`, `pwd -P` and
+`~` spellings, so the order the pairs run in does not matter), flagged `a`: `redact_stream` takes it only where the
+argument ends (the line's end, a blank, a quote or a closing sign), so it never cuts a longer argument it begins
+(`~/Projects/Contoso` beside a configured `~/Projects/Contoso Ledger`, which a review measured printing
+`~/Projects/<path>\ Ledger`). No bare word of it is replaced elsewhere. Z13's and Z29's verifiers proposed registering it
+as a `<folder-N>` instead; that is not built, because it takes numbers the agentsync report never gives and turns a
+common last part (`~/Projects/sync`, `~/Desktop/Notes`) into a placeholder everywhere in the report, and a report
+word into a private report. The agentsync report registers a removed source's folder from the manifest; the shell
+fallback runs where agentsync is not installed, so there is no manifest to read. A configured folder keeps its
+`~/Projects/<folder-N>`, and one inside it reads `~/Projects/<folder-N>/<path>`. Tests:
+`test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_report_cuts_it` (thirteen arguments:
+the home, a prefix of a configured folder, one inside it and its name elsewhere among them; the agentsync report's
+lines on the same home) and `test_the_path_legend_says_only_a_relative_argument_is_one`.
+
+**The shell report quotes the NEXT of the run whose step stopped** (Z82). With no agentsync the shell report
+quoted install.log only (`step=config rc=1 result=failed config_err=state-owner`) and said Doctor and Status were
+not run, so it named neither the owner nor the command of step 2's NEXT. `fallback_next_line` adds, after the
+install.log fence, the last `NEXT:` line of the install.out block whose run is the run of install.log's last
+`step=` line, in its own fence under `The last install run's NEXT line, from the copy of its output:` (no `
+(install.out`, which a stopped copy's relabelling keys on); an older run's NEXT is never shown, a run with none
+reads `No NEXT line of that run in install.out.`, and the report's own run adds nothing (its NEXT comes after the
+report). Its re-run's `--source-local` folder is cut by Z77's pairs. Test:
+`test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped` (the run's own NEXT; an older run's).
+
+**Every Summary line holding the idle advice is one install.sh reads** (Z90). §16.153 Y66 keys install.sh's
+cut-off clause on Summary lines starting `- doctor:` or `- evidence:`, and nothing pinned that those are the only
+writers of `_IDLE_AGAIN`. Test: `test_setup_report.py::
+test_every_summary_line_with_the_idle_advice_is_one_install_sh_reads` pins by AST the four functions that name it
+and `_cut_off_words`'s two callers, then renders a doctor cut off and one never started, an evidence part cut off
+and one a sync held, and reads every line holding the advice with install.sh's own pattern.
 
 ### 16.160 Round 22: setup prompt v31 and the chmod of every state file (2026-10-21, wave B13 round 22 lane P)
 
