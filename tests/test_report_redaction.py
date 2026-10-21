@@ -824,3 +824,74 @@ def test_the_agents_name_keeps_a_configured_product_word_in_both_reports(
     assert "Copilot" not in kept, "only the agent's name keeps the word"
     legend = " ".join(text.split("\n## Redaction\n", 1)[1].split())
     assert "; a configured one's coding-agent product word stays as written in the agent's name" in legend
+
+
+@pytest.mark.parametrize(
+    ("name", "agent", "private"),
+    [
+        ("Copilot", "GitHub Copilot CLI gpt-5", False),
+        ("Copilot", "Kestrel 2", False),
+        ("Codex", "Kestrel 2", False),
+        ("GitHub Copilot", "Kestrel 2", False),
+        ("Status", "GitHub Copilot CLI gpt-5", True),
+    ],
+)
+def test_a_folder_named_only_by_product_words_leaves_both_reports_public(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    agent: str,
+    private: bool,
+) -> None:
+    """B13 round 21 Y7, Y72: with a configured Copilot (or Codex) folder the agentsync report was private
+    only, since its report words hold every coding-agent product word, while the shell report, whose
+    printed text holds none in lower case, kept the public issue link. The placeholder reads back as a
+    product's name, which the agent's name prints anyway (G48's reasoning for Documents), so both readers
+    exempt such a name by rule and stay public; a folder named like a report word (Status) still makes both
+    private only."""
+    from urllib.parse import parse_qs, urlsplit  # noqa: PLC0415
+
+    from agentsync.config import local_source_table  # noqa: PLC0415
+
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Contoso" / "Documents" / name
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", folder), encoding="utf-8")
+    said = f"2026-10-12T10:00:01Z | step 2 | deviation | {name} synced | -"
+    text = _shell_report(env, f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\nAgent: {agent}\n{said}\n")
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    assert re.search(r"<folder-\d+> synced", red.redact(said)), "the folder is still redacted"
+    assert red.private_only == private, (name, agent)
+    assert ("Private only:" in text) == private, text.split("\n## Redaction\n", 1)[1]
+    last = text.rstrip("\n").splitlines()[-1]
+    assert last.startswith(setup_report.ISSUE_URL) != private, last
+    if not private:
+        assert parse_qs(urlsplit(last).query)["agent"] == [agent], last
+
+
+def test_an_organisation_named_by_a_product_word_makes_both_reports_private(
+    env: dict[str, str],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B13 round 21 Y72: an organisation is no folder, so G48's and Y7's exemptions do not reach it; the
+    agentsync report reads codex as a report word and goes private only, and the shell's output_word now
+    lists the product words it lacked, so the two agree."""
+    from agentsync.config import local_source_table  # noqa: PLC0415
+
+    home = Path(env["HOME"])
+    folder = home / "Library" / "CloudStorage" / "OneDrive-Codex" / "Plans"
+    folder.mkdir(parents=True)
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(local_source_table("s0", folder), encoding="utf-8")
+    said = "2026-10-12T10:00:01Z | step 2 | deviation | the codex tenant asked for MFA | -"
+    text = _shell_report(env, f"Attempt: 2026-10-12T10:00:00Z\nPrompt: v15\nAgent: Kestrel 2\n{said}\n")
+    monkeypatch.setenv("HOME", env["HOME"])
+    red = setup_report._build_redactor(setup_report._Run(cfg, setup_report.ReportHooks(), 12.0))
+    assert "<org-" in red.redact(said) and red.private_only
+    assert "Private only:" in text and setup_report.ISSUE_URL not in text, text.split("\n## Redaction\n", 1)[
+        1
+    ]

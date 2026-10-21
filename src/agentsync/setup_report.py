@@ -735,11 +735,15 @@ _OUTPUT_WORDS = frozenset(
         "arm",
         "auto",
         "claude",
+        "codex",
+        "copilot",
+        "cursor",
         "dep",
         "enrolled",
         "enrollment",
         "env",
         "evaluate",
+        "gemini",
         "info",
         "launchagent",
         "microsoft",
@@ -753,8 +757,9 @@ _OUTPUT_WORDS = frozenset(
 )
 """Words the report prints from command or agent output, not from its own literals (B13 round 18 V84, V86):
 ``uname -m``'s arm, ``profiles status -type enrollment``'s fixed words, the embedded agentsync doctor lines'
-env, info and resolves, the agent's name, and the words of ``net.PAC_UNSUPPORTED``'s sentence that
-:func:`report_words` lacks (a test holds them in). A one-word organisation, folder or library named like one
+env, info and resolves, the agent's name (every :data:`_AGENT_WORDS` word but github, which the report prints
+itself; B13 round 21 Y72), and the words of ``net.PAC_UNSUPPORTED``'s sentence that :func:`report_words`
+lacks (a test holds them in). A one-word organisation, folder or library named like one
 makes the report private only, as a report word does: the text around its placeholder gives it back. It
 changes nothing else (the value is still cut out of a longer word, and the source-id, path and proxy rules
 keep reading :func:`report_words`). scripts/install.sh's ``output_word`` holds the same list (a test keeps
@@ -1224,7 +1229,10 @@ class Redactor:
         """Whether the text redacted so far shows the placeholder of a one-word folder, library or
         organisation value that is a word the report prints: its fixed text can then give the value back
         (``the <folder-1> of this report`` is "status"), so the report is not for a public issue (B13 round 5
-        F92). An organisation matched only in a folder or domain name (F42) never is."""
+        F92). An organisation matched only in a folder or domain name (F42) never is, nor a folder or library
+        named like every drive's (G48) or made of coding-agent product words only, such as Copilot: its
+        placeholder reads back as a product's name, which the agent's name prints anyway (B13 round 21 Y7,
+        Y72)."""
         return bool(self._word_named & self._used)
 
     @property
@@ -1298,8 +1306,9 @@ class Redactor:
             return
         placeholder = known or self._placeholder(kind)
         self._kind_of.setdefault(placeholder, kind)
-        # a name every OneDrive or Google Drive has ("Documents") reads back as nothing private (round 6 G48)
-        generic = kind in ("folder", "library") and value in _GENERIC_FOLDERS
+        # a name every OneDrive or Google Drive has ("Documents") reads back as nothing private (round 6 G48),
+        # and nor does a product's name ("Copilot"), as install.sh's fallback_redaction reads both (Y7, Y72)
+        generic = kind in ("folder", "library") and (value in _GENERIC_FOLDERS or _agent_words(value))
         if printed and kind in ("folder", "library", "org") and not context and not generic:
             self._word_named.add(placeholder)
         if joined:  # matched with a separator or a CamelCase boundary only (report_words)

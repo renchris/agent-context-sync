@@ -1523,13 +1523,14 @@ report_word() {
 }
 # WORD (lower case): a word the report prints from a command's or the agent's output, which no scan of this
 # script's printed text sees: uname -m's arm, profiles status's enrolled, via, dep and enrollment, the embedded
-# doctor lines' env, info and resolves, the PAC sentence's words, the agent's name. setup_report._OUTPUT_WORDS (a
+# doctor lines' env, info and resolves, the PAC sentence's words, the agent's name (its product words, which the
+# Python report reads as report words: B13 round 21 Y72, an organisation Codex). setup_report._OUTPUT_WORDS (a
 # test keeps them equal). It decides only the private-only rule, never how a value is matched (B13 round 18 V84,
 # V86: an organisation Arm cut "arm64" to "<org-1>64" and the report still offered the public issue link).
 output_word() {
 	case "$1" in
-	arm | auto | claude | dep | enrolled | enrollment | env | evaluate | info | launchagent | microsoft | pac) return 0 ;;
-	reachable | resolves | returns | unsupported | via) return 0 ;;
+	arm | auto | claude | codex | copilot | cursor | dep | enrolled | enrollment | env | evaluate | gemini) return 0 ;;
+	info | launchagent | microsoft | pac | reachable | resolves | returns | unsupported | via) return 0 ;;
 	esac
 	return 1
 }
@@ -3759,9 +3760,12 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	# A name every OneDrive or Google Drive has (Documents) reads back as nothing private (B13 round 6 G48), and
 	# so does whatever else shares its placeholder: its source id, which is that name in slug form (G8 gave
 	# the id "downloads" the folder's <folder-N>, and the id is a word this report prints; round 7 H39, H57).
-	# The folder's own name decides for the placeholder, in whatever order the pairs come.
+	# The folder's own name decides for the placeholder, in whatever order the pairs come. A name made of
+	# coding-agent product words only (Copilot) reads back as a product's, which the agent's name prints anyway:
+	# by rule, as setup_report's word_named_shown reads it, not by a word this script happens not to print (B13
+	# round 21 Y7, Y72: the two reports disagreed on a configured Copilot folder).
 	while IFS=$'\t' read -r v p _; do
-		case "$p" in "<folder-"*) ! generic_folder "$v" || generic+="$p " ;; esac
+		case "$p" in "<folder-"*) if generic_folder "$v" || agent_words_name "$v"; then generic+="$p "; fi ;; esac
 	done <<<"$pairs"
 	while IFS=$'\t' read -r v p _; do
 		case "$p" in "<folder-"* | "<org-"*) ;; *) continue ;; esac

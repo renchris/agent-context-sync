@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import pytest
 
@@ -2530,7 +2530,11 @@ def test_the_agents_name_keeps_a_configured_folders_product_word_in_every_place_
         r"~/Library/CloudStorage/OneDrive-<org-1>/<folder-\d+>/<folder-\d+>\n",
         section(text, "Doctor"),
     ), section(text, "Doctor")
-    assert "Copilot" not in text.replace(agent, ""), "only the agent's name keeps the word"
+    # B13 round 21 Y7: a Copilot folder leaves the report public, so the issue link's agent field is the
+    # agent's name too
+    assert "Private only:" not in text and parse_qs(urlsplit(text.splitlines()[-1]).query)["agent"] == [agent]
+    shown = text.replace(agent, "").replace(quote(agent), "")
+    assert "Copilot" not in shown, "only the agent's name keeps the word"
     hits = setup_report.residue(text)
     assert "GitHub" not in hits and "CLI" not in hits, hits
     assert "a configured one's coding-agent product word stays as written in the agent's name" in _line(
@@ -2641,8 +2645,16 @@ def test_a_configured_folder_named_like_a_coding_agent_is_still_a_placeholder(
     v6_install_log(fake_mac)
     write_friction(fake_mac, V7_HAPPY.replace("Claude Code, claude-opus-5-5", "Gemini CLI x"))
     text, summary = summary_of(fake_mac, doctor=doctor, status=status)
-    kept = ("· agent: Gemini CLI x\n", "; agent Gemini CLI x)", "Agent: Gemini CLI x\n")
+    # B13 round 21 Y7: a folder named like a coding agent leaves the report public, so the issue link's agent
+    # field keeps the name too
+    kept = (
+        "· agent: Gemini CLI x\n",
+        "; agent Gemini CLI x)",
+        "Agent: Gemini CLI x\n",
+        "agent=Gemini%20CLI%20x",
+    )
     assert all(k in text for k in kept), text
+    assert "Private only:" not in text
     rest = text
     for k in kept:
         rest = rest.replace(k, "")
