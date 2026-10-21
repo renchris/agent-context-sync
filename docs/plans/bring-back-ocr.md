@@ -1401,6 +1401,38 @@ checks both.
 Round 21: the round 20 workflow with prompt v29 on this section's landed tip, BASE `34818253` (ids Y<n>, outputs
 `round21/`); scenario C plays the v28 and v27 blocks.
 
+### B13 round 21: v29 rehearsal, cross-lane review, harvest (2026-10-20)
+
+Run `wf_2a854d28-267` on `309cafab` (91 agents, 0 errors, 49 minutes); no agent waited on a permission prompt. All six
+scenarios pass their EXPECTED: the new Mac and the field Mac are "fully one command", every v28 and v27 copy is
+refused in step 1 with exit 2, and the git stop, the reinstall during a sync and the empty-folder alarm run as the
+prompt says. 82 findings, 80 after dedupe, 77 confirmed (1 turn, 15 wrong, 61 small), 3 refused (Y29, Y65, Y67: every
+reader agrees on a damaged index or table root, and lane B's reason for not building X14's first fix holds); 3 need
+prompt text, so the next prompt is v30.
+The turn and most wrongs are one defect seen from every reader: a state file or folder this account owns but cannot
+open because of its own mode. Step 1's tail and status give its `chmod` to the agent, the report's Summary files it
+as the person's (Y3, Y9, Y21, Y25, Y30, Y34), and v29's step 2 forbids the agent the chmod step 1 just gave it (Y24,
+the turn). Lead ruling for round 21: this account's own chmod is the agent's, run once and then the re-run; another
+account's file, an ACL deny or an unsearchable parent stays the person's `sudo chown`. The others: a git proxy or
+remote written on its section's header line (Y1, Y36, Y64); a TAB folder name in add-source's escaped form (Y2); a
+shut state folder's second FAIL (Y26); the graph check missing from 'not checked' (Y42); a lock or heartbeat file
+this account cannot open (Y43); and the guide's Repeat conversions row (Y58).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77 over rounds 2 and
+4 to 21; turns 0 for seven rounds, then 1; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22, 25, 24, 8,
+21, 15 (about 8 distinct). Each round's new state (round 19's unopenable manifest, round 20's index root and own-mode
+state) reaches five readers; the ownership rule is stated once in COMMON20 so that this round's lanes build one answer.
+
+Lanes (`--account auto`, CONTRACTS §16.152 to §16.157, brief `lanes/COMMON20.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r21-land.lock`; scratch under `round21/`): RA 32 (the
+report's owner for this account's chmod, the header-line git config, the TAB folder, the shared cannot-open codes,
+dead interim code, exit 71, the stopped copy's words), RB 7 (install.sh's header-line git config, the report header,
+on_exit under SIGTERM, the Private-only loop), P 6 (prompt v30 and install.sh's NEXT and tail for this account's
+chmod), B 16 (state_path_fix in sync's and curate's errors, a shut state folder, lock and holds.json words, the graph
+check), E 4 (the convert retry clause, helper docstrings, rescreened stubs), D 10 (guides, CONTRACTS citations,
+CLAUDE.md's CI time). Lead: Y79 (round 20's /tmp leftovers and the v27 and v28 sandboxes, about 57 GB, by exact name)
+and Y80 (after the fire, every lane gets all six session ids).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

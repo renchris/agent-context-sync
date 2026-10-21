@@ -26348,3 +26348,27 @@ nothing says it exits 1. Test: `test_exit_1_names_a_state_file_this_account_cann
 **W41's measurement adds up** (X70). §16.143 W41 said 13 of the 14 tables failed on the pre-fix source, less
 three that passed; the verifier's re-run gave 13 failed of 16 cases: 11 tables and both last-leaf cases. Corrected
 in place. Test: `test_w41s_measurement_counts_the_tables_the_test_damages`, which counts them in `test_cli.py`.
+
+### 16.152 Round 21: setup report (2026-10-20, wave B13 round 21 lane RA)
+
+Reserved for round 21 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 21").
+
+### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
+
+Reserved for round 21 lane RB of B13.
+
+### 16.154 Round 21: setup prompt v30 and the agent's chmod of its own state (2026-10-20, wave B13 round 21 lane P)
+
+Reserved for round 21 lane P of B13.
+
+### 16.155 Round 21: a shut state folder, state_path_fix in every error and the lock's words (2026-10-20, wave B13 round 21 lane B)
+
+Reserved for round 21 lane B of B13.
+
+### 16.156 Round 21: the convert retry clause, helper docstrings and rescreened stubs (2026-10-20, wave B13 round 21 lane E)
+
+Reserved for round 21 lane E of B13.
+
+### 16.157 Round 21: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 21 lane D)
+
+Reserved for round 21 lane D of B13.
