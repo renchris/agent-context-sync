@@ -5640,13 +5640,16 @@ def source_statuses(
     *,
     now: datetime,
     reports: dict[str, _SourceAcc] | None = None,
+    quiet: bool = False,
 ) -> list[SourceStatus]:
-    """One SourceStatus per configured source (STATE.md / INDEX.md / ``agentsync status``)."""
+    """One SourceStatus per configured source (STATE.md / INDEX.md / ``agentsync status``). ``quiet``
+    (status's call, whose heartbeat line names an unreadable heartbeat and its fix): that read's log line is
+    debug, not a timestamped WARNING beside it (B13 round 21 Y43)."""
     heartbeat: dict[str, dict[str, object]] = {}
     try:
         heartbeat = {k: dict(v) for k, v in read_heartbeat(config.state_paths.heartbeat).items()}
     except (OSError, ValueError) as exc:
-        log.warning("heartbeat unreadable: %s", exc)
+        log.log(logging.DEBUG if quiet else logging.WARNING, "heartbeat unreadable: %s", exc)
     out: list[SourceStatus] = []
     for src in config.sources:
         row = manifest.get_source(src.id)

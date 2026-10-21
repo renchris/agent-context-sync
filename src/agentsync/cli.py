@@ -1329,7 +1329,9 @@ def _status_lines(config: Config) -> list[str]:
     try:
         gov = governance.load_governance(config.config_path)
     except Exception as exc:  # its [FAIL] governance.config line says why
-        out.append(f"status: cannot read the state: {_unread_words(exc, refused='governance.config')}")
+        out.append(
+            f"status: cannot read the state: {_unread_words(exc, refused='governance.config', config=config)}"
+        )
     for h in governance.active_holds(config.state_paths.root, gov) if gov is not None else ():
         out.append(f"HOLD: {h.describe()} (purge and compaction suspended)")
     queued, kept = governance.partition_purges(config.state_paths)
@@ -1356,7 +1358,7 @@ def _status_lines(config: Config) -> list[str]:
         out.append(
             "last runs: " + ("; ".join(f"{r} {m} {s} {(c or '-')[:12]}" for r, m, s, c in runs) or "none")
         )
-        statuses = source_statuses(config, manifest, now=datetime.now(UTC))
+        statuses = source_statuses(config, manifest, now=datetime.now(UTC), quiet=True)
         absent = manifest.absent_counts()  # not in SourceStatus: that feeds the committed snapshot
     heartbeat = read_heartbeat(config.state_paths.heartbeat)
     for st in statuses:
@@ -1469,7 +1471,41 @@ def _fail_steps(results: Sequence[doctor.CheckResult]) -> list[str]:
     return [_fail_step(r) for r in sorted(fails, key=lambda r: doctor.is_persons_fix(r.fix))]
 
 
-def _unread_words(exc: Exception, *, refused: str = "governance.config or policy") -> str:
+def _says_why(config: Config | None, filename: object) -> str | None:
+    """The words that point at the status line judging ``filename``, a path in the state folder this account
+    was refused: the state_dir lines for the folder, any path in a folder it cannot search, and the files
+    state_dir.files judges (the manifest, its -wal and -shm, the token cache); the lock, heartbeat,
+    governance.hold or governance.purge_queue [FAIL] line for its own file; None for any other path, which no
+    line judges (B13 round 21 Y43, Y45: "the state_dir lines say why" was added for any EACCES, over
+    state_dir lines that read [ok]). With no config (``None``), the state_dir lines, as before."""
+    if config is None:
+        return "the state_dir lines say why"
+    if not isinstance(filename, str | bytes | os.PathLike):
+        return None
+    sp = config.state_paths
+
+    def real(p: Path) -> Path:
+        return Path(os.path.realpath(expand(p)))
+
+    root, path = real(sp.root), Path(os.path.realpath(os.fsdecode(filename)))
+    if not (path == root or path.is_relative_to(root)):
+        return None
+    files = {real(sp.db.with_name(sp.db.name + side)) for side in ("", "-wal", "-shm")}
+    if path == root or path in files | {real(sp.token_cache_fallback)} or doctor.state_folder_shut(config):
+        return "the state_dir lines say why"
+    checks = {
+        real(sp.lock): "lock",
+        real(sp.heartbeat): "heartbeat",
+        real(governance._holds_file(root)): "governance.hold",
+        real(governance._queue_file(root)): "governance.purge_queue",
+    }
+    check = checks.get(path)
+    return f"the {check} [FAIL] line says why" if check else None
+
+
+def _unread_words(
+    exc: Exception, *, refused: str = "governance.config or policy", config: Config | None = None
+) -> str:
     """Why a part of status cannot read the state, in words (B13 round 17 U21): the setup report copies
     these lines, so no Python class name for a failure a setup meets. sqlite's own message is plain English
     and holds no path; a refused configuration's words are on its [FAIL] line, which names the value
@@ -1493,13 +1529,26 @@ def _unread_words(exc: Exception, *, refused: str = "governance.config or policy
         return f"{said}; the state_dir lines say why" if isinstance(exc, ManifestOpenError) else said
     if isinstance(exc, OSError):
         said = f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
-        # this account's access, which doctor's state_dir lines judge (B13 round 19 W64)
-        return f"{said}; the state_dir lines say why" if exc.errno in (errno.EACCES, errno.EPERM) else said
+        # this account's access, which the line that judges the path names (B13 round 19 W64; round 21 Y43)
+        why = _says_why(config, exc.filename) if exc.errno in (errno.EACCES, errno.EPERM) else None
+        return f"{said}; {why}" if why else said
+    cause = exc.__cause__
+    if isinstance(exc, AgentSyncError) and isinstance(cause, PermissionError):
+        # a governance file this account cannot open (holds.json, the purge queue): its name and the system's
+        # words, never "GovernanceError:", and the check whose line FAILs (B13 round 21 Y45)
+        name = Path(os.fsdecode(cause.filename)).name if cause.filename is not None else "a file"
+        said = f"{name} cannot be opened: {cause.strerror or cause}"
+        why = _says_why(config, cause.filename)
+        return f"{said}; {why}" if why else said
     return f"{type(exc).__name__}: {exc}"
 
 
 def _guarded(
-    name: str, fn: Callable[[], list[str]], *, refused: str = "governance.config or policy"
+    name: str,
+    fn: Callable[[], list[str]],
+    *,
+    refused: str = "governance.config or policy",
+    config: Config | None = None,
 ) -> list[str]:
     """``fn()``, or one line naming the error: a part of status that cannot be read never hides the checks
     (the matching FAIL, e.g. governance.config or a manifest check, explains it; ``refused``: which one a
@@ -1507,7 +1556,7 @@ def _guarded(
     try:
         return fn()
     except Exception as exc:
-        return [f"{name}: cannot read the state: {_unread_words(exc, refused=refused)}"]
+        return [f"{name}: cannot read the state: {_unread_words(exc, refused=refused, config=config)}"]
 
 
 def _next_or_fix(config: Config, fixes: Sequence[str]) -> list[str]:
@@ -1548,7 +1597,7 @@ def _loop_line(config: Config) -> str:
     try:
         return loop.status_line(config)
     except Exception as exc:
-        return f"loop: cannot read the state: {_unread_words(exc)}"
+        return f"loop: cannot read the state: {_unread_words(exc, config=config)}"
 
 
 def _with_damaged_manifest(
@@ -1636,11 +1685,11 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
         if step is not None and not fixes and step.rule < 9:
             next_lines = step.lines()
         else:
-            next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes))
+            next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes), config=config)
     detail: list[str] = []
     if not (brief or hint_off):
-        detail = _guarded("status", lambda: _status_lines(config), refused="governance.config")
-        detail += _guarded("policy", lambda: _policy_lines(config))
+        detail = _guarded("status", lambda: _status_lines(config), refused="governance.config", config=config)
+        detail += _guarded("policy", lambda: _policy_lines(config), config=config)
     return _Status(tuple(next_lines), _loop_line(config), tuple(checks), tuple(detail))
 
 
@@ -1886,12 +1935,10 @@ def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.Che
     a PermissionError), with the fix of what refused it; any other error is raised (B13 round 20 X73: the
     whole governance check crashed on holds.json at 0000)."""
     cause = exc.__cause__
-    if not isinstance(cause, PermissionError) or cause.filename is None:
+    refused = doctor.refused_state_path(config, name, cause) if isinstance(cause, PermissionError) else None
+    if refused is None:
         raise exc
-    root = Path(os.path.realpath(expand(config.state_paths.root)))
-    path = Path(os.path.realpath(os.fsdecode(cause.filename)))
-    detail = f"{path} cannot be opened: {cause.strerror or cause}"
-    return _check(name, False, detail, doctor.Severity.ERROR, fix=doctor.state_path_fix(root, path))
+    return refused
 
 
 def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
@@ -2227,7 +2274,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         doctor=checks,
         status=lambda config: [
             _loop_line(config),
-            *_guarded("status", lambda: _status_lines(config), refused="governance.config"),
+            *_guarded("status", lambda: _status_lines(config), refused="governance.config", config=config),
         ],
         loop_next=loop_next,
         job_proxy=_job_proxy_urls,

@@ -1087,6 +1087,21 @@ def state_path_fix(root: Path, path: Path) -> str:
     return state_folder_fix(root)
 
 
+def refused_state_path(config: Config, name: str, exc: OSError) -> CheckResult | None:
+    """``name``'s FAIL for ``exc``, a refused open of a path in the state folder, by its cause: the path and
+    the system's words, with the fix of the folder or file that refused it (:func:`state_path_fix`: this
+    account's ``chmod 600`` or ``chmod 700``, another account's the person's chown); None for any other
+    error. The one shape of status's governance lines (``cli._refused_check``) and of the lock and heartbeat
+    checks, so each says what ``sync``'s ``error: state:`` line says (B13 round 21 Y43: those two gave the
+    generic "could not read ... report it" FAIL)."""
+    root = expand(config.state_paths.root)
+    if exc.filename is None or not state_unopenable(exc, root):
+        return None
+    path = Path(os.path.realpath(os.fsdecode(exc.filename)))
+    detail = f"{path} cannot be opened: {exc.strerror or exc}"
+    return _bad(name, detail, fix=state_path_fix(Path(os.path.realpath(root)), path))
+
+
 def _them(names: Sequence[str], one: str, many: str) -> str:
     """``one`` for a single file, ``many`` for more (B13 round 20 X17: "them: manifest.sqlite (0000)")."""
     return one if len(names) == 1 else many
@@ -2303,11 +2318,17 @@ def _check_gitleaks(config: Config) -> list[CheckResult]:
 def _check_lock(config: Config) -> list[CheckResult]:
     """Who holds the single-writer lock, whether it is silent, and whether a crash left it stale."""
     path = config.state_paths.lock
-    if not path.exists():
-        return [_ok("lock", "no lock file yet")]
-    held = SingleWriterLock.is_held(path)
-    body = SingleWriterLock.read_body(path).strip()
-    desc = SingleWriterLock.describe(path)
+    try:
+        if not path.exists():
+            return [_ok("lock", "no lock file yet")]
+        held = SingleWriterLock.is_held(path)
+        body = SingleWriterLock.read_body(path).strip()
+        desc = SingleWriterLock.describe(path)
+    except PermissionError as exc:  # its mode or its owner, by its cause (B13 round 21 Y43)
+        refused = refused_state_path(config, "lock", exc)
+        if refused is None:
+            raise
+        return [refused]
     if held:
         info = LockInfo.parse(body)
         if info is None:
@@ -2443,6 +2464,11 @@ def _check_heartbeat(
         beats: Mapping[str, Mapping[str, object]] = read_heartbeat(path)
     except ValueError as exc:
         return [_bad("heartbeat", f"{exc}; the next completed pass rewrites it", Severity.WARN)]
+    except PermissionError as exc:  # its mode or its owner, by its cause (B13 round 21 Y43)
+        refused = refused_state_path(config, "heartbeat", exc)
+        if refused is None:
+            raise
+        return [refused]
     now = _now()
     out: list[CheckResult] = []
     for src in config.live_sources():

@@ -4031,6 +4031,50 @@ def test_a_state_path_another_account_owns_gets_the_persons_chown(
     assert doctor.state_path_fix(root, lock) == doctor.state_folder_fix(root) == doctor._persons_chown(root)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_lock_or_heartbeat_this_account_cannot_open_names_its_own_fix(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 21 Y43: agentsync.lock or heartbeat.json at 0000 gave status the generic "could not read ...
+    report it" FAIL, while sync named the lock's ``chmod 600``; the trailing ``status: cannot read the state``
+    line said "the state_dir lines say why" over state_dir lines that read [ok]; and the heartbeat added a
+    timestamped WARNING. Each FAILs with ``doctor.state_path_fix``'s fix (another account's file: the
+    person's chown), the pointer names the line that judges the file, and status logs no WARNING."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = Path(os.path.realpath(expand(initialised.state_paths.root)))
+    for name, target in (
+        ("lock", expand(initialised.state_paths.lock)),
+        ("heartbeat", expand(initialised.state_paths.heartbeat)),
+    ):
+        assert target.exists(), target
+        target.chmod(0)
+        try:
+            for theirs in (False, True):
+                capsys.readouterr()
+                with monkeypatch.context() as other:
+                    if theirs:  # another account's file (a sudo sync's): the person's chown of the folder
+                        me = os.getuid()
+                        other.setattr(doctor.os, "getuid", lambda me=me: me + 1)
+                    rc = cli.main(["status", "--config", cfg])
+                    want = doctor.state_path_fix(root, Path(os.path.realpath(target)))
+                    mine = f"chmod 600 {doctor._shell_path(target)}"
+                    assert want == (doctor._persons_chown(root) if theirs else mine), want
+                captured = capsys.readouterr()
+                out = captured.out.splitlines()
+                assert rc == cli.EXIT_FAILED, out
+                (line,) = [ln for ln in out if ln.startswith(f"[FAIL] {name} ")]
+                assert line.endswith(f"cannot be opened: Permission denied (fix: {want})"), line
+                assert not any("report it" in ln for ln in out if ln.startswith("[FAIL] ")), out
+                assert "WARNING" not in captured.err, captured.err
+                state_fails = [ln for ln in out if re.match(r"\[FAIL\] state_dir(\.files)? ", ln)]
+                assert state_fails or not any("state_dir lines say why" in ln for ln in out), out
+                said = [ln for ln in out if "cannot read the state" in ln]
+                assert said and all(f"the {name} [FAIL] line says why" in ln for ln in said), out
+        finally:
+            target.chmod(0o600)
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read
