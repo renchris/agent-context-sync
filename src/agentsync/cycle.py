@@ -2790,6 +2790,7 @@ class _Cycle:
         auth_required = any(a.auth_required for a in self.accs.values())
         failed = self._blocking_count() > 0 or any(a.failed for a in self.accs.values())
         exit_code = 77 if auth_required else (1 if failed else 0)
+        cleared, settled = self._legacy_outcomes()
         return CycleReport(
             run_id=self.run_id,
             mode=self.mode,
@@ -2811,19 +2812,34 @@ class _Cycle:
             rescreen_left=self._rescreen_left(),
             converter_down=any(self._cannot_run.values()),
             legacy_retried=self._tally["legacy_retried"],
-            legacy_cleared=self._legacy_cleared(),
+            legacy_cleared=cleared,
+            legacy_settled=settled,
         )
 
-    def _legacy_cleared(self) -> int:
-        """How many of the rows the upgrade's retry moved this run made current (live again): the sync's note
-        says those were tried and are current, and keeps the retry words for the rest, which failed again or
-        were not read (--source, paused, out of time); 0 when the manifest cannot say (B13 round 21 Y28: the
-        retry note told of an error that "may show again" over a file the same sync had converted)."""
+    def _legacy_outcomes(self) -> tuple[int, int]:
+        """Of the rows the upgrade's retry moved, ``(current, settled)`` after this run, in one manifest read:
+        current is live (or dataless) again; settled is a row this sync tried or removed with no retry left,
+        that is gone, a tombstone, or held for a reason other than a failed conversion (an unreadable or
+        refused stub). The sync's note gives each its own words and keeps the retry words for the rest, which
+        failed again or were not read (--source, paused, out of time); (0, 0) when the manifest cannot say
+        (B13 round 21 Y28: the note told of an error that "may show again" over a file the same sync had
+        converted; round 22 Z55: and over a file it had settled as unreadable or refused, never tried
+        again)."""
         try:
             rows = [self.manifest.get_item(sid, stable) for sid, stable in self._legacy_moved]
         except Exception:  # the report never fails over a count
-            return 0
-        return sum(1 for row in rows if row is not None and row.state is RowState.LIVE)
+            return 0, 0
+        current = settled = 0
+        for row in rows:
+            if row is not None and row.state in (RowState.LIVE, RowState.DATALESS):
+                current += 1
+            elif (
+                row is None
+                or row.state is RowState.TOMBSTONE
+                or not (row.state_reason or "").startswith(CONVERSION_FAILED)
+            ):
+                settled += 1
+        return current, settled
 
     def _rescreen_left(self) -> int:
         """The [policy] re-screen's backlog after this run, as STATE.md's line counts it; 0 when none is

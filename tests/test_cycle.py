@@ -4281,6 +4281,79 @@ def test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current(
     assert row is not None and row.state is RowState.LIVE, row
 
 
+@pytest.mark.parametrize("outcome", ["unreadable", "refused"])
+def test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    outcome: str,
+) -> None:
+    """B13 round 22 Z55: the upgrade's sync tried a failure an older build gave up on, the converter now made
+    an unreadable stub of it (or a label rule refused it), and the note still said it "is tried again, up to 2
+    times ... its error may show again". Its reason is no failed conversion, so no try is left and no error
+    comes back. The note says it is settled; the next syncs say nothing and never call the converter."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+    from agentsync.errors import UnreadableSourceError  # noqa: PLC0415
+
+    real_convert = MarkdownConverter.convert
+    real_screen = content_policy.screen_file
+    mode = ["failing"]
+    tries: list[str] = []
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso flaky") and mode[0] != "fine":
+            tries.append(mode[0])
+            if mode[0] == "unreadable":
+                raise UnreadableSourceError(content_policy.EMPTY_OUTPUT_REASON)
+            raise RuntimeError("pandoc timed out after 60 s")
+        return real_convert(self, src, name=name)
+
+    def screen(path: Path, *, name: str, policy: Any) -> Any:
+        if name.startswith("Contoso flaky") and mode[0] == "refused":
+            tries.append("refused")
+            return content_policy.Screening(
+                content_policy.ScreenStatus.REFUSED,
+                "label-excluded",
+                f"{content_policy.REFUSED_PREFIX}sensitivity label Contoso Secret is excluded by [policy]",
+            )
+        return real_screen(path, name=name, policy=policy)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", convert)
+    monkeypatch.setattr(content_policy, "screen_file", screen)
+    cfg = str(sample_config.config_path)
+    rel = "projects/Contoso flaky.md"
+    (local_source_dir / rel).write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    cli.main(["sync", "--config", cfg])
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._RETRY_META + SID, "{}")
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+    _settle_as_an_older_build(sample_config, rel)
+    mode[0] = outcome
+    tries.clear()
+    capsys.readouterr()
+    cli.main(["sync", "--config", cfg])
+    out = capsys.readouterr().out
+    notes = [ln for ln in out.splitlines() if "an older build gave up on " in ln]
+    assert notes == [
+        "  note: 1 conversion an older build gave up on was tried again in this sync and is settled; this "
+        "sync's counts say how (unreadable, refused or removed), and it is not tried again"
+    ], out
+    assert "now current" not in out and "may show again" not in out
+    assert tries == [outcome], tries
+    assert _run_record(sample_config)["legacy_retried"] == 1
+    assert "legacy_settled" not in _run_record(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    want = RowState.QUARANTINED if outcome == "unreadable" else RowState.REFUSED
+    assert row is not None and row.state is want, row
+    assert not (row.state_reason or "").startswith(convert_mod.CONVERSION_FAILED), row
+    for _ in range(2):
+        cli.main(["sync", "--config", cfg])
+        assert "an older build gave up on" not in capsys.readouterr().out
+    assert tries == [outcome], "no try is left, as the note says"
+
+
 def test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_own_syncs(
     tmp_path: Path,
     local_source_dir: Path,

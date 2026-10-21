@@ -1051,6 +1051,7 @@ class CycleReport:
     converter_down: bool = False  # 2026-10-19 (§16.138 V57): a converter could not start for a file this run
     legacy_retried: int = 0  # 2026-10-20 (§16.144 W18): an older build's settled failures retried from this run
     legacy_cleared: int = 0  # 2026-10-21 (§16.155 Y28): of those, the ones this run made current (the note's)
+    legacy_settled: int = 0  # 2026-10-21 (§16.162 Z55): of those, the ones this run settled, no try left (the note's)
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -26378,6 +26379,8 @@ migration. Tests: `test_cycle.py::test_the_upgrades_retry_note_counts_a_source_t
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the words).
 Amended 2026-10-21, §16.155 Y28: those words are for the rows that failed again or were not read; `until then`
 reads `until those tries are used`, and a row this sync made current has its own note.
+Amended 2026-10-21, §16.162 Z55: so has a row this sync settled with no try left (unreadable, refused or
+removed): `was tried again in this sync and is settled ... not tried again`, never the retry words.
 
 **The helper modules' docstrings say what exit 1 means (X57, X84; `agentsync.convert.ocr`,
 `agentsync.convert.media`, `agentsync.convert.speech`; dated lines at §16.25, §16.34, §16.35 and §16.141
@@ -26920,6 +26923,9 @@ gave up on was/were tried again in this sync and is/are now current` for them an
 those tries are used`, for the rest; both keep `an older build gave up on `, which install.sh greps. Test:
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current`, and the retry words in
 its two siblings and `test_install_oneshot.py`.
+Amended 2026-10-21, §16.162 Z55: "the rest" was every row not live, so a row this sync settled as unreadable or
+refused got the retry words; `CycleReport.legacy_settled` counts those and they have their own note, and
+`legacy_cleared` counts a row made dataless (a local online-only file) as current, as it does one made live.
 
 **Y33: the root guide names the inbox by ~ under a home reached through a link (`agentsync.publish`).** Under a
 HOME reached through a link (/tmp is /private/tmp) the docs repo's AGENTS.md and CLAUDE.md named the inbox by its
@@ -27170,7 +27176,25 @@ Reserved for round 22 lane B of B13.
 
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
-Reserved for round 22 lane E of B13.
+Round 22's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-21, §16.162 Z<n>`.
+
+**The upgrade's retry note says a conversion it settled is not tried again (Z55; `agentsync.cycle`,
+`agentsync.model`, `agentsync.cli`; dated lines at §16.150 X53 and §16.155 Y28).** Y28 split the moved rows in
+two, live and the rest, so a row the upgrade's sync tried and settled for a reason that is no failed conversion
+(an unreadable stub, `empty-output`; a label refusal, `refused: ...`) got the retry words, `up to 2 times ... its
+error may show again`, though `_retries` never tries it again and no error comes back. `cycle._legacy_outcomes`
+reads the moved rows once after the run and splits them three ways: current (live or dataless), settled (gone, a
+tombstone, or held for a reason that does not start `conversion failed`), and the rest, which failed again or were
+not read. `CycleReport.legacy_settled` carries the settled count (no run-record count, as for `legacy_cleared`),
+and the sync prints `note: N conversion(s) an older build gave up on was/were tried again in this sync and is/are
+settled; this sync's counts say how (unreadable, refused or removed), and it is / they are not tried again`, which
+keeps `an older build gave up on ` for install.sh's grep; the retry words are for the rest alone. Not the
+finder's "now current" for every row not quarantined `conversion failed`: that would call an unreadable stub, or a
+file deleted upstream, current. Test:
+`test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again` (an unreadable
+stub and a label refusal: the settled note once, neither `now current` nor `may show again`, and two more syncs
+with no note and no converter call), and Y28's and W18's tests unchanged.
 
 ### 16.163 Round 22: deploy docs, CONTRACTS citations and CLAUDE.md's CI time (2026-10-21, wave B13 round 22 lane D)
 

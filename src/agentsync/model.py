@@ -505,6 +505,9 @@ class CycleReport:
     # of those, the ones this run made current, for the sync's note alone (never a run-record count): "tried
     # again in this sync and now current", the retry words only for the rest (B13 round 21 Y28)
     legacy_cleared: int = 0
+    # of those, the ones this run settled with no retry left (unreadable, refused, removed), for the note
+    # alone as well: "tried again in this sync and is settled", never the retry words (B13 round 22 Z55)
+    legacy_settled: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

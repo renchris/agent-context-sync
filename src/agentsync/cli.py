@@ -536,15 +536,24 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         # every source's failures, and one this sync does not read (--source, paused, out of time) is tried
         # in its own source's syncs, so the tries are counted in those, not "from this sync on" (round 20
         # X53). Split by outcome: the ones this sync made current say so, and the retry words are for the rest
-        # (B13 round 21 Y28); each note keeps "an older build gave up on ", which install.sh's grep shows
+        # (B13 round 21 Y28), the ones it settled as unreadable, refused or removed say that no try is left
+        # (round 22 Z55); each note keeps "an older build gave up on ", which install.sh's grep shows
         cleared = min(report.legacy_cleared, report.legacy_retried)
+        settled = min(report.legacy_settled, report.legacy_retried - cleared)
         if cleared:
             _out(
                 f"  note: {plural(cleared, 'conversion')} an older build gave up on "
                 f"{'was' if cleared == 1 else 'were'} tried again in this sync and "
                 f"{'is' if cleared == 1 else 'are'} now current"
             )
-        if n := report.legacy_retried - cleared:
+        if settled:
+            _out(
+                f"  note: {plural(settled, 'conversion')} an older build gave up on "
+                f"{'was' if settled == 1 else 'were'} tried again in this sync and "
+                f"{'is' if settled == 1 else 'are'} settled; this sync's counts say how (unreadable, refused "
+                f"or removed), and {'it is' if settled == 1 else 'they are'} not tried again"
+            )
+        if n := report.legacy_retried - cleared - settled:
             tries = plural(_CONVERT_RETRIES, "time")
             whose = "its source" if n == 1 else "their sources"
             are = "is" if n == 1 else "are"
