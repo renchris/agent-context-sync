@@ -5814,25 +5814,56 @@ def _read_cut_off(r: _Run) -> None:
 
 def _cut_off_words(r: _Run) -> str:
     """What a doctor call the report cut off says after its wait (B13 round 21 Y22): the check it was in and
-    the load as figures, never a verdict, then the advice as install.sh's NEXT gives it, only if this Mac
-    was busy (:data:`_IDLE_AGAIN` kept whole: install.sh keys on it), and what a second cut-off when idle
-    means: the check is slow or hung, which a busy Mac's advice does not clear. The rehearsal's re-run at a
-    load of 52 was cut off again with no figure to tell a hung pandoc from a busy Mac."""
+    the load as figures, then the advice as install.sh's NEXT gives it (:data:`_IDLE_AGAIN` kept whole in
+    every branch: install.sh keys on it), and what a second cut-off when idle means: the check is slow or
+    hung, which a busy Mac's advice does not clear.
+
+    B13 round 22 Z18: the hook reads the loop's state before any check group starts, so a cut-off with no
+    check named came in that read: "a check" is no word for it, and when the Status section found the state
+    file held by a sync (:data:`_BUSY_WHY`) the sync is named first and the advice is to write the report
+    again once it ends. A check that was named keeps its words, with the held file only for a group that
+    reads the state folder (``doctor._STATE_FOLDER_GROUPS``). Z33: the lead-in is read from the measured
+    load and core count, never left as an "if", and the advice ends on a step, not a pointer."""
     facts: list[str] = []
     at = r.facts.doctor_cut_off_at
-    if at:
+    busy = bool(r.facts.evidence_why.get(_BUSY_WHY))
+    reading = r.hooks.doctor_at is not None and not at
+    if reading:
+        facts.append(
+            "it was reading the loop state, which a sync held (the state file is busy)"
+            if busy
+            else "it had not started its checks (it was reading the loop state)"
+        )
+    elif at:
         facts.append(f"it was in the {at} check")
-    if r.facts.doctor_cut_off_load is not None:
-        load, cores = r.facts.doctor_cut_off_load
+        with contextlib.suppress(Exception):
+            from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+            if busy and at in doctor._STATE_FOLDER_GROUPS:
+                facts.append("a sync held the state file it reads")
+    load_cores = r.facts.doctor_cut_off_load
+    if load_cores is not None:
+        load, cores = load_cores
         facts.append(
             f"the 1-minute load was {load:.1f} on {_plural(cores, 'core')}"
             if cores
             else f"the 1-minute load was {load:.1f}"
         )
-    check = f"the {at} check" if at else "a check"
+    if reading and busy:
+        return "; ".join([*facts, f"{_IDLE_AGAIN}, once the sync ends"])
+    check = f"the {at} check" if at else "the loop state read" if reading else "a check"
+    if load_cores is not None and load_cores[1] and load_cores[0] > load_cores[1]:
+        lead = f"that is above its core count, so the Mac was busy: {_IDLE_AGAIN}"
+    elif load_cores is not None and load_cores[1]:
+        lead = (
+            f"that is not above its core count, so {check} is slow or hung, not the Mac busy; {_IDLE_AGAIN} "
+            "only if it was busy at another moment"
+        )
+    else:
+        lead = f"if the Mac was busy, {_IDLE_AGAIN}"
     advice = (
-        f"if this Mac was busy, {_IDLE_AGAIN}; if a report written when it is idle is cut off again, {check} "
-        "is slow or hung: install.out has install.sh's own doctor"
+        f"{lead}; if a report written when it is idle is cut off again, {check} is slow or hung: send the "
+        "report as it is (install.sh's own doctor output is in install.out)"
     )
     return "; ".join([*facts, advice])
 

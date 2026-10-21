@@ -6899,12 +6899,22 @@ def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
     setup_report._read_cut_off(r)
     idle = setup_report._IDLE_AGAIN
     line = setup_report._doctor_line(r, [])
+    # B13 round 22 Z33: the lead-in read from the figures, and the advice ends on a step
     assert line == (
         "- doctor: cut off after 20.0s, the wait the report gives a slow doctor (see Doctor) · it was in the "
-        f"pandoc check; the 1-minute load was 52.3 on 10 cores; if this Mac was busy, {idle}; if a report "
-        "written when it is idle is cut off again, the pandoc check is slow or hung: install.out has "
-        "install.sh's own doctor"
+        f"pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count, so the Mac was "
+        f"busy: {idle}; if a report written when it is idle is cut off again, the pandoc check is slow or "
+        "hung: send the report as it is (install.sh's own doctor output is in install.out)"
     ), line
+    assert "write the report again when this Mac is idle" in line  # install.sh's grep keys on it
+    monkeypatch.setattr(os, "getloadavg", lambda: (3.0, 2.0, 1.0))  # an idle Mac: the check, not the load
+    setup_report._read_cut_off(r)
+    assert setup_report._doctor_line(r, []).endswith(
+        "the 1-minute load was 3.0 on 10 cores; that is not above its core count, so the pandoc check is "
+        f"slow or hung, not the Mac busy; {idle} only if it was busy at another moment; if a report written "
+        "when it is idle is cut off again, the pandoc check is slow or hung: send the report as it is "
+        "(install.sh's own doctor output is in install.out)"
+    )
 
     def unread() -> tuple[float, float, float]:
         raise OSError
@@ -6914,9 +6924,45 @@ def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
     r.facts.doctor_cut_off = 20.0
     setup_report._read_cut_off(r)
     assert setup_report._doctor_line(r, []).endswith(
-        f"after 20.0s (see Doctor) · if this Mac was busy, {idle}; if a report written when it is idle is "
-        "cut off again, a check is slow or hung: install.out has install.sh's own doctor"
+        f"after 20.0s (see Doctor) · if the Mac was busy, {idle}; if a report written when it is idle is "
+        "cut off again, a check is slow or hung: send the report as it is (install.sh's own doctor output is "
+        "in install.out)"
     )
+
+
+def test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z18: the doctor hook reads the loop's state before any check, so a sync that held the
+    state file cut it off there, and the Summary said "a check is slow or hung" with no word of the held
+    file the Loop and evidence lines named. The held file is named first, with the advice to write the
+    report again once the sync ends; a cut-off before any check with nothing held says it had not started
+    its checks; a check that was named keeps its words."""
+    monkeypatch.setattr(os, "getloadavg", lambda: (64.1, 40.0, 30.0))
+    monkeypatch.setattr(os, "cpu_count", lambda: 10)
+    idle = setup_report._IDLE_AGAIN
+    for at, busy in ((None, True), (None, False), ("pandoc", True)):
+        r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(doctor_at=lambda at=at: at), 5.0)
+        r.facts.doctor_cut_off = 19.0
+        r.facts.doctor_cut_off_moved = True
+        if busy:
+            r.facts.evidence_why[setup_report._BUSY_WHY] = 4
+        setup_report._read_cut_off(r)
+        line = setup_report._doctor_line(r, [])
+        doctor_section = "\n".join(setup_report._doctor(r)) if r.hooks.doctor is not None else ""
+        assert idle in line, line
+        if at is None and busy:
+            assert line.endswith(
+                "(see Doctor) · it was reading the loop state, which a sync held (the state file is busy); "
+                f"the 1-minute load was 64.1 on 10 cores; {idle}, once the sync ends"
+            ), line
+            assert "a check is slow or hung" not in line
+        elif at is None:
+            assert "it had not started its checks (it was reading the loop state); the 1-minute" in line, line
+            assert "a check" not in line, line
+        else:
+            assert "it was in the pandoc check; the 1-minute load" in line and "a sync held" not in line, line
+        assert doctor_section == ""
 
 
 def test_the_doctor_hook_says_which_check_it_started_last(fake_mac: dict[str, Path]) -> None:
