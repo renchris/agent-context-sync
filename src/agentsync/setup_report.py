@@ -4384,7 +4384,7 @@ def _last_rescreen(r: _Run) -> str:
     if r.config is None:
         return "not read (no sources.toml yet)" if r.config_missing else "not read (the config does not load)"
     db = expand(r.config.state_paths.db)
-    # B13 round 21 Y12: a stat of its own, as ``exists()`` raises a folder's EACCES below Python 3.12 (and
+    # B13 round 21 Y12: a stat of its own, as ``exists()`` raises a folder's EACCES before Python 3.14 (and
     # says no manifest from 3.14), which the Environment printed as the exception's class and message
     try:
         db.stat()
@@ -9564,10 +9564,12 @@ def _shut_whose(c: Config, shut: str) -> str:
 
         root = expand(c.state_paths.root)
         db = expand(c.state_paths.db)
-        if shut == "folder":
-            fixes = [doctor.state_folder_fix(root)]
-        else:
-            fixes = [doctor.state_path_fix(root, p) for p in _refused_state_files(db) or [db]]
+        fixes = [doctor.state_folder_fix(root)] if shut == "folder" else []
+        refused: list[Path] = []
+        with contextlib.suppress(OSError):  # a folder that cannot be searched has no file to stat
+            refused = _refused_state_files(db)
+        # a file another account owns in a folder this one shut by its mode is the person's still (review)
+        fixes += [doctor.state_path_fix(root, p) for p in refused or ([] if fixes else [db])]
         return _PERSONS if any(doctor.is_persons_fix(f) for f in fixes) else _AGENTS
     except Exception:
         return _PERSONS
@@ -10674,9 +10676,15 @@ def _state_open_words(r: _Run, run: InstallRun) -> tuple[str, str] | None:
     start = next((i for i, ln in enumerate(lines or ()) if ln.startswith(f"# run={run.run_id} ")), None)
     if start is None:
         return None
+    block: list[str] = []
     for ln in lines[start + 1 :]:
         if _OUT_RUN_RE.match(ln):
             break
+        block.append(ln)
+    # install.sh's own verdict first: ``state_owned_elsewhere``'s NEXT (a sync's line for a root-owned
+    # manifest can carry the generic access fix, whoever owns the file)
+    elsewhere = any("is owned by another account, so this one cannot open it" in ln for ln in block)
+    for ln in block:
         found = _STATE_OPEN_RE.search(ln.strip())
         if found is None:
             continue
@@ -10687,7 +10695,7 @@ def _state_open_words(r: _Run, run: InstallRun) -> tuple[str, str] | None:
             persons = doctor.is_persons_fix(fix)
         except Exception:
             persons = False
-        if fix.startswith("the person runs sudo chown"):
+        if elsewhere or fix.startswith("the person runs sudo chown"):
             return " on agentsync's state file, which another account owns", "after the file was given back"
         if persons:
             return " on agentsync's state file, which this account could not open: the person's to fix", (

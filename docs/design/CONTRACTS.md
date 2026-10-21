@@ -26487,7 +26487,8 @@ the person's. The round's ownership rule: this account's own file or folder shut
 chmod; another account's, an ACL deny or an unsearchable parent is the person's. `_shut_whose` reads the owner
 from doctor's own fix, never a copy of its test: `doctor.is_persons_fix` of `doctor.state_folder_fix` for a folder,
 of `doctor.state_path_fix` for each refused file (the manifest, its -wal and -shm that are another account's or fail
-`os.access` for reading and writing: `_refused_state_files`). The person's gives `(the person's; see Doctor)`; else
+`os.access` for reading and writing: `_refused_state_files`), the folder's and its files' both when the folder is
+shut. The person's gives `(the person's; see Doctor)`; else
 `(the agent's; see Doctor)`, with no "chmod", since a fix doctor gives is not always one. A fix that cannot be read
 keeps the person's. Tests: `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`
 (the file at 0000, then the folder at 0000), `test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket`.
@@ -26613,8 +26614,9 @@ and re-run, Items read only `exited 1 at its config step; the same command was r
 was in the raw install.out excerpt alone. When the failed run's own install.out block (from its `# run=` header)
 holds the sync's `error: state: ... cannot be opened` line, the item adds ` on agentsync's state file, which this
 account could not open (a mode, not damage)` and the re-run reads `... was run again after the file's mode was
-fixed and ended 0`; the line's own fix says whose: a sudo chown is `which another account owns` (`after the file
-was given back`), another fix `doctor.is_persons_fix` reads as the person's is `the person's to fix`. No path and
+fixed and ended 0`; whose is install.sh's own verdict in that block (`state_owned_elsewhere`'s NEXT, `is owned by
+another account`), else the line's own fix: a sudo chown is `which another account owns` (`after the file was given
+back`), another fix `doctor.is_persons_fix` reads as the person's is `the person's to fix`. No path and
 no mode number: the run's output has none, and by report time the file is 0600 again. Another cause at the config
 step keeps the old words. Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
 
@@ -26624,7 +26626,8 @@ is idle (...)` with no condition, while install.sh's NEXT says `if this Mac was 
 nor the load: a hung pandoc read the same as a busy Mac, and the rehearsal's re-run at a load of 52 was cut off
 again. At the cut-off `_read_cut_off` reads `os.getloadavg()[0]` and `os.cpu_count()` and the check group the
 doctor hook started last (`ReportHooks.doctor_at`: `doctor.groups_seen`, a context the CLI's hook holds around
-its checks, tells it each group as `run_checks` starts it), and both texts say `it was in the <group> check; the
+its checks, tells it each group as `run_checks` starts it, `doctor.saw_group` the CLI's own checks after them,
+and an empty name once all ran), and both texts say `it was in the <group> check; the
 1-minute load was <L> on <N> cores; if this Mac was busy, <_IDLE_AGAIN>; if a report written when it is idle is
 cut off again, the <group> check is slow or hung: install.out has install.sh's own doctor`. A figure that cannot be
 read is left out (`a check` with no group). `_IDLE_AGAIN` is whole, so install.sh's key holds; the evidence line's

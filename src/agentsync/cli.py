@@ -2237,6 +2237,7 @@ def _extra_checks(config: Config, *, offline: bool = False) -> list[doctor.Check
         ("install.commit", lambda: _install_check(config)),
     )
     for name, fn in checks:
+        doctor.saw_group(name)  # after run_checks' last: the check a cut-off doctor was in (Y22)
         try:
             out += fn()
         except Exception as exc:  # one broken check must not hide the others
@@ -2266,6 +2267,7 @@ def _report_hooks() -> setup_report.ReportHooks:
         read[:] = [(step, state_exc)]
         with doctor.groups_seen(seen.append):
             found = _status_checks(config, offline=True)
+        seen.append("")  # every check has run: what is left names none (the report's "a check")
         results = _with_damaged_manifest(config, found, state_exc)
         results = _listings_unread(results, state_exc, expand(config.state_paths.root))
         fixes[:] = _fail_steps(results)

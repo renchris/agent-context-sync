@@ -2888,9 +2888,7 @@ def run_checks(
     results: list[CheckResult] = []
     shut = state_folder_shut(config)
     for group, check in _CHECKS:
-        if _group_seen is not None:  # the setup report names the check a doctor it cut off was in (Y22)
-            with contextlib.suppress(Exception):
-                _group_seen(group)
+        saw_group(group)  # the setup report names the check a doctor it cut off was in (Y22)
         if shut and group in _STATE_FOLDER_GROUPS:  # each would stop on the folder (B13 round 20 X73)
             results.append(_bad(group, STATE_FOLDER_UNCHECKED, Severity.INFO))
             continue
@@ -2907,6 +2905,13 @@ def run_checks(
 _group_seen: Callable[[str], None] | None = None
 """Told each check's group as :func:`run_checks` starts it, while :func:`groups_seen` holds it (B13 round 21
 Y22: a doctor the setup report cut off named no check, so a hung one read the same as a busy Mac)."""
+
+
+def saw_group(group: str) -> None:
+    """Tell :func:`groups_seen`'s callback, if one is held, that the check ``group`` starts (never raises)."""
+    if _group_seen is not None:
+        with contextlib.suppress(Exception):
+            _group_seen(group)
 
 
 @contextlib.contextmanager

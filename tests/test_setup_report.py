@@ -6902,8 +6902,18 @@ def test_the_doctor_hook_says_which_check_it_started_last(fake_mac: dict[str, Pa
     hooks = cli._report_hooks()
     assert hooks.doctor_at is not None and hooks.doctor_at() is None
     assert hooks.doctor is not None
-    hooks.doctor(load_config(fake_mac["config"]))
-    assert hooks.doctor_at() == doctor._CHECKS[-1][0]
+    at: list[str | None] = []
+    real = cli._skill_check
+
+    def skill(config: Config) -> list[doctor.CheckResult]:
+        at.append(hooks.doctor_at())  # type: ignore[misc]
+        return real(config)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(cli, "_skill_check", skill)
+        hooks.doctor(load_config(fake_mac["config"]))
+    assert at == ["skill"], "the CLI's own checks after run_checks' are named too (review)"
+    assert hooks.doctor_at() == "", "every check ran: none is named"
     assert doctor._group_seen is None, "held only while the hook's doctor runs"
 
 
@@ -8616,6 +8626,17 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             f"file, {cause}; the same command was run again after {after} and ended 0"
         ), got
         assert "Library" not in got and "manifest" not in got, got
+    # a root-owned manifest: the sync's line may carry the generic access fix, and install.sh's own NEXT says
+    # whose (state_owned_elsewhere), which the item follows (review)
+    out.write_text(
+        "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        f"error: state: {db} cannot be opened: Permission denied (fix: {cli.MANIFEST_OPEN_FIX})\n"
+        "NEXT: agentsync's state file or its folder is owned by another account, so this one cannot open it "
+        "(the error above names the file)\n",
+        encoding="utf-8",
+    )
+    got = items(failed, worked)
+    assert "which another account owns; the same command was run again after the file was given back" in got
     out.write_text(  # another cause at the config step keeps today's words
         "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
         "configuration error: policy.toml: unknown key\n",
@@ -14234,6 +14255,10 @@ def test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket(
         monkeypatch.setattr(os, "getuid", lambda: real + 1)  # every file reads as another account's
         assert setup_report._shut_whose(cfg, "file") == setup_report._PERSONS
         assert setup_report._shut_whose(cfg, "folder") == setup_report._PERSONS
+        # a folder this account shut by its mode, holding a file another account owns: the person's still
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(doctor, "state_folder_fix", lambda root: f"chmod 700 {root}")
+            assert setup_report._shut_whose(cfg, "folder") == setup_report._PERSONS
         root = expand(cfg.state_paths.root)
         assert doctor.is_persons_fix(doctor.state_path_fix(root, db))  # the same verdict doctor's fix gives
     finally:
