@@ -260,6 +260,12 @@ _RETRY_META = "convert-retry:"
 """``convert-retry:<source_id>``: a JSON object ``{stable_id: [canonical sha256, retries]}`` of the source's
 files whose conversion failed and was tried again from those bytes (``_CONVERT_RETRIES``). New bytes count
 from zero; a file that converts leaves it."""
+_RESCREEN_STUBS_META = "rescreen-stubs"
+"""A JSON object ``{source_id: [stable_id, ...]}`` of the stubs a label rule withheld by their name that a
+[policy] change queued for a re-screen (``mark_for_rescreen``'s withheld arm) and no sync has converted yet,
+so the sync that converts one, the one that queued it or a later one, counts it as re-screened (B13 round 21
+Y73). A conversion takes it out; each cycle's first read drops one that waits no more (converted, settled
+without a read, deleted, its source gone)."""
 _RETRY_LEGACY_META = "convert-retry-legacy:done"
 """Set once the failed-conversion stubs a build before the retry settled were given the ERROR verdict again
 (``Manifest.retry_settled_failures``, B13 round 18 V65), so each gets the same bounded retries once."""
@@ -1836,7 +1842,8 @@ class _Cycle:
         self._cannot_run: dict[int, bool] = {}  # per converter: its version cannot be read this cycle
         self._cannot_run_why: dict[int, BaseException] = {}  # and why not, as this cycle reads it (W51)
         self._waiting_ids: set[tuple[str, str]] = set()  # stubs counted as waiting in this cycle (W2)
-        self._rescreen_queued = False  # this cycle's [policy] change queued files for a re-screen (X34)
+        self._rescreen_stubs: dict[str, set[str]] | None = None  # _RESCREEN_STUBS_META, read once (Y73)
+        self._rescreen_stubs_moved = False  # a conversion took one out: stored after its source's pass
         self._convert_retries: dict[str, dict[str, tuple[str, int]]] = {}  # per source: _RETRY_META
         self._reread_n = 0  # files read again
         self._reread_first = 0  # of those, bytes read for the first time: counted as converted too (Q28)
@@ -1909,8 +1916,10 @@ class _Cycle:
                 self.lock.beat(f"source:{src.id}")
                 self._run_source(src, arms.get(src.id), fp_changed)
                 self._flush_changes()
+                self._rescreen_stubs_save()
             self._recording_pass()  # after every source's queue and re-reads: nothing waits behind it
             self._flush_changes()
+            self._rescreen_stubs_save()
             if self._reread_n:  # one line a cycle, and a count: never a name
                 log.info(
                     "%d file(s) converted before a capability this install has were read again; %d of "
@@ -2138,17 +2147,32 @@ class _Cycle:
         Tightening must refuse (and queue a purge of) files already published under the old rules;
         loosening must re-publish files refused under them.  The fingerprint lives in the manifest's meta
         table; a manifest without one re-screens once when label rules are active."""
+        stubs = self._rescreen_stubs_load()  # before this cycle's verdicts: a stub that waits no more leaves
         policy = self.publisher.content_policy
         current = policy.fingerprint()
         stored = self.manifest.get_meta(_POLICY_META)
         if stored == current:
             return
         if stored is not None or policy.labels_active:
+            queued: set[tuple[str, str]] = set()
             marked = self.manifest.mark_for_rescreen(
-                _LABEL_CAPABLE, sorted(label_withheld_suffixes()), unread_only=policy.labels_active
+                _LABEL_CAPABLE,
+                sorted(label_withheld_suffixes()),
+                unread_only=policy.labels_active,
+                queued=queued,
             )
+            if queued:  # added to what an earlier change queued and no sync has converted yet
+                for sid, stable in queued:
+                    # with no OCR engine an image's stub is no label rule's, and OCR, not this change,
+                    # converts it once the engine is there
+                    row = self.manifest.get_item(sid, stable)
+                    if self.publisher.images_readable or (
+                        row is not None and row.name.lower().endswith(".msg")
+                    ):
+                        stubs.setdefault(sid, set()).add(stable)
+                self._rescreen_stubs_moved = True
+                self._rescreen_stubs_save()
             if marked:
-                self._rescreen_queued = True
                 self.manifest.set_meta(_RESCREEN_META, current)
                 log.warning(
                     "[policy] changed: %d label-capable %s queued for a re-screen",
@@ -4901,8 +4925,9 @@ class _Cycle:
         # converted again. Only a page made from read bytes counts: an online-only placeholder's and a
         # tombstone's were made with no byte read, and a re-read is counted apart. A no-converter stub counts
         # when its pages were made from its bytes (a binary .msg read, then withheld by a label rule) or when
-        # a label rule withheld it by its name and this cycle's rule change queued it (``mark_for_rescreen``'s
-        # withheld arm): it is converted for that change, so the sync line names it (B13 round 20 X34)
+        # a label rule withheld it by its name and a rule change queued it (``mark_for_rescreen``'s withheld
+        # arm), in this sync or an earlier one: it is converted for that change, so the sync line names it
+        # (B13 round 20 X34, round 21 Y73)
         rescreen = (
             not reread
             and row.content_sha256 is None
@@ -4922,6 +4947,7 @@ class _Cycle:
         )
         if self._in_recording_pass and self._helper_failed(row.name, result):
             raise _HelperDown
+        self._rescreen_stub_done(sid, stable)  # converted: a rule change's queue holds it no more (Y73)
         # the run that last converted this file from these bytes, asked before this one is recorded (the
         # run record): a copy of a file another run converted is no file converted again
         prior = self._converted_before(outs, result.action_key)
@@ -5043,14 +5069,68 @@ class _Cycle:
     def _rescreened_stub(self, row: ItemRow, outs: Sequence[OutputRow]) -> bool:
         """Whether the no-converter stub of ``row``, its hashes forgotten, is converted for a rule change
         (B13 round 20 X34): its pages were made from read bytes (a converter's id, not ``NO_CONVERTER_ID``),
-        or it is a stub a label rule withheld by its name with no byte read, which this cycle's [policy]
-        change queued (``_rescreen_queued``). Not by ``_RESCREEN_META``, which stays set while any
+        or it is a stub a label rule withheld by its name with no byte read, which a [policy] change queued
+        (``_RESCREEN_STUBS_META``), in this sync or in an earlier one that did not convert it: out of time,
+        or a .msg left online-only (B13 round 21 Y73). Not by ``_RESCREEN_META``, which stays set while any
         label-capable file is still pending, for many syncs: an image stubbed while OCR was missing and later
         edited would count as a re-screen then. A stub of a file no converter claims is not one either."""
         if any(o.converter_id != NO_CONVERTER_ID for o in outs if o.status is not OutputStatus.TOMBSTONE):
             return True
         withheld = {NO_CONVERTER_PREFIX + s.lower() for s in label_withheld_suffixes()}
-        return self._rescreen_queued and row.state_reason in withheld
+        return row.state_reason in withheld and row.stable_id in self._rescreen_stubs_load().get(
+            row.source_id, ()
+        )
+
+    def _rescreen_stubs_load(self) -> dict[str, set[str]]:
+        """The ``_RESCREEN_STUBS_META`` record, read once a cycle; a value it cannot read counts as none. A
+        stub that waits no more is dropped: its row gone, no withheld stub now, or no verdict that is still
+        work (converted, or settled with no read under a rule still on), or its source removed."""
+        if self._rescreen_stubs is None:
+            stored: dict[str, set[str]] = {}
+            with contextlib.suppress(ValueError, TypeError, AttributeError):
+                for sid, ids in json.loads(self.manifest.get_meta(_RESCREEN_STUBS_META) or "{}").items():
+                    stored[str(sid)] = {str(stable) for stable in ids}
+            withheld = {NO_CONVERTER_PREFIX + s.lower() for s in label_withheld_suffixes()}
+            waiting = _NEW_BYTES | {Verdict.DEFERRED, Verdict.ERROR}
+            sources = {s.id for s in self.config.sources}
+            kept = {
+                sid: live
+                for sid, ids in stored.items()
+                if sid in sources
+                and (
+                    live := {
+                        stable
+                        for stable in ids
+                        if (row := self.manifest.get_item(sid, stable)) is not None
+                        and row.state is RowState.REFUSED
+                        and row.state_reason in withheld
+                        and row.last_verdict in waiting
+                    }
+                )
+            }
+            self._rescreen_stubs = kept
+            self._rescreen_stubs_moved = kept != stored
+            self._rescreen_stubs_save()
+        return self._rescreen_stubs
+
+    def _rescreen_stub_done(self, source_id: str, stable: str) -> None:
+        """``stable`` was converted: it leaves the record, stored after its source's pass."""
+        ids = self._rescreen_stubs_load().get(source_id)
+        if ids is not None and stable in ids:
+            ids.discard(stable)
+            if not ids:
+                del self._rescreen_stubs_load()[source_id]
+            self._rescreen_stubs_moved = True
+
+    def _rescreen_stubs_save(self) -> None:
+        """Store the record when a stub left it or joined it this cycle; one write a source, not a file."""
+        if self._rescreen_stubs is None or not self._rescreen_stubs_moved:
+            return
+        value = json.dumps(
+            {sid: sorted(ids) for sid, ids in sorted(self._rescreen_stubs.items())}, separators=(",", ":")
+        )
+        self.manifest.set_meta(_RESCREEN_STUBS_META, value)
+        self._rescreen_stubs_moved = False
 
     def _retries(self, src: SourceConfig, row: ItemRow, h1: str, acc: _SourceAcc) -> bool | None:
         """Whether the early cutoff converts ``row`` again from the bytes its stub was made from: the stub of

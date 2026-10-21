@@ -3394,6 +3394,46 @@ def test_the_sync_line_after_a_label_rule_is_lifted_names_every_conversion_it_co
     assert "reread" not in _run_record(lifted) and report.read_again == 0
 
 
+def test_a_withheld_stub_a_rule_change_queued_is_re_screened_in_the_sync_that_converts_it(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """B13 round 21 Y73: X34 counted a stub a label rule withheld by its name in S only in the sync whose
+    [policy] change queued it. One that sync left for later (the cycle's OCR time used up) was counted in N
+    and in no clause by the sync that converted it. The queue is kept until the stub is converted, so that
+    sync names it, never as a first read; and it leaves the record once converted."""
+    from agentsync import cli  # noqa: PLC0415
+
+    _use_ocr(monkeypatch, tmp_path)
+    labelled = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    assert run(labelled).exit_code == 0
+    picture(local_source_dir / SITE_PLAN, "Loading dock")
+    assert run(labelled).exit_code == 0
+    assert _image_page(labelled, SITE_PLAN)[0]["status"] == "refused", "withheld by its name, never read"
+    lifted = config_with(tmp_path, local_source_dir)
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 0.0)  # this sync's OCR time is used up: the image waits
+    queued = run(lifted)
+    assert queued.exit_code == 0 and _image_page(lifted, SITE_PLAN)[0]["status"] == "refused"
+    assert source_report(queued).deferred == 1, "left for the next sync's OCR"
+    monkeypatch.setattr(cycle_mod, "_OCR_BUDGET_S", 180.0)
+    report = run(lifted)
+    assert report.exit_code == 0 and _image_page(lifted, SITE_PLAN)[0]["status"] == "current"
+    rep = source_report(report)
+    capsys.readouterr()
+    cli._print_report(report)
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert rep.converted == 1 and report.rescreened == 1, last
+    # the documents converted without OCR in the sync before are read again: the image is none of them
+    assert last.startswith("converted 1, deferred 0 online-only, read again ") and report.read_first == 0, (
+        last
+    )
+    assert last.endswith("; re-screened 1 for a rule change (also counted above, 0 of them unchanged)"), last
+    with Manifest(lifted.state_paths.db) as m:
+        assert json.loads(m.get_meta(cycle_mod._RESCREEN_STUBS_META) or "{}") == {}, "converted: it left"
+
+
 def test_an_image_stub_converted_after_a_rule_changes_sync_is_no_re_screen(
     tmp_path: Path, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

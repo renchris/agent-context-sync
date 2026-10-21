@@ -2074,7 +2074,12 @@ class Manifest:
         return str(r[0]) if r is not None else None
 
     def mark_for_rescreen(
-        self, suffixes: Sequence[str], withheld_suffixes: Sequence[str] = (), *, unread_only: bool = False
+        self,
+        suffixes: Sequence[str],
+        withheld_suffixes: Sequence[str] = (),
+        *,
+        unread_only: bool = False,
+        queued: set[tuple[str, str]] | None = None,
     ) -> int:
         """Queue every published or policy-refused file named with one of ``suffixes`` for a re-screen.
 
@@ -2090,13 +2095,26 @@ class Manifest:
         ``unread_only``: mark only such a row with no byte read (no content hash).  Set while the new policy
         still has a label rule on: a binary ``.msg`` read on this Mac stays withheld under it, so re-reading
         it on every ``[policy]`` tweak only counted it as newly converted and refused (B13 round 7 H47).  Once
-        the rule is lifted every such row is marked, a read one that has gone online-only included."""
+        the rule is lifted every such row is marked, a read one that has gone online-only included.
+
+        ``queued``: when given, the (source_id, stable_id) of every row the ``withheld_suffixes`` arm marks
+        are added to it, so the sync that converts one, this one or a later one, counts it as re-screened
+        (B13 round 21 Y73)."""
         from agentsync.convert import NO_CONVERTER_PREFIX  # noqa: PLC0415 - the manifest imports no converter
 
         like = " OR ".join("lower(name) LIKE ?" for _ in suffixes) or "0"
         withheld = [NO_CONVERTER_PREFIX + s.lower() for s in withheld_suffixes]
         unread = " AND content_sha256 IS NULL" if unread_only else ""
         named = f" OR (state_reason IN ({', '.join('?' for _ in withheld)}){unread})" if withheld else ""
+        if queued is not None and withheld:  # before the update, which forgets the hash ``unread`` reads
+            queued.update(
+                (str(r[0]), str(r[1]))
+                for r in self._db.execute(
+                    "SELECT source_id, stable_id FROM items WHERE is_dir = 0 AND state = 'refused' "
+                    f"AND state_reason IN ({', '.join('?' for _ in withheld)}){unread} AND ({like})",
+                    (*withheld, *(f"%{s.lower()}" for s in suffixes)),
+                )
+            )
         cur = self._db.execute(
             "UPDATE items SET content_sha256 = NULL, canonical_sha256 = NULL, canonical_method = NULL, "
             "canonical_parts = NULL, last_verdict = ? WHERE is_dir = 0 "
