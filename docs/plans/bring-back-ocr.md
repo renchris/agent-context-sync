@@ -1373,6 +1373,34 @@ index-root damage, staging's exclusion on exit 65, helper fixes, the lock wait),
 converter error lines, helper docstrings), D 12 (guides and CONTRACTS cross-references). Lead: X86 (round 19 and 20
 /tmp leftovers and round 18's v26 sandboxes, about 43 GB, removed by exact name).
 
+### B13 round 20 landed (2026-10-20)
+
+All six lanes landed; CI green on `e499db95` (ci `39529771141`; prompt v29). Notes `lanes/r20-<lane>.md`, lead notes
+`round20/lead-notes.md`. One item is not built: X14's first fix, which lane B measured to point the person at a sync
+that cannot help, so it built X46's words for the same line instead. X11 is lane RB's X85, X58 is lane D's X61, and
+X77 is the lead's plan correction (`e7acd35e`).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `a1b06e16..d828c17c`, 4 commits |
+| RA | `125a8619..f9eee326`, 11 commits |
+| P | `e1f0fce6..15fa35bc`, 3 commits (v29) |
+| RB | `cac19f28..64380e08`, 14 commits |
+| B | `f000244f..cc908fee`, 6 commits (with dated lines at lane D's paragraphs) |
+| E | `c4f4ae10..e499db95`, 5 commits |
+
+Learnings: the first fire aborted because the pane-id lint read the all-digit short sha `34818253` in the briefs as a
+truncated session id; the briefs now carry the full sha. The unopenable-manifest work crossed four lanes (P's
+person's-fix phrase, B's `doctor.cannot_open` and its codes, RA's Summary bucket, B's Time Machine line), so the
+lead relayed seven seams before the lanes could message each other; giving every brief the other lanes' session ids
+at the fire would remove that relay. A lane's CLI probe rewrote the real agentsync-docs skill for a moment
+(scratch HOME, CLAUDE_CONFIG_DIR still set); it was restored and the lane's memory rule now covers it. Lane P's X72
+(index-root clause) is true only with lane B's X50, and its X3 prompt clause keys on lane RB's X37 NEXT: round 21
+checks both.
+
+Round 21: the round 20 workflow with prompt v29 on this section's landed tip, BASE `34818253` (ids Y<n>, outputs
+`round21/`); scenario C plays the v28 and v27 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
