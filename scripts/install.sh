@@ -7555,7 +7555,7 @@ runs = ["chmod %s %s" % (mode, " ".join(_shell_path(p) for p in want[mode])) for
 print(" && ".join(runs))
 ' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
 }
-STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat or a governance file) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
+STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
 PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of

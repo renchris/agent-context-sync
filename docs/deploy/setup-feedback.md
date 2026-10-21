@@ -638,7 +638,7 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   `state-refused`. A -wal or -shm, the lock, the heartbeat or a governance file stops step 2 past its config step,
   at its status step: when every [FAIL] that stops it there is such a state check whose fix is this account's
   chmod 600 or chmod 700 of paths in the state folder, its `NEXT:` names them the same way (`agentsync's state folder
-  or a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat or a governance file) has
+  or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has
   a mode that is wrong for it, ...: the fix is the agent's: run <the chmods> once, then re-run: ...; if the re-run
   names the same chmod again, ...`; round 22 Z8, Z36, Z59);
   a mix with any other [FAIL] keeps `fix the [FAIL] lines above`. A folder (or a socket or a fifo) where

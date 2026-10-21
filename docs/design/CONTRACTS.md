@@ -27391,8 +27391,8 @@ timeout, the [FAIL] lines as its argument), returns one command when every line 
 check (`state_dir` and its parts, `lock`, `heartbeat`, `governance.*`) whose fix is one `chmod 600` or `chmod 700`
 of paths that resolve inside the config's state folder: the folders' `chmod 700` first, then one `chmod 600` of
 every file, each path in doctor's `_shell_path` form. Then, after the person's branch, the status step's NEXT is
-`agentsync's state folder or a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat
-or a governance file) has a mode that is wrong for it, one this account cannot open or one others can read (a mode,
+`agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance
+file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode,
 not damage; the [FAIL] lines above name it): the fix is the agent's: run <chmods> once, then re-run: <install.sh
 ...>; if the re-run names the same chmod again, show the person those lines and go on to the report`, the closing
 status's NEXT the same (the lane's review: it said "then run <agentsync> sync", while the prompt's grant says the
@@ -27463,7 +27463,7 @@ version pins in tests/test_install_oneshot.py and tests/test_setup_report.py, se
 its row K55). No other lane sent prompt words this round: lane B's Z83 words are the person's kinds, built here as
 Z65's; lane B's new `STATE_REFUSED_STEP` and fix words are not quoted by the prompt.
 - Step 2's grant (Z59, Z8, Z81; the lead's ruling 1): `Each chmod 600 or chmod 700 of agentsync's own state folder or
-  a file in it (the manifest, its -wal or -shm, the token cache, the lock, the heartbeat or a governance file) that the
+  a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) that the
   NEXT: line or
   any [FAIL] line (state_dir, lock, heartbeat or governance) names as the fix is yours too, once each, in one pass:
   run each as written, a folder's first; if the NEXT: line also says to run ~/.local/bin/agentsync status (a shut

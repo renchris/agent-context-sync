@@ -8572,11 +8572,11 @@ def test_a_side_file_this_account_cannot_write_is_no_config_step_stop(
 
 
 STATE_CHMODS_NEXT = (
-    "NEXT: agentsync's state folder or a file in it (the manifest, its -wal or -shm, the token cache, the "
-    "lock, the heartbeat or a governance file) has a mode that is wrong for it, one this account cannot open "
-    "or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: "
-    "run {fix} once, then re-run: {rerun}; if the re-run names the same chmod again, show the person those "
-    "lines and go on to the report"
+    "NEXT: agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the "
+    "heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account "
+    "cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the "
+    "agent's: run {fix} once, then re-run: {rerun}; if the re-run names the same chmod again, show the "
+    "person those lines and go on to the report"
 )
 """Step 2's NEXT when every [FAIL] that stops its status step is a chmod of this account's own state (B13
 round 22 Z8, Z36, Z59): the lock, the heartbeat, a governance file or a -wal or -shm stop it there, past the
