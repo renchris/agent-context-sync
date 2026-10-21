@@ -15,6 +15,7 @@ import plistlib
 import re
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -8612,6 +8613,39 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         "in the install.out lines read); the same command was run again and ended 0"
     )
 
+    # B13 round 22 Z19: a status-step stop on a state file of this account's mode, then the agent's chmod: the
+    # line says the chmod came between the runs, only when every [FAIL] is a state-folder check with that fix
+    state = "~/'Library/Application Support/agentsync"
+    hb = f"[FAIL] heartbeat — x cannot be opened: Permission denied (fix: chmod 600 {state}/heartbeat.json')"
+    shm = f"[FAIL] state_dir.files — this account cannot read and write it: x (fix: chmod 600 {state}/m-shm')"
+    lk = f"[FAIL] lock — x cannot be opened: Permission denied (fix: chmod 600 {state}/agentsync.lock')"
+    sd = f"[FAIL] state_dir — x has mode 0000 (fix: chmod 700 {state}')"
+    pandoc = (
+        "[FAIL] pandoc — `pandoc --version` did not answer within 60s: the check ran out of time (fix: x)"
+    )
+    docs = "[FAIL] docs_repo.permissions — x (fix: chmod 700 ~/'agent-context/docs')"
+    persons = (
+        f"[FAIL] state_dir — x (fix: the person runs sudo chown -R 501 {state}' (the agent runs no sudo))"
+    )
+    for fails, after in (
+        ([hb], " after the file's mode was fixed"),
+        ([shm], " after the file's mode was fixed"),
+        ([lk, hb], " after the file's mode was fixed"),
+        ([sd], " after the folder's mode was fixed"),
+        ([hb, pandoc], ""),
+        ([docs], ""),
+        ([persons], ""),
+    ):
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            + "".join(f"{ln}\n" for ln in fails)
+            + "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
+            encoding="utf-8",
+        )
+        got = items(run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True), worked)
+        assert got.endswith(f"; the same command was run again{after} and ended 0"), (fails, got)
+        assert "at its status step ([FAIL] " in got and "Library" not in got, got
+
     # B13 round 21 Y5: a config step that met the sync's line for a state file this account cannot open read
     # only "exited 1 at its config step; the same command was run again and ended 0" after the agent's chmod.
     # The line's own fix says whose: this account's mode, another account's (a sudo chown), never the path
@@ -8619,21 +8653,53 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         "step=config seconds=1 rc=0 result=done note=add-source", "step=config seconds=1 rc=1 result=failed"
     )
     db = "~/Library/Application Support/agentsync/manifest.sqlite"
-    for fix, cause, after in (
+    folder = "~/'Library/Application Support/agentsync'"
+    # B13 round 22 Z4, Z45, Z6: a folder's fix names the folder (round 22 ruling 3): chmod 700, doctor's for a
+    # folder only; a folder above it that refuses a search; an ACL on it, the last two the person's
+    for fix, what, cause, after in (
         (
             f"chmod 600 {db}",
+            "agentsync's state file",
             "which this account could not open (a mode, not damage)",
             "the file's mode was fixed",
         ),
         (
             cli.MANIFEST_OPEN_FIX,
+            "agentsync's state file",
             "which this account could not open (a mode, not damage)",
             "the file's mode was fixed",
         ),
         (
             f"the person runs sudo chown -R {os.getuid()} ~/x; the agent runs no sudo",
+            "agentsync's state file",
             "which another account owns",
             "the file was given back",
+        ),
+        (
+            f"chmod 700 {folder}",
+            "agentsync's state folder",
+            "which this account could not open (a mode, not damage)",
+            "the folder's mode was fixed",
+        ),
+        (
+            f"chmod 700 {folder[:-1]}/governance'",
+            "a folder in agentsync's state folder",
+            "which this account could not open (a mode, not damage)",
+            "the folder's mode was fixed",
+        ),
+        (
+            f"the person gives this account search access to ~/'Library/Application Support', a folder above "
+            f"{folder} that refuses it one, then run again",
+            "agentsync's state folder",
+            "which a folder above it refuses this account a search: the person's to fix",
+            "the folder above it was opened to this account",
+        ),
+        (
+            f"the person gives this account read, write and search access to the folder {folder} (its owner "
+            f"and mode are right, so an ACL or a privacy setting refuses it: ls -led {folder} shows an ACL)",
+            "agentsync's state folder",
+            "which an ACL or a privacy setting refuses this account: the person's to fix",
+            "the folder was fixed",
         ),
     ):
         out.write_text(
@@ -8644,10 +8710,32 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         )
         got = items(failed, worked)
         assert got == (
-            "- install.sh · step 2 · run 20260929T100000Z exited 1 at its config step on agentsync's state "
-            f"file, {cause}; the same command was run again after {after} and ended 0"
+            f"- install.sh · step 2 · run 20260929T100000Z exited 1 at its config step on {what}, {cause}; "
+            f"the same command was run again after {after} and ended 0"
         ), got
         assert "Library" not in got and "manifest" not in got, got
+    # B13 round 22 Z6: a last run that stopped there names the cause and whose in the outcome, with no bracket
+    above = (
+        "the person gives this account search access to ~/'Library/Application Support', a folder above "
+        f"{folder} that refuses it one, then run again"
+    )
+    for fix, words in (
+        (above, "which a folder above it refuses this account a search: the person's to fix"),
+        (f"chmod 700 {folder}", "which this account could not open, by its mode, not damage"),
+    ):
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            f"error: state: {db} cannot be opened: Permission denied (fix: {fix})\n",
+            encoding="utf-8",
+        )
+        log.write_text(LIST_RUN + failed, encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        outcome = _line(section(text, "Summary"), "- **outcome: ")
+        computed = outcome.split("(computed: ", 1)[1]
+        assert computed.startswith(
+            f"install.sh exited 1 at its config step on agentsync's state folder, {words}"
+        ), outcome
+        assert "(" not in computed and "Library" not in outcome, outcome
     # a root-owned manifest: the sync's line may carry the generic access fix, and install.sh's own NEXT says
     # whose (state_owned_elsewhere), which the item follows (review)
     out.write_text(
@@ -11133,8 +11221,9 @@ def test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere(
     cfg = fake_mac["config"]
     Seed(cfg).close()
     db = expand(load_config(cfg).state_paths.db)
-    shut = setup_report._STATE_SHUT
     for target in (db.parent, db):
+        # B13 round 22 Z15: the folder's words for the folder (round 22 ruling 3)
+        shut = setup_report._STATE_FOLDER_SHUT if target == db.parent else setup_report._STATE_SHUT
         target.chmod(0o000)
         try:
             text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
@@ -11145,8 +11234,119 @@ def test_a_state_folder_this_account_cannot_search_is_named_in_words_everywhere(
         assert "Error" not in text.replace("Recent errors", "") and "Errno" not in text, target
         assert "Permission denied" not in section(text, "Status"), target
         evidence = _line(section(text, "Summary"), "- evidence: ")
-        assert "because the state file cannot be opened by this account" in evidence, evidence
+        assert (
+            f"because the state {'folder' if target == db.parent else 'file'} cannot be opened by this "
+            in (evidence)
+        ), evidence
         assert "another cause" not in evidence, evidence
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+@pytest.mark.parametrize("mode", [0o000, 0o600])
+def test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fault_named_as_the_folder(
+    fake_mac: dict[str, Path], mode: int
+) -> None:
+    """B13 round 22 Z10, Z27, Z41, Z15 (round 22 rulings 2 and 3): with ~/Library/Application Support refusing
+    a search, the Configuration section was one ``_This section failed: PermissionError`` line (no loads: line
+    for the finish to read), the purge queue said "a file cannot be opened" and the Summary "another cause".
+    The section stays whole, its state dir line says it was not checked, and every part names the state
+    folder."""
+    cfg = fake_mac["config"]
+    Seed(cfg).close()
+    above = expand(load_config(cfg).state_paths.root).parent
+    was = stat.S_IMODE(above.stat().st_mode)
+    above.chmod(mode)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        above.chmod(was)
+    assert "This section failed" not in text and "PermissionError" not in text and "Errno" not in text
+    conf = section(text, "Configuration")
+    assert "- loads: yes" in conf and "- sources: " in conf, conf
+    assert _line(conf, "- state dir: ").endswith(
+        "(not checked: this account cannot reach it: Permission denied; see Doctor's state_dir line)"
+    ), conf
+    status = section(text, "Status")
+    purge = status.split("### Purge queue", 1)[1].split("###", 1)[0]
+    assert f"not measured ({setup_report._STATE_FOLDER_SHUT})" in purge, purge
+    assert "the state file cannot be opened" not in status, status
+    evidence = _line(section(text, "Summary"), "- evidence: ")
+    assert "because the state folder cannot be opened by this account" in evidence, evidence
+    assert "another cause" not in evidence, evidence
+    [scan] = [ln for ln in section(text, "Environment").splitlines() if ln.startswith("- secret scan: ")]
+    assert scan.endswith(f"last re-screen: not read ({setup_report._STATE_FOLDER_SHUT})"), scan
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_path_the_configuration_cannot_reach_costs_only_its_own_line(fake_mac: dict[str, Path]) -> None:
+    """B13 round 22 Z10, Z27: the state folder itself at 0000 under a searchable parent still exists; and
+    sources.toml's folder refusing a search leaves the config: and loads: lines printed."""
+    cfg = fake_mac["config"]
+    Seed(cfg).close()
+    folder = expand(load_config(cfg).state_paths.root)
+    folder.chmod(0o000)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        folder.chmod(0o700)
+    conf = section(text, "Configuration")
+    assert _line(conf, "- state dir: ").endswith("(exists)"), conf
+    above = cfg.parent
+    was = stat.S_IMODE(above.stat().st_mode)
+    above.chmod(0o000)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+    finally:
+        above.chmod(was)
+    conf = section(text, "Configuration")
+    assert "This section failed" not in conf, conf
+    assert _line(conf, "- config: ").endswith(
+        "(not checked: this account cannot reach it: Permission denied)"
+    )
+    assert _line(conf, "- loads: ").startswith("- loads: "), conf
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_state_folder_a_folder_above_refuses_is_shut_and_the_persons_on_any_python(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z40, Z61, Z74: with a folder above the state folder refusing a search, ``_state_shut``'s
+    ``is_dir()`` raised on Python 3.11 to 3.13 (and says False on 3.14), its catch-all returned "", and
+    state_dir's FAIL, whose fix doctor gives as the person's, was "unexpected". A stat that reads the refusal
+    as the finding: "folder", the person's, in the folder's bucket (round 22 ruling 2), on any Python."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name == "state_dir"]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    above = expand(config.state_paths.root).parent
+    was = stat.S_IMODE(above.stat().st_mode)
+    for mode in (0o000, 0o600):
+        above.chmod(mode)
+        try:
+            assert setup_report._state_shut(config) == "folder"
+            assert setup_report._shut_whose(config, "folder") == setup_report._PERSONS
+            with pytest.MonkeyPatch.context() as mp:  # Python 3.14's is_dir: False, never a raise
+                mp.setattr(Path, "is_dir", lambda self: False)
+                assert setup_report._state_shut(config) == "folder"
+            _rc, text, _ = report(tmp_path, cfg)
+        finally:
+            above.chmod(was)
+        summary = section(text, "Summary")
+        line = _line(summary, "- doctor: ")
+        assert (
+            "from the state folder this account cannot open (1 check): state_dir FAIL (the person's; see "
+            in (line)
+        ), line
+        assert "state_dir FAIL" not in line.split(" · unexpected ", 1)[1], line
+        outcome = _line(summary, "- **outcome: ")
+        assert "unexpected doctor FAIL" not in outcome, outcome
+    assert setup_report._state_shut(config) == ""
 
 
 def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
@@ -11852,6 +12052,52 @@ def test_the_last_rescreen_of_a_folder_where_the_manifest_belongs_points_at_its_
         "; last re-screen: not read (the state file is not a file: see Doctor's state_dir.manifest line)"
     ), line
     assert "state_dir.manifest" in {r.name for r in doctor.run_checks(load_config(cfg)) if not r.ok}
+
+
+def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z12: with a folder where manifest.sqlite belongs after a sync, four parts said "no
+    manifest yet (no sync has run)", the evidence line said every part was measured, and doctor's
+    state_dir.manifest FAIL, the person's, was "unexpected". Each part now says the state file is not a file,
+    the evidence line counts them with a clause of their own, the FAIL has the person's bucket, and the purge
+    queue still lists."""
+    from agentsync import governance  # noqa: PLC0415
+
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    root = expand(load_config(cfg).state_paths.root)
+    selector = governance.PurgeSelector(source_id="contoso", stable_id="s1")
+    assert governance.enqueue_purge(root, selector, governance.PurgeReason.OPERATOR)
+    db = expand(load_config(cfg).state_paths.db)
+    db.rename(db.with_name("kept.sqlite"))
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.mkdir(mode=0o700)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "no manifest yet" not in text, [ln for ln in text.splitlines() if "no manifest yet" in ln]
+    status = section(text, "Status")
+    assert status.count(f"- not measured ({setup_report._STATE_NOT_FILE})") >= 4, status
+    purge = status.split("### Purge queue", 1)[1].split("###", 1)[0]
+    assert "1 purge queued" in purge, purge
+    summary = section(text, "Summary")
+    evidence = _line(summary, "- evidence: ")
+    assert "because the state file is not a file: a report written after it is put back" in evidence, evidence
+    assert "another cause" not in evidence and "were measured" not in evidence, evidence
+    line = _line(summary, "- doctor: ")
+    assert "state_dir.manifest FAIL (the person's; see Doctor)" in line and line.endswith("unexpected 0"), (
+        line
+    )
+    db.rmdir()
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "- no manifest yet (no sync has run)" in text  # a plain missing manifest says so still
 
 
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
@@ -14319,8 +14565,10 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
         line, _outcome = summary()
     finally:
         folder.chmod(0o700)
-    assert "from the state file this account cannot open (" in line, line
+    # B13 round 22 Z31: the bucket names the folder, on the Doctor line and in the outcome alike
+    assert "from the state folder this account cannot open (" in line, line
     assert "state_dir FAIL (the agent's; see Doctor)" in line and "the person's" not in line, line
+    assert "from the state folder this account cannot open" in _outcome, _outcome
 
 
 def test_a_state_file_another_account_owns_is_the_persons_in_the_doctor_bucket(
@@ -14415,7 +14663,11 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
             target.chmod(0o600)
         summary = section(text, "Summary")
         line = _line(summary, "- doctor: ")
-        bucket = f" · from a file in the state folder this account cannot open (1 check): {check} FAIL · "
+        # B13 round 22 Z32, Z43: this account's own chmod is named the agent's, as the state file's bucket
+        bucket = (
+            " · from a file in the state folder this account cannot open (1 check): "
+            f"{check} FAIL (the agent's; see Doctor) · "
+        )
         assert bucket in line and line.endswith(" · unexpected 0"), line
         assert "the person's" not in line, line
         assert "Error:" not in _line(summary, "- Loop: "), summary
@@ -14441,6 +14693,49 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
         monkeypatch.undo()
         holds.chmod(0o600)
     assert refused["governance.hold"] is True, refused
+    # B13 round 22 Z39: a GovernanceError from a PermissionError is worded by its OSError (Y38), one branch
+    from agentsync.governance import GovernanceError  # noqa: PLC0415
+
+    try:
+        raise GovernanceError("holds") from PermissionError(13, "Permission denied", str(holds))
+    except GovernanceError as exc:
+        assert setup_report._why_not_read(exc) == "a file cannot be opened: Permission denied"
+
+
+@pytest.mark.usefixtures("roomy_calls")
+def test_a_state_folder_another_account_owns_is_in_the_shut_bucket_only_when_a_file_is_shut(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 22 Z84: a state folder another account owns whose files this account cannot open FAILed
+    state_dir as "unexpected" (the bucket took state_dir only for a shut folder). With the files shut it is in
+    the bucket, the person's; with every state file open (nothing shut) it stays unexpected, as no file of it
+    is one this account cannot open."""
+    real = cli._status_checks
+    extra: list[doctor.CheckResult] = []
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")] + extra
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    me = os.getuid()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(os, "getuid", lambda: me + 1)  # the folder and its files read as another account's
+        _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert (
+        "from the state file this account cannot open (2 checks): state_dir FAIL (the person's; see Doctor), "
+        "state_dir.files FAIL (the person's; see Doctor)"
+    ) in line, line
+    assert line.endswith(" · unexpected 0"), line
+    # nothing shut: a state_dir FAIL for the owner alone stays unexpected (never the shut bucket's words)
+    extra.append(doctor._bad("state_dir", "owned by another account", fix="sudo chown -R x y"))
+    monkeypatch.setattr(setup_report, "_root_foreign", lambda c: True)
+    _rc, text, _ = report(tmp_path, cfg)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "cannot open" not in line and "state_dir FAIL" in line.split(" · unexpected ", 1)[1], line
 
 
 @pytest.mark.usefixtures("roomy_calls")

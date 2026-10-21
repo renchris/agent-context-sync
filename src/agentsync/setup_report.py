@@ -2566,6 +2566,7 @@ def compute_outcome(
     runs: Sequence[InstallRun],
     *,
     doctor_fails: Sequence[str | tuple[str, str | None]] = (),
+    config_cause: str | None = None,
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -2587,7 +2588,10 @@ def compute_outcome(
       1's failure, as it has no "stopped".
 
     Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
-    never change the outcome by themselves, except an error that stopped the run."""
+    never change the outcome by themselves, except an error that stopped the run. ``config_cause``: what the
+    last install run's failed config step met, read from its install.out block by the caller
+    (:func:`_outcome_cause`, no bracket in it), so a stop on the state folder says it and whose it is (B13
+    round 22 Z6)."""
     installs = install_runs_only(runs)
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
@@ -2694,6 +2698,8 @@ def compute_outcome(
             signal = _SIGNAL_NAMES[last.rc]
             detail = f"install.sh was stopped by {signal}, exit {last.rc}{during}; "
             detail += "the prompt calls running it again safe"
+        elif failing and failing[0] == "config" and config_cause:
+            detail = f"install.sh exited {last.rc} at its config step{config_cause}"
         else:
             detail = f"install.sh exited {last.rc}{where or _status_fail_words(last)}"
         return Outcome("failed", layout.install_step, (detail,), version)
@@ -3254,7 +3260,8 @@ class _Run:
             self.config_error = f"{type(exc).__name__}: {exc}"
         # no sources.toml yet (setup's step 2 writes it) is no config that "does not load", and add-source,
         # which the error points at, is a command the prompt says not to use (B13 round 12 N11)
-        self.config_missing = self.config is None and not self.config_path.exists()
+        # B13 round 22 Z10: a folder above it that refuses a search is no missing file, and never a raise here
+        self.config_missing = self.config is None and _path_reached(self.config_path) is False
         self.system_proxy: net.SystemProxy | None = None
         with contextlib.suppress(Exception):
             self.system_proxy = net.system_proxy()
@@ -4391,11 +4398,13 @@ def _last_rescreen(r: _Run) -> str:
     except FileNotFoundError:
         return "none recorded (no manifest yet)"
     except OSError as exc:
-        return f"not read ({_STATE_SHUT if isinstance(exc, PermissionError) else _why_not_read(exc)})"
+        if isinstance(exc, PermissionError):  # B13 round 22 Z15: the folder's words when it is the folder
+            return f"not read ({_STATE_FOLDER_SHUT if _state_folder_shut(db) else _STATE_SHUT})"
+        return f"not read ({_why_not_read(exc)})"
     if (
         not db.is_file()
     ):  # a folder where it belongs: sqlite's IOERR fell to the generic words (B13 round 21 Y47)
-        return "not read (the state file is not a file: see Doctor's state_dir.manifest line)"
+        return f"not read ({_STATE_NOT_FILE})"
     try:
         conn = _open_manifest_ro(db, 1.0)
         if conn is None:  # its -wal is there and its -shm is not: an open would create one (Y70)
@@ -5332,8 +5341,28 @@ def _installer_runs(r: _Run) -> list[str]:
     return out
 
 
+def _path_reached(path: Path, *, folder: bool = False) -> bool | str:
+    """Whether ``path`` is there (a folder, with ``folder``), or the words for a folder above it that refuses
+    this account a search (B13 round 22 Z10, Z27): ``not checked: this account cannot reach it: <strerror>``.
+    Nobody can tell then whether it is there, so it is neither "exists" nor "missing", and the strerror
+    carries no path and no class name (``_why_not_read``'s rule). A stat, not ``Path.is_dir``: Python 3.11
+    to 3.13 raise on EACCES there and 3.14 returns False, which would read "missing"."""
+    try:
+        st = path.stat()
+    except PermissionError as exc:
+        return f"not checked: this account cannot reach it: {exc.strerror}"
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) if folder else True
+
+
+def _reach_words(found: bool | str, yes: str, no: str = "missing") -> str:
+    return found if isinstance(found, str) else yes if found else no
+
+
 def _configuration(r: _Run) -> list[str]:
-    out = [f"- config: {r.config_path} ({'exists' if r.config_path.exists() else 'missing'})"]
+    # B13 round 22 Z10, Z27: each check of a path costs only its own line when a folder above refuses a search
+    out = [f"- config: {r.config_path} ({_reach_words(_path_reached(r.config_path), 'exists')})"]
     if r.config is None:
         if r.config_missing:  # never "loads: no" (nor "loads: not ..."), the prompt's finish's failing config
             out.append("- loads: pending: no sources.toml yet (setup's step 2 writes it)")
@@ -5356,17 +5385,19 @@ def _configuration(r: _Run) -> list[str]:
         + f"; {under_cloud} under ~/Library/CloudStorage"
     )
     docs = expand(c.docs_repo)
-    repo = "a git repo" if (docs / ".git").exists() else "not a git repo yet"
-    out.append(f"- docs repo: {docs} ({'exists, ' + repo if docs.is_dir() else 'missing'})")
+    docs_there = _path_reached(docs, folder=True)
+    git = _path_reached(docs / ".git")
+    repo = _reach_words(git, "a git repo", "not a git repo yet")
+    out.append(f"- docs repo: {docs} ({_reach_words(docs_there, 'exists, ' + repo)})")
     out.append(f"- [graph] client_id: {'set' if c.graph.client_id else 'not set'} (the id is never shown)")
     tenant = c.graph.tenant not in ("", "organizations", "common")
     out.append(f"- [graph] tenant: {'set' if tenant else 'not set'}")
     out.append(f"- [network] proxy: {'set' if c.network.proxy else 'not set'}")
     out.append(_policy_line(c))
     out.append(_excludes_line(c, r.red))
-    out.append(
-        f"- state dir: {expand(c.state_dir)} ({'exists' if expand(c.state_dir).is_dir() else 'missing'})"
-    )
+    state = _path_reached(expand(c.state_dir), folder=True)
+    seen = "; see Doctor's state_dir line" if isinstance(state, str) else ""
+    out.append(f"- state dir: {expand(c.state_dir)} ({_reach_words(state, 'exists')}{seen})")
     if r.agent_named is not None:
         listed, configured, words = r.agent_named
         # the consequence only when an Agent: line has a word of such a folder's name: every attempt's, as the
@@ -6194,8 +6225,24 @@ class _OutOfTimeError(Exception):
     """The evidence's time is used up."""
 
 
-class _NoManifestError(Exception):
+class _NoStateError(Exception):
+    """No manifest file to read: none yet, or something else where it belongs (B13 round 22 Z12). A part that
+    reads the manifest only to look a row up (the purge queue's fates) catches this base and goes on."""
+
+
+class _NoManifestError(_NoStateError):
     """No sync has run: there is no manifest to read."""
+
+
+class _StateNotFileError(_NoStateError):
+    """Something other than a file sits where the manifest belongs (a folder, or a file where a folder on its
+    way belongs): the person's, as Doctor's state_dir.manifest FAIL says, never "no sync has run" after five
+    (B13 round 22 Z12)."""
+
+
+class _StateFolderShutError(Exception):
+    """The state folder, or a folder above it, refuses this account (:func:`_state_folder_shut`): the words
+    name the folder, never the state file (B13 round 22 Z15, Z41; round 22 ruling 3)."""
 
 
 def _page_strings(fm: str) -> tuple[str | None, str | None] | None:
@@ -6269,12 +6316,22 @@ class _Mirror:
             # B13 round 21 Y13: a state folder this account cannot search raised a bare PermissionError
             # here, read as "a file cannot be opened: Permission denied" while Doctor FAILs state_dir: the
             # file is named, so it is the state file this account cannot open (W64's words)
+            # B13 round 22 Z12: a stat, not ``is_file``, so a folder where the file belongs is no "no manifest
+            # yet", and Z15: a folder that refuses this account is named as the folder
             try:
-                if not self.db.is_file():
-                    raise _NoManifestError
+                try:
+                    st = self.db.stat()
+                except FileNotFoundError:
+                    raise _NoManifestError from None
+                except NotADirectoryError:  # a file where a folder on its way belongs
+                    raise _StateNotFileError from None
+                if not stat.S_ISREG(st.st_mode):
+                    raise _StateNotFileError
                 opened = _open_manifest_ro(self.db, 0.5)
             except OSError as exc:
                 if exc.errno in (errno.EACCES, errno.EPERM):
+                    if _state_folder_shut(self.db):
+                        raise _StateFolderShutError from exc
                     raise ManifestOpenError(str(self.db), exc.errno, exc.strerror) from exc
                 raise
             if opened is None:  # Y70: an open would create its -shm at the file's mode
@@ -6448,6 +6505,25 @@ def _cannot_open(exc: BaseException | None) -> bool:
 _STATE_SHUT = "the state file cannot be opened by this account: see Doctor's state_dir lines"
 """:func:`_why_not_read`'s words for it: doctor's state_dir (the folder) or state_dir.files (the file) says
 which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W64)."""
+_STATE_FOLDER_SHUT = "the state folder cannot be opened by this account: see Doctor's state_dir lines"
+"""The same for a state folder, or a folder above it, that refuses this account (:func:`_state_folder_shut`):
+the words name what failed (B13 round 22 Z15, round 22 ruling 3). A reader that knows the path chooses."""
+_STATE_NOT_FILE = "the state file is not a file: see Doctor's state_dir.manifest line"
+"""For something other than a file where the manifest belongs (B13 round 21 Y47, round 22 Z12)."""
+
+
+def _state_folder_shut(db: Path) -> bool:
+    """Whether the folder that holds ``db`` refuses this account: a folder above it refuses a search (its stat
+    raises PermissionError, B13 round 22 Z40, Z61, Z74), or it is a folder this account cannot read, write and
+    search (B13 round 20 X28). A stat, never ``Path.is_dir``, which raises on EACCES before Python 3.14 and
+    returns False from it. Any other failure says no."""
+    try:
+        st = db.parent.stat()
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK)
 
 
 def _why_not_read(exc: BaseException) -> str:
@@ -6466,6 +6542,10 @@ def _why_not_read(exc: BaseException) -> str:
         return "the configuration is refused: see Configuration"
     if isinstance(exc, ManifestOpenError):
         return _STATE_SHUT
+    if isinstance(exc, _StateFolderShutError):
+        return _STATE_FOLDER_SHUT
+    if isinstance(exc, _StateNotFileError):
+        return _STATE_NOT_FILE
     # B13 round 21 Y38: governance's read of a file it cannot open raises its own error from the OSError
     # (a GovernanceError), which read as its class name: the OSError's words, which name no Doctor line, as
     # governance/ is no state_dir line's (a state folder that cannot be searched is mapped where the path is
@@ -6491,14 +6571,8 @@ def _why_not_read(exc: BaseException) -> str:
         return "the plist cannot be parsed"
     if isinstance(exc, OSError):
         return f"a file cannot be opened: {exc.strerror}" if exc.strerror else "a file cannot be opened"
-    from agentsync.governance import GovernanceError  # noqa: PLC0415 - lazy
-
-    cause = exc.__cause__
-    if isinstance(exc, GovernanceError) and isinstance(cause, PermissionError) and cause.filename is not None:
-        # a governance file in the state folder this account cannot open (holds.json, the purge queue), the
-        # one GovernanceError with that cause, so the name is never a tenant file's: its name and the system's
-        # words, as status says them, never "GovernanceError" (B13 round 21 Y45)
-        return f"{Path(os.fsdecode(cause.filename)).name} cannot be opened: {cause.strerror or 'refused'}"
+    # B13 round 22 Z39: no branch for a GovernanceError from a PermissionError here: Y38's above words it by
+    # its OSError, and the file's name is status's (cli._unread_words), never the report's
     return f"an unexpected error: {type(exc).__name__}"
 
 
@@ -7504,11 +7578,12 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         # B13 round 21 Y13: a state folder this account cannot search is the state file it cannot open, as
         # Doctor's state_dir FAIL says; a purge queue refused inside a folder it can search is not (no
         # state_dir line judges governance/), and keeps the OSError's own words (_why_not_read)
+        # B13 round 22 Z41: no ``root.is_dir()``, which raised a new PermissionError here when a folder above
+        # the root refuses a search; ``os.access`` raises nothing and says no for both. Z15: the folder's
+        # words
         root = expand(config.state_paths.root)
-        if isinstance(exc.__cause__, PermissionError) and root.is_dir() and not os.access(root, os.X_OK):
-            from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
-
-            raise ManifestOpenError(str(root), errno.EACCES) from exc
+        if isinstance(exc.__cause__, PermissionError) and not os.access(root, os.X_OK):
+            raise _StateFolderShutError from exc
         raise
     if not queue:
         return ["- no purge is queued"]
@@ -7529,7 +7604,7 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
                 fate, by_alias, present = _purge_fate(m, selector.source_id, selector.stable_id)
                 aliased[fate] += by_alias
                 kept += present and entry.reason in governance.KEPT_REASONS
-            except (_OutOfTimeError, _NoManifestError):
+            except (_OutOfTimeError, _NoStateError):  # B13 round 22 Z12: a folder where the manifest belongs
                 lookups = _PURGE_LOOKUPS
         key = (labels.of(selector.source_id), reason, selector.kind(), day)
         grouped.setdefault(key, Counter())[fate] += 1
@@ -8119,6 +8194,8 @@ def _evidence_line(r: _Run) -> str:
         return f"{head}: {cut} ran out of time and {busy} found the state file held by a sync: {_IDLE_AGAIN}"
     state = sum(n for w, n in why.items() if w.startswith("the state file cannot be read"))
     shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
+    folder = sum(n for w, n in why.items() if w.startswith("the state folder cannot be opened"))  # Z15
+    notfile = sum(n for w, n in why.items() if w.startswith("the state file is not a file"))  # Z12
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
     clauses = [
         (
@@ -8132,10 +8209,20 @@ def _evidence_line(r: _Run) -> str:
             "them (see Doctor's state_dir lines)",
         ),
         (
+            folder,
+            "the state folder cannot be opened by this account: a report written after it is fixed measures "
+            "them (see Doctor's state_dir lines)",
+        ),
+        (
+            notfile,
+            "the state file is not a file: a report written after it is put back measures them (see Doctor's "
+            "state_dir.manifest line)",
+        ),
+        (
             config,
             "the configuration is refused: a report written after it loads measures them (see Configuration)",
         ),
-        (count - retry - state - shut - config, "of another cause: see those lines"),
+        (count - retry - state - shut - folder - notfile - config, "of another cause: see those lines"),
     ]
     said = [f"{n} because {words}" for n, words in clauses if n]
     again = [
@@ -8817,7 +8904,12 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
     assert fr is not None
     latest = index == len(fr.attempts) - 1
     runs = runs_for_attempt(fr, index, r.install_runs)
-    outcome = compute_outcome(fr.attempts[index], runs, doctor_fails=_doctor_fails(r, runs) if latest else ())
+    outcome = compute_outcome(
+        fr.attempts[index],
+        runs,
+        doctor_fails=_doctor_fails(r, runs) if latest else (),
+        config_cause=_outcome_cause(r, runs),
+    )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
         kind, note = rerun
@@ -9459,11 +9551,15 @@ _STATE_UNREAD_WORDS = "from the state file that cannot be read"
 _STATE_SHUT_WORDS = "from the state file this account cannot open"
 """The Doctor line's bucket for a state file :func:`_state_shut` finds this account cannot open (B13 round 20
 X28): apart from :data:`_STATE_UNREAD_WORDS`, a damaged one, whose fix differs."""
+_STATE_SHUT_FOLDER_WORDS = "from the state folder this account cannot open"
+"""The same bucket when :func:`_state_shut` finds the folder shut, or a folder above it that refuses a search:
+the words name what failed (B13 round 22 Z31, Z15; round 22 ruling 3), on the Doctor line and the outcome."""
 _REFUSED_WORDS = "from a file in the state folder this account cannot open"
 """The Doctor line's bucket for the lock, heartbeat, holds.json or purge-queue FAIL of a file
 :func:`_refused_files` finds this account cannot open (B13 round 21 Y45, Y43): not the manifest, which
-:data:`_STATE_SHUT_WORDS` names; "the person's" only for another account's file, as a chmod of this
-account's own is the agent's (the round 21 ownership rule)."""
+:data:`_STATE_SHUT_WORDS` names. Each FAIL carries its owner as the state file's bucket does (B13 round 22
+Z32, Z43): "the person's" when doctor's own fix for it is the person's, else "the agent's", this account's
+chmod (the round 21 ownership rule)."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -9485,6 +9581,7 @@ class _DoctorSort:
     from_refused: list[str]
     from_helpers: list[str]
     fails: list[tuple[str, str | None]]
+    shut_words: str = _STATE_SHUT_WORDS  # B13 round 22 Z31: _STATE_SHUT_FOLDER_WORDS for a shut folder
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -9492,12 +9589,13 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
     else ``""`` (B13 round 20 X28): ``read_error`` (the Doctor hook's read of the loop's state, or the
     evidence read's) is a ``ManifestOpenError`` or sqlite's CANTOPEN, PERM or READONLY (:func:`_cannot_open`,
     doctor's ``CANNOT_OPEN_CODES``), or :func:`_refused_state_files` finds one; ``"folder"`` when its folder
-    cannot be searched. Keyed on the file, never on doctor's words. A failed test says nothing: ``""``."""
+    cannot be searched, or a folder above it refuses a search (B13 round 22 Z40: :func:`_state_folder_shut`).
+    Keyed on the file, never on doctor's words. A failed test says nothing: ``""``."""
     from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
 
     try:
         db = expand(c.state_paths.db)
-        if db.parent.is_dir() and not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
+        if _state_folder_shut(db):  # B13 round 22 Z40, Z61, Z74: a folder above it that refuses a search too
             return "folder"
         if isinstance(read_error, ManifestOpenError) or _cannot_open(read_error) or _refused_state_files(db):
             return "file"
@@ -9548,6 +9646,25 @@ def _refused_state_files(db: Path) -> list[Path]:
         if name.exists() and (name.stat().st_uid != os.getuid() or not os.access(name, os.R_OK | os.W_OK)):
             out.append(name)
     return out
+
+
+def _root_foreign(c: Config) -> bool:
+    """Whether another account owns the state folder, by the report's own stat: doctor's state_dir test
+    (``st_uid != getuid``), whose fix is the person's chown (B13 round 22 Z84). A stat that fails says no."""
+    try:
+        return expand(c.state_paths.root).stat().st_uid != os.getuid()
+    except OSError:
+        return False
+
+
+def _state_not_file(c: Config) -> bool:
+    """Whether something other than a file sits where the manifest belongs (a folder), by the report's own
+    stat: doctor FAILs state_dir.manifest for it with the person's fix (B13 round 22 Z12). Kept here, never by
+    widening ``doctor.manifest_unreadable``, which status reads too. A stat that fails says no."""
+    try:
+        return not stat.S_ISREG(expand(c.state_paths.db).stat().st_mode)
+    except OSError:
+        return False
 
 
 def _shut_whose(c: Config, shut: str) -> str:
@@ -9605,7 +9722,9 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
     read_error = read_error or r.evidence_unreadable  # damage only the evidence read reached (W41)
     unreadable = r.config is not None and _state_unreadable(r.config, read_error)
-    shut = "" if unreadable or r.config is None else _state_shut(r.config, read_error)
+    notfile = not unreadable and r.config is not None and _state_not_file(r.config)
+    shut = "" if unreadable or notfile or r.config is None else _state_shut(r.config, read_error)
+    shut_words = _STATE_SHUT_FOLDER_WORDS if shut == "folder" else _STATE_SHUT_WORDS
     whose = _shut_whose(r.config, shut) if shut and r.config is not None else _PERSONS
     from_state: list[str] = []
     from_shut: list[str] = []
@@ -9638,7 +9757,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         # (MANIFEST_FIX); the listing warn beside it cannot be judged, as the loop that says whose it is
         # cannot read the state. Keyed on the report's own read of the file: a locked one is not it, and
         # with a readable state a Loop hook that fails still leaves that warn unexpected
-        if unreadable and tag == "FAIL" and name == "state_dir.manifest":
+        # B13 round 22 Z12: a folder where the file belongs is the person's as well (doctor's own fix)
+        if (unreadable or notfile) and tag == "FAIL" and name == "state_dir.manifest":
             from_state.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_UNREAD_WORDS))
             continue
@@ -9647,18 +9767,28 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         # report's own access test of the file, never from doctor's words. A state_dir.files FAIL for a file
         # others can read leaves it open to this account: still unexpected. Round 21 Y3: whose, as doctor's
         # own fix for it says (another account's is the person's; this account's chmod, the agent's)
-        if shut and tag == "FAIL" and (name == "state_dir.files" or (name, shut) == ("state_dir", "folder")):
+        # B13 round 22 Z84: and state_dir for a folder another account owns whose files this one cannot open
+        # (never with shut "", where every state file opens: no file of it is shut)
+        if (
+            shut
+            and tag == "FAIL"
+            and (
+                name == "state_dir.files"
+                or (name == "state_dir" and (shut == "folder" or _root_foreign(cast(Config, r.config))))
+            )
+        ):
             from_shut.append(f"{name} FAIL{whose}")
-            fails.append((name, _STATE_SHUT_WORDS))
+            fails.append((name, shut_words))
             continue
         # B13 round 21 Y45, Y43: a lock, heartbeat, holds.json or purge queue this account cannot open FAILs
-        # its own check with state_path_fix's fix; the person's only when another account owns it
+        # its own check with state_path_fix's fix; round 22 Z32, Z43: its owner always named, as the state
+        # file's bucket names it (the person's by doctor's own fix, else this account's chmod, the agent's)
         if tag == "FAIL" and name in refused:
-            from_refused.append(f"{name} FAIL{_PERSONS if refused[name] else ''}")
+            from_refused.append(f"{name} FAIL{_PERSONS if refused[name] else _AGENTS}")
             fails.append((name, _REFUSED_WORDS))
             continue
         if (
-            (unreadable or shut)
+            (unreadable or notfile or shut)
             and tag == "warn"
             and name.startswith("heartbeat.")
             and detail.startswith(_LISTING_INCOMPLETE)
@@ -9666,10 +9796,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         ):
             # not "the loop cannot read the state": a record-only FAIL leaves the loop's read whole, and a
             # file this account cannot open is not one the loop read and found damaged (B13 round 20 X46, X15)
-            if unreadable:
+            if unreadable or notfile:
                 from_state.append(f"{name} warn (not judged: the state file cannot be read)")
-            else:
+            elif shut != "folder":
                 from_shut.append(f"{name} warn (not judged: this account cannot open the state file)")
+            else:  # B13 round 22 Z31: the folder's words for a shut folder
+                from_shut.append(f"{name} warn (not judged: this account cannot open the state folder)")
             continue
         # B13 round 18 V5, V28: a speech helper build that ran out of time is a problem (speech is missing),
         # never expected, and not unexpected either: install.sh builds it again; the OCR and media helpers'
@@ -9707,6 +9839,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_refused,
         from_helpers,
         [(name, gone_words if why == _GONE else why) for name, why in fails],
+        shut_words,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -9783,7 +9916,7 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if from_state:
         parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
     if from_shut:  # B13 round 20 X28
-        parts.append(f"{_STATE_SHUT_WORDS} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
+        parts.append(f"{sort.shut_words} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
     if sort.from_refused:  # B13 round 21 Y45
         parts.append(
             f"{_REFUSED_WORDS} ({_plural(len(sort.from_refused), 'check')}): " + ", ".join(sort.from_refused)
@@ -10664,26 +10797,26 @@ _STATE_OPEN_RE = re.compile(r"error: state: .* cannot be opened\b.*?(?:\(fix: (?
 cannot be opened: <reason> (fix: <fix>)``): never printed, its path holds the home folder."""
 
 
-def _state_open_words(r: _Run, run: InstallRun) -> tuple[str, str] | None:
+def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tuple[str, str] | None:
     """What a failed config step met, when the run's own install.out block holds the sync's ``error:
     state: ... cannot be opened`` line (B13 round 21 Y5: Items said only "exited 1 at its config step; the
     same command was run again and ended 0" after the agent's chmod of the state file): the clause after the
     step, and the words for what the run that ended 0 came after. Whose, by the line's own fix
     (``doctor.is_persons_fix``, status's test): another account's (the person's sudo chown), another fix of
     the person's, or this account's mode, the agent's chmod. No mode number: the run's output has none, and
-    by report time the file is 0600 again. None when the block is not read or holds no such line."""
-    lines = r.facts.out_counted
-    start = next((i for i, ln in enumerate(lines or ()) if ln.startswith(f"# run={run.run_id} ")), None)
-    if start is None:
+    by report time the file is 0600 again. None when the block is not read or holds no such line.
+
+    The words name what failed (B13 round 22 Z4, Z45, Z6; round 22 ruling 3): the state folder for a folder's
+    fix (``chmod 700``, doctor's for a folder only; a folder above it that refuses a search; an ACL on the
+    folder), the state file for a file's. ``bracket`` False: no bracket in the words, for the outcome's own
+    (B13 round 11 M24)."""
+    block = _run_block(r, run)
+    if block is None:
         return None
-    block: list[str] = []
-    for ln in lines[start + 1 :]:
-        if _OUT_RUN_RE.match(ln):
-            break
-        block.append(ln)
     # install.sh's own verdict first: ``state_owned_elsewhere``'s NEXT (a sync's line for a root-owned
     # manifest can carry the generic access fix, whoever owns the file)
     elsewhere = any("is owned by another account, so this one cannot open it" in ln for ln in block)
+    mode = " (a mode, not damage)" if bracket else ", by its mode, not damage"
     for ln in block:
         found = _STATE_OPEN_RE.search(ln.strip())
         if found is None:
@@ -10697,14 +10830,125 @@ def _state_open_words(r: _Run, run: InstallRun) -> tuple[str, str] | None:
             persons = False
         if elsewhere or fix.startswith("the person runs sudo chown"):
             return " on agentsync's state file, which another account owns", "after the file was given back"
+        # B13 round 22 Z6: doctor's _parent_fix and the folder's _search_fix, each the person's
+        if fix.startswith("the person gives this account search access to "):
+            return (
+                " on agentsync's state folder, which a folder above it refuses this account a search: the "
+                "person's to fix",
+                "after the folder above it was opened to this account",
+            )
+        if fix.startswith("the person gives this account read, write and search access to the folder "):
+            return (
+                " on agentsync's state folder, which an ACL or a privacy setting refuses this account: the "
+                "person's to fix",
+                "after the folder was fixed",
+            )
         if persons:
             return " on agentsync's state file, which this account could not open: the person's to fix", (
                 "after the file was fixed"
             )
-        return " on agentsync's state file, which this account could not open (a mode, not damage)", (
+        if fix.startswith("chmod 700 "):  # B13 round 22 Z4, Z45: the folder's mode was fixed, not the file's
+            return f" on {_state_folder_named(r, fix)}, which this account could not open{mode}", (
+                "after the folder's mode was fixed"
+            )
+        return f" on agentsync's state file, which this account could not open{mode}", (
             "after the file's mode was fixed"
         )
     return None
+
+
+def _run_block(r: _Run, run: InstallRun) -> list[str] | None:
+    """The run's own lines in install.out (after its ``# run=<id>`` header, to the next), or None when that
+    header is not among the lines read."""
+    lines = r.facts.out_counted
+    start = next((i for i, ln in enumerate(lines or ()) if ln.startswith(f"# run={run.run_id} ")), None)
+    if start is None:
+        return None
+    block: list[str] = []
+    for ln in lines[start + 1 :]:
+        if _OUT_RUN_RE.match(ln):
+            break
+        block.append(ln)
+    return block
+
+
+_STATE_MODE_CHECKS = frozenset({"state_dir", "state_dir.files", "heartbeat", "lock"})
+"""doctor's checks of a file or folder in the state folder whose own-mode fix is a chmod by the agent."""
+_FIX_RE = re.compile(r"\(fix: (?P<fix>.*)\)$")
+
+
+def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
+    """For a run that stopped at its status (or doctor) step, what the run that ended 0 came after, when
+    every ``[FAIL]`` of its block is a state-folder check (:data:`_STATE_MODE_CHECKS`) whose fix is a chmod by
+    the agent (no ``doctor.is_persons_fix``) of the state folder or a path in it: "after the folder's mode was
+    fixed" when the only fix is the folder's own chmod, else "after the file's mode was fixed" (B13 round 22
+    Z19: Items left the agent's chmod out of a heartbeat, lock or -shm stop). None for any other mix, so a
+    stop that also had a pandoc that timed out never claims the chmod explains the success."""
+    if r.config is None:
+        return None
+    block = _run_block(r, run)
+    if block is None:
+        return None
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        root = expand(r.config.state_paths.root)
+        forms = {doctor._shell_path(root), doctor._shell_path(os.path.realpath(root))}
+        fixes: list[tuple[str, str]] = []
+        for ln in block:
+            m = _DOCTOR_TAG_RE.match(ln.strip())
+            if m is None or m.group(1) != "FAIL":
+                continue
+            found = _FIX_RE.search(ln.strip())
+            fix = found.group("fix") if found is not None else ""
+            target = fix.split(" ", 2)[2] if fix.startswith("chmod ") and fix.count(" ") >= 2 else ""
+            inside = any(
+                target == form or (form.endswith("'") and target.startswith(form[:-1] + "/"))
+                for form in forms
+            )
+            if m.group(2) not in _STATE_MODE_CHECKS or not inside or doctor.is_persons_fix(fix):
+                return None
+            fixes.append((m.group(2), target))
+    except Exception:  # a fix the report cannot read leaves the plain words
+        return None
+    if not fixes:
+        return None
+    if all(target in forms for _name, target in fixes):
+        return "after the folder's mode was fixed"
+    return "after the file's mode was fixed"
+
+
+def _outcome_cause(r: _Run, runs: Sequence[InstallRun]) -> str | None:
+    """What the last install run's config step met, when it failed there on the state
+    (:func:`_state_open_words` with no bracket), for :func:`compute_outcome` (B13 round 22 Z6: it said only
+    "its config step failed with rc 1" while install.sh named the cause and that the fix is the person's).
+    None otherwise."""
+    installs = install_runs_only(runs)
+    if not installs or installs[-1].rc in (0, None):
+        return None
+    try:
+        words = _state_open_words(r, installs[-1], bracket=False)
+    except Exception:  # a cause the report cannot read leaves the step's own words
+        return None
+    return words[0] if words is not None else None
+
+
+def _state_folder_named(r: _Run, fix: str) -> str:
+    """The folder a ``chmod 700 <folder>`` fix names: agentsync's state folder when it is the configured state
+    folder (doctor's ``_shell_path`` of it, as given or resolved), a folder in it when it is one below, and
+    both when the report cannot tell (no config): doctor gives ``chmod 700`` for a folder only (B13 round 22
+    Z4)."""
+    target = fix.removeprefix("chmod 700 ").strip()
+    if r.config is None:
+        return "agentsync's state folder or a folder in it"
+    try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+        root = expand(r.config.state_paths.root)
+        forms = {doctor._shell_path(root), doctor._shell_path(os.path.realpath(root))}
+    except Exception:
+        return "agentsync's state folder or a folder in it"
+    return "agentsync's state folder" if target in forms else "a folder in agentsync's state folder"
 
 
 def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) -> str:
@@ -10729,6 +10973,9 @@ def _retry_line(r: _Run, run: InstallRun, ok: InstallRun, layout: PromptLayout) 
         if state is not None:  # Y5: the cause, and what the run that ended 0 came after
             at += state[0]
             again = again.removesuffix(" and ended 0") + f" {state[1]} and ended 0"
+        mode = _state_mode_fixed(r, run) if failing[0] in ("status", "doctor") else None
+        if mode is not None:  # B13 round 22 Z19: the agent's chmod between the two runs
+            again = again.removesuffix(" and ended 0") + f" {mode} and ended 0"
     return f"- install.sh · step {layout.install_step} · run {run.display_id} exited {run.rc}{at}; " + again
 
 
@@ -10746,7 +10993,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     fr = r.friction
     att = fr.latest if fr is not None else None
     runs = _latest_runs(r)
-    outcome = compute_outcome(att, runs, doctor_fails=_doctor_fails(r, runs))
+    outcome = compute_outcome(
+        att, runs, doctor_fails=_doctor_fails(r, runs), config_cause=_outcome_cause(r, runs)
+    )
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type
     out: list[str] = [f"- **outcome: {outcome.text}** (computed: {'; '.join(outcome.why)})"]
