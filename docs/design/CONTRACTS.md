@@ -25392,6 +25392,9 @@ Amended 2026-10-21, §16.155 Y31, Y69: the fix is status's for the same path, `d
 <db>`, `chmod 700 <folder>`, another account's the person's chown), then `; the file itself is not damaged`; only a
 refusal that is no PermissionError (a read-only volume) keeps `MANIFEST_OPEN_FIX`. An interactive sync adds a NEXT
 naming status.
+Amended 2026-10-21, §16.161 Z47, Z78, Z53: a read-only volume (EROFS) gets status's own fix, the person's
+`doctor.read_only_fix` of the file, not `MANIFEST_OPEN_FIX`, whose generic words are left for another cause or a path
+outside the state folder; and `; the file itself is not damaged` is said unless the file is known to be absent.
 
 **W41: damage under any table fails status and stops the sync (`agentsync.cycle`, `agentsync.ops.doctor`,
 `agentsync.cli`, `agentsync.setup_report`; amends §16.131 U64, §16.129 U55 and §16.133 U84).** Damage under the cache or outputs table left
@@ -26890,6 +26893,9 @@ add-source and curate; another account's file),
 `test_ops_doctor.py::test_a_state_folder_under_a_folder_this_account_cannot_search_is_the_persons` and
 `test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons` (macOS) and
 `test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl`.
+Amended 2026-10-21, §16.161 Z47, Z78, Z53: a read-only volume (EROFS) gets status's own fix, the person's
+`doctor.read_only_fix` of the file, not `MANIFEST_OPEN_FIX`, whose generic words are left for another cause or a path
+outside the state folder; and `; the file itself is not damaged` is said unless the file is known to be absent.
 
 **Y75: curate's help says it exits 1 on a state file this account cannot open (`agentsync.cli`; amends §16.151
 X69).** Its line said `rc 1 only on a blocking finding` above an exit-code list that says 1 is also a state file
@@ -27257,6 +27263,24 @@ that give access it adds the `cannot look inside <root>` line with that fix (it 
 so status prints the person's fix install.sh's `state-refused` tail promises. install.sh's tests are unchanged.
 Tests: `test_ops_doctor.py::test_an_own_state_folder_at_0755_that_still_refuses_it_gets_the_persons_fix_beside_its_chmod`
 and `test_ops_doctor.py::test_an_own_state_folder_at_0755_an_acl_refuses_is_the_persons_as_install_sh_says` (macOS).
+
+**Z47, Z78, Z53: a manifest on a read-only volume gets the person's volume fix, and an absent one is not called
+undamaged (`agentsync.cli`, `agentsync.ops.doctor`; amends §16.155 Y31 and §16.143 W65).** `manifest._connect`
+raises `ManifestOpenError` for EACCES, EPERM and EROFS, but EROFS is a plain OSError, so `cli._manifest_open_fix`
+gave sync, curate and add-source `MANIFEST_OPEN_FIX`'s owner-and-mode words, the agent's chmod, which fails on a
+read-only volume, while status gave `the person makes the volume that holds <file> writable, as it is mounted
+read-only`. Keyed on the errno now: EROFS on a path in the state folder gets `doctor.read_only_fix` of that file
+(public now), EACCES and EPERM `doctor.state_path_fix` as before, and only another cause or a path outside the
+state folder keeps the generic words. `state_folder_fix` and `state_path_fix` test the read-only volume before the
+mode, so a folder at 0755 on a read-only volume is no longer told `chmod 700` (Z78's second half, with Z64's
+commit). `; the file itself is not damaged` (W65's guard against a move-aside) was said over a manifest the refused
+open would have created (Z53); it is dropped only when `lstat` of the file says not found, never by `exists()`,
+which in a folder that refuses a search raises on Python 3.11 or reads False for a file that is there, so that case
+keeps the guard (the verifier's trap). The report already reads the new fix as the person's. Tests:
+`test_cli.py::test_a_manifest_on_a_read_only_volume_gets_the_persons_volume_fix_from_every_command`,
+`test_cli.py::test_a_manifest_behind_a_folder_that_refuses_a_search_is_still_not_damaged`,
+`test_cli.py::test_a_manifest_this_account_cannot_open_is_one_line_and_kept` (the folder case drops the clause) and
+`test_ops_doctor.py::test_a_state_folder_on_a_read_only_volume_gets_the_volume_fix_whatever_its_mode`.
 
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 

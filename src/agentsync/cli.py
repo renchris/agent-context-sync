@@ -124,10 +124,9 @@ EXIT_LOCK_HELD = 75  # EX_TEMPFAIL: another cycle holds the lock; says "skipped:
 EXIT_REAUTH = 77  # EX_NOPERM: auth REAUTH_REQUIRED
 EXIT_CONFIG = 78  # EX_CONFIG: sources.toml invalid
 EXIT_STATE = 65  # EX_DATAERR: the manifest is no database or a damaged one (doctor's state_dir.manifest)
-MANIFEST_OPEN_FIX = (
-    "give this account read and write access to the file and its folder, e.g. owner and mode 600; the file "
-    "itself is not damaged"
-)
+_ACCESS_FIX = "give this account read and write access to the file and its folder, e.g. owner and mode 600"
+_NOT_DAMAGED = "; the file itself is not damaged"
+MANIFEST_OPEN_FIX = _ACCESS_FIX + _NOT_DAMAGED
 """The fix of a manifest this account cannot open (``ManifestOpenError``; B13 round 19 W65)."""
 EXIT_TCC_PENDING = launchd.EXIT_TCC_PENDING  # 79: only from the signed launcher that wraps a LaunchAgent run
 
@@ -2900,19 +2899,42 @@ def _state_next(args: argparse.Namespace) -> None:
 
 
 def _manifest_open_fix(args: argparse.Namespace, exc: ManifestOpenError) -> str:
-    """The fix of a manifest this account cannot open: ``doctor.state_path_fix`` of the path refused, as
-    status's state_dir lines give it, and that the file is not damaged (W65's guard against a move-aside);
-    :data:`MANIFEST_OPEN_FIX` for a refusal that is no PermissionError (a read-only volume) or a path outside
-    the state folder (B13 round 21 Y31, Y69)."""
+    """The fix of a manifest this account cannot open, as status's state_dir lines give it: on a read-only
+    volume (EROFS) ``doctor.read_only_fix`` of the file, the person's, which no chmod reaches (B13 round 22
+    Z47, Z78: it got the generic owner-and-mode words); for EACCES or EPERM ``doctor.state_path_fix`` of the
+    path refused; :data:`MANIFEST_OPEN_FIX`'s generic words for any other cause or a path outside the state
+    folder (B13 round 21 Y31, Y69). Each adds that the file is not damaged (W65's guard against a move-aside)
+    unless no file is there (:func:`_not_damaged`)."""
     cause = exc.__cause__
-    if not isinstance(cause, PermissionError):
-        return MANIFEST_OPEN_FIX
+    filename = cause.filename if isinstance(cause, OSError) else None
+    if not isinstance(cause, OSError) or cause.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
+        return _not_damaged(_ACCESS_FIX, filename)
     root = _state_root(args)
     where = _in_folder(cause.filename, root)
     if where is None:
-        return MANIFEST_OPEN_FIX
-    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
-    return f"{fix}; the file itself is not damaged"
+        return _not_damaged(_ACCESS_FIX, filename)
+    real = Path(os.path.realpath(where))
+    if cause.errno == errno.EROFS:
+        fix = doctor.read_only_fix(real)
+    else:
+        fix = doctor.state_path_fix(Path(os.path.realpath(root)), real)
+    return _not_damaged(fix, where)
+
+
+def _not_damaged(fix: str, filename: object) -> str:
+    """``fix`` and that the file itself is not damaged, unless the file is known to be absent (the open that
+    would create it was refused): nothing is there to be damaged or moved aside (B13 round 22 Z53). By
+    ``lstat``, never ``exists()``: in a folder that refuses a search that raises on Python 3.11 (a second
+    error over the first) or reads False for a file that is there, so any error but "not found" keeps the
+    guard."""
+    if isinstance(filename, str | bytes | os.PathLike):
+        try:
+            Path(os.fsdecode(filename)).lstat()
+        except FileNotFoundError:
+            return fix
+        except OSError:
+            pass
+    return f"{fix}{_NOT_DAMAGED}"
 
 
 def _in_folder(filename: object, root: Path) -> Path | None:
@@ -3024,8 +3046,9 @@ def _main(argv: Sequence[str] | None) -> int:
     except ManifestOpenError as exc:
         # not 65: the file is not damaged, and MANIFEST_FIX's move-aside would throw good state away; exit 1,
         # as V59 treats a file sqlite will not open (B13 round 19 W65). The fix is status's for the same
-        # file, by its cause (doctor.state_path_fix: this account's chmod 600 or 700, another account's the
-        # person's chown); a read-only volume keeps the generic words (B13 round 21 Y31, Y69)
+        # file, by its cause (doctor.state_path_fix: this account's chmod 600 or 700; another account's
+        # chown, an ACL or a folder above that refuses a search, the person's), a read-only volume the
+        # person's volume fix (B13 round 21 Y31, Y69; round 22 Z47, Z78, Z52)
         _log.debug("state: %s", exc, exc_info=True)
         _err(f"error: state: {exc} (fix: {_manifest_open_fix(args, exc)})")
         _state_next(args)

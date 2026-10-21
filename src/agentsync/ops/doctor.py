@@ -1115,7 +1115,7 @@ def _read_only(path: Path) -> bool:
         return False
 
 
-def _read_only_fix(path: Path) -> str:
+def read_only_fix(path: Path) -> str:
     """The fix of a state path on a read-only volume: the person's, as no chmod and no ACL change writes there
     (B13 round 21 lane B's reviewer: the ACL words named a cause it was not). No bracket of its own (B13
     round 22 Z49)."""
@@ -1135,7 +1135,7 @@ def state_folder_fix(root: Path) -> str:
     if st.st_uid != os.getuid():
         return _persons_chown(root)
     if _read_only(root):  # before the mode: no chmod writes there (B13 round 22 Z78)
-        return _read_only_fix(root)
+        return read_only_fix(root)
     # its mode already gives the owner access and it still refuses: an ACL, the person's, whatever its group
     # and other bits, which a chmod 700 would fix and still leave it refused (B13 round 22 Z64)
     if st.st_mode & 0o700 == 0o700 and not os.access(root, os.R_OK | os.W_OK | os.X_OK):
@@ -1171,14 +1171,14 @@ def state_path_fix(root: Path, path: Path) -> str:
                 if at == root:
                     return state_folder_fix(root)
                 if _read_only(at):  # before the mode: no chmod writes there (B13 round 22 Z78)
-                    return _read_only_fix(at)
+                    return read_only_fix(at)
                 # its mode already gives the owner access: an ACL, the person's (round 21, lane P's measure)
                 if mode & 0o700 != 0o700:
                     return f"chmod 700 {_shell_path(at)}"
                 return _search_fix(at)
         elif not os.access(at, os.R_OK | os.W_OK):
             if _read_only(at):  # (Z78)
-                return _read_only_fix(at)
+                return read_only_fix(at)
             if mode & 0o600 != 0o600:
                 return f"chmod 600 {_shell_path(at)}"
             return _search_fix(at, folder=False)
@@ -1385,7 +1385,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             m = stat.S_IMODE(p.lstat().st_mode)
             if _read_only(p):
                 detail = f"on a read-only volume, so this account cannot write {p.name} ({m:04o})"
-                out.append(_bad("state_dir.files", detail, fix=_read_only_fix(p)))
+                out.append(_bad("state_dir.files", detail, fix=read_only_fix(p)))
                 continue
             detail = f"refused to this account by an ACL or a privacy setting: {p.name} ({m:04o})"
             out.append(_bad("state_dir.files", detail, fix=_search_fix(p, folder=False)))

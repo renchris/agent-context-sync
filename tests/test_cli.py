@@ -3891,7 +3891,8 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
             err = captured.err
             assert "Traceback" not in err and "PermissionError" not in err, err
             (line,) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
-            fix = f"{own}; the file itself is not damaged"
+            # B13 round 22 Z53: no manifest yet, so nothing is there to be damaged
+            fix = f"{own}; the file itself is not damaged" if what == "file" else own
             assert line == f"error: state: {db} cannot be opened: Permission denied (fix: {fix})", line
             assert doctor.MANIFEST_FIX not in err and cli.MANIFEST_OPEN_FIX not in err, err
             nexts = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT: ")]
@@ -3908,7 +3909,8 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
         assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
         captured = capsys.readouterr()
         (line,) = [ln for ln in captured.err.splitlines() if ln.startswith("error: state: ")]
-        assert line.endswith(f"(fix: {doctor._persons_chown(root)}; the file itself is not damaged)"), line
+        kept = "; the file itself is not damaged" if what == "file" else ""
+        assert line.endswith(f"(fix: {doctor._persons_chown(root)}{kept})"), line
         assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1])
         (step,) = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT: ")]
         assert "sudo" not in step and "chown" not in step and "chmod" not in step, step
@@ -3919,6 +3921,79 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
         assert not db.exists()
         db.with_name("kept.sqlite").rename(db)
     assert db.read_bytes() == before
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_a_manifest_behind_a_folder_that_refuses_a_search_is_still_not_damaged(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 22 Z53, the verifier's trap: a manifest that is there, in a folder at 0600 (read, no
+    search), cannot be seen by ``exists()``, which raises on Python 3.11 (a second error over the first) or
+    reads False. The guard is dropped only when the file is known to be absent, so it stays here, with no
+    traceback."""
+    import argparse  # noqa: PLC0415
+
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    root = db.parent
+    args = argparse.Namespace(config=cfg, command="sync")
+
+    def refused(path: Path) -> ManifestOpenError:
+        made = ManifestOpenError(f"{path} cannot be opened: Permission denied", errno.EACCES)
+        made.__cause__ = PermissionError(errno.EACCES, "Permission denied", str(path))
+        return made
+
+    root.chmod(0o600)
+    try:
+        there = cli._manifest_open_fix(args, refused(db))
+        gone = cli._manifest_open_fix(args, refused(root / "absent.sqlite"))
+    finally:
+        root.chmod(0o700)
+    assert there == f"chmod 700 {doctor._shell_path(root)}; the file itself is not damaged", there
+    assert gone.endswith("; the file itself is not damaged"), gone  # unknown behind the folder: kept
+    # in an open folder, the same absent file is known to be absent: nothing is there to be damaged
+    assert not cli._manifest_open_fix(args, refused(root / "absent.sqlite")).endswith(" not damaged")
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_a_manifest_on_a_read_only_volume_gets_the_persons_volume_fix_from_every_command(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, present: bool
+) -> None:
+    """B13 round 22 Z47, Z78: on a read-only volume ``os.open`` fails with EROFS, a plain OSError, so sync,
+    curate and add-source gave the generic "owner and mode 600" words, the agent's chmod, which fails there,
+    while status gave the person's volume fix. They give status's fix (``doctor.read_only_fix``) now, keyed on
+    the errno; with no manifest yet, no "not damaged" (Z53)."""
+    from agentsync import manifest as manifest_mod  # noqa: PLC0415
+
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    db = expand(initialised.state_paths.db)
+    if not present:
+        db.rename(db.with_name("kept.sqlite"))
+        for side in db.parent.glob(db.name + "-*"):
+            side.unlink()
+    real_open = manifest_mod.os.open
+
+    def read_only(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        if os.fsdecode(path) == str(db):
+            raise OSError(errno.EROFS, "Read-only file system", str(db))
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(manifest_mod.os, "open", read_only)
+    fix = doctor.read_only_fix(Path(os.path.realpath(db)))
+    want = f"{fix}; the file itself is not damaged" if present else fix
+    folder = str(initialised.sources[0].path)  # type: ignore[union-attr]
+    for argv in (["sync"], ["add-source", folder], *([["curate"]] if present else [])):
+        capsys.readouterr()
+        assert cli.main([*argv, "--config", cfg]) == cli.EXIT_FAILED, argv
+        err = capsys.readouterr().err
+        (line,) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
+        assert line == f"error: state: {db} cannot be opened: Read-only file system (fix: {want})", line
+        assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1]) and cli.MANIFEST_OPEN_FIX not in err, err
+    monkeypatch.undo()
+    if not present:
+        db.with_name("kept.sqlite").rename(db)
 
 
 @pytest.mark.parametrize(

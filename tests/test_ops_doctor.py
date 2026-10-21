@@ -576,7 +576,7 @@ def test_the_system_error_and_state_owner_fixes_nest_no_bracket(tmp_path: Path) 
     persons = [
         doctor._search_fix(path, folder=False),
         doctor._search_fix(path.parent),
-        doctor._read_only_fix(path),
+        doctor.read_only_fix(path),
         doctor._persons_chown(path.parent),
     ]
     for fix in fixes + persons:
@@ -1604,9 +1604,9 @@ def test_a_state_folder_on_a_read_only_volume_gets_the_volume_fix_whatever_its_m
     finally:
         below.chmod(0o700)
         root.chmod(0o700)
-    assert folder == doctor._read_only_fix(root), folder
-    assert sub == doctor._read_only_fix(below), sub
-    assert file == doctor._read_only_fix(queue), file
+    assert folder == doctor.read_only_fix(root), folder
+    assert sub == doctor.read_only_fix(below), sub
+    assert file == doctor.read_only_fix(queue), file
     assert all(doctor.is_persons_fix(f) for f in (folder, sub, file))
 
 
@@ -1624,8 +1624,8 @@ def test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl(
     monkeypatch.setattr(doctor, "_read_only", lambda p: Path(p) == db)
     files = by_name(doctor._check_state_dir(sample_config))["state_dir.files"]
     assert files.detail == f"on a read-only volume, so this account cannot write {db.name} (0600)", files
-    assert files.fix == doctor._read_only_fix(db) and doctor.is_persons_fix(files.fix)
-    assert doctor.state_path_fix(root, db) == doctor._read_only_fix(db)
+    assert files.fix == doctor.read_only_fix(db) and doctor.is_persons_fix(files.fix)
+    assert doctor.state_path_fix(root, db) == doctor.read_only_fix(db)
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
