@@ -8609,7 +8609,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "the file's mode was fixed",
         ),
         (
-            f"the person runs sudo chown -R {os.getuid()} ~/x (the agent runs no sudo)",
+            f"the person runs sudo chown -R {os.getuid()} ~/x; the agent runs no sudo",
             "which another account owns",
             "the file was given back",
         ),

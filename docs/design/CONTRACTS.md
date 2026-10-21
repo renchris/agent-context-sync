@@ -10087,7 +10087,7 @@ system.
 | FAIL | Its fix now |
 |---|---|
 | `<group> — check crashed: <type>: <message>` (doctor's checks, one source's, and the integrator's in `cli._extra_checks`) | `agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to report, and no setup step clears it)`. `-v` does print it: `unfinished` logs the traceback at info level (doctor's guards logged it at debug level, the integrator's not at all) |
-| `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again (if the line stays, report it: agentsync status -v prints where the check stopped)`; with no path it starts `run again (...` |
+| `<group> — could not read <path>: <reason>`, and `<group> — stopped on a system error: <type>: <reason>` when the error names no path (an `OSError` that got past its check; below) | `check that <path> is there and can be opened, then run again; if the line stays, report it: agentsync status -v prints where the check stopped`; with no path it starts `run again; if the line stays, ...` (no bracket inside the line's own since §16.161 Z7) |
 | `source.<id>.listable — <folder>: <an OS error with no rule of its own>` | `check that <folder> opens in Finder`, and for a cloud folder `and that its sync app is running and signed in` |
 | `source.<id>.sentinel — <folder>/<sentinel>: <an OS error other than "missing" and "not permitted">` | the same as the listable line's |
 | `source.<id>.volume — ... UUID not checked: <folder> is missing` | the listable line's: `fix path in [[source]] id = "<id>", or sign in to the sync client` (**Amended 2026-10-16, §16.95 M10:** by what is missing, `doctor._missing_source_fix`; **Amended 2026-10-16, §16.101 N53:** a missing SharePoint library beside its organization's OneDrive folder, sync the library) |
@@ -27183,7 +27183,51 @@ Reserved for round 22 lane P of B13.
 
 ### 16.161 Round 22: an unsearchable parent, the person's kinds and the state errors in cli and doctor (2026-10-21, wave B13 round 22 lane B)
 
-Reserved for round 22 lane B of B13.
+Round 22's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 22"; specs `round22/items/Z<n>.md`), each the
+verifier's corrected fix, under round 21's ownership rule and the round 22 rulings: every file agentsync keeps under
+its state folder is a state file; a folder above the state folder that refuses a search is one fault, the person's;
+and the words name what failed, the state folder when the folder (or a folder above it) refuses, a state file only
+for a file. A dated line this round writes reads `Amended 2026-10-21, §16.161 Z<n>`.
+
+**Z3, Z9, Z26, Z34, Z46, Z60, Z73: a folder above the state folder that refuses a search is one FAIL, the person's
+(`agentsync.ops.doctor`, `agentsync.governance`, `agentsync.cli`).** With `~/Library/Application Support` at 0000,
+`Path.exists` and `is_dir` raise PermissionError on Python 3.11, so the disk check (`_nearest_existing`) and
+governance (the Time Machine check's `migration_backups` lookup, before its shut filter) each gave the generic
+`could not read ... report it` FAIL, read as the agent's; `cli._fail_steps` puts the agent's first, so status's NEXT
+named disk, not state_dir's person's fix, and governance's crash hid governance.remote and the config hold (round 21
+Y44). `_nearest_existing` steps past a refused look to the folder that refuses, whose `statvfs` needs a search only
+of the folders above it, so disk.state is still measured (and a state folder at 0000 under a searchable parent is
+measured at itself, as before); `time_machine_exclusions` lists no backup when that lookup is refused, which
+`_time_machine_checks`' shut branch already covers with one not-checked line, while purge and the cycle still stop
+on it, so no pre-migration copy holding purged rows is passed over; status keeps the hold lines if the Time Machine
+check still raises. A log or cache folder set inside a shut state folder is not checked
+(`STATE_FOLDER_UNCHECKED`), and `doctor.stopped(config, name, exc)`, the backstop of `run_checks` and status's own
+checks, gives a check that still stops on a refused path in the state folder that path's FAIL and fix
+(`refused_state_path`), the person's parent fix here. No group is added to `_STATE_FOLDER_GROUPS`: disk.docs,
+governance.remote and the config hold are still judged (the verifiers'). Seven finders, one defect, built once.
+Tests: `test_cli.py::test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fail_the_persons` and
+`test_ops_doctor.py::test_a_log_folder_in_a_state_folder_under_a_folder_that_refuses_a_search_is_not_checked`.
+
+**Z5: status names the state folder when the folder refuses (`agentsync.cli`).** With the state folder at 0000, or a
+folder above it that refuses a search, status's first read was refused at the lock, a file, so its summary said
+`cannot read the state: a file cannot be opened: Permission denied`, beside state_dir lines that name the folder,
+and the report's Loop line copied it. `cli._unread_words` says `the state folder cannot be opened: <reason>; the
+state_dir lines say why` for an EACCES or EPERM on a path in the state folder while `doctor.state_folder_shut`;
+keyed on the folder, never on the path refused, so a manifest at 0000 in a folder at 0700 is still `a file`. Test:
+`test_cli.py::test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a_file_does`.
+
+**Z7, Z49: doctor's fixes nest no bracket (`agentsync.ops.doctor`).** Every doctor line wraps its fix in `(fix:
+...)`, and round 21 Y20 took the inner brackets out of the time-out fixes, but `_os_error`'s fix ended `then run
+again (if the line stays, report it: ...)` and round 21's state fixes carried `(its owner and mode are right ...)`,
+`(it is mounted read-only)` and, from round 20's X74, `(the agent runs no sudo)`. Each says it after `; ` or `, as`
+now: `check that <path> is there and can be opened, then run again; if the line stays, report it: ...` (no path:
+`run again; ...`), `the person gives this account read and write access to the file <path>; its owner and mode are
+right, so an ACL or a privacy setting refuses it, and ls -le <path> shows the ACL` (a folder: `read, write and
+search access`, `ls -led`), `the person makes the volume that holds <path> writable, as it is mounted read-only` and
+`the person runs sudo chown -R <uid> <path>; the agent runs no sudo`. Each still starts `the person ` where it is the
+person's, which is all `PERSONS_FIX_RE`, the report and install.sh's persons_fails read. `_again_fix`'s `status (run
+it again as it is)` is left as written: the deploy guide and §16.32's row quote it, and the verifier made it
+optional. Test: `test_ops_doctor.py::test_the_system_error_and_state_owner_fixes_nest_no_bracket`.
 
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 

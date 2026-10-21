@@ -833,8 +833,8 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   report it.
 - An operating-system error is not a crash. One that gets past its check reads
   `could not read <path>: <reason>` (or `stopped on a system error: <type>: <reason>` when it names no
-  path), and its fix is `check that <path> is there and can be opened, then run again (if the line stays,
-  report it: ~/.local/bin/agentsync status -v prints where the check stopped)`. A folder's sentinel that cannot be read
+  path), and its fix is `check that <path> is there and can be opened, then run again; if the line stays,
+  report it: ~/.local/bin/agentsync status -v prints where the check stopped`. A folder's sentinel that cannot be read
   for a reason other than "missing" or "not permitted" is its own `source.<id>.sentinel` line, with the
   fix of the listable line (`check that <folder> opens in Finder`, and for a cloud folder `and that its
   sync app is running and signed in`). Before, a source whose path is a file, or a cloud folder whose sync

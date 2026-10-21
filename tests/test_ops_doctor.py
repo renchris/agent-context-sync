@@ -562,6 +562,29 @@ def test_the_install_sh_rerun_and_still_no_answer_fixes_nest_no_bracket(
     assert "(" not in helper
 
 
+def test_the_system_error_and_state_owner_fixes_nest_no_bracket(tmp_path: Path) -> None:
+    """B13 round 22 Z7, Z49: ``_os_error``'s fix put ``(if the line stays, report it: ...)`` inside the
+    line's ``(fix: ...)``, and round 21's state fixes their own ``(its owner and mode are right ...)``, ``(it
+    is mounted read-only)`` and ``(the agent runs no sudo)``: the nesting Y20 took out elsewhere. Each says it
+    after "; " or ", as" now, and still starts "the person " where it is the person's."""
+    path = tmp_path / "state" / "x.db"
+    errors = (
+        OSError(errno.EIO, "Input/output error", str(path)),  # a path: "check that <path> ..."
+        OSError(errno.EIO, "Input/output error"),  # none: "run again; ..."
+    )
+    fixes = [doctor._os_error("disk", exc, Severity.ERROR).fix or "" for exc in errors]
+    persons = [
+        doctor._search_fix(path, folder=False),
+        doctor._search_fix(path.parent),
+        doctor._read_only_fix(path),
+        doctor._persons_chown(path.parent),
+    ]
+    for fix in fixes + persons:
+        assert fix and "(" not in fix and ")" not in fix, fix
+    assert all(doctor.is_persons_fix(fix) for fix in persons), persons
+    assert fixes[1].startswith("run again; if the line stays, report it: "), fixes[1]
+
+
 def _silent(match: Callable[[Sequence[str]], bool]) -> Callable[..., subprocess.CompletedProcess[str]]:
     """A ``doctor._run`` under which a matching command never answers; any other one runs for real."""
     real_run = doctor._run
@@ -788,10 +811,10 @@ def test_an_operating_system_error_is_no_crash_and_its_fix_names_the_path(
     disk = by_name(run_checks(sample_config))["disk"]
     assert (disk.ok, disk.severity) == (False, Severity.ERROR)
     assert disk.detail == f"could not read {seen[0]}: Input/output error"
-    assert disk.fix == f"check that {seen[0]} is there and can be opened, then run again ({stays})"
+    assert disk.fix == f"check that {seen[0]} is there and can be opened, then run again; {stays}"
     policy = by_name(cli._extra_checks(sample_config, offline=True))["policy"]
     assert policy.detail == "stopped on a system error: ConnectionResetError: Connection reset by peer"
-    assert policy.fix == f"run again ({stays})"
+    assert policy.fix == f"run again; {stays}"
     for line in (disk, policy):
         assert "crashed" not in line.detail and "no setup step" not in (line.fix or "")
 
@@ -1221,7 +1244,7 @@ def test_state_files_this_account_cannot_open_fail_by_their_cause(
     assert "so this one cannot open it: manifest.sqlite" in r.detail, r.detail
     # B13 round 20 X74: the folder's chown is a sudo, the person's: the setup prompt bars the agent's
     root = doctor._shell_path(sample_config.state_paths.db.parent)
-    assert r.fix == f"the person runs sudo chown -R {me + 1} {root} (the agent runs no sudo)", r.fix
+    assert r.fix == f"the person runs sudo chown -R {me + 1} {root}; the agent runs no sudo", r.fix
     assert results["state_dir"].fix == r.fix
     assert doctor.is_persons_fix(r.fix) and doctor.is_persons_fix(results["state_dir"].fix)
 

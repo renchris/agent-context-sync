@@ -649,15 +649,15 @@ def _os_error(name: str, exc: OSError, severity: Severity) -> CheckResult:
     file, an I/O error, a sync app or a network that stopped answering.  That is the system's answer, and
     the person or a later run often clears it, so it is not called a crash: the line names the path the
     error is about, when it has one, and its fix says to look there and run again, then to report a line
-    that stays."""
+    that stays. No bracket of its own: the line wraps the fix in ``(fix: ...)`` (B13 round 22 Z7)."""
     reason = exc.strerror or str(exc) or type(exc).__name__
     stays = f"if the line stays, report it: {BIN} status -v prints where the check stopped"
     if isinstance(exc.filename, str | bytes | os.PathLike):
         path = os.fsdecode(exc.filename)
-        fix = f"check that {path} is there and can be opened, then run again ({stays})"
+        fix = f"check that {path} is there and can be opened, then run again; {stays}"
         return _bad(name, f"could not read {path}: {reason}", severity, fix=fix)
     detail = f"stopped on a system error: {type(exc).__name__}: {reason}"
-    return _bad(name, detail, severity, fix=f"run again ({stays})")
+    return _bad(name, detail, severity, fix=f"run again; {stays}")
 
 
 def unfinished(name: str, exc: Exception, severity: Severity = Severity.ERROR) -> CheckResult:
@@ -1043,25 +1043,27 @@ def _check_docs_repo(config: Config) -> list[CheckResult]:
 def _persons_chown(root: Path) -> str:
     """The fix of a state folder or file another account owns (a first ``sudo agentsync sync``): a sudo, which
     the person runs, as the setup prompt's "no sudo" rule says, so ``is_persons_fix`` reads it as theirs and
-    no NEXT hands it to the agent (B13 round 20 X74)."""
-    return f"the person runs sudo chown -R {os.getuid()} {_shell_path(root)} (the agent runs no sudo)"
+    no NEXT hands it to the agent (B13 round 20 X74). No bracket of its own: the line wraps the fix in ``(fix:
+    ...)`` (B13 round 22 Z49)."""
+    return f"the person runs sudo chown -R {os.getuid()} {_shell_path(root)}; the agent runs no sudo"
 
 
 def _search_fix(root: Path, *, folder: bool = True) -> str:
     """The fix of a state folder (or, ``folder`` False, a file) this account owns, whose mode already gives
     it access, that still refuses it: an ACL or a privacy setting, the person's, never a chmod of the agent's,
     which would change nothing, so its first words are "the person " (B13 round 21, the ownership rule: an
-    ACL deny stays the person's, as install.sh's step 1 tail says; lane P measured a file's)."""
+    ACL deny stays the person's, as install.sh's step 1 tail says; lane P measured a file's). Prose after
+    "; ", no bracket of its own (B13 round 22 Z49)."""
     if not folder:
         return (
-            f"the person gives this account read and write access to the file {_shell_path(root)} (its "
-            f"owner and mode are right, so an ACL or a privacy setting refuses it: ls -le "
-            f"{_shell_path(root)} shows an ACL)"
+            f"the person gives this account read and write access to the file {_shell_path(root)}; its owner "
+            f"and mode are right, so an ACL or a privacy setting refuses it, and ls -le {_shell_path(root)} "
+            "shows the ACL"
         )
     return (
-        f"the person gives this account read, write and search access to the folder {_shell_path(root)} "
-        f"(its owner and mode are right, so an ACL or a privacy setting refuses it: ls -led "
-        f"{_shell_path(root)} shows an ACL)"
+        f"the person gives this account read, write and search access to the folder {_shell_path(root)}; its "
+        "owner and mode are right, so an ACL or a privacy setting refuses it, and ls -led "
+        f"{_shell_path(root)} shows the ACL"
     )
 
 
@@ -1095,8 +1097,9 @@ def _read_only(path: Path) -> bool:
 
 def _read_only_fix(path: Path) -> str:
     """The fix of a state path on a read-only volume: the person's, as no chmod and no ACL change writes there
-    (B13 round 21 lane B's reviewer: the ACL words named a cause it was not)."""
-    return f"the person makes the volume that holds {_shell_path(path)} writable (it is mounted read-only)"
+    (B13 round 21 lane B's reviewer: the ACL words named a cause it was not). No bracket of its own (B13
+    round 22 Z49)."""
+    return f"the person makes the volume that holds {_shell_path(path)} writable, as it is mounted read-only"
 
 
 def state_folder_fix(root: Path) -> str:
