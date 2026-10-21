@@ -298,8 +298,8 @@ def build_parser() -> argparse.ArgumentParser:
     add(
         "curate",
         "the curation work list: every lint finding, mirror changes since the last checkpoint, the refresh "
-        "queue, then UNCOVERED mirror pages no curated page cites, then NEXT (rc 1 only on a blocking "
-        "finding)",
+        "queue, then UNCOVERED mirror pages no curated page cites, then NEXT (rc 1 on a blocking finding or "
+        "a state file this account cannot open, never on rows)",
         _cmd_curate,
     )
     for old_name in ("curate-queue", "lint", "refresh-queue"):
@@ -2376,7 +2376,8 @@ def _curate_findings(config: Config) -> list[LintFinding]:
 
 def _cmd_curate(args: argparse.Namespace) -> int:
     """KISS K09: findings, then the work rows (none during the baseline hold), then the loop's NEXT; exit 1
-    only on a blocking finding, never because there is work."""
+    on a blocking finding (or, from ``_main``, a state file this account cannot open), never because there is
+    work."""
     config = _config(args)
     layout = config.layout
     findings = _curate_findings(config)

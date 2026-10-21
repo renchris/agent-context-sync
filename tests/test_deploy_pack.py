@@ -5754,6 +5754,19 @@ _ROUND_20_E_PARAGRAPH_AMENDS = (
 also covers a built helper that fails its probe."""
 
 
+_ROUND_21_D_PARAGRAPH_AMENDS = (
+    (
+        "9",
+        "CLI exit codes (`cli.py`): 0 ok",
+        "§16.157 Y76 (by §16.125 T12; §16.131 U66; §16.143 W41, W65; §16.149 X50, X73)",
+    ),
+    ("16.28", "**Configuration.** One line: how many folders listed under", "§16.157 Y60 (by §16.146 X38)"),
+)
+"""Round 21 lane D's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: Y76's under §9's exit-code list and Y60's at §16.28's Configuration
+paragraph. Each records an earlier round's change, so its marker names those items after "by"."""
+
+
 def _pinned_dated_lines(table: tuple[tuple[str, str, str], ...]) -> set[int]:
     """The CONTRACTS.md offsets of the dated lines ``table`` pins, each in the one block (a paragraph or a
     bullet) of its section that holds its phrase."""
@@ -5789,7 +5802,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     §16.137 (lane B) two: V20's at §16.21 and V43's at §16.22. Round 19's §16.145 (lane D) one: W72's at
     §16.14. Round 20's §16.151 (lane D) three: X56's two in §9 and X64's at §16.28, and §16.147 (lane RB)
     two: X36's at §16.32's `with_progress` clock bullet and X19's at §16.47's stopped copy's report,
-    and §16.150 (lane E) three: X57's at §16.25, §16.34 and §16.35.
+    and §16.150 (lane E) three: X57's at §16.25, §16.34 and §16.35. Round 21's §16.157 (lane D) two: Y76's
+    under §9's exit-code list and Y60's at §16.28's Configuration paragraph.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5806,6 +5820,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_20_D_PARAGRAPH_AMENDS)) == len(_ROUND_20_D_PARAGRAPH_AMENDS) == 3
     assert len(_pinned_dated_lines(_ROUND_20_RB_PARAGRAPH_AMENDS)) == len(_ROUND_20_RB_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_20_E_PARAGRAPH_AMENDS)) == len(_ROUND_20_E_PARAGRAPH_AMENDS) == 3
+    assert len(_pinned_dated_lines(_ROUND_21_D_PARAGRAPH_AMENDS)) == len(_ROUND_21_D_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5831,6 +5846,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_20_D_PARAGRAPH_AMENDS,
         *_ROUND_20_RB_PARAGRAPH_AMENDS,
         *_ROUND_20_E_PARAGRAPH_AMENDS,
+        *_ROUND_21_D_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -7601,21 +7617,43 @@ def test_the_recording_tests_limit_names_cis_own_limit() -> None:
 
 def test_a_round_19_or_later_citation_names_a_section_that_holds_its_item() -> None:
     """B13 round 20 X62: §16.145 W58 cited the slow-doctor grace as §16.137's V4, which is §16.134's. Every
-    `§16.N <item>` written from §16.140 (round 19) on names an item section N holds. Older rounds reuse
-    item ids across waves (eight of their citations fail this read and are left as written)."""
+    `§16.N <item>` written from §16.140 (round 19) on names an item section N holds. B13 round 21 Y77: the
+    read counted an item held wherever section N named it, a `§16.M <item>` citation of another section
+    included, so §16.110's mention of Q27's home passed two citations of Q27 there; and it read only §16.140
+    on, where eight older citations failed. Every section is read now, and an item is held only where the
+    section names it outside a citation of another section (a dated line's own `Amended <date>, §16.M <item>:`
+    marker counts: the section holds that item's line). Nine citations were corrected; :data:`named` holds the
+    two that name a section's citation of an item, not the item's home."""
     sections = dict(_contracts_numbered_sections())
     cite = r"§(16\.\d+)(?:'s)? ((?:[A-Z]\d+)(?:(?:, | and )[A-Z]\d+)*)\b"
+
+    def own(text: str) -> str:
+        # the marker's own `§16.M <items>`, not a "(by ...)" list after it
+        marker = r"Amended\s+\d{4}-\d\d-\d\d,\s+§16\.\d+(?:'s)? [A-Z]\d+(?:(?:, | and )[A-Z]\d+)*"
+        markers = [m.span() for m in re.finditer(marker, text)]
+        return re.sub(cite, lambda m: m[0] if any(a <= m.start() < b for a, b in markers) else "", text)
+
+    holds = {number: own(text) for number, text in sections.items()}
+    # "§16.80's N37 target": the N37 §16.80's heading targets; "§16.117 S34 and Q29's amend line": S34's line,
+    # which amends Q29
+    named = {("16.85", "§16.80's N37"), ("16.127", "§16.117 S34 and Q29")}
     read, wrong = 0, []
     for number, text in sections.items():
-        if not re.fullmatch(r"16\.\d+", number) or int(number[3:]) < 140:
+        if not re.fullmatch(r"16\.\d+", number):
             continue
         for found in re.finditer(cite, text):
             for item in re.findall(r"[A-Z]\d+", found.group(2)):
                 read += 1
-                if not re.search(rf"\b{item}\b", sections.get(found.group(1), "")):
+                if not re.search(rf"\b{item}\b", holds.get(found.group(1), "")):
                     wrong.append(f"§{number}: {found.group(0)}")
-    assert read >= 60, "the scan is broken"
-    assert wrong == []
+    assert read >= 2000, "the scan is broken"
+    assert sorted(set(wrong)) == sorted(f"§{n}: {c}" for n, c in named)
+    flat = {number: " ".join(text.split()) for number, text in sections.items()}
+    assert "checkout's renderer would mix two builds in doctor (§16.111 Q27 turned it down;" in flat["16.123"]
+    assert "the checkout's src stays refused (§16.111 Q27, §16.123 T11)." in flat["16.129"]
+    assert "Read with §16.39 N16 and §16.53 Q26 (round 4 left its install.sh half unbuilt)." in flat["16.58"]
+    assert "- `_describe_holder` (`agentsync.ops.lock`; N6): a held lock with an empty body" in flat["16.41"]
+    assert "its 120 s wait plus the uv run, and for an `is_held` probe. §16.41 N6 changed" in flat["16.39"]
     assert "§16.134 V4 gives a slow doctor at least `_DOCTOR_GRACE_S`" in " ".join(sections["16.145"].split())
 
 
@@ -7628,16 +7666,34 @@ def _guide_line(name: str) -> str:
 
 def test_the_agent_named_folders_row_says_the_agents_name_keeps_it() -> None:
     """B13 round 20 X64: the row said a configured agent-named folder is a placeholder, while since round 19
-    W17 the agent's name keeps it as written and the report's Configuration line says so beside the counts."""
+    W17 the agent's name keeps it as written and the report's Configuration line says so beside the counts.
+    B13 round 21 Y60: round 20 X38 added a step 1 line that states its agent to the clause, and the row and
+    §16.28's X64 line, which a check of the clause's shared start passed, left it out."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
     assert ", except as a word of the agent's name in the friction log's Agent: line" in source
+    # the clause is two literals in the source: join them
+    clause = re.search(r'"(, except as a word of the agent\'s name in [^"]*)"\s*"([^"]*)"', source)
+    assert clause is not None
+    clause_text = clause.group(1) + clause.group(2)
+    assert clause_text == (
+        ", except as a word of the agent's name in the friction log's Agent: line"
+        " or a step 1 line that states it"
+    )
     assert "def redact_agent(" in source and "def scrub_agent(" in source
     row = _guide_line("Configuration: agent-named folders")
     assert "A configured one is a placeholder, except as a word of the agent's name, which keeps it as" in row
-    assert "the friction log's `Agent:` line and the issue link; the line then says so" in row
+    assert (
+        "the friction log's `Agent:` line, a step 1 line that states it (`prompt vN, <agent>:`), and" in row
+    )
+    assert "the issue link; the line then says so; B13 round 19 W17, round 20 X38). |" in row
     assert "; a configured one is a placeholder. |" not in row
+    configuration = " ".join(
+        _contracts_section("**Configuration.** One line: how many folders", "\n\n").split()
+    )
+    y60 = configuration.split("Amended 2026-10-20, §16.157 Y60 (by §16.146 X38):")
+    assert len(y60) == 2 and f"the line ends `{clause_text}`." in y60[1]
 
 
 def test_the_folder_placeholder_row_names_a_project_folders_slug_id() -> None:
@@ -7678,16 +7734,30 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     """B13 round 20 X67: the row named the re-screen note and the converter-waiting line but not round 19
     W18's `tried again after an upgrade:` note, so an old conversion error back in the runs after an
     upgrade had no word in the guide, whose ordinary retry reads as ruling it out. The label is read from
-    the report."""
+    the report. B13 round 21 Y41, Y52, Y58, Y74 (one defect): the row gave the first try as the upgrade's
+    run and the second as the next, which round 20 X53 made false for a source that run does not read; it
+    quotes the report's bullet now, read from the report."""
     from agentsync import setup_report  # noqa: PLC0415
 
-    note = re.search(r'f"- (tried again after an upgrade): \{each\}', inspect.getsource(setup_report))
+    source = inspect.getsource(setup_report)
+    note = re.search(r'f"- (tried again after an upgrade): \{each\}', source)
     assert note is not None
     row = _guide_line("Repeat conversions")
     assert f"a `{note.group(1)}:` note under the table gives their count per run" in row
-    assert "possibly in a background cycle nobody watched" in row and "§16.144, W18). |" in row
-    # the upgrade's run makes the first try (`retry_settled_failures` runs before its sources)
-    assert "up to 2 times, the first in that run" in row
+    assert "possibly in a background cycle nobody watched" in row and "§16.144, W18; §16.150, X53). |" in row
+    # the move takes every source's failures, and a source the upgrade's run does not read is tried in its
+    # own later runs (B13 round 20 X53); the report's literal is split over two source lines, so read the
+    # one-line fragment
+    tries = re.search(
+        r"tries each again from the same bytes (in up to 2 runs of its source from that one on)", source
+    )
+    assert tries is not None
+    assert (
+        f"tried again from the same bytes {tries.group(1)}, so an old conversion error can show in those runs"
+        in row
+    )
+    assert "makes its first try in a later run of its own" in row
+    assert "the first in that run" not in row and "that run or the next" not in row
     # the note sits beside the other notes, before the Quarantine sentence
     assert row.index(f"`{note.group(1)}:`") < row.index("Quarantine by reason counts")
 
@@ -7714,6 +7784,110 @@ def test_u78s_line_quotes_the_again_fix_head() -> None:
     x68 = f"§16.151 X68 (by §16.143 W19, W48): under install.sh `_again_fix` starts `{round_19}`"
     assert x68 in u78
     assert f"§16.149 X21: under install.sh `_again_fix` starts `{head}`" in u78
+
+
+def test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does() -> None:
+    """B13 round 21 Y61: since round 20 X19 any run that writes a report after a copy install.sh stopped at
+    step 1, with no --log-start since (a plain install.sh included), writes stopped-copy-report.md and adds a
+    clause to its own NEXT, and only a run started by that attempt's end line resolves the stop; the guide
+    said only `--report-only` routes it, and that any step 1 run resolves a step 1 error. The clause is read
+    from install.sh and the filter from the report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    install = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    added = re.search(
+        r'NEXT_MSG="\$\{NEXT_MSG:\+\$NEXT_MSG; \}(the last setup attempt was a copy [^"]*)"', install
+    )
+    assert added is not None
+    assert 'if tell="$(friction_attempt_stopped)"; then' in install
+    assert '[ "$REPORT_ONLY" -eq 1 ] || stopped=2' in install
+    stopping = inspect.getsource(setup_report.stopping_error)
+    assert "if end is not None and _PROMPT_STOP_RE.match(e.what):" in stopping
+    assert "r.started <= end" in stopping
+    guide = " ".join((ROOT / "docs" / "deploy" / "setup-feedback.md").read_text(encoding="utf-8").split())
+    assert (
+        "a `--list-folders` re-run included, but not for install.sh's own `--log-start` stop of a copy"
+        in guide
+    )
+    assert (
+        "That stop is resolved only by a run started no later than that attempt's end line (CONTRACTS"
+        " §16.147, X19)" in guide
+    )
+    assert "so a later install.sh or `--list-folders` run leaves the attempt failed at step 1" in guide
+    assert "Since 2026-10-20 (CONTRACTS §16.147, X19), any other run that writes a report after such" in guide
+    assert "(a plain `install.sh` the stopped copy's Doctor asked for, say), routes it the same way" in guide
+    assert f"It keeps its own `NEXT:` and adds (after a `; ` when there is one) `{added.group(1)}`." in guide
+
+
+def test_section_9s_exit_codes_name_65_and_a_state_file_this_account_cannot_open() -> None:
+    """B13 round 21 Y76: §9's CLI exit-code list had no 65 (a damaged manifest, round 16 T12 and round 17
+    U66) and said curate exits 1 only on a blocking finding, while since round 19 W65 and round 20 X73 a
+    state file or folder this account cannot open exits 1 too, and curate's own help line said the same.
+    Each code and arm is read from cli.py."""
+    from agentsync import cli  # noqa: PLC0415
+
+    source = inspect.getsource(cli)
+    assert cli.EXIT_STATE == 65 and cli.EXIT_FAILED == 1
+    assert "  65  the state file (manifest.sqlite) is no database or a damaged one" in cli._EPILOG
+    assert "or the state file cannot be\n      opened by this account" in cli._EPILOG
+    main = inspect.getsource(cli._main)
+    # each arm up to the next one, so a later arm's return answers for none before it
+    arms = {arm.split(maxsplit=1)[0]: arm for arm in main.split("\n    except ")[1:]}
+    assert "return EXIT_STATE" in arms["StateUnreadableError"]
+    assert "return EXIT_STATE" in arms["sqlite3.DatabaseError"]
+    assert (
+        "return EXIT_FAILED" in arms["ManifestOpenError"] and "return EXIT_FAILED" in arms["PermissionError"]
+    )
+    assert "_state_readable(config)" in inspect.getsource(cli._run_report)
+    assert "with _state_readable(config)" in inspect.getsource(cli._ensure_setup)
+    assert "rc 1 only on a blocking" not in source and "exit 1\n    only on a blocking" not in source
+    usage = " ".join(cli.build_parser().format_help().split())
+    assert "(rc 1 on a blocking finding or a state file this account cannot open, never on rows)" in usage
+    exits = " ".join(_contracts_section("CLI exit codes (`cli.py`): 0 ok", "\n\n").split())
+    marker = (
+        "Amended 2026-10-20, §16.157 Y76 (by §16.125 T12; §16.131 U66; §16.143 W41, W65; §16.149 X50, X73): "
+    )
+    [y76] = exits.split(marker)[1:]
+    assert y76.startswith("65 means the state file (manifest.sqlite) is no database or a damaged one")
+    assert "1 also covers a state file or state folder this account cannot open (`ManifestOpenError`," in y76
+    assert "So `curate` exits 1 on a blocking finding or on such a state file, never on rows." in y76
+
+
+def test_the_shut_buckets_contract_lines_are_the_reports() -> None:
+    """B13 round 21 Y40: §16.146 gave the shut bucket's warn as `not judged: the loop cannot read the state`,
+    which round 20 X15, X46 changed, and §16.149 said the bucket is keyed on `doctor.state_unopenable`, which
+    the report never calls: `_sort_doctor` keys it on `_state_shut`, which tests the file and its folder too.
+    Both are read from the report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    words = re.search(
+        r'from_shut\.append\(f"\{name\} (warn \(not judged: [^)]*\))"\)', inspect.getsource(setup_report)
+    )
+    assert (
+        words is not None and words.group(1) == "warn (not judged: this account cannot open the state file)"
+    )
+    sort = inspect.getsource(setup_report._sort_doctor)
+    assert "_state_shut(r.config, read_error)" in sort and "state_unopenable" not in sort
+    shut = inspect.getsource(setup_report._state_shut)
+    assert "state_unopenable" not in shut and 'return "folder"' in shut
+    x28 = " ".join(
+        _contracts_section(
+            "**A state file this account cannot open has its own doctor bucket, and the outcome", "\n\n"
+        ).split()
+    )
+    assert (
+        "Amended 2026-10-20, §16.157 Y40 (by §16.149 X15, X46):** the warn in that bucket reads"
+        f" `heartbeat.<id> {words.group(1)}`" in x28
+    )
+    x15 = " ".join(
+        _contracts_section(
+            "**X14, X15, X46: the listing note over a state file that cannot be read", "\n\n"
+        ).split()
+    )
+    assert (
+        "Amended 2026-10-20, §16.157 Y40:** it is keyed on `setup_report._state_shut`, the report's own test"
+        in x15
+    )
 
 
 def test_exit_1_names_a_state_file_this_account_cannot_open() -> None:

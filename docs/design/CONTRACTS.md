@@ -461,6 +461,13 @@ sources finished. DRY_RUN: steps 1–5 without the transaction's writes, no fetc
 CLI exit codes (`cli.py`): 0 ok · 1 failed (source error, blocking lint; since KISS K09 `curate` exits 1 only on a
 blocking finding, never on rows; since KISS K08a `status` exits 1 on any FAIL check) · 2 usage ·
 75 lock held (`sync` without `--mode` waits up to 600 s first; K12) · 77 reauth required · 78 config invalid.
+Amended 2026-10-20, §16.157 Y76 (by §16.125 T12; §16.131 U66; §16.143 W41, W65; §16.149 X50, X73): 65 means the
+state file (manifest.sqlite) is no database or a damaged one: init, add-source and every command that runs a cycle
+stop with it at `_state_readable` (T12; since W41 and X50 its probe reads each table's and index's first entry), and
+curate, purge and exclude-empty through the `sqlite3.DatabaseError` arm (U66); the line names the file and
+`doctor.MANIFEST_FIX`. 1 also covers a state file or state folder this account cannot open (`ManifestOpenError`, or
+a `PermissionError` on a path in the state folder), with the access fix; the file is not damaged, so it is not moved
+aside. So `curate` exits 1 on a blocking finding or on such a state file, never on rows.
 
 **SUPERSEDED (2026-09-29, §16.3):** step 5 adds the reachability gate and the purge-suppression filter, step 6 the content
 policy (label screen before the cache, item-label refusal before a fetch), step 7 enqueues purges for confirmed
@@ -8644,6 +8651,9 @@ Amended 2026-10-20, §16.151 X64 (by §16.140 W17): a configured one keeps its p
 agent's name (the Summary, the attempt lines and the friction log's `Agent:` line through `Redactor.redact_agent`,
 the issue link through `scrub_agent`), and the line then ends `, except as a word of the agent's name
 in the friction log's Agent: line`.
+Amended 2026-10-20, §16.157 Y60 (by §16.146 X38): a step 1 line that states its agent (`prompt vN, <agent>:`)
+keeps the word too, and the line ends `, except as a word of the agent's name in the friction log's Agent: line or
+a step 1 line that states it`.
 
 Every other new name in `agentsync.setup_report` is private (`_Mirror`, `_Labels`, `_RunRow`, `_run_rows`,
 `_stub_rows`, `_run_days`, `_lines`, `_table`, `_evidence`, `_status_section`, the six `_*_part` functions
@@ -12286,7 +12296,7 @@ engine).`, and the kinds of file a re-read looks at are said in the table's lead
     lock that lockf left. A crashed cycle's body is kept as it was (the next sync still breaks it and runs
     FULL passes); while the reinstall holds the lock, a job, status or doctor then names that dead pid as
     the holder. This is harmless and lasts at most the wait.
-  - `_describe_holder` (`agentsync.ops.lock`): a held lock with an empty body (the reinstall, an `is_held`
+  - `_describe_holder` (`agentsync.ops.lock`; N6): a held lock with an empty body (the reinstall, an `is_held`
     probe, a cycle between flock and its write) reads `an unrecorded holder (install.sh while it reinstalls
     agentsync, or a check for an instant)`, not `'<empty body>' (unparseable lock body)`; a non-empty body
     that does not parse keeps the old text. The module docstring says so.
@@ -15202,7 +15212,7 @@ note, so the Summary's grouping is unchanged. Tests: `test_the_report_doctor_nev
 
 **F49: the added source line names the stored path (`agentsync.cli`).** A folder typed through a link (or `/tmp`
 for `/private/tmp`) is stored resolved; `added source '<id>' to <config> (<typed>, stored as <stored>):` names
-both when they differ, as the inbox line does (§16.51 Q36). The config path, the colon before the table and the
+both when they differ, as the inbox line does (§16.53 Q36). The config path, the colon before the table and the
 `added source '<id>'` prefix that install.sh's `add_source_filter` passes are unchanged. Test:
 `test_the_added_source_line_names_the_stored_path_beside_the_typed_one`.
 
@@ -15313,7 +15323,7 @@ report step not counted)`. A `--report-only` report, and any later read, see the
 install.sh is unchanged. Test: `test_the_report_install_sh_writes_says_its_run_time_is_before_its_report_step`.
 
 **F39: the doctor line names the checks install.sh's doctor printed that the report's does not.** Read with
-§16.39 N16 and Q26 (round 4 left its install.sh half unbuilt). In the attempt's last install run's install.out
+§16.39 N16 and §16.53 Q26 (round 4 left its install.sh half unbuilt). In the attempt's last install run's install.out
 lines, the `[warn]` and `[FAIL]` checks printed before the run's first `sync:` or `first sync:` line that the
 report's own doctor does not report add `· install.sh's doctor before its first sync (run <id>): N warn not in this
 one: <check>, ...`, and the counts are labelled `(K checks, run when this report was written)`. It states the
@@ -15471,7 +15481,7 @@ built here.
   `test_failure_before_the_installer_is_the_errors_step`.
 - **CloudStorage** (F56). Providers are folders only (`-type d`, the OneDrive count too); symlinks and other
   entries are added as `and N symlink(s)`, `and N other entry(ies)` only when there are any, as
-  `setup_report.cloud` counts since §16.53 Q33. `test_the_shell_report_counts_cloud_folders_apart_from_links_and_files`.
+  `setup_report.cloud` counts since §16.52 Q33. `test_the_shell_report_counts_cloud_folders_apart_from_links_and_files`.
 - **gitleaks** (F58). The line names the path `remember_gitleaks` recorded in
   `~/Library/Application Support/agentsync/gitleaks-path` first, when it is an absolute executable file, then
   PATH, then the fixed places: `lints.gitleaks_lookup`'s order.
@@ -16238,7 +16248,7 @@ identity, `mark_for_rescreen` and the setup report's class key on it. The text n
 `policy.is_refusal_reason` would read as a label refusal; an image on a Mac without OCR still says `no converter`.
 `Publisher._withheld` is the one test `_plan_stub` and `write_quarantine` share; for an image it reads this run's
 OCR state, as the page does when it is planned, so a run with no engine writes an image's TSV row as `no converter`. Pinned by
-`tests/test_cycle.py::test_a_withheld_stub_says_so_in_its_reason_and_in_quarantine_tsv`. Amends §16.42 R33's
+`tests/test_cycle.py::test_a_withheld_stub_says_so_in_its_reason_and_in_quarantine_tsv`. Amends §16.47 R33's
 "only the words say why" and §16.60 F33: the stub's `reason:` is among those words.
 **Amended 2026-10-14, §16.79 J73 (by §16.71 H52):** `write_quarantine` no longer reads this run's OCR state: for a
 row a label rule may withhold it copies the `reason:` of the stub as published (`Publisher._stub_reason`), so a run
@@ -17599,7 +17609,7 @@ whose engine missed its `--version` turned "withheld by label rule" into "no con
 QUARANTINE.tsv), and the meta written after it kept it until the next bump. `_rerender_stubs` now passes
 `plan_pages(..., withheld=)` the page's own decision: the body's "its content is withheld (content policy)" below the
 heading (every withheld body has it; the heading holds the file's name), or a `reason:` or summary that says withheld
-by label rule. A page from before §16.62 G29 (`reason: no converter for .png`, withheld body) stays withheld, and a
+by label rule. A page from before §16.66 G29 (`reason: no converter for .png`, withheld body) stays withheld, and a
 "no converter" page stays so on a run with an engine, as §16.71 H52 says the run that planned the stub decides.
 Normal planning and a .msg are unchanged. Tests:
 `test_cycle.py::test_the_stub_re_render_keeps_the_wording_the_page_has_whatever_this_runs_ocr`,
@@ -21835,7 +21845,7 @@ The setup report's findings of the v23 rehearsal, the cross-lane review and the 
 without it. Where an item changes what an older section states, that section has a dated line (`Amended 2026-10-18,
 §16.116 S<n>`). No item needs prompt words.
 
-**An Items line keeps the error after an exit code with no verb before it** (S1; extends §16.110 Q31). Q31's cut of
+**An Items line keeps the error after an exit code with no verb before it** (S1; extends §16.112 Q31). Q31's cut of
 an error line longer than 220 characters starts the error where `_FAILED_EXIT_RE` matches, which needed `failed`,
 `exited`, `returned` or `(exit` first; the shapes `<cmd> exit 1: <error>`, `exit code 1:`, `exit status 128:`, `rc=1:`
 and `rc 1:` were cut inside the command, with no word of git's error. A second arm matches them; the leftmost match
@@ -22778,7 +22788,7 @@ reads.
 **A step 1 stop the older installed agentsync rendered takes this checkout's words** (T11). After the current prompt's
 step 1 stopped, the field Mac's report is rendered by the installed build, which nothing reinstalled (rehearsal B's
 v10): no cause, the sign-in stop's FAILs and install.commit unexpected, the dropped friction line, `(s)`. Running the
-checkout's renderer would mix two builds in doctor (§16.110 Q27 turned it down; the verifier measured a false skill
+checkout's renderer would mix two builds in doctor (§16.111 Q27 turned it down; the verifier measured a false skill
 NEXT). So the installed build renders and install.sh rewrites (`older_report_rewrite step1`, stopped_report_note's awk
 with a mode) when install.log's last run is this attempt's failed step 1 list (`note=not-signed-in` or `no-folders`)
 and the report has install.commit's checkout warn: the renderer-only words above, the quiet friction line,
@@ -23542,7 +23552,7 @@ and sets the turns line to the renderer's for that attempt (`none (step 1's comm
 stop. The verifier's outcome shim (`; it stopped: <cause>`) is not built: the renderer words a step 1 error's outcome
 `no install.sh run; step 1 logged an error` with no cause. The attempt split and its note are not shimmed: the old
 build reads one attempt where the renderer reads two, and the words cannot be rebuilt from its text. Rendering with
-the checkout's src stays refused (§16.110 Q27, T11). Test:
+the checkout's src stays refused (§16.111 Q27, §16.123 T11). Test:
 `test_a_git_stop_rendered_by_the_older_installed_agentsync_takes_this_checkouts_words` (an install run after it, a later
 attempt).
 
@@ -24796,7 +24806,7 @@ from setup_report.
 
 **The guide's no-hash route cites no clause the report leaves out** (V80). It told the triager to chmod "as the
 Summary's unreadable clause says", but a carried patch, the only kind with a no-hash `not repeated:` line, is
-never in that clause (§16.127 T24: a rerun sends nothing new, so "not in bring-back.md" would be false), and the
+never in that clause (§16.123 T24: a rerun sends nothing new, so "not in bring-back.md" would be false), and the
 clause is the Run metadata local-work line's, not the Summary's. The command and its caveat stay; the citation
 goes. Test: `test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`.
 
@@ -25664,7 +25674,9 @@ for a FAIL in no bucket and `N doctor FAIL(s) with a known cause: <checks> (<buc
 by bucket. Tests: `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`,
 `test_the_fail_of_a_state_file_no_command_can_read_has_its_own_doctor_bucket`,
 `test_the_outcome_calls_unexpected_only_a_doctor_fail_in_no_bucket`,
-`test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket`.
+`test_the_folders_step_1_found_not_on_disk_have_their_own_doctor_bucket`. **Amended 2026-10-20, §16.157 Y40 (by
+§16.149 X15, X46):** the warn in that bucket reads `heartbeat.<id> warn (not judged: this account cannot open the
+state file)`; a file this account cannot open is not one the loop read and found damaged.
 
 **The agent's name keeps its product word where a step 1 line states it, and before a hyphen** (X38, X39; amends
 §16.140 W17 and §16.58 F4). A step 1 line states its agent at its text's start (`prompt v28, <agent>:`), and the
@@ -26146,7 +26158,9 @@ for that FAIL is lane RA's X28, in §16.146. Tests:
 `test_a_listing_warn_over_a_state_file_this_account_cannot_open_points_at_no_waiting_line` (by hand and under
 install.sh, with a loose-mode control), `test_a_state_file_unopenable_is_one_in_the_state_folder` and the W11 test's
 both cases. The report's Summary bucket for that state_dir.files FAIL and the warn beside it is lane RA's §16.146
-X28, keyed on `doctor.state_unopenable`.
+X28, keyed on `doctor.state_unopenable`. **Amended 2026-10-20, §16.157 Y40:** it is keyed on
+`setup_report._state_shut`, the report's own test of the read error and the file (its -wal and -shm, and its
+folder), as §16.146 X28 says, never on `doctor.state_unopenable`, which has no file or folder test.
 
 **X16, X30: status logs no WARNING its own FAIL line already says (`agentsync.loop`, `agentsync.cli`).** On a
 manifest this account cannot open, status's stderr began with a timestamped `WARNING agentsync.loop: next step:
@@ -26312,7 +26326,9 @@ for the slow-doctor grace, which is §16.134's (round 18 lane RA); one token, co
 `test_a_round_19_or_later_citation_names_a_section_that_holds_its_item`, which reads every `§16.N <item>` written
 from §16.140 on and finds the item in section N. Measured over the whole file, 8 older citations (rounds 4 to 15,
 such as G29's under §16.62 and Q31's under §16.110) fail the same read; their ids repeat across waves (Q31 is in
-five sections), so each needs its own round's evidence, and they are left as they are.
+five sections), so each needs its own round's evidence, and they are left as they are. **Amended 2026-10-20, §16.157
+Y77:** each is corrected in place from its round's evidence, with one more a stricter read found, and the test reads
+every section.
 
 **CI's time is the jobs' own** (X63; dated line at §16.145 W80). W80's "23.5 and then 20 minutes" were the pytest
 step's 23:32 and 20:23; those jobs took 24:00 and 20:59, and round 19's took 20:59 to 24:46 (re-read with `gh run
@@ -26332,7 +26348,9 @@ run skips, which lane E's round 20 X53 rewords. §16.28's Configuration paragrap
 `test_the_folder_placeholder_row_names_a_project_folders_slug_id`,
 `test_the_ocr_row_says_a_deleted_files_count_goes_at_the_next_sync` and
 `test_the_repeat_conversions_row_names_the_upgrade_retry_note`, each reading the report's words from
-`setup_report`, and a row of `_ROUND_20_D_PARAGRAPH_AMENDS`.
+`setup_report`, and a row of `_ROUND_20_D_PARAGRAPH_AMENDS`. **Amended 2026-10-20, §16.157 Y41, Y52, Y58, Y74:**
+X53 did not reword the Repeat conversions row; the row now quotes the report's bullet, `in up to 2 runs of its source
+from that one on`, and says a source that run does not read makes its first try in a later run of its own.
 
 **U78's fix head is the one install.sh gets since W48** (X68; dated line at §16.132 U78). U78 quoted `_again_fix`
 as `run the same <installer> command again ...`; under install.sh it starts `doctor.AGAIN_UNDER_INSTALL_SH` since
@@ -26371,4 +26389,61 @@ Reserved for round 21 lane E of B13.
 
 ### 16.157 Round 21: deploy docs, CONTRACTS cross-references and CLAUDE.md (2026-10-20, wave B13 round 21 lane D)
 
-Reserved for round 21 lane D of B13.
+Lane D's round 21 items (`docs/plans/bring-back-ocr.md`, "B13 round 21"; specs `round21/items/Y<n>.md`, the
+verifier's corrected fix built unless said): Y40, Y41, Y52, Y58, Y60, Y61, Y68, Y74, Y76 and Y77. Y41, Y52, Y58
+and Y74 are one defect, built once. None makes things worse: Y68's finder fix turned the gate red, and its
+verifier's fix, built here, does not.
+
+**The shut bucket's warn and key are the report's** (Y40; dated lines at §16.146 X28 and §16.149 X15). §16.146
+gave the warn of a state file this account cannot open as `not judged: the loop cannot read the state`, the words
+§16.149 X15, X46 changed to `not judged: this account cannot open the state file` with no line there; and §16.149
+said the bucket is keyed on `doctor.state_unopenable`, while `_sort_doctor` calls `setup_report._state_shut`, which
+also tests the file and its folder and returns which. Each gets a dated line. The code half (the report reading
+doctor's cannot-open set) is lane RA's round 21 Y48 and Y71, in §16.152. Test:
+`test_the_shut_buckets_contract_lines_are_the_reports`, which reads the words and the call from the report.
+
+**The guide's Repeat conversions row quotes the report's retry words** (Y41, Y52, Y58, Y74, one defect; dated
+line at §16.151 X67). The row said an older build's given-up conversion is tried again `up to 2 times, the first in
+that run`, so its error `can show again in that run or the next`; but the move takes every source's failures, and a
+source that run does not read (paused, left out by `--source`, past the time limit) is tried in its own later runs,
+as §16.150 X53 measured and reworded the sync note and the report's bullet for. The row quotes the report's bullet, `in up to 2 runs of its source from that one on, so an old
+conversion error can show in those runs`, and says such a source makes its first try in a later run of its own,
+with no "the first in that run when it reads the source", which the time limit also falsifies. Test:
+`test_the_repeat_conversions_row_names_the_upgrade_retry_note`, which reads the phrase from the report.
+
+**§16.28's X64 line and the guide's agent-named folders row name X38's step 1 line** (Y60; dated line at §16.28).
+Since §16.146 X38 a step 1 line that states its agent (`prompt vN, <agent>:`) keeps the product word, and the
+Configuration line ends `... friction log's Agent: line or a step 1 line that states it`; the X64 line quoted the
+clause without its tail, the row left the step 1 line out, and the test checked only the start both forms share.
+Test: `test_the_agent_named_folders_row_says_the_agents_name_keeps_it`, which joins the clause's two literals,
+and a row of `_ROUND_21_D_PARAGRAPH_AMENDS`.
+
+**The guide routes a report after a stopped copy as install.sh does** (Y61; `docs/deploy/setup-feedback.md`).
+Since §16.147 X19 any run that writes a report after a copy install.sh stopped at step 1, with no `--log-start`
+since (a plain install.sh included), writes `stopped-copy-report.md`, writes no bring-back file, prints no `bring
+back:` or issue link line, and adds `the last setup attempt was a copy of the prompt this installer stopped at step
+1; ...` to its own NEXT; and only a run started by that attempt's end line resolves the stop. The guide said only
+`--report-only` routes it, and that any step 1 run resolves a step 1 error; its stopped-copy bullet and its
+"Failed at step N" bullet say both now. Test: `test_the_guide_routes_a_report_after_a_stopped_copy_as_install_sh_does`,
+which reads the NEXT clause from install.sh and the end-line filter from `setup_report.stopping_error`.
+
+**§9's exit-code list names 65 and a state file this account cannot open** (Y76; dated line under §9's exit-code
+list). The list had no 65, which since §16.125 T12 init, add-source and every command that runs a cycle return at
+`_state_readable` (its probe widened by §16.143 W41 and §16.149 X50) and since §16.131 U66 curate, purge and
+exclude-empty through the `sqlite3.DatabaseError` arm, and said curate exits 1 only on a blocking finding, while since W65 (`ManifestOpenError`) and §16.149 X73 (a `PermissionError` in the state folder) a
+state file or folder this account cannot open exits 1 too. The line says both; curate's help line, which said `rc 1
+only on a blocking finding`, now reads `rc 1 on a blocking finding or a state file this account cannot open, never
+on rows`. Test: `test_section_9s_exit_codes_name_65_and_a_state_file_this_account_cannot_open`, which reads the codes,
+the arms and the epilog from `cli`, and a row of `_ROUND_21_D_PARAGRAPH_AMENDS`.
+
+**Every citation names a section that holds its item** (Y77; dated line at §16.151 X62). §16.151 X62 left eight
+older citations as written. From each round's evidence they read §16.53 Q36 (in §16.57), §16.52 Q33 (§16.59),
+§16.47 R33 (§16.66), §16.66 G29 (§16.78), §16.112 Q31 (§16.116), §16.111 Q27 and §16.123 T11 (§16.129), and §16.53
+Q26 (§16.58: round 4 lane RB's pre-sync heartbeat note, whose install.sh half round 5's F39 spec names). §16.39's
+pointer to §16.41 for N6 was right: that section holds the change unlabeled (round 1's lane D note), so its
+`_describe_holder` bullet now carries the label; round 11's N6 is another item. The read counted an item held
+wherever a section named it, a citation of another section included, so two of Q27 passed on §16.110's mention of
+its home; it now counts only a mention outside such a citation (a dated line's own marker counts), over every
+section, and that found one more: §16.123 T24 (in §16.139). Two lines that name a section's citation of an item,
+not its home, are listed by name in the test. Test:
+`test_a_round_19_or_later_citation_names_a_section_that_holds_its_item`.
