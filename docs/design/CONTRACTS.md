@@ -26789,6 +26789,10 @@ chmod to the agent, and Y59's verifier showed a mode change by the installer or 
 set, against install.sh's rule that no mode is widened; its stop is the same NEXT. Y24's first part, the error line
 itself naming `state_path_fix`'s command on the `ManifestOpenError` path, is cli.py's handler, lane B's Y31 (§16.155).
 
+Amended 2026-10-21, §16.160 Z79: the refused NEXT and step 1's `state-refused` and `state-side-refused` tails name a
+volume mounted read-only beside an ACL and a folder above it, and a state path on such a volume is `refused`
+whatever its mode (no chmod writes there).
+
 **Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
 amends §16.148 X9). `config_errors` named a state folder at 0000 "agentsync's state file", whose fix is a chmod 700 of
 the folder (Y14); it gave a 0400 `-wal` or `-shm` the config step's tail, but init opens past both: a `-shm` in use
@@ -27337,7 +27341,25 @@ and one a sync held, and reads every line holding the advice with install.sh's o
 
 ### 16.160 Round 22: setup prompt v31 and the chmod of every state file (2026-10-21, wave B13 round 22 lane P)
 
-Reserved for round 22 lane P of B13.
+The B13 round 22 items of lane P (specs `round22/items/Z<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise), under the round's rulings: every state file (the manifest, its -wal and -shm,
+the lock, the heartbeat, holds.json and the governance files) this account owns but cannot open by its own mode is the
+agent's chmod, in one pass; one another account owns, an ACL, a folder above it or a read-only volume refuses is the
+person's. Z8, Z11, Z30, Z36, Z38, Z59, Z65, Z71, Z79, Z81. Z30 and Z71 are one defect, built once. A dated line this
+round writes in another section reads `Amended 2026-10-21, §16.160 Z<n>`.
+
+**A read-only volume is named as the cause** (Z79; amends §16.154 Y24). On a volume mounted read-only (probe
+owner-rovolumebig) step 1's `state-refused` tail and step 2's refused NEXT named the right owner, the person, but
+not the cause: `(an ACL, or a folder above it this account cannot search; ...)`, while status's `state_dir` line
+gives doctor's `_read_only_fix` (`... writable (it is mounted read-only)`). Both, and the `state-side-refused`
+tail (`(an ACL; not damage)`, which the finding missed), now name `a volume mounted read-only`, as do the comments
+of `config_errors`, `state_open_fix` and `config_failed`. The verifier's edge is built too: a state folder or file
+there whose mode also lacks a bit (a 0500 folder) got `state-access` and the agent's `chmod 700`, which fails with
+EROFS; `config_errors` and `state_open_fix`'s `mode_refuses` read `os.statvfs`'s `ST_RDONLY` first (no import, so
+an older installed build reads it too), so it is `state-refused`, the person's. setup-feedback's "A Mac that is
+already set up" says the same. Tests (a shim whose `os.statvfs` and `os.access` read the state folder as mounted
+read-only; CI cannot attach a disk image everywhere): `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open`
+(PM-ro, PM-ro-mode, PM-ro-wal) and `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (ro, ro-mode).
 
 ### 16.161 Round 22: an unsearchable parent, the person's kinds and the state errors in cli and doctor (2026-10-21, wave B13 round 22 lane B)
 

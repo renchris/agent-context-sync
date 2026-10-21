@@ -6064,7 +6064,8 @@ sys.stdout.buffer.write(os.fsencode("\n".join(out) + "\n"))
 # state_dir lines judge them: the manifest probes, whose open fails as CANTOPEN, said nothing, and step 2 then
 # stopped at its config step (round 20 X9, X29); then no other read of the file is made. "state-refused" when
 # no chmod fixes it (its own mode already allows it, so an ACL or a sandbox refuses it, a folder above it this
-# account cannot search, or a doctor.state_path_fix fix that is no chmod: the person's, round 21 Y24), and
+# account cannot search, a volume mounted read-only, or a doctor.state_path_fix fix that is no chmod: the
+# person's, round 21 Y24; round 22 Z79: the read-only volume, whatever the file's mode), and
 # "state-side-owner", "state-side-access" or "state-side-refused" for the -wal or the -shm, which init opens
 # past, so only step 2's status or sync may stop on it (round 21 Y57). Fixed words only,
 # never the error's text, which can quote a host or a label (a finding names the remote's URL). A reader of
@@ -6120,8 +6121,9 @@ except ImportError:  # an older agentsync: a mode that refuses this account is f
 # a state folder, manifest, -wal or -shm this account cannot open: another account owns one, or it lacks read
 # and write (and search, for the folder) for this one; its probes below could not open it either. The folder
 # and the manifest stop the config step; a -wal or -shm only a status or a sync that writes it. One of this
-# account whose mode already allows it (an ACL, a sandbox) or that a folder above it hides, or whose fix
-# doctor.state_path_fix gives as no chmod, is for the person to fix: no chmod changes it
+# account whose mode already allows it (an ACL, a sandbox), that a folder above it hides, that is on a volume
+# mounted read-only (whatever its mode: a chmod fails there), or whose fix doctor.state_path_fix gives as no
+# chmod, is for the person to fix: no chmod changes it
 access = None
 for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
     word = "state-" if p in (db.parent, db) else "state-side-"
@@ -6137,7 +6139,11 @@ for p in (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + 
         break
     if not os.access(p, os.R_OK | os.W_OK | (os.X_OK if p == db.parent else 0)):
         want = 0o700 if p == db.parent else 0o600
-        if st.st_mode & want == want:
+        try:
+            ro = bool(os.statvfs(p).f_flag & os.ST_RDONLY)
+        except (OSError, AttributeError):
+            ro = False
+        if ro or st.st_mode & want == want:  # a volume mounted read-only: no chmod writes there
             fix = ""
         elif word == "state-side-":
             fix = "chmod"
@@ -6417,17 +6423,18 @@ list_folders() {
 		# whatever build step 2 installs (it cannot open the file either), so these clauses have no reinstall
 		# hedge. Another account's file or folder needs a sudo chown, the person's; this account's own needs a
 		# chmod, which the agent runs once when step 2's NEXT names it (round 20 X9, X26, X29; round 21 Y24), and
-		# one no chmod fixes (an ACL, a folder above it this account cannot search) is the person's too. The
+		# one no chmod fixes (an ACL, a folder above it this account cannot search, a volume mounted read-only:
+		# round 22 Z79) is the person's too. The
 		# noun covers the folder (round 21 Y14). A -wal or -shm is no config step's stop: init passes, and an
 		# empty one leaves no stop once the manifest is opened, while one that holds frames or a -shm in use
 		# fails status and the sync, so its clause says "may" and names status (round 21 Y57).
 		stail=""
 		case ",$cerr," in *",state-owner,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which another account owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-access,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
-		case ",$cerr," in *",state-refused,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account is refused though its mode allows it (an ACL, or a folder above it this account cannot search; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
+		case ",$cerr," in *",state-refused,"*) stail="; step 2 stops at its config step on agentsync's state folder or a file in it, which this account is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines" ;; esac
 		case ",$cerr," in *",state-side-owner,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		case ",$cerr," in *",state-side-access,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account cannot write (a mode, not damage): the chmod that fixes it is the agent's to run, once, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
-		case ",$cerr," in *",state-side-refused,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account is refused though its mode allows it (an ACL; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
+		case ",$cerr," in *",state-side-refused,"*) stail="; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account is refused though its mode allows it (an ACL, or a volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line" ;; esac
 		git_ro_resolve
 		if [ -z "$ctail" ]; then
 			:
@@ -7152,11 +7159,12 @@ print(owned)
 # The fix of a state folder or manifest of this account's own that it cannot open, as the agentsync step 2
 # installed gives it (doctor.state_path_fix, the fix status prints on its state_dir lines): that "chmod 600
 # <file>" or "chmod 700 <folder>", the agent's to run once, or "refused" when no chmod fixes it (its mode already
-# allows it, so an ACL or a sandbox refuses it, or a folder above it this account cannot search), the person's
-# (B13 round 21 Y24, Y10, Y4). The folder and the manifest stop init and add-source, which open past a -wal or
-# -shm (Y57); a manifest's chmod 600 also names the -wal and -shm whose mode refuses this account, as status's
-# state_dir.files does, so the one chmod the agent runs is the whole fix. Empty when nothing is refused or it cannot say,
-# an installed build without state_path_fix included. -I: nothing from the folder this runs in is imported.
+# allows it, so an ACL or a sandbox refuses it, a folder above it this account cannot search, or a volume mounted
+# read-only, whatever its mode: round 22 Z79), the person's (B13 round 21 Y24, Y10, Y4). The folder and the
+# manifest stop init and add-source, which open past a -wal or -shm (Y57); a manifest's chmod 600 also names
+# the -wal and -shm whose mode refuses this account, as status's state_dir.files does, so the one chmod the
+# agent runs is the whole fix. Empty when nothing is refused or it cannot say, an installed build without
+# state_path_fix included. -I: nothing from the folder this runs in is imported.
 state_open_fix() {
 	local fix=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
@@ -7172,13 +7180,15 @@ root = Path(os.path.realpath(db.parent))
 
 
 def mode_refuses(p, want):
-    """This account owns p, cannot open it, and its own mode is why (not an ACL or a sandbox)."""
+    """This account owns p, cannot open it, and its own mode is why (not an ACL, a sandbox or a volume mounted
+    read-only, where a chmod fails: round 22 Z79)."""
     try:
         st = p.lstat()
-    except OSError:
+        ro = bool(os.statvfs(p).f_flag & os.ST_RDONLY)
+    except (OSError, AttributeError):
         return False
     rw = os.R_OK | os.W_OK | (os.X_OK if want == 0o700 else 0)
-    return st.st_uid == os.getuid() and not os.access(p, rw) and st.st_mode & want != want
+    return st.st_uid == os.getuid() and not os.access(p, rw) and st.st_mode & want != want and not ro
 
 
 for p, want in ((db.parent, 0o700), (db, 0o600)):
@@ -7224,9 +7234,9 @@ for p, want in ((db.parent, 0o700), (db, 0o600)):
 # on too (state_owned_elsewhere; round 20 X9). This account's own, which they also exit 1 on, gets the chmod
 # doctor.state_path_fix gives it, the agent's to run once (state_open_fix; round 21 Y24, Y10, Y4: "fix the
 # error above" named no command, and the prompt let the agent follow only an install.sh or agentsync one), or
-# the person's NEXT when that fix is no chmod (an ACL, a folder above it this account cannot search); with no
-# answer (an installed build without state_path_fix) fail's "fix the error above". Never the exit-65 NEXT:
-# moving the file aside loses history (X26).
+# the person's NEXT when that fix is no chmod (an ACL, a folder above it this account cannot search, a volume
+# mounted read-only: round 22 Z79); with no answer (an installed build without state_path_fix) fail's "fix the
+# error above". Never the exit-65 NEXT: moving the file aside loses history (X26).
 # Every re-run here is $RERUN_ARGS, a folder in double quotes as shown_arg gives it (round 16 T35; round
 # 17 U57, U67, U87, U96: the exit-65 line kept %q's $ORIG_ARGS); it still names every folder, since this runs
 # before the switch to $BASE_ARGS below.
@@ -7252,7 +7262,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 			FAIL_NEXT="agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; the error above names it): the fix is the agent's: run $fix once, then re-run: $SELF$RERUN_ARGS; if it stops the same way again, show the person the error and go on to the report"
 			;;
 		refused)
-			FAIL_NEXT="this account is refused agentsync's state folder or a file in it though its mode allows it (an ACL, or a folder above it this account cannot search; the error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines): fixing that is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
+			FAIL_NEXT="this account is refused agentsync's state folder or a file in it though its mode allows it (an ACL, a folder above it this account cannot search, or a volume mounted read-only; the error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines): fixing that is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 			;;
 		esac
 	fi

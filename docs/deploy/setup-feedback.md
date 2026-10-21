@@ -613,8 +613,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   account cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2's NEXT
   names it, and ~/.local/bin/agentsync status prints it on its state_dir lines`; for one no chmod fixes,
   `state-refused`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
-  account is refused though its mode allows it (an ACL, or a folder above it this account cannot search; not
-  damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines`; and for
+  account is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a volume
+  mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines`; and for
   a -wal or -shm, `state-side-owner`, `; step 2's status may fail on the -wal or -shm of agentsync's state file,
   which another account owns (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
   ~/.local/bin/agentsync status prints it on its state_dir.files line`, or `state-side-access`, `; step 2's status
@@ -622,10 +622,12 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   chmod that fixes it is the agent's to run, once, and ~/.local/bin/agentsync status prints it on its
   state_dir.files line` ("may": an empty one leaves no stop once the manifest is opened), or, when an ACL refuses
   one its mode allows, `state-side-refused`, `; step 2's status may fail on the -wal or -shm of agentsync's state
-  file, which this account is refused though its mode allows it (an ACL; not damage): fixing that is the person's,
+  file, which this account is refused though its mode allows it (an ACL, or a volume mounted read-only; not damage):
+  fixing that is the person's,
   and ~/.local/bin/agentsync status prints it on its state_dir.files line`. A folder or file whose own mode already
   allows this account is refused by an ACL or a sandbox, which no chmod changes: `state-refused` (or
-  `state-side-refused`), the person's. An installed agentsync without
+  `state-side-refused`), the person's; so is one on a volume mounted read-only, whatever its mode, since a chmod
+  fails there (round 22 Z79: the words named only an ACL or a folder above it). An installed agentsync without
   `state_path_fix` judges by the mode, as doctor does. Step 2's config step then names that chmod in its own
   `NEXT:` (`agentsync's state folder or a file in it has a mode this account cannot open ...: the fix is the
   agent's: run chmod 600 <file> once, then re-run: ...`, with the -wal and -shm its mode refuses too, as

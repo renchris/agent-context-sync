@@ -7244,6 +7244,46 @@ def _tool_python_as_another_account(env: dict[str, str]) -> Path:
     )
 
 
+def _tool_python_read_only(env: dict[str, str], under: Path) -> Path:
+    """:func:`_tool_python` that sees every path under ``under`` on a volume mounted read-only when
+    install.sh's ``-c`` code runs: ``os.statvfs`` carries ST_RDONLY and ``os.access`` refuses a write there,
+    as macOS does for a disk image attached read-only (a test cannot mount one everywhere CI runs)."""
+    py = _tool_python(env)
+    run = 'exec(compile(sys.argv.pop(1), "<string>", "exec"))'
+    shim = (
+        "import json, os, sys\n"
+        f"_ro = os.path.realpath(json.loads({json.dumps(json.dumps(str(under)))}))\n"
+        "_sv, _ac = os.statvfs, os.access\n"
+        "def _under(p):\n"
+        "    try:\n"
+        "        r = os.path.realpath(os.fsdecode(p))\n"
+        "    except TypeError:\n"
+        "        return False\n"
+        "    return r == _ro or r.startswith(_ro + os.sep)\n"
+        "def _statvfs(p):\n"
+        "    r = _sv(p)\n"
+        "    if not _under(p):\n"
+        "        return r\n"
+        "    v = list(r)\n"
+        "    v[8] |= os.ST_RDONLY\n"
+        "    return os.statvfs_result(v)\n"
+        "def _access(p, mode, *a, **k):\n"
+        "    if mode & os.W_OK and _under(p):\n"
+        "        return False\n"
+        "    return _ac(p, mode, *a, **k)\n"
+        "os.statvfs, os.access = _statvfs, _access\n"
+        f"{run}\n"
+    )
+    assert "'" not in shim, "the shim is single-quoted in the wrapper"
+    return _write_exe(
+        py,
+        "#!/bin/bash\n"
+        '[ "$1" = -I ] && [ "$2" = -c ] || exec "' + sys.executable + '" "$@"\n'
+        'code="$3"\nshift 3\n'
+        f'exec "{sys.executable}" -I -c \'{shim}\' "$code" "$@"\n',
+    )
+
+
 def _acl_deny(path: Path) -> None:
     """An ACL entry that refuses this account read and write on ``path``, whose mode allows both (macOS
     ``chmod +a``); skips where the file system has no ACLs. ``chmod -N`` takes it off."""
@@ -7268,9 +7308,9 @@ STATE_OPEN_TAIL = {
     ),
     "state-refused": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
-        "is refused though its mode allows it (an ACL, or a folder above it this account cannot search; not "
-        "damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir "
-        "lines"
+        "is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a "
+        "volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync "
+        "status prints it on its state_dir lines"
     ),
     "state-side-owner": (
         "; step 2's status may fail on the -wal or -shm of agentsync's state file, which another account "
@@ -7284,8 +7324,8 @@ STATE_OPEN_TAIL = {
     ),
     "state-side-refused": (
         "; step 2's status may fail on the -wal or -shm of agentsync's state file, which this account is "
-        "refused though its mode allows it (an ACL; not damage): fixing that is the person's, and "
-        "~/.local/bin/agentsync status prints it on its state_dir.files line"
+        "refused though its mode allows it (an ACL, or a volume mounted read-only; not damage): fixing that "
+        "is the person's, and ~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
 }
 """Step 1's tails for a state folder or file this account cannot open (B13 round 20 X9, X29), by the owner of
@@ -7307,6 +7347,9 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "PM-older",
         "PM-folder-older",
         "PM-fixed",
+        "PM-ro",
+        "PM-ro-mode",
+        "PM-ro-wal",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -7324,7 +7367,11 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     step 2's status or sync may stop on it (Y57); and a state folder above which a folder refuses a search
     (PM-parent), or one an ACL refuses though its mode allows it (PM-acl, PM-shm-acl), got the agent's
     chmod, which fixes nothing: it is the person's (Y24's ownership rule). An installed agentsync without
-    state_path_fix (an older build) judges by the mode."""
+    state_path_fix (an older build) judges by the mode.
+
+    Round 22 Z79 (probe owner-rovolumebig): on a volume mounted read-only the person's tail named an ACL or
+    a folder above it as the cause; it names the read-only volume too. A folder there whose mode also lacks a
+    bit (0500, PM-ro-mode) got the agent's chmod 700, which fails on that volume: it is the person's too."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
@@ -7335,10 +7382,17 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "PM-parent": "state-refused",
         "PM-acl": "state-refused",
         "PM-shm-acl": "state-side-refused",
+        "PM-ro": "state-refused",
+        "PM-ro-mode": "state-refused",
+        "PM-ro-wal": "state-side-refused",
     }.get(state, "state-access")
     try:
         if state == "PM-owner":
             _tool_python_as_another_account(env)
+        elif state == "PM-ro-wal":
+            _tool_python_read_only(env, wal)
+        elif state.startswith("PM-ro"):
+            _tool_python_read_only(env, db.parent)
         elif state.endswith("-older"):
             _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
         else:
@@ -7359,6 +7413,11 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
             shm.write_bytes(b"")
             shm.chmod(0o600)
             _acl_deny(shm)
+        elif state == "PM-ro-mode":
+            db.parent.chmod(0o500)
+        elif state == "PM-ro-wal":
+            wal.write_bytes(b"")
+            wal.chmod(0o400)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
@@ -8170,7 +8229,8 @@ doctor.state_path_fix gives (B13 round 21 Y24, Y10, Y4)."""
 
 
 @pytest.mark.parametrize(
-    "state", ["manifest", "folder", "configured", "sides", "parent", "acl", "older", "readable"]
+    "state",
+    ["manifest", "folder", "configured", "sides", "parent", "acl", "older", "readable", "ro", "ro-mode"],
 )
 def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     env: dict[str, str], wheel: Path, state: str
@@ -8184,10 +8244,14 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     With the manifest, the -wal and the -shm its mode refuses, as state_dir.files names them (a chmod of the
     manifest alone left status failing on them, the "once" spent). When no chmod fixes it (a folder above it
     refuses a search, an ACL refuses a file its mode allows) it is the person's; an installed agentsync
-    without state_path_fix keeps "fix the error above", as does a state this account can open."""
+    without state_path_fix keeps "fix the error above", as does a state this account can open.
+
+    Round 22 Z79: on a volume mounted read-only (ro) the person's NEXT named an ACL or a folder above it as
+    the cause, and a folder there at 0500 (ro-mode) got the agent's chmod 700, which fails on that volume;
+    both now get the person's NEXT naming the read-only volume."""
     if state == "older":
         _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
-    else:
+    elif not state.startswith("ro"):
         _tool_python(env)
     home = Path(env["HOME"])
     cfg = _write_config(env, _inbox(env))
@@ -8201,10 +8265,16 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     db.write_bytes(b"")
     db.chmod(0o600)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
-    shut = {"folder": db.parent, "parent": db.parent.parent}.get(state, db)
+    shut = {"folder": db.parent, "parent": db.parent.parent, "ro-mode": db.parent}.get(state, db)
+    if state.startswith("ro"):
+        _tool_python_read_only(env, db.parent)
     try:
         if state == "acl":
             _acl_deny(db)
+        elif state == "ro":
+            pass
+        elif state == "ro-mode":
+            shut.chmod(0o500)
         elif state == "sides":
             for f in (db, wal, shm):
                 f.write_bytes(b"")
@@ -8225,11 +8295,12 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     if state in ("older", "readable"):
         assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
         return
-    if state in ("parent", "acl"):
+    if state in ("parent", "acl", "ro", "ro-mode"):
         assert last_line(cp).startswith(
             "NEXT: this account is refused agentsync's state folder or a file in it though its mode allows "
-            "it (an ACL, or a folder above it this account cannot search; the error above names it, and "
-            "~/.local/bin/agentsync status prints the fix on its state_dir lines): fixing that is the "
+            "it (an ACL, a folder above it this account cannot search, or a volume mounted read-only; the "
+            "error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines): "
+            "fixing that is the "
             "person's, not a step for the agent, so show them the error and go on to the report; once it is "
             f"fixed, the next run is: {rerun}"
         ), last_line(cp)
