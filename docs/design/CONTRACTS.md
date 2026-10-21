@@ -26157,6 +26157,8 @@ words it). The chmod fixes stay the agent's. Tests: `test_ops_doctor.py::test_st
 `test_state_files_this_account_cannot_open_fail_by_their_cause`, and the `state-owner` case of
 `test_install_oneshot.py::_persons_fail_lines`, which install.sh's run reads as the person's
 (`test_a_fail_whose_fix_is_the_persons_sends_the_agent_to_the_report`).
+Amended 2026-10-21, §16.161 Z49: `the person runs sudo chown -R <uid> <state_dir>; the agent runs no sudo`, with no
+bracket inside the line's `(fix: ...)`.
 
 **X78: a manifest this account cannot write is not probed (`agentsync.ops.doctor`).** With a WAL manifest at 0400,
 status's read-only damage probe ran after the files check and created `-wal` and `-shm` at 0400 (sqlite gives side
@@ -26899,6 +26901,10 @@ outside the state folder; and `; the file itself is not damaged` is said unless 
 Amended 2026-10-21, §16.161 Z37: the NEXT reads `this account cannot open a state file or its folder, so this
 sync did not run: run \`~/.local/bin/agentsync status\` and do what its NEXT says; its [FAIL] line names the fix`, with no promise of
 whose the fix is, which status's NEXT names only for the person's.
+Amended 2026-10-21, §16.161 Z49, Z14: the ACL and read-only fixes say their cause after `; ` or `, as`, with no
+bracket inside the line's `(fix: ...)`, and the parent fix ends `then run the same command again`, adding `; it is
+this account's own folder at mode <mode>, so chmod u+rwx <folder> gives it` for this account's own folder shut by its
+mode, or names the state folder itself when no folder above refuses a search.
 
 **Y75: curate's help says it exits 1 on a state file this account cannot open (`agentsync.cli`; amends §16.151
 X69).** Its line said `rc 1 only on a blocking finding` above an exit-code list that says 1 is also a state file
@@ -27212,9 +27218,15 @@ on it, so no pre-migration copy holding purged rows is passed over; status keeps
 check still raises. A log or cache folder set inside a shut state folder is not checked
 (`STATE_FOLDER_UNCHECKED`), and `doctor.stopped(config, name, exc)`, the backstop of `run_checks` and status's own
 checks, gives a check that still stops on a refused path in the state folder that path's FAIL and fix
-(`refused_state_path`), the person's parent fix here. No group is added to `_STATE_FOLDER_GROUPS`: disk.docs,
+(`refused_state_path`), the person's parent fix here; and an EACCES on a path under the folder above the state
+folder that refuses (`~/Library` at 0000 holds the default cache and log folders too) is an [info] `not checked:
+this account cannot search <folder>, a folder above the state folder; the state_dir lines say why` line, so the
+permissions and logs checks raise no second FAIL (lane B's reviewer). Both walks read through a link first, so a
+state folder that is a symlink is measured on its target's volume and its parent fix names the folder above the
+target that refuses. No group is added to `_STATE_FOLDER_GROUPS`: disk.docs,
 governance.remote and the config hold are still judged (the verifiers'). Seven finders, one defect, built once.
-Tests: `test_cli.py::test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fail_the_persons` and
+Tests: `test_cli.py::test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fail_the_persons`,
+`test_cli.py::test_library_refusing_a_search_or_a_linked_state_folder_is_still_one_fail_the_persons` and
 `test_ops_doctor.py::test_a_log_folder_in_a_state_folder_under_a_folder_that_refuses_a_search_is_not_checked`.
 
 **Z5: status names the state folder when the folder refuses (`agentsync.cli`).** With the state folder at 0000, or a
@@ -27222,10 +27234,11 @@ folder above it that refuses a search, status's first read was refused at the lo
 `cannot read the state: a file cannot be opened: Permission denied`, beside state_dir lines that name the folder,
 and the report's Loop line copied it. `cli._unread_words` says `the state folder cannot be opened: <reason>; the
 state_dir lines say why` for an EACCES or EPERM on a path in the state folder while `doctor.state_folder_shut`;
-keyed on the folder, never on the path refused, so a manifest at 0000 in a folder at 0700 is still `a file`. Test:
+keyed on the folder, never on the path refused, so a manifest at 0000 in a folder at 0700 is still `a file`, and an
+error that names no path keeps `a file`. Test:
 `test_cli.py::test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a_file_does`.
 
-**Z7, Z49: doctor's fixes nest no bracket (`agentsync.ops.doctor`).** Every doctor line wraps its fix in `(fix:
+**Z7, Z49: doctor's fixes nest no bracket (`agentsync.ops.doctor`; amends §16.149 X74 and §16.155 Y31).** Every doctor line wraps its fix in `(fix:
 ...)`, and round 21 Y20 took the inner brackets out of the time-out fixes, but `_os_error`'s fix ended `then run
 again (if the line stays, report it: ...)` and round 21's state fixes carried `(its owner and mode are right ...)`,
 `(it is mounted read-only)` and, from round 20's X74, `(the agent runs no sudo)`. Each says it after `; ` or `, as`
@@ -27239,7 +27252,7 @@ it again as it is)` is left as written: the deploy guide and §16.32's row quote
 optional. Test: `test_ops_doctor.py::test_the_system_error_and_state_owner_fixes_nest_no_bracket`.
 
 **Z14, Z72: the parent fix names a chmod only for this account's own folder shut by its mode, and the folder itself
-when nothing above refuses (`agentsync.ops.doctor`).** `_parent_fix`, the fix of a state folder whose `stat` this
+when nothing above refuses (`agentsync.ops.doctor`; amends §16.155 Y31).** `_parent_fix`, the fix of a state folder whose `stat` this
 account is refused (state_dir's `cannot reach` line, `state_folder_fix` and through it `state_path_fix`), said only
 `the person gives this account search access to <folder>, a folder above <root> that refuses it one, then run again`:
 no command, though a `chmod u+rwx` of this account's own folder at 0000 is the whole fix (Z14), and with no folder
@@ -27272,9 +27285,10 @@ undamaged (`agentsync.cli`, `agentsync.ops.doctor`; amends §16.155 Y31 and §16
 raises `ManifestOpenError` for EACCES, EPERM and EROFS, but EROFS is a plain OSError, so `cli._manifest_open_fix`
 gave sync, curate and add-source `MANIFEST_OPEN_FIX`'s owner-and-mode words, the agent's chmod, which fails on a
 read-only volume, while status gave `the person makes the volume that holds <file> writable, as it is mounted
-read-only`. Keyed on the errno now: EROFS on a path in the state folder gets `doctor.read_only_fix` of that file
-(public now), EACCES and EPERM `doctor.state_path_fix` as before, and only another cause or a path outside the
-state folder keeps the generic words. `state_folder_fix` and `state_path_fix` test the read-only volume before the
+read-only`. Keyed on the errno now (`manifest.ACCESS_ERRNOS`, public now): EROFS on any path gets
+`doctor.read_only_fix` of that file (public now), as no chmod writes on a read-only volume; EACCES and EPERM in
+the state folder get `doctor.state_path_fix` as before; and only another cause, or EACCES or EPERM outside the
+state folder, keeps the generic words. `state_folder_fix` and `state_path_fix` test the read-only volume before the
 mode, so a folder at 0755 on a read-only volume is no longer told `chmod 700` (Z78's second half, with Z64's
 commit). `; the file itself is not damaged` (W65's guard against a move-aside) was said over a manifest the refused
 open would have created (Z53); it is dropped only when `lstat` of the file says not found, never by `exists()`,

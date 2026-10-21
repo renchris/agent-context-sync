@@ -517,8 +517,10 @@ def _nearest_existing(path: Path) -> Path:
     """``path`` or its closest ancestor this account can see. A folder above it that refuses a search makes
     ``exists()`` raise PermissionError on Python 3.11, which ended the disk check in a generic "report it"
     FAIL that took status's NEXT from state_dir's, the person's; the walk steps past it to the folder that
-    refuses, whose ``statvfs`` needs a search only of the folders above it (B13 round 22 Z73, Z3, Z34)."""
-    p = expand(path)
+    refuses, whose ``statvfs`` needs a search only of the folders above it (B13 round 22 Z73, Z3, Z34). Read
+    through a link first, where it can be, so a state folder that links to another volume is measured there
+    (lane B's reviewer: the walk stopped at the link's own folder, on the wrong volume)."""
+    p = Path(os.path.realpath(expand(path)))
     while p != p.parent:
         try:
             if p.exists():
@@ -1069,8 +1071,10 @@ def _search_fix(root: Path, *, folder: bool = True) -> str:
 
 def _unsearchable_above(root: Path) -> Path | None:
     """The first folder above ``root``, from ``/`` down, that refuses this account a search; None when every
-    one allows it (B13 round 22 Z72: its parent stood in, a folder that refuses nothing)."""
-    for above in reversed(root.parents):
+    one allows it (B13 round 22 Z72: its parent stood in, a folder that refuses nothing). Read through a link
+    where it can be, so a state folder that is a symlink names the folder above its target that refuses (lane
+    B's reviewer); a link inside a folder that refuses a search cannot be read and is walked as it is."""
+    for above in reversed(Path(os.path.realpath(root)).parents):
         if not os.access(above, os.X_OK):
             return above
     return None
@@ -1294,7 +1298,31 @@ def stopped(config: Config, name: str, exc: Exception) -> CheckResult:
         if refused is not None:
             log.info("doctor: check %s stopped on a refused state path", name, exc_info=exc)
             return refused
+        shut = _behind_the_state_folders_refuser(config, exc)
+        if shut is not None:
+            log.info("doctor: check %s stopped under a folder that refuses a search", name, exc_info=exc)
+            return _bad(name, shut, Severity.INFO)
     return unfinished(name, exc)
+
+
+def _behind_the_state_folders_refuser(config: Config, exc: OSError) -> str | None:
+    """The not-checked words for ``exc``, an EACCES on a path under the folder above the state folder that
+    refuses this account a search (``~/Library`` at 0000 holds the default cache and log folders too): one
+    fault, the person's, which state_dir's FAIL names, so the cache and logs checks say not checked rather
+    than a generic "report it" FAIL that took status's NEXT (round 22 ruling 2; lane B's reviewer). None for
+    any other error."""
+    if exc.errno not in (errno.EACCES, errno.EPERM) or not isinstance(
+        exc.filename, str | bytes | os.PathLike
+    ):
+        return None
+    above = _unsearchable_above(expand(config.state_paths.root))
+    if above is None:
+        return None
+    path = Path(os.path.realpath(os.fsdecode(exc.filename)))
+    if not path.is_relative_to(above):
+        return None
+    said = f"not checked: this account cannot search {above}, a folder above the state folder"
+    return f"{said}; the state_dir lines say why"
 
 
 def _check_state_dir(config: Config) -> list[CheckResult]:

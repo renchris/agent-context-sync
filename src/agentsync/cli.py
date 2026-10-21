@@ -99,7 +99,7 @@ from agentsync.errors import (
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
-from agentsync.manifest import Manifest
+from agentsync.manifest import ACCESS_ERRNOS, Manifest
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
@@ -1530,7 +1530,7 @@ def _folder_refused(exc: Exception, config: Config | None) -> TypeGuard[OSError]
     if config is None or not isinstance(exc, OSError) or exc.errno not in (errno.EACCES, errno.EPERM):
         return False
     filename = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
-    if filename is not None and _says_why(config, filename) is None:
+    if filename is None or _says_why(config, filename) is None:  # a path in the state folder (reviewer's)
         return False
     return doctor.state_folder_shut(config)
 
@@ -2966,17 +2966,16 @@ def _manifest_open_fix(args: argparse.Namespace, exc: ManifestOpenError) -> str:
     unless no file is there (:func:`_not_damaged`)."""
     cause = exc.__cause__
     filename = cause.filename if isinstance(cause, OSError) else None
-    if not isinstance(cause, OSError) or cause.errno not in (errno.EACCES, errno.EPERM, errno.EROFS):
+    if not isinstance(cause, OSError) or cause.errno not in ACCESS_ERRNOS:
         return _not_damaged(_ACCESS_FIX, filename)
+    if cause.errno == errno.EROFS and isinstance(filename, str | bytes | os.PathLike):
+        # wherever the file is, no chmod writes on a read-only volume (lane B's reviewer)
+        return _not_damaged(doctor.read_only_fix(Path(os.path.realpath(os.fsdecode(filename)))), filename)
     root = _state_root(args)
     where = _in_folder(cause.filename, root)
     if where is None:
         return _not_damaged(_ACCESS_FIX, filename)
-    real = Path(os.path.realpath(where))
-    if cause.errno == errno.EROFS:
-        fix = doctor.read_only_fix(real)
-    else:
-        fix = doctor.state_path_fix(Path(os.path.realpath(root)), real)
+    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(where)))
     return _not_damaged(fix, where)
 
 

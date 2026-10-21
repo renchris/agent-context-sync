@@ -786,7 +786,7 @@ def _source_from_row(r: sqlite3.Row) -> SourceRow:
     )
 
 
-_ACCESS_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.EROFS})
+ACCESS_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.EROFS})
 """The errnos of a file or folder this account may not open or write: its owner, its mode, a read-only volume.
 Only these get the access fix (:class:`ManifestOpenError`; B13 round 20 X49)."""
 
@@ -803,7 +803,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         db_path.chmod(0o600)
     except OSError as exc:
         said = f"{db_path} cannot be opened: {exc.strerror or exc}"
-        error = ManifestOpenError if exc.errno in _ACCESS_ERRNOS else ManifestPathError
+        error = ManifestOpenError if exc.errno in ACCESS_ERRNOS else ManifestPathError
         raise error(said, exc.errno, reason=exc.strerror) from exc
     conn = sqlite3.connect(str(db_path), isolation_level=None, timeout=30.0)
     conn.row_factory = sqlite3.Row

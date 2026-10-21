@@ -4077,6 +4077,14 @@ def test_a_manifest_on_a_read_only_volume_gets_the_persons_volume_fix_from_every
     monkeypatch.undo()
     if not present:
         db.with_name("kept.sqlite").rename(db)
+    # a read-only volume outside the state folder: still the volume's fix, never a chmod (lane B's reviewer)
+    import argparse  # noqa: PLC0415
+
+    elsewhere = Path(os.path.realpath(initialised.config_path.parent)) / "other.sqlite"
+    made = ManifestOpenError(f"{elsewhere} cannot be opened: Read-only file system", errno.EROFS)
+    made.__cause__ = OSError(errno.EROFS, "Read-only file system", str(elsewhere))
+    fix = cli._manifest_open_fix(argparse.Namespace(config=cfg, command="sync"), made)
+    assert fix == doctor.read_only_fix(elsewhere), fix
 
 
 @pytest.mark.parametrize(
@@ -4165,6 +4173,7 @@ def test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a
         words = cli._unread_words(
             PermissionError(errno.EACCES, "Permission denied", str(lock)), config=initialised
         )
+        nameless = cli._unread_words(PermissionError(errno.EACCES, "Permission denied"), config=initialised)
     finally:
         target.chmod(mode)
     (line,) = [ln for ln in out if ln.startswith("status: cannot read the state: ")]
@@ -4173,6 +4182,8 @@ def test_status_names_the_state_folder_when_the_folder_refuses_and_a_file_when_a
     assert line == f"status: cannot read the state: {want}", line
     if shut != "manifest":  # the lock, a file, refused because of the folder
         assert words == want, words
+        # an error that names no path is no proof the folder refused it (lane B's reviewer)
+        assert nameless.startswith("a file cannot be opened"), nameless
 
 
 @pytest.mark.parametrize("layout", ["manifest is a folder", "state folder is a file"])
@@ -4439,6 +4450,48 @@ def test_a_folder_above_the_state_folder_that_refuses_a_search_is_one_fail_the_p
     assert named["disk.state"].ok and named["disk.state"].detail.endswith(f" free at {root}"), named[
         "disk.state"
     ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
+def test_library_refusing_a_search_or_a_linked_state_folder_is_still_one_fail_the_persons(
+    initialised: Config, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 22 ruling 2, lane B's reviewer: with ~/Library at 0000, the default cache and log folders
+    beside the state folder are behind the same refusing folder, and the permissions and logs checks gave
+    generic "report it" FAILs that took status's NEXT; they say not checked. And a state folder that is a
+    symlink: the parent fix and the disk check read through the link, to the folder that refuses."""
+    cfg = str(initialised.config_path)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    root = expand(initialised.state_paths.root)
+    library = Path.home() / "Library"
+    assert root.is_relative_to(library), root
+    capsys.readouterr()
+    library.chmod(0)
+    try:
+        rc, out = _status(cfg, capsys)
+    finally:
+        library.chmod(0o700)
+    fails = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert rc == cli.EXIT_FAILED and len(fails) == 1 and re.match(r"\[FAIL\] state_dir +— ", fails[0]), fails
+    assert out[0].startswith(
+        "NEXT: the state_dir check failed: its fix on the [FAIL] line below is the person's"
+    )
+    assert not any("could not read" in ln or "report it" in ln for ln in out), out
+    # a state folder that links to another folder whose parent refuses a search
+    vol = tmp_path / "vol"
+    vol.mkdir()
+    root.rename(vol / "agentsync")
+    root.symlink_to(vol / "agentsync")
+    vol.chmod(0)
+    try:
+        fix = doctor.state_folder_fix(root)
+        named = {r.name: r for r in doctor._check_disk(initialised)}
+    finally:
+        vol.chmod(0o700)
+        root.unlink()
+        (vol / "agentsync").rename(root)
+    assert f"search access to {doctor._shell_path(vol)}, a folder above" in fix, fix
+    assert named["disk.state"].detail.endswith(f" free at {vol}"), named["disk.state"]
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
