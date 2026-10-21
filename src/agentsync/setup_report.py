@@ -10544,7 +10544,15 @@ def _install_line(
         kinds = [f"{late} install run{'' if late == 1 else 's'}"] if late else []
         if len(after) > late:
             kinds.append(f"{len(after) - late} --list-folders run{'' if len(after) - late == 1 else 's'}")
-        where += f" during this attempt and {' and '.join(kinds)} after its end line ({_iso(end)})"
+        # B13 round 22 Z24: the end line's time said as its own, and the late runs' start times in the
+        # bracket, so the bracket no longer reads as the start of the run it counts
+        starts = sorted(run.started for run in after if run.started is not None)
+        began = (
+            f"started {_iso(starts[0])}"
+            if len(starts) == 1
+            else f"the first started {_iso(starts[0])}, the last {_iso(starts[-1])}"
+        )
+        where += f" during this attempt and {' and '.join(kinds)} after its end line of {_iso(end)} ({began})"
     elif scoped:
         where += " during this attempt"
     if not installs:
@@ -10607,7 +10615,12 @@ def _gone_clause(r: _Run, runs: Sequence[InstallRun]) -> str:
 
 
 def _folders_line(
-    r: _Run, runs: Sequence[InstallRun], end: datetime | None = None, *, scoped: bool = False
+    r: _Run,
+    runs: Sequence[InstallRun],
+    end: datetime | None = None,
+    *,
+    scoped: bool = False,
+    stopped: bool = False,
 ) -> str | None:
     """``- folders: kept the 2 already synced (none added) · 0 named with --source-local (install.log)``:
     what the attempt's install runs did with the folder choice, in counts and no names. The counts are the
@@ -10626,12 +10639,20 @@ def _folders_line(
     attempt with a begin time, as the install line: else ``runs`` is the whole install.log, and a re-run a
     month later read "2 added (none was synced before)" (B13 round 16 T44), so the last run's alone. A
     last run after the end line is the last run's alone too, unless its config step added nothing: a retry
-    that only confirms what an earlier run wrote joins the chain (B13 round 18 V37)."""
+    that only confirms what an earlier run wrote joins the chain (B13 round 18 V37).
+
+    ``stopped``: the installer stopped the attempt's copy of the prompt (round 21 Y17's test, as the install
+    line's), and an install run after its end line is a stand-alone run, said apart: what the runs inside
+    the attempt did, then what the last run after it did (B13 round 22 Z23: the line credited the stopped
+    attempt with that run's folder). V37's retry rule is for an attempt the installer did not stop."""
     installs = install_runs_only(runs)
     if not installs:
         return None
     gone = _gone_clause(r, runs)
-    late = _after_end(runs, end)
+    late = _after_end(runs, end, stopped=stopped)
+    late_installs = [run for run in installs if run in late]
+    if stopped and late_installs:
+        return _stopped_folders_line(r, [run for run in runs if run not in late], late_installs, gone, scoped)
     # a last run after the end line joins the chain when its config step added nothing: a retry that only
     # confirms what an earlier run wrote (B13 round 18 V37); one that added a folder is the last run's alone
     retry = bool(late) and installs[-1] in late and not _kept_added(installs[-1])[1]
@@ -10657,6 +10678,37 @@ def _folders_line(
         f"by run {run.display_id}" + (f", which exited {run.rc}" if run.rc else "") for run in by
     )
     return _folders_said(kept0, added, "; ".join(x for x in (which, gone) if x), _named(counted))
+
+
+def _stopped_folders_line(
+    r: _Run, inside: Sequence[InstallRun], late: Sequence[InstallRun], gone: str, scoped: bool
+) -> str:
+    """:func:`_folders_line` for a copy the installer stopped with install runs after its end line: the runs
+    inside the attempt by the chain's own rules, then the last run after it alone, by that run (B13 round 22
+    Z23). No bracket nests: each part's bracket is its own."""
+    if not install_runs_only(inside):
+        before = "no install run during this attempt"
+    else:
+        said = _folders_line(r, inside, None, scoped=scoped)
+        before = (
+            "no counts logged during this attempt"
+            if said is None
+            else said.removeprefix("- folders: ")
+            .replace(" (last run; install.log)", " by its last run")
+            .removesuffix(" (install.log)")
+            + " during this attempt"
+        )
+    which = (
+        "the install run after its end line" if len(late) == 1 else "the last install run after its end line"
+    )
+    last = late[-1]
+    said = _folders_said(*_kept_added(last), gone, len(_NAMED_FOLDER_RE.findall(last.args)))
+    after = (
+        f"{which} logged no counts"
+        if said is None
+        else f"{which}: " + said.removeprefix("- folders: ").removesuffix(" (install.log)") + " by that run"
+    )
+    return f"- folders: {before}; {after} (install.log)"
 
 
 def _kept_added(run: InstallRun) -> tuple[int | None, int | None]:
@@ -11252,7 +11304,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             counted = f"{_plural(len(att.events), 'event line')}: {_kind_counts(att)}{extra}"
             out.append(f"- friction (attempt {att.number}): {counted}")
         timing = []
-        late = _after_end(runs, _attempt_end(att))
+        # B13 round 22 Z20, Z22: the install line's own test (round 21 Y17), so for a stopped copy a run in
+        # the end line's own second is after it in both lines
+        late = _after_end(runs, _attempt_end(att), stopped=bool(_prompt_copy_note(att)))
         wall, stamps = att.wall_seconds(), att.timestamps()
         # Before its end line an attempt's times are the friction log's alone, which an install run can
         # outlast (6s beside a 4-minute install): the span takes in the attempt's install.log runs too, those
@@ -11301,7 +11355,13 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             stopped=bool(_prompt_copy_note(att)),
         )
     )
-    folders = _folders_line(r, runs, _attempt_end(att), scoped=att is not None and att.begin is not None)
+    folders = _folders_line(
+        r,
+        runs,
+        _attempt_end(att),
+        scoped=att is not None and att.begin is not None,
+        stopped=bool(_prompt_copy_note(att)),
+    )
     if folders is not None:
         out.append(folders)
     if r.facts.instructions is not None:

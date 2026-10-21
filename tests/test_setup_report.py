@@ -8378,7 +8378,7 @@ def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dic
     _text, summary = summary_of(fake_mac)
     assert (  # B13 round 6 G32: the late run is counted apart, not inside the first count too
         "- install.sh: 1 install run (+1 --list-folders) during this attempt and 1 install run after its end "
-        "line (2026-09-29T10:01:10Z); the last exit 0 after 19s" in summary
+        "line of 2026-09-29T10:01:10Z (started 2026-09-29T10:05:00Z); the last exit 0 after 19s" in summary
     ), summary
     [time] = [ln for ln in summary.splitlines() if ln.startswith("- time: ")]
     assert time.endswith("install 19s; after its end line: install 19s"), time
@@ -8391,13 +8391,22 @@ def test_an_install_run_after_the_attempts_end_line_is_named_apart(fake_mac: dic
     _text, summary = summary_of(fake_mac)
     assert (
         "- install.sh: 1 install run (+1 --list-folders) during this attempt and 1 --list-folders run after "
-        "its end line (2026-09-29T10:01:10Z); the last exit 0" in summary
+        "its end line of 2026-09-29T10:01:10Z (started 2026-09-29T10:06:00Z); the last exit 0" in summary
     ), summary
     log.write_text(install_run("2026-09-29T10:05:00Z", 0), encoding="utf-8")
     _text, summary = summary_of(fake_mac)
     assert (
-        "- install.sh: no install run during this attempt and 1 install run after its end line "
-        "(2026-09-29T10:01:10Z); the last exit 0" in summary
+        "- install.sh: no install run during this attempt and 1 install run after its end line of "
+        "2026-09-29T10:01:10Z (started 2026-09-29T10:05:00Z); the last exit 0" in summary
+    ), summary
+    # B13 round 22 Z24: the bracket holds the late runs' start times, the first and the last of several
+    log.write_text(
+        install_run("2026-09-29T10:05:00Z", 0) + install_run("2026-09-29T10:09:00Z", 0), encoding="utf-8"
+    )
+    _text, summary = summary_of(fake_mac)
+    assert (
+        "and 2 install runs after its end line of 2026-09-29T10:01:10Z (the first started "
+        "2026-09-29T10:05:00Z, the last 2026-09-29T10:09:00Z); the last exit 0" in summary
     ), summary
 
 
@@ -8478,7 +8487,7 @@ def test_an_install_run_that_failed_before_the_one_that_ended_0_is_worked_with_h
     )
     assert (  # B13 round 5 F37: the run that ended 0 began after the end line, and the line says so
         "- install.sh: 1 install run (+1 --list-folders) during this attempt and 1 install run after its end "
-        "line (2026-09-29T10:01:10Z); the last exit 0" in summary
+        "line of 2026-09-29T10:01:10Z (started 2026-09-29T10:20:00Z); the last exit 0" in summary  # Z24
     )
     items = summary.split("Items that were not one command (attempt 1):", 1)[1].split("\n\n", 2)[1]
     assert items == (
@@ -15520,6 +15529,41 @@ def test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so(tm
     late = "2026-10-20T10:00:20Z | step 1 | error | install.sh --list-folders exited 1 | -\n"
     ordinary = _x19_outcome(tmp_path, head + late + "2026-10-20T10:30:00Z | end | finished\n", "10:40:00")
     assert ordinary.kind != "failed", "another step 1 error is still resolved by a later run"
+
+
+def test_a_stopped_copys_time_and_folders_lines_put_a_run_after_its_end_line_apart(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 22 Z20, Z22, Z23: for a copy the installer stopped, the install line counted a stand-alone
+    run started in the end line's own second after it (round 21 Y17), while the time line summed it into
+    "step 2 install" and the folders line credited the attempt with the folder it added, unlabelled. Both
+    lines use the install line's test, and the folders line says what the run after the end line did."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    write_friction(
+        fake_mac,
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:00:00Z | end | finished\n",
+    )
+    log = fake_mac["setup"] / "install.log"
+    for start in ("10:00:00", "10:05:00"):  # the end line's own second, and five minutes on
+        run = install_run(f"2026-10-20T{start}Z", 0).replace(
+            "step=config seconds=1 rc=0 result=done note=add-source",
+            "step=config seconds=1 rc=0 result=done kept=2 added=1",
+        )
+        log.write_text(run, encoding="utf-8")
+        _text, summary = summary_of(fake_mac)
+        time = _line(summary, "- time: ")
+        assert time.endswith("session 0s (first to last timestamp); after its end line: install 19s"), time
+        assert "step 2 install" not in time, time
+        folders = _line(summary, "- folders: ")
+        assert folders == (
+            "- folders: no install run during this attempt; the install run after its end line: 1 added to "
+            "the 2 already synced · 1 named with --source-local by that run (install.log)"
+        ), folders
 
 
 def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_path: Path) -> None:
