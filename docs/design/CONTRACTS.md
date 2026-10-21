@@ -27219,6 +27219,13 @@ finding. Test: `test_ops_doctor.py::test_doctor_loads_convert_through_cycle_and_
 `agentsync.convert.ocr`, `media` or `speech` unimportable, `import agentsync.ops.doctor` raises ImportError, and
 no word in doctor says it imports when convert is broken).
 
+**`ocr._entry`'s exit 1 clause has a verb (Z58; `agentsync.convert.ocr`).** Y55 wrote "``failed (...)``: so
+since each helper's first build, §16.25 for OCR; ...", whose clause after the colon has no verb. It reads
+"``failed (...)``; that exit 1 dates from each helper's first build, §16.25 for OCR, and install.sh has read it as
+not ready since B13 round 18 V6 and round 19 W38", and the docstring is reflowed with the exit list's bracket
+closing before `78 (EX_CONFIG)`. Not the finder's "it has exited so since ...": its "it" has no clear referent.
+Docstring only. Test: `test_ocr.py::test_the_entry_docstring_says_since_when_a_failed_probe_exits_1`.
+
 **The counting retry_settled_failures is removed (Z50, Z57; `agentsync.manifest`, `agentsync.cycle`,
 `agentsync.model`; dated lines at §16.28 W18, §16.48 V74, §16.132 U3, §16.138 V65, §16.150 X53 and §16.155
 Y28).** Y28 moved the cycle to `Manifest.retry_settled_failure_rows`, which returns the rows it moves, and left

@@ -830,12 +830,12 @@ def _entry(
     """What ``python -m`` of a helper's module runs: read the config, build unless switched off, and print
     one ``<label>: <state> (<detail>)`` line (``label`` defaults to ``kind.name``).  Exit 0 when ready or
     off, 1 when not built or built and failing its probe (any other state, which the line names, such as
-    ``failed (...)``: so since each helper's first build, §16.25 for OCR; install.sh has read it as not
-    ready since B13 round 18 V6 and round 19 W38; said here since round 20 X57, corrected in round 21 Y55),
-    78 (EX_CONFIG) when the config cannot be read: scripts/install.sh then logs its ``helpers`` step
-    skipped, note config-unreadable (B13 round 11 M25).  That config is said before the helper is looked
-    at, so a built one is "not checked", never "not built" (B13 round 11 M8).  Switched off, it builds
-    nothing and still tidies the folder an earlier build left."""
+    ``failed (...)``; that exit 1 dates from each helper's first build, §16.25 for OCR, and install.sh has
+    read it as not ready since B13 round 18 V6 and round 19 W38; said here since round 20 X57, corrected in
+    round 21 Y55, reworded in round 22 Z58), 78 (EX_CONFIG) when the config cannot be read:
+    scripts/install.sh then logs its ``helpers`` step skipped, note config-unreadable (B13 round 11 M25).
+    That config is said before the helper is looked at, so a built one is "not checked", never "not built"
+    (B13 round 11 M8).  Switched off, it builds nothing and still tidies the folder an earlier build left."""
     os.umask(0o077)
     label = label or kind.name
     cfg, cache_dir = ConvertConfig(), default_cache_dir()
