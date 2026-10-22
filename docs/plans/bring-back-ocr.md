@@ -1530,6 +1530,45 @@ re-queued. The capacity gate turned four fires away once (8 sessions mid-turn) a
 Round 23: the round 22 workflow with prompt v31 on this section's landed tip, BASE `fcafd734` (ids A<n>, outputs
 `round23/`); scenario C plays the v30 and v29 blocks.
 
+### B13 round 23: v31 rehearsal, cross-lane review, harvest (2026-10-22)
+
+Run `wf_efe34813-590` on `7a54f938` (107 agents, 0 errors, 102 minutes). All six scenarios pass their EXPECTED: the
+new Mac and the field Mac are "fully one command", every v30 and v29 copy is refused in step 1 with exit 2, and the
+git stop, the reinstall during a sync and the empty-folder alarm run as the prompt says. Every round 22 fix a
+rehearsal re-checked holds on real output, and v31's one-pass chmod clears a 0000 state folder, a 0000 folder
+holding a 0000 manifest and a 0000 lock (round 22's turn). 96 findings, none merged, 93 confirmed (0 turns, 25 wrong,
+68 small), 3 refused (A14: the two reports read different inputs; A40: a rehearsal's own refused command; A71: the
+guide's row already holds the case). One needs prompt text, so the next prompt is v32.
+No turn this round. Most wrongs sit on two states round 22's rulings did not name: a FILE where the state folder (or a
+folder above it) belongs, which install.sh hands to the agent as a chmod 700 of a file while status calls it the
+person's and governance crashes (A2, A6, A7, A21, A22, A23, A32, A33, A80); and a heartbeat this account cannot
+write, where a sync ends 0 with "session done" so the agent never meets its chmod (A1, A34, A84). Lead rulings for
+round 23 (in `lanes/COMMON22.md`): (4) anything that is not a folder where the state folder or a folder above it
+belongs is the person's to move aside, never a chmod, with one FAIL and the rest "not checked"; (5) a heartbeat this
+account cannot write is reported once, and an interactive sync exits 1 with its fix and a NEXT to status; (6) lane P
+lands every person's-kinds copy in one commit, as in round 22. The others: the report's words after the one-pass
+chmod and for an ACL on the state folder itself (A5, A13, A38, A43, A69, A88), the purge queue's words after round
+22's Z54 (A52, A55, A56, A57), rotate_logs outside the lock's try (A53, A81), the shell report's own moved folders
+in clear (A41, A42), a hold's free-text reason in clear (A8) and the Z76 guard left in a test (A48, A76, A89).
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93 over rounds
+2 and 4 to 23; turns 0 for seven rounds, then 1, 2, 0; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17, 14, 20, 17, 10, 22, 25,
+24, 8, 21, 15, 29, 25. The count holds near 90 because each ruling names the cases its round found and the next
+rehearsal probes the neighbours; this round the neighbours were the not-a-folder state root and the heartbeat.
+
+Lanes (`--account auto`, CONTRACTS §16.164 to §16.169, brief `lanes/COMMON22.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r23-land.lock`; scratch under `round23/`; back-channel
+pane 16 since the reboot): RA 31 (the report's not-a-folder state, Items and outcome words, a stopped copy's lines,
+two url keys, the <proxy-N> legend, a hold's reason, the timing tests' word pins), RB 12 (the shell report's
+redaction, NEXT relay and git readers, the Z76 guard, the oneshot helper's timeout), P 15 (prompt v32, a not-a-folder
+state root at steps 1 and 2, step 1's tails for a lock, heartbeat or governance stop, every person's-kinds copy), B
+23 (a not-a-folder state root and an unwritable heartbeat in doctor and cli, the purge queue's words, rotate_logs,
+audit.jsonl), E 8 (the upgrade's settled count, doctor's convert imports, §16.162's stale line), D 6 (guides,
+CONTRACTS records, CLAUDE.md's CI time). Lead: A96 (nine orphaned round 22 install.sh processes killed by pid and the
+three round 22 worktrees removed; its test-helper part is lane RB's) and A39 (the fixture tree frozen under
+`~/.cache/agentsync-bring-back/fixtures/v1/` with a checksum manifest; round 24's rehearsals copy and check it and
+never write to it).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

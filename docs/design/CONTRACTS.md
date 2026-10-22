@@ -27801,3 +27801,27 @@ Y8 the legend says install.log dollar-quotes a name with a tab or another contro
 en dash or an accent (under the C locale, any character outside ASCII); the row still said a curly apostrophe, a
 dash or an accent. It quotes the legend now (§16.46 R7's quote stays as its record). Test:
 `test_the_guides_path_row_quotes_the_shell_reports_legend`, which reads the legend from install.sh.
+
+### 16.164 Round 23: setup report (2026-10-22, wave B13 round 23 lane RA)
+
+Reserved for round 23 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 23").
+
+### 16.165 Round 23: installer, the shell report's redaction, git readers and NEXT relay (2026-10-22, wave B13 round 23 lane RB)
+
+Reserved for round 23 lane RB of B13.
+
+### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
+
+Reserved for round 23 lane P of B13.
+
+### 16.167 Round 23: a state folder that is not a folder, the heartbeat and the purge queue in cli and doctor (2026-10-22, wave B13 round 23 lane B)
+
+Reserved for round 23 lane B of B13.
+
+### 16.168 Round 23: the upgrade's settled count and doctor's convert imports (2026-10-22, wave B13 round 23 lane E)
+
+Reserved for round 23 lane E of B13.
+
+### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
+
+Reserved for round 23 lane D of B13.
