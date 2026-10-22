@@ -28695,3 +28695,64 @@ per run the files that run converted and those it settled with no try left, and 
 shown run has files left to retry; the row said every such file could show its old error. A sentence after the
 retry clause says so. Test: `test_the_repeat_conversions_row_names_the_upgrade_retry_note`, which reads both words
 from the report.
+
+### 16.170 Round 23: the test harness's script execs (2026-10-22, wave B13 round 23 lane K)
+
+Lane K's one item, A97, the lead's (its brief is the spec). macOS 15.8.1 keeps about 1.1 KiB of kernel memory for
+every `#!` script run by path, until reboot, and about 20 GiB panics the Mac; a census on 2026-10-21 put about 53%
+of this Mac's `#!` execs on this repo's tests. Counted for one fixed subset (`tests/test_launcher.py` and
+`tests/test_install_next_line.py` whole, `tests/test_install_oneshot.py -k 'shell_report or report_only'`; the same
+209 tests passed each time), the `#!` execs went from 5,309 to 141. The count is root-free: the subset runs under
+`sandbox-exec -p '(version 1)(allow default)(allow process-exec* (with report))'`, and `/usr/bin/log show` counts
+the kernel's `allow process-exec-interpreter` lines, one per `#!` exec (200 for 200 runs of a test script). Before:
+the launchctl stub 4,078, `stubbin/scutil` 796, `stubbin/uv` 181, `stubbin/id` 112, the installed agentsync stub 88,
+`launcher/build.sh` 19, `/usr/bin/shasum` 18. After: the installed agentsync stub 88 and `agentsync-stub` 14 (kept
+as `#!` files, below), `launcher/build.sh` 19 and its shasum 17, two python stubs and pytest's own entry point.
+
+**A stub run by path is a Mach-O** (A97 part 1; `tests/exec_stub.py`, `tests/exec_trampoline.c`,
+`tests/conftest.py`). conftest's session fixture `_exec_trampoline` builds the trampoline with `/usr/bin/cc` once per
+source hash, under `~/.cache/agentsync-tests/exec-trampoline/<sha16>-<arch>/`, and runs one stub through it; off
+macOS, without the compiler, or when that run fails, every stub stays the plain `#!` file. `exec_stub.write` writes
+the body to `<dir>/../.<dir>-real/<name>` and the stub as a copy of the trampoline with the body's absolute path
+appended, past the code signature (which covers only the bytes cc wrote). Run by path, the trampoline reads that
+path back from its own file and execs the interpreter the body's first line names, the line split as xnu's
+`exec_shell_imgact` splits it, with the body as the script argument; it never forks, so the pid, the descriptors,
+the environment and the exit status are the interpreter's. The brief said a symlink to one binary; a copy per stub
+is built instead, because a chmod, a rewrite or an append to one stub would reach the shared binary under every
+other test, and a `cp` or `shutil.copy` of a symlinked stub copies the bare binary, with no body. A body that
+reads its own path (`$0`,
+`BASH_SOURCE`, `sys.argv[0]`, `__file__`) stays a `#!` file, since `$0` names the body there (the OCR, media and
+speech kits keep `"$0.calls"` beside the stub). So does a stub named `agentsync...`: the harness copies agentsync's
+stand-in onto `~/.local/bin/agentsync` again and again (`STUB_UV`'s `cp` at each install, 20 `shutil.copy` calls),
+and macOS kills a Mach-O copied over a Mach-O that ran (the first land gate's SIGKILL in `agentsync setup-report`;
+294 of 300 in a loop), while a script written over either runs. The helpers that use it: test_install_oneshot's
+`_write_exe` (its 63 calls and test_report_redaction's 4), test_install_next_line's `_exe`, test_launcher's
+`stubs`, test_ship_land's `_with_gh`, test_gate_journal's `_lane_part` and test_deploy_pack's `_fake_step1_tools`.
+The doctor and pandoc helpers keep `#!` stubs: doctor runs `codesign` on the launcher it is given, and the
+pandoc ones stand for a native arm64 copy, so a Mach-O would change what those tests test. Tests:
+`tests/test_exec_stub.py`, whose `test_a_stub_run_by_path_is_a_mach_o_that_runs_as_the_kernel_runs_its_body` runs
+six bodies once as a `#!` file and once through the trampoline and compares exit code, stdout and stderr,
+`test_the_harness_helpers_write_mach_o_stubs` and `test_agentsyncs_stand_in_copied_onto_one_that_ran_still_runs`.
+
+**The console script** (A97 part 2): no test runs the agentsync console script by path. Tests run
+`python -m agentsync`, directly or from a stub (`"$REAL_PYTHON" -m agentsync`), and `~/.local/bin/agentsync` in
+the harness is `STUB_AGENTSYNC`'s copy, a `#!` file for the reason above. The census's `.venv/bin/agentsync` and
+`uv/tools/agentsync/bin/agentsync` execs came from rehearsals outside `tests/`. Nothing to change.
+
+**The harness's wait poll is 0.5 s** (A97 part 3). The brief read the launchctl stub's share as polling at 0.05 s.
+Measured, it is not: over 220 tests the stub ran 4,258 times at a 0.05 s poll and 4,258 times at 0.5 s, since
+each install.sh run calls `launchctl getenv` 18 times (the proxy keys) and `print` twice; over the 47 tests that
+wait on the background run, 168 and 162, one test polling. Those calls are Mach-O execs now (part 1). The poll is
+0.5 s in the `env`, `_env` and `stubs` envs, the value the time-out tests already set: its integer part is 0, as at
+0.05, so install.sh's `WAIT_EVERY` progress spacing is the same, and a test that retries twice (`79 79 0`) took 3.2
+and 2.7 s at 0.05 and 3.1 and 3.8 s at 0.5 under a load of about 450.
+
+**install.sh hashes with `/sbin/sha256sum`** (A97 part 4; dated lines at §16.30). `sha256()` runs `/sbin/sha256sum`,
+a Mach-O, where it is executable and `/usr/bin/shasum -a 256` where it is not (an older macOS); the patch hash and
+`tree_fingerprint` both use it, and both tools print the same line. `launcher/build.sh:57` keeps `shasum`: its
+`--print-source-sha256` covers build.sh's own text, so the one-line change moved it (from 1f426bc0 to 9b63ba30,
+measured on a copy), and every field Mac with developer tools would rebuild its launcher, an ad hoc build being a new
+TCC subject (build.sh's header): the person would approve access again, for one `shasum` exec per install run.
+Tests: `test_install_sh_hashes_with_sha256sum_and_falls_back_to_shasum`, which breaks each tool's path in turn and
+gets the same 12 digits from stdin and from a file, and the pin in
+`test_the_guide_asks_for_a_not_repeated_patch_by_its_hash`.
