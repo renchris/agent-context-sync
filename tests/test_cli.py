@@ -4083,6 +4083,8 @@ def test_a_manifest_on_a_read_only_volume_gets_the_persons_volume_fix_from_every
         db.rename(db.with_name("kept.sqlite"))
         for side in db.parent.glob(db.name + "-*"):
             side.unlink()
+        # no manifest yet, not a lost one (B13 round 23 A29)
+        expand(initialised.state_paths.heartbeat).unlink()
     real_open = manifest_mod.os.open
 
     def read_only(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
@@ -4364,9 +4366,55 @@ def test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_
         root.with_name("kept-state").rename(root)
     assert "Traceback" not in said.err and "FileExistsError" not in said.err, said.err
     (line,) = [ln for ln in said.err.splitlines() if ln.startswith("error: ")]
-    assert line == f"error: state: {root} is not a directory (fix: move {doctor._shell_path(root)} aside)", (
-        line
+    moved = f"the person moves {doctor._shell_path(root)} aside, keeping a copy"  # round 23 ruling 4
+    assert line == f"error: state: {root} is a file, not a folder (fix: {moved})", line
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.STATE_MISPLACED_STEP}"
+    ]
+
+
+@pytest.mark.parametrize("where", ["the state folder", "a folder above it"])
+def test_a_file_where_the_state_folder_or_a_folder_above_it_belongs_is_one_fail_the_persons(
+    initialised: Config, capsys: pytest.CaptureFixture[str], where: str
+) -> None:
+    """B13 round 23 A7, A22, A33, A58 (round 23 ruling 4): a file where the state folder belongs gave status a
+    state_dir FAIL whose ``move <root> aside`` was read as the agent's, a heartbeat FAIL with a generic
+    "report it", a governance "check crashed: GovernanceError ... [Errno 20]" and a "cannot read the state:
+    GovernanceError" summary; a file where ``~/Library/Application Support`` belongs gave state_dir itself the
+    generic fix. It is one FAIL now, state_dir's, naming the first path that is not a folder with the person's
+    move aside, and every check that reads the state folder says it was not checked."""
+    cfg = _synced(initialised)
+    capsys.readouterr()
+    root = expand(initialised.state_paths.root)
+    that = root if where == "the state folder" else root.parent
+    that.rename(that.with_name(that.name + ".kept"))
+    that.write_text("Contoso\n", encoding="utf-8")
+    try:
+        rc, out = _status(cfg, capsys)
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+        said = capsys.readouterr()
+    finally:
+        that.unlink()
+        that.with_name(that.name + ".kept").rename(that)
+    moved = f"(fix: the person moves {doctor._shell_path(that)} aside, keeping a copy)"
+    text = "\n".join(out)
+    assert rc == cli.EXIT_FAILED and [ln for ln in out if ln.startswith("[FAIL] ")] == [
+        ln for ln in out if ln.startswith("[FAIL] state_dir ")
+    ], text
+    (fail,) = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert f"{that} is a file, not a folder" in fail and fail.endswith(moved), fail
+    for name in ("lock", "heartbeat", "governance.hold", "governance.purge_queue", "config.vanished_sources"):
+        (line,) = [ln for ln in out if ln.startswith(f"[info] {name} ")]
+        assert line.endswith(f"— {doctor.STATE_FOLDER_NOT_A_FOLDER}"), line
+    for words in ("report it", "check crashed", "GovernanceError", "Errno", "cannot look inside"):
+        assert words not in text, (words, text)
+    assert (
+        "status: cannot read the state: the state folder is not a folder; the state_dir line says why" in out
     )
+    (step,) = [ln for ln in out if ln.startswith("NEXT: ")]
+    assert step.startswith("NEXT: the state_dir check failed: ") and "not a step for the agent" in step, step
+    (line,) = [ln for ln in said.err.splitlines() if ln.startswith("error: ")]
+    assert line.endswith(moved) and "report it" not in said.err, said.err
     assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
         f"NEXT: {cli.STATE_MISPLACED_STEP}"
     ]
@@ -6189,3 +6237,77 @@ def test_statuss_next_for_a_persons_fail_names_no_catalog_of_kinds(fix: str) -> 
         "agent: show it to them"
     )
     assert len(step) < 200 and setup_report._PERSONS_STEP in step
+
+
+def test_a_folder_where_the_manifest_belongs_is_not_judged_for_time_machine(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A10: with a folder at manifest.sqlite, governance.time_machine warned "not excluded" with
+    an ``agentsync sync`` fix the sync cannot reach (it stops on the state file first), and the report filed
+    it as unexpected. The manifest is not judged there now: an [info] line points at state_dir.manifest, which
+    FAILs it, and every other path not excluded still warns."""
+    db = expand(initialised.state_paths.db)
+    mirror = expand(initialised.docs_repo) / "mirror"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.unlink(missing_ok=True)
+    db.mkdir(mode=0o700)
+    monkeypatch.setattr(cli.governance, "time_machine_status", lambda config: [(db, False), (mirror, False)])
+    out = cli._time_machine_checks(initialised)
+    infos = [r for r in out if r.severity is doctor.Severity.INFO]
+    warns = [r for r in out if r.severity is doctor.Severity.WARN]
+    assert [r.detail for r in infos] == [
+        "not checked: the state file is not a file; the state_dir.manifest line says why"
+    ], out
+    assert len(warns) == 1 and str(mirror) in warns[0].detail and str(db) not in warns[0].detail, warns
+    assert any(r.name == "state_dir.manifest" and not r.ok for r in doctor._check_state_dir(initialised))
+
+
+def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 23 A29: with manifest.sqlite gone and heartbeat.json recording passes, status said "no
+    manifest yet" and "no sync has run" and exited 0, and the sync it pointed to quietly started over: every
+    page removed as an orphan and converted again, the empty-folder alarm and the deletion hold forgotten.
+    Status FAILs state_dir.manifest, the person's (restore it, or move heartbeat.json aside to confirm a new
+    start); no command starts a new manifest over that history; once heartbeat.json is aside the next sync
+    does. A Mac with no heartbeat (a new one, or a docs repo restored onto it) still reads "no manifest yet".
+    """
+    from agentsync import manifest as manifest_mod  # noqa: PLC0415
+
+    cfg = _synced(initialised)
+    db = expand(initialised.state_paths.db)
+    hb = expand(initialised.state_paths.heartbeat)
+    for side in ("", "-wal", "-shm"):
+        db.with_name(db.name + side).unlink(missing_ok=True)
+    capsys.readouterr()
+    rc, out = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED, out
+    (fail,) = [ln for ln in out if ln.startswith("[FAIL] ")]
+    assert fail.startswith("[FAIL] state_dir.manifest ") and f"{db} {manifest_mod.LOST_MANIFEST}" in fail, (
+        fail
+    )
+    assert fail.endswith(f"(fix: {doctor.LOST_MANIFEST_FIX})") and doctor.is_persons_fix(
+        doctor.LOST_MANIFEST_FIX
+    )
+    text = "\n".join(out)
+    assert "no sync has run" not in text and "no manifest yet" not in text, text
+    assert "manifest: missing (earlier syncs recorded; the person decides: see state_dir.manifest)" in out
+    (step,) = [ln for ln in out if ln.startswith("NEXT: ")]
+    assert "not a step for the agent" in step, step
+    report = initialised.config_path.parent / "report.md"
+    assert cli.main(["setup-report", "--out", str(report), "--config", cfg]) == cli.EXIT_OK
+    written = report.read_text(encoding="utf-8")
+    assert "no sync has run" not in written and "- manifest: missing (earlier syncs recorded" in written
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    said = capsys.readouterr()
+    (line,) = [ln for ln in said.err.splitlines() if ln.strip()]  # no "repair: removing orphan" WARNINGs
+    assert line == f"error: state: {db} {manifest_mod.LOST_MANIFEST} (fix: {doctor.LOST_MANIFEST_FIX})", line
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.STATE_MISPLACED_STEP}"
+    ]
+    assert not db.exists()
+    hb.rename(hb.with_name("heartbeat.json.kept"))  # the person's confirmation of a new start
+    rc, out = _status(cfg, capsys)
+    assert "manifest: none yet (no sync has run)" in out and not any("state_dir.manifest" in ln for ln in out)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK and db.exists()

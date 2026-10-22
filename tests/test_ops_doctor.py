@@ -3762,3 +3762,79 @@ def test_devtools_missing_asks_xcode_select_by_full_path(
 
     monkeypatch.setattr(doctor, "_run", hang)
     assert REAL_DEVTOOLS_MISSING() is False, "unknown: no fix is better than a wrong one"
+
+
+def test_a_state_folder_that_is_not_a_folder_is_named_from_the_top_down(tmp_path: Path) -> None:
+    """B13 round 23 A7, A22, A33, A58 (round 23 ruling 4): the first path, from ``/`` down, of the state
+    folder and the folders above it that is there but is not a folder, read through links: a link to a folder
+    passes, a link to a file or a symlink loop does not; a missing folder is none (state_dir says the first
+    sync creates it), and its FAIL is the person's move aside, never a chmod."""
+    above = tmp_path / "Application Support"
+    root = above / "agentsync"
+    assert doctor._not_a_folder_at(root) is None  # missing: not this
+    above.write_text("Contoso\n", encoding="utf-8")
+    assert doctor._not_a_folder_at(root) == above
+    above.unlink()
+    real = tmp_path / "real"
+    real.mkdir()
+    above.symlink_to(real)  # a link to a folder is a folder
+    assert doctor._not_a_folder_at(root) is None
+    (real / "agentsync").write_text("Contoso\n", encoding="utf-8")
+    assert doctor._not_a_folder_at(root) == root
+    (real / "agentsync").unlink()
+    (real / "agentsync").symlink_to(real / "agentsync")  # a loop
+    assert doctor._not_a_folder_at(root) == root
+    fail = doctor._not_a_folder_fail(root, root)
+    assert fail.detail == f"{root} is a symlink loop, not a folder", fail.detail
+    assert fail.fix == f"the person moves {doctor._shell_path(root)} aside, keeping a copy"
+    assert doctor.is_persons_fix(fail.fix) and "(" not in fail.fix and "chmod" not in fail.fix
+
+
+@pytest.mark.parametrize("link", ["a loop", "a link to a folder"])
+def test_a_symlinked_manifest_that_is_no_file_fails_state_dir_manifest_not_an_acl_or_a_chmod(
+    sample_config: Config, link: str
+) -> None:
+    """B13 round 23 A46: doctor read a symlink at manifest.sqlite as a file, so a loop got an ACL FAIL on
+    state_dir.files and a link to a folder a ``chmod 600`` (which follows the link onto the folder), while the
+    setup report, reading through the link, pointed at a state_dir.manifest line doctor never printed. A link
+    is judged by what it points to now; a link to a regular file is still a file."""
+    db = sample_config.state_paths.db
+    target = db if link == "a loop" else db.parent / "elsewhere"
+    if link != "a loop":
+        target.mkdir()
+    db.unlink(missing_ok=True)
+    db.symlink_to(target)
+    results = doctor._check_state_dir(sample_config)
+    failed = [r for r in results if not r.ok]
+    (manifest,) = [r for r in failed if r.name == "state_dir.manifest"]
+    kind = "a symlink loop" if link == "a loop" else "a symlink to a folder"
+    assert manifest.detail == f"{db} is {kind}, not the state file" and manifest.fix == doctor.MANIFEST_FIX
+    assert not any(r.name == "state_dir.files" for r in failed), failed
+    db.unlink()
+    real = db.parent / "real.sqlite"
+    real.write_bytes(b"")
+    real.chmod(0o644)
+    db.symlink_to(real)  # a link to a regular file is a file, as before
+    assert doctor.state_file_kind(db) is None
+    again = doctor._check_state_dir(sample_config)
+    assert not any(r.name == "state_dir.manifest" and not r.ok for r in again), again
+
+
+def test_a_lost_manifest_fails_whatever_else_is_in_the_state_folder(sample_config: Config) -> None:
+    """B13 round 23 A29's reviewer: the lost-manifest FAIL sat after ``elif present``, so a stale -wal or the
+    token-cache fallback file hid it, and status pointed at a state_dir.manifest line it never printed; and
+    the refused open's ``str()`` read ``[Errno 2] None: ...``."""
+    from agentsync.errors import ManifestLostError  # noqa: PLC0415
+    from agentsync.manifest import LOST_MANIFEST, Manifest  # noqa: PLC0415
+
+    sp = sample_config.state_paths
+    db = sp.db
+    db.unlink(missing_ok=True)
+    sp.heartbeat.write_text('{"contoso-docs": {"run_id": 3}}', encoding="utf-8")
+    sp.token_cache_fallback.write_bytes(b"")
+    sp.token_cache_fallback.chmod(0o600)
+    (lost,) = [r for r in doctor._check_state_dir(sample_config) if r.name == "state_dir.manifest"]
+    assert not lost.ok and lost.fix == doctor.LOST_MANIFEST_FIX, lost
+    with pytest.raises(ManifestLostError) as raised:
+        Manifest(db)
+    assert str(raised.value) == f"{db} {LOST_MANIFEST}" and not db.exists()

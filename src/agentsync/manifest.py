@@ -32,7 +32,13 @@ from typing import Any, NamedTuple
 
 from agentsync import tm_exclude
 from agentsync.config import SourceConfig, always_excluded
-from agentsync.errors import ConfigError, ManifestOpenError, ManifestPathError, ManifestSchemaError
+from agentsync.errors import (
+    ConfigError,
+    ManifestLostError,
+    ManifestOpenError,
+    ManifestPathError,
+    ManifestSchemaError,
+)
 from agentsync.model import (
     PRESENT_STATES,
     ChangeOp,
@@ -791,11 +797,50 @@ ACCESS_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.EROFS})
 Only these get the access fix (:class:`ManifestOpenError`; B13 round 20 X49)."""
 
 
+LOST_MANIFEST = "is missing, but heartbeat.json records earlier passes"
+"""What doctor's state_dir.manifest FAIL and every refused open say of a lost manifest
+(:func:`manifest_lost`)."""
+
+
+def manifest_lost(db_path: Path) -> bool:
+    """Whether the manifest is missing while ``heartbeat.json`` beside it records an earlier pass (a source
+    with a ``last_success_at``, or a ``run_id`` of 1 or more): a manifest lost from a Mac that has synced,
+    which a new one would quietly replace, converting every file again and forgetting the deletions, the
+    breaker's suspended removals and the archive (B13 round 23 A29). Keyed on the state folder alone: a docs
+    repo restored onto a new Mac, with no heartbeat, is a first sync. An unreadable heartbeat is no record."""
+    try:
+        db_path.lstat()
+        return False
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return False
+    if not os.access(db_path.parent, os.R_OK | os.W_OK | os.X_OK):
+        return False  # a folder this account cannot use (a mode, a read-only volume): its refusal comes first
+    try:
+        data = json.loads((db_path.parent / "heartbeat.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return any(
+        isinstance(entry, dict)
+        and (
+            bool(entry.get("last_success_at")) or (type(entry.get("run_id")) is int and entry["run_id"] >= 1)
+        )
+        for entry in data.values()
+    )
+
+
 def _connect(db_path: Path) -> sqlite3.Connection:
     """Create the db file 0600 if needed, connect in autocommit mode and apply the connection pragmas. A file
     or folder this account cannot open raises :class:`ManifestOpenError`, never a raw PermissionError (B13
     round 19 W65); any other refusal (a folder where the file belongs, a file where its folder belongs, a full
-    disk) :class:`ManifestPathError`, one line with no access fix (B13 round 20 X49)."""
+    disk) :class:`ManifestPathError`, one line with no access fix (B13 round 20 X49). A manifest lost from a
+    Mac that has synced (:func:`manifest_lost`) is never created anew: the person decides, by restoring it or
+    moving heartbeat.json aside (``doctor.LOST_MANIFEST_FIX``; B13 round 23 A29)."""
+    if manifest_lost(db_path):
+        raise ManifestLostError(f"{db_path} {LOST_MANIFEST}", errno.ENOENT, reason=LOST_MANIFEST)
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(db_path, os.O_RDWR | os.O_CREAT, 0o600)

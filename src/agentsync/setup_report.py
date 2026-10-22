@@ -6602,6 +6602,11 @@ class _NoManifestError(_NoStateError):
     """No sync has run: there is no manifest to read."""
 
 
+class _LostManifestError(_NoManifestError):
+    """No manifest, while heartbeat.json beside it records earlier passes: lost, the person's to decide, never
+    "no sync has run" (``manifest.manifest_lost``; B13 round 23 A29)."""
+
+
 class _StateNotFileError(_NoStateError):
     """Something other than a file sits where the manifest belongs (a folder, or a file where a folder on its
     way belongs): the person's, as Doctor's state_dir.manifest FAIL says, never "no sync has run" after five
@@ -6717,7 +6722,9 @@ class _Mirror:
                 try:
                     st = self.db.stat()
                 except FileNotFoundError:
-                    raise _NoManifestError from None
+                    from agentsync.manifest import manifest_lost  # noqa: PLC0415 - lazy, as the reads above
+
+                    raise (_LostManifestError if manifest_lost(self.db) else _NoManifestError) from None
                 except NotADirectoryError:  # a file where a folder on its way belongs (A23: the folder's)
                     raise _not_file_error(self.db) from None
                 except OSError as exc:
@@ -7031,6 +7038,9 @@ def _lines(fn: Callable[[], list[str]]) -> list[str]:
         return fn()
     except _OutOfTimeError:
         return [f"- {NOT_MEASURED}"]
+    except _LostManifestError:
+        lost = "earlier syncs recorded; the person decides: see Doctor's state_dir.manifest line"
+        return [f"- manifest: missing ({lost})"]
     except _NoManifestError:
         return ["- no manifest yet (no sync has run)"]
     except Exception as exc:

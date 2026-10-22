@@ -6915,7 +6915,8 @@ def test_a_loop_stage_status_could_not_read_is_not_read_not_installed(
     assert depth <= 1, stage_words
     # GV: a home that synced, then a [governance] value that does not load
     db = expand(load_config(fake_mac["config"]).state_paths.db)
-    db.unlink()
+    db.unlink()  # MANIFEST_FIX: with heartbeat.json beside it, or no sync starts a new one (B13 round 23 A29)
+    expand(load_config(fake_mac["config"]).state_paths.heartbeat).unlink()
     assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
     cfg = fake_mac["config"]
     cfg.write_text(cfg.read_text(encoding="utf-8") + '\n[governance]\nhold = "yes"\n', encoding="utf-8")
@@ -12941,7 +12942,14 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     )
     db.rmdir()
     _rc, text, _ = report(tmp_path, cfg)
-    assert "- no manifest yet (no sync has run)" in text  # a plain missing manifest says so still
+    # a plain missing manifest with heartbeat.json recording passes is lost (B13 round 23 A29); without it,
+    # no sync has run
+    assert "- manifest: missing (earlier syncs recorded" in text and "no sync has run" not in text
+    heartbeat = expand(load_config(cfg).state_paths.heartbeat)
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "- no manifest yet (no sync has run)" in text
+    heartbeat.with_name("heartbeat.json.kept").rename(heartbeat)
     db.symlink_to(db.name)  # a link to itself: no file either, as is_file read it (review)
     try:
         text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())

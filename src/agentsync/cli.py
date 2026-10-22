@@ -92,6 +92,7 @@ from agentsync.errors import (
     AuthRequiredError,
     ConfigError,
     LockHeldError,
+    ManifestLostError,
     ManifestOpenError,
     ManifestPathError,
     ManifestSchemaError,
@@ -99,7 +100,7 @@ from agentsync.errors import (
 from agentsync.graph.auth import TokenProvider
 from agentsync.graph.errors import AuthBlockedError
 from agentsync.loop import NO_NEXT_HINT_ENV
-from agentsync.manifest import ACCESS_ERRNOS, Manifest
+from agentsync.manifest import ACCESS_ERRNOS, Manifest, manifest_lost
 from agentsync.model import CycleMode, CycleReport, LintFinding, SourceKind, Verdict
 from agentsync.ops import doctor, launchd
 from agentsync.ops.lock import EMPTY_BODY_HOLDER, SingleWriterLock, read_heartbeat
@@ -1392,6 +1393,9 @@ def _status_lines(config: Config) -> list[str]:
     for event in _launcher_events(config):
         out.append(f"launcher: {event}")
     db = config.state_paths.db
+    if manifest_lost(expand(db)):  # never "no sync has run" over a heartbeat that records passes (A29)
+        out.append("manifest: missing (earlier syncs recorded; the person decides: see state_dir.manifest)")
+        return out
     if not db.exists():
         out.append("manifest: none yet (no sync has run)")
         return out
@@ -1571,6 +1575,11 @@ def _unread_words(
     quotes these words after "status says", and sqlite's message can hold one (B13 round 18 V11, V54)."""
     if isinstance(exc, ConfigError):
         return f"the configuration is refused: the {refused} [FAIL] line says why"
+    if config is not None and doctor.state_root_not_folder(config) is not None:
+        # nothing under a state folder that is a file (or under a file where a folder above it belongs) can be
+        # read: state_dir's one FAIL, the person's, says why, never "GovernanceError: ... [Errno 20]" (B13
+        # round 23 A22, A33; round 23 ruling 4)
+        return "the state folder is not a folder; the state_dir line says why"
     if isinstance(exc, StateUnreadableError):
         return f"the state file cannot be read: {exc.__cause__ or 'see the state_dir.manifest [FAIL] line'}"
     if doctor.contended(exc):  # locked, not unreadable: another run (a sync, a status migrating) holds it
@@ -1589,6 +1598,9 @@ def _unread_words(
             f"the state folder cannot be opened: {reason}" if reason else "the state folder cannot be opened"
         )
         return f"{said}; the state_dir lines say why"
+    if isinstance(exc, ManifestLostError):  # not "a file cannot be opened" (A29's reviewer)
+        said = "the state file is missing, but heartbeat.json records earlier passes"
+        return f"{said}; the state_dir.manifest [FAIL] line says why"
     if isinstance(exc, ManifestPathError):  # its reason is kept apart from strerror (B13 round 20 X47)
         said = f"a file cannot be opened: {exc.reason}" if exc.reason else "a file cannot be opened"
         if isinstance(exc, ManifestOpenError):
@@ -2049,14 +2061,28 @@ def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
     status = [(p, ok) for p, ok in governance.time_machine_status(config) if not p.name.endswith(transient)]
     root = expand(config.state_paths.root)
     out: list[doctor.CheckResult] = []
-    if doctor.state_folder_shut(config):
+    folder_unchecked = doctor.state_folder_unchecked(config)
+    if folder_unchecked is not None:
         # every path in a folder this account cannot search read "Permission denied", a missing one too: one
         # not-checked line, as governance.hold's and purge_queue's, and only the paths outside it are judged;
-        # the line also keeps "tenant-data paths excluded" off a folder nobody checked (B13 round 21 Y51)
+        # the line also keeps "tenant-data paths excluded" off a folder nobody checked (B13 round 21 Y51), and
+        # a state folder that is not a folder says so (round 23 ruling 4)
         status = [(p, ok) for p, ok in status if not (p == root or p.is_relative_to(root))]
-        out.append(
-            _check("governance.time_machine", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO)
-        )
+        out.append(_check("governance.time_machine", False, folder_unchecked, doctor.Severity.INFO))
+    else:
+        # a folder (or other non-file) where the manifest belongs has no exclusion to judge, and the sync the
+        # warn named stops before it applies one: state_dir.manifest FAILs it, the person's (B13 round 23 A10)
+        db = expand(config.state_paths.db)
+        if doctor.state_file_kind(db) is not None:
+            status = [(p, ok) for p, ok in status if p != db]
+            out.append(
+                _check(
+                    "governance.time_machine",
+                    False,
+                    "not checked: the state file is not a file; the state_dir.manifest line says why",
+                    doctor.Severity.INFO,
+                )
+            )
     missing = [p for p, ok in status if ok is False]
     unchecked = [(p, ok) for p, ok in status if isinstance(ok, str)]
     if missing:
@@ -2106,9 +2132,9 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
         _check("governance.hold", True, h.describe(), doctor.Severity.INFO)
         for h in governance.config_holds(gov)
     ]
-    shut = doctor.state_folder_shut(config)
-    if shut:
-        out.append(_check("governance.hold", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO))
+    shut = doctor.state_folder_unchecked(config)  # shut, or not a folder (round 23 ruling 4)
+    if shut is not None:
+        out.append(_check("governance.hold", False, shut, doctor.Severity.INFO))
     else:
         try:
             holds = governance.state_holds(config.state_paths.root)
@@ -2133,10 +2159,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
     compact_fix = f"{loop.BIN} sync (its next full pass compacts); release any hold"
     fix = None if state == "ok" else compact_fix
     out.append(_check("governance.compaction", state == "ok", f"{state}: {detail}", severity, fix=fix))
-    if shut:
-        out.append(
-            _check("governance.purge_queue", False, doctor.STATE_FOLDER_UNCHECKED, doctor.Severity.INFO)
-        )
+    if shut is not None:
+        out.append(_check("governance.purge_queue", False, shut, doctor.Severity.INFO))
         return out
     try:
         queued, kept = governance.partition_purges(config.state_paths)
@@ -2999,14 +3023,21 @@ def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
     (ENOTDIR, EEXIST); None for any other errno (a full disk), which no line FAILs, so no pointer names an
     [ok] line (round 21 Y43; B13 round 22 Z51)."""
     filename = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
+    sp = config.state_paths
+    if isinstance(exc, ManifestLostError):  # no new manifest over earlier passes (B13 round 23 A29)
+        filename = expand(sp.db)
     if not isinstance(filename, str | bytes | os.PathLike):
         return None
-    sp = config.state_paths
     path = Path(os.path.realpath(os.fsdecode(filename)))
     root = Path(os.path.realpath(expand(sp.root)))
-    if exc.errno == errno.EISDIR and path == Path(os.path.realpath(expand(sp.db))):
+    db = Path(os.path.realpath(expand(sp.db)))
+    if exc.errno == errno.EISDIR and path == db:
         name = "state_dir.manifest"
-    elif exc.errno in (errno.ENOTDIR, errno.EEXIST) and (path == root or root.is_relative_to(path)):
+    elif isinstance(exc, ManifestLostError):
+        name = "state_dir.manifest"  # lost from a Mac that has synced: no new one started (B13 round 23 A29)
+    elif exc.errno in (errno.ENOTDIR, errno.EEXIST, errno.ELOOP) and (
+        path == root or root.is_relative_to(path) or path.is_relative_to(root)
+    ):  # the folder, a folder above it, or a path under a folder that is a file (B13 round 23 A58)
         name = "state_dir"
     else:
         return None

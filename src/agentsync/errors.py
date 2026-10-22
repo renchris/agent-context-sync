@@ -31,6 +31,12 @@ class ManifestPathError(AgentSyncError, OSError):
         self.reason = reason
 
 
+class ManifestLostError(ManifestPathError):
+    """The manifest is missing while heartbeat.json beside it records earlier passes: no new one is started
+    over that history; the person decides (``doctor.LOST_MANIFEST_FIX``; B13 round 23 A29). No ``filename``:
+    with errno and filename both set ``str()`` would read ``[Errno 2] None: ...`` (A29's reviewer)."""
+
+
 class ManifestOpenError(ManifestPathError):
     """The manifest or its folder will not open for this account (EACCES, EPERM, EROFS: a root-owned file left
     by one sudo run, a folder made read-only). The file itself is not damaged, so it is no exit 65 and its

@@ -48,7 +48,7 @@ from agentsync.cycle import (
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError, ManifestOpenError
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
-from agentsync.manifest import Manifest
+from agentsync.manifest import LOST_MANIFEST, Manifest, manifest_lost
 from agentsync.model import CycleMode, SourceKind
 from agentsync.ops import launchd
 from agentsync.ops.lock import LockInfo, SingleWriterLock, read_heartbeat
@@ -1235,7 +1235,8 @@ def refused_files_fix(config: Config, files: Sequence[Path]) -> str:
 
 def _not_a_file(mode: int) -> str | None:
     """What an ``lstat`` mode is when it is neither a regular file nor a symlink (``a folder``, ``a socket``,
-    ``a fifo``, ``not a regular file``), else None."""
+    ``a fifo``, ``not a regular file``), else None: a symlink is judged by what it points to
+    (:func:`state_file_kind`)."""
     if stat.S_ISREG(mode) or stat.S_ISLNK(mode):
         return None
     if stat.S_ISDIR(mode):
@@ -1245,6 +1246,27 @@ def _not_a_file(mode: int) -> str | None:
     if stat.S_ISFIFO(mode):
         return "a fifo"
     return "not a regular file"
+
+
+def state_file_kind(path: Path) -> str | None:
+    """What is at ``path``, where a state file belongs, when it is not a file agentsync can open: a folder, a
+    socket or a fifo (:func:`_not_a_file`), a symlink loop, or a symlink to a folder (or another non-file),
+    read through the link as sqlite and the setup report read it (B13 round 23 A46: a link read as a file, so
+    no state_dir.manifest line was printed while the report pointed at one, and a loop got an ACL FAIL and a
+    link to a folder a ``chmod 600`` that would follow the link). None for a regular file, a symlink to one, a
+    dangling symlink (no manifest yet) or nothing there."""
+    try:
+        st = path.lstat()
+    except OSError:
+        return None
+    if not stat.S_ISLNK(st.st_mode):
+        return _not_a_file(st.st_mode)
+    try:
+        target = path.stat()
+    except OSError as exc:
+        return "a symlink loop" if exc.errno == errno.ELOOP else None
+    kind = _not_a_file(target.st_mode)
+    return None if kind is None else f"a symlink to {kind}"
 
 
 def _them(names: Sequence[str], one: str, many: str) -> str:
@@ -1273,13 +1295,76 @@ STATE_FOLDER_UNCHECKED = (
 """The [info] line of a check that reads the state folder, when :func:`state_folder_shut` (B13 round 20
 X73)."""
 
+STATE_FOLDER_NOT_A_FOLDER = "not checked: the state folder is not a folder (see state_dir)"
+"""The [info] line of a check that reads the state folder, when :func:`state_root_not_folder` (round 23
+ruling 4): not :data:`STATE_FOLDER_UNCHECKED`, whose "cannot look inside" is false of a file."""
 
-def _in_shut_state_folder(config: Config, path: Path) -> bool:
-    """Whether ``path`` is the state folder or lies in it while :func:`state_folder_shut`: a ``log_dir`` or
-    ``cache_dir`` set there cannot be read either, and its check says :data:`STATE_FOLDER_UNCHECKED`, not a
-    generic FAIL whose agent's fix took status's NEXT (B13 round 22 Z60)."""
+
+def _not_a_folder_at(root: Path) -> Path | None:
+    """The first path, from ``/`` down to ``root``, that is there but is not a folder (a file, a symlink to
+    one, a socket, a fifo, a symlink loop), read through links, so a symlink to a folder passes; None when
+    each is a folder, or one is missing or refuses a look (state_dir's other lines say those)."""
+    for path in (*reversed(root.parents), root):
+        try:
+            st = path.stat()
+        except OSError as exc:
+            return path if exc.errno == errno.ELOOP else None
+        if not stat.S_ISDIR(st.st_mode):
+            return path
+    return None
+
+
+def state_root_not_folder(config: Config) -> Path | None:
+    """The state folder, or the first folder above it, that is not a folder (:func:`_not_a_folder_at`):
+    the person's to move aside, one FAIL, state_dir's, while every check that reads the state folder says
+    :data:`STATE_FOLDER_NOT_A_FOLDER` and nothing raises (B13 round 23 A7, A22, A33, A58; round 23 ruling 4:
+    heartbeat FAILed with a generic "report it" fix and governance crashed on ``[Errno 20]``). Keyed on the
+    stat of the state folder and the folders above it, never on any ENOTDIR, which would hide unrelated
+    faults."""
+    return _not_a_folder_at(expand(config.state_paths.root))
+
+
+def state_folder_unchecked(config: Config) -> str | None:
+    """The [info] words of a check that reads the state folder when it cannot:
+    :data:`STATE_FOLDER_NOT_A_FOLDER` for a state folder (or a folder above it) that is not a folder,
+    :data:`STATE_FOLDER_UNCHECKED` for one this account cannot look inside (:func:`state_folder_shut`); None
+    when the checks can read it."""
+    if state_root_not_folder(config) is not None:
+        return STATE_FOLDER_NOT_A_FOLDER
+    return STATE_FOLDER_UNCHECKED if state_folder_shut(config) else None
+
+
+def _not_a_folder_fail(root: Path, that: Path) -> CheckResult:
+    """state_dir's FAIL for ``that``, the state folder or a folder above it, which is not a folder: the
+    person's move aside, keeping a copy, since agentsync never writes a file there (round 23 ruling 4; B13
+    round 23 A22, A33: ``move <root> aside`` did not start "the person ", so status's NEXT gave the agent the
+    person's step)."""
+    try:
+        mode = that.stat().st_mode
+        kind = (
+            "a file"
+            if stat.S_ISREG(mode)
+            else "a socket"
+            if stat.S_ISSOCK(mode)
+            else "a fifo"
+            if stat.S_ISFIFO(mode)
+            else "a special file"
+        )
+    except OSError:
+        kind = "a symlink loop"
+    detail = f"{that} is {kind}, not a folder"
+    if that != root:
+        detail += f", and the state folder {root} sits under it"
+    return _bad("state_dir", detail, fix=f"the person moves {_shell_path(that)} aside, keeping a copy")
+
+
+def _in_shut_state_folder(config: Config, path: Path) -> str | None:
+    """:func:`state_folder_unchecked`'s words when ``path`` is the state folder or lies in it: a ``log_dir``
+    or ``cache_dir`` set there cannot be read either, and its check says not checked, not a generic FAIL whose
+    agent's fix took status's NEXT (B13 round 22 Z60; round 23 ruling 4 for a state folder that is not a
+    folder); None for a path outside it, or a state folder the checks can read."""
     root = expand(config.state_paths.root)
-    return (path == root or path.is_relative_to(root)) and state_folder_shut(config)
+    return state_folder_unchecked(config) if path == root or path.is_relative_to(root) else None
 
 
 def stopped(config: Config, name: str, exc: Exception) -> CheckResult:
@@ -1298,7 +1383,28 @@ def stopped(config: Config, name: str, exc: Exception) -> CheckResult:
         if shut is not None:
             log.info("doctor: check %s stopped under a folder that refuses a search", name, exc_info=exc)
             return _bad(name, shut, Severity.INFO)
+    if _under_the_non_folder(config, exc):
+        log.info("doctor: check %s stopped under a state folder that is not a folder", name, exc_info=exc)
+        return _bad(name, STATE_FOLDER_NOT_A_FOLDER, Severity.INFO)
     return unfinished(name, exc)
+
+
+def _under_the_non_folder(config: Config, exc: BaseException) -> bool:
+    """Whether ``exc`` (or the error it wraps: a GovernanceError keeps its cause) is an ENOTDIR or ELOOP on a
+    path under the state folder, or the folder above it, that is not a folder (:func:`state_root_not_folder`):
+    one fault, state_dir's (round 23 ruling 4; B13 round 23 A58: heartbeat and governance gave report-it and
+    check-crashed lines beside it)."""
+    cause = exc if isinstance(exc, OSError) else exc.__cause__ or exc.__context__
+    if not isinstance(cause, OSError) or cause.errno not in (errno.ENOTDIR, errno.ELOOP):
+        return False
+    that = state_root_not_folder(config)
+    if that is None:
+        return False
+    if not isinstance(cause.filename, str | bytes | os.PathLike):
+        return True  # no path to place it: the state folder that is not a folder explains it
+    path = Path(os.fsdecode(cause.filename))
+    real, real_that = Path(os.path.realpath(path)), Path(os.path.realpath(that))
+    return path.is_relative_to(that) or real.is_relative_to(real_that)
 
 
 def _behind_the_state_folders_refuser(config: Config, exc: OSError) -> str | None:
@@ -1341,8 +1447,14 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
             )
         )
         return out
+    except OSError as exc:  # a file where a folder above it belongs (ENOTDIR), a symlink loop (ELOOP): A58
+        that = _not_a_folder_at(root) if exc.errno in (errno.ENOTDIR, errno.ELOOP) else None
+        if that is None:  # the path changed in between, or another error: the backstop's words
+            raise
+        out.append(_not_a_folder_fail(root, that))
+        return out
     if not stat.S_ISDIR(st.st_mode):
-        out.append(_bad("state_dir", f"{root} is not a directory", fix=f"move {_shell_path(root)} aside"))
+        out.append(_not_a_folder_fail(root, _not_a_folder_at(root) or root))
         return out
     mode = stat.S_IMODE(st.st_mode)
     if st.st_uid != os.getuid():
@@ -1396,11 +1508,11 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 )
             return out  # else state_dir's owner or mode FAIL above is the answer, with its fix
         m = stat.S_IMODE(fst.st_mode)
-        kind = _not_a_file(fst.st_mode)
+        kind = state_file_kind(p)  # a link by what it points to (A46); a link to a file keeps its mode FAIL
         if kind is not None:
             # B13 round 21 Y47: a folder at 0700 read "[ok] manifest.sqlite (0700): this account's alone"
             # while every sync stopped on "cannot be opened: Is a directory", so status exited 0 with no
-            # NEXT; judged before its owner and mode, and never probed. A symlink keeps its loose-mode FAIL
+            # NEXT; judged before its owner and mode, and never probed
             name = "state_dir.manifest" if p == sp.db else "state_dir.files"
             fix = MANIFEST_FIX if p == sp.db else f"the person moves {_shell_path(expand(p))} aside"
             nonfile.append(_bad(name, f"{expand(p)} is {kind}, not the state file", fix=fix))
@@ -1462,8 +1574,10 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
         out.append(_ok("state_dir.files", f"{', '.join(present)} {_them(present, 'is', 'are')} 0600"))
     elif present:  # "are 0600" only when they are: 0700 is not (W64)
         out.append(_ok("state_dir.files", f"{', '.join(modes)}: this account's alone"))
-    elif not nonfile:
+    elif not nonfile and not manifest_lost(expand(sp.db)):
         out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
+    if manifest_lost(expand(sp.db)):  # whatever else is there: a stale -wal, the token cache (A29's reviewer)
+        out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {LOST_MANIFEST}", fix=LOST_MANIFEST_FIX))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open
     # of a WAL database creates its -wal and -shm with the file's own mode (0400), so the one chmod the FAIL
     # named left two more to fix; after it, the next status probes and any side file is created 0600
@@ -1477,14 +1591,26 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
 # locked, busy or unopenable one is not unreadable state, and a sync that holds it must not read as one.
 MANIFEST_UNREADABLE_CODES = frozenset({26, 11})
 MANIFEST_FIX = (
-    "the person decides, with a copy of it kept: restore it from a copy they trust, or move it aside so the "
-    "next sync starts a new one, which converts every file again (online-only ones are downloaded again) "
-    "and forgets the deletions, the deletion breaker's suspended removals and the archive it recorded; legal "
-    "holds are kept, in governance/holds.json"
+    "the person decides, with a copy of it kept: restore it from a copy they trust, or move it aside, with "
+    "heartbeat.json beside it, so the next sync starts a new one, which converts every file again "
+    "(online-only ones are downloaded again) and forgets the deletions, the deletion breaker's suspended "
+    "removals and the archive it recorded; legal holds are kept, in governance/holds.json"
 )
 """The person's fix for a manifest that is no database or a damaged one. "holds" said the manifest held the
 legal holds, which live in governance/holds.json and survive a new manifest; what it loses is the deletion
-breaker's state (B13 round 17 U73)."""
+breaker's state (B13 round 17 U73). heartbeat.json goes aside with it: no new manifest is started while the
+heartbeat records earlier passes (``manifest.manifest_lost``, B13 round 23 A29)."""
+
+LOST_MANIFEST_FIX = (
+    "the person decides: restore manifest.sqlite from a copy they trust, or move heartbeat.json aside, "
+    "keeping a copy, so the next sync starts a new manifest, which converts every file again (online-only "
+    "ones are downloaded again) and forgets the deletions, the deletion breaker's suspended removals and the "
+    "archive it recorded; legal holds are kept, in governance/holds.json"
+)
+"""The person's fix for a manifest lost from a Mac that has synced (``manifest.manifest_lost``): no sync
+starts a new one over that history, so moving heartbeat.json aside is the person's confirmation (B13 round
+23 A29: status said "no manifest yet" and "no sync has run", and the sync it pointed to quietly started over,
+converting every file again and dropping the empty-folder alarm and the deletion hold)."""
 
 
 def unreadable_code(exc: sqlite3.Error) -> bool:
@@ -2076,9 +2202,13 @@ def _check_graph(config: Config) -> list[CheckResult]:
         # checked, as the lock's line does, and a cache file it cannot open gets that file's own fix, never
         # a logout, which stops on the same refusal (B13 round 21 Y42)
         root = expand(config.state_paths.root)
+        if _under_the_non_folder(config, exc):  # the token cache under a state folder that is a file (A22)
+            out.append(_bad("graph.auth", STATE_FOLDER_NOT_A_FOLDER, Severity.INFO))
+            return out
         if isinstance(exc, OSError) and exc.filename is not None and state_unopenable(exc, root):
-            if state_folder_shut(config):
-                out.append(_bad("graph.auth", STATE_FOLDER_UNCHECKED, Severity.INFO))
+            unchecked = state_folder_unchecked(config)
+            if unchecked is not None:
+                out.append(_bad("graph.auth", unchecked, Severity.INFO))
             else:
                 path = Path(os.path.realpath(os.fsdecode(exc.filename)))
                 fix = state_path_fix(Path(os.path.realpath(root)), path)
@@ -2612,8 +2742,9 @@ def _check_shared_content(config: Config) -> list[CheckResult]:
     ids = [s.id for s in config.live_sources() if s.kind is not SourceKind.INBOX]
     if len(ids) < 2:
         return []
-    if state_folder_shut(config):
-        return [_bad("sources.shared_content", STATE_FOLDER_UNCHECKED, Severity.INFO)]
+    unchecked = state_folder_unchecked(config)
+    if unchecked is not None:
+        return [_bad("sources.shared_content", unchecked, Severity.INFO)]
     try:
         if not db.exists():
             return []
@@ -2843,8 +2974,9 @@ def _incomplete_fix(src: SourceConfig, *, yours: bool | None = None, waits: int 
 def _check_logs(config: Config) -> list[CheckResult]:
     """launchd never rotates StandardOut/ErrorPath: warn before a log grows without bound."""
     log_dir = expand(config.log_dir)
-    if _in_shut_state_folder(config, log_dir):  # its state_dir FAIL is the answer (B13 round 22 Z60)
-        return [_bad("logs", STATE_FOLDER_UNCHECKED, Severity.INFO)]
+    unchecked = _in_shut_state_folder(config, log_dir)
+    if unchecked is not None:  # its state_dir FAIL is the answer (B13 round 22 Z60)
+        return [_bad("logs", unchecked, Severity.INFO)]
     if not log_dir.is_dir():
         return [_ok("logs", f"{log_dir} does not exist yet")]
     files = sorted(p for p in log_dir.glob("*.log") if p.is_file())
@@ -2909,7 +3041,7 @@ def _check_permissions(config: Config) -> list[CheckResult]:
         ("cache_dir", expand(config.cache_dir), default_cache_dir()),
         ("log_dir", expand(config.log_dir), default_log_dir()),
     ):
-        if _in_shut_state_folder(config, folder):  # no walk can enter it; state_dir says why (Z60)
+        if _in_shut_state_folder(config, folder) is not None:  # no walk enters it; state_dir says why (Z60)
             continue
         if not _holds_home(folder):
             roots.append(folder)
@@ -3024,11 +3156,11 @@ def run_checks(
     with ``loop_waits`` (``loop.NextStep.wait_counts``) saying how many lines.
     """
     results: list[CheckResult] = []
-    shut = state_folder_shut(config)
+    unchecked = state_folder_unchecked(config)  # shut (X73), or not a folder (round 23 ruling 4)
     for group, check in _CHECKS:
         saw_group(group)  # the setup report names the check a doctor it cut off was in (Y22)
-        if shut and group in _STATE_FOLDER_GROUPS:  # each would stop on the folder (B13 round 20 X73)
-            results.append(_bad(group, STATE_FOLDER_UNCHECKED, Severity.INFO))
+        if unchecked is not None and group in _STATE_FOLDER_GROUPS:  # each would stop on the folder (X73)
+            results.append(_bad(group, unchecked, Severity.INFO))
             continue
         run = _tcc_canary_skipped if group == "tcc" and not tcc_canary else check
         if group == "heartbeat" and loop_checks is not None:
@@ -3065,7 +3197,8 @@ def groups_seen(seen: Callable[[str], None]) -> Iterator[None]:
 
 _STATE_FOLDER_GROUPS = frozenset({"config.vanished_sources", "lock", "heartbeat"})
 """The checks that read files in the state folder (the manifest, the lock, the heartbeat): over a folder this
-account cannot search each says :data:`STATE_FOLDER_UNCHECKED` (B13 round 20 X73). Three more read it and say
+account cannot search each says :data:`STATE_FOLDER_UNCHECKED` (B13 round 20 X73), and over one that is not a
+folder :data:`STATE_FOLDER_NOT_A_FOLDER` (round 23 ruling 4). Three more read it and say
 the same line from inside their own check, so the rest of each still runs: graph's ``graph.auth`` (the token
 cache; graph.client_id and graph.config do not read the folder), ``sources.shared_content`` (only with two
 sources to compare) and status's governance lines (B13 round 21 Y11, Y26, Y42, Y44, Y51)."""
