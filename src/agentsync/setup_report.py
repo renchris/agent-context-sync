@@ -5325,28 +5325,54 @@ def _attempt_out_start(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> int
     )
 
 
-def _installer_output_line(r: _Run, runs: Sequence[InstallRun], scoped: bool) -> str:
+def _installer_output_line(
+    r: _Run, runs: Sequence[InstallRun], scoped: bool, *, late: Sequence[InstallRun] = ()
+) -> str:
     """The Summary's ``installer output:`` line: the Installer section's counts, kept to the latest attempt's
     runs when the attempt has a time (as the install.sh line is). install.out holds every run, earlier
     attempts' too, and the attempt's runs are its last, so the count starts at the first header of one of
-    them: the lines counted stay "the last N lines". Unchanged when every run read is the attempt's."""
+    them: the lines counted stay "the last N lines". Unchanged when every run read is the attempt's.
+
+    ``late``: the stand-alone runs after the end line of a copy the installer stopped
+    (:func:`_stopped_split`), which are not the attempt's: their lines are named as theirs (B13 round 23 A18:
+    "this attempt's runs only" counted the run the stopped copy's Doctor asks for). "the run", not "the
+    install run": install.out holds ``--list-folders`` runs too."""
     assert r.facts.instructions is not None
     counts, read, total, cut, pending = r.facts.instructions
     whole = f"- installer output: {_instruction_text(counts, read, total, cut, pending)}"
-    start = _attempt_out_start(r, runs, scoped)
+    start = _attempt_out_start(r, [run for run in runs if run not in late], scoped)
     if start == "unknown":  # nothing to tell runs apart by
         return whole
     lines = r.facts.out_counted
+    after = _attempt_out_start(r, late, scoped) if late else None
+    if start is None and isinstance(after, int):
+        theirs = lines[after:]
+        k = sum(1 for ln in theirs if _OUT_RUN_RE.match(ln))
+        text = _instruction_text(instruction_counts(theirs), len(theirs), k, pending=pending)
+        which = "the run" if k == 1 else f"the {k} runs"
+        earlier = (
+            f" (the Installer section also counts the {_plural(total - k, 'earlier run')} in the lines read)"
+            if total > k
+            else ""
+        )
+        return f"- installer output: no run of this attempt; {which} after its end line: {text}{earlier}"
     if start is None:
         return (
             f"- installer output: no run of this attempt in {_the_last(read, 'line')} of install.out (the "
             f"Installer section counts the {_plural(total, 'earlier run')} in the lines read)"
         )
-    if start == 0:
+    if start == 0 and after is None:
         return whole
     mine = lines[start:]
     k = sum(1 for ln in mine if _OUT_RUN_RE.match(ln))
     text = _instruction_text(instruction_counts(mine), len(mine), k, pending=pending)
+    if isinstance(after, int):
+        n = sum(1 for ln in lines[after:] if _OUT_RUN_RE.match(ln))
+        own = f"this attempt's runs and {'the run' if n == 1 else f'the {n} runs'} after its end line"
+        earlier = (
+            f"; the Installer section also counts the {_plural(total - k, 'earlier run')} in the lines read"
+        )
+        return f"- installer output: {text} ({own}{earlier if total > k else ''})"
     return (
         f"- installer output: {text} (this attempt's runs only; the Installer section also counts the "
         f"{_plural(total - k, 'earlier run')} in the lines read)"
@@ -5413,8 +5439,28 @@ def _installer_output(r: _Run) -> list[str]:
     att = r.friction.latest if r.friction is not None else None
     scoped = att is not None and att.begin is not None
     saw = "what the agent saw"
-    mine = _latest_runs(r)
-    if scoped and _attempt_out_start(r, mine, scoped) is None:
+    # A stopped copy's stand-alone run after its end line is not the attempt's: the lines shown under its
+    # header are named as its own (B13 round 23 A20: they read "what the agent saw")
+    mine, late = _stopped_split(att, _latest_runs(r)) if scoped else (_latest_runs(r), [])
+    owners: set[str | None] = set()  # the run header each shown line falls under; None before the first
+    under: str | None = None
+    for i, ln in enumerate(lines):
+        if (head := _OUT_RUN_RE.match(ln)) is not None:
+            under = head.group(1)
+        if i >= len(lines) - INSTALL_OUT_TAIL:
+            owners.add(under)
+    alone = owners & {run.run_id for run in late}
+    if alone and _attempt_out_start(r, mine, scoped) is None:
+        run_s = "run after this attempt's end line, a stand-alone run"
+        if len(alone) > 1:
+            run_s = "runs after this attempt's end line, stand-alone runs"
+        none = "none of this attempt's runs is in it" if mine else "this attempt ran no install.sh"
+        saw = (
+            f"the install.sh {run_s}: {none}"
+            if owners <= alone
+            else f"earlier attempts' install.sh output, then the install.sh {run_s}: {none}"
+        )
+    elif scoped and _attempt_out_start(r, mine, scoped) is None:
         saw = "earlier attempts' install.sh output: " + (
             "none of this attempt's runs is in it" if mine else "this attempt ran no install.sh"
         )
@@ -10659,7 +10705,9 @@ def _install_doctor_only(
     return (last, named) if named else None
 
 
-def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = False) -> str:
+def _first_sync_line(
+    r: _Run, runs: Sequence[InstallRun], *, scoped: bool = False, late: Sequence[InstallRun] = ()
+) -> str:
     """The installer's first sync: its step from install.log, what it converted and left to background sync
     (the step's ``converted-N-deferred-M[-reread-R][-waited-for-the-lock]`` note, or ``waited-for-the-lock``
     alone when the sync printed no counts, else the sync's own "converted N, deferred M online-only[, read
@@ -10670,7 +10718,14 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
 
     A Summary ``scoped`` to an attempt that ran no install.sh falls back to the newest earlier run, and says
     so: that run's start time, "before this attempt" (it may predate every logged attempt, so it is not
-    numbered). The baseline clause is live state and keeps its words (B13 round 3 R19, R28)."""
+    numbered). The baseline clause is live state and keeps its words (B13 round 3 R19, R28).
+
+    ``late``: the stand-alone runs after the end line of a copy the installer stopped
+    (:func:`_stopped_split`): when one of them reached its first sync, :func:`_stopped_sync_line` says so
+    apart (B13 round 23 A19)."""
+    late_synced = [run for run in install_runs_only(late) if run.step("first-sync") is not None]
+    if late_synced:
+        return _stopped_sync_line(r, [run for run in runs if run not in late], late, late_synced[-1])
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     borrowed = scoped and not runs and bool(pool)
     missing = not r.install_log.is_file()
@@ -10783,6 +10838,59 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
     if counts is None and r.facts.first_sync is not None and own_line:
         counts = r.facts.first_sync
         source = out_source
+    return _sync_line_end(r, label, parts, counts, source, borrowed=borrowed, run=pool[-1] if pool else None)
+
+
+def _stopped_sync_line(
+    r: _Run, inside: Sequence[InstallRun], late: Sequence[InstallRun], shown: InstallRun
+) -> str:
+    """:func:`_first_sync_line` for a copy the installer stopped with an install run after its end line that
+    reached its first sync: what the runs inside the attempt did, then that run's sync, by it, as
+    :func:`_stopped_folders_line` says the folders (B13 round 23 A19: the line gave the stand-alone run's
+    sync as the attempt's own). Never the borrowed "before this attempt" form: the newest run with a first
+    sync is that run itself. install.out's counts are read only under its own header."""
+    installs = install_runs_only(inside)
+    reached = [run for run in installs if run.step("first-sync") is not None]
+    if not installs:
+        before = "no install run during this attempt"
+    elif reached:
+        before = _sync_step_words(reached[-1].step("first-sync") or {})[0] + " during this attempt"
+    else:
+        before = "no install run of this attempt reached its first sync"
+    after = install_runs_only(late)
+    which = (
+        "the install run after its end line"
+        if len(after) == 1
+        else "the last install run after its end line"
+        if shown is after[-1]
+        else "the last install run after its end line to reach its first sync"
+    )
+    step = shown.step("first-sync") or {}
+    label = "sync" if (shown.step("config") or {}).get("note") in ("add-source", "exists") else "first sync"
+    text, counts = _sync_step_words(step)
+    source = "install.log"
+    own = step.get("result") != "skipped" and r.facts.first_sync_run == shown.run_id
+    if counts is None and r.facts.first_sync is not None and own:
+        counts, source = r.facts.first_sync, "install.out"
+    # one install.log tag for the step and its counts, as on the folders line; its own when they differ
+    tag = "" if counts is not None and source == "install.log" else " (install.log)"
+    return _sync_line_end(
+        r, label, [f"{before}; {which}: {text}{tag}"], counts, source, borrowed=False, run=shown
+    )
+
+
+def _sync_line_end(
+    r: _Run,
+    label: str,
+    parts: list[str],
+    counts: tuple[int, int, int] | None,
+    source: str,
+    *,
+    borrowed: bool,
+    run: InstallRun | None,
+) -> str:
+    """:func:`_first_sync_line` from its counts on: the counts clause tagged ``source``, the baseline clause,
+    and what other runs read again since ``run`` (the run whose sync the line shows)."""
     if counts is not None:
         converted, deferred, again = counts
         later = f"; background sync downloads and converts the {deferred}" if deferred else ""
@@ -10842,8 +10950,8 @@ def _first_sync_line(r: _Run, runs: Sequence[InstallRun], *, scoped: bool = Fals
             f"{done} of {_plural(total, 'source')} with a complete baseline (status, read when this report "
             "was written)"
         )
-    if pool:
-        parts += _reread_since(r, pool[-1])
+    if run is not None:
+        parts += _reread_since(r, run)
     return f"- {label}: " + " · ".join(parts)
 
 
@@ -11128,6 +11236,19 @@ def _after_end(
         for run in runs
         if run.started is not None and (run.started >= end if stopped else run.started > end)
     ]
+
+
+def _stopped_split(
+    att: Attempt | None, runs: Sequence[InstallRun]
+) -> tuple[list[InstallRun], list[InstallRun]]:
+    """``(inside, late)``: for a copy the installer stopped (:func:`_prompt_copy_note`), the runs inside the
+    attempt and the stand-alone runs from its end line on (:func:`_after_end` with ``stopped``), as the
+    install, time and folders lines split them; every other attempt keeps its later runs as its own, so
+    ``late`` is empty (B13 round 23 A18, A19, A20)."""
+    if not _prompt_copy_note(att):
+        return list(runs), []
+    late = _after_end(runs, _attempt_end(att), stopped=True)
+    return [run for run in runs if run not in late], late
 
 
 def _install_line(
@@ -12079,9 +12200,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     )
     if folders is not None:
         out.append(folders)
+    scoped = att is not None and att.begin is not None
+    # a stopped copy's stand-alone runs after its end line, named apart as the lines above (B13 round 23 A18)
+    alone = _stopped_split(att, runs)[1] if scoped else []
     if r.facts.instructions is not None:
-        out.append(_installer_output_line(r, runs, scoped=att is not None and att.begin is not None))
-    out.append(_first_sync_line(r, runs, scoped=att is not None and att.begin is not None))
+        out.append(_installer_output_line(r, runs, scoped=scoped, late=alone))
+    out.append(_first_sync_line(r, runs, scoped=scoped, late=alone))
     out.append(_doctor_line(r, runs))
     if run_type == "simulated launchd" or r.facts.launchd_simulated:
         out.append("- background sync: launchd: simulated (no LaunchAgent of this setup ran)")

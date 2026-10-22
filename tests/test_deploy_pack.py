@@ -7109,7 +7109,9 @@ def test_the_first_sync_row_names_every_clause_the_summary_adds() -> None:
     from agentsync import setup_report  # noqa: PLC0415
 
     # one literal per part: the adjacent string pieces a long one is written in are joined
-    code = re.sub(r'"\s*\n\s*f?"', "", inspect.getsource(setup_report._first_sync_line))
+    # B13 round 23 A19: the clauses are written by _sync_line_end, which _first_sync_line ends in
+    lines = inspect.getsource(setup_report._first_sync_line) + inspect.getsource(setup_report._sync_line_end)
+    code = re.sub(r'"\s*\n\s*f?"', "", lines)
     page = _page("docs/deploy/setup-feedback.md")
     row = page[page.index("| Summary: `first sync:` or `sync:` |") : page.index("| Installer: every run |")]
     first = re.search(r'reread \+= \(?\s*f": \{first\[2\]\} (of them [^"]*)"', code)

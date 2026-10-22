@@ -16513,6 +16513,76 @@ def test_a_stopped_copys_time_and_folders_lines_put_a_run_after_its_end_line_apa
         ), folders
 
 
+def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 23 A18, A19, A20: for a copy the installer stopped, the installer output line counted the
+    stand-alone run after its end line as "this attempt's runs", the sync line gave that run's sync as the
+    attempt's own, and the Installer section headed its output "what the agent saw". Each names the run
+    after the end line now; an ordinary attempt keeps such a run as its own."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    stopped = (
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:00:00Z | end | finished\n"
+    )
+    ordinary = (
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v28\nAgent: Contoso Agent (model-1)\n"
+        "2026-10-20T10:00:00Z | end | finished\n"
+    )
+    earlier = install_run("2026-10-19T09:00:00Z", 0)
+    out = fake_mac["setup"] / "install.out"
+
+    def block(start: str) -> list[str]:
+        return [
+            f"# run={re.sub('[-:]', '', start)}-77 {start} install.sh --source-local x",
+            "output",
+            "NEXT: done",
+        ]
+
+    for start in ("10:00:00", "10:05:00"):  # the end line's own second, and five minutes on
+        late = f"2026-10-20T{start}Z"
+        (fake_mac["setup"] / "install.log").write_text(earlier + install_run(late, 0), encoding="utf-8")
+        out.write_text("\n".join([*block("2026-10-19T09:00:00Z"), *block(late)]) + "\n", encoding="utf-8")
+        write_friction(fake_mac, stopped)
+        text, summary = summary_of(fake_mac)
+        output = _line(summary, "- installer output: ")
+        assert "this attempt's runs" not in output, output
+        assert output.startswith(
+            "- installer output: no run of this attempt; the run after its end line: 1 NEXT: line in 1 run"
+        ), output
+        assert output.endswith("counts the 1 earlier run in the lines read)"), output
+        sync = _line(summary, "- sync: ")
+        assert sync.startswith(
+            "- sync: no install run during this attempt; the install run after its end line: done in 34s · "
+            "converted 3, deferred 0 online-only (install.log)"
+        ), sync
+        head = "<summary>the last 6 lines of ~/agent-context/setup/install.out ("
+        installer = section(text, "Installer")
+        assert "(what the agent saw)" not in installer, start
+        assert (
+            head
+            + "earlier attempts' install.sh output, then the install.sh run after this attempt's end line, "
+            "a stand-alone run: this attempt ran no install.sh)</summary>" in installer
+        ), installer
+        out.write_text("\n".join(block(late)) + "\n", encoding="utf-8")
+        installer = section(summary_of(fake_mac)[0], "Installer")
+        assert (
+            "install.out (the install.sh run after this attempt's end line, a stand-alone run: this attempt "
+            "ran no install.sh)</summary>" in installer
+        ), installer
+    # an ordinary attempt's run after its end line is still its own (round 5 F37)
+    out.write_text("\n".join([*block("2026-10-19T09:00:00Z"), *block(late)]) + "\n", encoding="utf-8")
+    write_friction(fake_mac, ordinary)
+    text, summary = summary_of(fake_mac)
+    assert "(this attempt's runs only; the Installer section also counts the 1 earlier run" in summary
+    assert _line(summary, "- sync: ").startswith("- sync: done in 34s (install.log) · converted 3"), summary
+    assert "(what the agent saw)</summary>" in section(text, "Installer")
+
+
 def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_path: Path) -> None:
     """B13 round 20 X19's limit: every other attempt keeps judging the runs after its end line with it (the
     operator's own --confirm-install-agent re-run, round 5 F37), a step 1 error such a run resolves
