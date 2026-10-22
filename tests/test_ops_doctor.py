@@ -3120,6 +3120,7 @@ def test_launcher_canary_probe_hard_timeout(tmp_path: Path, monkeypatch: pytest.
 
 
 @pytest.mark.skipif(not Path("/usr/bin/codesign").exists(), reason="macOS only")
+@pytest.mark.timing  # doctor's 60 s per codesign call: at 15 per core it ran out (B13 round 23)
 def test_codesign_info_reads_a_platform_binary() -> None:
     sig = REAL_CODESIGN_INFO(Path("/bin/ls"))
     assert sig.valid and sig.identifier == "com.apple.ls" and not sig.adhoc
