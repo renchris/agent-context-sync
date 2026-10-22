@@ -2790,7 +2790,11 @@ def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_re
     (home / "Projects" / "Tailspin Merger").mkdir()  # a removed source's folder, still on disk
     cfg = home / "agent-context" / "sources.toml"
     cfg.parent.mkdir(parents=True)
-    cfg.write_text(f'[[source]]\nid = "s"\nkind = "local"\npath = "{ledger}"\n')
+    beside = home / "agent-context" / "Numbat Notes"  # a configured source beside the docs repo (A42)
+    cfg.write_text(
+        f'[[source]]\nid = "s"\nkind = "local"\npath = "{ledger}"\n'
+        f'[[source]]\nid = "n"\nkind = "local"\npath = "{beside}"\n'
+    )
     typed = {
         "~/Clients/Zephyrine Board": "~/<path>",
         f"{home}/Clients/Zephyrine Board": "~/<path>",
@@ -2807,6 +2811,13 @@ def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_re
         f"{home}/Projects/Contoso": "~/Projects/<path>",
         f"{ledger}/q1": "~/Projects/<folder-1>/<path>",
         "~/Work/Contoso Ledger": "~/Work/<folder-1>",
+        # B13 round 23 A42: a folder beside the docs repo, the inbox and the folder itself are cut too, as the
+        # agentsync report cuts them: only a placed folder is left uncut
+        f"{home}/agent-context/Zephyrine Plans": "~/<path>",
+        "~/agent-context/Kestrel Board": "~/<path>",
+        f"{home}/agent-context/inbox": "~/<path>",
+        "~/agent-context": "~/<path>",
+        str(beside): "~/<path>",
     }
     words = subprocess.run(  # as install.sh's log_start writes them
         [BASH32, "-c", 'printf "%q\\n" "$@"', "_", *typed], capture_output=True, text=True, check=True
@@ -2833,7 +2844,7 @@ def test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_re
 
     shown = args(text)
     assert list(shown.values()) == list(typed.values()), shown
-    for name in ("Zephyrine", "Kestrel", "Quarry", "Fabrikam", "Tailspin", "Ledger"):
+    for name in ("Zephyrine", "Kestrel", "Quarry", "Fabrikam", "Tailspin", "Ledger", "Numbat"):
         for path in (report_path(env), report_path(env).parent / "bring-back.md"):
             assert name not in path.read_text(), (name, path)
     assert "| the sync ran; Notes kept |" in text, "the argument only: its words stay words elsewhere"

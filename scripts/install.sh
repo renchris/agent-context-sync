@@ -2167,9 +2167,11 @@ redaction_pairs() {
 		}
 	}' | LC_ALL=C sort -u)
 	# A ~/ or absolute --source-local argument in install.log outside CloudStorage that is no folder placed
-	# above (configured, or a removed source's add-back folder) nor agentsync's own: a failed run's, or a
-	# source whose [[source]] block is gone (B13 round 22 Z2, Z13, Z29, Z42, Z77: the shell printed it in clear
-	# beside the public link). Cut as setup_report._source_local_shown cuts it, as the argument only, so no
+	# above (configured, or a removed source's add-back folder): a failed run's, or a source whose [[source]]
+	# block is gone (B13 round 22 Z2, Z13, Z29, Z42, Z77: the shell printed it in clear beside the public
+	# link). A folder beside the docs repo is cut too, configured or not, as _source_local_shown cuts it: the
+	# placed folders that are no own_folder are the only arguments it leaves (B13 round 23 A42: own_folder's
+	# skip printed ~/agent-context/<name>). Cut as setup_report._source_local_shown cuts it, as the argument only, so no
 	# bare word of it is replaced anywhere else: kept up to its first part that is not ~, a fixed macOS folder
 	# (_PATH_COMPONENTS), a folder every drive has (generic_folder) or one every home has (generic_home_dir),
 	# then <path>. Its home as ~; each spelling of it (as logged, its home as $HOME, as pwd -P gives it, and
@@ -2177,11 +2179,12 @@ redaction_pairs() {
 	for w in ${rooted[@]+"${rooted[@]}"}; do
 		case "$w" in \~/*) w="$HOME/${w#\~/}" ;; esac
 		case "$w" in *Library/CloudStorage/*) continue ;; esac
-		own_folder "$w" && continue
 		x=""
 		for f in ${placed[@]+"${placed[@]}"}; do
 			case "$f" in \~) f="$HOME" ;; \~/*) f="$HOME/${f#\~/}" ;; esac
-			[ "${f%/}" != "${w%/}" ] || x=1
+			# a placed folder that is agentsync's own (beside the docs repo, the inbox) is no project folder:
+			# no pair names it, and the agentsync report cuts it too (B13 round 23 A42's review)
+			[ "${f%/}" != "${w%/}" ] || own_folder "$f" || x=1
 		done
 		[ -z "$x" ] || continue
 		v="$w"

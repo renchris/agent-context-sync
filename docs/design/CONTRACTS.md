@@ -27398,6 +27398,8 @@ fallback runs where agentsync is not installed, so there is no manifest to read.
 `test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_report_cuts_it` (thirteen arguments:
 the home, a prefix of a configured folder, one inside it and its name elsewhere among them; the agentsync report's
 lines on the same home) and `test_the_path_legend_says_only_a_relative_argument_is_one`.
+Amended 2026-10-22, §16.165 A42: "and not agentsync's own, as that function does" is withdrawn: the function
+makes no such exemption, and the shell now cuts a folder beside the docs repo too, configured or not.
 
 **The shell report quotes the NEXT of the run whose step stopped** (Z82). With no agentsync the shell report
 quoted install.log only (`step=config rc=1 result=failed config_err=state-owner`) and said Doctor and Status were
@@ -28145,6 +28147,20 @@ test_the_shell_rewrite_readers_read_a_base_with_an_escaped_quote_as_git_does` (a
 and one-line forms, a plain base, an IPv6 base holding `\"]`, a `\\` base and a pushInsteadOf, each reader against
 `git config -z --get-regexp`) and `test_a_rewrite_base_with_an_escaped_quote_is_redacted_in_both_reports` (both
 forms on a 403 line: the same placeholders in both reports).
+
+**A `--source-local` folder beside the docs repo is cut as the agentsync report cuts it** (A42; amends §16.159
+Z77). Z77's loop skipped every argument `own_folder` names (the inbox, and any path under the docs repo's parent
+folder, `~/agent-context` by default) before the cut, so `~/agent-context/Contoso Board` printed in clear in the
+shell report's Installer lines and bring-back.md, while `setup_report._source_local_shown`, which makes no such
+exemption, printed `~/<path>`: §16.159's "and not agentsync's own, as that function does" was not true of that
+function. The skip is gone, and a placed folder (configured, or an add-back) is left uncut only when it is no
+`own_folder`: `_source_local_shown` makes no exemption of its own, and a placed folder survives there only because
+the redactor has made its parts `<folder-N>`, which it never does for a folder beside the docs repo (outside
+`project_paths`). So a configured source in `~/agent-context` is cut to `~/<path>` in both reports too (the lane's
+review measured it printing in clear). `own_folder` stays, for `project_values`. Test:
+`test_an_unconfigured_rooted_source_local_argument_is_cut_as_the_agentsync_report_cuts_it` (five more arguments:
+a folder beside the docs repo in both spellings, the inbox, `~/agent-context` itself and a configured source beside
+the docs repo, each `~/<path>` in both reports).
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
