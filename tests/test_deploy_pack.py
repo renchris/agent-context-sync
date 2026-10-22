@@ -6264,6 +6264,10 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         r'^\t\tcase ",\$cerr," in \*",(state-[\w-]+),"\*\) stail="(; [^"]*)" ;; esac$', script, re.M
     )
     assert [w for w, _ in opened] == [
+        # B13 round 23 A17, A83: the lock, the heartbeat, governance/ and its files, first (a later case wins)
+        "state-file-owner",
+        "state-file-access",
+        "state-file-refused",
         "state-owner",
         "state-access",
         "state-refused",
@@ -6271,17 +6275,19 @@ def test_the_guide_gives_the_lists_config_stop_tail() -> None:
         "state-side-access",
         "state-side-refused",
         "state-notfile",  # B13 round 22 Z11: a folder where manifest.sqlite belongs
+        "state-notdir",  # B13 round 23 ruling 4: no folder where the state folder belongs
     ]
     for word, said in opened:
         assert f"`{word}`, `{said}`" in section, word
     assert (
         "its log line adds `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, "
         "`state`, `remote`, `state-table`, `state-access`, `state-owner`, `state-refused`, "
-        "`state-side-access`, `state-side-owner`, `state-side-refused` and `state-notfile`" in section
+        "`state-side-access`, `state-side-owner`, `state-side-refused`, `state-notfile`, `state-notdir`, "
+        "`state-file-access`, `state-file-owner` and `state-file-refused`" in section
     )
     words_read = (
         "state-access|state-owner|state-refused|state-side-access|state-side-owner|state-side-refused"
-        "|state-notfile)$"
+        "|state-notfile|state-notdir|state-file-access|state-file-owner|state-file-refused)$"
     )
     assert words_read in script, "the list reads every word config_errors writes"
     [row] = [
@@ -7676,7 +7682,8 @@ def test_readme_step2_gives_the_agent_the_chmod_of_its_own_state() -> None:
     # B13 round 22 Z81: a folder's chmod 700 has its own arm, which adds status's chmods in the same pass
     assert '\t\t"chmod 700 "*)' in script and '\t\t"chmod 600 "*)' in script
     assert "run $fix once, then, in the same pass, since that folder's mode hid its files' modes" in script
-    assert "the chmod that fixes it is the agent's to run, once, when step 2's NEXT names it" in script
+    # B13 round 23 A37: a stop can take more than one chmod (a shut folder and its file, a -wal and a -shm)
+    assert "the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them" in script
     from agentsync.ops import doctor  # noqa: PLC0415
 
     fix = inspect.getsource(doctor.state_path_fix) + inspect.getsource(doctor.state_folder_fix)

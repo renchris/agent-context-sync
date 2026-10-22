@@ -35,6 +35,7 @@ import shlex
 import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -7321,11 +7322,51 @@ SIDE_STOPS = (
 status may fail on" was not the "step 2 stops on" the prompt relays, and an empty one may still pass)."""
 
 
+STATE_NOTDIR_TAIL = (
+    "; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file or "
+    "something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the "
+    "person's (they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its "
+    "state_dir line"
+)
+"""Step 1's tail for something that is not a folder where the state folder or a folder above it belongs (B13
+round 23 ruling 4: A2, A6, A21, A32, A80)."""
+
+STATE_NOTDIR_NEXT = (
+    "NEXT: agentsync's state folder is not a folder (a file or something else is where it or a folder above "
+    "it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir "
+    "line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so "
+    "show them the error and go on to the report; once it is fixed, the next run is: {rerun}"
+)
+"""Step 2's NEXT for it, at the config step init stops on (round 23 ruling 4)."""
+
+FILE_STOPS = (
+    "; step 2 stops at its status step on a file or folder agentsync's status checks in its state folder "
+    "(the lock, the heartbeat, or the governance folder or a file in it), "
+)
+"""Step 1's words for the lock, the heartbeat or governance/ and its files (B13 round 23 A17, A83)."""
+
 STATE_OPEN_TAIL = {
+    "state-file-owner": (
+        f"{FILE_STOPS}which another account owns, so this one cannot open it (not damage): fixing that is "
+        "the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status prints it "
+        "on its lock, heartbeat or governance lines"
+    ),
+    "state-file-access": (
+        f"{FILE_STOPS}which this account cannot open (a mode, not damage): the chmods that fix it are the "
+        "agent's to run, once each, as step 2's NEXT names them, and ~/.local/bin/agentsync status prints "
+        "it on its lock, heartbeat or governance lines"
+    ),
+    "state-file-refused": (
+        f"{FILE_STOPS}which this account is refused, and a chmod of it does not fix that (an ACL, a folder "
+        "above it this account cannot search, or a volume mounted read-only, whatever its mode; not damage): "
+        "fixing that is the person's, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or "
+        "governance lines"
+    ),
+    "state-notdir": STATE_NOTDIR_TAIL,
     "state-access": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
-        "cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step "
-        "2's NEXT names it, and ~/.local/bin/agentsync status prints it on its state_dir lines"
+        "cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step "
+        "2's NEXT names them, and ~/.local/bin/agentsync status prints it on its state_dir lines"
     ),
     "state-owner": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which another "
@@ -7334,24 +7375,24 @@ STATE_OPEN_TAIL = {
     ),
     "state-refused": (
         "; step 2 stops at its config step on agentsync's state folder or a file in it, which this account "
-        "is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a "
-        "volume mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync "
-        "status prints it on its state_dir lines"
+        "is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot "
+        "search, or a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, "
+        "and ~/.local/bin/agentsync status prints it on its state_dir lines"
     ),
     "state-side-owner": (
         f"{SIDE_STOPS}which another account owns (not damage): fixing that is the person's (a sudo chown; "
         "the agent runs no sudo), and ~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
     "state-side-access": (
-        f"{SIDE_STOPS}which this account cannot write (a mode, not damage): the chmod that fixes it is the "
-        "agent's to run, once, when step 2 stops on it, and ~/.local/bin/agentsync status prints it on its "
-        "state_dir.files line"
+        f"{SIDE_STOPS}which this account cannot write (a mode, not damage): the chmods that fix it are the "
+        "agent's to run, once each, when step 2 stops on them, and ~/.local/bin/agentsync status prints it "
+        "on its state_dir.files line"
     ),
     "state-notfile": STATE_NOTFILE_TAIL,
     "state-side-refused": (
-        f"{SIDE_STOPS}which this account is refused though its mode allows it (an ACL, or a volume mounted "
-        "read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on "
-        "its state_dir.files line"
+        f"{SIDE_STOPS}which this account is refused, and a chmod of it does not fix that (an ACL, or a "
+        "volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and "
+        "~/.local/bin/agentsync status prints it on its state_dir.files line"
     ),
 }
 """Step 1's tails for a state folder or file this account cannot open (B13 round 20 X9, X29), by the owner of
@@ -7378,6 +7419,8 @@ its fix (round 21 Y24's ownership rule) and by the step that stops on it (Y57: i
         "PM-ro-wal",
         "NR",
         "NR-mode",
+        "NR-link",
+        "NR-loop",
     ],
 )
 def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open(
@@ -7404,7 +7447,13 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
     Round 22 Z11 (probe NR): a 0700 folder where manifest.sqlite belongs passed every probe, so step 1 said
     nothing and step 2 stopped at its config step; it says so now, as the person's (no reinstall hedge: every
     build stops on it), also at a mode this account cannot open (NR-mode, 0500: the lane's review found the
-    access probe gave it the agent's chmod first)."""
+    access probe gave it the agent's chmod first).
+
+    Round 23 A46: a symlink where manifest.sqlite belongs counts by what it points to: a link to a folder
+    (NR-link) or a link loop (NR-loop) is no file either, and init stops on it as on a folder.
+
+    Round 23 A78: a -wal or -shm this account cannot read (an ACL that denies it, PM-shm-acl) stops init as
+    the manifest does, since SQLite cannot open the manifest past it: it takes the config step's words."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
@@ -7414,12 +7463,14 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         "PM-shm": "state-side-access",
         "PM-parent": "state-refused",
         "PM-acl": "state-refused",
-        "PM-shm-acl": "state-side-refused",
+        "PM-shm-acl": "state-refused",  # round 23 A78: a -shm it cannot read stops init
         "PM-ro": "state-refused",
         "PM-ro-mode": "state-refused",
         "PM-ro-wal": "state-side-refused",
         "NR": "state-notfile",
         "NR-mode": "state-notfile",
+        "NR-link": "state-notfile",
+        "NR-loop": "state-notfile",
     }.get(state, "state-access")
     try:
         if state == "PM-owner":
@@ -7456,12 +7507,19 @@ def test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open
         elif state in ("NR", "NR-mode"):
             db.unlink()
             db.mkdir(0o500 if state == "NR-mode" else 0o700)
+        elif state in ("NR-link", "NR-loop"):  # round 23 A46: a link counts by what it points to
+            db.unlink()
+            elsewhere = db.with_name("elsewhere")
+            elsewhere.mkdir(0o700)
+            db.symlink_to(elsewhere if state == "NR-link" else db)
         if state == "PM-fixed":
             db.chmod(0o600)
         cp = install_sh(env, "--list-folders")
     finally:
         db.parent.parent.chmod(0o700)
         db.parent.chmod(0o700)
+        if db.is_symlink():
+            db.unlink()
         if db.is_dir():
             db.chmod(0o700)
             db.rmdir()
@@ -8260,10 +8318,20 @@ def test_a_state_file_another_account_owns_is_the_persons_to_fix(
     ), last_line(cp)
 
 
+STATE_REFUSED_NEXT = (
+    "NEXT: this account is refused agentsync's state folder or a file in it, and a chmod of it does not fix "
+    "that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its "
+    "mode; not damage; the error above names it, and ~/.local/bin/agentsync status prints the fix on its "
+    "state_dir lines): fixing that is the person's, not a step for the agent, so show them the error and go "
+    "on to the report; once it is fixed, the next run is: "
+)
+"""Step 2's NEXT for a state folder or file no chmod of it fixes (B13 round 21 Y24; round 23 A75: it said
+"though its mode allows it", false for a read-only volume, which refuses whatever the mode)."""
+
 STATE_CHMOD_NEXT = (
     "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not damage; "
     "the error above names it): the fix is the agent's: run {fix} once, then re-run: {rerun}; if the re-run "
-    "names the same chmod again, show the person the error and go on to the report"
+    "names the same chmod again, show the person the error, log it as a step 2 error and go on to the report"
 )
 """Step 2's NEXT for a state folder or manifest of this account's own that it cannot open, with the chmod
 doctor.state_path_fix gives (B13 round 21 Y24, Y10, Y4)."""
@@ -8273,7 +8341,7 @@ STATE_CHMOD_FOLDER_NEXT = (
     "the error above names it): the fix is the agent's: run {fix} once, then, in the same pass, since that "
     "folder's mode hid its files' modes, run ~/.local/bin/agentsync status and each chmod 600 or chmod 700 "
     "its [FAIL] lines name for a path in that folder, then re-run: {rerun}; if the re-run names the same "
-    "chmod again, show the person the error and go on to the report"
+    "chmod again, show the person the error, log it as a step 2 error and go on to the report"
 )
 """The same for the state folder's chmod 700 (B13 round 22 Z81): its files' modes cannot be read while it is
 shut, so status names their chmods in the same pass, once the folder is open."""
@@ -8293,6 +8361,8 @@ shut, so status names their chmods in the same pass, once the folder is open."""
         "ro",
         "ro-mode",
         "notfile",
+        "notfile-link",
+        "notfile-loop",
     ],
 )
 def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
@@ -8312,7 +8382,8 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     Round 22 Z79: on a volume mounted read-only (ro) the person's NEXT named an ACL or a folder above it as
     the cause, and a folder there at 0500 (ro-mode) got the agent's chmod 700, which fails on that volume;
     both now get the person's NEXT naming the read-only volume. Z11 (probe NR): a folder where manifest.sqlite
-    belongs got "fix the error above", over a fix that is the person's; it gets the person's NEXT."""
+    belongs got "fix the error above", over a fix that is the person's; it gets the person's NEXT. Round 23
+    A46: so does a symlink there to a folder, or a link loop (a link counts by what it points to)."""
     if state == "older":
         _tool_python_without(env, "agentsync.ops.doctor", "state_path_fix")
     elif not state.startswith("ro"):
@@ -8342,6 +8413,11 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
         elif state == "notfile":
             db.unlink()
             db.mkdir(0o700)
+        elif state in ("notfile-link", "notfile-loop"):  # round 23 A46: a link counts by what it points to
+            db.unlink()
+            elsewhere = db.with_name("elsewhere")
+            elsewhere.mkdir(0o700)
+            db.symlink_to(elsewhere if state == "notfile-link" else db)
         elif state == "sides":
             for f in (db, wal, shm):
                 f.write_bytes(b"")
@@ -8350,6 +8426,9 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
             shut.chmod(0)
         cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
     finally:
+        if state.startswith("notfile-"):
+            db.unlink()
+            db.write_bytes(b"")
         subprocess.run(["/bin/chmod", "-N", str(db)], capture_output=True, check=False)
         shut.chmod(0o600 if shut == db and not db.is_dir() else 0o700)
         for f in (wal, shm):
@@ -8362,20 +8441,13 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     if state in ("older", "readable"):
         assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
         return
-    if state == "notfile":
+    if state.startswith("notfile"):
         assert last_line(cp).startswith(STATE_NOTFILE_NEXT.format(rerun=rerun)), last_line(cp)
         assert "chmod" not in last_line(cp), last_line(cp)
         return
     if state in ("parent", "acl", "ro", "ro-mode"):
-        assert last_line(cp).startswith(
-            "NEXT: this account is refused agentsync's state folder or a file in it though its mode allows "
-            "it (an ACL, a folder above it this account cannot search, or a volume mounted read-only; the "
-            "error above names it, and ~/.local/bin/agentsync status prints the fix on its state_dir lines): "
-            "fixing that is the "
-            "person's, not a step for the agent, so show them the error and go on to the report; once it is "
-            f"fixed, the next run is: {rerun}"
-        ), last_line(cp)
-        assert "chmod" not in last_line(cp), last_line(cp)
+        assert last_line(cp).startswith(f"{STATE_REFUSED_NEXT}{rerun}"), last_line(cp)
+        assert not re.search(r"chmod [0-7u]", last_line(cp)), last_line(cp)
         return
     fix = {
         "manifest": "chmod 600 ~/'Library/Application Support/agentsync/manifest.sqlite'",
@@ -8576,7 +8648,7 @@ STATE_CHMODS_NEXT = (
     "heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account "
     "cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the "
     "agent's: run {fix} once, then re-run: {rerun}; if the re-run names the same chmod again, show the "
-    "person those lines and go on to the report"
+    "person those lines, log it as a step 2 error and go on to the report"
 )
 """Step 2's NEXT when every [FAIL] that stops its status step is a chmod of this account's own state (B13
 round 22 Z8, Z36, Z59): the lock, the heartbeat, a governance file or a -wal or -shm stop it there, past the
@@ -8690,7 +8762,8 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod(
     stops step 2's status on "[FAIL] lock" or "[FAIL] heartbeat" with doctor's chmod 600, and its NEXT was
     "fix the [FAIL] lines above (each names its fix), then re-run", while the prompt granted the chmod only on
     a NEXT or a state_dir line: a literal agent reported "failed at step 2". The NEXT names the chmod as the
-    agent's, once, and that chmod as written lets the re-run pass."""
+    agent's, once, and that chmod as written lets the re-run pass. Round 23 A17, A83: step 1 said "(none is
+    needed)" over it; it names that status-step stop now, the agent's chmods."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -8702,9 +8775,11 @@ def test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod(
     assert target.is_file(), sorted(p.name for p in db.parent.iterdir())
     target.chmod(0)
     try:
+        listed = install_sh(env, "--list-folders")
         cp = install_sh(env, str(wheel))
     finally:
         target.chmod(0o600)
+    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-file-access"]), last_line(listed)
     assert cp.returncode == 1, cp.stdout + cp.stderr
     failed = [ln for ln in cp.stdout.splitlines() if ln.startswith(f"[FAIL] {shut} ")]
     fix = f"chmod 600 ~/'Library/Application Support/agentsync/{target.name}'"
@@ -8725,7 +8800,9 @@ def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2
     """B13 round 22 Z11 (probe NR), with the real agentsync: manifest.sqlite moved aside and a 0700 folder in
     its place. Step 1 said nothing (the folder passes stat, owner and access) and step 2 stopped at its config
     step on "cannot be opened: Is a directory" with "fix the error above", while status gives the person's
-    fix. Step 1's tail names it, logged config_err=state-notfile; step 2 exits 1 with the person's NEXT."""
+    fix. Step 1's tail names it, logged config_err=state-notfile; step 2 exits 1 with the person's NEXT.
+    Round 23 A61: install.sh's comment quoted "cannot be opened: Is a directory", which init no longer prints
+    since Z51; it quotes the words init prints."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -8745,6 +8822,246 @@ def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert ("config", "failed", "1", "") in steps(install_log(env))
     assert last_line(cp).startswith(STATE_NOTFILE_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    comments = " ".join(ln.strip().lstrip("#").strip() for ln in script.splitlines())
+    quoted = re.search(r'init and add-source exit 1 on it \("<db> ([^"]+)", since round 22 Z51', comments)
+    assert quoted and f"{db} {quoted[1]}" in cp.stderr, (quoted, cp.stderr)
+
+
+@pytest.mark.parametrize("case", ["file-0000", "file-0644", "file-0700", "fifo", "owner", "above", "symlink"])
+def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at_step_1_and_step_2(
+    env: dict[str, str], wheel: Path, case: str
+) -> None:
+    """B13 round 23 A2, A6, A21, A32, A80 (probes FF, sfile, owner-rootfile): a file where the state
+    folder belongs. Step 1 called it a mode, the agent's chmod; step 2's NEXT gave the agent chmod 600 of that
+    file at 0000 and chmod 700 at 0644, and once that ran, "refused ... though its mode allows it", a false
+    cause: nothing tested the kind of path, and the not-a-file check crashed on it. Ruling 4: it is the
+    person's (keeping a copy, they move it aside), never a chmod, whatever its mode or owner (a chown does not
+    fix it either), and so is a file where a folder above it belongs (Application Support). Step 1's tail says
+    so, logged config_err=state-notdir; step 2's NEXT is the person's, with no chmod; the file is left as it
+    was. A state folder that is a symlink to a real folder is a folder: nothing is said of it."""
+    if case == "owner":
+        _tool_python_as_another_account(env)
+    else:
+        _tool_python(env)
+    _config_step_2_stops_on(env, "clean")
+    db = _state_db(env)
+    support = db.parent.parent
+    support.mkdir(parents=True, exist_ok=True)
+    target = support if case == "above" else db.parent
+    kept = target.with_name(target.name + ".kept")
+    if target.exists():
+        target.rename(kept)
+    try:
+        if case == "fifo":
+            os.mkfifo(target)
+        elif case == "symlink":
+            real = support / "agentsync.real"
+            real.mkdir(0o700)
+            target.symlink_to(real)
+        else:
+            target.write_bytes(b"a made-up note\n")
+            target.chmod({"file-0000": 0, "file-0700": 0o700}.get(case, 0o644))
+        before = target.lstat().st_mode
+        listed = install_sh(env, "--list-folders")
+        logged = install_log(env)[-2]
+        cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
+        after = target.lstat().st_mode
+    finally:
+        if target.is_symlink() or (target.exists() and not target.is_dir()):
+            target.unlink()
+        if kept.exists():
+            kept.rename(target)
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert after == before, (oct(before), oct(after))
+    rerun = f"{INSTALL_SH} {wheel}"
+    if case == "symlink":
+        assert last_line(listed).endswith("(none is needed)"), last_line(listed)
+        assert "config_err" not in logged, logged
+        assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
+        return
+    assert last_line(listed).endswith(STATE_NOTDIR_TAIL), last_line(listed)
+    assert logged.endswith(" config_err=state-notdir"), logged
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert one_next(cp)
+    assert last_line(cp).startswith(STATE_NOTDIR_NEXT.format(rerun=rerun)), last_line(cp)
+    assert "chmod" not in last_line(cp) and "chown" not in last_line(cp), last_line(cp)
+
+
+@pytest.mark.parametrize("spot", ["state folder", "folder above"])
+def test_a_file_where_the_state_folder_belongs_is_the_persons_with_the_real_agentsync(
+    real_env: dict[str, str], wheel: Path, spot: str
+) -> None:
+    """B13 round 23 A2, A6, A21, A32, A80, with the real agentsync: the state folder (or Application
+    Support above it) moved aside and a 0644 file put in its place. Init exits 1 on it; step 1's tail and step
+    2's NEXT give the person the move, with no chmod, and the file keeps its mode (the agent's chmod 700 of it
+    made a data file executable, then the re-run blamed an ACL). Once the folder is back, the same command
+    passes."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    target = db.parent if spot == "state folder" else db.parent.parent
+    kept = target.with_name(target.name + ".kept")
+    target.rename(kept)
+    target.write_bytes(b"a made-up note\n")
+    target.chmod(0o644)
+    try:
+        listed = install_sh(env, "--list-folders")
+        cp = install_sh(env, str(wheel))
+        after = target.lstat().st_mode
+    finally:
+        target.unlink()
+        kept.rename(target)
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert last_line(listed).endswith(STATE_NOTDIR_TAIL), last_line(listed)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    assert last_line(cp).startswith(STATE_NOTDIR_NEXT.format(rerun=f"{INSTALL_SH} {wheel}")), last_line(cp)
+    assert "chmod" not in last_line(cp), last_line(cp)
+    assert stat.S_ISREG(after) and after & 0o777 == 0o644, oct(after)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["lock", "heartbeat", "holds", "governance", "queue", "acl", "ro", "missing", "audit", "manifest-too"],
+)
+def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file(
+    env: dict[str, str], case: str
+) -> None:
+    """B13 round 23 A17, A83 (probes HB, LK, GV, lock000, hb000, holds000, gov000): step 1 named a shut
+    manifest, folder, -wal or -shm, but said "(none is needed)" over a lock, heartbeat or governance file this
+    account cannot open, which step 2's status then stops on. Step 1 now reads the files status checks by name
+    (the lock, the heartbeat, governance/, its holds.json and purge queue) by the same owners: this account's
+    own at a mode that refuses it, the agent's chmods; an ACL or a read-only volume, the person's. A file that
+    is missing, or audit.jsonl, which no check reads, says nothing; a shut manifest beside a shut lock keeps
+    the config step's tail, which stops first."""
+    _config_step_2_stops_on(env, "clean-real")
+    db = _state_db(env)
+    root = db.parent
+    gov = root / "governance"
+    gov.mkdir(0o700)
+    made = {
+        root / "agentsync.lock": b"",
+        root / "heartbeat.json": b"{}",
+        gov / "holds.json": b"{}",
+        gov / "purge-queue.json": b"[]",
+        gov / "audit.jsonl": b"",
+    }
+    if case != "missing":
+        for path, data in made.items():
+            path.write_bytes(data)
+            path.chmod(0o600)
+    shut = {
+        "lock": root / "agentsync.lock",
+        "heartbeat": root / "heartbeat.json",
+        "holds": gov / "holds.json",
+        "governance": gov,
+        "queue": gov / "purge-queue.json",
+        "audit": gov / "audit.jsonl",
+        "manifest-too": root / "agentsync.lock",
+    }.get(case)
+    if case == "ro":
+        _tool_python_read_only(env, root / "heartbeat.json")
+    else:
+        _tool_python(env)
+    try:
+        if case == "acl":
+            _acl_deny(root / "heartbeat.json")
+        if shut is not None:
+            shut.chmod(0)
+        if case == "manifest-too":
+            db.chmod(0)
+        cp = install_sh(env, "--list-folders")
+    finally:
+        db.chmod(0o600)
+        gov.chmod(0o700)
+        for path in made:
+            if path.exists():
+                subprocess.run(["/bin/chmod", "-N", str(path)], capture_output=True, check=False)
+                path.chmod(0o600)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    logged = install_log(env)[-2]
+    if case in ("missing", "audit"):
+        assert last_line(cp).endswith("(none is needed)"), last_line(cp)
+        assert "config_err" not in logged, logged
+        return
+    word = {"acl": "state-file-refused", "ro": "state-file-refused", "manifest-too": "state-access"}.get(
+        case, "state-file-access"
+    )
+    assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
+    assert logged.endswith(f" config_err={word}"), logged
+
+
+@pytest.mark.parametrize("side", ["empty-wal", "shm", "wal-with-frames", "both"])
+def test_a_side_file_this_account_cannot_read_stops_step_2_at_its_config_step_on_the_agents_chmod(
+    real_env: dict[str, str], wheel: Path, side: str
+) -> None:
+    """B13 round 23 A78 (probes owner-wal000, owner-shm000), with the real agentsync: a -wal or -shm at 0000,
+    empty or not, stops init, while step 1 said step 2 stops at its status step ("an empty one may not stop
+    it") and step 2's NEXT was fail's generic "fix the error above": state_open_fix read only the folder and
+    the manifest, and the prompt grants no chmod named on an error: line. Step 1 now says the config step, and
+    step 2's NEXT names the chmod 600 of each side file this account cannot open, in one command, the one
+    status names; run as written, the re-run passes. One it can read but not write (0400) keeps round 21 Y57's
+    words, in the test above."""
+    env = real_env
+    folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
+    folder.mkdir(parents=True)
+    (folder / "plan.txt").write_text("a made-up plan\n", encoding="utf-8")
+    first = install_sh(env, str(wheel), "--source-local", str(folder))
+    assert first.returncode == 0, first.stdout + first.stderr
+    db = _state_db(env)
+    wal, shm = (db.with_name(db.name + end) for end in ("-wal", "-shm"))
+    if side == "empty-wal":
+        wal.write_bytes(b"")
+        shut = [wal]
+    else:
+        # a header write left in the -wal by a process that ended with no checkpoint (as in the test above)
+        subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                "import os, sqlite3, sys\n"
+                "c = sqlite3.connect(sys.argv[1], isolation_level=None)\n"
+                "c.execute('PRAGMA journal_mode=WAL')\n"
+                "c.execute('PRAGMA wal_autocheckpoint=0')\n"
+                "c.execute('PRAGMA application_id=1')\n"
+                "os._exit(0)\n",
+                str(db),
+            ],
+            check=True,
+        )
+        shut = {"shm": [shm], "wal-with-frames": [wal], "both": [wal, shm]}[side]
+    for f in shut:
+        f.chmod(0)
+    try:
+        listed = install_sh(env, "--list-folders")
+        cp = install_sh(env, str(wheel))
+    finally:
+        for f in (wal, shm):
+            if f.exists():
+                f.chmod(0o600)
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    assert last_line(listed).endswith(STATE_OPEN_TAIL["state-access"]), last_line(listed)
+    assert "an empty one may not" not in last_line(listed), last_line(listed)
+    assert cp.returncode == 1, cp.stdout + cp.stderr
+    assert ("config", "failed", "1", "") in steps(install_log(env))
+    fix = "chmod 600 " + " ".join(f"~/'Library/Application Support/agentsync/{f.name}'" for f in shut)
+    assert last_line(cp).startswith(STATE_CHMOD_NEXT.format(fix=fix, rerun=f"{INSTALL_SH} {wheel}")), (
+        last_line(cp)
+    )
+    for f in shut:
+        f.chmod(0)
+    subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
+    again = install_sh(env, str(wheel))
+    assert again.returncode == 0, again.stdout + again.stderr
 
 
 def test_no_next_names_the_percent_q_args() -> None:

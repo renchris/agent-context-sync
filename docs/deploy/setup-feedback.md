@@ -611,24 +611,30 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and
   ~/.local/bin/agentsync status prints it on its state_dir lines`; for this account's own whose fix is a chmod,
   `state-access`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
-  account cannot open (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2's NEXT
-  names it, and ~/.local/bin/agentsync status prints it on its state_dir lines`; for one no chmod fixes,
+  account cannot open (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's
+  NEXT names them, and ~/.local/bin/agentsync status prints it on its state_dir lines` (plural since round 23 A37: a
+  shut folder and the file in it take a chmod each); for one no chmod fixes,
   `state-refused`, `; step 2 stops at its config step on agentsync's state folder or a file in it, which this
-  account is refused though its mode allows it (an ACL, a folder above it this account cannot search, or a volume
-  mounted read-only; not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its state_dir lines`; and for
+  account is refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot search, or
+  a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and
+  ~/.local/bin/agentsync status prints it on its state_dir lines` (round 23 A75: it said "though its mode allows
+  it", false for a read-only volume, which refuses whatever the mode); and for
   a -wal or -shm, `state-side-owner`, `; step 2 stops at its status step on the -wal or -shm of agentsync's state
   file while it holds unwritten changes or is in use (an empty one may not stop it), which another account owns (not
   damage): fixing that is the person's (a sudo chown; the agent runs no sudo), and ~/.local/bin/agentsync status
   prints it on its state_dir.files line`, or `state-side-access`, `; step 2 stops at its status step on the -wal or
   -shm of agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which
-  this account cannot write (a mode, not damage): the chmod that fixes it is the agent's to run, once, when step 2
-  stops on it, and ~/.local/bin/agentsync status prints it on its state_dir.files line` (the condition: an empty one
+  this account cannot write (a mode, not damage): the chmods that fix it are the agent's to run, once each, when
+  step 2 stops on them, and ~/.local/bin/agentsync status prints it on its state_dir.files line` (the condition: an empty one
   leaves no stop once the manifest is opened; until round 22 Z36 it read "step 2's status may fail on", not the
   "step 2 stops on" the prompt relays), or, when an ACL refuses one its mode allows, `state-side-refused`, `; step 2
   stops at its status step on the -wal or -shm of agentsync's state file while it holds unwritten changes or is in
-  use (an empty one may not stop it), which this account is refused though its mode allows it (an ACL, or a volume
-  mounted read-only; not damage): fixing that is the person's,
-  and ~/.local/bin/agentsync status prints it on its state_dir.files line`. A folder or file whose own mode already
+  use (an empty one may not stop it), which this account is refused, and a chmod of it does not fix that (an ACL, or
+  a volume mounted read-only, whatever its mode; not damage): fixing that is the person's, and
+  ~/.local/bin/agentsync status prints it on its state_dir.files line`. Those -wal and -shm words are for one this
+  account can read but not write; one it cannot read stops init as the manifest does, empty or not, so it takes
+  the config step's words above, and step 2's config step names its chmod 600 in its own `NEXT:` (round 23 A78:
+  that `NEXT:` was `fix the error above`). A folder or file whose own mode already
   allows this account is refused by an ACL or a sandbox, which no chmod changes: `state-refused` (or
   `state-side-refused`), the person's; so is one on a volume mounted read-only, whatever its mode, since a chmod
   fails there (round 22 Z79: the words named only an ACL or a folder above it). An installed agentsync without
@@ -653,7 +659,31 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   move the folder aside), and ~/.local/bin/agentsync status prints it on its state_dir.manifest line`, with no
   reinstall hedge, and step 2's config step its own `NEXT:` (`agentsync's state file, manifest.sqlite, is a folder
   or something else that is not a file (...): fixing it is the person's (...), not a step for the agent, so show them
-  the error and go on to the report; ...`), where it said `fix the error above` (round 22 Z11). When step 2 would
+  the error and go on to the report; ...`), where it said `fix the error above` (round 22 Z11); since round 23 A46 a
+  symlink there counts by what it points to, so a link to a folder or a link loop is no file either. Something that
+  is not a folder (a file, a symlink to one, a fifo) where the state folder or a folder above it belongs is the
+  person's too, judged before every probe above (round 23 ruling 4, A2, A6, A21, A32, A80: the access probe gave
+  the agent a chmod of that file, then the re-run blamed an ACL): `state-notdir`, `; step 2 stops at its config step
+  on agentsync's state folder, which is not a folder (a file or something else is where it or a folder above it
+  belongs; not damage, not a mode): fixing that is the person's (they move it aside, keeping a copy), and
+  ~/.local/bin/agentsync status prints it on its state_dir line`, and step 2's `NEXT:` is the person's, with no
+  chmod (`agentsync's state folder is not a folder (...): fixing it is the person's (they move it aside, keeping a
+  copy), not a step for the agent, ...`). When none of those is said, the files status checks by name, the lock,
+  the heartbeat, governance/ and its holds.json and purge queue (never audit.jsonl, which no check reads), are read
+  the same way, since step 2 stops on them at its status step (round 23 A17, A83: the list said `(none is needed)`
+  over them): `state-file-owner`, `; step 2 stops at its status step on a file or folder agentsync's status checks
+  in its state folder (the lock, the heartbeat, or the governance folder or a file in it), which another account
+  owns, so this one cannot open it (not damage): fixing that is the person's (a sudo chown; the agent runs no
+  sudo), and ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines`;
+  `state-file-access`, `; step 2 stops at its status step on a file or folder agentsync's status checks in its
+  state folder (the lock, the heartbeat, or the governance folder or a file in it), which this account cannot open
+  (a mode, not damage): the chmods that fix it are the agent's to run, once each, as step 2's NEXT names them, and
+  ~/.local/bin/agentsync status prints it on its lock, heartbeat or governance lines`; or `state-file-refused`, `;
+  step 2 stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the
+  heartbeat, or the governance folder or a file in it), which this account is refused, and a chmod of it does not
+  fix that (an ACL, a folder above it this account cannot search, or a volume mounted read-only, whatever its mode;
+  not damage): fixing that is the person's, and ~/.local/bin/agentsync status prints it on its lock, heartbeat or
+  governance lines`. When step 2 would
   reinstall agentsync first
   (the installed one is not this checkout's build, the checkout has uncommitted changes, or its bundled pandoc is
   not whole), the tail opens `; step 2 reinstalls agentsync first, and if this checkout's agentsync rejects it
@@ -661,8 +691,8 @@ needs no folder answer ([CONTRACTS §16.29](../design/CONTRACTS.md)):
   the folder question included, after any vanished tail; the list's exit is as without it, and its log line adds
   `config_err=<words>`, the comma-joined fixed words `policy`, `governance`, `state`, `remote`, `state-table`,
   `state-access`, `state-owner`, `state-refused`, `state-side-access`, `state-side-owner`,
-  `state-side-refused` and `state-notfile`,
-  never the error's text.
+  `state-side-refused`, `state-notfile`, `state-notdir`, `state-file-access`, `state-file-owner` and
+  `state-file-refused`, never the error's text.
   Step 1 tells the person ([CONTRACTS §16.130](../design/CONTRACTS.md), B13 round 18 V77).
 - A config the list could not read (logged `synced=unreadable marks=<why>`) gets no mark and no `already synced`
   line; the folder question's `NEXT:` adds `; this Mac has a config (<config>) whose folders could not be read:
