@@ -1052,6 +1052,7 @@ class CycleReport:
     legacy_retried: int = 0  # 2026-10-20 (§16.144 W18): an older build's settled failures retried from this run
     legacy_cleared: int = 0  # 2026-10-21 (§16.155 Y28): of those, the ones this run made current (the note's)
     legacy_settled: int = 0  # 2026-10-21 (§16.162 Z55): of those, the ones this run settled, no try left (the note's)
+    legacy_waiting: int = 0  # 2026-10-22 (§16.168 A63): of those, the no-converter stubs a later run reads again (the note's)
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -8106,6 +8107,7 @@ other key that would be 0 is left out. No reader depended on the old content.
 | `legacy_retried` | **Amended 2026-10-20, §16.144 W18:** failed conversions an older build had settled for good that this run gave the bounded retries again (`Manifest.retry_settled_failures`, once per manifest); the sync prints a note and the report's Repeat conversions part names the run. **Amended 2026-10-21, §16.162 Z57:** the move is `Manifest.retry_settled_failure_rows`; the counting `retry_settled_failures` is removed (no caller since Y28) |
 | `legacy_cleared` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run made current (never more than `legacy_retried`); the report's `tried again after an upgrade` bullet says `which that run converted` for them and keeps the retry words for the rest |
 | `legacy_settled` | **Amended 2026-10-21, §16.158 Z35:** of those, the ones this run settled with no retry left (§16.162 Z55's unreadable, refused or removed; with `legacy_cleared` never more than `legacy_retried`); the report says `that run settled with no try left` for them, never the retry words |
+| `legacy_waiting` | **Amended 2026-10-22, §16.168 A63:** of those, the `no converter` stubs a later run reads again once a converter for their type is ready (the OCR engine for an image; not one a label rule withholds, nor an image only a download would read), neither settled nor retried (with `legacy_cleared` and `legacy_settled` never more than `legacy_retried`); the report says `that run left waiting for a converter` for them |
 | `converted_unreadable` | (**Amended 2026-10-12, §16.45 R2:**) of those, conversions whose result is an UNREADABLE stub (encrypted, not the type its name says, no text): cached, kept and not tried again until the bytes change. Never in `converted_failed` |
 | `converted_seen` | of those, files whose own pages an earlier run had made from the same bytes: one of the file's output rows already carried the conversion's action key, and that key's cache row was last used by an earlier run (`_Cycle._converted_before`) |
 | `converted_again` | of those, when that row's `last_used_run` is this run's id less 1: the bytes were last converted in the run just before |
@@ -27284,6 +27286,10 @@ no try left)` with it for the rest. So the run-record count §16.155 Y28 and §1
 (lane E agreed; its section is landed and left as written, this line is the correction). Tests:
 `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`,
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current`.
+Amended 2026-10-22, §16.168 A63: a third count, `legacy_waiting`, reads `N that run left waiting for a converter`,
+and the bullet adds `a file left waiting is read again by the first run with a converter for its type (the OCR
+engine for an image), so an old conversion error can show in that run`; neither the settled words nor the retry
+words.
 
 **A `[remote.origin]` section's URL is read and redacted** (Z76, the report's half; amends §16.152 Y36). Git still
 applies the dotted form; `_git_remotes` reads it (and `[remote.a "b"]` as `a.b`). install.sh's reader is lane
@@ -27759,6 +27765,10 @@ file deleted upstream, current. Test:
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again` (an unreadable
 stub and a label refusal: the settled note once, neither `now current` nor `may show again`, and two more syncs
 with no note and no converter call), and Y28's and W18's tests unchanged.
+Amended 2026-10-22, §16.168 A63: a `no converter` stub the upgrade's sync left (an image with no OCR engine, or
+after the helper stopped) is not settled, as a later sync reads it once its converter is ready; it is counted in
+`legacy_waiting` with a note of its own. One a label rule withholds, or an image only a download would read, stays
+settled.
 
 **doctor's words claim no import safety from convert (Z56; `agentsync.ops.doctor`; dated line at §16.156
 Y54).** `_RETRY_CLAUSE`'s docstring and §16.156 Y54 said doctor imports the clause from `skill`, "never from
@@ -28004,6 +28014,28 @@ three-way split classifies it; a manifest with no alias reads as before. Not the
 pairs" in `_sync_source`: the alias table already holds them. Test:
 `test_cycle.py::test_the_upgrades_retry_note_follows_a_row_a_safe_save_re_keyed_in_the_same_sync` (with the
 converter working, `now current` and `legacy_cleared` 1; still failing, the retry words; never `settled`).
+
+**A `no converter` stub the upgrade's sync left waits for its converter (A63; `agentsync.cycle`, `agentsync.model`,
+`agentsync.cli`, `agentsync.setup_report`; dated lines at §16.28, §16.158 Z35 and §16.162 Z55).** Z55 counted as
+settled every moved row not live and not quarantined `conversion failed`, which takes in the `no converter for .png`
+stub an image gets when the upgrade's sync has no OCR engine, or after the helper stopped answering in that sync
+(`_converting`'s registry without OCR). The note said `is settled ... it is not tried again`, the report `which that
+run settled with no try left`, and the next sync with the engine read it again (`_lacks`, `_reread_targets`), with
+the alarm for a re-read that could not be converted. `_legacy_outcomes` now splits such a stub off unless
+`_stub_settled` says no later sync on this config reads it: a label rule withholds its suffix
+(`label_withheld_suffixes`, msg-mime's binary .msg refusal among them), or it is an image only a download would read
+(a Graph item, an online-only file), which a re-read never fetches. The rest are `CycleReport.legacy_waiting`, kept
+in the run record, and the sync prints `note: N conversion(s) an older build gave up on was/were tried again in this
+sync and is/are refused until a converter for its/their type is ready (the OCR engine for an image); the next sync
+that has one reads it/them again, and its error/their errors may show again`, neither the settled words nor the
+up-to-N-tries retry words: the re-read reads it, not the retry counter. Not the finder's "no converter claims the
+suffix in this run": under a label rule no image converter is registered even with an engine, and that stub is
+settled; and with a helper that stopped, the registry still claims `.png`, so the stub would stay "settled". Tests:
+`test_cycle.py::test_the_upgrades_retry_note_says_an_image_stubbed_for_want_of_its_engine_waits_for_it` (no engine
+and a helper that stops: the waiting note, `legacy_waiting` 1, and the next sync with a working engine reads the
+image; a label rule with an engine: the settled note and no read in two more syncs),
+`test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the waiting
+words, alone and beside a settled file).
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 

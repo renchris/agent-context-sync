@@ -510,6 +510,10 @@ class CycleReport:
     # this sync and is settled", never the retry words (B13 round 22 Z55); the run record keeps it as well
     # (``legacy_settled``), so the report gives them no retry words either (B13 round 22 Z35)
     legacy_settled: int = 0
+    # of those, the ``no converter`` stubs a later run reads again once a converter for their type is ready
+    # (the OCR engine for an image): "is refused until a converter for its type is ready", neither the
+    # settled words nor the retry words, and the run record keeps it (``legacy_waiting``; B13 round 23 A63)
+    legacy_waiting: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

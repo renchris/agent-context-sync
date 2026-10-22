@@ -10644,6 +10644,32 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
             f"- tried again after an upgrade: {want} An older build had given up on these conversions" in part
         )
         assert ("an old conversion error can show in those runs" in part) == retry, part
+    # B13 round 23 A63: a stub left for its converter, which the first run with one reads again, is neither
+    # settled with no try left nor given the retry words
+    waits = "a file left waiting is read again by the first run with a converter for its type"
+    for counts, want, retry in (
+        (
+            {"legacy_retried": 1, "legacy_waiting": 1},
+            "run 4, 1 file, which that run left waiting for a converter.",
+            False,
+        ),
+        (
+            {"legacy_retried": 3, "legacy_settled": 1, "legacy_waiting": 1},
+            "run 4, 3 files (1 that run settled with no try left, 1 that run left waiting for a converter).",
+            True,
+        ),
+    ):
+        seed = Seed(fake_mac["config"])
+        seed.m._db.execute(
+            "UPDATE runs SET counts_json = ? WHERE run_id = 4", (json.dumps({"converted": 1, **counts}),)
+        )
+        seed.close()
+        part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
+        assert (
+            f"- tried again after an upgrade: {want} An older build had given up on these conversions" in part
+        )
+        assert ("an old conversion error can show in those runs" in part) == retry, part
+        assert waits in part and "settled with no try left." not in part, part
 
 
 @pytest.mark.parametrize(("last_used", "said"), [(5, "the newest run (5)"), (4, "the run before it")])

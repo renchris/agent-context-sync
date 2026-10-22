@@ -4449,6 +4449,87 @@ def test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again
     assert tries == [outcome], "no try is left, as the note says"
 
 
+UPGRADE_WAITS = (
+    "  note: 1 conversion an older build gave up on was tried again in this sync and is refused until a "
+    "converter for its type is ready (the OCR engine for an image); the next sync that has one reads it "
+    "again, and its error may show again"
+)
+"""The upgrade's note over a ``no converter`` stub a later sync reads again (B13 round 23 A63)."""
+
+
+@pytest.mark.parametrize("case", ["no engine", "helper stops", "label rule"])
+def test_the_upgrades_retry_note_says_an_image_stubbed_for_want_of_its_engine_waits_for_it(
+    tmp_path: Path,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """B13 round 23 A63: the upgrade's sync tried an image an older build gave up on with no OCR engine
+    (or with a helper that stopped answering in that sync), gave it the ``no converter`` stub, and the note
+    called it settled, "not tried again"; the next sync with the engine read it again. Such a stub waits for
+    its converter: its own note, the run record's ``legacy_waiting``, and the next sync with a working engine
+    reads it. Under a label rule no image is read, so there the stub is settled, as the note says."""
+    engine = _use_ocr(monkeypatch, tmp_path)
+    real = image_mod.ImageConverter.convert
+    broken = [True]
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if broken[0]:
+            raise RuntimeError("Contoso decoder crashed")  # a converter's bug, not the helper's
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(image_mod.ImageConverter, "convert", convert)
+    rel = "projects/Contoso chart.png"
+    picture(local_source_dir / rel, "Loading dock")
+    config = config_with(tmp_path, local_source_dir)
+    cfg = str(config.config_path)
+    cli.main(["sync", "--config", cfg])
+    with Manifest(config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+        assert row is not None and (row.state_reason or "").startswith(convert_mod.CONVERSION_FAILED), row
+        m.set_meta(cycle_mod._RETRY_META + SID, "{}")
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+    _settle_as_an_older_build(config, rel)
+    broken[0] = False
+    if case == "no engine":
+        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: None)
+    elif case == "helper stops":
+        failing = fake_engine(tmp_path / "failing", fail=True)
+        monkeypatch.setattr(cycle_mod.ocr, "engine", lambda _convert, _cache_dir: failing)
+    else:
+        config = config_with(tmp_path, local_source_dir, LABEL_RULE)
+    capsys.readouterr()
+    cli.main(["sync", "--config", cfg])
+    out = capsys.readouterr().out
+    notes = [ln for ln in out.splitlines() if "an older build gave up on " in ln]
+    with Manifest(config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert row is not None and cycle_mod._no_converter_stub(row), row
+    record = _run_record(config)
+    if case == "label rule":
+        assert notes == [
+            "  note: 1 conversion an older build gave up on was tried again in this sync and is settled; "
+            "this sync's counts say how (unreadable, refused or removed), and it is not tried again"
+        ], out
+        assert (record.get("legacy_settled"), record.get("legacy_waiting")) == (1, None), record
+        seen = len(reads(engine.helper))
+        for _ in range(2):
+            cli.main(["sync", "--config", cfg])
+            assert "an older build gave up on" not in capsys.readouterr().out
+        assert len(reads(engine.helper)) == seen, "a label rule reads no image, as the note says"
+        return
+    assert notes == [UPGRADE_WAITS], out
+    assert "settled" not in out and "up to 2 times" not in out, out
+    assert (record.get("legacy_settled"), record.get("legacy_waiting")) == (None, 1), record
+    healthy = _use_ocr(monkeypatch, tmp_path)
+    cli.main(["sync", "--config", cfg])
+    assert "an older build gave up on" not in capsys.readouterr().out
+    assert len(reads(healthy.helper)) == 1, "the next sync with the engine reads it, as the note says"
+    fm, body = _image_page(config, rel)
+    assert fm["status"] == "current" and body.rstrip().endswith("Loading dock"), (fm, body)
+
+
 def test_the_upgrades_retry_note_counts_a_source_this_sync_does_not_read_in_its_own_syncs(
     tmp_path: Path,
     local_source_dir: Path,

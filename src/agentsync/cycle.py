@@ -2791,7 +2791,7 @@ class _Cycle:
         auth_required = any(a.auth_required for a in self.accs.values())
         failed = self._blocking_count() > 0 or any(a.failed for a in self.accs.values())
         exit_code = 77 if auth_required else (1 if failed else 0)
-        cleared, settled = self._legacy_outcomes()
+        cleared, settled, waiting = self._legacy_outcomes()
         return CycleReport(
             run_id=self.run_id,
             mode=self.mode,
@@ -2815,14 +2815,21 @@ class _Cycle:
             legacy_retried=self._tally["legacy_retried"],
             legacy_cleared=cleared,
             legacy_settled=settled,
+            legacy_waiting=waiting,
         )
 
-    def _legacy_outcomes(self) -> tuple[int, int]:
-        """Of the rows the upgrade's retry moved, ``(current, settled)`` after this run, in one manifest read:
-        current is live (or dataless) again; settled is a row this sync tried or removed with no retry left,
-        that is gone, a tombstone, or held for a reason other than a failed conversion (an unreadable or
-        refused stub). The sync's note gives each its own words and keeps the retry words for the rest, which
-        failed again or were not read (--source, paused, out of time); (0, 0) when the manifest cannot say
+    def _legacy_outcomes(self) -> tuple[int, int, int]:
+        """Of the rows the upgrade's retry moved, ``(current, settled, waiting)`` after this run, in one
+        manifest read: current is live (or dataless) again; settled is a row this sync tried or removed with
+        no retry left, that is gone, a tombstone, or held for a reason other than a failed conversion (an
+        unreadable or refused stub); waiting is a ``no converter`` stub a later sync on this config reads
+        again once a converter for it is ready (``_stub_settled``: not one a label rule withholds, nor an
+        image only a download would read), which no try counts and the re-read reads, so it is neither
+        settled nor retried (B13 round 23 A63: an image the upgrade's sync stubbed with no OCR engine, or
+        after the helper stopped, was called settled and "not tried again", and the next sync with the engine
+        read it again). The sync's note gives each its own words and keeps the retry words for the rest,
+        which failed again or were not read (--source, paused, out of time); (0, 0, 0) when the manifest
+        cannot say
         (B13 round 21 Y28: the note told of an error that "may show again" over a file the same sync had
         converted; round 22 Z55: and over a file it had settled as unreadable or refused, never tried
         again). A row a safe-save re-keyed in this run is read under its new id, through the alias the rekey
@@ -2836,18 +2843,32 @@ class _Cycle:
                     row = self.manifest.get_item(sid, now)
                 rows.append(row)
         except Exception:  # the report never fails over a count
-            return 0, 0
-        current = settled = 0
+            return 0, 0, 0
+        current = settled = waiting = 0
         for row in rows:
             if row is not None and row.state in (RowState.LIVE, RowState.DATALESS):
                 current += 1
+            elif row is not None and _no_converter_stub(row) and not self._stub_settled(row):
+                waiting += 1
             elif (
                 row is None
                 or row.state is RowState.TOMBSTONE
                 or not (row.state_reason or "").startswith(CONVERSION_FAILED)
             ):
                 settled += 1
-        return current, settled
+        return current, settled, waiting
+
+    def _stub_settled(self, row: ItemRow) -> bool:
+        """True when ``row``'s ``no converter`` stub is one no later sync on this config reads again: a label
+        rule withholds its suffix (an image, a .msg, msg-mime's own refusal of a binary .msg among them), or
+        it is an image that reading means a download for (a Graph item, an online-only file), which a re-read
+        never fetches (``_no_converter``). Any other is read again once a converter for its type is ready:
+        the OCR engine for an image (``_lacks``, ``_reread_targets``; B13 round 23 A63)."""
+        suffix = Path(row.name).suffix.lower()
+        if self.registry.policy.labels_active and suffix in label_withheld_suffixes():
+            return True
+        graph = any(s.kind.is_graph for s in self.config.sources if s.id == row.source_id)
+        return suffix in ImageConverter.extensions and (graph or row.dataless)
 
     def _rescreen_left(self) -> int:
         """The [policy] re-screen's backlog after this run, as STATE.md's line counts it; 0 when none is
@@ -2899,7 +2920,8 @@ class _Cycle:
         ]:  # B13 round 22 Z35: the record says what this run made of them
             cleared = min(report.legacy_cleared, retried)
             self._tally["legacy_cleared"] = cleared
-            self._tally["legacy_settled"] = min(report.legacy_settled, retried - cleared)
+            settled = self._tally["legacy_settled"] = min(report.legacy_settled, retried - cleared)
+            self._tally["legacy_waiting"] = min(report.legacy_waiting, retried - cleared - settled)  # A63
         counts.update(self._run_tally())
         self.manifest.finish_run(self.run_id, status=status, commit_sha=report.commit_sha, counts=counts)
         try:
@@ -2969,7 +2991,9 @@ class _Cycle:
         ``legacy_cleared`` and ``legacy_settled``: of those, the ones this run made current and the ones it
         settled with no retry left (``_legacy_outcomes``), so the report, read days later, says so and keeps
         the retry words for the rest (B13 round 22 Z35, after Z55's note; together never more than
-        ``legacy_retried``);
+        ``legacy_retried``); ``legacy_waiting``: of those, the ``no converter`` stubs a later run reads again
+        once a converter for them is ready, neither settled nor retried (B13 round 23 A63; with the two
+        before it never more than ``legacy_retried``);
         ``converted_unreadable``: of those, conversions whose
         result is an UNREADABLE stub (encrypted, not the type its name says, no text: cached and kept, not
         tried again until the bytes change), never in ``converted_failed`` (§16.45 R2); ``converted_seen``:

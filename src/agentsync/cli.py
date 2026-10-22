@@ -536,9 +536,12 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
         # in its own source's syncs, so the tries are counted in those, not "from this sync on" (round 20
         # X53). Split by outcome: the ones this sync made current say so, and the retry words are for the rest
         # (B13 round 21 Y28), the ones it settled as unreadable, refused or removed say that no try is left
-        # (round 22 Z55); each note keeps "an older build gave up on ", which install.sh's grep shows
+        # (round 22 Z55); a ``no converter`` stub a later sync reads once its converter is ready (the OCR
+        # engine for an image) is neither settled nor retried, and says so (round 23 A63); each note keeps
+        # "an older build gave up on ", which install.sh's grep shows
         cleared = min(report.legacy_cleared, report.legacy_retried)
         settled = min(report.legacy_settled, report.legacy_retried - cleared)
+        waiting = min(report.legacy_waiting, report.legacy_retried - cleared - settled)
         if cleared:
             _out(
                 f"  note: {plural(cleared, 'conversion')} an older build gave up on "
@@ -552,7 +555,16 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
                 f"{'is' if settled == 1 else 'are'} settled; this sync's counts say how (unreadable, refused "
                 f"or removed), and {'it is' if settled == 1 else 'they are'} not tried again"
             )
-        if n := report.legacy_retried - cleared - settled:
+        if waiting:
+            one = waiting == 1
+            _out(
+                f"  note: {plural(waiting, 'conversion')} an older build gave up on "
+                f"{'was' if one else 'were'} tried again in this sync and {'is' if one else 'are'} refused "
+                f"until a converter for {'its' if one else 'their'} type is ready (the OCR engine for an "
+                f"image); the next sync that has one reads {'it' if one else 'them'} again, and "
+                f"{'its error' if one else 'their errors'} may show again"
+            )
+        if n := report.legacy_retried - cleared - settled - waiting:
             tries = plural(_CONVERT_RETRIES, "time")
             whose = "its source" if n == 1 else "their sources"
             are = "is" if n == 1 else "are"
