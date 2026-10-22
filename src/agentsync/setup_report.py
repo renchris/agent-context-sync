@@ -11100,6 +11100,19 @@ _STATE_OPEN_RE = re.compile(r"error: state: .* cannot be opened\b.*?(?:\(fix: (?
 cannot be opened: <reason> (fix: <fix>)``): never printed, its path holds the home folder."""
 
 
+_STATE_NOT_FILE_RE = re.compile(r"error: state: .* is (?P<kind>[^,]+), not the state file\b")
+"""The sync's line for something not a file where manifest.sqlite belongs (``cli._misplaced``: doctor's
+``_not_a_file`` kinds, and lane B's symlink to a folder and symlink loop, B13 round 23 A46), which holds no
+"cannot be opened" (B13 round 22 Z51)."""
+_STATE_NOT_FOLDER_RE = re.compile(
+    r"error: state: .* is (?:not a (?:directory|folder)\b|[^,]+, not a folder\b"
+    r"(?P<above>, and the state folder )?)"
+)
+"""The sync's line for something not a folder where the state folder belongs (state_dir's words: "<root> is
+not a directory", or "<path> is <kind>, not a folder"), or where a folder above it belongs (", and the state
+folder <root> sits under it"; B13 round 23 ruling 4)."""
+
+
 _FOLDER_ACL_FIX_HEADS = (
     "the person gives this account read, write and search access to the folder ",
     "the person gives this account read-attributes, read, write and search access to the folder ",
@@ -11130,6 +11143,25 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
     block = _run_block(r, run)
     if block is None:
         return None
+    # B13 round 23 A86, A11: something not a file or folder where the state belongs, the person's to move
+    # aside (doctor's MANIFEST_FIX, state_dir's move-aside): the outcome named no cause, as the line holds no
+    # "cannot be opened"
+    for ln in block:
+        kind = _STATE_NOT_FILE_RE.search(ln.strip())
+        if kind is not None:
+            what = kind.group("kind")
+            what = what if what == "not a regular file" else f"{what}, not a file"
+            return f" on agentsync's state file, which is {what}: the person's to fix", (
+                "after it was moved aside or the state file put back"
+            )
+        folder = _STATE_NOT_FOLDER_RE.search(ln.strip())
+        if folder is not None:
+            where = (
+                "a folder above agentsync's state folder"
+                if folder.group("above")
+                else "agentsync's state folder"
+            )
+            return f" on {where}, which is not a folder: the person's to fix", "after it was moved aside"
     # install.sh's own verdict first: ``state_owned_elsewhere``'s NEXT (a sync's line for a root-owned
     # manifest can carry the generic access fix, whoever owns the file)
     elsewhere = any("is owned by another account, so this one cannot open it" in ln for ln in block)

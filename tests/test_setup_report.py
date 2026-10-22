@@ -8909,6 +8909,73 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         got = items(failed, worked)
         assert got.endswith(f"; the same command was run again after {after} and ended 0"), got
         assert "file's mode" not in got and "files' modes" not in got, got
+    # B13 round 23 A86, A11: something not a file where manifest.sqlite belongs, or not a folder where the
+    # state folder belongs (cli._misplaced's line, no "cannot be opened"), names its kind and whose in both
+    # the item and the outcome; the kind is the line's own, never "a folder" for a fifo
+    root = "~/Library/Application Support/agentsync"
+    for line, words, after in (
+        (
+            f"error: state: {db} is a folder, not the state file (fix: {doctor.MANIFEST_FIX})",
+            "on agentsync's state file, which is a folder, not a file: the person's to fix",
+            "it was moved aside or the state file put back",
+        ),
+        (
+            f"error: state: {db} is a fifo, not the state file (fix: {doctor.MANIFEST_FIX})",
+            "on agentsync's state file, which is a fifo, not a file: the person's to fix",
+            "it was moved aside or the state file put back",
+        ),
+        (
+            f"error: state: {root} is not a directory (fix: move {folder} aside)",
+            "on agentsync's state folder, which is not a folder: the person's to fix",
+            "it was moved aside",
+        ),
+        # lane B's words (round 23 ruling 4, A46): the kind of a symlink, and a folder above the state folder
+        (
+            f"error: state: {db} is a symlink to a folder, not the state file (fix: {doctor.MANIFEST_FIX})",
+            "on agentsync's state file, which is a symlink to a folder, not a file: the person's to fix",
+            "it was moved aside or the state file put back",
+        ),
+        (
+            f"error: state: {db} is a symlink loop, not the state file (fix: {doctor.MANIFEST_FIX})",
+            "on agentsync's state file, which is a symlink loop, not a file: the person's to fix",
+            "it was moved aside or the state file put back",
+        ),
+        (
+            f"error: state: /Users/x/Library/Application Support/agentsync is a file, not a folder (fix: the "
+            f"person moves {folder} aside, keeping a copy)",
+            "on agentsync's state folder, which is not a folder: the person's to fix",
+            "it was moved aside",
+        ),
+        (
+            "error: state: /Users/x/Library is a file, not a folder, and the state folder /Users/x/Library/"
+            "Application Support/agentsync sits under it (fix: the person moves ~/Library aside, keeping a "
+            "copy)",
+            "on a folder above agentsync's state folder, which is not a folder: the person's to fix",
+            "it was moved aside",
+        ),
+    ):
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            f"{line}\n"
+            "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
+            encoding="utf-8",
+        )
+        got = items(failed, worked)
+        assert got == (
+            f"- install.sh · step 2 · run 20260929T100000Z exited 1 at its config step {words}; the same "
+            f"command was run again after {after} and ended 0"
+        ), got
+        out.write_text(
+            f"# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n{line}\n",
+            encoding="utf-8",
+        )
+        log.write_text(LIST_RUN + failed, encoding="utf-8")
+        _rc, text, _ = report(tmp_path, fake_mac["config"])
+        outcome = _line(section(text, "Summary"), "- **outcome: ")
+        assert outcome.split("(computed: ", 1)[1].startswith(
+            f"install.sh exited 1 at its config step {words}"
+        ), outcome
+        assert "Library" not in outcome and "manifest" not in outcome, outcome
     # B13 round 22 Z6: a last run that stopped there names the cause and whose in the outcome, with no bracket
     above = (
         "the person gives this account search access to ~/'Library/Application Support', a folder above "
