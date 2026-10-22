@@ -1053,6 +1053,7 @@ class CycleReport:
     legacy_cleared: int = 0  # 2026-10-21 (§16.155 Y28): of those, the ones this run made current (the note's)
     legacy_settled: int = 0  # 2026-10-21 (§16.162 Z55): of those, the ones this run settled, no try left (the note's)
     legacy_waiting: int = 0  # 2026-10-22 (§16.168 A63): of those, the no-converter stubs a later run reads again (the note's)
+    heartbeat_refused: PermissionError | None = None  # 2026-10-22 (§16.167 A1): said once, by the CLI
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"
 """``schema`` value of the per-channel-per-month JSON the Teams arm writes and the teams converter reads.
@@ -23018,6 +23019,9 @@ the loop's state as the `state_dir.manifest` FAIL, so damage under a table that 
 command's NOTADB or CORRUPT error exits 65 on the one line; only a locked or busy database is one `error:` line,
 any other sqlite3 error keeps its traceback; MANIFEST_FIX ends `the deletion breaker's suspended removals and the
 archive it recorded; legal holds are kept, in governance/holds.json`.
+Amended 2026-10-22, §16.167 A29: MANIFEST_FIX moves heartbeat.json aside with the manifest, as no sync starts a new
+manifest while heartbeat.json records earlier passes; a manifest lost from a Mac that has synced FAILs
+state_dir.manifest with `doctor.LOST_MANIFEST_FIX`, the person's.
 
 **T19: a missing root whose app folder is gone names the sign-in first (`agentsync.loop`; amends §16.119 S3).**
 With the provider folder itself gone (signed out, `provider_state` `signed-out`), the wait read `renamed, moved or
@@ -28449,6 +28453,120 @@ lock's body, and the next sync broke it as stale and ran every source as a full 
 runs inside that `try` now, and the rotation logs `log rotation skipped: <folder> cannot be read: ...` and goes on.
 Tests: `test_cli.py::test_a_raise_after_the_lock_is_taken_releases_it_and_an_unsearchable_log_folder_syncs` and
 `test_review_fixes.py::test_a_log_folder_under_a_folder_this_account_cannot_search_is_a_warning_not_a_raise`.
+
+**A7, A22, A33, A58: a file where the state folder or a folder above it belongs is one FAIL, the person's
+(`agentsync.ops.doctor`, `agentsync.cli`; round 23 ruling 4).** With a file at `~/Library/Application
+Support/agentsync`, status gave state_dir's FAIL a `move <root> aside` fix that did not start `the person `, so
+its NEXT handed the agent the person's step; heartbeat FAILed with the generic `could not read ... report it`;
+governance crashed (`check crashed: GovernanceError: ... [Errno 20] Not a directory`); and the summary read
+`status: cannot read the state: GovernanceError: ...`. A file at `~/Library/Application Support` gave state_dir
+itself the generic fix (A58). `doctor.state_root_not_folder` names the first path, from `/` down, of the state
+folder and the folders above it that is there but is not a folder (a file, a symlink to one, a socket, a fifo,
+a symlink loop; read through links, so a link to a folder passes), keyed on that stat and never on any ENOTDIR.
+state_dir FAILs it, `<path> is a file, not a folder` (`, and the state folder <root> sits under it` for a folder
+above it), with the person's `the person moves <path> aside, keeping a copy` (no bracket inside the line's own,
+§16.161 Z7), never a chmod; sync's `error: state:` line gives the same, with STATE_MISPLACED_STEP. Every check
+that reads the state folder (lock, heartbeat, config.vanished_sources, graph.auth, sources.shared_content, the
+logs and cache under it, governance.hold, governance.purge_queue, governance.time_machine) says `[info] not
+checked: the state folder is not a folder (see state_dir)` (`doctor.STATE_FOLDER_NOT_A_FOLDER`, through
+`doctor.state_folder_unchecked`, which gives `STATE_FOLDER_UNCHECKED` for a folder this account cannot look
+inside as before); `doctor.stopped` maps an ENOTDIR or ELOOP under that path (a GovernanceError by its cause) to
+the same line; status's summary reads `the state folder is not a folder; the state_dir line says why`.
+`state_folder_shut` is not widened: its words say this account is refused, and its whose-fix paths would hand
+out a chmod. disk.state is still measured. The new kind, `a state folder that is not a folder`, goes into
+`doctor.PERSONS_KINDS` and its copies in lane P's one commit (§16.166, ruling 6). The report's half is lane RA's
+A23 (§16.164). Tests: `test_cli.py::test_a_file_where_the_state_folder_or_a_folder_above_it_belongs_is_one_fail_the_persons`
+(both places), `test_ops_doctor.py::test_a_state_folder_that_is_not_a_folder_is_named_from_the_top_down`, and the
+sync line in `test_cli.py::test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_and_next`.
+
+**A46: a symlink at manifest.sqlite is judged by what it points to (`agentsync.ops.doctor`).** Doctor read a link by
+`lstat` as a file, so a symlink loop got `state_dir.files — refused to this account by an ACL` and a link to a
+folder a `chmod 600` (which would follow the link onto the folder), while the setup report, reading through the
+link, pointed at a `state_dir.manifest` line doctor never printed. `doctor.state_file_kind` reads a link through:
+a loop is `a symlink loop`, a link to a folder (or another non-file) `a symlink to a folder`, each the nonfile
+FAIL (state_dir.manifest with MANIFEST_FIX for the manifest); a link to a regular file is still a file and a
+dangling one still "no manifest yet". The report's reading is the right one and is unchanged. install.sh's
+`state_not_a_file` half is not this lane's. Test:
+`test_ops_doctor.py::test_a_symlinked_manifest_that_is_no_file_fails_state_dir_manifest_not_an_acl_or_a_chmod`.
+
+**A10: a folder where the manifest belongs is not judged for Time Machine (`agentsync.cli`).** governance.time_machine
+warned `not excluded from Time Machine: .../manifest.sqlite (fix: ~/.local/bin/agentsync sync ...)`, a fix the sync
+cannot reach (it stops on the state file before it applies exclusions), and the report filed it as unexpected.
+`_time_machine_checks` takes the manifest out of the judged paths when `doctor.state_file_kind` says it is no file
+and says `[info] ... not checked: the state file is not a file; the state_dir.manifest line says why`; every other
+path not excluded still warns. An [info] line never reaches the report's problems, so its "unexpected" goes with no
+report change. Test: `test_cli.py::test_a_folder_where_the_manifest_belongs_is_not_judged_for_time_machine`.
+
+**A85: every state file on a read-only volume is one line with one fix (`agentsync.ops.doctor`).** The manifest,
+its -wal and its -shm on a read-only volume gave three state_dir.files FAILs, each with the same person's fix. One
+line names them all, `on a read-only volume, so this account cannot write manifest.sqlite (0600),
+manifest.sqlite-wal (0600), manifest.sqlite-shm (0600)`, with `read_only_fix` of the first, the fix sync's
+`error: state:` line gives (`refused_files_fix`); an ACL keeps a line per file. The report's bucket label is lane
+RA's half. Test: `test_ops_doctor.py::test_every_state_file_on_a_read_only_volume_is_one_line_with_one_fix`.
+
+**A31: status's NEXT for a person's FAIL names no catalog of kinds (`agentsync.cli`).** It read `its fix on the
+[FAIL] line below is the person's (<PERSONS_KINDS>), not a step for the agent: show it to them`, about 530
+characters naming every kind but the one its FAIL has; `PERSONS_FIX_RE` cannot say which kind matched (MANIFEST_FIX,
+the ACL and the parent fixes all match `the person `). The parentheses are gone: the [FAIL] line right below states
+the fix. `not a step for the agent` stays, as the report counts a person's stop by it; install.sh's PERSONS_FAILS
+and the report's count line keep the list. Test: `test_cli.py::test_statuss_next_for_a_persons_fail_names_no_catalog_of_kinds`.
+
+**A59: a state folder at 0500 names its fix and a NEXT (`agentsync.cli`).** With every file 0600 and the folder 0500,
+a sync ended on sqlite's bare `error: OperationalError: attempt to write a readonly database`, no fix and no NEXT,
+while status named `chmod 700`. When no state file is refused (Z80's line) but the folder is there and this account
+cannot write or search it, the sync says `error: state: the state folder <root> cannot be written by this account
+(fix: <doctor.state_folder_fix>)` and STATE_REFUSED_STEP, exit 1; a READONLY with every path writable keeps sqlite's
+line (Z80's pinned case). Keyed on the folder's own access, never on state_dir's mode FAIL, which also FAILs a
+writable 0755. Test: `test_cli.py::test_a_state_folder_at_0500_names_the_folders_fix_and_a_next_not_sqlites_bare_line`.
+
+**A54: cli's folder-refuses clause reads both ACL fixes (`agentsync.cli`).** `_folder_refuses` matched `read, write and
+search access to the folder `, not Z72's `read-attributes, read, write and search access to the folder `, and its
+test looked for the folder followed by a space while doctor writes `<folder>;`. Both prefixes now, the folder read
+up to `;` and compared with the line's path as written and resolved; the manifest-open arm passes the path its line
+names (the manifest for curate, the folder for sync), not the cause's filename (mkdir's stat names the folder). The
+report's half is lane RA's (§16.164). Tests:
+`test_cli.py::test_the_folder_refuses_clause_reads_the_folder_a_fix_names_up_to_its_semicolon` and (macOS, a real
+ACL) `test_cli.py::test_an_acl_that_denies_the_state_folder_readattr_says_whether_the_line_names_the_folder`.
+
+**A1, A34, A84: a heartbeat this account cannot open is said once, and an interactive sync exits 1 (`agentsync.cycle`,
+`agentsync.cli`, `agentsync.model`; round 23 ruling 5).** With heartbeat.json at 0000 a sync exited 0 with four raw
+`WARNING agentsync.cycle: heartbeat ...` lines (two reads, one write per source) and the loop's NEXT, so the setup
+loop never met the agent's chmod that status's `[FAIL] heartbeat` names. The cycle records the refusal on the report
+(`CycleReport.heartbeat_refused`) after the first source, logging nothing above DEBUG, and its own read of a refused
+heartbeat is DEBUG too. An interactive sync (no `--mode`, NEXT hints on) prints `error: state: <heartbeat> cannot be
+opened: Permission denied (fix: <doctor.state_path_fix>)`, the NEXT `cli.HEARTBEAT_REFUSED_STEP` (`this sync ran,
+but this account cannot open its heartbeat file, a state file: run \`~/.local/bin/agentsync status\` and do what its
+NEXT says; its [FAIL] line names the fix`; not STATE_REFUSED_STEP, whose "did not run" is false here) and exits 1;
+a `--mode` run and install.sh's keep their exit and log one `heartbeat not written: ...` WARNING with the fix. A
+corrupt heartbeat (doctor's WARN, rewritten by the next pass) and a full disk keep today's warning. Test:
+`test_cli.py::test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sync_exits_1`.
+
+**A9: a foreground sync that stops on a state file records it beside the setup log (`agentsync.cli`; the report's
+half is lane RA's, §16.164).** A step-3 sync stop the agent's chmod fixed left no trace, so the report said "fully
+one command". A sync with no `--mode` and NEXT hints on that prints an `error: state:` line appends `<UTC>
+sync-stop file=<role> rc=1 owner=<agent|person>` to `sync-stops.log` beside install.log (`cli.SYNC_STOPS_LOG`;
+roles manifest, manifest-wal, manifest-shm, lock, heartbeat, holds, governance, state-folder; `agent` when the
+line's fix is a chmod), 0600, only when the setup folder is there, with no path, and never in the `<at> run=`
+form the install.log reader takes for an install run; a failed write is never a second error. install.sh's own
+runs are in install.log already. Tests: `test_cli.py::test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_the_setup_log`
+and the heartbeat test above.
+
+**A29: a manifest lost from a Mac that has synced is the person's, and no command starts a new one over that
+history (`agentsync.manifest`, `agentsync.ops.doctor`, `agentsync.cli`, `agentsync.setup_report`; amends §16.125
+T12).** With manifest.sqlite gone and heartbeat.json recording passes, status said `no manifest yet` and `no sync
+has run` and exited 0, and the sync it pointed to quietly started over: every mirror page removed as an orphan and
+converted again, the empty-folder alarm and the deletion hold forgotten. `manifest.manifest_lost` holds when the
+manifest is missing and heartbeat.json beside it records a pass (a `last_success_at`, or a `run_id` of 1 or more);
+a docs repo restored onto a new Mac, with no heartbeat, is a first sync. Doctor FAILs `state_dir.manifest — <db> is
+missing, but heartbeat.json records earlier passes` with `doctor.LOST_MANIFEST_FIX`, the person's (restore it, or
+move heartbeat.json aside, keeping a copy, to confirm a new start, with what that costs); status reads `manifest:
+missing (earlier syncs recorded; the person decides: see state_dir.manifest)` and the report the same, never "no
+sync has run". `manifest._connect` never creates a manifest then: every command that opens one stops on the
+`errors.ManifestLostError` (a ManifestPathError with no filename, so its `str()` is the line), and sync's line is `error: state: <db> is missing, but heartbeat.json records earlier passes (fix:
+<LOST_MANIFEST_FIX>)` with STATE_MISPLACED_STEP. No `--new-manifest` flag (the verifier's opt-in): the command set
+is frozen, and moving heartbeat.json aside is the opt-in, the trace the guard reads; MANIFEST_FIX names it beside
+the manifest, so a damaged manifest's documented move-aside still starts a new one in one step. Test:
+`test_cli.py::test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over`.
 
 ### 16.168 Round 23: the upgrade's settled count and doctor's convert imports (2026-10-22, wave B13 round 23 lane E)
 
