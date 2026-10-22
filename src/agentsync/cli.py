@@ -3004,9 +3004,10 @@ def _manifest_open_fix(args: argparse.Namespace, exc: ManifestOpenError) -> str:
     """The fix of a manifest this account cannot open, as status's state_dir lines give it: on a read-only
     volume (EROFS) ``doctor.read_only_fix`` of the file, the person's, which no chmod reaches (B13 round 22
     Z47, Z78: it got the generic owner-and-mode words); for EACCES or EPERM ``doctor.state_path_fix`` of the
-    path refused; :data:`MANIFEST_OPEN_FIX`'s generic words for any other cause or a path outside the state
-    folder (B13 round 21 Y31, Y69). Each adds that the file is not damaged (W65's guard against a move-aside)
-    unless no file is there (:func:`_not_damaged`)."""
+    path refused; ``_ACCESS_FIX``'s generic words for any other cause or a path outside the state folder (B13
+    round 21 Y31, Y69). Each adds that the file is not damaged (W65's guard against a move-aside) unless no
+    file is there (:func:`_not_damaged`): :data:`MANIFEST_OPEN_FIX` is the generic words with a file there
+    (B13 round 23 A60)."""
     cause = exc.__cause__
     filename = cause.filename if isinstance(cause, OSError) else None
     if not isinstance(cause, OSError) or cause.errno not in ACCESS_ERRNOS:

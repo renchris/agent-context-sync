@@ -3927,7 +3927,7 @@ def test_a_manifest_this_account_cannot_open_is_one_line_and_kept(
             # B13 round 22 Z15: the folder's fix says the folder refused, not the file the line names
             why = ": its folder refuses this account" if what == "folder" else ""
             assert line == f"error: state: {db} cannot be opened: Permission denied{why} (fix: {fix})", line
-            assert doctor.MANIFEST_FIX not in err and cli.MANIFEST_OPEN_FIX not in err, err
+            assert doctor.MANIFEST_FIX not in err and cli._ACCESS_FIX not in err, err
             nexts = [ln for ln in captured.out.splitlines() if ln.startswith("NEXT: ")]
             assert nexts == ([f"NEXT: {cli.STATE_REFUSED_STEP}"] if argv == ["sync"] else []), (argv, nexts)
         # install.sh's run names its own NEXT
@@ -4106,7 +4106,7 @@ def test_a_manifest_on_a_read_only_volume_gets_the_persons_volume_fix_from_every
         err = capsys.readouterr().err
         (line,) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
         assert line == f"error: state: {db} cannot be opened: Read-only file system (fix: {want})", line
-        assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1]) and cli.MANIFEST_OPEN_FIX not in err, err
+        assert doctor.is_persons_fix(line.split(" (fix: ", 1)[1]) and cli._ACCESS_FIX not in err, err
     monkeypatch.undo()
     if not present:
         db.with_name("kept.sqlite").rename(db)
@@ -4276,7 +4276,7 @@ def test_a_manifest_path_that_is_no_access_matter_gets_no_access_fix(
         # B13 round 22 Z51: the words and fix of the line that FAILs it, state_dir.manifest's, the person's
         want = f"error: state: {db} is a folder, not the state file (fix: {doctor.MANIFEST_FIX})"
         assert line == want, line
-        assert cli.MANIFEST_OPEN_FIX not in err, err
+        assert cli._ACCESS_FIX not in err, err
         target = db
     else:  # a sync's lock opens the state folder first; the manifest's own open is what this range covers
         folder = tmp_path / "x49-state"
