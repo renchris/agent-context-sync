@@ -514,6 +514,10 @@ class CycleReport:
     # (the OCR engine for an image): "is refused until a converter for its type is ready", neither the
     # settled words nor the retry words, and the run record keeps it (``legacy_waiting``; B13 round 23 A63)
     legacy_waiting: int = 0
+    # the heartbeat this account could not open (its PermissionError, with the path): the cycle stops trying
+    # after the first source and logs nothing above DEBUG; the CLI says it once, an interactive sync as an
+    # ``error: state:`` line, a NEXT to status and exit 1 (B13 round 23 A1, A34, A84; round 23 ruling 5)
+    heartbeat_refused: PermissionError | None = None
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

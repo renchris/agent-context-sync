@@ -784,6 +784,9 @@ def _run_report(config: Config, **kwargs: object) -> CycleReport:
     which carries the note, is never printed, the lock's own line is DEBUG for it, and release empties the
     file. Not for the LaunchAgent's job, whose err.log keeps the WARNING (B13 round 22 Z89)."""
     kwargs.setdefault("say", _lock_say)
+    # an interactive sync says a refused heartbeat as its own error line and NEXT (_cmd_sync); every other
+    # run, the LaunchAgent's included, as one WARNING (B13 round 23 A84)
+    heartbeat_said = bool(kwargs.pop("heartbeat_said", False))
     broke: list[bool] = []
     if not launchd.started_by_our_job(config):
         kwargs.setdefault("on_stale_break", lambda: broke.append(True))
@@ -798,6 +801,8 @@ def _run_report(config: Config, **kwargs: object) -> CycleReport:
         held.log([r for r in held.held if not _printed(r, report)])
     budget = kwargs.get("budget_bytes")
     _print_report(report, run_budget=budget if isinstance(budget, int) else None)
+    if report.heartbeat_refused is not None and not heartbeat_said:
+        _log.warning("heartbeat not written: %s", _heartbeat_line(config, report.heartbeat_refused))
     if kwargs.get("mode") is not CycleMode.DRY_RUN and report.exit_code in (EXIT_OK, EXIT_FAILED):
         # C15 req 42 outside install-agent: exclude mirror/, .git, the cache and the manifest from Time
         # Machine once they exist (a cheap xattr check; tmutil runs only for a path still missing it).
@@ -1059,15 +1064,44 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     with the loop's NEXT and WAITING ON YOU lines, unless :data:`NO_NEXT_HINT_ENV` is 1 (KISS K01)."""
     config = _config(args)
     mode = CycleMode(args.mode) if args.mode else None
+    hints = mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1"
     if args.materialise_budget is None:
-        report = _run_report(config, mode=mode)
+        report = _run_report(config, mode=mode, heartbeat_said=hints)
     else:
         budget = parse_size(args.materialise_budget, where="--materialise-budget")
-        report = _run_report(config, mode=mode, budget_bytes=budget)
-    if mode is None and os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
+        report = _run_report(config, mode=mode, budget_bytes=budget, heartbeat_said=hints)
+    if hints and report.heartbeat_refused is not None:
+        # a heartbeat this account cannot open: said once, as status's [FAIL] heartbeat line gives its fix,
+        # and the sync exits 1 so the setup loop's state-file step meets the agent's chmod (round 23 ruling
+        # 5; B13 round 23 A1, A34, A84: it exited 0 with four WARNING lines and the loop's NEXT)
+        said = f"error: state: {_heartbeat_line(config, report.heartbeat_refused)}"
+        _err(said)
+        _out(loop.NEXT_PREFIX + HEARTBEAT_REFUSED_STEP)
+        _record_sync_stop(args, said, config.state_paths.heartbeat)
+        return report.exit_code or EXIT_FAILED
+    if hints:
         for line in loop.next_lines(config, fixes=_unavailable_steps(config, report)):
             _out(line)
     return report.exit_code
+
+
+HEARTBEAT_REFUSED_STEP = (
+    "this sync ran, but this account cannot open its heartbeat file, a state file: run "
+    f"`{loop.BIN} status` and do what its NEXT says; its [FAIL] line names the fix"
+)
+"""The NEXT of an interactive sync whose heartbeat this account cannot open (round 23 ruling 5). Not
+:data:`STATE_REFUSED_STEP`, whose "so this sync did not run" is false here: the sync ran and published its
+changes (B13 round 23 A1, A34, A84)."""
+
+
+def _heartbeat_line(config: Config, exc: PermissionError) -> str:
+    """``<path> cannot be opened: <reason> (fix: <fix>)`` for a heartbeat this account cannot open, with the
+    fix status's [FAIL] heartbeat line gives it (``doctor.state_path_fix``: this account's ``chmod 600``,
+    another account's chown, the person's)."""
+    path = expand(config.state_paths.heartbeat)
+    root = expand(config.state_paths.root)
+    fix = doctor.state_path_fix(Path(os.path.realpath(root)), Path(os.path.realpath(path)))
+    return f"{path} cannot be opened: {exc.strerror or exc} (fix: {fix})"
 
 
 def _unavailable_steps(config: Config, report: CycleReport) -> list[str]:
@@ -2970,15 +3004,20 @@ def _folder_refuses(where: Path, fix: str) -> str:
     the one the system refused (manifest.sqlite), and its fix names the folder, so the words say which
     refused (B13 round 22 Z15; round 22 ruling 3): ``: a folder above it refuses this account a search``
     (doctor's ``_parent_fix``), ``: its folder refuses this account`` (``chmod 700`` of a folder other than
-    ``where``, or the folder's ACL fix). Empty otherwise."""
+    ``where``, or the folder's ACL fixes, ``read, write and search`` and Z72's ``read-attributes, read, write
+    and search``). Empty otherwise. The folder a fix names is read up to its ``;`` and compared with ``where``
+    as written and as resolved: doctor names the resolved path (B13 round 23 A54: the read-attributes fix
+    matched no prefix, and the ACL branch's test looked for the path followed by a space, which never
+    matched)."""
+    named = {doctor._shell_path(where), doctor._shell_path(os.path.realpath(where))}
     if fix.startswith("the person gives this account search access to "):
         return ": a folder above it refuses this account a search"
-    if fix.startswith("the person gives this account read, write and search access to the folder "):
-        return (
-            "" if f"the folder {doctor._shell_path(where)} " in fix else ": its folder refuses this account"
-        )
+    for acl in ("read, write and search", "read-attributes, read, write and search"):
+        head = f"the person gives this account {acl} access to the folder "
+        if fix.startswith(head):
+            folder = fix.removeprefix(head).split(";", 1)[0]
+            return "" if folder in named else ": its folder refuses this account"
     if fix.startswith("chmod 700 "):
-        named = {doctor._shell_path(where), doctor._shell_path(os.path.realpath(where))}
         return "" if fix.removeprefix("chmod 700 ") in named else ": its folder refuses this account"
     return ""
 
@@ -3005,15 +3044,77 @@ be (:func:`_misplaced`): a folder where the manifest belongs, a file where the s
 22 Z51)."""
 
 
-def _state_next(args: argparse.Namespace, step: str = STATE_REFUSED_STEP) -> None:
+def _state_next(
+    args: argparse.Namespace, step: str = STATE_REFUSED_STEP, *, said: str = "", path: object = None
+) -> None:
     """Print ``step`` (:data:`STATE_REFUSED_STEP`) as a NEXT line for a ``sync`` with no ``--mode`` (an
     agent's or a person's, never the LaunchAgent's), unless :data:`NO_NEXT_HINT_ENV` is 1 (install.sh names
-    its own)."""
+    its own), and record the stop beside the setup log (:func:`_record_sync_stop`: ``said``, the error line,
+    and ``path``, the state path it names)."""
     if getattr(args, "command", None) != "sync" or getattr(args, "mode", None):
         return
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         return
     _out(loop.NEXT_PREFIX + step)
+    _record_sync_stop(args, said, path)
+
+
+SYNC_STOPS_LOG = "sync-stops.log"
+"""The file beside the setup log (``setup_report.default_setup_log``) where a foreground sync that stopped on
+a state file records it, one line each: ``<UTC> sync-stop file=<role> rc=1 owner=<agent|person>``, no path.
+install.sh's own runs are in install.log, so only a sync no install.sh runs (the setup loop's) writes it, and
+never one that does not start ``<at> run=``, which the install.log reader would take for an install run (B13
+round 23 A9: a step-3 stop the agent's chmod fixed left no trace for the report; lane RA reads it)."""
+
+
+def _record_sync_stop(args: argparse.Namespace, said: str, path: object) -> None:
+    """Append the stop's line to :data:`SYNC_STOPS_LOG`, only when the setup folder is already there; never
+    raises, so a stop is never a second error."""
+    try:
+        folder = setup_report.default_setup_log().parent
+        if not folder.is_dir():
+            return
+        config = _config(args)
+        role = _stop_role(config, path)
+        fix = said.rpartition(" (fix: ")[2]
+        owner = "agent" if fix.startswith("chmod ") else "person"
+        at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        line = f"{at} sync-stop file={role} rc=1 owner={owner}\n".encode()
+        fd = os.open(folder / SYNC_STOPS_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.write(fd, line)
+        finally:
+            os.close(fd)
+    except Exception:  # the error path: never a second error over the first
+        _log.debug("sync stop not recorded", exc_info=True)
+
+
+def _stop_role(config: Config, path: object) -> str:
+    """The role of ``path`` in the state folder, by name: ``manifest``, ``manifest-wal``, ``manifest-shm``,
+    ``lock``, ``heartbeat``, ``holds``, ``governance`` (another file there), else ``state-folder``; with no
+    path, the first state file this account is refused (``doctor.refused_state_files``)."""
+    sp = config.state_paths
+    if not isinstance(path, str | bytes | os.PathLike):
+        refused = doctor.refused_state_files(config)
+        path = refused[0] if refused else sp.root
+
+    def real(p: object) -> Path:
+        return Path(os.path.realpath(expand(Path(os.fsdecode(p)))))  # type: ignore[arg-type]
+
+    root = real(sp.root)
+    roles = {
+        real(sp.db): "manifest",
+        real(sp.db.with_name(sp.db.name + "-wal")): "manifest-wal",
+        real(sp.db.with_name(sp.db.name + "-shm")): "manifest-shm",
+        real(sp.lock): "lock",
+        real(sp.heartbeat): "heartbeat",
+        real(governance._holds_file(root)): "holds",
+    }
+    where = real(path)
+    if where in roles:
+        return roles[where]
+    gov = real(governance.governance_dir(root))
+    return "governance" if where == gov or where.is_relative_to(gov) else "state-folder"
 
 
 def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
@@ -3130,6 +3231,23 @@ def _refused_files(args: argparse.Namespace) -> str | None:
     return f"error: state: {names} cannot be opened for writing by this account (fix: {fix})"
 
 
+def _refused_folder(args: argparse.Namespace) -> str | None:
+    """The ``error: state:`` line of a sqlite error that could not write the manifest when no file of it is
+    refused but the state folder is: it is there and this account cannot write or search it (a 0500 folder,
+    whose -wal sqlite cannot create), with the folder's fix as status's state_dir line gives it
+    (``doctor.state_folder_fix``: another account's chown and a read-only volume before this account's
+    ``chmod 700``); None when the folder allows it, so a READONLY with every path writable keeps sqlite's line
+    (B13 round 23 A59: a 0500 folder ended a sync on the bare READONLY line, no fix and no NEXT)."""
+    try:
+        root = _state_root(args)
+        if not Path(os.path.realpath(root)).is_dir() or os.access(root, os.W_OK | os.X_OK):
+            return None
+        fix = doctor.state_folder_fix(root)
+    except Exception:  # the error path: never a second error over the first
+        return None
+    return f"error: state: the state folder {root} cannot be written by this account (fix: {fix})"
+
+
 def _state_db(args: argparse.Namespace) -> Path:
     """The manifest a command's database error came from: its config's, or the default state dir's when the
     config does not load."""
@@ -3234,13 +3352,17 @@ def _main(argv: Sequence[str] | None) -> int:
         # person's volume fix (B13 round 21 Y31, Y69; round 22 Z47, Z78, Z52)
         _log.debug("state: %s", exc, exc_info=True)
         fix = _manifest_open_fix(args, exc)
+        # the path the line names (the manifest for curate, the folder for sync), never the cause's filename:
+        # mkdir's is_dir stat reports the folder whichever the line names (B13 round 23 A54)
+        named, cut, _ = str(exc).partition(" cannot be opened")
         why = (
-            _folder_refuses(Path(os.fsdecode(cause.filename)), fix)
-            if isinstance(cause := exc.__cause__, PermissionError) and cause.filename is not None
+            _folder_refuses(Path(named) if cut else _state_db(args), fix)
+            if isinstance(exc.__cause__, PermissionError)
             else ""
         )
-        _err(f"error: state: {exc}{why} (fix: {fix})")
-        _state_next(args)
+        line = f"error: state: {exc}{why} (fix: {fix})"
+        _err(line)
+        _state_next(args, said=line, path=Path(named) if cut else _state_db(args))
         return EXIT_FAILED
     except (ManifestPathError, FileExistsError, NotADirectoryError) as exc:
         # a state path that is not where or what it should be (a folder where the manifest belongs, a file
@@ -3255,7 +3377,8 @@ def _main(argv: Sequence[str] | None) -> int:
             return EXIT_FAILED
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
-        _state_next(args, STATE_MISPLACED_STEP)
+        where = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
+        _state_next(args, STATE_MISPLACED_STEP, said=said, path=where)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read
@@ -3266,14 +3389,14 @@ def _main(argv: Sequence[str] | None) -> int:
             raise
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
-        _state_next(args)
+        _state_next(args, said=said, path=exc.filename)
         return EXIT_FAILED
     except AgentSyncError as exc:
         # a governance file in the state folder this account cannot open (holds.json): the same line
         said = _state_refused(args, exc.__cause__) if isinstance(exc.__cause__, PermissionError) else None
         _err(said or f"error: {exc}")
         if said:
-            _state_next(args)
+            _state_next(args, said=said, path=getattr(exc.__cause__, "filename", None))
         return EXIT_FAILED
     except sqlite3.DatabaseError as exc:
         # the manifest is the one database agentsync opens: a command no _state_readable wraps (exclude-empty,
@@ -3283,13 +3406,14 @@ def _main(argv: Sequence[str] | None) -> int:
             doctor.record_unreadable(db, exc, getattr(args, "command", None))
             _err(f"state: {db} cannot be read: {exc} (fix: {doctor.MANIFEST_FIX})")
             return EXIT_STATE
-        said = _refused_files(args) if doctor.cannot_open(exc) else None
+        said = (_refused_files(args) or _refused_folder(args)) if doctor.cannot_open(exc) else None
         if said is not None:
             # a -wal or -shm (or the manifest) this account cannot write: sqlite's READONLY gave the bare
             # line below, no fix and no NEXT, while status named the chmod (B13 round 22 Z80); exit 1, not 65
             _log.debug("state: %s", exc, exc_info=True)
             _err(said)
-            _state_next(args)
+            folder = said.startswith("error: state: the state folder ")
+            _state_next(args, said=said, path=_state_root(args) if folder else None)
             return EXIT_FAILED
         if not doctor.environmental(exc):  # a code defect (IntegrityError, a missing column) keeps its
             raise  # traceback (U72); so does any code no one listed (B13 round 18 V59: an allowlist)

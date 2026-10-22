@@ -6217,6 +6217,29 @@ def test_an_audit_trail_on_a_read_only_volume_or_odd_suppressions_keep_the_other
     assert not any(ln.startswith("[FAIL] governance ") for ln in out), out
 
 
+def test_a_folder_where_the_manifest_belongs_is_not_judged_for_time_machine(
+    initialised: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A10: with a folder at manifest.sqlite, governance.time_machine warned "not excluded" with
+    an ``agentsync sync`` fix the sync cannot reach (it stops on the state file first), and the report filed
+    it as unexpected. The manifest is not judged there now: an [info] line points at state_dir.manifest, which
+    FAILs it, and every other path not excluded still warns."""
+    db = expand(initialised.state_paths.db)
+    mirror = expand(initialised.docs_repo) / "mirror"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.unlink(missing_ok=True)
+    db.mkdir(mode=0o700)
+    monkeypatch.setattr(cli.governance, "time_machine_status", lambda config: [(db, False), (mirror, False)])
+    out = cli._time_machine_checks(initialised)
+    infos = [r for r in out if r.severity is doctor.Severity.INFO]
+    warns = [r for r in out if r.severity is doctor.Severity.WARN]
+    assert [r.detail for r in infos] == [
+        "not checked: the state file is not a file; the state_dir.manifest line says why"
+    ], out
+    assert len(warns) == 1 and str(mirror) in warns[0].detail and str(db) not in warns[0].detail, warns
+    assert any(r.name == "state_dir.manifest" and not r.ok for r in doctor._check_state_dir(initialised))
+
+
 @pytest.mark.parametrize(
     "fix",
     [
@@ -6239,27 +6262,168 @@ def test_statuss_next_for_a_persons_fail_names_no_catalog_of_kinds(fix: str) -> 
     assert len(step) < 200 and setup_report._PERSONS_STEP in step
 
 
-def test_a_folder_where_the_manifest_belongs_is_not_judged_for_time_machine(
-    initialised: Config, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes a folder of any mode")
+def test_a_state_folder_at_0500_names_the_folders_fix_and_a_next_not_sqlites_bare_line(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """B13 round 23 A10: with a folder at manifest.sqlite, governance.time_machine warned "not excluded" with
-    an ``agentsync sync`` fix the sync cannot reach (it stops on the state file first), and the report filed
-    it as unexpected. The manifest is not judged there now: an [info] line points at state_dir.manifest, which
-    FAILs it, and every other path not excluded still warns."""
-    db = expand(initialised.state_paths.db)
-    mirror = expand(initialised.docs_repo) / "mirror"
-    db.parent.mkdir(parents=True, exist_ok=True)
-    db.unlink(missing_ok=True)
-    db.mkdir(mode=0o700)
-    monkeypatch.setattr(cli.governance, "time_machine_status", lambda config: [(db, False), (mirror, False)])
-    out = cli._time_machine_checks(initialised)
-    infos = [r for r in out if r.severity is doctor.Severity.INFO]
-    warns = [r for r in out if r.severity is doctor.Severity.WARN]
-    assert [r.detail for r in infos] == [
-        "not checked: the state file is not a file; the state_dir.manifest line says why"
-    ], out
-    assert len(warns) == 1 and str(mirror) in warns[0].detail and str(db) not in warns[0].detail, warns
-    assert any(r.name == "state_dir.manifest" and not r.ok for r in doctor._check_state_dir(initialised))
+    """B13 round 23 A59: with the state folder at 0500 and every file in it 0600, a sync ended on sqlite's
+    bare ``error: OperationalError: attempt to write a readonly database``, no fix and no NEXT, while status
+    named ``chmod 700``: Z80's line named only a refused file. The folder's own line now, with status's fix
+    for it and the state NEXT; the LaunchAgent's run (--mode) prints no NEXT."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    for side in ("-wal", "-shm"):
+        root.joinpath(initialised.state_paths.db.name + side).unlink(missing_ok=True)
+    capsys.readouterr()
+    root.chmod(0o500)
+    try:
+        rc = cli.main(["sync", "--config", cfg])
+        said = capsys.readouterr()
+        polled = cli.main(["sync", "--mode", "poll", "--config", cfg])
+        background = capsys.readouterr()
+        status_rc, out = _status(cfg, capsys)
+    finally:
+        root.chmod(0o700)
+    (state,) = [ln for ln in out if ln.startswith("[FAIL] state_dir ")]
+    fix = f"chmod 700 {doctor._shell_path(root)}"
+    assert state.endswith(f"(fix: {fix})"), state
+    assert rc == cli.EXIT_FAILED and "OperationalError" not in said.err, said.err
+    (line,) = [ln for ln in said.err.splitlines() if ln.startswith("error: ")]
+    assert line == f"error: state: the state folder {root} cannot be written by this account (fix: {fix})", (
+        line
+    )
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.STATE_REFUSED_STEP}"
+    ]
+    assert polled == cli.EXIT_FAILED and "NEXT: " not in background.out, background
+    assert status_rc == cli.EXIT_FAILED
+
+
+def test_the_folder_refuses_clause_reads_the_folder_a_fix_names_up_to_its_semicolon(tmp_path: Path) -> None:
+    """B13 round 23 A54: lane B's Z72 fix for an ACL on the state folder itself (``read-attributes, read,
+    write and search access to the folder <f>; ...``) matched no prefix, so a line naming the manifest got no
+    ``: its folder refuses this account``; and the ACL branch looked for the folder followed by a space, while
+    doctor writes ``<f>;``. Both prefixes now, the folder read up to ``;`` and compared with the line's path
+    as written and as resolved."""
+    root = tmp_path / "state"
+    root.mkdir()
+    db = root / "manifest.sqlite"
+    for fix in (
+        doctor._search_fix(Path(os.path.realpath(root))),
+        doctor._parent_fix(Path(os.path.realpath(root))),
+    ):
+        assert fix.startswith("the person gives this account "), fix
+        assert cli._folder_refuses(db, fix) == ": its folder refuses this account", fix
+        assert cli._folder_refuses(root, fix) == "", fix  # the line names the folder itself
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="macOS ACLs; root ignores them")
+def test_an_acl_that_denies_the_state_folder_readattr_says_whether_the_line_names_the_folder(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 23 A54, measured: with ``deny readattr`` on the state folder, curate's line names the
+    manifest and the fix names the folder, so it says the folder refuses; sync's line names the folder itself,
+    so it adds nothing."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    user = os.environ.get("USER") or os.getlogin()
+    capsys.readouterr()
+    subprocess.run(["/bin/chmod", "+a", f"user:{user} deny readattr", str(root)], check=True)
+    try:
+        lines = {}
+        for command in ("curate", "sync"):
+            assert cli.main([command, "--config", cfg]) == cli.EXIT_FAILED, command
+            err = capsys.readouterr().err
+            (lines[command],) = [ln for ln in err.splitlines() if ln.startswith("error: state: ")]
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(root)], check=True)
+    head = "(fix: the person gives this account read-attributes, read, write and search access to the folder"
+    assert ": its folder refuses this account (fix: " in lines["curate"] and head in lines["curate"], lines
+    assert ": its folder refuses this account" not in lines["sync"] and head in lines["sync"], lines
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sync_exits_1(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A1, A34, A84 (round 23 ruling 5): with heartbeat.json at 0000 a sync exited 0 with four
+    raw WARNING lines (two reads, one write per source) and the loop's NEXT, so the setup loop never met the
+    agent's chmod that status's [FAIL] heartbeat line names. An interactive sync says it once, as an ``error:
+    state:`` line with status's fix, its NEXT leads to status (the sync ran: not STATE_REFUSED_STEP's "did not
+    run"), it exits 1 and records the stop beside the setup log (A9); a --mode run and install.sh's keep their
+    exit and say one WARNING; a chmod 600 gives the loop back; a corrupt heartbeat keeps today's warning."""
+    cfg = _synced(initialised)
+    hb = expand(initialised.state_paths.heartbeat)
+    setup = setup_report.default_setup_log().parent
+    setup.mkdir(parents=True, exist_ok=True)
+    fix = f"(fix: chmod 600 {doctor._shell_path(hb)})"
+    capsys.readouterr()
+    hb.chmod(0)
+    try:
+        rc = cli.main(["sync", "--config", cfg])
+        said = capsys.readouterr()
+        status_rc, out = _status(cfg, capsys)
+        polled = cli.main(["sync", "--mode", "poll", "--config", cfg])
+        background = capsys.readouterr()
+        monkeypatch.setenv(cli.NO_NEXT_HINT_ENV, "1")
+        installed = cli.main(["sync", "--config", cfg])
+        under_install = capsys.readouterr()
+        monkeypatch.delenv(cli.NO_NEXT_HINT_ENV)
+    finally:
+        hb.chmod(0o600)
+    assert rc == cli.EXIT_FAILED, said
+    (line,) = [ln for ln in said.err.splitlines() if ln.strip()]  # no WARNING lines beside it
+    assert line == f"error: state: {hb} cannot be opened: Permission denied {fix}", line
+    assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
+        f"NEXT: {cli.HEARTBEAT_REFUSED_STEP}"
+    ]
+    assert "did not run" not in cli.HEARTBEAT_REFUSED_STEP
+    (failed,) = [ln for ln in out if ln.startswith("[FAIL] heartbeat ")]
+    assert status_rc == cli.EXIT_FAILED and failed.endswith(fix), failed
+    (stop,) = (setup / cli.SYNC_STOPS_LOG).read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ sync-stop file=heartbeat rc=1 owner=agent", stop), (
+        stop
+    )
+    for run_rc, got in ((polled, background), (installed, under_install)):
+        assert run_rc == cli.EXIT_OK and "NEXT: " not in got.out, got
+        warned = [ln for ln in got.err.splitlines() if "heartbeat" in ln]
+        assert len(warned) == 1 and warned[0].endswith(fix) and " WARNING " in warned[0], got.err
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    again = capsys.readouterr()
+    assert "error: " not in again.err and cli.HEARTBEAT_REFUSED_STEP not in again.out, again
+    assert any(ln.startswith("NEXT: ") for ln in again.out.splitlines())
+    hb.write_text("{not json", encoding="utf-8")  # corrupt: doctor's WARN, which the next pass rewrites
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert cli.HEARTBEAT_REFUSED_STEP not in capsys.readouterr().out
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_the_setup_log(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 23 A9 (cli's half; lane RA reads it): a step-3 sync that stopped on a state file the agent's
+    chmod then fixed left no trace, so the report said "fully one command" with no Items. A foreground sync
+    appends ``<UTC> sync-stop file=<role> rc=1 owner=<agent|person>`` beside install.log, no path, a line the
+    install.log reader never takes for an install run; only when the setup folder is there, and never for a
+    LaunchAgent's run."""
+    cfg = _synced(initialised)
+    lock = expand(initialised.state_paths.lock)
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    lock.chmod(0)
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED  # no setup folder: nothing written
+        assert not stops.parent.exists()
+        stops.parent.mkdir(parents=True)
+        assert cli.main(["sync", "--mode", "poll", "--config", cfg]) == cli.EXIT_FAILED
+        assert not stops.exists()
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        lock.chmod(0o600)
+    capsys.readouterr()
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert line.endswith(" sync-stop file=lock rc=1 owner=agent") and str(lock) not in line, line
+    assert setup_report._INSTALL_LINE_RE.match(line) is None
+    assert stat.S_IMODE(stops.stat().st_mode) == 0o600
 
 
 def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over(

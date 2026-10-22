@@ -1821,6 +1821,7 @@ class _Cycle:
         self.archive_pages: set[str] = set()  # rescan: archive/ pages and their sidecars (no output rows)
         self._archive_ids: dict[str, tuple[str, str]] = {}  # archive/ page -> its frontmatter's ids
         self.findings: list[LintFinding] = []
+        self.heartbeat_refused: PermissionError | None = None  # said once, by the CLI (A1, A34, A84)
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
         self.retention_lines: list[str] = []  # STATE.md "## Retention" (compaction ran / held / failed)
@@ -2002,6 +2003,8 @@ class _Cycle:
             status = "partial"
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
+        if self.heartbeat_refused is not None:
+            return dataclasses.replace(report, heartbeat_refused=self.heartbeat_refused)
         return report
 
     def _session_topic_pages(self) -> tuple[str | None, set[str]]:
@@ -2900,6 +2903,8 @@ class _Cycle:
             # counts as listed; else every healthy Graph source would warn after three deltas with no command
             # to clear it (B13 round 5 F69).
             listed = acc.enumeration_complete or (acc.src.kind.is_graph and acc.pass_kind is PassKind.DELTA)
+            if self.heartbeat_refused is not None:
+                continue  # one refusal, not one per source (A84)
             try:
                 write_heartbeat(
                     hb,
@@ -2912,6 +2917,11 @@ class _Cycle:
                     auth_state=row.auth_state if row is not None else "ok",
                     now_iso=now_iso,
                 )
+            except PermissionError as exc:
+                # this account cannot open it (its mode, another account's file): the CLI says it once, with
+                # status's fix for it (round 23 ruling 5); a corrupt or full-disk heartbeat keeps the warning
+                log.debug("heartbeat for %s not written: %s", acc.src.id, exc)
+                self.heartbeat_refused = exc
             except (OSError, ValueError) as exc:
                 log.warning("heartbeat for %s not written: %s", acc.src.id, exc)
         counts = Counter(c.op.value for c in self.changes)
@@ -5821,7 +5831,10 @@ def source_statuses(
     try:
         heartbeat = {k: dict(v) for k, v in read_heartbeat(config.state_paths.heartbeat).items()}
     except (OSError, ValueError) as exc:
-        log.log(logging.DEBUG if quiet else logging.WARNING, "heartbeat unreadable: %s", exc)
+        # a heartbeat this account cannot open, read in a cycle (``reports``): its write is refused too, and
+        # the CLI says that once (B13 round 23 A84: two more WARNING lines per run)
+        refused = isinstance(exc, PermissionError) and reports is not None
+        log.log(logging.DEBUG if quiet or refused else logging.WARNING, "heartbeat unreadable: %s", exc)
     out: list[SourceStatus] = []
     for src in config.sources:
         row = manifest.get_source(src.id)
