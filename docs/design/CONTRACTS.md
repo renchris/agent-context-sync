@@ -28189,6 +28189,22 @@ none of their names in the report or bring-back.md; and `state`, `agentsync2`, a
 default with a trailing `/`, which register nothing). The guide's `<folder-N>` row and numbering order, which
 §16.169 A72 wrote for the agentsync report only, now say both reports.
 
+**The shell report cuts a hold's reason and owner** (A8, the shell half, built at lane RA's request; RA's
+`setup_report` half and the guide's row are §16.164's). A legal/records hold's free-text reason and owner (a
+matter, a person's name) printed in clear in doctor's `governance.hold` line, status's `HOLD:` line, a refusal's
+`suspended by legal/records hold: <hold>; <hold>` and the log line `hold <scope> released by <owner>`, in a report
+meant to be posted. `hold_cut`, a stage of `redact_stream` after `gov_value_sed` and before the pairs, cuts them by
+`Hold.describe()`'s fixed words as `setup_report._HOLD_SET_RE`, `_HOLD_MORE_RE` and `_HOLD_RELEASED_RE` do (lane
+RA's reviewed words), fail-safe: from the first hold a ` — set by ` follows to the line's end, keeping
+only the time and a fixed ending that closes the line (`. Release it first (records owner).` or ` (purge and
+compaction suspended)`), so a stop phrase inside a reason or owner hides more, never less: `hold <scope>
+(<origin>)[ since <iso>]: reason and owner not shown[<ending>]`; a refusal joining N more holds reads `hold <scope>
+(<origin>) and N more hold(s): reasons and owners not shown[<ending>]`; and `hold <scope> released (owner not
+shown)`. A `hold` with a word character before it is no hold. `agentsync status` and `hold --list` still print
+both. Tests: `test_install_oneshot.py::test_the_shell_report_cuts_a_holds_reason_and_owner_as_the_agentsync_report_does`
+(seven lines; the same lines through `setup_report.Redactor` once lane RA's half is on trunk) and
+`test_a_holds_reason_and_owner_are_not_in_the_shell_fallback_report`.
+
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
 The B13 round 23 items of lane P (specs `round23/items/A<n>.md`, the verifier's corrected fix built unless a

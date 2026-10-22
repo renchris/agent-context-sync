@@ -2527,6 +2527,75 @@ def test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted_in_the_shel
     )
 
 
+_HOLD_SINCE = " since 2026-10-22T05:32:56Z"
+_HOLD_CUT = ": reason and owner not shown"
+_HOLD_LINES = {
+    "[ok] governance.hold — hold gamma (state): Contoso v. Fabrikam matter 2026-114 — set by "
+    f"Jane Roe, Contoso Legal{_HOLD_SINCE}": (
+        f"[ok] governance.hold — hold gamma (state){_HOLD_SINCE}{_HOLD_CUT}"
+    ),
+    "HOLD: hold gamma (config): records hold — set by records team (purge and compaction suspended)": (
+        f"HOLD: hold gamma (config){_HOLD_CUT} (purge and compaction suspended)"
+    ),
+    # a refusal joining two holds names the first and counts the rest, with no time; its fixed ending is kept
+    "refused: purge suspended by legal/records hold: hold a (state): r1 — set by Jane Roe since "
+    "2026-10-22T05:32:56.5+05:30; hold b (config): a matter — with a dash — set by Bob Poe. "
+    "Release it first (records owner).": (
+        "refused: purge suspended by legal/records hold: hold a (state) and 1 more hold: reasons and owners "
+        "not shown. Release it first (records owner)."
+    ),
+    # fail-safe: an ending that does not close the line is no ending, so nothing after the head is kept
+    "hold a (state): r — set by o (purge and compaction suspended) and Jane Roe": (
+        f"hold a (state){_HOLD_CUT}"
+    ),
+    "WARNING governance: hold gamma released by Jane Roe": (
+        "WARNING governance: hold gamma released (owner not shown)"
+    ),
+    # no word boundary before "hold", and a hold with no "— set by": kept
+    "withhold x (state): y — set by z": "withhold x (state): y — set by z",
+    "hold x (state): no owner here": "hold x (state): no owner here",
+}
+
+
+def test_the_shell_report_cuts_a_holds_reason_and_owner_as_the_agentsync_report_does() -> None:
+    """B13 round 23 A8 (the shell half; lane RA's is setup_report's): a legal/records hold's free-text reason
+    and owner (a matter, a person's name) printed in clear in doctor's governance.hold line, status's HOLD:
+    line, a refusal and the release log line, in a report meant to be posted. hold_cut cuts them by
+    Hold.describe()'s fixed words, as setup_report._HOLD_SET_RE and _HOLD_RELEASED_RE do, keeping the scope,
+    origin and time; where the installed setup_report has those, both give the same line."""
+    fn = re.search(r"^hold_cut\(\) \{.*?^\}\n", INSTALL_SH.read_text(encoding="utf-8"), re.M | re.S)
+    assert fn is not None
+    cp = subprocess.run(
+        [BASH32, "-c", fn.group(0) + "hold_cut"],
+        input="\n".join(_HOLD_LINES) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert cp.stdout.splitlines() == list(_HOLD_LINES.values())
+    if hasattr(setup_report, "_HOLD_SET_RE"):  # lane RA's half, once both are on trunk
+        red = setup_report.Redactor()
+        assert [red.redact(line) for line in _HOLD_LINES] == list(_HOLD_LINES.values())
+
+
+def test_a_holds_reason_and_owner_are_not_in_the_shell_fallback_report(
+    env: dict[str, str], folder: Path, wheel: Path
+) -> None:
+    """B13 round 23 A8: the shell fallback report runs every line through hold_cut, so doctor's hold line
+    shows the scope and time only, in the report and in bring-back.md."""
+    said = next(iter(_HOLD_LINES))
+    e = {**env, "STUB_DOCTOR_OUT": said, "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text, text
+    assert (
+        "[ok] governance.hold — hold gamma (state) since 2026-10-22T05:32:56Z: reason and owner not shown"
+        in (text)
+    ), text
+    for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+        assert "Jane Roe" not in path.read_text(encoding="utf-8") and "2026-114" not in path.read_text(), path
+
+
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     env: dict[str, str], folder: Path
 ) -> None:
@@ -14209,7 +14278,7 @@ def test_shell_report_redacts_tmpdir(env: dict[str, str], folder: Path, tmp_path
 # ---- the shell report's MDM host has its own placeholder (N39) ---------------------------------------------
 
 MDM_URL = "https://contosoltd.mdm.example:443/mdm/ServerURL"
-SHELL_REDACTION_FNS = re.compile(r"(?ms)^(?:redaction_pairs|redact_stream)\(\) \{\n.*?^\}$")
+SHELL_REDACTION_FNS = re.compile(r"(?ms)^(?:redaction_pairs|redact_stream|hold_cut)\(\) \{\n.*?^\}$")
 
 
 @pytest.mark.parametrize(

@@ -2758,6 +2758,52 @@ agent_restore() {
 		}
 		END { if (kept && ENVIRON["AGENT_KEPT_FILE"] != "") printf "" > ENVIRON["AGENT_KEPT_FILE"] }'
 }
+# A legal/records hold as Hold.describe() prints it, "hold <scope> (<config|state>): <reason> — set by <owner>[ since
+# <iso>]", in doctor's governance.hold line, status's HOLD: line and a refusal's "suspended by legal/records hold:
+# <hold>; <hold>", and the log line "hold <scope> released by <owner>": the reason and owner are free text (a
+# matter, a person's name) that no pair names, so they are cut by the fixed words, as setup_report._HOLD_SET_RE,
+# _HOLD_MORE_RE and _HOLD_RELEASED_RE cut them (B13 round 23 A8). Fail-safe: from the first hold that a " — set by "
+# follows to the line's end, keeping only the time and a fixed ending the line closes on (". Release it first
+# (records owner)." or " (purge and compaction suspended)"), so a stop phrase inside a reason or owner hides more,
+# never less: "hold <scope> (<origin>)[ since <iso>]: reason and owner not shown[<ending>]"; a refusal joining N
+# more reads "hold <scope> (<origin>) and N more hold(s): reasons and owners not shown[<ending>]"; the release
+# "hold <scope> released (owner not shown)". agentsync status still prints both. Before the pairs, as the Python
+# report cuts them before its pass.
+hold_cut() {
+	LC_ALL=C awk '
+		function word(s, at) { return at > 1 && substr(s, at - 1, 1) ~ /[A-Za-z0-9_]/ } # no word boundary before at
+		function ends(s, e) { return length(s) >= length(e) && substr(s, length(s) - length(e) + 1) == e }
+		{
+			s = $0; out = ""; set = " \342\200\224 set by "; held = ""
+			while (match(s, /hold [^ \t\r\f\v]+ \((config|state)\): /)) {
+				at = RSTART; len = RLENGTH
+				if (word(s, at) || !index(substr(s, at + len), set)) { out = out substr(s, 1, at); s = substr(s, at + 1); continue }
+				head = substr(s, at, len - 2); whole = substr(s, at); out = out substr(s, 1, at - 1)
+				tail = substr(s, at + len)
+				while ((j = index(tail, set))) tail = substr(tail, j + length(set)) # after the last " — set by "
+				sub(/[ \t]*$/, "", tail)
+				end = ""
+				if (ends(tail, ". Release it first (records owner).")) end = ". Release it first (records owner)."
+				else if (ends(tail, " (purge and compaction suspended)")) end = " (purge and compaction suspended)"
+				tail = substr(tail, 1, length(tail) - length(end)); when = ""
+				if (match(tail, / since [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](\.[0-9]+)?(Z|[+-][0-9][0-9]:?[0-9][0-9])?$/)) when = substr(tail, RSTART)
+				more = 0; w = substr(whole, len + 1)
+				while (match(w, /; hold [^ \t\r\f\v]+ \((config|state)\): /)) { more++; w = substr(w, RSTART + RLENGTH) }
+				if (more) held = head " and " more " more hold" (more > 1 ? "s" : "") ": reasons and owners not shown" end
+				else held = head when ": reason and owner not shown" end
+				s = ""
+				break
+			}
+			s = out held s; out = ""
+			while (match(s, /hold [^ \t\r\f\v]+ released by /)) {
+				if (word(s, RSTART)) { out = out substr(s, 1, RSTART); s = substr(s, RSTART + 1); continue }
+				head = substr(s, RSTART, RLENGTH); sub(/ released by $/, "", head)
+				s = substr(s, 1, RSTART - 1) head " released (owner not shown)"
+				break
+			}
+			print out s
+		}'
+}
 redact_stream() {
 	# Longest value first, as the Python report does: "Plans Archive" before "Plans", a folder before its org.
 	# Every stage byte-wise: under a UTF-8 locale macOS cut and sort stop at the first pair that is not UTF-8
@@ -2767,7 +2813,7 @@ redact_stream() {
 	# regex match (the placeholder match, the word test) under UTF-8 exits at a byte that is not UTF-8 on its
 	# own ("Jane" + U+2019), and the placeholder match runs on every line.
 	LC_ALL=C sed -E "s/\\\$'([^'\\\\]|\\\\.)*'?/<path>/g" |
-		LC_ALL=C sed -E -f <(gov_value_sed) |
+		LC_ALL=C sed -E -f <(gov_value_sed) | hold_cut |
 		REDACT_PAIRS="$(redaction_pairs | LC_ALL=C awk -F '\t' '{ k = $1; if ($3 == "f" || $3 == "j" || $3 == "o") gsub(/[ \t_\\-]/, "", k); print length(k) "\t" $0 }' |
 			LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -s | LC_ALL=C cut -f 2-)" REPO_SLUG="$(repo_slug)" LC_ALL=C awk '
 	# The line is kept as pieces, plain text or a placeholder (held): a later pair never matches inside a
