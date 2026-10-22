@@ -4556,8 +4556,8 @@ def _last_rescreen(r: _Run) -> str:
     except OSError as exc:
         if isinstance(exc, PermissionError):  # B13 round 22 Z15: the folder's words when it is the folder
             return f"not read ({_STATE_FOLDER_SHUT if _state_folder_shut(db) else _STATE_SHUT})"
-        if exc.errno == errno.ELOOP:  # a symlink loop is no file (B13 round 22 Z12's review)
-            return f"not read ({_STATE_NOT_FILE})"
+        if exc.errno in (errno.ENOTDIR, errno.ELOOP):  # B13 round 23 A23: the folder's words when it is one
+            return f"not read ({_why_not_read(_not_file_error(db))})"
         return f"not read ({_why_not_read(exc)})"
     if (
         not db.is_file()
@@ -5581,9 +5581,14 @@ def _configuration(r: _Run) -> list[str]:
     out.append(f"- [network] proxy: {'set' if c.network.proxy else 'not set'}")
     out.append(_policy_line(c))
     out.append(_excludes_line(c, r.red))
-    state = _path_reached(expand(c.state_dir), folder=True)
+    state_dir = expand(c.state_dir)
+    state = _path_reached(state_dir, folder=True)
+    # B13 round 23 A23, ruling 4: something there that is not a folder is no "missing"; by what is there
+    that = _not_a_folder_at(state_dir) if state is not True else None
+    if that is not None:
+        state = "not a folder" if that == state_dir else "a folder above it is not a folder"
     seen = "; see Doctor's state_dir line" if isinstance(state, str) else ""
-    out.append(f"- state dir: {expand(c.state_dir)} ({_reach_words(state, 'exists')}{seen})")
+    out.append(f"- state dir: {state_dir} ({_reach_words(state, 'exists')}{seen})")
     if r.agent_named is not None:
         listed, configured, words = r.agent_named
         # the consequence only when an Agent: line has a word of such a folder's name: every attempt's, as the
@@ -6460,6 +6465,27 @@ class _StateNotFileError(_NoStateError):
     (B13 round 22 Z12)."""
 
 
+class _StateFolderNotFolderError(_NoStateError):
+    """Something other than a folder (a file, a symlink to one, a fifo, a socket, a symlink loop) sits where
+    the state folder belongs, or where a folder above it belongs (``above``): the person's to move aside,
+    keeping a copy, as Doctor's one state_dir FAIL says, never "the state file is not a file", whose
+    state_dir.manifest line doctor never prints there (B13 round 23 A23, round 23 ruling 4)."""
+
+    def __init__(self, *, above: bool) -> None:
+        super().__init__()
+        self.above = above
+
+
+def _not_file_error(db: Path) -> _NoStateError:
+    """The error for no file where the manifest ``db`` belongs: :class:`_StateFolderNotFolderError` when the
+    state folder, or a folder above it, is not a folder (:func:`_not_a_folder_at`), else
+    :class:`_StateNotFileError` (a folder or a fifo at the manifest's own path, B13 round 22 Z12)."""
+    that = _not_a_folder_at(db.parent)
+    if that is not None:
+        return _StateFolderNotFolderError(above=that != db.parent)
+    return _StateNotFileError()
+
+
 class _StateFolderShutError(Exception):
     """The state folder, or a folder above it, refuses this account (:func:`_state_folder_shut`): the words
     name the folder, never the state file (B13 round 22 Z15, Z41; round 22 ruling 3)."""
@@ -6543,12 +6569,12 @@ class _Mirror:
                     st = self.db.stat()
                 except FileNotFoundError:
                     raise _NoManifestError from None
-                except NotADirectoryError:  # a file where a folder on its way belongs
-                    raise _StateNotFileError from None
+                except NotADirectoryError:  # a file where a folder on its way belongs (A23: the folder's)
+                    raise _not_file_error(self.db) from None
                 except OSError as exc:
                     if exc.errno != errno.ELOOP:  # a symlink loop is no file either, as is_file read it
                         raise
-                    raise _StateNotFileError from None
+                    raise _not_file_error(self.db) from None
                 if not stat.S_ISREG(st.st_mode):
                     raise _StateNotFileError
                 opened = _open_manifest_ro(self.db, 0.5)
@@ -6734,6 +6760,27 @@ _STATE_FOLDER_SHUT = "the state folder cannot be opened by this account: see Doc
 the words name what failed (B13 round 22 Z15, round 22 ruling 3). A reader that knows the path chooses."""
 _STATE_NOT_FILE = "the state file is not a file: see Doctor's state_dir.manifest line"
 """For something other than a file where the manifest belongs (B13 round 21 Y47, round 22 Z12)."""
+_STATE_FOLDER_NOT_FOLDER = "the state folder is not a folder: see Doctor's state_dir line"
+"""For something other than a folder where the state folder belongs (:class:`_StateFolderNotFolderError`):
+Doctor's one state_dir FAIL gives the person's move aside (B13 round 23 A23, round 23 ruling 4)."""
+_STATE_ABOVE_NOT_FOLDER = "a folder above the state folder is not a folder: see Doctor's state_dir line"
+"""The same when a folder further up is the one that is not a folder: never "the state folder is not a
+folder", which it may well be (B13 round 23 A23)."""
+
+
+def _not_a_folder_at(root: Path) -> Path | None:
+    """The first path, from ``/`` down to ``root``, that is there but is not a folder (a file, a symlink to
+    one, a socket, a fifo, a symlink loop), by the report's own stat through links, as doctor's state_dir test
+    reads it (round 23 ruling 4), so a symlink to a folder passes; None when each is a folder, or one is
+    missing or refuses a look (B13 round 23 A23). Never raises."""
+    for path in (*reversed(root.parents), root):
+        try:
+            st = path.stat()
+        except OSError as exc:
+            return path if exc.errno == errno.ELOOP else None
+        if not stat.S_ISDIR(st.st_mode):
+            return path
+    return None
 
 
 def _state_folder_shut(db: Path) -> bool:
@@ -6770,6 +6817,8 @@ def _why_not_read(exc: BaseException) -> str:
         return _STATE_FOLDER_SHUT
     if isinstance(exc, _StateNotFileError):
         return _STATE_NOT_FILE
+    if isinstance(exc, _StateFolderNotFolderError):  # B13 round 23 A23
+        return _STATE_ABOVE_NOT_FOLDER if exc.above else _STATE_FOLDER_NOT_FOLDER
     # B13 round 21 Y38: governance's read of a file it cannot open raises its own error from the OSError
     # (a GovernanceError), which read as its class name: the OSError's words, which name no Doctor line, as
     # governance/ is no state_dir line's (a state folder that cannot be searched is mapped where the path is
@@ -7808,6 +7857,9 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         root = expand(config.state_paths.root)
         if isinstance(exc.__cause__, PermissionError) and not os.access(root, os.X_OK):
             raise _StateFolderShutError from exc
+        that = _not_a_folder_at(root)  # B13 round 23 A23: not "an unexpected error: GovernanceError"
+        if that is not None:
+            raise _StateFolderNotFolderError(above=that != root) from exc
         raise
     if not queue:
         return ["- no purge is queued"]
@@ -8456,6 +8508,8 @@ def _evidence_line(r: _Run) -> str:
     shut = sum(n for w, n in why.items() if w.startswith("the state file cannot be opened"))  # W64
     folder = sum(n for w, n in why.items() if w.startswith("the state folder cannot be opened"))  # Z15
     notfile = sum(n for w, n in why.items() if w.startswith("the state file is not a file"))  # Z12
+    notfolder = sum(n for w, n in why.items() if w.startswith("the state folder is not a folder"))  # A23
+    above = sum(n for w, n in why.items() if w.startswith("a folder above the state folder is not a folder"))
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
     clauses = [
         (
@@ -8479,10 +8533,23 @@ def _evidence_line(r: _Run) -> str:
             "state_dir.manifest line)",
         ),
         (
+            notfolder,
+            "the state folder is not a folder: a report written after it is moved aside measures them (see "
+            "Doctor's state_dir line)",
+        ),
+        (
+            above,
+            "a folder above the state folder is not a folder: a report written after it is moved aside "
+            "measures them (see Doctor's state_dir line)",
+        ),
+        (
             config,
             "the configuration is refused: a report written after it loads measures them (see Configuration)",
         ),
-        (count - retry - state - shut - folder - notfile - config, "of another cause: see those lines"),
+        (
+            count - retry - state - shut - folder - notfile - notfolder - above - config,
+            "of another cause: see those lines",
+        ),
     ]
     said = [f"{n} because {words}" for n, words in clauses if n]
     again = [
@@ -9826,6 +9893,13 @@ _STATE_LOOSE_WORDS = "from a state folder or file others can read"
 owns and opens whose mode lets others read it (B13 round 23 A49): doctor's fix is this account's chmod 700 or
 chmod 600, the agent's, as install.sh's status-step NEXT names it, while the report filed it as unexpected
 with no owner. Not the words of the buckets above, which say "this account cannot open"."""
+_NOT_FOLDER_WORDS = "from the state folder that is not a folder"
+"""The Doctor line's bucket when the state folder, or a folder above it, is not a folder (B13 round 23 A23,
+round 23 ruling 4): state_dir's FAIL, the person's move aside, and each other check that reads the state
+folder, not checked (:data:`_NOT_FOLDER_UNCHECKED`), keyed on the report's own stat of the folders
+(:func:`_not_a_folder_at`), never on doctor's words: an older doctor FAILs heartbeat and governance there
+too."""
+_NOT_FOLDER_UNCHECKED = " (not checked: the state folder is not a folder)"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -9849,6 +9923,7 @@ class _DoctorSort:
     fails: list[tuple[str, str | None]]
     shut_words: str = _STATE_SHUT_WORDS  # B13 round 22 Z31: _STATE_SHUT_FOLDER_WORDS for a shut folder
     from_loose: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A49
+    from_notfolder: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A23
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -10013,6 +10088,17 @@ def _shut_whose(c: Config, shut: str) -> str:
         return _PERSONS
 
 
+def _reads_the_state_folder(name: str) -> bool:
+    """Whether doctor's check ``name`` reads the state folder: its files, the lock, the heartbeat, the
+    governance files and the vanished-sources record (doctor's ``state_folder_unchecked`` checks; B13 round 23
+    A23)."""
+    return name.startswith(("state_dir.", "heartbeat", "governance.")) or name in (
+        "lock",
+        "governance",
+        "config.vanished_sources",
+    )
+
+
 def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     """Doctor's problems in the Doctor line's buckets, once per report and attempt runs: the Summary's
     outcome (:func:`_doctor_fails`) and its doctor line (:func:`_doctor_line`) read the one sort."""
@@ -10042,9 +10128,12 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_remote: list[str] = []
     read_error = r.hooks.state_error() if r.hooks.state_error is not None else None
     read_error = read_error or r.evidence_unreadable  # damage only the evidence read reached (W41)
-    unreadable = r.config is not None and _state_unreadable(r.config, read_error)
-    notfile = not unreadable and r.config is not None and _state_not_file(r.config)
-    shut = "" if unreadable or notfile or r.config is None else _state_shut(r.config, read_error)
+    # B13 round 23 A23: a state folder (or a folder above it) that is not a folder comes before the file tests
+    notfolder = r.config is not None and _not_a_folder_at(expand(r.config.state_paths.root)) is not None
+    from_notfolder: list[str] = []
+    unreadable = not notfolder and r.config is not None and _state_unreadable(r.config, read_error)
+    notfile = not notfolder and not unreadable and r.config is not None and _state_not_file(r.config)
+    shut = "" if notfolder or unreadable or notfile or r.config is None else _state_shut(r.config, read_error)
     shut_words = _STATE_SHUT_FOLDER_WORDS if shut == "folder" else _STATE_SHUT_WORDS
     whose = _shut_whose(r.config, shut) if shut and r.config is not None else _PERSONS
     from_state: list[str] = []
@@ -10057,6 +10146,14 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_loose: list[str] = []
     fails: list[tuple[str, str | None]] = []
     for tag, name, detail in r.facts.doctor_problems:
+        # B13 round 23 A23, ruling 4: one fault, state_dir's, the person's; every check that reads the state
+        # folder, not checked (an older doctor FAILs heartbeat and governance, or crashes, beside it)
+        if notfolder and (name == "state_dir" or _reads_the_state_folder(name)):
+            whose_words = _PERSONS if name == "state_dir" else _NOT_FOLDER_UNCHECKED
+            from_notfolder.append(f"{name} {tag}{whose_words}")
+            if tag == "FAIL":
+                fails.append((name, _NOT_FOLDER_WORDS))
+            continue
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
             from_stop.append(name)
             fails.append((name, _STOP_WORDS))
@@ -10178,6 +10275,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         [(name, gone_words if why == _GONE else why) for name, why in fails],
         shut_words,
         from_loose,
+        from_notfolder,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -10255,6 +10353,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(f"{_STATE_UNREAD_WORDS} ({_plural(len(from_state), 'check')}): " + ", ".join(from_state))
     if from_shut:  # B13 round 20 X28
         parts.append(f"{sort.shut_words} ({_plural(len(from_shut), 'check')}): " + ", ".join(from_shut))
+    if sort.from_notfolder:  # B13 round 23 A23
+        parts.append(
+            f"{_NOT_FOLDER_WORDS} ({_plural(len(sort.from_notfolder), 'check')}): "
+            + ", ".join(sort.from_notfolder)
+        )
     if sort.from_refused:  # B13 round 21 Y45
         parts.append(
             f"{_REFUSED_WORDS} ({_plural(len(sort.from_refused), 'check')}): " + ", ".join(sort.from_refused)

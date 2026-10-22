@@ -12790,6 +12790,61 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     assert "symbolic links" not in text, [ln for ln in text.splitlines() if "symbolic links" in ln]
 
 
+def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 23 A23, ruling 4: with a file where the state folder belongs, Configuration said "missing",
+    Status and the evidence line blamed "the state file" and a state_dir.manifest line doctor never prints,
+    and the Doctor line called state_dir, heartbeat and governance unexpected. Configuration says not a
+    folder, every part names the state folder and Doctor's state_dir line, the evidence line has a clause of
+    its own, and the Doctor line files state_dir as the person's and the rest as not checked; a file above the
+    state folder names the folder above it."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    root = expand(load_config(cfg).state_paths.root)
+    root.rename(root.with_name("kept"))
+    root.write_text("not a folder\n", encoding="utf-8")
+    _rc, text, _ = report(tmp_path, cfg)
+    conf = section(text, "Configuration")
+    assert "(not a folder; see Doctor's state_dir line)" in _line(conf, "- state dir: "), conf
+    status = section(text, "Status")
+    assert status.count(f"- not measured ({setup_report._STATE_FOLDER_NOT_FOLDER})") >= 4, status
+    assert setup_report._STATE_NOT_FILE not in text and "an unexpected error" not in text
+    purge = status.split("### Purge queue", 1)[1].split("###", 1)[0]
+    assert f"not measured ({setup_report._STATE_FOLDER_NOT_FOLDER})" in purge, purge
+    summary = section(text, "Summary")
+    evidence = _line(summary, "- evidence: ")
+    assert "because the state folder is not a folder: a report written after it is moved aside" in evidence, (
+        evidence
+    )
+    assert "another cause" not in evidence and "were measured" not in evidence, evidence
+    line = _line(summary, "- doctor: ")
+    assert "from the state folder that is not a folder (" in line, line
+    unexpected = line.rsplit(" · unexpected ", 1)[1]  # the fixture's empty library's listable warn is its own
+    assert "state_dir FAIL (the person's; see Doctor)" in line, line
+    assert not any(n in unexpected for n in ("state_dir", "heartbeat", "governance")), line
+    env = _line(section(text, "Environment"), "- secret scan: ")
+    assert env.endswith(f"; last re-screen: not read ({setup_report._STATE_FOLDER_NOT_FOLDER})"), env
+    root.unlink()
+    # a file above the state folder: the folder above it is named, never the state folder itself
+    blocker = Path.home() / "Contoso blocker"
+    blocker.write_text("not a folder\n", encoding="utf-8")
+    cfg.write_text(
+        f'[agentsync]\nstate_dir = "~/Contoso blocker/state"\n\n{cfg.read_text(encoding="utf-8")}',
+        encoding="utf-8",
+    )
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "(a folder above it is not a folder; see Doctor's state_dir line)" in _line(
+        section(text, "Configuration"), "- state dir: "
+    )
+    assert f"- not measured ({setup_report._STATE_ABOVE_NOT_FOLDER})" in section(text, "Status")
+    assert f"({setup_report._STATE_FOLDER_NOT_FOLDER})" not in text  # the words above end so too
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "state_dir FAIL (the person's; see Doctor)" in line, line
+    assert "state_dir" not in line.rsplit(" · unexpected ", 1)[1], line
+
+
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
 def test_environment_says_what_the_secret_scan_can_use(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, case: str
