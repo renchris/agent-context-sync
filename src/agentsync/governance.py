@@ -318,17 +318,30 @@ def audit_path(state_dir: Path) -> Path:
     return governance_dir(state_dir) / "audit.jsonl"
 
 
-def append_audit(state_dir: Path, record: Mapping[str, object]) -> None:
-    """Append one JSON line (sorted keys) to the audit trail, mode 0600, fsynced."""
+@contextlib.contextmanager
+def _audit_appender(state_dir: Path) -> Iterator[Callable[[Mapping[str, object]], None]]:
+    """Open the audit trail for append (mode 0600) and yield a writer of one JSON line (sorted keys, fsynced)
+    on that open file.  A change that must leave an audit line opens it first, then writes its own file, then
+    the line: an audit trail this account cannot open raises before anything changed (B13 round 23 A79: a
+    hold was released, or set, and the purge queue written, with no audit line, and the command exited 1)."""
     path = audit_path(state_dir)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    line = (json.dumps(dict(record), sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    try:
-        os.write(fd, line)
+
+    def write(record: Mapping[str, object]) -> None:
+        os.write(fd, (json.dumps(dict(record), sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8"))
         os.fsync(fd)
+
+    try:
+        yield write
     finally:
         os.close(fd)
+
+
+def append_audit(state_dir: Path, record: Mapping[str, object]) -> None:
+    """Append one JSON line (sorted keys) to the audit trail, mode 0600, fsynced."""
+    with _audit_appender(state_dir) as write:
+        write(record)
 
 
 def read_audit(state_dir: Path) -> list[dict[str, Any]]:
@@ -389,16 +402,17 @@ def set_hold(state_dir: Path, scope: str, *, reason: str, owner: str, now: datet
     holds = [h for h in _state_holds(state_dir) if h.scope != s]
     hold = Hold(s, " ".join(reason.split()), " ".join(owner.split()), at, "state")
     holds.append(hold)
-    _atomic_write_json(
-        _holds_file(state_dir),
-        {
-            "holds": [
-                {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at}
-                for h in sorted(holds, key=lambda h: h.scope)
-            ]
-        },
-    )
-    append_audit(state_dir, {"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
+    with _audit_appender(state_dir) as audit:
+        _atomic_write_json(
+            _holds_file(state_dir),
+            {
+                "holds": [
+                    {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at}
+                    for h in sorted(holds, key=lambda h: h.scope)
+                ]
+            },
+        )
+        audit({"action": "hold-set", "at": at, "scope": s, "owner": hold.owner})
     log.warning("governance: %s", hold.describe())
     return hold
 
@@ -410,18 +424,17 @@ def release_hold(state_dir: Path, scope: str, *, owner: str, now: datetime | Non
     keep = [h for h in holds if h.scope != s]
     if len(keep) == len(holds):
         return False
-    _atomic_write_json(
-        _holds_file(state_dir),
-        {
-            "holds": [
-                {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at} for h in keep
-            ]
-        },
-    )
     at = _iso(_now(now))
-    append_audit(
-        state_dir, {"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())}
-    )
+    with _audit_appender(state_dir) as audit:  # a release removes protection: never one with no record
+        _atomic_write_json(
+            _holds_file(state_dir),
+            {
+                "holds": [
+                    {"scope": h.scope, "reason": h.reason, "owner": h.owner, "set_at": h.set_at} for h in keep
+                ]
+            },
+        )
+        audit({"action": "hold-released", "at": at, "scope": s, "owner": " ".join(owner.split())})
     log.warning("governance: hold %s released by %s", s, owner)
     return True
 
@@ -659,18 +672,18 @@ def enqueue_purge(
     if any(q.selector == selector and q.reason is reason for q in queue):
         return False
     queue.append(QueuedPurge(selector, reason, _iso(_now(now))))
-    _write_queue(state_dir, queue)
-    append_audit(
-        state_dir,
-        {
-            "action": "purge-enqueued",
-            "at": _iso(_now(now)),
-            "reason": reason.value,
-            "selector_kind": selector.kind(),
-            "selector_sha256": selector.fingerprint(),
-            "source_id": selector.source_id,
-        },
-    )
+    with _audit_appender(state_dir) as audit:  # a refused audit trail queues nothing (A79)
+        _write_queue(state_dir, queue)
+        audit(
+            {
+                "action": "purge-enqueued",
+                "at": _iso(_now(now)),
+                "reason": reason.value,
+                "selector_kind": selector.kind(),
+                "selector_sha256": selector.fingerprint(),
+                "source_id": selector.source_id,
+            }
+        )
     return True
 
 

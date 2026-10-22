@@ -4647,6 +4647,46 @@ def test_a_file_in_the_state_folder_this_account_cannot_open_gets_its_own_fix(
             target.chmod(0o600)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+@pytest.mark.parametrize("mode", [0o000, 0o400])
+def test_an_audit_trail_this_account_cannot_append_to_stops_a_hold_and_its_release_and_status_fails_it(
+    initialised: Config, capsys: pytest.CaptureFixture[str], mode: int
+) -> None:
+    """B13 round 23 A79: audit.jsonl at 0000 (or 0400): ``hold all`` and ``hold all --release`` exited 1 yet
+    took effect, holds.json written first and the audit line refused, so a release removed protection with
+    no record; and no status check read the file, so status said 0 FAIL. The audit trail is opened first now:
+    a refused one changes nothing, and status FAILs governance.audit with the agent's chmod, which the report
+    files as the agent's, not as unexpected."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    holds, audit = governance._holds_file(root), governance.audit_path(root)
+    owner = ["--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(["hold", "source", "--reason", "matter 7", *owner]) == cli.EXIT_OK
+    before = (holds.read_bytes(), audit.read_bytes())
+    fix = f"(fix: chmod 600 {doctor._shell_path(audit)})"
+    audit.chmod(mode)
+    try:
+        for argv in (["hold", "all", "--reason", "matter 8"], ["hold", "source", "--release"]):
+            capsys.readouterr()
+            assert cli.main([*argv, *owner]) == cli.EXIT_FAILED, argv
+            err = capsys.readouterr().err
+            (line,) = [ln for ln in err.splitlines() if ln.startswith("error: ")]
+            assert line.endswith(f"audit.jsonl cannot be opened: Permission denied {fix}"), line
+            assert holds.read_bytes() == before[0], argv  # nothing changed
+        rc, out = _status(cfg, capsys)
+        assert rc == cli.EXIT_FAILED, out
+        (failed,) = [ln for ln in out if ln.startswith("[FAIL] governance.audit ")]
+        assert failed.endswith(fix), failed
+        assert setup_report._refused_files(initialised).get("governance.audit") == setup_report._AGENTS
+    finally:
+        audit.chmod(0o600)
+    assert audit.read_bytes() == before[1]
+    rc, out = _status(cfg, capsys)
+    assert not any("governance.audit" in ln for ln in out), out
+    assert cli.main(["hold", "source", "--release", *owner]) == cli.EXIT_OK
+    assert governance.state_holds(root) == ()
+
+
 def test_a_state_path_another_account_owns_gets_the_persons_chown(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -6105,3 +6145,31 @@ def test_no_one_word_condition_is_wrapped_only_for_its_trailing_comment() -> Non
         for m in wrapped.finditer(p.read_text("utf-8"))
     ]
     assert hits == []
+
+
+def test_an_audit_trail_on_a_read_only_volume_or_odd_suppressions_keep_the_other_governance_lines(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A79's reviewer: the audit check caught only PermissionError, so EROFS on a read-only
+    volume escaped and the whole governance group became one line, the legal hold lines with it; and a
+    suppression list of valid JSON but the wrong shape did the same. Each is its own line now."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    owner = ["--owner", "Contoso Legal", "--config", cfg]
+    assert cli.main(["hold", "source", "--reason", "matter 7", *owner]) == cli.EXIT_OK
+    governance._suppress_file(root).write_text("[]\n", encoding="utf-8")
+    audit = str(governance.audit_path(root))
+    real_open = os.open
+
+    def readonly(path: Any, flags: int, *args: Any) -> int:
+        if os.fspath(path) == audit and flags & os.O_WRONLY:
+            raise OSError(errno.EROFS, "Read-only file system", audit)
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr(cli.os, "open", readonly)
+    capsys.readouterr()
+    _rc, out = _status(cfg, capsys)
+    assert any(" governance.hold " in ln and "matter 7" in ln for ln in out), out
+    assert any(ln.startswith("[FAIL] governance.audit ") for ln in out), out
+    assert any(ln.startswith("[FAIL] governance.suppressed ") for ln in out), out
+    assert not any(ln.startswith("[FAIL] governance ") for ln in out), out

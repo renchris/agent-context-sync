@@ -10198,7 +10198,8 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
 
 def _refused_files(c: Config) -> dict[str, str]:
     """``{check: whose}`` for each state file a doctor check reads by name, the lock, the heartbeat,
-    holds.json and the purge queue, that exists and this account cannot read (``os.access``) or another
+    holds.json, the purge queue, the suppression list and the audit trail (written: B13 round 23 A79), that
+    exists and this account cannot read (``os.access``; the audit trail, write) or another
     account owns (B13 round 21 Y45: their FAILs were "unexpected"): :data:`_PERSONS` when doctor's fix for it
     is the person's, :data:`_AGENTS` when it is this account's chmod 600 or chmod 700 (B13 round 22 Z8: the
     bucket gave that one no owner, while the state file's says the agent's), else nothing. Keyed on the
@@ -10210,17 +10211,18 @@ def _refused_files(c: Config) -> dict[str, str]:
     out: dict[str, str] = {}
     sp = c.state_paths
     root = expand(sp.root)
-    for name, path in (
-        ("lock", expand(sp.lock)),
-        ("heartbeat", expand(sp.heartbeat)),
-        ("governance.hold", governance._holds_file(root)),
-        ("governance.purge_queue", governance._queue_file(root)),
+    for name, path, access in (
+        ("lock", expand(sp.lock), os.R_OK),
+        ("heartbeat", expand(sp.heartbeat), os.R_OK),
+        ("governance.hold", governance._holds_file(root), os.R_OK),
+        ("governance.purge_queue", governance._queue_file(root), os.R_OK),
+        # appended to, never read, by a hold or a queued purge: status tests it for writing (B13 round 23 A79)
+        ("governance.audit", governance.audit_path(root), os.W_OK),
+        ("governance.suppressed", governance._suppress_file(root), os.R_OK),
     ):
         try:
             try:
-                refused = path.exists() and (
-                    path.stat().st_uid != os.getuid() or not os.access(path, os.R_OK)
-                )
+                refused = path.exists() and (path.stat().st_uid != os.getuid() or not os.access(path, access))
             except PermissionError:  # a folder on its way refuses a search (governance/ at 0000)
                 refused = True
             if refused:

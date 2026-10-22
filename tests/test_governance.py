@@ -1738,3 +1738,34 @@ def test_the_compaction_line_takes_its_noun_from_the_day_count(tmp_docs_repo: Pa
         gov = gv.GovernanceConfig(history_days=days, compaction_slack_days=0)
         state, line = gv.compaction_state(tmp_docs_repo, gov)
         assert state == "ok" and said in line and "(s)" not in line, line
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_an_audit_trail_this_account_cannot_open_changes_no_hold_and_queues_no_purge(tmp_path: Path) -> None:
+    """B13 round 23 A79: set_hold, release_hold and enqueue_purge wrote holds.json or the queue and then
+    raised on the audit line, so the change took effect with no record. The audit trail is opened first."""
+    state = tmp_path / "state"
+    gv.set_hold(state, "all", reason="matter 7", owner="Contoso Legal")
+    gv.enqueue_purge(
+        state, gv.PurgeSelector(source_id="contoso-docs", stable_id="A"), gv.PurgeReason.DLP_REMEDIATION
+    )
+    audit = gv.audit_path(state)
+    files = [gv._holds_file(state), gv._queue_file(state), audit]
+    before = [f.read_bytes() for f in files]
+    audit.chmod(0)
+    try:
+        for change in (
+            lambda: gv.set_hold(state, "contoso-docs", reason="matter 8", owner="Contoso Legal"),
+            lambda: gv.release_hold(state, "all", owner="Contoso Legal"),
+            lambda: gv.enqueue_purge(
+                state,
+                gv.PurgeSelector(source_id="contoso-docs", stable_id="B"),
+                gv.PurgeReason.UPSTREAM_DELETED,
+            ),
+        ):
+            with pytest.raises(PermissionError):
+                change()
+    finally:
+        audit.chmod(0o600)
+    assert [f.read_bytes() for f in files] == before
+    assert [h.scope for h in gv.state_holds(state)] == ["all"]

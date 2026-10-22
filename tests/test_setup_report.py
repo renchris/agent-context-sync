@@ -15689,7 +15689,13 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
     finally:
         holds.parent.chmod(0o700)
     agents = setup_report._AGENTS
-    assert refused == {"governance.hold": agents, "governance.purge_queue": agents}, refused
+    governed = (
+        "governance.hold",
+        "governance.purge_queue",
+        "governance.audit",
+        "governance.suppressed",
+    )  # A79
+    assert refused == dict.fromkeys(governed, agents), refused
     me = os.getuid()
     holds.chmod(0)
     try:

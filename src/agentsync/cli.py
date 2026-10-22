@@ -2008,6 +2008,36 @@ def _refused_check(config: Config, name: str, exc: AgentSyncError) -> doctor.Che
     return refused
 
 
+def _audit_checks(config: Config) -> list[doctor.CheckResult]:
+    """``governance.audit`` and ``governance.suppressed``: a FAIL, with the state folder's fix for it, for an
+    audit trail this account cannot append to or a suppression list it cannot read; nothing when each opens
+    or is not there yet. A hold, its release and a queued purge each need the audit line first, so a refused
+    one stops them (B13 round 23 A79: no check read either file, and status said 0 FAIL). The audit trail is
+    opened for append, as a hold writes it, and closed at once: a 0400 file passes a read, and reading every
+    line would make one bad line a crash."""
+    root = expand(config.state_paths.root)
+    out: list[doctor.CheckResult] = []
+    try:
+        os.close(os.open(governance.audit_path(root), os.O_WRONLY | os.O_APPEND))
+    except FileNotFoundError:
+        pass
+    except OSError as exc:  # a read-only volume (EROFS) or a folder there: its own line, never the group's
+        out.append(doctor.stopped(config, "governance.audit", exc))
+    try:
+        governance.load_suppressions(root)
+    except AgentSyncError as exc:
+        cause = exc.__cause__
+        refused = (
+            doctor.refused_state_path(config, "governance.suppressed", cause)
+            if isinstance(cause, OSError)
+            else None
+        )
+        out.append(refused or doctor.stopped(config, "governance.suppressed", exc))
+    except Exception as exc:  # valid JSON of the wrong shape: this line only (A79's reviewer)
+        out.append(doctor.stopped(config, "governance.suppressed", exc))
+    return out
+
+
 def _time_machine_checks(config: Config) -> list[doctor.CheckResult]:
     """``governance.time_machine``: a warn for each tenant-data path not excluded from Time Machine, and an
     [info] line, no warn, for one this account cannot read the exclusion of (a file it cannot open, a folder
@@ -2084,6 +2114,8 @@ def _governance_checks(config: Config) -> list[doctor.CheckResult]:
             out.append(_refused_check(config, "governance.hold", exc))
         else:
             out += [_check("governance.hold", True, h.describe(), doctor.Severity.INFO) for h in holds]
+        said = {r.fix for r in out if not r.ok}
+        out += [r for r in _audit_checks(config) if r.fix not in said]  # one folder's fix is said once
     if sys.platform == "darwin" and os.environ.get("AGENTSYNC_TM_EXCLUDE", "1") != "0":
         try:
             out += _time_machine_checks(config)
