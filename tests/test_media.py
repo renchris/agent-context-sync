@@ -623,6 +623,10 @@ done.wait()
 exit(writer.status == .completed ? 0 : 1)
 """
 
+HELPER_RUN_LIMIT = 600
+"""Seconds each real helper run may take. The limit is no part of what these tests check: at a load of about
+15 per core the runs passed 60 and 120 s and turned four land gates red in a row (B13 round 23)."""
+
 
 def made_clip(tmp_path: Path, main: str) -> Path:
     """``tmp_path/clip.mp4`` as the Swift program ``main`` writes it; skips without developer tools."""
@@ -651,7 +655,7 @@ def test_the_real_media_helper_reads_a_two_second_clip_it_made(tmp_path: Path) -
     clip = made_clip(tmp_path, CLIP_MAIN)
     eng = media._open(media.build(tmp_path / "cache"))
     assert (eng.name, eng.helper_version) == ("avfoundation", "1.1.0")
-    info = eng.info(clip, timeout=60)
+    info = eng.info(clip, timeout=HELPER_RUN_LIMIT)
     assert (info.width, info.height, info.picture, info.audio) == (320, 240, "h264", False)
     assert info.duration_ms == 2_000
     ticks = 2  # tick 1 is the end of the clip: the last frame is on display
@@ -660,8 +664,8 @@ def test_the_real_media_helper_reads_a_two_second_clip_it_made(tmp_path: Path) -
     for n in range(2):
         out = tmp_path / f"run{n}"
         out.mkdir()
-        scan = eng.scan(clip, out=out, timeout=120)
-        made = eng.frames(clip, out=out, ticks=[ticks - 1, 0], timeout=120, crop_right=0.5)
+        scan = eng.scan(clip, out=out, timeout=HELPER_RUN_LIMIT)
+        made = eng.frames(clip, out=out, ticks=[ticks - 1, 0], timeout=HELPER_RUN_LIMIT, crop_right=0.5)
         runs.append([scan.grids.read_bytes(), *(f.path.read_bytes() for f in made)])
     assert runs[0] == runs[1], "the same file gives the same bytes"
     assert scan.ticks == ticks and [(f.tick, f.width, f.height) for f in made] == [
@@ -676,22 +680,26 @@ def test_the_real_media_helper_reads_a_two_second_clip_it_made(tmp_path: Path) -
         "row 0 is the top of the picture"
     )
     box = (0.0, 0.7, 0.3, 1.0)  # the last tick shows the box
-    changed, masked = (eng.diff(scan.grids, pairs=[(0, 1)], timeout=60, exclude=e) for e in ((), (box,)))
+    changed, masked = (
+        eng.diff(scan.grids, pairs=[(0, 1)], timeout=HELPER_RUN_LIMIT, exclude=e) for e in ((), (box,))
+    )
     assert changed[0] > 2_000 and masked[0] < 100
 
 
 def test_the_real_media_helper_reads_the_pills_and_the_sound_of_a_clip_it_made(tmp_path: Path) -> None:
     clip = made_clip(tmp_path, SOUND_CLIP_MAIN)
     eng = media._open(media.build(tmp_path / "cache"))
-    assert eng.info(clip, timeout=60).audio
+    assert eng.info(clip, timeout=HELPER_RUN_LIMIT).audio
     blue, grey, ground = (0.125, 0.75, 0.25, 0.125), (0.625, 0.75, 0.25, 0.125), (0.0, 0.0, 0.1, 0.1)
 
     runs = []
     for n in range(2):
         out = tmp_path / f"run{n}"
         out.mkdir()
-        values = eng.pills(clip, [(1, [blue, grey, ground]), (0, [grey, blue])], work=out, timeout=120)
-        sound = eng.audio(clip, out, timeout=120)
+        values = eng.pills(
+            clip, [(1, [blue, grey, ground]), (0, [grey, blue])], work=out, timeout=HELPER_RUN_LIMIT
+        )
+        sound = eng.audio(clip, out, timeout=HELPER_RUN_LIMIT)
         runs.append((values, sound.samples, sound.path.read_bytes()))
     assert runs[0][:2] == runs[1][:2], "the same file gives the same pill values and the same length"
     # Apple's AAC decoder may move a sample by one step between runs (spec R11; CONTRACTS §16.35): the sound
