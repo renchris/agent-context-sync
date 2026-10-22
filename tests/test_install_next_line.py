@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import exec_stub
 from test_install_oneshot import (
     BASH32,
     INSTALL_SH,
@@ -34,9 +35,7 @@ exec "$STUB_INNER" "$@"
 
 
 def _exe(path: Path, text: str) -> str:
-    path.write_text(text)
-    path.chmod(0o755)
-    return str(path)
+    return str(exec_stub.write(path, text))  # a Mach-O run by path, not a #! exec (B13 round 23 A97)
 
 
 def _env(tmp_path: Path) -> dict[str, str]:

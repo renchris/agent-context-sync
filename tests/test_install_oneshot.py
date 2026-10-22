@@ -49,6 +49,7 @@ from unittest.mock import patch
 
 import pytest
 
+import exec_stub
 from agentsync import cli, gitops, lints, net, paths, setup_report
 from agentsync.config import (
     Config,
@@ -309,9 +310,7 @@ def xcrun_db() -> dict[str, str]:
 
 
 def _write_exe(path: Path, text: str) -> Path:
-    path.write_text(text)
-    path.chmod(0o755)
-    return path
+    return exec_stub.write(path, text)  # a Mach-O run by path, not a #! exec (B13 round 23 A97)
 
 
 @pytest.fixture

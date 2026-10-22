@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+import exec_stub
 from agentsync import setup_report
 from agentsync.config import Config
 from agentsync.ops import doctor, launchd
@@ -562,14 +563,10 @@ def stubs(tmp_path: Path) -> dict[str, str]:
     home.mkdir()
     bin_dir = tmp_path / "stubbin"
     bin_dir.mkdir()
-    (bin_dir / "uv").write_text(STUB_UV)
-    (bin_dir / "uv").chmod(0o755)
-    agentsync = tmp_path / "agentsync-stub"
-    agentsync.write_text(STUB_AGENTSYNC)
-    agentsync.chmod(0o755)
-    launchctl = tmp_path / "launchctl-stub"  # every run gets it: no test can reach /bin/launchctl
-    launchctl.write_text(STUB_LAUNCHCTL)
-    launchctl.chmod(0o755)
+    exec_stub.write(bin_dir / "uv", STUB_UV)  # each a Mach-O run by path, not a #! exec (B13 round 23 A97)
+    agentsync = exec_stub.write(tmp_path / "agentsync-stub", STUB_AGENTSYNC)
+    # every run gets it: no test can reach /bin/launchctl
+    launchctl = exec_stub.write(tmp_path / "launchctl-stub", STUB_LAUNCHCTL)
     return {
         "HOME": str(home),
         "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin",

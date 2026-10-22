@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import exec_stub
 from agentsync import arm_local
 from agentsync.config import Config, parse_config
 from agentsync.gitops import ensure_repo
@@ -225,6 +226,16 @@ def _owner_only_umask() -> Iterator[None]:
     previous = os.umask(0o077)
     yield
     os.umask(previous)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _exec_trampoline() -> Iterator[bytes | None]:
+    """Stubs written by ``exec_stub.write`` run by path as a Mach-O, not as a ``#!`` script (B13 round 23 lane
+    K, A97: macOS 15.8.1 keeps kernel memory for every ``#!`` exec until reboot). Built once per source hash
+    under the real ~/.cache; with no compiler, or off macOS, every stub stays the plain ``#!`` file."""
+    exec_stub.TRAMPOLINE = exec_stub.build(REAL_HOME / ".cache" / "agentsync-tests" / "exec-trampoline")
+    yield exec_stub.TRAMPOLINE
+    exec_stub.TRAMPOLINE = None
 
 
 @pytest.fixture(autouse=True)
