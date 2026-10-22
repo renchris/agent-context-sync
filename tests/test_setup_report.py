@@ -7679,8 +7679,7 @@ def test_the_wait_the_loop_stopped_on_is_picked_by_what_its_next_line_says() -> 
         (
             'fix path in [[source]] id = "contoso", or put the folder back under that name in OneDrive, or '
             "sync that folder in OneDrive",
-            f"its fix on the [FAIL] line below is the person's ({cli.PERSONS_KINDS}), not a step for the "
-            "agent: show it to them",
+            "its fix on the [FAIL] line below is the person's, not a step for the agent: show it to them",
         ),
     ],
 )

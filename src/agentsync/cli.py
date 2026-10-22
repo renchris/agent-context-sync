@@ -1487,11 +1487,13 @@ def _fail_step(result: doctor.CheckResult) -> str:
     fix that is the person's (``doctor.is_persons_fix``: the kinds :data:`PERSONS_KINDS` names; a third
     hand-kept list went stale, B13 round 17 U69) is named as theirs, as install.sh's NEXT names it, not as a
     step for the agent (B13 round 14 Q1, Q9, Q33; round 15 S7, S47, S53; round 16 T2, T5, T9; round 17 U2,
-    U16, U11)."""
+    U16, U11). No catalog of the person's kinds: the [FAIL] line right below states the one fix, and the
+    whole list (about 480 characters) named every kind but that one (B13 round 23 A31). "not a step for the
+    agent" stays: the setup report counts a person's stop by it."""
     if doctor.is_persons_fix(result.fix):
         return (
-            f"the {result.name} check failed: its fix on the [FAIL] line below is the person's "
-            f"({PERSONS_KINDS}), not a step for the agent: show it to them"
+            f"the {result.name} check failed: its fix on the [FAIL] line below is the person's, not a step "
+            "for the agent: show it to them"
         )
     if result.fix:
         return f"the {result.name} check failed: do what the fix on its [FAIL] line below says"

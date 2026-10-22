@@ -2983,14 +2983,8 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
     assert "WARNING agentsync.arm_local: x: source root missing: gone" in capsys.readouterr().err
 
 
-PERSONS_STEP = (
-    "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
-    "path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or "
-    "allow, a state file that is damaged, another account's or not a file, a state folder that is not a "
-    "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "
-    "volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a "
-    "step for the agent: show it to them"
-)
+# no catalog of kinds since B13 round 23 A31: the [FAIL] line below states the one fix
+PERSONS_STEP = "its fix on the [FAIL] line below is the person's, not a step for the agent: show it to them"
 
 
 def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Path) -> None:
@@ -3016,7 +3010,7 @@ def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Pat
     ):
         assert doctor.is_persons_fix(fix), fix
         step = cli._fail_step(doctor.CheckResult("state_dir", False, "refused", fix=fix))
-        assert step == f"the state_dir check failed: {PERSONS_STEP}" and kind in step, step
+        assert step == f"the state_dir check failed: {PERSONS_STEP}", step  # no kinds in the NEXT (A31)
 
 
 def test_a_docs_repo_remote_governance_does_not_allow_is_the_persons_in_status(
@@ -6173,3 +6167,25 @@ def test_an_audit_trail_on_a_read_only_volume_or_odd_suppressions_keep_the_other
     assert any(ln.startswith("[FAIL] governance.audit ") for ln in out), out
     assert any(ln.startswith("[FAIL] governance.suppressed ") for ln in out), out
     assert not any(ln.startswith("[FAIL] governance ") for ln in out), out
+
+
+@pytest.mark.parametrize(
+    "fix",
+    [
+        doctor.MANIFEST_FIX,
+        "the person gives this account read and write access to the file ~/'state/manifest.sqlite'; its "
+        "owner and mode are right, so an ACL or a privacy setting refuses it",
+        "the person gives this account search access to ~/Library, a folder above the state folder",
+    ],
+)
+def test_statuss_next_for_a_persons_fail_names_no_catalog_of_kinds(fix: str) -> None:
+    """B13 round 23 A31: status's NEXT for a person's FAIL listed all of PERSONS_KINDS (about 530 characters),
+    not the one kind its [FAIL] line names. The line below states the fix; the NEXT says whose it is, and
+    keeps "not a step for the agent", which the setup report counts a person's stop by."""
+    step = cli._fail_step(doctor.CheckResult("state_dir", False, "x", doctor.Severity.ERROR, fix=fix))
+    assert doctor.is_persons_fix(fix)
+    assert step == (
+        "the state_dir check failed: its fix on the [FAIL] line below is the person's, not a step for the "
+        "agent: show it to them"
+    )
+    assert len(step) < 200 and setup_report._PERSONS_STEP in step
