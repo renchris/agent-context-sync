@@ -11109,6 +11109,11 @@ _FOLDER_ACL_FIX_HEADS = (
 named the state file until B13 round 23 (A43, A69, A88)."""
 
 
+_FOLDER_PASS_NEXT = "in the same pass, since that folder's mode hid its files' modes"
+"""install.sh's NEXT words for a state folder's ``chmod 700`` (B13 round 22 Z81): the folder's chmod, then
+each chmod 600 or chmod 700 the agent's status names, in one pass before the re-run."""
+
+
 def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tuple[str, str] | None:
     """What a failed config step met, when the run's own install.out block holds the sync's ``error:
     state: ... cannot be opened`` line (B13 round 21 Y5: Items said only "exited 1 at its config step; the
@@ -11168,9 +11173,14 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "after the file was fixed"
             )
         if fix.startswith("chmod 700 "):  # B13 round 22 Z4, Z45: the folder's mode was fixed, not the file's
-            return f" on {_state_folder_named(r, fix)}, which this account could not open{mode}", (
-                "after the folder's mode was fixed"
+            # B13 round 23 A5, A13, A38: install.sh's one pass (Z81) also asks for each chmod status then
+            # names, which the report never sees, so the words hold whether status named a file or not
+            fixed = (
+                "after the folder's mode, and any mode in it that status then named, were fixed"
+                if any(_FOLDER_PASS_NEXT in ln for ln in block)
+                else "after the folder's mode was fixed"
             )
+            return f" on {_state_folder_named(r, fix)}, which this account could not open{mode}", fixed
         return f" on agentsync's state file, which this account could not open{mode}", (
             "after the file's mode was fixed"
         )

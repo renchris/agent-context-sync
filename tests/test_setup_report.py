@@ -8852,6 +8852,30 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             f"the same command was run again after {after} and ended 0"
         ), got
         assert "Library" not in got and "manifest" not in got, got
+    # B13 round 23 A5, A13, A38: install.sh's one pass after a folder's chmod 700 (Z81) also runs each chmod
+    # status names, unseen by the report: a shut folder alone and one holding a shut manifest leave the same
+    # block, so both read words true of each, and neither says a file's mode was fixed
+    fold = f"error: state: {db} cannot be opened: Permission denied (fix: chmod 700 {folder})\n"
+    pass_next = (
+        "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not "
+        f"damage; the error above names it): the fix is the agent's: run chmod 700 {folder} once, then, in "
+        "the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and "
+        "each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: x\n"
+    )
+    for next_line, after in (
+        (pass_next, "the folder's mode, and any mode in it that status then named, were fixed"),
+        ("", "the folder's mode was fixed"),  # an older install.sh's NEXT: the folder's chmod alone
+    ):
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            + fold
+            + next_line
+            + "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
+            encoding="utf-8",
+        )
+        got = items(failed, worked)
+        assert got.endswith(f"; the same command was run again after {after} and ended 0"), got
+        assert "file's mode" not in got and "files' modes" not in got, got
     # B13 round 22 Z6: a last run that stopped there names the cause and whose in the outcome, with no bracket
     above = (
         "the person gives this account search access to ~/'Library/Application Support', a folder above "
