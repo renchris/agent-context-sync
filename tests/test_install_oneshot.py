@@ -15349,6 +15349,86 @@ def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_sh
     assert python == shell, "the numbers the agentsync report gives"
 
 
+_ESCAPED_BASES = (
+    # B13 round 23 A82: git writes a quote in a URL base as \" and applies the rewrite
+    '[url "https://git.fabrikam-eng.invalid/kes\\"trel/"]\n\tinsteadOf = https://github.com/\n',
+    '[url "https://git.fabrikam-two.invalid/qu\\"ill/"] insteadOf = https://github.com/q/\n',
+    '[url "https://git.fabrikam-three.invalid/plain/"]\n\tinsteadOf = https://github.com/p/\n',
+    # an IPv6 host and a "]" after an escaped quote, and an escaped backslash
+    '[url "https://[fd00::1]/a\\"]b/"] insteadOf = https://github.com/v6/\n',
+    '[url "C:\\\\path\\\\"]\n\tinsteadOf = https://github.com/w/\n',
+    '[url "https://push.fabrikam-four.invalid/"]\n\tpushInsteadOf = https://github.com/\n',
+)
+
+
+def test_the_shell_rewrite_readers_read_a_base_with_an_escaped_quote_as_git_does(tmp_path: Path) -> None:
+    """B13 round 23 A82: git_rewrite_bases and git_rewrite_pairs matched a base as ``"[^"]+"``, which stops at
+    an escaped quote, so the section was skipped and a 403 line kept the rewrite's host and path in clear,
+    which setup_report._GIT_SECTION_RE reads. Both match the header as the remote reader does since Z75 and
+    undo git's escapes in one pass: each gives what ``git config --get-regexp`` gives, in file order."""
+    home = tmp_path / "home"
+    home.mkdir()
+    cfg = home / ".gitconfig"
+    cfg.write_text("".join(_ESCAPED_BASES), encoding="utf-8")
+    got = subprocess.run(
+        ["git", "config", "-z", "-f", str(cfg), "--get-regexp", r"^url\..*\.insteadof$"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    pairs = [
+        (value, key[len("url.") : -len(".insteadof")])
+        for key, value in (entry.split("\n", 1) for entry in got.split("\0") if entry)
+    ]
+    assert [b for _, b in pairs][:2] == [
+        'https://git.fabrikam-eng.invalid/kes"trel/',
+        'https://git.fabrikam-two.invalid/qu"ill/',
+    ]
+    script = INSTALL_SH.read_text(encoding="utf-8")
+    fns = "".join(
+        m.group(0)
+        for name in ("git_rewrite_bases", "git_rewrite_pairs", "git_config_files", "checkout_git_configs")
+        for m in [re.search(rf"^{name}\(\) \{{.*?^\}}\n", script, re.M | re.S)]
+        if m is not None
+    )
+    dirs = re.search(r"^checkout_git_dirs\(\) \{.*?^\}\n", script, re.M | re.S)
+    assert dirs is not None and fns.count("() {") == 4
+    cp = subprocess.run(
+        [BASH32, "-c", f"{fns}{dirs.group(0)}git_rewrite_bases; echo --; git_rewrite_pairs"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
+    )
+    bases, said = cp.stdout.split("--\n")
+    assert bases.splitlines() == [b for _, b in pairs]
+    assert said.splitlines() == [f"x{v}\t{b}" for v, b in pairs]
+
+
+@pytest.mark.parametrize("form", ["two-line", "one-line"])
+def test_a_rewrite_base_with_an_escaped_quote_is_redacted_in_both_reports(
+    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    """B13 round 23 A82: a 403 line names a rewrite whose base holds a quote, which git applies; the shell
+    report printed its host and path in clear and the agentsync report replaced them. Both now give the same
+    placeholders, beside a plain base."""
+    for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"):
+        monkeypatch.delenv(k, raising=False)
+    sep = " " if form == "one-line" else "\n\t"
+    (Path(env["HOME"]) / ".gitconfig").write_text(
+        f'[url "https://git.fabrikam-eng.invalid/kes\\"trel/"]{sep}insteadOf = https://github.com/\n'
+        '[url "https://git.fabrikam-three.invalid/plain/"]\n\tinsteadOf = https://github.com/p/\n'
+    )
+    said = (
+        "fatal: unable to access 'https://git.fabrikam-eng.invalid/kes\"trel/acme/agent-context-sync.git/': "
+        "The requested URL returned error: 403"
+    )
+    shell, python = _fuzzy_report(env, monkeypatch, ["Plans"], said)
+    assert "fabrikam" not in shell and "trel" not in shell, shell
+    assert shell.startswith("fatal: unable to access 'https://<proxy-1>/<proxy-2>/"), shell
+    assert python == shell, "the numbers the agentsync report gives"
+
+
 def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: Path) -> None:
     """B13 round 21 Y64, the readers alone: a url or proxy key after its header is read, with a quoted
     subsection and a comment; an empty ``proxy =`` there (git's off switch) still gives nothing, and a url key

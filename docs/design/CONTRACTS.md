@@ -27354,6 +27354,8 @@ Y64 closed. The insteadOf readers are left as they are: a quote in a URL base ha
 Tests: the quoted rows of `test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_shell_report`
 and of `test_the_shell_git_readers_read_a_key_on_its_sections_header_line`, which reads a quoted `[http "..."]
 proxy =` beside a plain one.
+Amended 2026-10-22, §16.165 A82: git writes a quote in a URL base as `\"` and applies the rewrite, so "a quote in a
+URL base has no use" is withdrawn: both insteadOf readers now match the escaped quote.
 
 **The older dotted `[remote.<name>]` section is a remote** (Z76). git still applies `[remote.origin]` and
 `[Remote.Upstream] url = ...` (it lowercases the dotted name), and its fetch error names the url's host, but
@@ -28126,6 +28128,23 @@ cleared. Test: `test_install_oneshot.py::
 test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports` (the `last-wins` row is now
 `first-wins`; GitHub first; an empty reset; a url in `config.worktree` after one in the config; two urls and a
 rewrite), which reads git's own fetch url and asserts the two reports give the same words on every row.
+
+**A URL rewrite base may hold an escaped quote** (A82; corrects §16.159 Z75). `git config --global
+url.'https://git.contoso-eng.invalid/kes"trel/'.insteadOf https://github.com/` writes `[url
+"https://git.contoso-eng.invalid/kes\"trel/"]`, and `git remote get-url` applies it, so §16.159's "a quote in a URL
+base has no use" does not hold. `git_rewrite_bases` and `git_rewrite_pairs` matched the base as `"[^"]+"`, which
+stops at the escaped quote: the section was skipped, and a 403 line (no resolver error, which
+`friction_proxy_hosts` reads) kept the host and path in clear while `setup_report._GIT_SECTION_RE` read them. Both
+readers match `"(\\.|[^"\\])+"`, as `git_remote_entries` does since Z75, take the base from the matched header
+(not from the whole line, so a base holding `\"]` is not cut at it), and undo git's escapes in one pass, as git's
+parser does (a backslash and the character after it give that character); `+`, not `*`, as Python skips an empty
+`[url ""]`. A base is added only where the agentsync report already has one, in the same file order, so earlier
+`<proxy-N>` numbers stand. `setup_report` is unchanged: its `.replace` chain gives the same base for every value
+git writes. Tests: `test_install_oneshot.py::
+test_the_shell_rewrite_readers_read_a_base_with_an_escaped_quote_as_git_does` (an escaped quote in the two-line
+and one-line forms, a plain base, an IPv6 base holding `\"]`, a `\\` base and a pushInsteadOf, each reader against
+`git config -z --get-regexp`) and `test_a_rewrite_base_with_an_escaped_quote_is_redacted_in_both_reports` (both
+forms on a 403 line: the same placeholders in both reports).
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 

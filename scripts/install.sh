@@ -380,10 +380,18 @@ git_rewrite_bases() {
 	local g
 	git_config_files | while IFS= read -r g; do
 		[ ! -f "$g" ] || LC_ALL=C awk '
+			function unq(h,    o, c, i) { # the base of a matched [url "<base>"] header, its escapes undone as git does
+				sub(/^[^"]*"/, "", h); sub(/"[ \t]*\]$/, "", h)
+				o = ""
+				for (i = 1; i <= length(h); i++) { c = substr(h, i, 1); if (c == "\\") { i++; c = substr(h, i, 1) } o = o c }
+				return o
+			}
 			/^[ \t]*\[/ {
 				base = ""
-				if (match($0, /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/)) {
-					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+				# a quoted base may hold an escaped quote or backslash, which git writes as \" and \\ (B13 round
+				# 23 A82: "[^"]+" stopped at the escaped quote, the section was skipped and its host printed)
+				if (match($0, /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"(\\.|[^"\\])+"[ \t]*\]/)) {
+					base = unq(substr($0, RSTART, RLENGTH))
 					# [url "<base>"] insteadOf = <url> on one line, which git applies (B13 round 20 X8): the rest
 					# is cut after the matched header, so a base holding "]" (an IPv6 host) keeps its key
 					rest = substr($0, RSTART + RLENGTH)
@@ -408,10 +416,16 @@ git_rewrite_pairs() {
 				gsub(/^"|"$/, "", v)
 				print "x" v "\t" base
 			}
+			function unq(h,    o, c, i) { # the base of a matched [url "<base>"] header, its escapes undone as git does
+				sub(/^[^"]*"/, "", h); sub(/"[ \t]*\]$/, "", h)
+				o = ""
+				for (i = 1; i <= length(h); i++) { c = substr(h, i, 1); if (c == "\\") { i++; c = substr(h, i, 1) } o = o c }
+				return o
+			}
 			/^[ \t]*\[/ {
 				base = ""
-				if (match($0, /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"[^"]+"[ \t]*\]/)) {
-					base = $0; sub(/^[^"]*"/, "", base); sub(/"[ \t]*\].*$/, "", base)
+				if (match($0, /^[ \t]*\[[ \t]*[Uu][Rr][Ll][ \t]+"(\\.|[^"\\])+"[ \t]*\]/)) { # its escapes as above (A82)
+					base = unq(substr($0, RSTART, RLENGTH))
 					# [url "<base>"] insteadOf = <value> on one line, cut after the matched header (B13 round 20 X8)
 					pair(substr($0, RSTART + RLENGTH))
 				}
