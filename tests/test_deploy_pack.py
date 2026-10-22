@@ -4752,15 +4752,15 @@ def test_setup_feedback_states_the_report_rules_of_round_4() -> None:
     code = Path(doctor.__file__).read_text(encoding="utf-8")
     assert doctor.BIN == "~/.local/bin/agentsync"
     for printed in (
-        "{BIN} sync (it makes these owner-only)",
-        "{BIN} status (run it again as it is)",
-        "{BIN} status -v (prints the traceback",
+        "run {BIN} sync, which makes these owner-only",
+        "run {BIN} status again as it is",
+        "run {BIN} status -v, which prints the traceback",
         "report it: {BIN} status -v prints where",
     ):
         assert printed in code, printed
     for quoted in (
-        "(fix: ~/.local/bin/agentsync sync (it makes these owner-only))",
-        "`~/.local/bin/agentsync status (run it again as it is)`",
+        "(fix: run ~/.local/bin/agentsync sync, which makes these owner-only)",
+        "`run ~/.local/bin/agentsync status again as it is`",
         "`~/.local/bin/agentsync status -v`, which prints the traceback",
         "report it: ~/.local/bin/agentsync status -v prints where",
     ):

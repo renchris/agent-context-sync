@@ -9534,7 +9534,7 @@ def test_a_rerun_clears_the_permissions_agentsync_owns_before_status_can_stop_on
     git_config("--unset", "core.sharedRepository")  # a docs repo from before the setting
     found = permissions()
     assert found.startswith("[FAIL] docs_repo.permissions ") and str(eval_dir) in found
-    assert found.endswith(" (fix: ~/.local/bin/agentsync sync (it makes these owner-only))"), (
+    assert found.endswith(" (fix: run ~/.local/bin/agentsync sync, which makes these owner-only)"), (
         "a command an agent may run"
     )
 

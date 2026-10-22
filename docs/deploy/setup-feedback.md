@@ -780,7 +780,7 @@ other. Step 2's `install.sh` ran status before its sync, stopped on `[FAIL] docs
   `tightened N paths inside the docs repo, the cache or the logs: they hold tenant data` (`1 path ...: it
   holds` for one), a count and no path.
 - The check's fix names a command the agent may run when one clears it:
-  `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`. Since 2026-10-12 (Q49, 9ac4273f), every
+  `(fix: run ~/.local/bin/agentsync sync, which makes these owner-only)`. Since 2026-10-12 (Q49, 9ac4273f), every
   runnable fix doctor prints names agentsync by its full path, `~/.local/bin/agentsync`, because install.sh leaves
   ~/.local/bin off PATH.
 - The `chmod` is still the fix for a path agentsync does not change: one inside `mirror/` or `.git`, one of
@@ -853,7 +853,7 @@ every update installs a new copy ([CONTRACTS §16.32](../design/CONTRACTS.md)):
   wrong`. Under `install.sh` its fix starts `run ~/src/agent-context-sync/scripts/install.sh again without
   --report-only, which builds nothing; a plain run keeps the folders already synced`, a step the prompt lets
   the agent take.
-  Run by hand, it starts `~/.local/bin/agentsync status (run it again as it is)`.
+  Run by hand, it starts `run ~/.local/bin/agentsync status again as it is`.
 - That fix goes on `; if this line comes back: ...`, because a program that never answers gives the same
   line at every run, and running again does not clear that one. For `pandoc` it names the check's own fix,
   which is the fix of the pandoc the line names (CONTRACTS §16.120, S29; §16.126, T54): for the bundled one

@@ -944,7 +944,7 @@ def test_sg12_cli_runs_owner_only_and_doctor_flags_readable_repos(tmp_path: Path
     (config.docs_repo / "mirror").chmod(0o755)
     bad = {r.name: r for r in doctor.run_checks(config)}["docs_repo.permissions"]
     assert not bad.ok and bad.severity is doctor.Severity.ERROR
-    assert bad.fix == "~/.local/bin/agentsync sync (it makes these owner-only)"
+    assert bad.fix == "run ~/.local/bin/agentsync sync, which makes these owner-only"
 
 
 @pytest.mark.parametrize(

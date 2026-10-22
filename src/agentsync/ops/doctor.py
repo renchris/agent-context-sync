@@ -216,8 +216,8 @@ _STILL_NO_ANSWER = "report it: the program does not answer on this Mac, and no s
 # A check that crashed is a fault in agentsync, which nothing on this Mac clears. -v logs the traceback.
 # An operating-system error is not that: the Mac's state causes it and can clear it (see _os_error).
 _CRASH_FIX = (
-    f"{BIN} status -v (prints the traceback: a check that crashes is a fault in agentsync to report, "
-    "and no setup step clears it)"
+    f"run {BIN} status -v, which prints the traceback: a check that crashes is a fault in agentsync to "
+    "report, and no setup step clears it"
 )
 _POLICY_FAULT_FIX = (
     "report this line: agentsync cannot use this process's download policy on this macOS, and no setup step "
@@ -614,7 +614,7 @@ def _again_fix(fallback: str | None = None) -> str:
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         again = AGAIN_UNDER_INSTALL_SH
     else:
-        again = f"{BIN} status (run it again as it is)"
+        again = f"run {BIN} status again as it is"
     return f"{again}; if this line comes back: {fallback or _STILL_NO_ANSWER}"
 
 
@@ -2933,7 +2933,7 @@ def _check_permissions(config: Config) -> list[CheckResult]:
         targets = " ".join(_shell_path(r) for r in roots if r.exists())
         # A sync makes agentsync's own paths owner-only, and a setup agent may run it; the chmod is the
         # person's, for a path a sync leaves (in mirror/ or .git, or another user's).
-        fix: str | None = f"{BIN} sync (it makes these owner-only)"
+        fix: str | None = f"run {BIN} sync, which makes these owner-only"
         if _sync_leaves(config, bad):
             fix = (
                 f"chmod -R go-rwx {targets}; git -C {_shell_path(repo)} config core.sharedRepository 0600"

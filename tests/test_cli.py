@@ -314,7 +314,7 @@ def test_setup_makes_what_is_inside_its_folders_owner_only_before_status_looks(
         f.write_text("1. What did Contoso decide?\n", encoding="utf-8")
         f.chmod(0o644)
     [found] = doctor._check_permissions(initialised)
-    assert not found.ok and found.fix == "~/.local/bin/agentsync sync (it makes these owner-only)"
+    assert not found.ok and found.fix == "run ~/.local/bin/agentsync sync, which makes these owner-only"
 
     argv = ["init"] if command == "init" else ["add-source", str(initialised.sources[0].path)]
     assert cli.main([*argv, "--config", str(initialised.config_path)]) == cli.EXIT_OK

@@ -509,7 +509,7 @@ def test_the_bundled_pandocs_fix_is_install_shs_reinstall_and_no_bare_uv(
 
 # --------------------------------------------------------------------- a check that does not finish
 
-RUN_AGAIN = "~/.local/bin/agentsync status (run it again as it is)"
+RUN_AGAIN = "run ~/.local/bin/agentsync status again as it is"
 INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 # B13 round 19 W19, W48: by what it is; no NEXT line names it under a warn, and --report-only builds nothing
 # B13 round 20 X21: the plain command, which keeps the folders; no options the person never saw
@@ -535,9 +535,8 @@ PANDOC_INSTALL_COMES_BACK = (
 BUSY_START = "any start can take a minute on a busy Mac"
 OUT_OF_TIME = "the check ran out of time, so it could not say whether anything is wrong"
 CRASH_FIX = (
-    "~/.local/bin/agentsync status -v (prints the traceback: a check that crashes is a fault in agentsync to "
-    "report, "
-    "and no setup step clears it)"
+    "run ~/.local/bin/agentsync status -v, which prints the traceback: a check that crashes is a fault in "
+    "agentsync to report, and no setup step clears it"
 )
 
 
@@ -583,6 +582,20 @@ def test_the_system_error_and_state_owner_fixes_nest_no_bracket(tmp_path: Path) 
         assert fix and "(" not in fix and ")" not in fix, fix
     assert all(doctor.is_persons_fix(fix) for fix in persons), persons
     assert fixes[1].startswith("run again; if the line stays, report it: "), fixes[1]
+
+
+def test_the_run_again_crash_and_owner_only_fixes_nest_no_bracket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B13 round 23 A94: by hand, ``_again_fix`` read ``~/.local/bin/agentsync status (run it again as it
+    is)``, the crash fix ``... status -v (prints the traceback: ...)`` and the permissions fix ``... sync (it
+    makes these owner-only)``: a bracket inside the line's own ``(fix: ...)``, and a "command" bash rejects
+    when copied. Each starts ``run <command>`` now and says why after ", which", the install.sh form."""
+    monkeypatch.delenv(doctor.NO_NEXT_HINT_ENV, raising=False)
+    again = doctor._again_fix()
+    assert again.startswith(RUN_AGAIN + "; if this line comes back: "), again
+    for fix in (again, doctor._CRASH_FIX, CRASH_FIX):
+        assert "(" not in fix and ")" not in fix, fix
+    assert doctor._CRASH_FIX == CRASH_FIX
+    assert not doctor.is_persons_fix(again) and not doctor.is_persons_fix(CRASH_FIX)
 
 
 def _silent(match: Callable[[Sequence[str]], bool]) -> Callable[..., subprocess.CompletedProcess[str]]:
@@ -2667,9 +2680,10 @@ def test_a_held_listing_line_says_held_once(note: str) -> None:
 def assert_fix_parses(fix: str | None) -> None:
     """A fix naming an agentsync command names one the CLI still parses (KISS K13b: no deleted spelling
     such as ``sync --source`` or ``sync --dry-run``), by its full path (B13 round 4 Q49: ~/.local/bin is
-    not on PATH). The text after ``;`` and any parenthetical are prose."""
-    assert fix is not None and fix.startswith(f"{BIN} "), fix
-    command = re.sub(r"\([^)]*\)", "", fix.split(";")[0]).removeprefix(f"{BIN} ")
+    not on PATH). A leading ``run `` and the text after ``;`` or ``, which`` are prose (B13 round 23 A94)."""
+    assert fix is not None and fix.removeprefix("run ").startswith(f"{BIN} "), fix
+    command = fix.removeprefix("run ").split(";")[0].split(", which")[0].removeprefix(f"{BIN} ")
+    command = re.sub(r"\([^)]*\)", "", command).removesuffix(" again as it is")
     try:
         cli.build_parser().parse_args(shlex.split(command))
     except SystemExit:
