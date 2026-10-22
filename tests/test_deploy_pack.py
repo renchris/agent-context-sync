@@ -5837,9 +5837,13 @@ _ROUND_22_RA_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: Z35's `legacy_cleared` and `legacy_settled` rows in §16.28's run-record
 table."""
 
-_ROUND_23_E_PARAGRAPH_AMENDS = (("16.28", "| `legacy_waiting` |", "§16.168 A63"),)
-"""Round 23 lane E's dated line at a section its claims name with no item, as
-:data:`_ROUND_12_PARAGRAPH_AMENDS`: A63's `legacy_waiting` row in §16.28's run-record table."""
+_ROUND_23_E_PARAGRAPH_AMENDS = (
+    ("16.28", "| `legacy_waiting` |", "§16.168 A63"),
+    ("16.42", "(the route set and the counts: 11 converters,", "§16.168 A65 (by §16.54 Q78)"),
+)
+"""Round 23 lane E's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: A63's `legacy_waiting` row in §16.28's run-record table, and A65's at
+§16.42's diagram Tests paragraph, whose label-rule count Q78 changed."""
 
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),

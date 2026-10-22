@@ -12756,6 +12756,10 @@ Tests: `tests/test_convert_formats.py` (`test_a_drawio_diagram_is_its_shape_text
 (the route set and the counts: 11 converters, 13 with an engine, 11 under a label rule),
 `tests/test_convert_determinism.py` (three diagram inputs) and `tests/test_setup_report.py` (the scrub).
 `build_drawio` and `build_vsdx` in `tests/test_convert_builders.py` write both formats from nothing.
+Amended 2026-10-22, §16.168 A65 (by §16.54 Q78): with an engine a label rule gives 12 converters, not 11 (the ten,
+pandoc-gfm a second time and msg-mime; no image converter), as
+`test_convert_core.py::test_a_label_rule_keeps_the_image_converter_out_of_the_registry` asserts; without an engine
+a label rule gives 11, msg-mime in msg-olefile's place.
 
 #### The speech line says the helper is built (`convert/speech.py`) (H13)
 
@@ -28051,6 +28055,15 @@ and Z35's has one saying so. Three finders, one defect, built once. Not the veri
 Z35's id, nor the rewrite of Z35's heading and words: this round writes the lines, so they carry its item ids
 (`(by §16.158 Z35)`), and older text is marked, not replaced. Held by the dated-line scan
 (`test_deploy_pack.py::test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`); no code changed.
+
+**§16.42's diagram tests give the label-rule count with an engine (A65; dated line at §16.42).** The Tests paragraph
+of §16.42's diagram subsection says `tests/test_convert_core.py` pins "11 converters, 13 with an engine, 11 under a
+label rule"; the label-rule test builds its registry with an engine and has asserted 12 since round 4's Q78 put
+msg-mime under a rule. Measured with `Registry.default`: no engine 11, an engine 13, a rule and no engine 11, a rule
+and an engine 12. The paragraph keeps its words and has the dated line. Not the finder's §16.48: the stale sentence
+is in §16.42. Tests: the line is pinned (`test_deploy_pack.py::_ROUND_23_E_PARAGRAPH_AMENDS`), and
+`test_convert_core.py::test_a_label_rule_keeps_the_image_converter_out_of_the_registry` asserts the no-engine 11
+beside its 12.
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 

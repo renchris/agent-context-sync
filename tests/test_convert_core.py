@@ -549,6 +549,8 @@ def test_a_label_rule_keeps_the_image_converter_out_of_the_registry(rule: Policy
     assert reg.for_name("Contoso thread.msg").converter_id == "msg-mime"  # type: ignore[union-attr]
     assert reg.extensions() == Registry.default(ConvertConfig()).extensions()
     assert len(reg.converters()) == 12, "the ten, pandoc-gfm a second time and msg-mime: no image converter"
+    # B13 round 23 A65: without an engine a rule still gives 11, msg-mime in msg-olefile's place (§16.42)
+    assert len(Registry.default(ConvertConfig(), policy=rule).converters()) == 11
     open_policy = Registry.default(ConvertConfig(), policy=PolicyConfig(), ocr=_engine())
     assert open_policy.for_name("scan.tiff").converter_id == "image-ocr"  # type: ignore[union-attr]
 
