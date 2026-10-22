@@ -6860,10 +6860,11 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
     monkeypatch.setattr(os, "cpu_count", lambda: 10)
     hooks = setup_report.ReportHooks(doctor=hung, loop_next=loop, doctor_at=lambda: "pandoc")
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
-    words = (
-        "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; if this Mac was busy, "
-        f"{setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off again, the pandoc check "
-        "is slow or hung: install.out has install.sh's own doctor"
+    words = (  # B13 round 22 Z33: the lead-in read from the figures, and the advice ends on a step
+        "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count, "
+        f"so the Mac was busy: {setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off "
+        "again, the pandoc check is slow or hung: send the report as it is (install.sh's own doctor output "
+        "is in install.out)"
     )
     assert section(text, "Doctor").strip() == (
         "Cut off: the doctor call did not finish within 6.0s, the wait the report gives a slow doctor (it "
