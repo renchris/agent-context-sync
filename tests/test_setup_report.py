@@ -7006,9 +7006,9 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
     assert time.monotonic() - t0 < 12
     assert "[warn] logs — something odd" in section(text, "Doctor")
     assert "- pandoc: pandoc 3.9 at /opt/pandoc\n" in section(text, "Environment")
-    assert re.search(r"^- took: [0-9.]+s \(time limit 4s, [0-9.]+s more for a slow doctor\)$", text, re.M), (
-        text
-    )
+    assert re.search(
+        r"^- took: [0-9.]+s \(time limit 4s, moved to [0-9.]+s for a slow doctor\)$", text, re.M
+    ), text
     assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
 
     def hung(config: object) -> list[str]:
@@ -7022,8 +7022,8 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
     hooks = setup_report.ReportHooks(doctor=hung, loop_next=loop, doctor_at=lambda: "pandoc")
     text, _red = setup_report.build_report(fake_mac["config"], hooks=hooks, budget_s=4.0)
     words = (  # B13 round 22 Z33: the lead-in read from the figures, and the advice ends on a step
-        "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count, "
-        f"so the Mac was busy: {setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off "
+        "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count "
+        f"(a busy Mac): {setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off "
         "again, the pandoc check is slow or hung: send the report as it is (install.sh's own doctor output "
         "is in install.out)"
     )
@@ -7064,8 +7064,8 @@ def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
     # B13 round 22 Z33: the lead-in read from the figures, and the advice ends on a step
     assert line == (
         "- doctor: cut off after 20.0s, the wait the report gives a slow doctor (see Doctor) · it was in the "
-        f"pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count, so the Mac was "
-        f"busy: {idle}; if a report written when it is idle is cut off again, the pandoc check is slow or "
+        f"pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count (a busy Mac): "
+        f"{idle}; if a report written when it is idle is cut off again, the pandoc check is slow or "
         "hung: send the report as it is (install.sh's own doctor output is in install.out)"
     ), line
     assert "write the report again when this Mac is idle" in line  # install.sh's grep keys on it
@@ -7073,7 +7073,7 @@ def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
     setup_report._read_cut_off(r)
     assert setup_report._doctor_line(r, []).endswith(
         "the 1-minute load was 3.0 on 10 cores; that is not above its core count, so the pandoc check is "
-        f"slow or hung, not the Mac busy; {idle} only if it was busy at another moment; if a report written "
+        f"slow or hung, not a busy Mac; {idle} only if it was busy at another moment; if a report written "
         "when it is idle is cut off again, the pandoc check is slow or hung: send the report as it is "
         "(install.sh's own doctor output is in install.out)"
     )
@@ -7086,7 +7086,7 @@ def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
     r.facts.doctor_cut_off = 20.0
     setup_report._read_cut_off(r)
     assert setup_report._doctor_line(r, []).endswith(
-        f"after 20.0s (see Doctor) · if the Mac was busy, {idle}; if a report written when it is idle is "
+        f"after 20.0s (see Doctor) · if this Mac was busy, {idle}; if a report written when it is idle is "
         "cut off again, a check is slow or hung: send the report as it is (install.sh's own doctor output is "
         "in install.out)"
     )

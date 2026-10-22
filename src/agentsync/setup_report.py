@@ -5925,14 +5925,14 @@ def _cut_off_words(r: _Run) -> str:
         return "; ".join([*facts, f"{_IDLE_AGAIN}, once the sync ends"])
     check = f"the {at} check" if at else "the loop state read" if reading else "a check"
     if load_cores is not None and load_cores[1] and load_cores[0] > load_cores[1]:
-        lead = f"that is above its core count, so the Mac was busy: {_IDLE_AGAIN}"
+        lead = f"that is above its core count (a busy Mac): {_IDLE_AGAIN}"  # one "Mac" (B13 round 23 A28)
     elif load_cores is not None and load_cores[1]:
         lead = (
-            f"that is not above its core count, so {check} is slow or hung, not the Mac busy; {_IDLE_AGAIN} "
+            f"that is not above its core count, so {check} is slow or hung, not a busy Mac; {_IDLE_AGAIN} "
             "only if it was busy at another moment"
         )
     else:
-        lead = f"if the Mac was busy, {_IDLE_AGAIN}"
+        lead = f"if this Mac was busy, {_IDLE_AGAIN}"
     advice = (
         f"{lead}; if a report written when it is idle is cut off again, {check} is slow or hung: send the "
         "report as it is (install.sh's own doctor output is in install.out)"
@@ -12411,7 +12411,8 @@ def build_report(
         r.loop_line = _loop_line(r)
     except Exception as exc:
         r.loop_line = f"- Loop: not read ({_why_not_read(exc)})"
-    grace = f", {r.doctor_grace:.1f}s more for a slow doctor" if r.doctor_grace >= 0.05 else ""  # V4
+    # V4; the moved limit as one number, which the doctor's cut-off seconds fall inside (B13 round 23 A28)
+    grace = f", moved to {budget_s + r.doctor_grace:.1f}s for a slow doctor" if r.doctor_grace >= 0.05 else ""
     header.append(f"- took: {time.monotonic() - r.t0:.1f}s (time limit {budget_s:.0f}s{grace})")
     bodies["Summary"] = _section("Summary", functools.partial(_summary, r, header=header))
     # the friction section is built first: it says the Summary's F<n> ids are its line numbers only when the

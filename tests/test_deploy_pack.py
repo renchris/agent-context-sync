@@ -6386,7 +6386,7 @@ def test_the_guides_outcome_rules_and_sync_row_give_round_17s_report_words() -> 
 def test_the_guides_give_the_reports_time_with_a_slow_doctor() -> None:
     """B13 round 19 W58: both guides said the report finishes within 12 s, but round 18 V4 gives a slow doctor
     at least `_DOCTOR_GRACE_S` and moves the deadline to make room (the report's own figure is about 35 s, and
-    its took line names the extra seconds), and V55 reads the docs repo's remotes outside the budget. Each
+    its took line names the moved limit), and V55 reads the docs repo's remotes outside the budget. Each
     figure and the took line's words are read from setup_report."""
     from agentsync import setup_report  # noqa: PLC0415
 
@@ -6394,14 +6394,18 @@ def test_the_guides_give_the_reports_time_with_a_slow_doctor() -> None:
     source = inspect.getsource(setup_report)
     flat = " ".join(source.split())
     assert "the report then takes at most about 35 s, inside install.sh's 120 s bound" in flat
-    [took] = re.findall(r'grace = f", \{r\.doctor_grace:\.1f\}s (more for a slow doctor)"', source)
+    [took] = re.findall(
+        r'grace = f", moved to \{budget_s \+ r\.doctor_grace:\.1f\}s (for a slow doctor)"', source
+    )
     page = " ".join(_feedback_page().split())
     assert "the whole report within 12 s" not in page
     assert (
         "the whole report within a 12 s budget (`TIME_BUDGET_S`); a slow doctor is given at least 20 s and"
         " the deadline moves to make room, so on a busy Mac the report can take about 35 s" in page
     )
-    assert f"e.g. `time limit 12s, 14.2s {took}`), still inside install.sh's 120 s bound on it." in page
+    assert (
+        f"e.g. `time limit 12s, moved to 26.2s {took}`), still inside install.sh's 120 s bound on it." in page
+    )
     assert "a `governance.remote` FAIL) is not counted against the budget." in page
     readme = " ".join((DEPLOY / "README.md").read_text(encoding="utf-8").split())
     assert "takes under 12 s." not in readme
