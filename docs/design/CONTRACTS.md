@@ -27286,6 +27286,8 @@ no try left)` with it for the rest. So the run-record count §16.155 Y28 and §1
 (lane E agreed; its section is landed and left as written, this line is the correction). Tests:
 `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`,
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current`.
+Amended 2026-10-22, §16.168 A64, A68, A95: §16.162 Z55, "left as written" above, has a dated line of its own now,
+so a reader of that section alone learns the run record keeps both counts.
 Amended 2026-10-22, §16.168 A63: a third count, `legacy_waiting`, reads `N that run left waiting for a converter`,
 and the bullet adds `a file left waiting is read again by the first run with a converter for its type (the OCR
 engine for an image), so an old conversion error can show in that run`; neither the settled words nor the retry
@@ -27765,6 +27767,9 @@ file deleted upstream, current. Test:
 `test_cycle.py::test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again` (an unreadable
 stub and a label refusal: the settled note once, neither `now current` nor `may show again`, and two more syncs
 with no note and no converter call), and Y28's and W18's tests unchanged.
+Amended 2026-10-22, §16.168 A64, A68, A95 (by §16.158 Z35): the run record keeps `legacy_settled`, as it does
+`legacy_cleared` (§16.28), so the setup report gives a file that run settled no retry words either; "no run-record
+count" above is no longer true.
 Amended 2026-10-22, §16.168 A63: a `no converter` stub the upgrade's sync left (an image with no OCR engine, or
 after the helper stopped) is not settled, as a later sync reads it once its converter is ready; it is counted in
 `legacy_waiting` with a note of its own. One a label rule withholds, or an image only a download would read, stays
@@ -28036,6 +28041,16 @@ and a helper that stops: the waiting note, `legacy_waiting` 1, and the next sync
 image; a label rule with an engine: the settled note and no read in two more syncs),
 `test_setup_report.py::test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures` (the waiting
 words, alone and beside a settled file).
+
+**§16.162 Z55's "no run-record count" has its dated line (A64, A68, A95; dated lines at §16.162 Z55 and §16.158
+Z35).** Z55 says `CycleReport.legacy_settled` carries the settled count "(no run-record count, as for
+`legacy_cleared`)"; round 22's Z35 then kept both counts in the run record (`_after`, `model.CycleReport`, §16.28's
+two rows) and put the correction in §16.158 alone ("its section is landed and left as written"), so a reader of
+§16.162 got a false claim with nothing pointing to the fix. Z55's paragraph keeps its words and has the dated line,
+and Z35's has one saying so. Three finders, one defect, built once. Not the verifiers' line dated 2026-10-21 under
+Z35's id, nor the rewrite of Z35's heading and words: this round writes the lines, so they carry its item ids
+(`(by §16.158 Z35)`), and older text is marked, not replaced. Held by the dated-line scan
+(`test_deploy_pack.py::test_a_round_7_or_later_item_that_amends_another_has_a_dated_line_there`); no code changed.
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 
