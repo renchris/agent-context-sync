@@ -9564,6 +9564,8 @@ attempt reached its report. Every other patch is sent, fenced, as before.
   header-less attempt, §16.22).
 - **The patch's time** is its mtime, read with `/usr/bin/stat` (an absolute path, as for `shasum` and
   `codesign`: a GNU `stat` first on `PATH` takes `-f` and `-t` to mean something else).
+  **Amended 2026-10-22, §16.170 A97:** the hash is install.sh's `sha256()`, `/sbin/sha256sum` where it exists and
+  `/usr/bin/shasum -a 256` where it does not, each by its absolute path.
 - **Not "newer than this attempt's start".** Step 1's keep command runs before the command that logs the
   `Attempt:` line, so a fresh patch is a few seconds older than the attempt that kept it. It is compared
   with the earlier attempt's end, which it is newer than.
@@ -9589,7 +9591,9 @@ not repeated: a patch file last written 2026-10-06T16:42:39Z, at or before an ea
 
 - The count and the first 12 hex digits of the file's SHA-256 (`/usr/bin/shasum -a 256`) let whoever
   receives the file check it against the patch they hold. A hash and two times identify nobody, and the
-  folder is named with `~`.
+  folder is named with `~`. **Amended 2026-10-22, §16.170 A97:** the digits come from `/sbin/sha256sum`, a
+  Mach-O, where it exists (shasum is a perl `#!` script, and macOS 15.8.1 keeps kernel memory for every `#!`
+  exec until reboot) and from `/usr/bin/shasum -a 256` on an older macOS without it: the same 12 digits.
 - The line does not say the patch was sent or carried. The Mac cannot observe that: `bring-back.md` is one
   path, and every reporting exit of `install.sh` replaces it.
 - With no patch at all the section is still `none`. The section's heading and the `bring back:` line are

@@ -1061,9 +1061,15 @@ have_devtools() {
 	d="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
 	[ -n "$d" ] && [ -d "$d" ]
 }
+# SHA-256 of stdin or of the files named, as `shasum -a 256` prints it: /sbin/sha256sum, a Mach-O, where it
+# exists, else /usr/bin/shasum (an older macOS has only that). shasum is a perl #! script, and macOS 15.8.1
+# keeps kernel memory for every #! exec until reboot (B13 round 23 A97). Both print the same digits.
+sha256() {
+	if [ -x /sbin/sha256sum ]; then /sbin/sha256sum "$@"; else /usr/bin/shasum -a 256 "$@"; fi
+}
 # The first 12 hex digits of the SHA-256 of `git diff HEAD` in the checkout $1: which local changes ran.
 tree_fingerprint() {
-	git_ro -C "$1" diff --no-ext-diff --no-color HEAD -- 2>/dev/null | /usr/bin/shasum -a 256 | cut -c1-12
+	git_ro -C "$1" diff --no-ext-diff --no-color HEAD -- 2>/dev/null | sha256 | cut -c1-12
 }
 # "<sha12>" of the checkout $1, "<sha12> dirty <fingerprint>" with local changes; empty when git cannot say.
 checkout_commit() {
@@ -4600,7 +4606,7 @@ write_bring_back() {
 				notsent+="$id $nsat${sentat:+ $sentat}"$'\n'
 			fi
 			if [ -n "$at$carried" ]; then
-				sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"
+				sha="$(sha256 "$p" 2>/dev/null | cut -c 1-12 || true)"
 				case "$sha" in # anything but 12 hex digits is no hash to check the patch by: it is sent below
 				[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
 					# .sent first: it names a report that embedded the patch, where the time rule's report may be one

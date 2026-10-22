@@ -5859,6 +5859,14 @@ _ROUND_23_B_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: A94's at §16.29's permissions-fix bullet and §16.32's run-again and
 crash-fix paragraphs, whose fixes nest no bracket now."""
 
+_ROUND_23_K_PARAGRAPH_AMENDS = (
+    ("16.30", "- **The patch's time** is its mtime, read with `/usr/bin/stat`", "§16.170 A97"),
+    ("16.30", "- The count and the first 12 hex digits of the file's SHA-256", "§16.170 A97"),
+)
+"""Round 23 lane K's dated lines at a section its claim names with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: A97's at §16.30's two bullets that name install.sh's patch hash, now
+`/sbin/sha256sum` where it exists."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -5919,7 +5927,8 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     two: X36's at §16.32's `with_progress` clock bullet and X19's at §16.47's stopped copy's report,
     and §16.150 (lane E) three: X57's at §16.25, §16.34 and §16.35. Round 21's §16.157 (lane D) two: Y76's
     under §9's exit-code list and Y60's at §16.28's Configuration paragraph, and §16.155 (lane B) two:
-    Y49's at §16.12's governance paragraph and Y20's at §16.32's `<run again>` table.
+    Y49's at §16.12's governance paragraph and Y20's at §16.32's `<run again>` table. Round 23's §16.170
+    (lane K) two: A97's at §16.30's two patch-hash bullets.
     """
     assert len(_pinned_dated_lines(_ROUND_11_PARAGRAPH_AMENDS)) == len(_ROUND_11_PARAGRAPH_AMENDS) == 20
     assert len(_pinned_dated_lines(_ROUND_12_PARAGRAPH_AMENDS)) == len(_ROUND_12_PARAGRAPH_AMENDS) == 12
@@ -5938,6 +5947,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_20_E_PARAGRAPH_AMENDS)) == len(_ROUND_20_E_PARAGRAPH_AMENDS) == 3
     assert len(_pinned_dated_lines(_ROUND_21_D_PARAGRAPH_AMENDS)) == len(_ROUND_21_D_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_21_B_PARAGRAPH_AMENDS)) == len(_ROUND_21_B_PARAGRAPH_AMENDS) == 2
+    assert len(_pinned_dated_lines(_ROUND_23_K_PARAGRAPH_AMENDS)) == len(_ROUND_23_K_PARAGRAPH_AMENDS) == 2
 
 
 def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
@@ -5968,6 +5978,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_22_RA_PARAGRAPH_AMENDS,
         *_ROUND_23_E_PARAGRAPH_AMENDS,
         *_ROUND_23_B_PARAGRAPH_AMENDS,
+        *_ROUND_23_K_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")
@@ -6568,7 +6579,8 @@ def test_the_guide_asks_for_a_not_repeated_patch_by_its_hash() -> None:
     assert len(hashed) == len(blind) == 2
     for line in lines:
         assert not re.search(r"\$\{?p\b|basename", line.replace('<"$p"', "")), line  # wc reads it; no name
-    assert 'sha="$(/usr/bin/shasum -a 256 "$p" 2>/dev/null | cut -c 1-12 || true)"' in script
+    # B13 round 23 A97: sha256() is /sbin/sha256sum, or /usr/bin/shasum -a 256 elsewhere: the same digits
+    assert 'sha="$(sha256 "$p" 2>/dev/null | cut -c 1-12 || true)"' in script
     from agentsync import setup_report  # noqa: PLC0415
 
     page = " ".join(_feedback_page().split())

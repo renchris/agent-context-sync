@@ -4,8 +4,12 @@ reboot; ``exec_stub.write`` and ``exec_trampoline.c`` are how a stub avoids one.
 
 from __future__ import annotations
 
+import hashlib
+import os
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -158,3 +162,45 @@ def test_the_harness_helpers_write_mach_o_stubs(
         Path(stubs["PATH"].split(":")[0]) / "uv",
     ):
         assert stub.read_bytes()[:4] in MACH_O, stub
+
+
+def _sha256_fn(**swap: str) -> str:
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    [fn] = re.findall(r"^sha256\(\) \{\n.*?\n\}\n", script, re.MULTILINE | re.DOTALL)
+    for old, new in swap.items():
+        assert old in fn
+        fn = fn.replace(old, new)
+    return fn
+
+
+def test_install_sh_hashes_with_sha256sum_and_falls_back_to_shasum(tmp_path: Path) -> None:
+    """install.sh's patch hash and checkout fingerprint use ``sha256``: ``/sbin/sha256sum``, a Mach-O, where
+    it exists, and ``/usr/bin/shasum -a 256`` (a perl ``#!`` script) on an older macOS that lacks it. Each way
+    gives the same 12 digits, from stdin and from a file. Each run below breaks the other tool's path, so it
+    passes only by the tool it names."""
+    if not os.access("/sbin/sha256sum", os.X_OK) or not os.access("/usr/bin/shasum", os.X_OK):
+        pytest.skip("this Mac lacks /sbin/sha256sum or /usr/bin/shasum")
+    patch = tmp_path / "0001-local.patch"
+    patch.write_bytes(b"diff --git a/x b/x\n+contoso\n")
+    want = hashlib.sha256(patch.read_bytes()).hexdigest()[:12]
+    gone = str(tmp_path / "absent")
+    for fn in (_sha256_fn(**{"/usr/bin/shasum": gone}), _sha256_fn(**{"/sbin/sha256sum": gone})):
+        cp = subprocess.run(
+            [
+                "/bin/bash",
+                "-c",
+                f'{fn}sha256 <"$1" | cut -c1-12; sha256 "$1" 2>/dev/null | cut -c 1-12',
+                "_",
+                patch,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
+        assert cp.stdout.split() == [want, want], fn
+    script = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    code = [ln for ln in script.splitlines() if "shasum" in ln.split("#", 1)[0]]
+    assert len(code) == 1 and 'else /usr/bin/shasum -a 256 "$@"; fi' in code[0], "one shasum: sha256()s"
+    assert "diff --no-ext-diff --no-color HEAD -- 2>/dev/null | sha256 | cut -c1-12" in script
+    assert sys.platform != "darwin" or Path("/sbin/sha256sum").read_bytes()[:4] in MACH_O
