@@ -27371,7 +27371,7 @@ round writes in another section reads `Amended 2026-10-21, §16.160 Z<n>`.
 **A read-only volume is named as the cause** (Z79; amends §16.154 Y24). On a volume mounted read-only (probe
 owner-rovolumebig) step 1's `state-refused` tail and step 2's refused NEXT named the right owner, the person, but
 not the cause: `(an ACL, or a folder above it this account cannot search; ...)`, while status's `state_dir` line
-gives doctor's `_read_only_fix` (`... writable (it is mounted read-only)`). Both, and the `state-side-refused`
+gives doctor's `read_only_fix` (`... writable, as it is mounted read-only`). Both, and the `state-side-refused`
 tail (`(an ACL; not damage)`, which the finding missed), now name `a volume mounted read-only`, as do the comments
 of `config_errors`, `state_open_fix` and `config_failed`. The verifier's edge is built too: a state folder or file
 there whose mode also lacks a bit (a 0500 folder) got `state-access` and the agent's `chmod 700`, which fails with
@@ -27505,7 +27505,7 @@ refusals) in
 header list (`--help`), and the test literals. `PERSONS_FIX_RE` and every owner rule are unchanged: those fixes
 start `the person ` already. A chmod of this account's own file at a mode that refuses it stays the agent's (the
 words name a cause no chmod changes). Test: `test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes`
-(`MANIFEST_FIX`, `_search_fix` for a file and a folder, `_parent_fix`, `_read_only_fix`: each the person's, its
+(`MANIFEST_FIX`, `_search_fix` for a file and a folder, `_parent_fix`, `read_only_fix`: each the person's, its
 NEXT naming the kind), with the equality pins `test_doctors_persons_fix_words_are_install_shs` and
 `test_the_persons_clause_names_every_kind_the_rule_reads`.
 

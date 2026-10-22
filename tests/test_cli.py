@@ -3007,7 +3007,7 @@ def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Pat
         doctor._search_fix(root / "manifest.sqlite", folder=False),
         doctor._search_fix(root),
         doctor._parent_fix(root),
-        doctor._read_only_fix(root),
+        doctor.read_only_fix(root),
     ):
         assert doctor.is_persons_fix(fix), fix
         step = cli._fail_step(doctor.CheckResult("state_dir", False, "refused", fix=fix))
