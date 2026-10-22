@@ -2341,36 +2341,81 @@ _MIRROR_URL = "https://git.contoso-mirror.invalid:8443/contoso/agent-context-syn
 _GITHUB_URL = "https://github.com/renchris/agent-context-sync.git"
 
 
+_GH = "github.com/renchris/agent-context-sync"
+_TWO = " (2 url keys, git fetches from the first)"
+
+
 @pytest.mark.parametrize(
-    ("remote", "label"),
+    ("remote", "worktree", "rewrite", "label"),
     [
-        (f'[remote "origin"] url = {_MIRROR_URL}\n', "other (redacted)"),
-        (f'[remote "origin"] url = {_GITHUB_URL}\n', "github.com/renchris/agent-context-sync"),
-        # a url on the header line, then a later one: the last url read wins, as in git
+        (f'[remote "origin"] url = {_MIRROR_URL}\n', "", False, "other (redacted)"),
+        (f'[remote "origin"] url = {_GITHUB_URL}\n', "", False, _GH),
+        # a url on the header line, then a later one: git fetches from the first, and both reports say
+        # there are two, with no URL rewrite anywhere (B13 round 23 A24: the last url won, beside a rewrite)
         (
             f'[remote "origin"] url = {_MIRROR_URL}\n\turl = {_GITHUB_URL}\n',
-            "github.com/renchris/agent-context-sync",
+            "",
+            False,
+            "other (redacted)" + _TWO,
+        ),
+        (f'[remote "origin"]\n\turl = {_GITHUB_URL}\n\turl = {_MIRROR_URL}\n', "", False, _GH + _TWO),
+        # an empty url clears the list: the first url after it is the one
+        (f'[remote "origin"]\n\turl = {_MIRROR_URL}\n\turl =\n\turl = {_GITHUB_URL}\n', "", False, _GH),
+        # config.worktree is read after .git/config, its urls after the config's
+        (
+            f'[remote "origin"]\n\turl = {_MIRROR_URL}\n',
+            f'[remote "origin"]\n\turl = {_GITHUB_URL}\n',
+            False,
+            "other (redacted)" + _TWO,
+        ),
+        # two urls and a rewrite of the first: both notes, as the agentsync report gives them
+        (
+            f'[remote "origin"]\n\turl = {_GITHUB_URL}\n\turl = {_MIRROR_URL}\n',
+            "",
+            True,
+            _GH + " (2 url keys, git fetches from the first; a URL rewrite sends it elsewhere)",
         ),
         # a comment after the header is no url
-        (f'[remote "origin"] # url = {_GITHUB_URL}\n\turl = {_MIRROR_URL}\n', "other (redacted)"),
+        (f'[remote "origin"] # url = {_GITHUB_URL}\n\turl = {_MIRROR_URL}\n', "", False, "other (redacted)"),
         # the older dotted section git still applies, its name lowercased (B13 round 22 Z76)
-        (f"[remote.origin]\n\turl = {_MIRROR_URL}\n", "other (redacted)"),
-        (f"[Remote.Origin] url = {_GITHUB_URL}\n", "github.com/renchris/agent-context-sync"),
+        (f"[remote.origin]\n\turl = {_MIRROR_URL}\n", "", False, "other (redacted)"),
+        (f"[Remote.Origin] url = {_GITHUB_URL}\n", "", False, _GH),
         # another remote's url on its header line is not origin's
         (
             f'[remote "origin"]\n\turl = {_MIRROR_URL}\n[remote "up"] url = {_GITHUB_URL}\n',
+            "",
+            False,
             "other (redacted)",
         ),
     ],
-    ids=["mirror", "github", "last-wins", "comment", "dotted", "dotted-one-line", "other-remote"],
+    ids=[
+        "mirror",
+        "github",
+        "first-wins",
+        "github-first",
+        "empty-reset",
+        "worktree-after",
+        "two-and-rewrite",
+        "comment",
+        "dotted",
+        "dotted-one-line",
+        "other-remote",
+    ],
 )
 def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports(
-    env: dict[str, str], monkeypatch: pytest.MonkeyPatch, remote: str, label: str
+    env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    remote: str,
+    worktree: str,
+    rewrite: bool,
+    label: str,
 ) -> None:
     """B13 round 22 Z1, Z25: git applies ``[remote "origin"] url = <url>`` written on the section's header
-    line, and the agentsync report reads it through ``git config --get remote.origin.url``, but the shell's
-    install source line threw the header line's rest away and said ``origin: none``. Both reports now give
-    the same label from a real checkout; the URL never shows."""
+    line, and the agentsync report reads it through git config, but the shell's install source line threw the
+    header line's rest away and said ``origin: none``. Both reports now give the same line from a real
+    checkout; the URL never shows. B13 round 23 A24: with two url keys git fetches from the first (after the
+    last empty one), and both reports took the last, so one said a mirror was GitHub and the agentsync report
+    said a rewrite sent it elsewhere where there was none; each now labels the first and counts the keys."""
     repo = Path(env["HOME"]) / "src" / "agent-context-sync"
     repo.mkdir(parents=True)
     git = ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=t", "-C", str(repo)]
@@ -2378,12 +2423,20 @@ def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_
     (repo / "a.txt").write_text("one\n", encoding="utf-8")
     subprocess.run([*git, "add", "a.txt"], check=True, env=env)
     subprocess.run([*git, "commit", "-q", "-m", "one"], check=True, env=env)
+    if worktree:
+        subprocess.run([*git, "config", "core.repositoryformatversion", "1"], check=True, env=env)
+        subprocess.run([*git, "config", "extensions.worktreeConfig", "true"], check=True, env=env)
+        (repo / ".git" / "config.worktree").write_text(worktree, encoding="utf-8")
     with (repo / ".git" / "config").open("a", encoding="utf-8") as fh:
         fh.write(remote)
-    said = subprocess.run(
-        [*git, "config", "--get", "remote.origin.url"], capture_output=True, text=True, env=env, check=True
+    fetched = subprocess.run(
+        [*git, "ls-remote", "--get-url", "origin"], capture_output=True, text=True, env=env, check=True
     )
-    assert setup_report.origin_label(said.stdout.strip()) == label, "git reads the form as the test expects"
+    plain = label.split(" (2 url keys", 1)[0]
+    assert setup_report.origin_label(fetched.stdout.strip()) == plain, "git fetches from the url expected"
+    if rewrite:  # in the checkout's own config, which both reports read
+        with (repo / ".git" / "config").open("a", encoding="utf-8") as fh:
+            fh.write('[url "https://git.contoso-mirror.invalid/m/"]\n\tinsteadOf = https://github.com/\n')
     cp = install_sh(env, "--report-only")
     assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
     text = report_path(env).read_text(encoding="utf-8")
@@ -2391,9 +2444,9 @@ def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_
     assert "contoso-mirror" not in text
     monkeypatch.setenv("HOME", env["HOME"])
     run = setup_report._Run(Path(env["HOME"]) / "none.toml", setup_report.ReportHooks(), 12.0)
-    # the label only: with two urls `remote get-url` gives the first, so the agentsync report also says a
-    # rewrite sends it elsewhere on last-wins (its own reading, not this line's)
-    assert f" · origin: {label}" in setup_report._checkout_facts(run, repo), "the agentsync report's label"
+    facts = setup_report._checkout_facts(run, repo)
+    assert facts.split(" · origin: ", 1)[1].split(" · ", 1)[0] == label, "the agentsync report's line"
+    assert rewrite or "a URL rewrite" not in facts, facts
 
 
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(

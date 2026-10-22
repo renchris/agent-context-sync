@@ -3282,21 +3282,25 @@ origin_label() { # URL
 }
 # The shell report's install source line, which the setup prompt's git quote promises (B13 round 18 V29):
 # ~/src/agent-context-sync's origin as it is configured, read from its own config files the way
-# git_remote_entries reads them (the last url of [remote "origin"]; config.worktree last, as git reads it), as
-# the agentsync report reads `git config --get remote.origin.url` (V70). No git process: without the developer
-# tools /usr/bin/git offers to install them.
+# git_remote_entries reads them (config.worktree last, as git reads it), as the agentsync report reads `git config
+# --get-all remote.origin.url` (V70): the first url key, the one git fetches from, after the last empty one (an
+# empty `url =` clears the list), and the number of keys from there when there is more than one (B13 round 23
+# A24: the last key read won, so a second url with no rewrite anywhere read as the origin). No git process:
+# without the developer tools /usr/bin/git offers to install them.
 fallback_install_source_line() {
-	local dir="$HOME/src/agent-context-sync" g v url=""
+	local dir="$HOME/src/agent-context-sync" g v url="" keys=0
 	if [ ! -e "$dir/.git" ]; then
 		say "- install source: no checkout at ~/src/agent-context-sync"
 		return 0
 	fi
 	while IFS= read -r g; do
 		[ -f "$g" ] || continue
-		v="$(LC_ALL=C awk '
-			function key(line,    u) { # a url key of [remote "origin"]: the last one read wins, as in git
+		v="$(OR_FIRST="$url" LC_ALL=C awk -v n="$keys" '
+			BEGIN { first = ENVIRON["OR_FIRST"] } # not -v, which would read a backslash in the URL as an escape
+			function key(line,    u) { # a url key of [remote "origin"]: the first one after the last empty one
 				if (tolower(line) !~ /^[ \t]*url[ \t]*=/) return
-				u = line; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u); last = u
+				u = line; sub(/^[^=]*=[ \t]*/, "", u); sub(/[ \t\r]*$/, "", u); gsub(/^"|"$/, "", u)
+				if (u == "") { first = ""; n = 0 } else { n++; if (first == "") first = u }
 			}
 			# [remote "origin"] url = <url> on one line, which git applies, is read after the matched header, as
 			# git_remote_entries reads it (B13 round 22 Z1, Z25); so is the older [remote.origin], whose name git
@@ -3307,24 +3311,25 @@ fallback_install_source_line() {
 				next
 			}
 			o { key($0) }
-			END { if (last != "") print last }
+			END { print (n + 0) "\t" first }
 		' "$g" 2>/dev/null || true)"
-		[ -z "$v" ] || url="$v"
+		[ -z "$v" ] || { keys="${v%%$'\t'*}" url="${v#*$'\t'}"; }
 	done < <(checkout_git_configs "$dir")
 	# a URL rewrite is said beside the label, as setup_report._checkout_facts says it, never its host: git's
 	# longest insteadOf value that starts the URL, case-sensitive, and only when the rewritten URL's label
 	# differs (a rewrite to git@github.com: is the same repository; B13 round 19 W7, W23)
 	local label best="" base="" iv b said="" found=""
 	label="$(origin_label "$url")"
+	[ "$keys" -le 1 ] || said="$keys url keys, git fetches from the first"
 	if [ "$label" != none ]; then
 		while IFS=$'\t' read -r iv b; do
 			iv="${iv#x}" # an empty value matches every URL, as in git
 			case "$url" in "$iv"*) [ -n "$found" ] && [ "${#iv}" -le "${#best}" ] || best="$iv" base="$b" found=1 ;; esac
 		done < <(git_rewrite_pairs)
 		[ -z "$found" ] || [ "$(origin_label "$base${url#"$best"}")" = "$label" ] ||
-			said=" (a URL rewrite sends it elsewhere)"
+			said="${said:+$said; }a URL rewrite sends it elsewhere"
 	fi
-	say "- install source: checkout ~/src/agent-context-sync · origin: $label$said"
+	say "- install source: checkout ~/src/agent-context-sync · origin: $label${said:+ ($said)}"
 }
 # The NEXT line of the last install run in install.log (a run with a step= line), else of the last --list-folders
 # run, chosen as attempt_run_simulated chooses (B13 round 23 A47), from that run's block of install.out (B13 round

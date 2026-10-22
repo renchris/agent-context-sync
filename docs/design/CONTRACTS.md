@@ -24497,6 +24497,8 @@ checkout that follows another remote. A fork on GitHub stays `other (redacted)`.
 `test_the_shell_report_has_the_install_source_line_the_git_quote_promises` (a mirror, GitHub's scp form, no URL, no
 checkout), `test_setup_report.py::test_install_source_reads_the_configured_origin_and_says_a_rewrite_changes_it`,
 `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it` (the rewrite case).
+Amended 2026-10-22, §16.165 A24: the label is the first `url` after the last empty one, the one git fetches from,
+not the last, in both reports.
 
 Amended 2026-10-22, §16.164 A24: with lane RB's land, the agentsync report's label is the first
 `remote.origin.url` key after the last empty one (`config --get-all`), the one git fetches from, with ` (N url
@@ -27339,6 +27341,8 @@ key after the header is no url. Tests: `test_install_oneshot.py::
 test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports` (a mirror and a GitHub url
 on the header line, a later url line that wins, a comment, another remote's url on its header line), which also
 reads the agentsync report's label on the same real checkout.
+Amended 2026-10-22, §16.165 A24: the install source line keeps the first url key after the last empty one, the
+one git fetches from, not the last one read, and counts the keys when there are more than one.
 
 **A quoted remote name or http subsection may hold an escaped quote** (Z75). `git remote add 'co"x' <url>`
 writes `[remote "co\"x"]`; `git_remote_entries`' `"[^"]*"` stopped at the escaped quote, so the section was no
@@ -28104,6 +28108,24 @@ a git remote's host and its company-named path (neither need be a proxy)`, in on
 the other. The whole-path rule stays: the finder's fix of replacing only the company-named segment would print the
 path's other private segments and change both redactors' pairs and numbering. Test:
 `test_install_oneshot.py::test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy`.
+
+**The install source line labels the url git fetches from** (A24, the shell's half; amends §16.159 Z1 and §16.136
+V29). With two
+url keys under `[remote "origin"]` git fetches from the first (`remote get-url` and `ls-remote --get-url` print
+it), but `fallback_install_source_line` kept the last one read, under the comment "the last one read wins, as in
+git", and a later file overrode an earlier one: a GitHub url then a mirror's read `other (redacted)`, and a
+mirror then GitHub read GitHub while the pull went to the mirror. The awk keeps the first url key after the last
+empty one (an empty `url =` clears git's list) and counts the keys from there, and carries both across
+`.git/config` and `config.worktree` in git's read order (through `ENVIRON`, not `-v`, which would read a
+backslash as an escape). Its words are lane RA's for the agentsync report (§16.164, the same commit landed here):
+` · origin: <label>`, then ` (N url keys, git fetches from the first)` when more than one is left, `; a URL
+rewrite sends it elsewhere` inside the same bracket when an insteadOf also changes the first url's label, and a
+rewrite alone as before. The finder's fix of labelling from `git remote get-url` would undo §16.136 V70 (a
+GitHub origin under a rewrite read `other`), and taking the first key ever written misreads a list an empty key
+cleared. Test: `test_install_oneshot.py::
+test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports` (the `last-wins` row is now
+`first-wins`; GitHub first; an empty reset; a url in `config.worktree` after one in the config; two urls and a
+rewrite), which reads git's own fetch url and asserts the two reports give the same words on every row.
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
