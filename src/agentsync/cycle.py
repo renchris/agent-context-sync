@@ -6110,19 +6110,22 @@ def run_cycle(
     started_by = STARTED_BY_LAUNCHD if started_by_our_job(config) else STARTED_BY_OTHER
     lock = SingleWriterLock(config.state_paths.lock, mode.value, started_by=started_by)
     acquisition = _acquire_waiting(lock, lock_wait_s, say=say) if interactive else lock.acquire()
-    if acquisition.broke_stale and on_stale_break is not None:
-        # told at once, so a run that raises before its report still says it (B13 round 22 Z89: the break
-        # was logged at DEBUG for a foreground run, and release() empties the lock file)
-        on_stale_break()
-    if mode is not CycleMode.DRY_RUN:
-        rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)
     own_client = client is None
     auth: MsalAuth | None = None
     graph_client: GraphClient | None = client
     problem: str | None = None
-    if client is None:  # DRY_RUN too: classifying still reads Graph metadata behind the same gate
-        graph_client, problem, auth = _make_client(config, selected)
+    # Everything after the acquire runs inside the try whose finally releases the lock: a raise in the
+    # stale-break note, the log rotation or the client's setup left the lock to the next run's stale-lock
+    # break and its full passes (B13 round 23 A53, A81).
     try:
+        if acquisition.broke_stale and on_stale_break is not None:
+            # told at once, so a run that raises before its report still says it (B13 round 22 Z89: the
+            # break was logged at DEBUG for a foreground run, and release() empties the lock file)
+            on_stale_break()
+        if mode is not CycleMode.DRY_RUN:
+            rotate_logs(config.log_dir)  # launchd never rotates the job logs (bounded: 3 x 8 MiB per job)
+        if client is None:  # DRY_RUN too: classifying still reads Graph metadata behind the same gate
+            graph_client, problem, auth = _make_client(config, selected)
         config.state_paths.root.mkdir(parents=True, exist_ok=True)
         with Manifest(config.state_paths.db) as manifest:
             cycle = _Cycle(

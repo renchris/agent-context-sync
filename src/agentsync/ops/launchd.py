@@ -160,7 +160,11 @@ def rotate_logs(
     A run in progress keeps writing to its (renamed) file; the next spawn starts a fresh one.
     Returns the logs rotated."""
     rotated: list[Path] = []
-    if not log_dir.is_dir():
+    try:
+        if not log_dir.is_dir():
+            return rotated
+    except OSError as exc:  # a folder above it this account cannot search: Python 3.11 raises EACCES here
+        log.warning("log rotation skipped: %s cannot be read: %s", log_dir, exc)
         return rotated
     for path in sorted(log_dir.glob("*.log")):
         try:

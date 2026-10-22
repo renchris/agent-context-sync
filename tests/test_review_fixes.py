@@ -1632,6 +1632,23 @@ def test_job_logs_are_rotated_and_bounded(tmp_path: Path) -> None:
     assert launchd.rotate_logs(logs, max_bytes=100) == []
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_log_folder_under_a_folder_this_account_cannot_search_is_a_warning_not_a_raise(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """B13 round 23 A53, A81: ``log_dir.is_dir()`` raised EACCES (Python 3.11 lets it through) when a folder
+    above the log folder refuses a search, and the cycle calls this right after it takes the lock."""
+    above = tmp_path / "Logs"
+    (above / "agentsync").mkdir(parents=True)
+    above.chmod(0)
+    try:
+        with caplog.at_level(logging.WARNING, logger=launchd.log.name):
+            assert launchd.rotate_logs(above / "agentsync") == []
+    finally:
+        above.chmod(0o700)
+    assert any("log rotation skipped" in r.getMessage() for r in caplog.records), caplog.text
+
+
 # ---------------------------------------------------------------------------------------------------------
 # misc invariants the fixes rely on
 # ---------------------------------------------------------------------------------------------------------

@@ -4794,6 +4794,40 @@ def test_a_foreground_sync_that_breaks_a_stale_lock_and_then_stops_says_it_once(
     assert note not in capsys.readouterr().err
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-000 folder")
+def test_a_raise_after_the_lock_is_taken_releases_it_and_an_unsearchable_log_folder_syncs(
+    initialised: Config, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A53, A81: the log rotation and the client's setup ran after the lock was taken but outside
+    the try whose finally releases it, so ~/Library/Logs at 0000 ended a sync on a raw traceback and left the
+    lock's body to the next sync, which broke it as stale and ran every source as a full pass."""
+    cfg = str(initialised.config_path)
+    lock = expand(initialised.state_paths.lock)
+    above = expand(initialised.log_dir).parent
+    above.mkdir(parents=True, exist_ok=True)
+    above.chmod(0)
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    finally:
+        above.chmod(0o700)
+    assert lock.read_text(encoding="utf-8") == ""
+    capsys.readouterr()
+    stale = "a stale lock from a dead run was broken"
+    for step in ("rotate_logs", "_make_client"):
+
+        def broke(*_args: object, _step: str = step, **_kwargs: object) -> None:
+            raise RuntimeError(f"{_step} broke")
+
+        monkeypatch.setattr(cycle_mod, step, broke)
+        with pytest.raises(RuntimeError, match=f"{step} broke"):
+            cycle_mod.run_cycle(initialised, mode=CycleMode.POLL)
+        monkeypatch.undo()
+        assert lock.read_text(encoding="utf-8") == "", step
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+        captured = capsys.readouterr()
+        assert stale not in captured.err + captured.out, (step, captured)
+
+
 def test_a_manifest_a_sync_holds_is_no_fail(initialised: Config, capsys: pytest.CaptureFixture[str]) -> None:
     """The other side of T12: a manifest another process holds in a write transaction is no state_dir.manifest
     [FAIL]; neither is a healthy one. In WAL mode (the manifest's) a writer does not block the probe's read
