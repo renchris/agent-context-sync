@@ -8748,14 +8748,32 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     persons = (
         f"[FAIL] state_dir — x (fix: the person runs sudo chown -R 501 {state}' (the agent runs no sudo))"
     )
+    # B13 round 23 A12, A45: the governance checks install.sh's state_chmods hands the agent, a folder below
+    # the state folder, and a fix naming several paths, one of them outside it
+    gh = (
+        "[FAIL] governance.hold — x cannot be opened: Permission denied (fix: chmod 600 "
+        f"{state}/governance/holds.json')"
+    )
+    gq = (
+        "[FAIL] governance.purge_queue — x cannot be opened: Permission denied (fix: chmod 600 "
+        f"{state}/governance/purge-queue.json')"
+    )
+    gd = (
+        f"[FAIL] governance.hold — x cannot be opened: Permission denied (fix: chmod 700 {state}/governance')"
+    )
+    two = f"[FAIL] state_dir.files — x (fix: chmod 600 {state}/m-shm' ~/'agent-context/sources.toml')"
     for fails, after in (
         ([hb], " after the file's mode was fixed"),
         ([shm], " after the file's mode was fixed"),
         ([lk, hb], " after the file's mode was fixed"),
         ([sd], " after the folder's mode was fixed"),
+        ([gh], " after the file's mode was fixed"),
+        ([gq], " after the file's mode was fixed"),
+        ([gd], " after a folder's mode was fixed"),
         ([hb, pandoc], ""),
         ([docs], ""),
         ([persons], ""),
+        ([two], ""),
     ):
         out.write_text(
             "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
@@ -8766,6 +8784,21 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         got = items(run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True), worked)
         assert got.endswith(f"; the same command was run again{after} and ended 0"), (fails, got)
         assert "at its status step ([FAIL] " in got and "Library" not in got, got
+    # A45: a state folder whose name holds an apostrophe, which doctor quotes ~/"Contoso's state"
+    cfg_text = fake_mac["config"].read_text(encoding="utf-8")
+    fake_mac["config"].write_text(
+        f'[agentsync]\nstate_dir = "~/Contoso\'s state"\n\n{cfg_text}', encoding="utf-8"
+    )
+    out.write_text(
+        "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "[FAIL] heartbeat — x cannot be opened: Permission denied (fix: chmod 600 "
+        '~/"Contoso\'s state/heartbeat.json")\n'
+        "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
+        encoding="utf-8",
+    )
+    got = items(run("2026-09-29T10:00:00Z", 1, "--source-local x", status=True), worked)
+    assert got.endswith("; the same command was run again after the file's mode was fixed and ended 0"), got
+    fake_mac["config"].write_text(cfg_text, encoding="utf-8")
 
     # B13 round 21 Y5: a config step that met the sync's line for a state file this account cannot open read
     # only "exited 1 at its config step; the same command was run again and ended 0" after the agent's chmod.

@@ -11203,17 +11203,25 @@ def _run_block(r: _Run, run: InstallRun) -> list[str] | None:
 
 
 _STATE_MODE_CHECKS = frozenset({"state_dir", "state_dir.files", "heartbeat", "lock"})
-"""doctor's checks of a file or folder in the state folder whose own-mode fix is a chmod by the agent."""
+"""doctor's checks of a file or folder in the state folder whose own-mode fix is a chmod by the agent, with
+every ``governance.`` check (holds.json and the purge queue, read as lock and heartbeat are), as install.sh's
+``state_chmods`` reads them (B13 round 23 A12, A45)."""
 _FIX_RE = re.compile(r"\(fix: (?P<fix>.*)\)$")
 
 
 def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
     """For a run that stopped at its status (or doctor) step, what the run that ended 0 came after, when
     every ``[FAIL]`` of its block is a state-folder check (:data:`_STATE_MODE_CHECKS`) whose fix is a chmod by
-    the agent (no ``doctor.is_persons_fix``) of the state folder or a path in it: "after the folder's mode was
-    fixed" when the only fix is the folder's own chmod, else "after the file's mode was fixed" (B13 round 22
+    the agent (no ``doctor.is_persons_fix``) of the state folder or paths in it: "after the folder's mode was
+    fixed" when the only fix is the folder's own chmod, "after a folder's mode was fixed" when every fix is a
+    ``chmod 700`` of a folder, one below it among them, else "after the file's mode was fixed" (B13 round 22
     Z19: Items left the agent's chmod out of a heartbeat, lock or -shm stop). None for any other mix, so a
-    stop that also had a pandoc that timed out never claims the chmod explains the success."""
+    stop that also had a pandoc that timed out never claims the chmod explains the success.
+
+    Each fix is read as install.sh's ``state_chmods`` reads it, so the words cover the chmods its NEXT hands
+    the agent: split as the shell would and each path resolved, which also reads a state folder whose name
+    holds an apostrophe (doctor's ``~/"Contoso's state"``) and a fix that names several paths (B13 round 23
+    A12, A45)."""
     if r.config is None:
         return None
     block = _run_block(r, run)
@@ -11222,8 +11230,7 @@ def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
     try:
         from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
-        root = expand(r.config.state_paths.root)
-        forms = {doctor._shell_path(root), doctor._shell_path(os.path.realpath(root))}
+        root = os.path.realpath(expand(r.config.state_paths.root))
         fixes: list[tuple[str, str]] = []
         for ln in block:
             m = _DOCTOR_TAG_RE.match(ln.strip())
@@ -11231,20 +11238,26 @@ def _state_mode_fixed(r: _Run, run: InstallRun) -> str | None:
                 continue
             found = _FIX_RE.search(ln.strip())
             fix = found.group("fix") if found is not None else ""
-            target = fix.split(" ", 2)[2] if fix.startswith("chmod ") and fix.count(" ") >= 2 else ""
-            inside = any(
-                target == form or (form.endswith("'") and target.startswith(form[:-1] + "/"))
-                for form in forms
-            )
-            if m.group(2) not in _STATE_MODE_CHECKS or not inside or doctor.is_persons_fix(fix):
+            name = m.group(2)
+            if name not in _STATE_MODE_CHECKS and not name.startswith("governance."):
                 return None
-            fixes.append((m.group(2), target))
+            words = shlex.split(fix) if fix.startswith("chmod ") else []
+            if len(words) < 3 or words[1] not in ("600", "700") or doctor.is_persons_fix(fix):
+                return None
+            for word in words[2:]:
+                path = Path(word).expanduser()
+                real = os.path.realpath(path)
+                if not path.is_absolute() or not (real == root or real.startswith(root + os.sep)):
+                    return None
+                fixes.append((words[1], real))
     except Exception:  # a fix the report cannot read leaves the plain words
         return None
     if not fixes:
         return None
-    if all(target in forms for _name, target in fixes):
+    if all(real == root for _mode, real in fixes):
         return "after the folder's mode was fixed"
+    if all(mode == "700" for mode, _real in fixes):  # a folder below it, governance/ (A12)
+        return "after a folder's mode was fixed"
     return "after the file's mode was fixed"
 
 
