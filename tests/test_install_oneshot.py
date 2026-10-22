@@ -2821,6 +2821,96 @@ def test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped(
         assert "sudo chown" not in text, "an older run's fix is never shown"
 
 
+_BARE_LEAD = "The last install run's NEXT line, from the copy of its output:\n"
+_CLEAN_LEAD = (
+    "The last install run ended 0; its own NEXT line, from the copy of its output (an agentsync run after it "
+    "may have moved past it; those NEXT lines are not copied to install.out):\n"
+)
+_LIST_LEAD = "The last install.sh --list-folders run's NEXT line, from the copy of its output:\n"
+
+
+@pytest.mark.parametrize(
+    ("runs", "lead", "quoted", "absent"),
+    [
+        # A3: a run that ended 0 with no failed step is quoted, under a lead-in that says it ended 0
+        (
+            [("I", "step=config seconds=1 rc=0 result=ok\nstep=first_sync seconds=9 rc=0 result=ok", 0)],
+            _CLEAN_LEAD,
+            "NEXT: draft the baseline questions",
+            _BARE_LEAD,
+        ),
+        # a failed step and no end line (killed, or still running), and an end rc=1 with no failed step:
+        # both stopped runs
+        (
+            [("I", "step=config seconds=1 rc=1 result=failed config_err=state-owner", None)],
+            _BARE_LEAD,
+            "NEXT: draft the baseline questions",
+            _CLEAN_LEAD,
+        ),
+        (
+            [("I", "step=config seconds=1 rc=0 result=ok", 1)],
+            _BARE_LEAD,
+            "NEXT: draft the baseline questions",
+            _CLEAN_LEAD,
+        ),
+        # A47: a --list-folders run after the stopped install run is not the install run
+        (
+            [
+                ("I", "step=config seconds=1 rc=1 result=failed config_err=state-owner", 1),
+                ("L", "step=list-folders seconds=2 rc=0 result=ok synced=0", 0),
+            ],
+            _BARE_LEAD,
+            "NEXT: draft the baseline questions",
+            "tell the person the folder list",
+        ),
+        # list runs only: the last one's NEXT, under a lead-in that names its kind
+        (
+            [("L", "step=list-folders seconds=2 rc=1 result=failed", 1)],
+            _LIST_LEAD,
+            "NEXT: tell the person the folder list",
+            _BARE_LEAD,
+        ),
+    ],
+    ids=["ended-0", "killed", "end-rc-1", "list-after-install", "list-only"],
+)
+def test_the_shell_report_says_which_run_its_quoted_next_line_came_from(
+    env: dict[str, str], runs: list[tuple[str, str, int | None]], lead: str, quoted: str, absent: str
+) -> None:
+    """B13 round 23 A3, A47: fallback_next_line took the run of install.log's last step= line and called its
+    NEXT "The last install run's NEXT line" whatever that run was: one that ended 0 (whose NEXT a later sync
+    may have moved past) read as if it were the run that stopped, and a --list-folders run after a stopped
+    install run hid the install run's NEXT. It now picks the last install run, else the last --list-folders
+    run, as attempt_run_simulated does, and its lead-in says the kind and whether the run ended 0."""
+    setup = Path(env["HOME"]) / "agent-context" / "setup"
+    setup.mkdir(parents=True)
+    log, out = [], []
+    for i, (kind, steps, rc) in enumerate(runs):
+        run = f"2026101{i}T010000Z-42{i}"
+        args = "--list-folders" if kind == "L" else "--source-local ~/Clients"
+        log.append(
+            f"2026-10-1{i}T01:00:00Z run={run} start install.sh compat=10 commit=- kind=- source=- "
+            f"args={args}"
+        )
+        log += [f"2026-10-1{i}T01:00:05Z run={run} {s}" for s in steps.split("\n")]
+        if rc is not None:
+            log.append(f"2026-10-1{i}T01:00:09Z run={run} end rc={rc} seconds=9")
+        said = (
+            "NEXT: tell the person the folder list above, then run install.sh --source-local <folder>"
+            if kind == "L"
+            else "NEXT: draft the baseline questions: the setup prompt's step 3 says how"
+        )
+        out.append(f"# run={run} 2026-10-1{i}T01:00:00Z install.sh {args}\nstep ...\n{said}")
+    (setup / "install.log").write_text("\n".join(log) + "\n")
+    (setup / "install.out").write_text("\n".join(out) + "\n")
+    cp = install_sh(env, "--report-only")
+    assert cp.returncode == 0 and "(shell fallback: agentsync is not installed)" in cp.stdout, cp.stdout
+    installer = report_path(env).read_text().split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    assert f"{lead}\n~~~\n{quoted}" in installer, installer
+    assert absent not in installer, installer
+    for said in (_BARE_LEAD, _CLEAN_LEAD, _LIST_LEAD):
+        assert " (install.out" not in said, "a stopped copy's relabelling keys on it"
+
+
 _LEGEND_KINDS = (
     "~",
     "<tmp>",

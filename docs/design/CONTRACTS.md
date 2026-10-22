@@ -27398,6 +27398,8 @@ install.log fence, the last `NEXT:` line of the install.out block whose run is t
 reads `No NEXT line of that run in install.out.`, and the report's own run adds nothing (its NEXT comes after the
 report). Its re-run's `--source-local` folder is cut by Z77's pairs. Test:
 `test_the_shell_report_quotes_the_next_line_of_the_run_whose_step_stopped` (the run's own NEXT; an older run's).
+Amended 2026-10-22, §16.165 A3, A47: the run is no longer install.log's last `step=` line: it is the last install
+run, else the last `--list-folders` run, and a run that ended 0 is quoted under a lead-in that says so.
 
 **Every Summary line holding the idle advice is one install.sh reads** (Z90). §16.153 Y66 keys install.sh's
 cut-off clause on Summary lines starting `- doctor:` or `- evidence:`, and nothing pinned that those are the only
@@ -28041,7 +28043,27 @@ once, with no time bound: `test_a_crashing_hook_and_a_cut_off_doctor_say_so_in_t
 
 ### 16.165 Round 23: installer, the shell report's redaction, git readers and NEXT relay (2026-10-22, wave B13 round 23 lane RB)
 
-Reserved for round 23 lane RB of B13.
+The B13 round 23 items of lane RB (specs `round23/items/A<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise): A3, A24, A25, A27, A41, A42, A47, A48, A76, A82, A89 and A96's part 5. A48, A76
+and A89 are one defect, built once; A24's and A25's `setup_report` halves are lane RA's (§16.164), and A27's
+copy in the agentsync report too. A24, A25 and A27 carried "a fix makes things worse": the finder's fix, which
+their verifiers' corrected fixes, built here, are not.
+
+**The shell report says which run its quoted NEXT line came from** (A3, A47; amends §16.159 Z82).
+`fallback_next_line` took the run of install.log's last `step=` line and called its NEXT `The last install run's
+NEXT line`, whatever that run was. A run that ended 0 with no failed step read as the run that stopped, though a
+sync after it may have moved past its NEXT (A3), and a `--list-folders` run after a stopped install run hid the
+install run's NEXT, the owner's fix Z82 brings back (A47). One awk pass over install.log now picks the run as
+`attempt_run_simulated` does: the last run with a `step=` line that is no list run (`step=list-folders`, or a start
+line with `args=--list-folders`), else the last list run; this report's own run still adds nothing. A run with a
+`result=failed` step or no `end rc=` line (killed, or still running) is stopped, one with `end rc=N`, N not 0,
+failed: both keep Z82's lead-in. A run that ended 0 is quoted under `The last install run ended 0; its own NEXT
+line, from the copy of its output (an agentsync run after it may have moved past it; those NEXT lines are not
+copied to install.out):`, kept rather than dropped, since with no agentsync it is the report's only pointer to
+where step 2 left the loop. A list run's lead-in reads `The last install.sh --list-folders run's NEXT line` (and
+its own `ended 0` form). No lead-in holds ` (install.out`. Test: `test_install_oneshot.py::
+test_the_shell_report_says_which_run_its_quoted_next_line_came_from` (a run that ended 0; one killed with a failed
+step; an `end rc=1` with none; a list run after a stopped install run; list runs only).
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 

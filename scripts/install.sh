@@ -3326,16 +3326,35 @@ fallback_install_source_line() {
 	fi
 	say "- install source: checkout ~/src/agent-context-sync · origin: $label$said"
 }
-# The NEXT line of the run of install.log's last step= line, from that run's block of install.out (B13 round 22
-# Z82): install.log says only that a step failed (step=config ... config_err=state-owner), and the owner and
+# The NEXT line of the last install run in install.log (a run with a step= line), else of the last --list-folders
+# run, chosen as attempt_run_simulated chooses (B13 round 23 A47), from that run's block of install.out (B13 round
+# 22 Z82): install.log says only that a step failed (step=config ... config_err=state-owner), and the owner and
 # the command are in the NEXT the agentsync report quotes. The run's own block only, so an older run's fix is
-# never shown; none for this run, whose NEXT comes after its report. Its lead-in holds no " (install.out",
-# which a stopped copy's relabelling keys on. The body's redaction cuts its re-run's --source-local folders.
+# never shown; none for this run, whose NEXT comes after its report. A run that ended 0 with no failed step is
+# quoted under a lead-in that says so: the shell cannot know whether a sync after it moved past its NEXT (A3);
+# one with a failed step or no end line (killed, or still running) is a stopped run. No lead-in holds
+# " (install.out", which a stopped copy's relabelling keys on. The body's redaction cuts its re-run's
+# --source-local folders.
 fallback_next_line() {
-	local r v=""
-	r="$(LC_ALL=C awk '/ step=/ && match($0, /run=[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-[0-9]+/) {
-		r = substr($0, RSTART + 4, RLENGTH - 4)
-	} END { print r }' "$SETUP_LOG" 2>/dev/null || true)"
+	local r="" kind="" st="" v="" lead
+	{ read -r r kind st || true; } < <(LC_ALL=C awk '
+		/ step=/ && match($0, /run=[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z-[0-9]+/) {
+			id = substr($0, RSTART + 4, RLENGTH - 4)
+			if (!(id in seen)) { seen[id] = 1; order[++n] = id }
+		}
+		$2 ~ /^run=/ { id = substr($2, 5) } $2 !~ /^run=/ { next }
+		index($0 " ", " step=list-folders ") || (index($0, " start install.sh ") && $0 ~ / args=--list-folders( |$)/) {
+			lists[id] = 1
+		}
+		index($0 " ", " result=failed ") { failed[id] = 1 }
+		match($0, / end rc=[0-9]+/) { endrc[id] = substr($0, RSTART + 8, RLENGTH - 8) }
+		END {
+			for (i = n; i > 0; i--) if (!(order[i] in lists)) { last = order[i]; break }
+			if (last == "") { last = order[n]; kind = "list" } else kind = "install"
+			if (last == "") exit
+			st = (last in failed) || !(last in endrc) ? "stopped" : endrc[last] + 0 != 0 ? "failed" : "clean"
+			print last, kind, st
+		}' "$SETUP_LOG" 2>/dev/null)
 	[ -n "$r" ] && [ "$r" != "${RUN_ID:-}" ] || return 0
 	[ ! -r "$INSTALL_OUT" ] || v="$(LC_ALL=C awk -v id="$r" '
 		index($0, "# run=") == 1 { mine = index($0, "# run=" id " ") == 1; next }
@@ -3346,7 +3365,14 @@ fallback_next_line() {
 		say "No NEXT line of that run in install.out."
 		return 0
 	fi
-	say "The last install run's NEXT line, from the copy of its output:"
+	lead="The last install run"
+	[ "$kind" != list ] || lead="The last install.sh --list-folders run"
+	if [ "$st" = clean ]; then
+		say "$lead ended 0; its own NEXT line, from the copy of its output (an agentsync run after it may have moved" \
+			"past it; those NEXT lines are not copied to install.out):"
+	else
+		say "$lead's NEXT line, from the copy of its output:"
+	fi
 	say ""
 	say "~~~"
 	printf '%s\n' "$v" | LC_ALL=C sed 's/~~~/~ ~ ~/g'
