@@ -3051,9 +3051,10 @@ def test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy(env: dict[s
     text = report_path(env).read_text()
     assert "git.contoso.example" not in text and "<proxy-" in text.split("\n## Redaction\n", 1)[0]
     legend = " ".join(text.split("\n## Redaction\n", 1)[1].split("\n\n")[0].split())
-    # B13 round 16 T88: and a git remote's host
+    # B13 round 16 T88: and a git remote's host; round 23 A25: and its company-named path, replaced whole
     said = (
-        "also a host a friction line's resolver error names, or a git remote's host (neither need be a proxy)"
+        "also a host a friction line's resolver error names, or a git remote's host and its company-named "
+        "path (neither need be a proxy)"
     )
     assert said in legend, legend
     assert setup_report._LEGEND["proxy"].endswith(f"so a number can be missing; {said}")

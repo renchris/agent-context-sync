@@ -28096,6 +28096,15 @@ for which that command writes no patch` would point at the report command, the o
 `test_local_work_branches_with_no_patch_are_named_in_the_next_line` and
 `test_a_cut_off_report_with_local_work_branches_says_either_way_once`.
 
+**Both legends say a git remote's company-named path is a `<proxy-N>`** (A25). Since §16.128 U15 both readers
+replace a remote URL's whole path when a word in it is no generic or report word, as they replace a rewrite base's,
+so `https://git.contoso-kb.invalid:8443/contoso-it/agent-context-sync.git/` reads `https://<proxy-1>:8443/<proxy-2>/`.
+Both legends named a path only for a URL rewrite. `setup_report._LEGEND["proxy"]` and the shell legend now end `or
+a git remote's host and its company-named path (neither need be a proxy)`, in one commit, since a test pins one to
+the other. The whole-path rule stays: the finder's fix of replacing only the company-named segment would print the
+path's other private segments and change both redactors' pairs and numbering. Test:
+`test_install_oneshot.py::test_both_legends_say_a_resolver_errors_host_need_not_be_a_proxy`.
+
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
 The B13 round 23 items of lane P (specs `round23/items/A<n>.md`, the verifier's corrected fix built unless a

@@ -3857,13 +3857,15 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 	case "$used" in *" <link-[0-9] "*) say "- <link-N>: a symlink's own name in ~/Library/CloudStorage (not an organization)" ;; esac
 	case "$used" in *" <mdmhost> "*) say "- <mdmhost>: the MDM server's host" ;; esac
 	# numbered as in agentsync's own report (B13 round 8 J78), so a number the other report gave can be missing
-	# here: the shell names an environment proxy only by its variable (B13 round 10 L3)
+	# here: the shell names an environment proxy only by its variable (B13 round 10 L3). A remote's path is
+	# replaced whole when a word in it is no generic one, as a rewrite's is (B13 round 23 A25)
 	case "$used" in *" <proxy-[0-9] "*)
 		say "- <proxy-N>: proxy hosts (a host that is just a common word, such as proxy or wpad, is replaced only where a"
 		say "  URL or host:port names it), a git URL rewrite's host and its company-named path (insteadOf; github.com"
 		say "  kept) and the system PAC URL after its scheme; numbered as in agentsync's own report, so a number can be"
 		say "  missing here (an environment proxy this report names only by its variable keeps its number); also a host"
-		say "  a friction line's resolver error names, or a git remote's host (neither need be a proxy)"
+		say "  a friction line's resolver error names, or a git remote's host and its company-named path (neither need"
+		say "  be a proxy)"
 		;;
 	esac
 	case "$used" in *" <folder-[0-9] "*) say_item "$folder_item" ;; esac

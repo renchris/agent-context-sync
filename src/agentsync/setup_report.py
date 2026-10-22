@@ -928,7 +928,8 @@ _LEGEND = {
     "proxy": (  # numbered as install.sh's shell fallback report numbers them (B13 round 8 J78, round 10 L3)
         "<proxy-N> proxy host, git URL rewrite (insteadOf) host and its company-named path, or the system "
         "PAC URL after its scheme, numbered as in the shell fallback report, so a number can be missing; "
-        "also a host a friction line's resolver error names, or a git remote's host (neither need be a proxy)"
+        "also a host a friction line's resolver error names, or a git remote's host and its company-named "
+        "path (neither need be a proxy)"
     ),
     "tmp": "<tmp> this account's temporary folder ($TMPDIR, /var/folders/<x>/<y>)",
     "link": "<link-N> a symlink's own name in ~/Library/CloudStorage (not an organization)",
