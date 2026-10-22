@@ -11118,6 +11118,11 @@ not a directory", or "<path> is <kind>, not a folder"), or where a folder above 
 folder <root> sits under it"; B13 round 23 ruling 4)."""
 
 
+_STATE_LOST = " is missing, but heartbeat.json records earlier passes"
+"""Lane B's words for a manifest lost from a Mac that has synced (``manifest.LOST_MANIFEST``, after the path
+in the sync's ``error: state:`` line; B13 round 23 A29), which no sync replaces with a new one."""
+
+
 _FOLDER_ACL_FIX_HEADS = (
     "the person gives this account read, write and search access to the folder ",
     "the person gives this account read-attributes, read, write and search access to the folder ",
@@ -11158,6 +11163,12 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             what = what if what == "not a regular file" else f"{what}, not a file"
             return f" on agentsync's state file, which is {what}: the person's to fix", (
                 "after it was moved aside or the state file put back"
+            )
+        if ln.startswith("error: state: ") and _STATE_LOST in ln:  # B13 round 23 A29: the person decides
+            return (
+                " on agentsync's state file, which is missing though heartbeat.json records earlier passes: "
+                "the person's to fix",
+                "after the file was restored or heartbeat.json moved aside",
             )
         folder = _STATE_NOT_FOLDER_RE.search(ln.strip())
         if folder is not None:

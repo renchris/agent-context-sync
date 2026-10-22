@@ -8961,6 +8961,14 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "on agentsync's state folder, which is not a folder: the person's to fix",
             "it was moved aside",
         ),
+        (  # lane B's lost manifest (B13 round 23 A29): no new one over earlier passes, the person decides
+            f"error: state: {db} is missing, but heartbeat.json records earlier passes (fix: the person "
+            "decides: restore manifest.sqlite from a copy they trust, or move heartbeat.json aside, keeping "
+            "a copy, so the next sync starts a new manifest)",
+            "on agentsync's state file, which is missing though heartbeat.json records earlier passes: the "
+            "person's to fix",
+            "the file was restored or heartbeat.json moved aside",
+        ),
         # lane B's words (round 23 ruling 4, A46): the kind of a symlink, and a folder above the state folder
         (
             f"error: state: {db} is a symlink to a folder, not the state file (fix: {doctor.MANIFEST_FIX})",
