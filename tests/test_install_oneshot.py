@@ -363,16 +363,26 @@ def install_sh(
     """One install.sh run (``script``: a copy in another checkout; ``wrap``: the argv it runs under, such as
     ``sandbox-exec -p <profile>``). Its NEXT says of the [FAIL] lines above it that "each names its fix", so
     every run of every test is held to that: the real agentsync's lines, and the stub's, which are written as
-    the real ones are."""
-    cp = subprocess.run(
-        [*wrap, BASH32, str(script), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
-        env=env,
+    the real ones are. The run has a session of its own, and a timeout kills its whole process group: a kill
+    of the bash alone left a hung run's pipeline stages running under launchd (B13 round 23 A96)."""
+    argv = [*wrap, BASH32, str(script), *args]
+    with subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
-    )
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except BaseException:  # a timeout, or a Ctrl-C, which no longer reaches a run in its own session
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            raise
+    cp = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
     bare = [ln for ln in cp.stdout.splitlines() if ln.startswith("[FAIL] ") and " (fix: " not in ln]
     assert not bare, f"[FAIL] line(s) that name no fix: {bare}"
     return cp
@@ -419,6 +429,31 @@ def rerun(wheel: Path, folder: Path | None = None) -> str:
     quotes: B13 round 16 T35). After the config step it names no folder: each is in the config (T22)."""
     named = "" if folder is None else f' --source-local "{folder}"'
     return f"{INSTALL_SH} {wheel}{named} --confirm-install-agent"
+
+
+def test_a_timed_out_install_run_leaves_none_of_its_processes_running(tmp_path: Path) -> None:
+    """B13 round 23 A96: install_sh's subprocess.run(timeout=...) killed only the bash it started, so a hung
+    run's pipeline stages went on under launchd (twelve of them burned two cores for a day, writing into a
+    deleted pytest tree). The run now has a session of its own and a timeout kills its process group."""
+    pid_file = tmp_path / "pid"
+    hang = tmp_path / "hang.sh"
+    hang.write_text(f'sleep 300 & printf "%s" "$!" >"{pid_file}"\nwait\n')
+    with pytest.raises(subprocess.TimeoutExpired):
+        install_sh({"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}, timeout=3, script=hang)
+    pid = int(pid_file.read_text())
+    try:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail(f"the run's sleep {pid} outlived its timeout")
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
 
 
 # ---- --version and the README prompt -----------------------------------------------------------------------

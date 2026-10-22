@@ -28074,6 +28074,15 @@ dotted reader landed (79f403c5). Once it had, the guard was false only when that
 its assert exists to catch. The assert is unconditional; with the reader's dotted arm made `False`, the
 `dotted-two-line` and `dotted-one-line` rows fail, and with the guard they passed.
 
+**A timed-out install.sh run in the tests leaves none of its processes running** (A96, part 5; the lead did
+parts 1 to 4, the orphans and the round 22 worktrees). `test_install_oneshot.py::install_sh` ran
+`subprocess.run(..., timeout=...)`, whose timeout kills only the bash it started: a hung run's pipeline stages
+went on under launchd, twelve of them for a day on two cores. The helper starts the run in a session of its own
+(`start_new_session=True`) and on a timeout, or any other exception (a Ctrl-C no longer reaches a run in its own
+session, and `Popen.__exit__` does not wait on one), kills the whole process group, then waits and raises it as
+`subprocess.run` did. Test: `test_a_timed_out_install_run_leaves_none_of_its_processes_running` (a script whose
+backgrounded `sleep 300` outlived the old helper's timeout).
+
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
 The B13 round 23 items of lane P (specs `round23/items/A<n>.md`, the verifier's corrected fix built unless a
