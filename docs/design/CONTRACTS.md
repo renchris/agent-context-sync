@@ -24498,6 +24498,10 @@ checkout that follows another remote. A fork on GitHub stays `other (redacted)`.
 checkout), `test_setup_report.py::test_install_source_reads_the_configured_origin_and_says_a_rewrite_changes_it`,
 `test_a_copy_newer_than_the_checkout_is_told_what_fixes_it` (the rewrite case).
 
+Amended 2026-10-22, §16.164 A24: with lane RB's land, the agentsync report's label is the first
+`remote.origin.url` key after the last empty one (`config --get-all`), the one git fetches from, with ` (N url
+keys, git fetches from the first)` for two or more; a rewrite is claimed only when it changes that URL's label.
+
 **The vanished source's re-add under install.sh** (V8). Step 1's tail names one `--source-local "<folder>"` and step
 2's `[FAIL] config.vanished_sources` named `~/.local/bin/agentsync add-source '<folder>'`, which the setup prompt
 tells the agent not to run. Lane B builds the verifier's fix in the vanished-source tail its V7 shares (§16.137):
@@ -26697,6 +26701,8 @@ apart from its "" (every check ran) as `doctor_cut_off_reading`. A doctor cut of
 check and gets neither the loop-state words nor the held-sync words, even when Status found the state file busy:
 its words are a cut-off's with no group read, `a check is slow or hung` in the lead-in and the advice. Test:
 `test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it` (its `""` case).
+Amended 2026-10-22, §16.164 A28: the lead-ins read `that is above its core count (a busy Mac): <_IDLE_AGAIN>`
+and `that is not above its core count, so <check> is slow or hung, not a busy Mac; ...`.
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
@@ -27238,6 +27244,11 @@ above it refuses this account a search` before a folder's fix, and its NEXT says
 `test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket`,
 `test_cli.py::test_the_syncs_state_error_says_a_folder_refused_when_a_folder_did`.
 
+Amended 2026-10-22, §16.164 A4, A16: the outcome's folder-above words read `on agentsync's state folder, behind a
+folder above it that refuses this account a search: the person's to fix`.
+Amended 2026-10-22, §16.164 A5, A13, A38: after install.sh's one-pass NEXT, a `chmod 700` reads `after the
+folder's mode, and any mode in it that status then named, were fixed`; without it, as above.
+
 **A folder where manifest.sqlite belongs is no "no manifest yet"** (Z12; amends §16.155 Y47). `_Mirror._open`
 stats the path: a missing one is `_NoManifestError` as before, a path that is no regular file (or a file where a
 folder on its way belongs) `_StateNotFileError`, worded `the state file is not a file: see Doctor's
@@ -27245,6 +27256,11 @@ state_dir.manifest line`, with an evidence clause of its own; both share `_NoSta
 lookups catch, so queued purges still list. The Doctor line files `state_dir.manifest FAIL (the person's; see
 Doctor)` in the cannot-be-read bucket by the report's own stat (`_state_not_file`), never by widening
 `doctor.manifest_unreadable`. Test: `test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons`.
+
+Amended 2026-10-22, §16.164 A23: a file where a folder on its way belongs is `_StateFolderNotFolderError` when
+that folder is the state folder or one above it, worded `the state folder is not a folder: see Doctor's
+state_dir line` (or `a folder above the state folder is not a folder: ...`), never `_StateNotFileError`, whose
+state_dir.manifest line doctor prints only for the manifest's own path.
 
 **Each FAIL in the cannot-open buckets carries its owner** (Z32, Z43, Z84, Z39; amends §16.155 Y45). The
 lock/heartbeat/governance bucket gave `(the person's; see Doctor)` or nothing, while the state file's bucket says
@@ -27296,6 +27312,9 @@ Amended 2026-10-22, §16.168 A63: a third count, `legacy_waiting`, reads `N that
 and the bullet adds `a file left waiting is read again by the first run with a converter for its type (the OCR
 engine for an image), so an old conversion error can show in that run`; neither the settled words nor the retry
 words.
+
+Amended 2026-10-22, §16.164 A30: the bullet says `An older build had given up on that file's conversion` when
+its runs hold one file, `these conversions` otherwise.
 
 **A `[remote.origin]` section's URL is read and redacted** (Z76, the report's half; amends §16.152 Y36). Git still
 applies the dotted form; `_git_remotes` reads it (and `[remote.a "b"]` as `a.b`). install.sh's reader is lane
@@ -27864,7 +27883,161 @@ dash or an accent. It quotes the legend now (§16.46 R7's quote stays as its rec
 
 ### 16.164 Round 23: setup report (2026-10-22, wave B13 round 23 lane RA)
 
-Reserved for round 23 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 23").
+Lane RA's round 23 items (`docs/plans/bring-back-ocr.md`, "B13 round 23"; specs `round23/items/A<n>.md`, the
+verifier's corrected fix built): A4, A5, A8, A9, A11, A12, A13, A16, A18, A19, A20, A23, A24, A25, A27, A28, A30,
+A35, A38, A43, A44, A45, A46, A50, A69, A85, A86, A87, A88, A90 and A92. One defect from several finders is built
+once: A4 with A16; A5 with A13 and A38; A43 with A69 and A88; A12 with A45; A86 with A11; A24 with A50 and A90. A27
+needs no build in the report, and A25's and A24's install.sh halves are lane RB's (§16.165).
+
+**The folder-above words parse** (A4, A16; amends §16.158 Z6). `_state_open_words` says ` on agentsync's state
+folder, behind a folder above it that refuses this account a search: the person's to fix`, in Items and the
+outcome; `which a folder above it refuses this account a search` gave `which` no place. See the dated line there.
+Test: `test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed`.
+
+**An ACL on the state folder itself, and a read-only volume, name their own cause** (A43, A69, A88).
+`_FOLDER_ACL_FIX_HEADS` holds `_search_fix`'s opening and `doctor._parent_fix`'s Z72 opening (`read-attributes,
+read, write and search access to the folder `), so both read as the state folder's ACL, the person's, never `the
+state file`; `doctor.read_only_fix` reads ` on agentsync's state file or folder, which sits on a volume mounted
+read-only: the person's to fix` and, for the run that ended 0, `after the volume was made writable`. The tuple is
+the report's own (A69 put it in doctor, lane B's file). Test: the same.
+
+**After a folder's one chmod pass** (A5, A13, A38; amends §16.158 Z4). A config-step stop on a `chmod 700` whose
+NEXT is install.sh's one-pass words (`in the same pass, since that folder's mode hid its files' modes`) reads
+`after the folder's mode, and any mode in it that status then named, were fixed`, true whether or not status named
+a file; without that NEXT, `after the folder's mode was fixed` as before. A shut folder alone and one holding a
+shut manifest leave the same block, so they read alike (A13's verifier). Test: the same.
+
+**The chmod words read the fix as state_chmods does** (A12, A45). `_state_mode_fixed` takes any `governance.`
+check, splits the fix with `shlex`, and needs `chmod 600` or `chmod 700` with every path, expanded and resolved,
+the state folder or in it, as install.sh's `state_chmods`: governance.hold and purge_queue, a state folder named
+`~/"Contoso's state"` and a fix of several paths read `after the file's mode was fixed`; a `chmod 700` of
+subfolders alone `after a folder's mode was fixed`; a path outside gives no words. Test: the same.
+
+**Something not a file or folder where the state belongs names its cause** (A86, A11). `_STATE_NOT_FILE_RE` reads
+cli's `<db> is <kind>, not the state file` (lane B's `a symlink to a folder` and `a symlink loop` too) and
+`_STATE_NOT_FOLDER_RE` main's `is not a directory` and lane B's `<path> is <kind>, not a folder`: Items and the
+outcome say ` on agentsync's state file, which is <kind>, not a file: the person's to fix` (`after it was moved
+aside or the state file put back`), ` on agentsync's state folder, which is not a folder: the person's to fix`, or
+` on a folder above agentsync's state folder, which is not a folder` for lane B's `, and the state folder <root>
+sits under it` (round 23 ruling 4). Before, the outcome said only `its config step failed with rc 1`. A11's
+status words are lane B's. Test: the same.
+
+**Lane B's new sync lines name their cause** (the report's half of lane B's A59 and A29, found by this lane's
+review). `error: state: the state folder <root> cannot be written by this account (fix: …)` gets the state
+folder's words with `could not write`, and the one-pass after-words when the NEXT holds them; `<db> is missing,
+but heartbeat.json records earlier passes` gets ` on agentsync's state file, which is missing though
+heartbeat.json records earlier passes: the person's to fix`. Test: the same.
+
+**A state folder that is not a folder is the person's, named in every part** (A23; round 23 ruling 4; amends §16.158
+Z12). `_not_a_folder_at`, the report's own stat from `/` down to the state folder through links (doctor's
+test), keys it: Configuration reads `(not a folder; see Doctor's state_dir line)` or `(a folder above it is not a
+folder; …)`, never `missing`; `_Mirror._open`, the purge queue and the re-screen raise `_StateFolderNotFolderError`,
+worded `the state folder is not a folder: see Doctor's state_dir line` (or `a folder above the state folder is not
+a folder: …`), with an evidence clause of its own (`a report written after it is moved aside measures them`), never
+`the state file is not a file` and its state_dir.manifest line; the Doctor line's bucket `from the state folder
+that is not a folder` files state_dir `(the person's; see Doctor)` and each check that reads the state folder
+(lane B's not-checked list: lock, heartbeat, config.vanished_sources, governance.hold, purge_queue, audit,
+suppressed) `(not checked: the state folder is not a folder)`, so an older doctor's heartbeat and governance FAILs
+are no "unexpected"; governance.remote keeps its own bucket. See the dated line there. Test:
+`test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so`.
+
+**The report reads doctor's one refused-files list** (A44). `setup_report._refused_state_files` is gone:
+`_state_shut` and `_shut_whose` call `doctor.refused_state_files`, which lists only a regular file, so its "one
+list" docstring is true. A folder, fifo, socket, symlink loop or link to a non-file at the -wal or -shm
+(`_sidecars_not_files`) files its own state_dir.files FAIL `(the person's; see Doctor)`, matched by the side
+file's name in doctor's line; a shut manifest beside it keeps `(the agent's; see Doctor)`. Before, a folder at
+-shm read as the agent's chmod at 0500 and as unexpected at 0700. Test:
+`test_a_folder_where_the_wal_or_shm_belongs_is_the_persons`.
+
+**A governance file this account cannot open points at Doctor's governance lines** (A87). `_purge_part` maps a
+GovernanceError whose OSError `doctor.state_unopenable` places in the state folder to `_StateGovernanceShutError`,
+worded `a file in the state folder cannot be opened by this account: see Doctor's governance lines`, with an
+evidence clause of its own, after the shut-folder and not-a-folder tests; `_why_not_read` has no root, so the
+mapping is not there. Test: `test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file`.
+
+**A state folder on a read-only volume it can search is no shut folder** (A85, the report's half).
+`_state_folder_shut` says no for this account's own 0700 folder on a read-only volume (`doctor._read_only`) that it
+can read and search: the volume is the only refusal, so the files' FAILs read `from the state file this account
+cannot open`, as doctor's [ok] state_dir says. A folder whose mode or owner refuses it, or that refuses a search,
+stays the folder's. Doctor's one state_dir.files line for the read-only files is lane B's. Test:
+`test_a_state_folder_on_a_read_only_volume_is_the_state_files_words`.
+
+**A step-3 sync stop the agent's chmod fixed is an item, and worked with help** (A9; the lead's ruling).
+A foreground sync that exits 1 on a state file this account cannot open appends `<UTC time> sync-stop
+file=<role> rc=1 owner=<agent|person>` to `sync-stops.log` beside install.log (lane B's `cli.SYNC_STOPS_LOG`; no
+`run=`, so no install.log reader of any build takes it for a run). `_step3_stops` reads the lines from the
+attempt's begin to its end line (else the next attempt's begin, else its last line or the friction log's last
+write), for a v7 or later prompt, and pairs each with the first later run the manifest's `runs` table records
+`ok`; a heartbeat stop pairs only with a heartbeat this account can write that was written since. A paired stop is
+an Items line (`- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open;
+it ended 0 after the agent's chmod`), a count on the agent-friction line, and the outcome's reason `1 sync at step
+3 exited 1 on <file>, and it ended 0 after the agent's chmod`: worked with help. An unpaired one is an item and
+changes no outcome; with no runs table to read, `not measured`. Test:
+`test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help`.
+
+**A symlinked manifest's pointer is true** (A46). The verifier's fix is doctor's (lane B: a symlink loop or a link
+to a folder at manifest.sqlite gets the state_dir.manifest FAIL) and install.sh's `state_not_a_file` (lane P); the
+report's `_STATE_NOT_FILE` pointer needs no change. Lane B's doctor half and lane P's install.sh half (5d8e8c36) are the build; the report is
+unchanged, as the verifier found.
+
+**A stopped copy's installer output, sync line and excerpt name the run after its end line** (A18, A19, A20). For a
+copy the installer stopped, a run from its end line on is a stand-alone run (§16.152 Y18), split off by
+`_stopped_split`: the installer output line reads `no run of this attempt; the run after its end line: <counts>`;
+the sync line `<label>: no install run during this attempt; the install run after its end line: …`; the
+Installer excerpt is headed `(the install.sh run after this attempt's end line, a stand-alone run: this attempt
+ran no install.sh)`. A late run with no first sync is said in the sync line's first clause (`; the install run
+after its end line stopped at its <step> step`, `; the --list-folders run after its end line ran no first sync`),
+the rest of the line being the attempt's own runs; the guide's rows quote the new forms. An ordinary attempt keeps
+its later runs as its own. Test:
+`test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart`.
+
+**An origin with two url keys is labelled by the one git fetches from** (A24, A50, A90; amends §16.136 V70). The
+install source line's label is the first `remote.origin.url` key after the last empty one (`config --get-all`),
+not `config --get`'s last; ` (N url keys, git fetches from the first)` is said for two or more, and a rewrite is
+claimed only when an insteadOf changes that first URL's label. The commit and its test (an origin with two url
+keys is labelled by the first, and no rewrite is claimed) land in lane RB's land, with RB's install.sh half and the
+`first-wins` row of the shared test, since neither report can change alone (§16.165). See the dated line there.
+
+**The `<proxy-N>` legend names a git remote's path** (A25). Built by lane RB in both reports at once
+(`setup_report._LEGEND['proxy']` and install.sh's legend are pinned to each other); the verifier's fix is the
+legend alone, so the report has nothing more. A27: the report holds no copy of the local-work NEXT's clause
+(measured: no `holds no new commit` in setup_report.py or its tests), so lane RB's install.sh words are the whole
+fix.
+
+**A hold's reason and owner are never in the report** (A8). The Redactor cuts the free-text reason and owner from
+every hold it shows (doctor's governance.hold line, status's `HOLD:` line, a refusal, the set and release log
+lines), keyed on `Hold.describe()`'s fixed words, before the log lines' path scrub: `hold <scope> (<origin>)[ since
+<iso>]: reason and owner not shown`, `hold <scope> released (owner not shown)`, and a refusal naming several holds
+`hold <scope> (<origin>) and N more holds: reasons and owners not shown`, from the first head to the line's end,
+keeping only a fixed ending; each configured and holds.json reason and owner is a registered `<value>`, whole and
+line by line. Status, `hold --list` and STATE.md still print both. The shell report's half is lane RB's
+`hold_cut`. Tests: `test_a_holds_reason_and_owner_are_cut_by_the_fixed_words`,
+`test_a_holds_reason_and_owner_are_in_no_part_of_the_report`,
+`test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report`.
+
+**A fix its run's NEXT gives the agent is no stray instruction** (A35). `instruction_counts` counts a `fix:` whose
+command (up to its first `;`) is the one its run's NEXT gives the agent (`the fix is the agent's: run X once,`) as
+`_NEXT_FIX`, outside the other instruction-like total and never the person's; the Installer line names it in a
+clause of its own. Test: `test_a_fix_its_runs_next_gives_the_agent_is_no_other_instruction`.
+
+**The cut-off advice says "Mac" once, and the took line names the moved limit** (A28; amends §16.152 Y22). The
+lead-ins read `that is above its core count (a busy Mac): <_IDLE_AGAIN>`, `… is slow or hung, not a busy Mac; …` and
+`if this Mac was busy, …`; `_IDLE_AGAIN` is unchanged, so install.sh's grep still matches. A doctor's grace shows
+as `time limit 12s, moved to 26.2s for a slow doctor`. See the dated line there. Tests:
+`test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy`,
+`test_the_guides_give_the_reports_time_with_a_slow_doctor`.
+
+**The upgrade bullet's noun follows its count** (A30; amends §16.158 Z35). `An older build had given up on that
+file's conversion` when the listed runs hold one file, `these conversions` otherwise. See the dated line there.
+Test: `test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures`.
+
+**Every timing test's words also have an unmarked test** (A92). Each word a `timing` test pins (conftest skips
+those above a load of 4 per core) is pinned too by an unmarked twin beside it, built from a hook that times out at
+once, with no time bound: `test_a_crashing_hook_and_a_cut_off_doctor_say_so_in_their_sections`,
+`test_a_doctor_the_budget_never_started_says_so_in_each_place`,
+`test_a_doctor_cut_off_past_its_grace_names_the_moved_limit`,
+`test_an_exclude_rule_that_times_out_is_not_measured_and_the_rest_is`,
+`test_a_helper_that_does_not_answer_says_so_and_the_manifest_parts_are_measured`.
 
 ### 16.165 Round 23: installer, the shell report's redaction, git readers and NEXT relay (2026-10-22, wave B13 round 23 lane RB)
 
