@@ -1481,6 +1481,83 @@ def test_the_reports_governance_value_keys_are_governances() -> None:
     assert red.redact(other) == other
 
 
+def test_a_holds_reason_and_owner_are_cut_by_the_fixed_words() -> None:
+    """B13 round 23 A8: the three forms a hold prints in (describe(), a refusal joining two, the release log
+    line) keep the scope, origin and time and lose the reason and owner, each cut counted as a <value>."""
+    red = setup_report.Redactor()
+    when = " since 2026-10-22T05:32:56Z"
+    held, cut = (
+        f"hold alpha (state): Fabrikam matter 7 — set by Avery Quill{when}",
+        "reason and owner not shown",
+    )
+    lines = {
+        f"[ok] governance.hold — {held}": f"[ok] governance.hold — hold alpha (state){when}: {cut}",
+        f"HOLD: {held} (purge and compaction suspended)": (
+            f"HOLD: hold alpha (state){when}: {cut} (purge and compaction suspended)"
+        ),
+        "purge suspended by legal/records hold: hold all (config): Northwind review — set by Northwind "
+        f"counsel; {held.replace('matter', '; matter')}. Release it first (records owner).": (
+            f"purge suspended by legal/records hold: hold all (config): {cut}; "
+            f"hold alpha (state){when}: {cut}. Release it first (records owner)."
+        ),
+        "WARNING agentsync.governance: governance: hold alpha released by Avery Quill": (
+            "WARNING agentsync.governance: governance: hold alpha released (owner not shown)"
+        ),
+    }
+    for line, want in lines.items():
+        assert red.redact(line) == want, red.redact(line)
+    assert red.counts["value"] == 5, red.counts
+    kept = "hold all (config): no set-by words here"
+    assert red.redact(kept) == kept
+
+
+def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 23 A8: a hold's free-text reason and owner (a legal matter, a person's name) printed in clear
+    in Doctor, the install.out tail and Recent errors of a report said to be redacted. They are cut wherever
+    the report shows a hold, by the fixed words; ``agentsync status`` still prints them (test_cli's
+    ``test_hold_suspends_purge_and_compaction_and_shows_in_status``)."""
+    cfg = fake_mac["config"]
+    text = (
+        '[governance]\nhold = true\nhold_reason = "Northwind review 9"\nhold_owner = "Northwind counsel"\n\n'
+    )
+    cfg.write_text(text + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    sid = next(src.id for src in load_config(cfg).sources if src.path == fake_mac["one"])
+    hold = ["hold", sid, "--reason", "Fabrikam matter 2026-114", "--owner", "Avery Quill"]
+    assert cli.main([*hold, "--config", str(cfg)]) == 0
+    capsys.readouterr()
+    cli.main(["status", "--config", str(cfg)])
+    status = capsys.readouterr().out
+    assert "Avery Quill" in status and "Northwind counsel" in status, status  # the person still reads them
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + status,
+        encoding="utf-8",
+    )
+    [refused] = [ln for ln in status.splitlines() if ln.startswith("HOLD: hold ") and "(state)" in ln]
+    with (fake_mac["logs"] / "com.agentsync.poll.err.log").open("a", encoding="utf-8") as log:
+        log.write(
+            "2026-09-29 10:05:04,000 ERROR agentsync.cycle: purge suspended by legal/records hold: "
+            f"{refused.removeprefix('HOLD: ').removesuffix(' (purge and compaction suspended)')}. Release it "
+            "first (records owner).\n"
+            "2026-09-29 10:05:05,000 WARNING agentsync.governance: governance: "
+            f"hold {sid} released by Avery Quill\n"
+        )
+    rc, report_text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    for secret in ("Fabrikam", "2026-114", "Avery", "Quill", "Northwind"):
+        assert secret not in report_text, [ln for ln in report_text.splitlines() if secret in ln]
+    holds = [ln for ln in report_text.splitlines() if "governance.hold — " in ln or ln.startswith("HOLD: ")]
+    assert len(holds) >= 4, holds  # the ok lines and HOLD: lines of the install.out tail and Status
+    assert all(ln.count("reason and owner not shown") == 1 for ln in holds), holds
+    assert any(re.search(r"hold <(?:source|folder)-\d+> \(state\) since \S+: reason", ln) for ln in holds), (
+        holds
+    )
+    assert any("hold all (config): reason and owner not shown" in ln for ln in holds), holds
+    assert "governance.hold, governance.hold," in section(report_text, "Doctor")  # both still counted ok
+    assert "released (owner not shown)" in section(report_text, "Recent errors")
+
+
 @pytest.mark.parametrize(
     ("url", "words"),
     [

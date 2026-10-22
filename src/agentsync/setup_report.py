@@ -531,6 +531,18 @@ _GOVERNANCE_TAIL_RE = re.compile(
     flags=re.S,
 )
 """A [governance] type error's value in one exception message, where it runs to the message's end (V45)."""
+_HOLD_SET_RE = re.compile(
+    r"\bhold (?P<scope>\S+) \((?P<origin>config|state)\): [^\n]*? — set by [^\n]*?"
+    r"(?P<when> since \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)?"
+    r"(?=; hold \S+ \((?:config|state)\): |\. Release it first| \(purge and compaction suspended\)|[ \t]*$)",
+    flags=re.M,
+)
+"""A hold as ``Hold.describe()`` prints it (``hold <scope> (<origin>): <reason> — set by <owner> since
+<iso>``), anchored on the fixed words: in doctor's governance.hold line, status's ``HOLD:`` line and a
+refusal's ``suspended by legal/records hold: <hold>; <hold>``. Its reason and owner are free text (a matter, a
+person's name), never registered, so the report shows the scope, origin and time alone (B13 round 23 A8)."""
+_HOLD_RELEASED_RE = re.compile(r"\bhold (?P<scope>\S+) released by [^\n]*")
+"""The log line ``governance: hold <scope> released by <owner>``: its owner is not shown either (A8)."""
 # The remote URL a governance remote finding quotes: ``remote <name> (<url>) exists but [governance]
 # allow_remote``, ``... is not under a tenant-owned prefix`` (remote_policy_findings: doctor's
 # governance.remote [FAIL], init's ``governance:`` line) and ``refused: remote <name> (<url>) is not
@@ -1542,7 +1554,23 @@ class Redactor:
         """``text`` with every registered value and every email address, GUID and long hex string replaced."""
         if not self.enabled or not text:
             return text
+        if "hold " in text:
+            text = self._holds(text)
         return self._compile().sub(self._replace, text)
+
+    def _holds(self, text: str) -> str:
+        """``text`` with each hold's reason and owner (:data:`_HOLD_SET_RE`, :data:`_HOLD_RELEASED_RE`) cut,
+        each cut counted as a ``<value>``; ``agentsync status`` still prints them (B13 round 23 A8)."""
+
+        def held(m: re.Match[str]) -> str:
+            self.note("value")
+            return f"hold {m['scope']} ({m['origin']}){m['when'] or ''}: reason and owner not shown"
+
+        def released(m: re.Match[str]) -> str:
+            self.note("value")
+            return f"hold {m['scope']} released (owner not shown)"
+
+        return _HOLD_RELEASED_RE.sub(released, _HOLD_SET_RE.sub(held, text))
 
     def note(self, kind: str) -> None:
         """Count one replacement of an unnumbered ``kind`` made outside the redaction pass
