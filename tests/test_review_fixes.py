@@ -1694,6 +1694,43 @@ def test_a_file_that_came_back_needs_two_fresh_absences_again(tmp_path: Path) ->
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
+def test_a_refused_purge_queue_on_a_graph_full_pass_says_the_next_full_pass_retries_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A52: a Graph full pass whose purge queue was refused said "retried next pass", but the
+    next passes are deltas, which re-check no absence (only a provider's tombstone, which a full pass's
+    absence never had): they ended 0 with nothing queued, and only the next full pass, the scheduled
+    reconcile, queued it. The words say that pass now; no later poll is forced to a full enumeration."""
+    files = {f"F{n}": (f"f{n}.md", "ROOT", f"# F{n}\n\nContoso {n}\n".encode()) for n in range(30)}
+    arm = FakeArm(files)
+    config, go = drive_env(tmp_path, arm, monkeypatch)
+    assert go().exit_code == 0
+    arm.next_items = []
+    assert go().exit_code == 0 and arm.fulls[-1] is False
+    del arm.files["F3"]  # gone upstream, and no delta carries its tombstone
+    root = config.state_paths.root
+    governance._write_queue(root, [])
+    queue = governance._queue_file(root)
+    queue.chmod(0)
+    try:
+        refused = go(mode=CycleMode.RECONCILE)
+    finally:
+        queue.chmod(0o600)
+    assert arm.fulls[-1] is True
+    rep = next(s for s in refused.sources if s.source_id == DRIVE)
+    assert refused.exit_code == 1 and rep.errors[0].startswith("purge queue: "), rep.errors
+    assert (
+        "1 file deleted upstream kept its page(s): purge NOT queued; retried by the next full pass (the "
+        "scheduled reconcile)"
+    ) in rep.alarms, rep.alarms
+    arm.next_items = []
+    delta = go()
+    assert arm.fulls[-1] is False and delta.exit_code == 0 and queued(config) == []
+    assert go(mode=CycleMode.RECONCILE).exit_code == 0
+    assert queued(config) == [("F3", "upstream-deleted")], queued(config)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a file of any mode")
 def test_a_refused_purge_queue_replays_a_graph_delta_that_carried_the_deletion(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

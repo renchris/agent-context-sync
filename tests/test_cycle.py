@@ -296,6 +296,106 @@ def test_a_purge_queue_this_account_cannot_open_keeps_the_deletion_and_queues_it
     assert any("(deleted upstream; purge queued)" in a for a in source_report(again).alarms)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
+def test_an_accept_over_no_breaker_with_a_refused_queue_does_not_say_a_breaker_holds_them(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 23 A55: an accept-deletions run whose source has no breaker recorded, with the purge queue
+    refused, said "the breaker still holds them": the clause tested ``breaker_held or accepting``. The advice
+    to accept again once the queue opens stands; the breaker is named only where one is recorded."""
+    root = sample_config.state_paths.root
+    run(sample_config)
+    (local_source_dir / "projects" / "sample.txt").unlink()
+    with Manifest(sample_config.state_paths.db) as m:
+        assert m.get_source(SID).breaker_tripped_at is None  # type: ignore[union-attr]
+    governance._write_queue(root, [])
+    queue = governance._queue_file(root)
+    queue.chmod(0)
+    try:
+        refused = run(sample_config, mode=CycleMode.RECONCILE, accept_deletions=[SID])
+    finally:
+        queue.chmod(0o600)
+    rep = source_report(refused)
+    assert refused.exit_code == 1 and rep.errors[0].startswith("purge queue: "), rep.errors
+    (alarm,) = [a for a in rep.alarms if "purge NOT queued" in a]
+    assert alarm.endswith(
+        f"purge NOT queued; run `~/.local/bin/agentsync accept-deletions {SID}` again once the queue opens"
+    ), alarm
+    assert "breaker" not in alarm, alarm
+
+
+def test_a_refused_audit_line_is_one_error_with_its_count_and_every_purge_is_still_queued(
+    sample_config: Config, local_source_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A56: with the audit line refused after the queue was written (a full disk), each confirmed
+    deletion appended the same error and logged it again, three times for three files. Every purge is still
+    queued (skipping the later ones would lose them), and the source says it once with the count."""
+    names = ("contoso-a.txt", "contoso-b.txt", "contoso-c.txt")
+    for name in names:
+        (local_source_dir / "projects" / name).write_text(f"Contoso {name}\n", encoding="utf-8")
+    run(sample_config)
+    for name in names:
+        (local_source_dir / "projects" / name).unlink()
+    run(sample_config)  # the first complete pass that misses them marks them absent
+    root = sample_config.state_paths.root
+    real = governance._audit_appender
+
+    @contextlib.contextmanager
+    def full(state_dir: Path) -> Iterator[Any]:
+        with real(state_dir):
+
+            def write(_record: Mapping[str, object]) -> None:
+                raise OSError(errno.ENOSPC, "No space left on device")
+
+            yield write
+
+    monkeypatch.setattr(governance, "_audit_appender", full)
+    report = run(sample_config, mode=CycleMode.RECONCILE)
+    monkeypatch.undo()
+    rep = source_report(report)
+    audits = [e for e in rep.errors if e.startswith("purge audit: ")]
+    assert audits == [
+        "purge audit: 3 queued purges have no audit line: [Errno 28] No space left on device"
+    ], rep.errors
+    assert report.exit_code == 1 and len(governance.pending_purges(root)) == 3
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes a mode-0500 folder")
+def test_a_queue_holding_another_reasons_purge_of_the_file_is_no_queued_deletion_when_its_write_is_refused(
+    sample_config: Config, local_source_dir: Path
+) -> None:
+    """B13 round 23 A57: ``_queued`` matched the selector only, so with a label escalation already queued for
+    the same file and the queue's folder refusing the write, the refused upstream-deleted write read as
+    "purge queued, its audit line not written": the row was tombstoned and the alarm skipped. It matches the
+    reason too now, so the queue's refusal is said, the row kept and the cursor dropped."""
+    root = sample_config.state_paths.root
+    run(sample_config)
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, "projects/sample.txt")
+    assert row is not None
+    governance.enqueue_purge(
+        root,
+        governance.PurgeSelector(source_id=SID, stable_id=row.stable_id),
+        governance.PurgeReason.LABEL_ESCALATION,
+    )
+    (local_source_dir / "projects" / "sample.txt").unlink()
+    run(sample_config)
+    folder = governance._queue_file(root).parent
+    folder.chmod(0o500)
+    try:
+        refused = run(sample_config, mode=CycleMode.RECONCILE)
+    finally:
+        folder.chmod(0o700)
+    rep = source_report(refused)
+    assert refused.exit_code == 1 and rep.errors[0].startswith("purge queue: "), rep.errors
+    assert not any(e.startswith("purge audit: ") for e in rep.errors), rep.errors
+    assert any("purge NOT queued" in a for a in rep.alarms), rep.alarms
+    with Manifest(sample_config.state_paths.db) as m:
+        kept = m.item_by_path(SID, "projects/sample.txt")
+    assert kept is not None and kept.state is RowState.LIVE, kept
+    assert [q.reason for q in governance.pending_purges(root)] == [governance.PurgeReason.LABEL_ESCALATION]
+
+
 def test_archive_on_upstream_delete_survives_a_head_moved_by_hand(
     sample_config: Config, local_source_dir: Path
 ) -> None:

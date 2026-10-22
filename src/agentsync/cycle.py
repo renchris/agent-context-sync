@@ -4564,6 +4564,8 @@ class _Cycle:
         last_commit = gitops.head_sha(self.repo) if removals else None
         refused: str | None = None  # the purge queue's refusal, in words
         kept: set[str] = set()  # confirmed deletions whose purge was refused
+        unaudited = 0  # purges queued whose audit line was refused, said once after the loop (A56)
+        unaudited_why = ""
         for stable_id, reason in sorted(set(removals)):
             if reason == "deleted-upstream" and self.gov.purge_on_upstream_delete:
                 # C15 req 38: a confirmed deletion (explicit, or absent past the breaker) queues a purge; the
@@ -4582,11 +4584,10 @@ class _Cycle:
                     except (governance.GovernanceError, OSError) as exc:
                         refused = self._queue_refused(exc)
                         if self._queued(src.id, stable_id):  # written, then its audit line refused
-                            log.error(
-                                "source %s: purge queued, its audit line not written: %s", src.id, refused
-                            )
-                            acc.failed = True
-                            acc.errors.append(_one_line(f"purge audit: {refused}"))
+                            # each later purge is still queued (skipping them would lose them), and the
+                            # refusal is said once with its count, not once per deletion (B13 round 23 A56)
+                            unaudited += 1
+                            unaudited_why = refused
                             refused = None
                 if refused is not None:
                     kept.add(stable_id)
@@ -4601,6 +4602,14 @@ class _Cycle:
                 archive=self.gov.archive,
             )
         self.changes += self.publisher.reap(today)
+        if unaudited:
+            said = _one_line(
+                f"purge audit: {plural(unaudited, 'queued purge')} {'has' if unaudited == 1 else 'have'} no "
+                f"audit line: {unaudited_why}"
+            )
+            log.error("source %s: %s", src.id, said)
+            acc.failed = True
+            acc.errors.append(said)
         if breaker_held and refused is None:
             self.manifest.clear_breaker(src.id)
         if said_now:
@@ -4615,12 +4624,18 @@ class _Cycle:
             acc.absent_removed -= len(kept & set(confirmed_now))
             self.manifest.stage_cursor(src.id, None, self.run_id)
             self._record_error(src, acc, _one_line(f"purge queue: {refused}"))
-            again = (
-                f"the breaker still holds them: run `{skill.AGENTSYNC_BIN} accept-deletions {src.id}` again "
-                "once the queue opens"
-                if breaker_held or src.id in self.accept_deletions
-                else "retried next pass"
-            )
+            # the breaker is named only where one is recorded (B13 round 23 A55: an accept with none said it
+            # held them); a Graph full pass's absence is checked again only by the next full pass, which a
+            # delta poll is not (A52: its kept cursor replays only a delta's own tombstones)
+            accept = f"run `{skill.AGENTSYNC_BIN} accept-deletions {src.id}` again once the queue opens"
+            if breaker_held:
+                again = f"the breaker still holds them: {accept}"
+            elif src.id in self.accept_deletions:
+                again = accept
+            elif src.kind not in (SourceKind.LOCAL, SourceKind.INBOX) and acc.pass_kind is PassKind.FULL:
+                again = "retried by the next full pass (the scheduled reconcile)"
+            else:
+                again = "retried next pass"
             acc.alarms.append(
                 f"{plural(len(kept), 'file')} deleted upstream kept {'its' if len(kept) == 1 else 'their'} "
                 f"page(s): purge NOT queued; {again}"
@@ -4630,9 +4645,11 @@ class _Cycle:
         """Whether the purge of ``stable_id`` is in the queue now (never raises: a queue it cannot read is
         no queued purge)."""
         selector = governance.PurgeSelector(source_id=source_id, stable_id=stable_id)
+        # the reason too, as enqueue_purge's own match: a label escalation's entry is no such purge (A57)
         try:
             return any(
-                q.selector == selector for q in governance.pending_purges(self.config.state_paths.root)
+                q.selector == selector and q.reason is governance.PurgeReason.UPSTREAM_DELETED
+                for q in governance.pending_purges(self.config.state_paths.root)
             )
         except Exception:
             return False
