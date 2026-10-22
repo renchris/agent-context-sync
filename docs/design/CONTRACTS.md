@@ -27966,6 +27966,21 @@ history (test: the Z11 real-agentsync test reads the quote from the comment and 
 test shut the state folder again before its asserts, so a failing run left a 0000 tree pytest cannot remove; it
 shuts it only inside the try whose finally opens it.
 
+**The lane's review** (a fresh reviewer over the branch, eight findings, each fixed). `mode_refuses` judged a
+symlinked state folder or manifest by `lstat`, so one pointing at a 0000 folder got the person's `refused` while
+step 1 and status named the agent's `chmod 700`: it reads `stat` now, as a chmod follows a link. A symlink loop
+where the state folder belongs (`ELOOP`, no `NotADirectoryError`) read as a folder, so step 1 said nothing and step
+2 blamed manifest.sqlite: every probe counts it as not a folder, and `state_not_a_file` counts a loop only at a
+manifest whose folder is one. The lock, heartbeat and governance probe skips a path of the wrong kind (a file where
+governance/ belongs is no mode to fix) and runs beside a status-step side word, the person's word then winning over
+the agent's `state-side-access`. `state_open_fix`'s side pass skips a side file this account can read, as step 1
+does (init opens past it). The not-a-folder NEXT leaves an earlier one (the docs remote's) in place. The report's
+too-open bucket takes `state_dir.files` only when no state file under that name has another cause (no file,
+another account's, one this account cannot open). Tests: the loop and symlink-shut cases of the not-a-folder test,
+the gov-file and acl-and-wal cases of the lock, heartbeat and governance test, the readable-wal case of
+`test_step_2s_next_names_the_chmod_of_this_accounts_own_state`, and the `_loose_state` case with a folder where
+the -shm belongs.
+
 Not built: none. Seam left for lane B (A29, not this lane's): once lane B's lost-manifest refusal lands, init exits 1
 on a missing manifest beside a heartbeat that records passes, and step 2's config step gives fail's generic NEXT
 (no `config_failed` branch reads that case yet).

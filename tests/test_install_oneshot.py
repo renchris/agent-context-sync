@@ -8364,6 +8364,7 @@ shut, so status names their chmods in the same pass, once the folder is open."""
         "notfile",
         "notfile-link",
         "notfile-loop",
+        "readable-wal",
     ],
 )
 def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
@@ -8419,11 +8420,14 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
             elsewhere = db.with_name("elsewhere")
             elsewhere.mkdir(0o700)
             db.symlink_to(elsewhere if state == "notfile-link" else db)
+        elif state == "readable-wal":  # the lane's review: init opens past it (Y57), so no chmod of it
+            wal.write_bytes(b"")
+            wal.chmod(0o400)
         elif state == "sides":
             for f in (db, wal, shm):
                 f.write_bytes(b"")
                 f.chmod(0o400)
-        elif state != "readable":
+        elif state not in ("readable", "readable-wal"):
             shut.chmod(0)
         cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
     finally:
@@ -8439,7 +8443,7 @@ def test_step_2s_next_names_the_chmod_of_this_accounts_own_state(
     assert ("config", "failed", "1", "") in steps(install_log(env))
     assert one_next(cp)
     rerun = f"{INSTALL_SH} {wheel}"
-    if state in ("older", "readable"):
+    if state in ("older", "readable", "readable-wal"):
         assert last_line(cp).startswith(f"NEXT: fix the error above, then re-run: {rerun}"), last_line(cp)
         return
     if state.startswith("notfile"):
@@ -8832,7 +8836,10 @@ def test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2
     assert quoted and f"{db} {quoted[1]}" in cp.stderr, (quoted, cp.stderr)
 
 
-@pytest.mark.parametrize("case", ["file-0000", "file-0644", "file-0700", "fifo", "owner", "above", "symlink"])
+@pytest.mark.parametrize(
+    "case",
+    ["file-0000", "file-0644", "file-0700", "fifo", "owner", "above", "loop", "symlink", "symlink-shut"],
+)
 def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at_step_1_and_step_2(
     env: dict[str, str], wheel: Path, case: str
 ) -> None:
@@ -8843,7 +8850,9 @@ def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at
     person's (keeping a copy, they move it aside), never a chmod, whatever its mode or owner (a chown does not
     fix it either), and so is a file where a folder above it belongs (Application Support). Step 1's tail says
     so, logged config_err=state-notdir; step 2's NEXT is the person's, with no chmod; the file is left as it
-    was. A state folder that is a symlink to a real folder is a folder: nothing is said of it."""
+    was. A state folder that is a symlink to a real folder is a folder: nothing is said of it, and at 0000 its
+    chmod 700 is the agent's, at step 1 and step 2 alike (the lane's review: step 2 judged the link by lstat
+    and gave the person's NEXT); a symlink loop there is no folder."""
     if case == "owner":
         _tool_python_as_another_account(env)
     else:
@@ -8857,12 +8866,16 @@ def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at
     if target.exists():
         target.rename(kept)
     try:
+        real = support / "agentsync.real"
         if case == "fifo":
             os.mkfifo(target)
-        elif case == "symlink":
-            real = support / "agentsync.real"
+        elif case == "loop":
+            target.symlink_to(target)
+        elif case.startswith("symlink"):
             real.mkdir(0o700)
             target.symlink_to(real)
+            if case == "symlink-shut":
+                real.chmod(0)
         else:
             target.write_bytes(b"a made-up note\n")
             target.chmod({"file-0000": 0, "file-0700": 0o700}.get(case, 0o644))
@@ -8872,6 +8885,8 @@ def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at
         cp = install_sh({**env, "STUB_INIT_RC": "1", "AGENTSYNC_OCR": "0"}, str(wheel))
         after = target.lstat().st_mode
     finally:
+        if real.is_dir():
+            real.chmod(0o700)
         if target.is_symlink() or (target.exists() and not target.is_dir()):
             target.unlink()
         if kept.exists():
@@ -8880,6 +8895,11 @@ def test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at
     assert cp.returncode == 1, cp.stdout + cp.stderr
     assert after == before, (oct(before), oct(after))
     rerun = f"{INSTALL_SH} {wheel}"
+    if case == "symlink-shut":
+        assert last_line(listed).endswith(STATE_OPEN_TAIL["state-access"]), last_line(listed)
+        fix = "chmod 700 ~/'Library/Application Support/agentsync.real'"
+        assert last_line(cp).startswith(STATE_CHMOD_FOLDER_NEXT.format(fix=fix, rerun=rerun)), last_line(cp)
+        return
     if case == "symlink":
         assert last_line(listed).endswith("(none is needed)"), last_line(listed)
         assert "config_err" not in logged, logged
@@ -8934,7 +8954,20 @@ def test_a_file_where_the_state_folder_belongs_is_the_persons_with_the_real_agen
 
 @pytest.mark.parametrize(
     "case",
-    ["lock", "heartbeat", "holds", "governance", "queue", "acl", "ro", "missing", "audit", "manifest-too"],
+    [
+        "lock",
+        "heartbeat",
+        "holds",
+        "governance",
+        "queue",
+        "acl",
+        "ro",
+        "missing",
+        "audit",
+        "manifest-too",
+        "gov-file",
+        "acl-and-wal",
+    ],
 )
 def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file(
     env: dict[str, str], case: str
@@ -8945,12 +8978,18 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     (the lock, the heartbeat, governance/, its holds.json and purge queue) by the same owners: this account's
     own at a mode that refuses it, the agent's chmods; an ACL or a read-only volume, the person's. A file that
     is missing, or audit.jsonl, which no check reads, says nothing; a shut manifest beside a shut lock keeps
-    the config step's tail, which stops first."""
+    the config step's tail, which stops first. The lane's review: a file where governance/ belongs is no mode
+    to fix (nothing is said), and an ACL on the heartbeat beside a 0400 -wal is the person's stop to say, not
+    the -wal's chmod alone."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     root = db.parent
     gov = root / "governance"
-    gov.mkdir(0o700)
+    if case == "gov-file":
+        gov.write_bytes(b"")
+        gov.chmod(0o600)
+    else:
+        gov.mkdir(0o700)
     made = {
         root / "agentsync.lock": b"",
         root / "heartbeat.json": b"{}",
@@ -8958,7 +8997,7 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         gov / "purge-queue.json": b"[]",
         gov / "audit.jsonl": b"",
     }
-    if case != "missing":
+    if case not in ("missing", "gov-file"):
         for path, data in made.items():
             path.write_bytes(data)
             path.chmod(0o600)
@@ -8971,13 +9010,17 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         "audit": gov / "audit.jsonl",
         "manifest-too": root / "agentsync.lock",
     }.get(case)
+    wal = db.with_name(db.name + "-wal")
     if case == "ro":
         _tool_python_read_only(env, root / "heartbeat.json")
     else:
         _tool_python(env)
     try:
-        if case == "acl":
+        if case in ("acl", "acl-and-wal"):
             _acl_deny(root / "heartbeat.json")
+        if case == "acl-and-wal":
+            wal.write_bytes(b"")
+            wal.chmod(0o400)
         if shut is not None:
             shut.chmod(0)
         if case == "manifest-too":
@@ -8985,20 +9028,25 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
         cp = install_sh(env, "--list-folders")
     finally:
         db.chmod(0o600)
-        gov.chmod(0o700)
+        gov.chmod(0o700 if gov.is_dir() else 0o600)
+        if wal.exists():
+            wal.chmod(0o600)
         for path in made:
             if path.exists():
                 subprocess.run(["/bin/chmod", "-N", str(path)], capture_output=True, check=False)
                 path.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if case in ("missing", "audit"):
+    if case in ("missing", "audit", "gov-file"):
         assert last_line(cp).endswith("(none is needed)"), last_line(cp)
         assert "config_err" not in logged, logged
         return
-    word = {"acl": "state-file-refused", "ro": "state-file-refused", "manifest-too": "state-access"}.get(
-        case, "state-file-access"
-    )
+    word = {
+        "acl": "state-file-refused",
+        "acl-and-wal": "state-file-refused",
+        "ro": "state-file-refused",
+        "manifest-too": "state-access",
+    }.get(case, "state-file-access")
     assert last_line(cp).endswith(STATE_OPEN_TAIL[word]), last_line(cp)
     assert logged.endswith(f" config_err={word}"), logged
 

@@ -9840,22 +9840,29 @@ def _loose_state(c: Config) -> set[str]:
         ):
             out.add("state_dir")
     db = expand(sp.db)
+    loose = other = False
     for p in (
         db,
         db.with_name(db.name + "-wal"),
         db.with_name(db.name + "-shm"),
         expand(sp.token_cache_fallback),
     ):
-        with contextlib.suppress(OSError):
+        try:
             fst = p.lstat()
-            if (
-                stat.S_ISREG(fst.st_mode)
-                and fst.st_uid == os.getuid()
-                and os.access(p, os.R_OK | os.W_OK)
-                and stat.S_IMODE(fst.st_mode) & 0o077
-                and not doctor._read_only(p)
-            ):
-                out.add("state_dir.files")
+        except FileNotFoundError:
+            continue
+        except OSError:
+            other = True
+            continue
+        # another cause on the same line name (a file that is no file, another account's, one this account
+        # cannot open) is doctor's FAIL with the person's fix or a chmod of its own: never filed here (review)
+        if not stat.S_ISREG(fst.st_mode) or fst.st_uid != os.getuid() or not os.access(p, os.R_OK | os.W_OK):
+            other = other or not stat.S_ISLNK(fst.st_mode) or not p.exists()
+            continue
+        if stat.S_IMODE(fst.st_mode) & 0o077 and not doctor._read_only(p):
+            loose = True
+    if loose and not other:
+        out.add("state_dir.files")
     return out
 
 

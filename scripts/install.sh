@@ -6157,8 +6157,8 @@ try:
     notdir = not stat.S_ISDIR(db.parent.stat().st_mode)
 except NotADirectoryError:
     notdir = True
-except OSError:
-    notdir = False
+except OSError as exc:  # a symlink loop where the folder belongs is no folder either (the review)
+    notdir = exc.errno == errno.ELOOP
 access = None
 for p in () if notdir else (db.parent, db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
     if p == db and notfile:  # judged below, whatever its mode: it is no file to chmod (the review of Z11)
@@ -6194,7 +6194,7 @@ for p in () if notdir else (db.parent, db, db.with_name(db.name + "-wal"), db.wi
 # never audit.jsonl, which no check reads), judged as above: step 2 stops on them at its status step, past the
 # config step, so only when nothing above stops it first (round 23 A17, A83)
 checked = None
-if not (notdir or access or notfile):
+if not (notdir or notfile) and (access is None or access.startswith("state-side-")):
     sp = config.state_paths
     gov = db.parent / "governance"
     for p, want in (
@@ -6211,6 +6211,8 @@ if not (notdir or access or notfile):
             break
         except OSError:
             continue
+        if not (stat.S_ISDIR if want == 0o700 else stat.S_ISREG)(st.st_mode):  # no mode fixes the wrong kind
+            continue
         if st.st_uid != os.getuid():
             checked = "state-file-owner"
             break
@@ -6226,6 +6228,8 @@ if not (notdir or access or notfile):
             ok = fix == "chmod" or fix.startswith(("chmod 600 ", "chmod 700 "))
             checked = "state-file-" + ("access" if ok else "refused")
             break
+if access == "state-side-access" and checked in ("state-file-owner", "state-file-refused"):
+    access = None  # the stop of the person is the one to say: the chmods of the agent alone would not end it
 if notdir:
     words.append("state-notdir")
 elif access:
@@ -6502,11 +6506,11 @@ list_folders() {
 		case ",$cerr," in *",remote,"*) ctail="${ctail:+$ctail and }a git remote on the docs repo that [governance] does not allow" ;; esac
 		# A state folder or manifest this account cannot open is no damage, and its stop is the config step's
 		# whatever build step 2 installs (it cannot open the file either), so these clauses have no reinstall
-		# hedge. Another account's file or folder needs a sudo chown, the person's; this account's own needs a
-		# chmod, which the agent runs once when step 2's NEXT names it (round 20 X9, X26, X29; round 21 Y24), and
-		# one no chmod fixes (an ACL, a folder above it this account cannot search, a volume mounted read-only:
-		# round 22 Z79) is the person's too. The
-		# noun covers the folder (round 21 Y14). A -wal or -shm is no config step's stop: init passes, and an
+		# hedge. Another account's file or folder needs a sudo chown, the person's; this account's own needs the
+		# chmods, each of which the agent runs once when step 2's NEXT names it (round 20 X9, X26, X29; round 21
+		# Y24; round 23 A37), and one no chmod fixes (an ACL, a folder above it this account cannot search, a
+		# volume mounted read-only: round 22 Z79) is the person's too. The noun covers the folder (round 21 Y14).
+		# A -wal or -shm this account can read but not write is no config step's stop: init passes, and an
 		# empty one leaves no stop once the manifest is opened, while one that holds frames or a -shm in use
 		# fails status and the sync, so its clause names status and keeps that condition (round 21 Y57). It said
 		# "may fail" where the prompt relays what "step 2 stops on": it says "stops at its status step ... while
@@ -7273,7 +7277,7 @@ state_open_fix() {
 	local fix=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		fix="$(with_timeout 10 "$TOOL_PY" -I -c '
-import os, stat, sys
+import errno, os, stat, sys
 from pathlib import Path
 from agentsync.config import load_config
 from agentsync.ops.doctor import state_path_fix
@@ -7286,16 +7290,18 @@ try:
         sys.exit(0)
 except NotADirectoryError:
     sys.exit(0)
-except OSError:
-    pass
+except OSError as exc:
+    if exc.errno == errno.ELOOP:  # a symlink loop where the folder belongs
+        sys.exit(0)
 
 
 def mode_refuses(p, want):
     """This account owns p, cannot open it, and its own mode is why (not an ACL, a sandbox or a volume mounted
     read-only, where a chmod fails: round 22 Z79), and p is the kind that chmod fixes: a folder for 0o700, a
-    regular file for 0o600 (round 23 ruling 4). A symlink is neither: its lstat mode fails the bit test too."""
+    regular file for 0o600 (round 23 ruling 4), judged through a symlink, as a chmod follows one (the review:
+    a symlinked state folder at 0000 got the NEXT of the person)."""
     try:
-        st = p.lstat()
+        st = p.stat()
         ro = bool(os.statvfs(p).f_flag & os.ST_RDONLY)
     except (OSError, AttributeError):
         return False
@@ -7333,7 +7339,7 @@ else:  # the folder and the manifest open: a -wal or -shm this account cannot op
         except OSError:
             pass
         else:
-            if os.access(side, os.R_OK | os.W_OK):
+            if os.access(side, os.R_OK):  # one it can read is opened past (Y57), as step 1 judges it
                 continue
         more = state_path_fix(root, Path(os.path.realpath(side))) if mode_refuses(side, 0o600) else ""
         if not more.startswith("chmod 600 "):
@@ -7373,8 +7379,11 @@ except NotADirectoryError:  # its folder is not one: state_not_a_folder
     print(0)
 except FileNotFoundError:  # absent, or a dangling link: no manifest yet
     print(0)
-except OSError as exc:
-    print(int(exc.errno == errno.ELOOP))
+except OSError as exc:  # a link loop at the manifest, not one at its folder (state_not_a_folder)
+    try:
+        print(int(exc.errno == errno.ELOOP and stat.S_ISDIR(db.parent.stat().st_mode)))
+    except OSError:
+        print(0)
 else:
     print(int(not stat.S_ISREG(mode)))
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
@@ -7392,7 +7401,7 @@ state_not_a_folder() {
 	local n=""
 	if [ "$DRY_RUN" -eq 0 ] && [ -x "$TOOL_PY" ] && [ -f "$CONFIG" ]; then
 		n="$(with_timeout 10 "$TOOL_PY" -I -c '
-import stat, sys
+import errno, stat, sys
 from pathlib import Path
 from agentsync.config import load_config
 from agentsync.paths import expand
@@ -7401,8 +7410,8 @@ try:
     print(int(not stat.S_ISDIR(expand(load_config(Path(sys.argv[1])).state_paths.db).parent.stat().st_mode)))
 except NotADirectoryError:
     print(1)
-except OSError:
-    print(0)
+except OSError as exc:  # a symlink loop where the folder belongs is no folder either
+    print(int(exc.errno == errno.ELOOP))
 ' "$CONFIG" 2>/dev/null | head -n 1 || true)"
 	fi
 	[ "$n" = 1 ]
@@ -7452,7 +7461,7 @@ config_failed() { # MESSAGE (the failed agentsync call's status is $?)
 	if [ "$rc" -eq 1 ] && [ "$(docs_remotes_refused)" -gt 0 ] 2>/dev/null; then
 		FAIL_NEXT="the docs repo has a git remote the [governance] policy does not allow (the governance: line above; ~/.local/bin/agentsync status prints it again): removing it or allowing it in [governance] is the person's, not a step for the agent, so show them the error and go on to the report; once it is settled, the next run is: $SELF$RERUN_ARGS"
 	fi
-	if [ "$rc" -eq 1 ] && state_not_a_folder; then
+	if [ "$rc" -eq 1 ] && [ -z "$FAIL_NEXT" ] && state_not_a_folder; then
 		FAIL_NEXT="agentsync's state folder is not a folder (a file or something else is where it or a folder above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line): fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"
 	elif [ "$rc" -eq 1 ] && state_owned_elsewhere; then
 		FAIL_NEXT="agentsync's state file or its folder is owned by another account, so this one cannot open it (the error above names the file; ~/.local/bin/agentsync status prints the sudo chown that fixes it): fixing its owner (a sudo chown, which the agent does not run) is the person's, not a step for the agent, so show them the error and go on to the report; once it is fixed, the next run is: $SELF$RERUN_ARGS"

@@ -14713,6 +14713,21 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
     finally:
         db.parent.chmod(0o700)
     assert loose.format("state_dir") in line and "unexpected doctor FAIL" not in outcome, (line, outcome)
+    # the lane's review: another cause on the same check (a folder where the -shm belongs: the person's move)
+    # keeps state_dir.files out of the agent's bucket
+    c = load_config(cfg)
+    tok.write_bytes(b"{}")
+    tok.chmod(0o644)
+    shm = db.with_name(db.name + "-shm")
+    shm.unlink(missing_ok=True)
+    try:
+        assert setup_report._loose_state(c) == {"state_dir.files"}
+        shm.mkdir()
+        assert setup_report._loose_state(c) == set()
+    finally:
+        tok.unlink()
+        if shm.is_dir():
+            shm.rmdir()
     # B13 round 21 Y39, Y50, Y63, Y78: since X12 doctor says "not checked" for a file it cannot read, so a
     # "not excluded from Time Machine" warn names an exclusion doctor read and found missing: unexpected,
     # never "not judged" in the shut file's bucket (the interim rule that filed it there is gone)
