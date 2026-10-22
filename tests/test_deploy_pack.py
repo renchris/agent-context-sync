@@ -7973,7 +7973,8 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     quotes the report's bullet now, read from the report. B13 round 23 A77: since round 22 Z35 and Z55 the
     note names per run the files that run converted and those it settled with no try left, and gives the
     retry words only when a shown run has files left to retry; the row said every such file could show its
-    old error. It names both, read from the report."""
+    old error. It names both, read from the report. B13 round 23 A63: and the files that run left waiting for
+    a converter, which the first run with one reads again, so their old error can show then."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -7997,9 +7998,13 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     assert "the first in that run" not in row and "that run or the next" not in row
     # the files that run converted or settled show no old error, and the retry words need a file left
     tried = inspect.getsource(setup_report._repeat_part)
-    done = re.search(r'\(\(cleared, "(converted)"\), \(settled, "(settled with no try left)"\)\)', tried)
+    done = re.search(
+        r'\(cleared, "(converted)"\),\s*\(settled, "(settled with no try left)"\),\s*'
+        r'\(waiting, "(left waiting for a converter)"\),',
+        tried,
+    )
     assert done is not None and 'f"{n} that run {verb}"' in tried
-    assert "if any(rest for _words, rest in said)" in tried
+    assert "if any(rest for _words, rest, _waiting in said)" in tried
     assert (
         f"the files that run converted (`which that run {done.group(1)}`) and those it settled with no try"
         f" left (an unreadable stub, a refusal or a removal: `that run {done.group(2)}`); neither can show an"
@@ -8009,6 +8014,11 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     assert row.index("makes its first try in a later run of its own") < row.index(
         f"`that run {done.group(2)}`"
     )
+    assert (
+        "The files it left waiting for a converter (a `no converter` stub, such as an image that run read"
+        f" with no OCR engine: `that run {done.group(3)}`) are read again by the first run with a converter"
+        " for their type, so an old conversion error can show in that run (CONTRACTS §16.168, A63)."
+    ) in row
     # the note sits beside the other notes, before the Quarantine sentence
     assert row.index(f"`{note.group(1)}:`") < row.index("Quarantine by reason counts")
 
