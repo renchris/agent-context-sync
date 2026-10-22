@@ -6486,6 +6486,12 @@ def _not_file_error(db: Path) -> _NoStateError:
     return _StateNotFileError()
 
 
+class _StateGovernanceShutError(Exception):
+    """A governance file in the state folder (the purge queue, holds.json, or the governance/ folder that
+    holds them) this account cannot open, while the state folder itself opens: Doctor's governance lines FAIL
+    it with their fix, never "another cause" (B13 round 23 A87)."""
+
+
 class _StateFolderShutError(Exception):
     """The state folder, or a folder above it, refuses this account (:func:`_state_folder_shut`): the words
     name the folder, never the state file (B13 round 22 Z15, Z41; round 22 ruling 3)."""
@@ -6758,6 +6764,10 @@ which and gives the fix, as state_dir.manifest does not judge it (B13 round 19 W
 _STATE_FOLDER_SHUT = "the state folder cannot be opened by this account: see Doctor's state_dir lines"
 """The same for a state folder, or a folder above it, that refuses this account (:func:`_state_folder_shut`):
 the words name what failed (B13 round 22 Z15, round 22 ruling 3). A reader that knows the path chooses."""
+_STATE_GOVERNANCE_SHUT = (
+    "a file in the state folder cannot be opened by this account: see Doctor's governance lines"
+)
+"""For a governance file this account cannot open (:class:`_StateGovernanceShutError`, B13 round 23 A87)."""
 _STATE_NOT_FILE = "the state file is not a file: see Doctor's state_dir.manifest line"
 """For something other than a file where the manifest belongs (B13 round 21 Y47, round 22 Z12)."""
 _STATE_FOLDER_NOT_FOLDER = "the state folder is not a folder: see Doctor's state_dir line"
@@ -6817,6 +6827,8 @@ def _why_not_read(exc: BaseException) -> str:
         return _STATE_FOLDER_SHUT
     if isinstance(exc, _StateNotFileError):
         return _STATE_NOT_FILE
+    if isinstance(exc, _StateGovernanceShutError):  # B13 round 23 A87
+        return _STATE_GOVERNANCE_SHUT
     if isinstance(exc, _StateFolderNotFolderError):  # B13 round 23 A23
         return _STATE_ABOVE_NOT_FOLDER if exc.above else _STATE_FOLDER_NOT_FOLDER
     # B13 round 21 Y38: governance's read of a file it cannot open raises its own error from the OSError
@@ -7860,6 +7872,13 @@ def _purge_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         that = _not_a_folder_at(root)  # B13 round 23 A23: not "an unexpected error: GovernanceError"
         if that is not None:
             raise _StateFolderNotFolderError(above=that != root) from exc
+        # B13 round 23 A87: a governance file (or governance/) this account cannot open, inside a state folder
+        # it can search, is Doctor's governance lines', never "another cause"; mapped here, where the root is
+        # known (doctor.state_unopenable), as _why_not_read has no root to test the path against
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+        if isinstance(exc.__cause__, OSError) and doctor.state_unopenable(exc.__cause__, root):
+            raise _StateGovernanceShutError from exc
         raise
     if not queue:
         return ["- no purge is queued"]
@@ -8510,6 +8529,7 @@ def _evidence_line(r: _Run) -> str:
     notfile = sum(n for w, n in why.items() if w.startswith("the state file is not a file"))  # Z12
     notfolder = sum(n for w, n in why.items() if w.startswith("the state folder is not a folder"))  # A23
     above = sum(n for w, n in why.items() if w.startswith("a folder above the state folder is not a folder"))
+    gov = sum(n for w, n in why.items() if w.startswith("a file in the state folder cannot be opened"))  # A87
     config = sum(n for w, n in why.items() if w.startswith("the configuration is refused"))
     clauses = [
         (
@@ -8543,11 +8563,16 @@ def _evidence_line(r: _Run) -> str:
             "measures them (see Doctor's state_dir line)",
         ),
         (
+            gov,
+            "a file in the state folder cannot be opened by this account: a report written after it is fixed "
+            "measures them (see Doctor's governance lines)",
+        ),
+        (
             config,
             "the configuration is refused: a report written after it loads measures them (see Configuration)",
         ),
         (
-            count - retry - state - shut - folder - notfile - notfolder - above - config,
+            count - retry - state - shut - folder - notfile - notfolder - above - gov - config,
             "of another cause: see those lines",
         ),
     ]

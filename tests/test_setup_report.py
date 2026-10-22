@@ -12010,8 +12010,9 @@ def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
     fake_mac: dict[str, Path],
 ) -> None:
     """B13 round 21 Y13, Y38: governance/ at 0000 inside a state folder this account can search is no
-    state_dir line's (Doctor FAILs governance.*): the purge queue's line says the file cannot be opened in
-    the OSError's words, with no class name and no pointer at Doctor's state_dir lines."""
+    state_dir line's (Doctor FAILs governance.*): the purge queue's line says the file cannot be opened, with
+    no class name and no pointer at Doctor's state_dir lines. Round 23 A87: it points at Doctor's governance
+    lines, whose FAILs give the fix, and the evidence line counts it so, never "of another cause"."""
     cfg = fake_mac["config"]
     Seed(cfg).close()
     gov = expand(load_config(cfg).state_paths.root) / "governance"
@@ -12024,7 +12025,10 @@ def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
         gov.chmod(0o700)
     purge = section(text, "Status").split("### Purge queue", 1)[1].split("###", 1)[0]
     assert "GovernanceError" not in purge and "state_dir" not in purge, purge
-    assert "not measured (a file cannot be opened: Permission denied)" in purge, purge
+    assert f"not measured ({setup_report._STATE_GOVERNANCE_SHUT})" in purge, purge
+    evidence = _line(section(text, "Summary"), "- evidence: ")
+    assert "because a file in the state folder cannot be opened by this account: a report written" in evidence
+    assert "another cause" not in evidence, evidence
 
 
 def test_the_reports_read_only_opens_create_no_file_beside_a_manifest_it_cannot_write(
