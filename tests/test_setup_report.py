@@ -14624,7 +14624,9 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
     FAIL state_dir.files, and the report filed that FAIL and the listing warn beside it as ``unexpected``:
     its "state file that cannot be read" bucket took only a damaged file's state_dir.manifest FAIL. Keyed on
     the report's own access test of the file: the FAIL and the warn have a bucket of their own, and a
-    state_dir.files FAIL for a file others can read (0644) stays unexpected. X35: the outcome agrees."""
+    state_dir.files FAIL for a file others can read (0644) stays unexpected. X35: the outcome agrees. Round 23
+    A49: a state folder or file this account opens that others can read is no longer unexpected: its chmod is
+    the agent's, in a bucket of its own."""
     real = cli._status_checks
     listing = setup_report._LISTING_INCOMPLETE + "x (a page could not be listed)"
     heartbeat = doctor.CheckResult("heartbeat.x", False, listing, doctor.Severity.WARN)
@@ -14640,7 +14642,9 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(cfg)]) == 0
     db = expand(load_config(cfg).state_paths.db)
-    added = re.compile(r"(?:expected|yours|unexpected) (\d+)\b|(?:be read|cannot open) \((\d+) checks?\)")
+    added = re.compile(
+        r"(?:expected|yours|unexpected) (\d+)\b|(?:be read|cannot open|others can read) \((\d+) checks?\)"
+    )
 
     def summary() -> tuple[str, str]:
         _rc, text, _ = report(tmp_path, cfg)
@@ -14650,16 +14654,30 @@ def test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bu
         assert sum(int(a or b) for a, b in added.findall(line)) == sum(map(int, found.groups())), line
         return line, _line(section(text, "Summary"), "- **outcome: ")
 
-    # others can read it (the report's own open of the file makes it 0600 again, so doctor's FAIL is given):
-    # an exposure, not a file this account cannot open
-    extra.append(
-        doctor._bad("state_dir.files", "readable by others: manifest.sqlite (0644)", fix="chmod 600 x")
-    )
-    line, outcome = summary()
-    assert "state_dir.files FAIL" in line.split(" · unexpected ", 1)[1], line
+    # others can read it: an exposure, not a file this account cannot open. B13 round 23 A49: doctor's fix is
+    # this account's chmod, the agent's (install.sh's status-step NEXT names it), so it has a bucket of its
+    # own, never "unexpected"; keyed on the report's own stat. The report's own open puts the manifest and
+    # its -wal back to 0600 before its doctor runs (measured), so the token cache's fallback stands for a file
+    tok = expand(load_config(cfg).state_paths.token_cache_fallback)
+    tok.write_bytes(b"{}")
+    tok.chmod(0o644)
+    try:
+        line, outcome = summary()
+    finally:
+        tok.unlink()
+    loose = "from a state folder or file others can read (1 check): {} FAIL (the agent's; see Doctor)"
+    assert loose.format("state_dir.files") in line and "unexpected 1: heartbeat.x warn" in line, line
     assert "from the state file" not in line, line
-    assert "1 unexpected doctor FAIL: state_dir.files" in outcome, outcome
-    extra.clear()
+    assert (
+        "unexpected doctor FAIL" not in outcome and "from a state folder or file others can read" in outcome
+    ), outcome
+    # the folder at 0755: its state_dir FAIL (chmod 700) is the agent's the same way
+    db.parent.chmod(0o755)
+    try:
+        line, outcome = summary()
+    finally:
+        db.parent.chmod(0o700)
+    assert loose.format("state_dir") in line and "unexpected doctor FAIL" not in outcome, (line, outcome)
     # B13 round 21 Y39, Y50, Y63, Y78: since X12 doctor says "not checked" for a file it cannot read, so a
     # "not excluded from Time Machine" warn names an exclusion doctor read and found missing: unexpected,
     # never "not judged" in the shut file's bucket (the interim rule that filed it there is gone)

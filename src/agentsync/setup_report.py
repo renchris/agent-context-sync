@@ -9700,6 +9700,11 @@ _REFUSED_WORDS = "from a file in the state folder this account cannot open"
 :data:`_STATE_SHUT_WORDS` names. Each FAIL carries its owner as the state file's bucket does (B13 round 22
 Z32, Z43): "the person's" when doctor's own fix for it is the person's, else "the agent's", this account's
 chmod (the round 21 ownership rule)."""
+_STATE_LOOSE_WORDS = "from a state folder or file others can read"
+"""The Doctor line's bucket for a state_dir or state_dir.files FAIL of a state folder or file this account
+owns and opens whose mode lets others read it (B13 round 23 A49): doctor's fix is this account's chmod 700 or
+chmod 600, the agent's, as install.sh's status-step NEXT names it, while the report filed it as unexpected
+with no owner. Not the words of the buckets above, which say "this account cannot open"."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -9722,6 +9727,7 @@ class _DoctorSort:
     from_helpers: list[str]
     fails: list[tuple[str, str | None]]
     shut_words: str = _STATE_SHUT_WORDS  # B13 round 22 Z31: _STATE_SHUT_FOLDER_WORDS for a shut folder
+    from_loose: list[str] = dataclasses.field(default_factory=list)  # B13 round 23 A49
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -9803,6 +9809,47 @@ def _root_foreign(c: Config) -> bool:
         return False
 
 
+def _loose_state(c: Config) -> set[str]:
+    """The state checks whose FAIL is a mode too open, by the report's own stat (B13 round 23 A49):
+    ``"state_dir"`` when the state folder is a folder this account owns whose mode lets others in, and
+    ``"state_dir.files"`` when the manifest, its -wal or -shm or the token cache's fallback is a regular file
+    (``lstat``: not a symlink) this account owns and can read and write whose mode lets others read it. A path
+    on a volume mounted read-only is left out (no chmod writes there, as install.sh's state_chmods says: round
+    22 Z79). Keyed on the files, never on doctor's words; a stat that fails says nothing of that path."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+    out: set[str] = set()
+    sp = c.state_paths
+    root = expand(sp.root)
+    with contextlib.suppress(OSError):
+        st = root.stat()
+        if (
+            stat.S_ISDIR(st.st_mode)
+            and st.st_uid == os.getuid()
+            and stat.S_IMODE(st.st_mode) & 0o077
+            and not doctor._read_only(root)
+        ):
+            out.add("state_dir")
+    db = expand(sp.db)
+    for p in (
+        db,
+        db.with_name(db.name + "-wal"),
+        db.with_name(db.name + "-shm"),
+        expand(sp.token_cache_fallback),
+    ):
+        with contextlib.suppress(OSError):
+            fst = p.lstat()
+            if (
+                stat.S_ISREG(fst.st_mode)
+                and fst.st_uid == os.getuid()
+                and os.access(p, os.R_OK | os.W_OK)
+                and stat.S_IMODE(fst.st_mode) & 0o077
+                and not doctor._read_only(p)
+            ):
+                out.add("state_dir.files")
+    return out
+
+
 def _state_not_file(c: Config) -> bool:
     """Whether something other than a file sits where the manifest belongs (a folder), by the report's own
     stat: doctor FAILs state_dir.manifest for it with the person's fix (B13 round 22 Z12). Kept here, never by
@@ -9878,6 +9925,8 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_refused: list[str] = []
     timed_out = _helpers_timed_out(r.config) if r.config is not None else {}
     from_helpers: list[str] = []
+    loose = set() if r.config is None else _loose_state(r.config)
+    from_loose: list[str] = []
     fails: list[tuple[str, str | None]] = []
     for tag, name, detail in r.facts.doctor_problems:
         if tag == "FAIL" and name in signed_out:  # B13 round 13 O13: the stop's, not unexpected
@@ -9934,6 +9983,19 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_refused.append(f"{name} FAIL{refused[name]}")
             fails.append((name, _REFUSED_WORDS))
             continue
+        # B13 round 23 A49: a state folder or file this account opens whose mode lets others read it FAILs
+        # with this account's chmod, the agent's (install.sh's status-step NEXT names it); never beside a file
+        # it cannot open (shut) or a folder another account owns, whose fix is the person's chown
+        if (
+            tag == "FAIL"
+            and name in loose
+            and not shut
+            and not (unreadable or notfile)
+            and not _root_foreign(cast(Config, r.config))
+        ):
+            from_loose.append(f"{name} FAIL{_AGENTS}")
+            fails.append((name, _STATE_LOOSE_WORDS))
+            continue
         if (
             (unreadable or notfile or shut)
             and tag == "warn"
@@ -9987,6 +10049,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_helpers,
         [(name, gone_words if why == _GONE else why) for name, why in fails],
         shut_words,
+        from_loose,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -10067,6 +10130,10 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
     if sort.from_refused:  # B13 round 21 Y45
         parts.append(
             f"{_REFUSED_WORDS} ({_plural(len(sort.from_refused), 'check')}): " + ", ".join(sort.from_refused)
+        )
+    if sort.from_loose:  # B13 round 23 A49
+        parts.append(
+            f"{_STATE_LOOSE_WORDS} ({_plural(len(sort.from_loose), 'check')}): " + ", ".join(sort.from_loose)
         )
     if from_helpers:
         one = len(from_helpers) == 1
