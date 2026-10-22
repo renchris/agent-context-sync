@@ -55,10 +55,15 @@ fi
 # SHIP_LAND_RUN_SLEEP s apart (5), so runs get 2 minutes to appear; the two are for tests.
 polls=${SHIP_LAND_RUN_POLLS:-24} pause=${SHIP_LAND_RUN_SLEEP:-5}
 watch_runs() {
-  local sha=$1 ids='' id tries=0 answered=0 state passes reads workflow newest
+  local sha=$1 ids='' req all id tries=0 answered=0 state passes reads workflow newest
   while [ -z "$ids" ] && [ "$tries" -lt "$polls" ]; do
-    if ids=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId' 2>/dev/null); then
+    # A sha's runs are listed one at a time, and diagrams can be listed before ci: the list counts only once it
+    # holds a ci run, which every push to main starts (B13 round 23: a land read back diagrams alone as CI green).
+    if req=$(gh run list --commit "$sha" --workflow ci --json databaseId --jq '.[].databaseId' 2>/dev/null) &&
+      all=$(gh run list --commit "$sha" --json databaseId --jq '.[].databaseId' 2>/dev/null); then
       answered=1
+      ids=''
+      [ -z "$req" ] || ids=$(printf '%s\n' "$req" "$all" | awk 'NF && !seen[$0]++')
     else
       ids=''
     fi

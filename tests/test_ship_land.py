@@ -236,3 +236,39 @@ def test_a_pushed_sha_with_no_run_says_landed_and_ci_not_read(
     cp = _land(other, _with_gh(tmp_path, env, body))
     assert cp.returncode == 9, cp.stdout + cp.stderr
     assert "could not read trunk CI (run 101 is still in_progress after 3 watches)" in cp.stderr
+
+
+def _ci_listed_late(trunk: str, ci_run: str) -> str:
+    """A gh whose pushed sha lists a green diagrams run (202) and, for ``--workflow ci``, ``ci_run`` (none if
+    empty); run 303 is red. Trunk's run 101 is green either way."""
+    return (
+        'case "$1 $2" in\n'
+        '  "run list")\n'
+        f'    if [ "$4" = {trunk} ]; then echo 101\n'
+        f'    elif [ "$5 $6" = "--workflow ci" ]; then [ -z "{ci_run}" ] || echo {ci_run}\n'
+        "    else echo 202; fi ;;\n"
+        '  "run watch") [ "$3" != 303 ] ;;\n'
+        '  "run view") echo completed failure ;;\n'
+        "esac\n"
+    )
+
+
+def test_a_diagrams_run_listed_before_ci_is_not_read_as_ci_green(
+    remote: Path, tmp_path: Path, env: dict[str, str]
+) -> None:
+    """B13 round 23: the read-back took the first run list that named any run, and diagrams is often listed
+    before ci, so a land printed "CI green" from the diagrams run alone. The list counts only once it holds a
+    ci run: with none it is not read (exit 9), and a red ci run beside a green diagrams run is red
+    (exit 8)."""
+    clone = _clone(remote, tmp_path / "a", env, "one")
+    cp = _land(clone, _with_gh(tmp_path, env, _ci_listed_late(_git(remote, "rev-parse", "main"), "")))
+    sha = _git(clone, "rev-parse", "HEAD")
+    assert cp.returncode == 9, cp.stdout + cp.stderr
+    assert f"LANDED {sha[:8]}, CI NOT READ: no CI run for {sha[:8]}" in cp.stdout
+    assert "CI green" not in cp.stdout
+
+    other = _clone(remote, tmp_path / "b", env, "two")
+    cp = _land(other, _with_gh(tmp_path, env, _ci_listed_late(_git(remote, "rev-parse", "main"), "303")))
+    sha = _git(other, "rev-parse", "HEAD")
+    assert cp.returncode == 8, cp.stdout + cp.stderr
+    assert f"CI RED on {sha[:8]}: run 303" in cp.stderr
