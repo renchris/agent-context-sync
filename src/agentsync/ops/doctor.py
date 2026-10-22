@@ -1437,13 +1437,18 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
                 fix=f"chmod 600 {paths}",
             )
         )
-    if not others:  # each its own line: an ACL is the person's, a chmod above the agent's
+    if not others:  # an ACL each its own line, the person's; a chmod above the agent's
+        # every file on a read-only volume is one line with one fix, the volume's, as the chmod's line joins
+        # its files (B13 round 23 A85: three lines gave the same fix three times)
+        read_only = [p for p in denied if _read_only(p)]
+        if read_only:
+            named = ", ".join(f"{p.name} ({stat.S_IMODE(p.lstat().st_mode):04o})" for p in read_only)
+            detail = f"on a read-only volume, so this account cannot write {named}"
+            out.append(_bad("state_dir.files", detail, fix=read_only_fix(read_only[0])))
         for p in denied:
-            m = stat.S_IMODE(p.lstat().st_mode)
-            if _read_only(p):
-                detail = f"on a read-only volume, so this account cannot write {p.name} ({m:04o})"
-                out.append(_bad("state_dir.files", detail, fix=read_only_fix(p)))
+            if p in read_only:
                 continue
+            m = stat.S_IMODE(p.lstat().st_mode)
             detail = f"refused to this account by an ACL or a privacy setting: {p.name} ({m:04o})"
             out.append(_bad("state_dir.files", detail, fix=_search_fix(p, folder=False)))
     if others or shut or denied:

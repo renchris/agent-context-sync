@@ -1678,6 +1678,35 @@ def test_a_state_file_on_a_read_only_volume_is_the_persons_not_an_acl(
     assert doctor.state_path_fix(root, db) == doctor.read_only_fix(db)
 
 
+def test_every_state_file_on_a_read_only_volume_is_one_line_with_one_fix(
+    sample_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A85: the manifest, its -wal and its -shm on a read-only volume gave three state_dir.files
+    FAILs, each with the same person's fix, as the chmod's line already joins its files. One line names all
+    three, with the volume's fix of the first, the fix sync's ``error: state:`` line gives
+    (``refused_files_fix``); an ACL on one of them keeps its own line."""
+    db = sample_config.state_paths.db
+    files = [db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")]
+    for f in files:
+        f.write_bytes(b"")
+        f.chmod(0o600)
+    real_access = os.access
+    monkeypatch.setattr(doctor.os, "access", lambda p, m: False if Path(p) in files else real_access(p, m))
+    monkeypatch.setattr(doctor, "_read_only", lambda p: Path(p) in files)
+    failed = [r for r in doctor._check_state_dir(sample_config) if not r.ok]
+    (line,) = failed
+    names = ", ".join(f"{f.name} (0600)" for f in files)
+    assert line.name == "state_dir.files", failed
+    assert line.detail == f"on a read-only volume, so this account cannot write {names}", line.detail
+    assert line.fix == doctor.read_only_fix(db) == doctor.refused_files_fix(sample_config, files)
+    monkeypatch.setattr(doctor, "_read_only", lambda p: Path(p) in files[:2])  # the -shm: an ACL
+    failed = [r for r in doctor._check_state_dir(sample_config) if not r.ok]
+    assert [r.detail.split(" so ")[0].split(":")[0] for r in failed] == [
+        "on a read-only volume,",
+        "refused to this account by an ACL or a privacy setting",
+    ], failed
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root searches a folder of any mode")
 def test_two_sources_over_a_shut_state_folder_say_not_checked_for_shared_content(
     sample_config: Config,
