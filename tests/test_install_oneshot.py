@@ -8518,7 +8518,10 @@ def test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass(
     manifest at 0000. Every reader names the folder's chmod 700 (nothing inside can be seen); after it the
     re-run stopped again on the manifest's chmod 600, a second stop the prompt's "once" read either way. The
     NEXT now names the folder's chmod and, in the same pass, status, whose [FAIL] lines then name the
-    manifest's: run as written, both chmods and one re-run pass."""
+    manifest's: run as written, both chmods and one re-run pass.
+
+    Round 23 A51: the folder went back to 0 before the asserts, so a failing run left a tree pytest cannot
+    remove; it is shut only inside the try whose finally opens it."""
     env = real_env
     folder = _cloud(env) / "OneDrive-Contoso" / "FY26 Projects" / "Alpha"
     folder.mkdir(parents=True)
@@ -8533,7 +8536,6 @@ def test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass(
     finally:
         db.parent.chmod(0o700)
         shut_after = db.stat().st_mode & 0o777
-        db.parent.chmod(0)
     assert shut_after == 0, oct(shut_after)
     assert cp.returncode == 1, cp.stdout + cp.stderr
     fix = "chmod 700 ~/'Library/Application Support/agentsync'"
@@ -8541,6 +8543,7 @@ def test_a_shut_folder_holding_a_shut_manifest_takes_both_chmods_in_one_pass(
         last_line(cp)
     )
     try:
+        db.parent.chmod(0)
         subprocess.run(["/bin/bash", "-c", fix], env=env, check=True)
         status = subprocess.run(
             [str(Path(env["HOME"]) / ".local" / "bin" / "agentsync"), "status"],
