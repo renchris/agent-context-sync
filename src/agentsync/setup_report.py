@@ -4565,13 +4565,20 @@ def _checkout_facts(r: _Run, directory: Path) -> str:
         rc, diff = _git_ro(r, directory, "diff", "--no-ext-diff", "--no-color", "HEAD", "--")
         text += " (uncommitted changes" + (f", tree={tree_fingerprint(diff)})" if rc == 0 else ")")
     # The configured URL: `remote get-url` applies a URL rewrite (insteadOf, CONTRACTS §16.72 H21), so a
-    # rewrite alone read "other"; the rewrite is said beside it, by label, never the host (B13 round 18 V70)
-    rc, url = _git_ro(r, directory, "config", "--get", "remote.origin.url")
-    label = origin_label(url.decode("utf-8", "replace")) if rc == 0 else "none"
+    # rewrite alone read "other"; the rewrite is said beside it, by label, never the host (B13 round 18 V70).
+    # The first url key, the one git fetches from, after the last empty one (an empty ``url =`` clears the
+    # list): ``config --get`` gives the last key, which differs from get-url's with no rewrite anywhere
+    # (B13 round 23 A24, A50, A90)
+    rc, out = _git_ro(r, directory, "config", "--get-all", "remote.origin.url")
+    keys = out.decode("utf-8", "replace").split("\n")[:-1] if rc == 0 else []
+    urls = keys[len(keys) - keys[::-1].index("") :] if "" in keys else keys
+    label = origin_label(urls[0]) if urls else "none"
     text += f" · origin: {label}"
+    notes = [f"{len(urls)} url keys, git fetches from the first"] if len(urls) > 1 else []
     rc, url = _git_ro(r, directory, "remote", "get-url", "origin")
     if rc == 0 and label != "none" and origin_label(url.decode("utf-8", "replace")) != label:
-        text += " (a URL rewrite sends it elsewhere)"
+        notes.append("a URL rewrite sends it elsewhere")
+    text += f" ({'; '.join(notes)})" if notes else ""
     rc, _ = _git_ro(r, directory, "merge-base", "--is-ancestor", "HEAD", "origin/main")
     on_main = {0: "yes", 1: "no"}.get(rc, "unknown (no origin/main in this checkout)")
     if rc in (0, 1):  # "yes" is any ancestor: say how far behind it is, and a "no" how far ahead (H22)

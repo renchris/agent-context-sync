@@ -9727,6 +9727,61 @@ def test_install_source_reads_the_configured_origin_and_says_a_rewrite_changes_i
     assert "contoso" not in facts
 
 
+def test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_claimed(
+    tmp_path: Path,
+) -> None:
+    """B13 round 23 A24, A50, A90: ``config --get`` gives the last url key and ``remote get-url`` the first,
+    so an origin with two url keys and no insteadOf read "(a URL rewrite sends it elsewhere)" beside the
+    report's own "URL rewrite in git's config: not set", and was labelled by a URL git does not fetch from.
+    The label is the first url key after the last empty one (an empty ``url =`` clears the list), the count
+    of keys is said, and a rewrite is claimed only when an insteadOf changes that first URL."""
+    github = "https://github.com/renchris/agent-context-sync.git"
+    mirror = "https://git.contoso.example/mirror/agent-context-sync.git"
+    slug = "github.com/renchris/agent-context-sync"
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    rows = [  # (url keys, insteadOf (base, prefix) or None, the label and bracket expected)
+        ([github, mirror], None, f"{slug} (2 url keys, git fetches from the first)"),
+        ([mirror, github], None, "other (redacted) (2 url keys, git fetches from the first)"),
+        (
+            [github, mirror],
+            ("https://git.contoso.example/mirror/", "https://github.com/renchris/"),
+            f"{slug} (2 url keys, git fetches from the first; a URL rewrite sends it elsewhere)",
+        ),
+        (
+            [github, mirror],
+            ("https://git.contoso.example/other/", "https://git.contoso.example/mirror/"),
+            f"{slug} (2 url keys, git fetches from the first)",
+        ),
+        ([mirror, "", github], None, slug),
+    ]
+    for i, (keys, rewrite, said) in enumerate(rows):
+        repo = tmp_path / f"checkout-{i}"
+        repo.mkdir()
+
+        def git(*args: str, repo: Path = repo) -> str:
+            return subprocess.run(
+                ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+            ).stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        git("config", "user.email", "t@example.invalid")
+        git("config", "user.name", "t")
+        (repo / "a.txt").write_text("one\n", encoding="utf-8")
+        git("add", "a.txt")
+        git("commit", "-q", "-m", "one")
+        for key in keys:
+            git("config", "--add", "remote.origin.url", key)
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        if rewrite is not None:
+            git("config", f"url.{rewrite[0]}.insteadOf", rewrite[1])
+        assert "" not in keys or setup_report.origin_label(git("remote", "get-url", "origin")) == said, (
+            "git itself fetches from the key after the empty one"
+        )
+        facts = setup_report._checkout_facts(run, repo)
+        assert f" · origin: {said} · " in facts, (keys, rewrite, facts)
+        assert "contoso" not in facts
+
+
 def test_install_source_names_origin_main_and_the_tree(tmp_path: Path) -> None:
     """L10: which code ran. A checkout's origin (this repository, or "other" without its URL), whether its
     HEAD is on origin/main, and the dirty tree's fingerprint as install.sh computes it."""
