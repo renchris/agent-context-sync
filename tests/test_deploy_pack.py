@@ -5850,6 +5850,15 @@ _ROUND_23_E_PARAGRAPH_AMENDS = (
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: A63's `legacy_waiting` row in §16.28's run-record table, and A65's at
 §16.42's diagram Tests paragraph, whose label-rule count Q78 changed."""
 
+_ROUND_23_B_PARAGRAPH_AMENDS = (
+    ("16.29", "Every one is a path a sync makes owner-only", "§16.167 A94"),
+    ("16.32", "Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without", "§16.167 A94"),
+    ("16.32", "**Every FAIL names a fix.** install.sh's `NEXT:` says so", "§16.167 A94"),
+)
+"""Round 23 lane B's dated lines at sections its claims name with no item, as
+:data:`_ROUND_12_PARAGRAPH_AMENDS`: A94's at §16.29's permissions-fix bullet and §16.32's run-again and
+crash-fix paragraphs, whose fixes nest no bracket now."""
+
 _ROUND_20_E_PARAGRAPH_AMENDS = (
     ("16.25", "**Who builds.** Only `scripts/install.sh`, by running the module", "§16.150 X57"),
     ("16.34", "builds it, in the `helpers` step right after the OCR helper", "§16.150 X57"),
@@ -5958,6 +5967,7 @@ def test_every_dated_line_from_round_11_on_is_held_by_a_test() -> None:
         *_ROUND_21_B_PARAGRAPH_AMENDS,
         *_ROUND_22_RA_PARAGRAPH_AMENDS,
         *_ROUND_23_E_PARAGRAPH_AMENDS,
+        *_ROUND_23_B_PARAGRAPH_AMENDS,
     )
     pinned = _pinned_dated_lines(pins)
     text = CONTRACTS.read_text(encoding="utf-8")

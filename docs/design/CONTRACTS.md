@@ -9105,6 +9105,8 @@ now depends on the paths the check found (`cycle._sync_leaves`, private):
   read: `(fix: agentsync sync (it makes these owner-only))`. The setup agent may run that, and status's
   `NEXT:` already sends it to the fix on the `[FAIL]` line (§16.20). **Amended 2026-10-12, §16.61 F67 (by §16.51
   Q49):** the fix now reads `(fix: ~/.local/bin/agentsync sync (it makes these owner-only))`.
+  Amended 2026-10-22, §16.167 A94: it reads `(fix: run ~/.local/bin/agentsync sync, which makes these
+  owner-only)`, with no bracket inside the line's own.
 - Any other: the fix it had, `chmod -R go-rwx <the checked folders>; git -C '<docs repo>' config
   core.sharedRepository 0600`. That is a path inside `mirror/` or `.git`, one the walk does not reach, one
   that is neither a file nor a folder, one of another user's (only its owner may change a mode), or one its
@@ -10029,6 +10031,8 @@ Amended 2026-10-20, §16.149 X21: `run scripts/install.sh again (it keeps the fo
 Amended 2026-10-21, §16.155 Y20: `run scripts/install.sh again without --report-only, which builds nothing; a plain
 run keeps the folders already synced`, and every other check's `<then>` is `report it: the program does not answer
 on this Mac, and no setup step clears that`: no bracket inside the line's `(fix: ...)`.
+Amended 2026-10-22, §16.167 A94: by hand `<run again>` is `run ~/.local/bin/agentsync status again as it is`, a
+command that runs when copied, with no bracket inside the line's `(fix: ...)`; the first row below no longer holds.
 
 | Where | `<run again>` |
 |---|---|
@@ -10087,6 +10091,8 @@ with no keyboard cannot answer. The command has not been run here: this Mac has 
 system.
 
 **Every FAIL names a fix.** install.sh's `NEXT:` says so, and until now these lines did not:
+Amended 2026-10-22, §16.167 A94: the crash fix reads `run ~/.local/bin/agentsync status -v, which prints the
+traceback: a check that crashes is a fault in agentsync to report, and no setup step clears it`.
 
 | FAIL | Its fix now |
 |---|---|
@@ -27651,6 +27657,12 @@ search access`, `ls -led`), `the person makes the volume that holds <path> writa
 person's, which is all `PERSONS_FIX_RE`, the report and install.sh's persons_fails read. `_again_fix`'s `status (run
 it again as it is)` is left as written: the deploy guide and §16.32's row quote it, and the verifier made it
 optional. Test: `test_ops_doctor.py::test_the_system_error_and_state_owner_fixes_nest_no_bracket`.
+Amended 2026-10-22, §16.167 A15: the ACL fixes end `; ls -le <path> shows the ACL, and chmod -N <path> removes it`
+(a folder: `ls -led <folder> shows the ACL, and chmod -N <folder> removes it`), as the parent fix does.
+Amended 2026-10-22, §16.167 A94: `_again_fix` reads `run ~/.local/bin/agentsync status again as it is`, the crash fix
+`run ~/.local/bin/agentsync status -v, which prints the traceback: ...` and the permissions fix `run
+~/.local/bin/agentsync sync, which makes these owner-only`: no doctor fix nests a bracket, and the sentence above
+that left `_again_fix`'s as written no longer holds.
 
 **Z14, Z72: the parent fix names a chmod only for this account's own folder shut by its mode, and the folder itself
 when nothing above refuses (`agentsync.ops.doctor`; amends §16.155 Y31).** `_parent_fix`, the fix of a state folder whose `stat` this
@@ -27786,6 +27798,10 @@ on `purge audit: ...`. The two-pass alarm (`... deleted upstream; purge queued`)
 the files whose purge was queued. Not a catch-and-carry-on: the tombstone never stands without its purge (the
 verifier's). Tests: `test_cycle.py::test_a_purge_queue_this_account_cannot_open_keeps_the_deletion_and_queues_it_next_pass`
 (local, three passes) and `test_review_fixes.py::test_a_refused_purge_queue_replays_a_graph_delta_that_carried_the_deletion`.
+Amended 2026-10-22, §16.167 A52, A55, A56, A57: the breaker is named only where one is recorded; an accept with
+none reads `...; run \`~/.local/bin/agentsync accept-deletions <id>\` again once the queue opens`, and a Graph full
+pass's `...; retried by the next full pass (the scheduled reconcile)`; refused audit lines are one `purge audit:
+<n> queued purge(s) have no audit line: ...` error; a queued purge of another reason is no queued deletion.
 
 ### 16.162 Round 22: the upgrade retry note and dead retry code (2026-10-21, wave B13 round 22 lane E)
 
@@ -28353,7 +28369,86 @@ on a missing manifest beside a heartbeat that records passes, and step 2's confi
 
 ### 16.167 Round 23: a state folder that is not a folder, the heartbeat and the purge queue in cli and doctor (2026-10-22, wave B13 round 23 lane B)
 
-Reserved for round 23 lane B of B13.
+Round 23's lane B items (`docs/plans/bring-back-ocr.md`, "B13 round 23"; specs `round23/items/A<n>.md`), each the
+verifier's corrected fix, under round 21's ownership rule and the round 22 and 23 rulings: anything that is not a
+folder where the state folder or a folder above it belongs is one FAIL, the person's (move it aside), with every
+check that needs the state folder not checked; and a heartbeat this account cannot write is said once, and an
+interactive sync over it exits 1. A dated line this round writes reads `Amended 2026-10-22, §16.167 A<n>`.
+
+**A91: doctor imports gitops at the top (`agentsync.ops.doctor`).** `_git_path` imported gitops lazily, its reason
+"doctor must import even if gitops is broken", which was false: doctor imports lints and cycle, which import gitops
+at module level. The import is at the top now; `_git_path` still falls back from the resolver stub
+(`NotImplementedError`). No behavior changed, so no test: a test that doctor imports without gitops cannot pass.
+
+**A94: doctor's fixes nest no bracket, its run-again, crash and permissions fixes included (`agentsync.ops.doctor`;
+amends §16.161 Z7).** By hand `_again_fix` read `~/.local/bin/agentsync status (run it again as it is)`, a bracket
+inside the line's own `(fix: ...)` and a command bash rejects when copied (`syntax error near unexpected token
+'('`); the crash fix (`... status -v (prints the traceback: ...)`) and the permissions fix (`... sync (it makes
+these owner-only)`) had the same shape. Each starts `run <command>` now and says why after `, which`: `run
+~/.local/bin/agentsync status again as it is`, `run ~/.local/bin/agentsync status -v, which prints the traceback:
+...` and `run ~/.local/bin/agentsync sync, which makes these owner-only`; none starts `the person `, so each stays
+the agent's. Dated lines at §16.29's check-fix bullet, §16.32's `<run again>` table and its crash-fix table, and Z7.
+Tests: `test_ops_doctor.py::test_the_run_again_crash_and_owner_only_fixes_nest_no_bracket` and the guide's pins in
+`test_deploy_pack.py`.
+
+**A15: an ACL on this account's own state folder or file names the chmod that takes it off (`agentsync.ops.doctor`;
+amends §16.161 Z7).** `_search_fix` said how to see the ACL (`ls -led <folder> shows the ACL`) but not how to remove
+it, while `_parent_fix` names `chmod -N`. Both forms end `; ls -le[d] <path> shows the ACL, and chmod -N <path>
+removes it` now, still the person's: the callers check that this account owns the path and that its mode gives the
+owner access, so the owner's `chmod -N` leaves it reachable, and where a privacy setting is the cause it changes
+nothing. Test (macOS, a real ACL):
+`test_ops_doctor.py::test_an_acl_on_this_accounts_own_folder_or_file_names_the_chmod_that_takes_it_off`.
+
+**A60: the generic manifest-open words are asserted where no file is there (tests only).** `cli.MANIFEST_OPEN_FIX`
+is kept: the setup report's tests and this file use it as the generic fix with a file there. The three asserts
+`cli.MANIFEST_OPEN_FIX not in err` could not catch `_ACCESS_FIX` without its not-damaged suffix (no file), so they
+read `cli._ACCESS_FIX not in err`; `_manifest_open_fix`'s docstring names `_ACCESS_FIX`.
+
+**A52, A55, A56, A57: the purge queue's words after Z54 (`agentsync.cycle`; amends §16.161 Z54).** Four
+seams in Z54's alarm and errors. A52: a Graph full pass whose queue was refused said `retried next pass`, but
+`stage_cursor(None)` keeps the current cursor, so the next polls are deltas, which re-check no absence (only a
+provider's tombstone, which a full pass's absence never had); they ended 0 with nothing queued, and only the next
+full pass, the scheduled reconcile, queued it. That case reads `retried by the next full pass (the scheduled
+reconcile)`; a Graph delta pass (its kept cursor replays the tombstone) and a local or inbox source (always full)
+keep `retried next pass`. No later poll is forced to a full enumeration: while the queue stays refused that would
+make every poll a full Graph walk, and `reconcile` is a hidden command, so the words do not name it. A55: an
+accept-deletions run with no breaker recorded said `the breaker still holds them`; the breaker is named only when
+`breaker_held`, and an accept with none reads `run \`~/.local/bin/agentsync accept-deletions <id>\` again once the
+queue opens`. A56: a purge queued whose audit line was then refused (after A79, a write on the open audit trail:
+a full disk) appended the same error, and logged it, once per deletion; every later purge is still queued
+(skipping them would lose them), and the source fails on one `purge audit: <n> queued purge(s) have no audit line:
+<why>` after the loop. The missing lines are not written later: that needs an audit-against-queue reconciliation,
+separate work. A57: `_queued` matched the selector only, so a label escalation or DLP purge already queued for the
+same file made a refused upstream-deleted write read as `purge queued, its audit line not written` (the row
+tombstoned, the alarm skipped); it matches the reason too, as `enqueue_purge` does, so the queue's refusal is said,
+the row kept and the cursor dropped. Tests:
+`test_review_fixes.py::test_a_refused_purge_queue_on_a_graph_full_pass_says_the_next_full_pass_retries_it`,
+`test_cycle.py::test_an_accept_over_no_breaker_with_a_refused_queue_does_not_say_a_breaker_holds_them`,
+`test_cycle.py::test_a_refused_audit_line_is_one_error_with_its_count_and_every_purge_is_still_queued` and
+`test_cycle.py::test_a_queue_holding_another_reasons_purge_of_the_file_is_no_queued_deletion_when_its_write_is_refused`.
+
+**A79: an audit trail this account cannot append to stops a hold, its release and a queued purge, and status FAILs
+it (`agentsync.governance`, `agentsync.cli`, `agentsync.setup_report`).** `set_hold`, `release_hold` and
+`enqueue_purge` wrote holds.json or the queue and then raised on the audit line, so with audit.jsonl at 0000 `hold
+all --release` exited 1 yet released the hold with no record, and no status check read the file (status said 0
+FAIL). Each opens the audit trail for append first (`governance._audit_appender`), then writes its own file, then
+the line on the open file: a refused trail raises before anything changed, and the command's `error: state:` line
+gives the agent's `chmod 600`. Status's `governance.audit` FAILs, with the state folder's fix for it
+(`refused_state_path`), an audit trail this account cannot open for append (a 0400 file passes a read, and
+reading every line would make one bad line a crash), and `governance.suppressed` a suppression list it cannot
+read; a FAIL whose fix a governance line already gave (a refused governance folder) is said once. The report's
+`_refused_files` lists both, the audit trail by a write test, so the FAILs sort to their owner, not
+`unexpected`. Tests: `test_cli.py::test_an_audit_trail_this_account_cannot_append_to_stops_a_hold_and_its_release_and_status_fails_it`
+(0000 and 0400) and `test_governance.py::test_an_audit_trail_this_account_cannot_open_changes_no_hold_and_queues_no_purge`.
+
+**A53, A81: a raise after the lock is taken releases it (`agentsync.cycle`, `agentsync.ops.launchd`).** The
+stale-break note, the log rotation and the client's setup ran after `run_cycle` took the lock but before the `try`
+whose `finally` releases it, and `rotate_logs`' `log_dir.is_dir()` raises EACCES on Python 3.11 when a folder above
+the log folder refuses a search. So `~/Library/Logs` at 0000 ended every sync on a raw traceback and left the
+lock's body, and the next sync broke it as stale and ran every source as a full pass. Everything after the acquire
+runs inside that `try` now, and the rotation logs `log rotation skipped: <folder> cannot be read: ...` and goes on.
+Tests: `test_cli.py::test_a_raise_after_the_lock_is_taken_releases_it_and_an_unsearchable_log_folder_syncs` and
+`test_review_fixes.py::test_a_log_folder_under_a_folder_this_account_cannot_search_is_a_warning_not_a_raise`.
 
 ### 16.168 Round 23: the upgrade's settled count and doctor's convert imports (2026-10-22, wave B13 round 23 lane E)
 
