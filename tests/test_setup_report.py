@@ -12006,6 +12006,32 @@ def test_a_state_folder_a_folder_above_refuses_is_shut_and_the_persons_on_any_py
     assert setup_report._state_shut(config) == ""
 
 
+def test_a_state_folder_on_a_read_only_volume_is_the_state_files_words(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A85: on a read-only volume the state folder fails ``os.access(W_OK)``, so the report
+    called it the state folder this account cannot open, while doctor's state_dir is [ok] and its three FAILs
+    are the files'. A folder there this account can read and search is no shut folder: the state file's words;
+    one that also refuses a search stays the folder's."""
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    config = load_config(cfg)
+    db = expand(config.state_paths.db)
+    db.chmod(0o400)
+    db.parent.chmod(0o500)  # what a read-only volume's folder answers os.access for: no write
+    try:
+        assert setup_report._state_folder_shut(db), "an ordinary 0500 folder is shut"
+        monkeypatch.setattr(doctor, "_read_only", lambda path: True)
+        assert not setup_report._state_folder_shut(db)
+        assert setup_report._state_shut(config) == "file"
+        db.parent.chmod(0o000)
+        assert setup_report._state_folder_shut(db), "a read-only folder that refuses a search is the folder's"
+    finally:
+        db.parent.chmod(0o700)
+        db.chmod(0o600)
+
+
 def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
     fake_mac: dict[str, Path],
 ) -> None:

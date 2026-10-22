@@ -6796,15 +6796,22 @@ def _not_a_folder_at(root: Path) -> Path | None:
 def _state_folder_shut(db: Path) -> bool:
     """Whether the folder that holds ``db`` refuses this account: a folder above it refuses a search (its stat
     raises PermissionError, B13 round 22 Z40, Z61, Z74), or it is a folder this account cannot read, write and
-    search (B13 round 20 X28). A stat, never ``Path.is_dir``, which raises on EACCES before Python 3.14 and
-    returns False from it. Any other failure says no."""
+    search (B13 round 20 X28), unless it is on a read-only volume and this account can read and search it
+    (B13 round 23 A85). A stat, never ``Path.is_dir``, which raises on EACCES before Python 3.14 and returns
+    False from it. Any other failure says no."""
     try:
         st = db.parent.stat()
     except PermissionError:
         return True
     except OSError:
         return False
-    return stat.S_ISDIR(st.st_mode) and not os.access(db.parent, os.R_OK | os.W_OK | os.X_OK)
+    if not stat.S_ISDIR(st.st_mode) or os.access(db.parent, os.R_OK | os.W_OK | os.X_OK):
+        return False
+    # B13 round 23 A85: a folder on a read-only volume that this account can still read and search is no
+    # shut folder (doctor's state_dir is [ok]): its files are what cannot be written, the state file's words
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+    return not (doctor._read_only(db.parent) and os.access(db.parent, os.R_OK | os.X_OK))
 
 
 def _why_not_read(exc: BaseException) -> str:
