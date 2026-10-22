@@ -35,6 +35,7 @@ from agentsync import lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
+from agentsync.convert import media, ocr, speech
 from agentsync.cycle import (
     VANISHED_FIX,
     _holds_home,
@@ -314,24 +315,18 @@ def _pandoc_route(config: Config) -> tuple[Path, str]:
 def _ocr_status(config: Config) -> tuple[str, str]:
     """(state, detail) of the on-device OCR helper, from ``convert.ocr.probe``: it looks and never compiles;
     the one program it may start is a built helper's ``--version``, which it gives 5 s."""
-    from agentsync.convert import ocr  # noqa: PLC0415 - lazy, as the probes are
-
     return ocr.probe(config.convert, config.cache_dir)
 
 
 def _media_status(config: Config) -> tuple[str, str]:
     """(state, detail) of the media helper, from ``convert.media.probe``: as :func:`_ocr_status`, it looks and
     never compiles; the one program it may start is a built helper's ``--version``, which it gives 5 s."""
-    from agentsync.convert import media  # noqa: PLC0415 - lazy, as the probes are
-
     return media.probe(config.convert, config.cache_dir)
 
 
 def _speech_status(config: Config) -> tuple[str, str]:
     """(state, detail) of the speech engine, from ``convert.speech.probe``: it looks, never compiles and
     takes no model digest; the one program it may start is a built helper's ``--version``, given 5 s."""
-    from agentsync.convert import speech  # noqa: PLC0415 - lazy, as the probes are
-
     return speech.probe(config.convert, config.cache_dir)
 
 
@@ -721,10 +716,6 @@ def _exit_words(returncode: int, stderr: str = "") -> str:
     B13 round 3 R81)."""
     if returncode >= 0:
         return f"exit {returncode}"
-    try:
-        from agentsync.convert import ocr  # noqa: PLC0415 - lazy, as _ocr_status's
-    except Exception:  # the phrase without the signal's name
-        return f"stopped by signal {-returncode}"
     return ocr._ended(returncode, stderr.encode())
 
 
@@ -921,8 +912,6 @@ def helper_timed_out_words(helper: str) -> tuple[str, int]:
     """The words a build of ``helper`` (``ocr``, ``media`` or ``speech``) that ran out of time starts its
     reason with, and its limit in minutes. The setup report keys its bucket on the same words, read from the
     helper's own marker (B13 round 19 W49)."""
-    from agentsync.convert import media, ocr, speech  # noqa: PLC0415 - lazy, as the probes are
-
     if helper == "speech":
         return speech.BUILD_TIMED_OUT, int(speech._BUILD_TIMEOUT_S // 60)
     kind = media.MEDIA if helper == "media" else ocr._OCR

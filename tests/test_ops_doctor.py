@@ -3581,6 +3581,29 @@ def test_doctor_import_stops_when_a_convert_module_cannot_import(module: str) ->
     assert ran.stdout.strip() == "stopped", ran.stdout + ran.stderr
 
 
+def test_doctor_defers_no_convert_import_its_own_import_already_made() -> None:
+    """B13 round 23 A67: four of doctor's functions imported ``convert.ocr``, ``media`` or ``speech`` inside
+    their bodies, "lazy, as the probes are", and ``_exit_words`` guarded its ``ocr`` import with an
+    ``except``; but doctor imports ``agentsync.cycle``, which loads all three, so the deferral saved nothing
+    and the guard caught nothing. A convert module doctor imports inside a function is one its own import
+    leaves unloaded (``convert.pandoc``, for the pandoc check alone)."""
+    code = (
+        "import ast, sys\nimport agentsync.ops.doctor as d\n"
+        "tree = ast.parse(open(d.__file__, encoding='utf-8').read())\n"
+        "deferred = {f'{n.module}.{a.name}' if n.module == 'agentsync.convert' else n.module\n"
+        "            for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)\n"
+        "            for n in ast.walk(f) if isinstance(n, ast.ImportFrom)\n"
+        "            and (n.module or '').startswith('agentsync.convert') for a in n.names}\n"
+        "print(sorted(deferred)); print(sorted(m for m in deferred if m in sys.modules))\n"
+    )
+    ran = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120
+    )
+    deferred, loaded = ran.stdout.splitlines()
+    assert "agentsync.convert.pandoc" in deferred, "the scan reads doctor's function-level imports"
+    assert loaded == "[]", ran.stdout
+
+
 @pytest.mark.parametrize("helper", ["ocr", "media"])
 def test_an_ocr_or_media_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets_one(
     sample_config: Config, monkeypatch: pytest.MonkeyPatch, helper: str

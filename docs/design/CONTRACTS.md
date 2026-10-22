@@ -27793,6 +27793,9 @@ no word in doctor says it imports when convert is broken).
 Amended 2026-10-22, §16.168 A66: `test_doctor_loads_convert_through_cycle_and_its_words_say_so` is now
 `test_ops_doctor.py::test_doctor_import_stops_when_a_convert_module_cannot_import`, which keeps the import check;
 the check that no word in doctor says it imports when convert is broken is gone, a re-assertion of the source.
+Amended 2026-10-22, §16.168 A67: those three imports, `helper_timed_out_words`' and `_exit_words`' (and its
+`except`) are gone: doctor imports `ocr`, `media` and `speech` at module level, as `cycle` loads them when doctor
+is imported.
 
 **`ocr._entry`'s exit 1 clause has a verb (Z58; `agentsync.convert.ocr`).** Y55 wrote "``failed (...)``: so
 since each helper's first build, §16.25 for OCR; ...", whose clause after the colon has no verb. It reads
@@ -28080,6 +28083,18 @@ the name of what it still proves. Both old names are in `test_deploy_pack.py::_R
 form too (it read only the bare and `tests/...::` forms, so 270 cited names went unread; none was stale but the
 five already retired), so a retired name that is not listed fails it. Not a rewrite of Z56's and Z58's words: they
 are marked, as older text is.
+
+**doctor imports `convert.ocr`, `media` and `speech` at module level (A67; `agentsync.ops.doctor`; dated line at
+§16.162 Z56).** `_ocr_status`, `_media_status`, `_speech_status` and `helper_timed_out_words` imported them in their
+bodies under `# noqa: PLC0415 - lazy, as the probes are`, which gives no reason, and `_exit_words` guarded its
+`ocr` import with an `except` that fell back to `stopped by signal N`. doctor imports `agentsync.cycle`, which loads
+all three, so the deferral saved nothing and the guard caught nothing (Z56's test shows a convert module that
+cannot import stops doctor's import). They are one module-level import now and `_exit_words` calls `ocr._ended`
+(which words an unknown signal itself). `convert.pandoc` stays lazy: doctor's import does not load it. Not the
+bare `# noqa: PLC0415` imports of `materialise`, `arm_local`, `graph.auth` and `gitops`, also loaded by then:
+they are lane B's part of doctor. Test:
+`test_ops_doctor.py::test_doctor_defers_no_convert_import_its_own_import_already_made` (a function-level
+`agentsync.convert` import in doctor names a module doctor's import leaves unloaded; red before this change).
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 
