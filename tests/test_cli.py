@@ -2983,9 +2983,10 @@ def test_a_cycle_that_raises_still_logs_the_alarms_it_held(
 PERSONS_STEP = (
     "its fix on the [FAIL] line below is the person's (a folder or file to put back or sync, a [[source]] "
     "path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or "
-    "allow, a state file that is damaged, another account's or not a file, or a state file or folder that an "
-    "ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] "
-    "pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent: show it to them"
+    "allow, a state file that is damaged, another account's or not a file, a state folder that is not a "
+    "folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only "
+    "volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a "
+    "step for the agent: show it to them"
 )
 
 
@@ -2996,8 +2997,9 @@ def test_the_persons_kinds_name_every_state_refusal_no_chmod_fixes(tmp_path: Pat
     search, a read-only volume) is the person's, as is a manifest that is not a file, and the NEXT's kinds
     name the state folder and each of them (lane B's words)."""
     kind = (
-        "a state file that is damaged, another account's or not a file, or a state file or folder that an "
-        "ACL, a privacy setting, a folder above it or a read-only volume refuses"
+        "a state file that is damaged, another account's or not a file, a state folder that is not a folder, "
+        "or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume "
+        "refuses"
     )
     assert kind in cli.PERSONS_KINDS
     root = tmp_path / "state"

@@ -1710,9 +1710,9 @@ PERSONS_FIX_RE = re.compile(
 PERSONS_KINDS = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
     "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another "
-    "account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or "
-    "a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc "
-    "copy"
+    "account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a "
+    "privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, "
+    "Rosetta to install or a native pandoc copy"
 )
 
 

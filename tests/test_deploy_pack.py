@@ -606,7 +606,7 @@ INSTALL_SH = "~/src/agent-context-sync/scripts/install.sh"
 INSTALL_WITH_FOLDER = f'{INSTALL_SH} --source-local "<folder>"'
 """Step 2's command with a folder to sync (a new Mac) or to add."""
 
-PROMPT = (31, "098870a02108fa9aa587ec372e95f472457cb3fe2ae617e7cf1631cfe75d52a7")
+PROMPT = (32, "26aed725e49bf1907dba82c48f98819056221c226c1ad8c1ea930dce0ebb8685")
 """The setup prompt's version and the SHA-256 of its block, as README.md has them. The version moves with
 every change of the text, a reworded sentence included, so that a pasted copy is always known by its version
 (scripts/install.sh, "Setup prompt"): change the text, then bump "setup prompt vN" and the two "prompt vN" /
@@ -3066,17 +3066,15 @@ exit 2 are no errors. Since v24 the bracket also names a status that exits non-z
 round 15 lane RB's words for its S33, S58, S62), whose NEXT says the same "not a step for the agent"."""
 
 FAIL_IS_MINE = (
-    "A [FAIL] line whose fix starts with an edit to sources.toml (a [[source]] block or path, a [convert]"
-    " line or a"
-    " [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, rename or"
-    " sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to replace or"
-    " remove, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a"
-    " file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume"
-    " refuses) is mine too: show it"
-    " to me and do not make that edit or"
-    " run its command. Otherwise, re-running the install.sh command its fix names is yours, once, even when"
-    " the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays mine: if the"
-    " same [FAIL] line comes back after it, show it to me, log it and go to step 3's report."
+    "A [FAIL] line whose fix starts with an edit to sources.toml (a [[source]] block or path, a [convert] "
+    "line or a [governance] value) or policy.toml (a [policy] value), asks me to sign in, or to put back, "
+    "rename or sync a folder or file, or says it is mine (Rosetta to install, a native pandoc copy to "
+    "replace or remove, a docs-repo remote to remove or allow, a state file that is damaged, another "
+    "account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a "
+    "privacy setting, a folder above it or a read-only volume refuses) is mine too: show it to me and do not "
+    "make that edit or run its command. Otherwise, re-running the install.sh command its fix names is yours, "
+    "once, even when the fix goes on to name a [convert] edit for me (the bundled pandoc's), which stays "
+    "mine: if the same [FAIL] line comes back after it, show it to me, log it and go to step 3's report."
 )
 """Step 2's words, since v22, on whose a [FAIL] line's fix is (B13 round 13 O11, O30): v21 named only [warn]
 and WAITING ON YOU: lines as the person's, so a renamed folder's "fix path in [[source]]" read as the agent's
@@ -3114,13 +3112,17 @@ folder hides its files' modes, so its NEXT adds status, whose [FAIL] lines name 
 STEP3_STATE_CHMOD_IS_YOURS = (
     "A chmod 600 or chmod 700 that a [FAIL] line (state_dir, lock, heartbeat or governance) names as the fix"
     " of agentsync's own state folder or a file in it is yours here too, once each in this step, as in step"
-    " 2: run it as written, then the sync again. If the sync stops on a chmod you already ran, show me, log"
-    " it as a step 3 error and go to the report. A sudo or a chown stays mine."
+    " 2: run it as written, then the sync again. Log the sync that stopped as a step 3 error with its exit"
+    " code and the chmod you ran (unlike step 2's install.sh, no record of a sync is kept for the report). If"
+    " the sync stops on a chmod you already ran, show me, log it as a step 3 error and go to the report. A"
+    " sudo or a chown stays mine."
 )
 """Step 3's words, since v31, for the same chmod when a sync, then status, stops on it (B13 round 22 Z38):
 v30 named it only in step 2, which ends in "the same install.sh command again", so step 3 had neither the
 "once" bound nor what to run after it. "Once each in this step", so a chmod spent in step 2 does not use up
-step 3's."""
+step 3's. Since v32 (B13 round 23 A36) the sync that stopped is logged as a step 3 error: no record of a sync
+is kept for the report, which said "fully one command, 0 error" over it; the report reads that error as a
+turn (worked with help)."""
 
 LOCAL_WORK_TOLD = (
     "if the report's NEXT: line says bring-back.md does not carry the commits of some local-work branches,"

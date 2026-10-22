@@ -199,7 +199,7 @@ TURN_KINDS = ("question", "click", "approval")
 PROBLEM_KINDS = ("error", "deviation", "prompt")
 """The agent-side kinds: counted on the Summary's "agent friction" line, never in the outcome by themselves
 (an error changes the outcome only when it stopped the run: :func:`stopping_error`)."""
-PROMPT_VERSION = 31
+PROMPT_VERSION = 32
 """The setup prompt of this build (README "Set up on a new Mac: one prompt"; scripts/install.sh's
 SETUP_PROMPT_COMPAT is the same number, and both move with every change of the prompt's text). An attempt
 whose ``Prompt:`` line states no version is read with its step numbers. One that states another number says
@@ -310,7 +310,7 @@ own version (a v4 log is read as v5: its F<n> lines are legacy anyway). v6 and v
 constants. v8 moved no step (it names its version to the installer, and step 3 syncs again before the
 report while a note says so), and neither did v9 (a Mac that already syncs folders is not asked for them
 again), v10 (three sentences reworded), v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23, v24,
-v25, v26, v27, v28, v29, v30 or v31
+v25, v26, v27, v28, v29, v30, v31 or v32
 (wording only), so they have no entry: :func:`prompt_layout` reads them as v7."""
 
 
@@ -318,7 +318,7 @@ def prompt_layout(version: int | None) -> PromptLayout:
     """The layout of setup prompt ``version``, picked by its explicit number: the newest entry of
     :data:`PROMPT_LAYOUTS` at or below it (v5's for 5 and earlier), and the newest of all when the version
     is not stated. The prompt's version moves with every change of its text and a layout only when a step
-    moves, so v8 to v31, and every later version until one adds an entry, is read with v7's rules."""
+    moves, so v8 to v32, and every later version until one adds an entry, is read with v7's rules."""
     if version is None:
         return PROMPT_LAYOUTS[max(PROMPT_LAYOUTS)]
     return PROMPT_LAYOUTS[max((v for v in PROMPT_LAYOUTS if v <= version), default=min(PROMPT_LAYOUTS))]
@@ -2598,8 +2598,10 @@ def compute_outcome(
       1's failure, as it has no "stopped".
 
     Deviation, prompt and error lines are agent friction (the Summary counts them on their own line): they
-    never change the outcome by themselves, except an error that stopped the run. ``config_cause``: what the
-    last install run's failed config step met, read from its install.out block by the caller
+    never change the outcome by themselves, except an error that stopped the run, and an error of the report
+    step, a sync that stopped on its way (B13 round 23 A36), which makes it "worked with help".
+    ``config_cause``: what the last install run's failed config step met, read from its install.out block by
+    the caller
     (:func:`_outcome_cause`, no bracket in it), so a stop on the state folder says it and whose it is (B13
     round 22 Z6)."""
     installs = install_runs_only(runs)
@@ -2664,6 +2666,13 @@ def compute_outcome(
                     f"the folder question: step 1's list could not read the {_plural(unread, 'folder')} this "
                     "Mac already syncs"
                 )
+            # B13 round 23 A36: a sync of the report step that stopped (on a chmod the agent then ran, or a
+            # second "skipped: lock held") leaves no record the report reads, so the prompt has the agent log
+            # it as an error of that step; stopping_error never reads that step, so it was "fully one
+            # command" beside an Items line naming the error. It is a turn: worked with help, never failed
+            reported = [e for e in _run_events(attempt) if e.kind == "error" and e.step == layout.report_step]
+            if reported:
+                why.append(f"step {layout.report_step} logged {_plural(len(reported), 'error')}")
         sorted_fails = [(f, None) if isinstance(f, str) else f for f in doctor_fails]
         odd = [name for name, bucket in sorted_fails if bucket is None]
         known: dict[str, list[str]] = {}
@@ -4967,9 +4976,9 @@ config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no
 _PERSONS_KINDS_COPY = (
     "a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or "
     "[governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another "
-    "account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or "
-    "a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc "
-    "copy"
+    "account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a "
+    "privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, "
+    "Rosetta to install or a native pandoc copy"
 )
 """``doctor.PERSONS_KINDS``, for a report written while doctor does not import (a test keeps them equal)."""
 

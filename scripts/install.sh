@@ -171,10 +171,11 @@
 #      of time the fix is this same command again, then what to do if the same line comes back. When every
 #      [FAIL] that stops them is the person's (a folder or file to put back or sync, a [[source]] path or
 #      sentinel, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to
-#      remove or allow, a state file that is damaged, another account's or not a file, or a state file or
-#      folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a
-#      [convert] pandoc_path, Rosetta to install or a native pandoc copy), the NEXT says so and sends the agent on to the report (B13 round
-#      13 O11, O30; round 16 T5, T9; round 17 lane E; round 18 V53; round 22 Z65)
+#      remove or allow, a state file that is damaged, another account's or not a file, a state folder that
+#      is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a
+#      read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc
+#      copy), the NEXT says so and sends the agent on to the report (B13 round 13 O11, O30; round 16 T5,
+#      T9; round 17 lane E; round 18 V53; round 22 Z65; round 23 ruling 6)
 #   6. first-sync, whenever the config has a folder to sync (a [[source]] other than the inbox) and step 5 has
 #      no [FAIL] that stops it: agentsync sync --once --materialise-budget 0 (a non-zero exit fails the run;
 #      75, a cycle already running, skips): no downloads, so the files already on this Mac are converted now,
@@ -297,7 +298,7 @@
 # AGENTSYNC_PROGRESS_SECONDS (default 15), AGENTSYNC_LIST_TIMEOUT (default 90: seconds --list-folders waits
 # on one provider folder while macOS asks) and AGENTSYNC_LIST_TOTAL_SECONDS (default 100: its cap across all
 # providers, under a coding tool's 2-minute default command timeout) are for the stubbed tests.
-SETUP_PROMPT_COMPAT=31 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
+SETUP_PROMPT_COMPAT=32 # the README prompt's "setup prompt vN": bump both on any change to its text (see the header)
 set -euo pipefail
 
 # ------------------------------------------------------------------------------------------------ friction log
@@ -7722,7 +7723,7 @@ print(" && ".join(runs))
 ' "$CONFIG" "$b" 2>/dev/null | head -n 1 || true
 }
 STATE_CHMODS="agentsync's state folder or a file in it (the manifest, its -wal or -shm, the lock, the heartbeat, a governance file or another file there) has a mode that is wrong for it, one this account cannot open or one others can read (a mode, not damage; the [FAIL] lines above name it): the fix is the agent's: run"
-PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
+PERSONS_FAILS="the [FAIL] lines above are the person's to fix (each names its fix: a folder or file to put back or sync, a [[source]] path, a [[source]] block to put back, a [policy] or [governance] value, a docs-repo remote to remove or allow, a state file that is damaged, another account's or not a file, a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses, a sign-in, a [convert] pandoc_path, Rosetta to install or a native pandoc copy), not a step for the agent, so show them those lines and go on to the report; once fixed"
 # The pandoc status is about to check: [convert] pandoc_path, else the one the converters run, the native
 # arm64 copy when the operator installed one and the one bundled with the tool otherwise (the rule of
 # ops/doctor.py's pandoc check, B13 round 14 Q60), read by the tool step 2 installed. A tool older than

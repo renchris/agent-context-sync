@@ -4674,6 +4674,40 @@ def test_an_open_attempts_warning_names_the_command_that_ends_it_and_its_time_ta
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_a_step_3_sync_that_stopped_is_worked_with_help(fake_mac: dict[str, Path], tmp_path: Path) -> None:
+    """B13 round 23 A36 (rehearsal F, s3-h2): a step 3 sync stopped on a state file this account could not
+    open, the agent ran the chmod its [FAIL] line named and the next sync ended 0, and the report said "fully
+    one command, 0 error": no record of a sync is kept, and stopping_error never reads the report step. v32
+    has the agent log that sync as a step 3 error; such an error makes the outcome "worked with help", never
+    "failed" (the next sync ended 0), with its Items line and "1 error"."""
+    v6_install_log(fake_mac)
+    stopped = (
+        "2026-09-29T10:01:00Z | step 3 | error | agentsync sync exited 1: a state file this account could "
+        "not open; ran the chmod 600 its [FAIL] line named, the next sync ended 0 | -\n"
+    )
+    write_friction(
+        fake_mac,
+        V6_HAPPY.replace("Prompt: v6", "Prompt: v31").replace(
+            "2026-09-29T10:01:10Z", stopped + "2026-09-29T10:01:10Z", 1
+        ),
+    )
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; step 3 logged 1 error)"
+    ), summary
+    assert "- agent friction: 0 deviation, 0 prompt, 1 error (F" in summary, summary
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1]
+    assert "· step 3 · error · agentsync sync exited 1: a state file this account could not open" in items, (
+        items
+    )
+    write_friction(fake_mac, V6_HAPPY.replace("Prompt: v6", "Prompt: v31"))
+    _rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert section(text, "Summary").strip().startswith("- **outcome: fully one command**")
+
+
+@pytest.mark.usefixtures("clean_doctor")
 def test_v6_happy_path_is_fully_one_command(fake_mac: dict[str, Path], tmp_path: Path) -> None:
     v6_install_log(fake_mac)
     write_friction(fake_mac, V6_HAPPY)
@@ -5087,7 +5121,7 @@ V12_HAPPY = V11_HAPPY.replace("Prompt: v11", "Prompt: v12")
 
 def test_prompt_layout_is_picked_by_explicit_version() -> None:
     """KISS K16b: v5 and earlier read as v5, v6 as v6, v7 as v7. The version moves with every change of the
-    prompt's text and a layout only when a step moves, so v8 to v31 and every later version are read with
+    prompt's text and a layout only when a step moves, so v8 to v32 and every later version are read with
     the newest layout at or below them, as an attempt that states no version is."""
     versions = (
         0,
@@ -5119,13 +5153,14 @@ def test_prompt_layout_is_picked_by_explicit_version() -> None:
         29,
         30,
         31,
+        32,
         None,
         99,
     )
     read_as = [setup_report.prompt_layout(v).version for v in versions]
-    assert read_as == [5, 5, 5, 6] + [7] * 27
+    assert read_as == [5, 5, 5, 6] + [7] * 28
     assert (
-        setup_report.PROMPT_VERSION == 31 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
+        setup_report.PROMPT_VERSION == 32 and setup_report.PROMPT_VERSION not in setup_report.PROMPT_LAYOUTS
     )
     for version in (
         8,
@@ -5348,11 +5383,11 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
     that attempt reads it with v7's steps, fails it at step 1 by the installer's own error line, and its
     prompt line says the copy was older than the installer's. A copy newer than the installer reads the
     other way round. The installer's version and its reason come from that line, never from the number of
-    the build that writes the report: here the installer was v8 or v32, whatever this build is. Only the
+    the build that writes the report: here the installer was v8 or v33, whatever this build is. Only the
     installer's fixed words are shown."""
     what = "install.sh --log-start: the pasted setup prompt is {said} and this installer is for setup prompt"
     (fake_mac["setup"] / "install.log").unlink()  # the command stopped at --log-start: no install.sh run
-    assert setup_report.PROMPT_VERSION < 32
+    assert setup_report.PROMPT_VERSION < 33
     for header, installer, shown, why in (
         ("v7 or older", 8, f"v7 or older {OLDER_COPY}", "the pasted copy is not the current one"),
         ("v7", 8, f"v7 {OLDER_COPY}", "the pasted copy is not the current one"),
@@ -5374,8 +5409,8 @@ def test_an_attempt_a_stopped_copy_of_the_prompt_started_says_so_in_the_summary(
         ),
         (
             "v9",
-            32,
-            f"v9 (older than the installer's v32: the pasted copy was not the current README{CHANGED})",
+            33,
+            f"v9 (older than the installer's v33: the pasted copy was not the current README{CHANGED})",
             "the pasted copy is not the current one",
         ),
     ):
