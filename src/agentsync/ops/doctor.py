@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from agentsync import gitops, lints
+from agentsync import arm_local, gitops, lints, materialise
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
@@ -46,6 +46,7 @@ from agentsync.cycle import (
     vanished_sources,
 )
 from agentsync.errors import AgentSyncError, ConfigError, ConversionError, ManifestOpenError
+from agentsync.graph import auth as graph_auth
 from agentsync.it_request import org_of
 from agentsync.loop import BIN, INSTALL_SH, NO_NEXT_HINT_ENV, empty_cloud_folders_held
 from agentsync.manifest import LOST_MANIFEST, Manifest, manifest_lost
@@ -340,23 +341,17 @@ def _devtools_missing() -> bool:
 
 def _materialize_policy() -> int:
     """The process's materialise-dataless-files I/O policy (materialise.get_materialize_policy)."""
-    from agentsync import materialise  # noqa: PLC0415
-
     return materialise.get_materialize_policy()
 
 
 def _volume_uuid(path: Path) -> str:
     """Volume UUID of ``path`` (arm_local.volume_uuid)."""
-    from agentsync import arm_local  # noqa: PLC0415
-
     return arm_local.volume_uuid(path)
 
 
 def _auth_status(config: Config) -> _AuthProbe:
     """Cached sign-in state and token-cache backend (graph.auth; no network)."""
-    from agentsync.graph import auth  # noqa: PLC0415
-
-    provider = auth.MsalAuth(auth.settings_from_config(config))
+    provider = graph_auth.MsalAuth(graph_auth.settings_from_config(config))
     status = provider.status()
     return _AuthProbe(status.signed_in, status.username, status.cache_backend)
 
@@ -2052,8 +2047,6 @@ def _check_local_source(config: Config, src: SourceConfig, image: Path) -> list[
         # walk's own test, ``in_domain``: a missing provider folder counts as one): optional, so not a warn
         # to chase. agentsync is the subject: "a folder ... holds deletions" read as the folder holding them
         # (B13 round 5 F3), and an empty folder outside a domain holds nothing back (F50).
-        from agentsync import arm_local  # noqa: PLC0415 - as _volume_uuid
-
         provider = arm_local.cloud_provider_root(root)
         held = (
             "is empty or cannot be listed"

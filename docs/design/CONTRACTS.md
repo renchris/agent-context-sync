@@ -28383,6 +28383,8 @@ interactive sync over it exits 1. A dated line this round writes reads `Amended 
 "doctor must import even if gitops is broken", which was false: doctor imports lints and cycle, which import gitops
 at module level. The import is at the top now; `_git_path` still falls back from the resolver stub
 (`NotImplementedError`). No behavior changed, so no test: a test that doctor imports without gitops cannot pass.
+materialise, arm_local and graph.auth, imported lazily with no reason (lane E's seam from A67), are at the top too:
+cycle, which doctor imports, already loads each, and none imports doctor.
 
 **A94: doctor's fixes nest no bracket, its run-again, crash and permissions fixes included (`agentsync.ops.doctor`;
 amends §16.161 Z7).** By hand `_again_fix` read `~/.local/bin/agentsync status (run it again as it is)`, a bracket
