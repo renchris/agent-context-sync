@@ -10722,10 +10722,16 @@ def _first_sync_line(
 
     ``late``: the stand-alone runs after the end line of a copy the installer stopped
     (:func:`_stopped_split`): when one of them reached its first sync, :func:`_stopped_sync_line` says so
-    apart (B13 round 23 A19)."""
+    apart (B13 round 23 A19); else the line is the runs inside the attempt's alone, and
+    :func:`_late_no_sync` says what the runs after its end line did instead (review: a --list-folders run
+    or an install run that stopped at its config step after the end line read as the attempt's)."""
     late_synced = [run for run in install_runs_only(late) if run.step("first-sync") is not None]
     if late_synced:
         return _stopped_sync_line(r, [run for run in runs if run not in late], late, late_synced[-1])
+    if late:
+        return _late_no_sync(
+            _first_sync_line(r, [run for run in runs if run not in late], scoped=scoped), late
+        )
     pool = [run for run in (runs or r.install_runs) if run.step("first-sync") is not None]
     borrowed = scoped and not runs and bool(pool)
     missing = not r.install_log.is_file()
@@ -10839,6 +10845,30 @@ def _first_sync_line(
         counts = r.facts.first_sync
         source = out_source
     return _sync_line_end(r, label, parts, counts, source, borrowed=borrowed, run=pool[-1] if pool else None)
+
+
+def _late_no_sync(line: str, late: Sequence[InstallRun]) -> str:
+    """``line``, the sync line of the runs inside a stopped copy's attempt, with what its runs after the end
+    line did instead of a first sync added to its first clause, inside that clause's install.log bracket
+    (B13 round 23 A19, review): the install run that stopped at a step, or the ``--list-folders`` run, which
+    runs none."""
+    installs = install_runs_only(late)
+    if installs:
+        failing = installs[-1].failed_step()
+        which = "the install run" if len(installs) == 1 else "the last install run"
+        did = f"stopped at its {failing[0]} step" if failing else "logged no first-sync step"
+        said = f"{which} after its end line {did}"
+    else:
+        which = "the --list-folders run" if len(late) == 1 else f"the {len(late)} --list-folders runs"
+        said = f"{which} after its end line ran no first sync"
+    head, sep, rest = line.partition(" · ")
+    if head.endswith(" (install.log)"):
+        head = head.removesuffix(" (install.log)") + f"; {said} (install.log)"
+    elif head.endswith(")"):
+        head = head[:-1] + f"; {said})"
+    else:
+        head += f"; {said} (install.log)"
+    return head + sep + rest
 
 
 def _stopped_sync_line(

@@ -16581,6 +16581,34 @@ def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_e
     assert "(this attempt's runs only; the Installer section also counts the 1 earlier run" in summary
     assert _line(summary, "- sync: ").startswith("- sync: done in 34s (install.log) · converted 3"), summary
     assert "(what the agent saw)</summary>" in section(text, "Installer")
+    # review: a run after the end line that reached no first sync is not the attempt's either, a list or an
+    # install run that stopped at its config step
+    listed = (
+        "2026-10-20T10:05:00Z run=20261020T100500Z-88 start install.sh compat=28 commit=0123456789ab "
+        "kind=checkout source=- args=--list-folders\n"
+        "2026-10-20T10:05:00Z run=20261020T100500Z-88 step=list-folders seconds=4 rc=0 result=done note=-\n"
+        "2026-10-20T10:05:04Z run=20261020T100500Z-88 end rc=0 seconds=4\n"
+    )
+    stuck = install_run("2026-10-20T10:05:00Z", 78).replace(
+        "step=config seconds=1 rc=0 result=done note=add-source", "step=config seconds=1 rc=78 result=failed"
+    )
+    stuck = "".join(
+        ln + "\n" for ln in stuck.splitlines() if "step=status" not in ln and "first-sync" not in ln
+    )
+    write_friction(fake_mac, stopped)
+    for run, said in (
+        (listed, "the --list-folders run after its end line ran no first sync"),
+        (stuck, "the install run after its end line stopped at its config step"),
+    ):
+        (fake_mac["setup"] / "install.log").write_text(earlier + run, encoding="utf-8")
+        sync = _line(summary_of(fake_mac)[1], "- sync: ")
+        assert sync.startswith(
+            "- sync: done in 34s (install.log: the install run of 2026-10-19T09:00:00Z, before this attempt; "
+            f"this attempt ran none; {said}) · converted 3"
+        ), sync
+        (fake_mac["setup"] / "install.log").write_text(run, encoding="utf-8")  # no earlier run to borrow
+        sync = _line(summary_of(fake_mac)[1], "- first sync: ")
+        assert sync == f"- first sync: no install.sh run during this attempt; {said} (install.log)", sync
 
 
 def test_a_run_after_an_ordinary_attempts_end_line_is_still_judged_with_it(tmp_path: Path) -> None:
