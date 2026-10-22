@@ -27991,7 +27991,19 @@ Reserved for round 23 lane B of B13.
 
 ### 16.168 Round 23: the upgrade's settled count and doctor's convert imports (2026-10-22, wave B13 round 23 lane E)
 
-Reserved for round 23 lane E of B13.
+Round 23's lane E items (`docs/plans/bring-back-ocr.md`, "B13 round 23"; specs `round23/items/A<n>.md`, the
+verifier's corrected fix built). A dated line this round writes reads `Amended 2026-10-22, §16.168 A<n>`.
+
+**The upgrade's settled count follows a row a safe-save re-keyed (A62; `agentsync.cycle`).** The move records
+each row under its stable id before any source is read; a safe-save of the file in the same sync (a temp file
+renamed over it, so a new inode) re-keys the row, and `_legacy_outcomes` read the old id as gone, which it counts
+as settled: the note said `is settled ... not tried again` of a file that sync made current, or of one that failed
+again and is tried again under its new id. A row the old id no longer names is read under the id
+`Manifest.resolve_alias` gives, from the alias `Manifest.rekey` records in the same transaction, so the existing
+three-way split classifies it; a manifest with no alias reads as before. Not the finder's "record the old-to-new
+pairs" in `_sync_source`: the alias table already holds them. Test:
+`test_cycle.py::test_the_upgrades_retry_note_follows_a_row_a_safe_save_re_keyed_in_the_same_sync` (with the
+converter working, `now current` and `legacy_cleared` 1; still failing, the retry words; never `settled`).
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 

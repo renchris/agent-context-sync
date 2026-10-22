@@ -4319,6 +4319,63 @@ def test_the_upgrades_retry_note_says_a_conversion_it_made_current_is_current(
     assert row is not None and row.state is RowState.LIVE, row
 
 
+@pytest.mark.parametrize("works", [True, False])
+def test_the_upgrades_retry_note_follows_a_row_a_safe_save_re_keyed_in_the_same_sync(
+    sample_config: Config,
+    local_source_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    works: bool,
+) -> None:
+    """B13 round 23 A62: the move records each row under its stable id before any source is read, and a
+    safe-save (a temp file renamed over the file, so a new inode) re-keys the row in the same sync. Its old id
+    then read as gone, which counted it settled: "is settled ... not tried again" over a file that sync made
+    current, or one that failed again and is tried again under its new id. The count follows the rekey's
+    alias: current when the converter works, the retry words when it still fails."""
+    from agentsync.convert.markdown import MarkdownConverter  # noqa: PLC0415
+
+    real = MarkdownConverter.convert
+    failing = [True]
+
+    def convert(self: Any, src: Path, *, name: str) -> Any:
+        if name.startswith("Contoso flaky") and failing[0]:
+            raise RuntimeError("pandoc timed out after 60 s")
+        return real(self, src, name=name)
+
+    monkeypatch.setattr(MarkdownConverter, "convert", convert)
+    cfg = str(sample_config.config_path)
+    rel = "projects/Contoso flaky.md"
+    path = local_source_dir / rel
+    path.write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    cli.main(["sync", "--config", cfg])
+    with Manifest(sample_config.state_paths.db) as m:
+        m.set_meta(cycle_mod._RETRY_META + SID, "{}")
+        m._db.execute("DELETE FROM meta WHERE key = ?", (cycle_mod._RETRY_LEGACY_META,))
+        before = m.item_by_path(SID, rel)
+    _settle_as_an_older_build(sample_config, rel)
+    saved = path.with_name(".Contoso flaky.md.sb-save")
+    saved.write_text("# Notes\n\nA page converted under load.\n", encoding="utf-8")
+    saved.replace(path)  # a safe-save: same name, a new inode
+    failing[0] = not works
+    capsys.readouterr()
+    cli.main(["sync", "--config", cfg])
+    out = capsys.readouterr().out
+    with Manifest(sample_config.state_paths.db) as m:
+        row = m.item_by_path(SID, rel)
+    assert before is not None and row is not None and row.stable_id != before.stable_id, "re-keyed"
+    notes = [ln for ln in out.splitlines() if "an older build gave up on " in ln]
+    assert len(notes) == 1, out
+    assert "settled" not in notes[0], notes
+    if works:
+        assert notes[0].endswith("was tried again in this sync and is now current"), notes
+        assert row.state is RowState.LIVE, row
+        assert _run_record(sample_config)["legacy_cleared"] == 1
+    else:
+        assert notes[0].endswith("may show again until those tries are used"), notes
+        assert (row.state_reason or "").startswith(convert_mod.CONVERSION_FAILED), row
+    assert "legacy_settled" not in _run_record(sample_config)
+
+
 @pytest.mark.parametrize("outcome", ["unreadable", "refused"])
 def test_the_upgrades_retry_note_says_a_conversion_it_settled_is_not_tried_again(
     sample_config: Config,

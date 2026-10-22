@@ -2825,9 +2825,16 @@ class _Cycle:
         failed again or were not read (--source, paused, out of time); (0, 0) when the manifest cannot say
         (B13 round 21 Y28: the note told of an error that "may show again" over a file the same sync had
         converted; round 22 Z55: and over a file it had settled as unreadable or refused, never tried
-        again)."""
+        again). A row a safe-save re-keyed in this run is read under its new id, through the alias the rekey
+        recorded: its old id reads as gone, which counted a file converted, or still to retry, as settled (B13
+        round 23 A62)."""
         try:
-            rows = [self.manifest.get_item(sid, stable) for sid, stable in self._legacy_moved]
+            rows = []
+            for sid, stable in self._legacy_moved:
+                row = self.manifest.get_item(sid, stable)
+                if row is None and (now := self.manifest.resolve_alias(sid, stable)) is not None:
+                    row = self.manifest.get_item(sid, now)
+                rows.append(row)
         except Exception:  # the report never fails over a count
             return 0, 0
         current = settled = 0
