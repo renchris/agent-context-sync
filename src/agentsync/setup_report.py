@@ -9930,16 +9930,23 @@ def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
     """``"file"`` or ``"folder"`` when the report's own read finds a state file this account cannot open,
     else ``""`` (B13 round 20 X28): ``read_error`` (the Doctor hook's read of the loop's state, or the
     evidence read's) is a ``ManifestOpenError`` or sqlite's CANTOPEN, PERM or READONLY (:func:`_cannot_open`,
-    doctor's ``CANNOT_OPEN_CODES``), or :func:`_refused_state_files` finds one; ``"folder"`` when its folder
+    doctor's ``CANNOT_OPEN_CODES``), or ``doctor.refused_state_files`` finds one; ``"folder"`` when its folder
     cannot be searched, or a folder above it refuses a search (B13 round 22 Z40: :func:`_state_folder_shut`).
     Keyed on the file, never on doctor's words. A failed test says nothing: ``""``."""
     from agentsync.errors import ManifestOpenError  # noqa: PLC0415 - lazy
 
     try:
+        from agentsync.ops import doctor  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
         db = expand(c.state_paths.db)
         if _state_folder_shut(db):  # B13 round 22 Z40, Z61, Z74: a folder above it that refuses a search too
             return "folder"
-        if isinstance(read_error, ManifestOpenError) or _cannot_open(read_error) or _refused_state_files(db):
+        # B13 round 23 A44: doctor's one list (a regular file only), never a twin of the report's own
+        if (
+            isinstance(read_error, ManifestOpenError)
+            or _cannot_open(read_error)
+            or doctor.refused_state_files(c)
+        ):
             return "file"
     except Exception:  # a test that fails says nothing about the file
         return ""
@@ -9986,14 +9993,20 @@ def _refused_files(c: Config) -> dict[str, str]:
     return out
 
 
-def _refused_state_files(db: Path) -> list[Path]:
-    """The manifest, its -wal and its -shm (doctor's files), each that is another account's or fails
-    ``os.access`` for reading and writing: doctor's own test for state_dir.files. A failed stat raises."""
-    out: list[Path] = []
-    for name in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
-        if name.exists() and (name.stat().st_uid != os.getuid() or not os.access(name, os.R_OK | os.W_OK)):
-            out.append(name)
-    return out
+def _sidecar_not_a_file(c: Config) -> bool:
+    """Whether something other than a file (a folder, a socket, a fifo; a symlink counts as one) sits where
+    the manifest's -wal or -shm belongs, by the report's own ``lstat``, doctor's ``_not_a_file`` test: doctor
+    FAILs state_dir.files for it with the person's move aside (B13 round 23 A44: a folder at -shm at 0500
+    read as the agent's chmod, at 0700 as unexpected). A stat that fails says no."""
+    db = expand(c.state_paths.db)
+    for p in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        try:
+            mode = p.lstat().st_mode
+        except OSError:
+            continue
+        if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
+            return True
+    return False
 
 
 def _root_foreign(c: Config) -> bool:
@@ -10080,7 +10093,7 @@ def _shut_whose(c: Config, shut: str) -> str:
         fixes = [doctor.state_folder_fix(root)] if shut == "folder" else []
         refused: list[Path] = []
         with contextlib.suppress(OSError):  # a folder that cannot be searched has no file to stat
-            refused = _refused_state_files(db)
+            refused = doctor.refused_state_files(c)  # B13 round 23 A44: doctor's one list
         # a file another account owns in a folder this one shut by its mode is the person's still (review)
         fixes += [doctor.state_path_fix(root, p) for p in refused or ([] if fixes else [db])]
         return _PERSONS if any(doctor.is_persons_fix(f) for f in fixes) else _AGENTS
@@ -10133,7 +10146,15 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_notfolder: list[str] = []
     unreadable = not notfolder and r.config is not None and _state_unreadable(r.config, read_error)
     notfile = not notfolder and not unreadable and r.config is not None and _state_not_file(r.config)
-    shut = "" if notfolder or unreadable or notfile or r.config is None else _state_shut(r.config, read_error)
+    # B13 round 23 A44: a folder (or a fifo) where the -wal or -shm belongs is the person's, as doctor says
+    sidecar = (
+        not (notfolder or unreadable or notfile) and r.config is not None and _sidecar_not_a_file(r.config)
+    )
+    shut = (
+        ""
+        if notfolder or unreadable or notfile or sidecar or r.config is None
+        else _state_shut(r.config, read_error)
+    )
     shut_words = _STATE_SHUT_FOLDER_WORDS if shut == "folder" else _STATE_SHUT_WORDS
     whose = _shut_whose(r.config, shut) if shut and r.config is not None else _PERSONS
     from_state: list[str] = []
@@ -10179,6 +10200,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         # with a readable state a Loop hook that fails still leaves that warn unexpected
         # B13 round 22 Z12: a folder where the file belongs is the person's as well (doctor's own fix)
         if (unreadable or notfile) and tag == "FAIL" and name == "state_dir.manifest":
+            from_state.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _STATE_UNREAD_WORDS))
+            continue
+        if sidecar and tag == "FAIL" and name == "state_dir.files":  # B13 round 23 A44: doctor's move aside
             from_state.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_UNREAD_WORDS))
             continue

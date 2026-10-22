@@ -12845,6 +12845,48 @@ def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
     assert "state_dir" not in line.rsplit(" · unexpected ", 1)[1], line
 
 
+def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A44: the report's own refused-files list (a twin of doctor's) counted a folder at the
+    manifest's -shm as a shut state file, so at mode 0500 the Doctor line called doctor's move aside "the
+    agent's" chmod 700 and at 0700 "unexpected". The report reads doctor's one list, and a folder at the -wal
+    or the -shm is the person's at any mode; a regular -shm this account owns at 0000 is still the agent's."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    db = expand(load_config(cfg).state_paths.db)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    for suffix in ("-wal", "-shm"):
+        for mode in (0o500, 0o700):
+            there = db.with_name(db.name + suffix)
+            there.mkdir(mode=mode)
+            try:
+                _rc, text, _ = report(tmp_path, cfg)
+            finally:
+                there.rmdir()
+            line = _line(section(text, "Summary"), "- doctor: ")
+            assert "state_dir.files FAIL (the person's; see Doctor)" in line, (suffix, mode, line)
+            assert "the agent's" not in line and line.endswith(" · unexpected 0"), (suffix, mode, line)
+            assert setup_report._STATE_SHUT_WORDS not in line, (suffix, mode, line)
+    shm = db.with_name(db.name + "-shm")
+    shm.write_bytes(b"")
+    shm.chmod(0)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        shm.chmod(0o600)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "state_dir.files FAIL (the agent's; see Doctor)" in line, line
+
+
 @pytest.mark.parametrize("case", ["none", "both", "shell only", "version fails"])
 def test_environment_says_what_the_secret_scan_can_use(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch, case: str
