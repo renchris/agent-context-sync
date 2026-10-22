@@ -1314,7 +1314,10 @@ def test_the_clis_lock_wait_says_plain_lines_and_marks_a_wait_install_sh_did_not
     for ln in said:
         holder = ln.split("running (", 1)[1].split(")", 1)[0]
         assert "(" not in holder and "stage" not in holder and "last beat" not in holder, ln
-        assert re.fullmatch(r"a sync, pass poll, pid \d+(, since \S+Z)?, active \d+s ago", holder), ln
+        # ``active`` needs the holder's sidecar (``lock._wait_words``), and release unlinks it before it
+        # empties the body, so a line read in between says only ``since`` (CI 39809607845, a slow runner)
+        assert re.fullmatch(r"a sync, pass poll, pid \d+(, since \S+Z)?(, active \d+s ago)?", holder), ln
+        assert "since" in holder or "active" in holder, ln
     if env == "plain":
         assert len(said) >= 2 and all(ln.endswith("s of at most 600s)") for ln in said), err
         assert all(ln.startswith("another sync is running (a sync, pass poll, pid ") for ln in said), err
