@@ -3085,6 +3085,52 @@ def test_agent_friction_never_changes_the_outcome_by_itself(fake_mac: dict[str, 
     ]
 
 
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 23 A9 (the lead's ruling): a foreground sync at step 3 that exited 1 on a state file this
+    account could not open, then ended 0 after the agent's chmod, left no trace: "fully one command" with
+    Items none, while the same chmod at step 2 gives "worked with help". The sync's sync-stops.log line (lane
+    B's writer) inside the attempt, paired with a later sync the manifest records as ok, is an Items line and
+    a reason; one after the attempt's end line, or one no sync ended 0 after, changes no outcome;
+    install.log's runs are unchanged by the file."""
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0  # the later sync that ended 0
+    write_install_log(fake_mac)
+    write_friction(fake_mac)
+    stops = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    stops.write_text(
+        "not a stop line\n2026-09-29T10:00:50Z sync-stop file=lock rc=1 owner=agent\n", encoding="utf-8"
+    )
+    assert setup_report.read_install_runs(fake_mac["setup"] / "install.log") == runs
+    _text, summary = summary_of(fake_mac)
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 sync at step 3 exited 1 on "
+        "agentsync's lock file; it ended 0 after the agent's chmod)"
+    ), summary
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1]
+    assert (
+        "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; "
+        "it ended 0 after the agent's chmod" in items
+    ), items
+    stops.write_text("2026-09-29T10:02:00Z sync-stop file=lock rc=1 owner=agent\n", encoding="utf-8")
+    assert summary_of(fake_mac)[1].strip().startswith("- **outcome: fully one command**"), (
+        "after the end line"
+    )
+    conn = sqlite3.connect(expand(load_config(fake_mac["config"]).state_paths.db))
+    try:
+        conn.execute("UPDATE runs SET status = 'failed'")
+        conn.commit()
+    finally:
+        conn.close()
+    stops.write_text("2026-09-29T10:00:50Z sync-stop file=manifest rc=1 owner=person\n", encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    assert summary.strip().startswith("- **outcome: fully one command**"), "no sync ended 0 after it"
+    assert "no sync ended 0 after it by this report (the person's fix)" in summary, summary
+
+
 def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path]) -> None:
     write_install_log(fake_mac)
     write_friction(

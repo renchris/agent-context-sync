@@ -2609,6 +2609,78 @@ def retried_runs(attempt: Attempt | None, runs: Sequence[InstallRun]) -> list[In
     return [run for run in installs[:first_ok] if run.rc is not None and run.rc not in STOPPED_EXITS]
 
 
+_SYNC_STOPS_NAME = "sync-stops.log"
+"""The file beside install.log where a foreground ``agentsync sync`` (no ``--mode``, NEXT hints on) appends
+one line when it exits 1 on a state file this account cannot open (``cli.SYNC_STOPS_LOG``, lane B's half of
+B13 round 23 A9): ``<UTC time> sync-stop file=<role> rc=1 owner=<agent|person>``, with no path in it. No
+``run=`` word, so no install.log reader of any build takes it for an install run."""
+_SYNC_STOP_RE = re.compile(
+    r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)$"
+)
+_SYNC_STOP_FILES = {
+    "manifest": "agentsync's state file",
+    "manifest-wal": "the state file's -wal",
+    "manifest-shm": "the state file's -shm",
+    "lock": "agentsync's lock file",
+    "heartbeat": "agentsync's heartbeat file",
+    "holds": "agentsync's holds file",
+    "governance": "a governance file in the state folder",
+    "state-folder": "agentsync's state folder",
+}
+"""The words for each ``file=`` role of :data:`_SYNC_STOPS_NAME`'s lines; an unknown role reads as a state
+file."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _SyncStop:
+    """One step-3 sync stop of :data:`_SYNC_STOPS_NAME` inside an attempt (B13 round 23 A9): when, on which
+    file, whose fix ``doctor.state_path_fix`` gave (``agent``: this account's chmod), and when the first later
+    sync that ended 0 started (the manifest's ``runs`` table, ``status = 'ok'``), None when none did."""
+
+    at: datetime
+    file: str
+    owner: str
+    ended_ok: datetime | None
+
+    @property
+    def what(self) -> str:
+        return _SYNC_STOP_FILES.get(self.file, "a state file")
+
+
+def _read_sync_stops(
+    log: Path, lo: datetime, hi: datetime | None, ok_starts: Sequence[datetime] = ()
+) -> list[_SyncStop]:
+    """The :data:`_SYNC_STOPS_NAME` lines beside ``log`` (install.log) whose time is at or after ``lo`` (the
+    attempt's begin) and before ``hi`` (its end line, or the next attempt's begin), each paired with the first
+    of ``ok_starts`` after it (B13 round 23 A9). A line of any other shape, a file that cannot be read and a
+    stop before or after the window are skipped: a daily sync's stop after the setup never changes it."""
+    try:
+        text = (log.parent / _SYNC_STOPS_NAME).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    out: list[_SyncStop] = []
+    for line in text.splitlines()[-200:]:
+        m = _SYNC_STOP_RE.match(line.strip())
+        at = parse_time(m.group("at")) if m is not None else None
+        if m is None or at is None or at < lo or (hi is not None and at >= hi) or m.group("rc") == "0":
+            continue
+        ended = min((t for t in ok_starts if t > at), default=None)
+        out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended))
+    return out
+
+
+def _sync_stop_reason(stops: Sequence[_SyncStop]) -> str | None:
+    """The outcome's reason for the step-3 sync stops whose later sync ended 0 (B13 round 23 A9, the lead's
+    ruling: such a stop, the agent's chmod or the person's fix, is a turn the one install command did not
+    cover, as a retried install run is), or None."""
+    fixed = [s for s in stops if s.ended_ok is not None]
+    if not fixed:
+        return None
+    whats = ", ".join(dict.fromkeys(s.what for s in fixed))
+    who = "the agent's chmod" if all(s.owner == "agent" for s in fixed) else "a fix"
+    return f"{_plural(len(fixed), 'sync')} at step 3 exited 1 on {whats}; it ended 0 after {who}"
+
+
 _WAIT_OK_KINDS = ("question", "click", "approval", "prompt")
 """The kinds a step 1 that stopped for the folder answer may also log (B13 round 7 H40): the prompt asks the
 agent to log an approval its tool asked for and a go-ahead as a question, and a ``prompt`` line is feedback.
@@ -2621,6 +2693,7 @@ def compute_outcome(
     *,
     doctor_fails: Sequence[str | tuple[str, str | None]] = (),
     config_cause: str | None = None,
+    sync_stops: Sequence[_SyncStop] = (),
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -2647,7 +2720,8 @@ def compute_outcome(
     ``config_cause``: what the last install run's failed config step met, read from its install.out block by
     the caller
     (:func:`_outcome_cause`, no bracket in it), so a stop on the state folder says it and whose it is (B13
-    round 22 Z6)."""
+    round 22 Z6). ``sync_stops``: the attempt's step-3 sync stops (:func:`_read_sync_stops`); one a later sync
+    ended 0 after makes it "worked with help" (B13 round 23 A9, the lead's ruling)."""
     installs = install_runs_only(runs)
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
@@ -2687,6 +2761,9 @@ def compute_outcome(
             if retried:
                 exits = ", ".join(dict.fromkeys(str(run.rc) for run in retried))
                 why.append(f"{_plural(len(retried), 'earlier install run')} of this attempt exited {exits}")
+            stopped_sync = _sync_stop_reason(sync_stops)
+            if stopped_sync is not None:  # B13 round 23 A9
+                why.append(stopped_sync)
             if layout.logs_steps and not any(
                 e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
             ):
@@ -9257,6 +9334,49 @@ def _doctor_fails(r: _Run, runs: Sequence[InstallRun]) -> list[tuple[str, str | 
     return _sort_doctor(r, runs).fails
 
 
+def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
+    """Attempt ``index``'s step-3 sync stops (:func:`_read_sync_stops`): from its begin to its end line, else
+    to the next attempt's begin, each paired with the first later sync the manifest's ``runs`` table records
+    as ended ``ok`` (B13 round 23 A9). The table is read only when a stop is in the window; a manifest that
+    cannot be read pairs none. Empty with no friction log, no attempt time or no config."""
+    fr = r.friction
+    if fr is None or not 0 <= index < len(fr.attempts) or r.config is None:
+        return []
+    att = fr.attempts[index]
+    lo = att.begin
+    if lo is None:
+        return []
+    nxt = fr.attempts[index + 1].begin if index + 1 < len(fr.attempts) else None
+    hi = _attempt_end(att) or nxt
+    stops = _read_sync_stops(r.install_log, lo, hi)
+    if not stops:
+        return []
+    starts: list[datetime] = []
+    with contextlib.suppress(sqlite3.Error, OSError):
+        conn = _open_manifest_ro(expand(r.config.state_paths.db), 0.5)
+        if conn is not None:
+            try:
+                rows = conn.execute(
+                    "SELECT started_at FROM runs WHERE status = 'ok' ORDER BY run_id"
+                ).fetchall()
+            finally:
+                conn.close()
+            starts = [t for (raw,) in rows if (t := parse_time(str(raw or ""))) is not None]
+    return _read_sync_stops(r.install_log, lo, hi, starts)
+
+
+def _sync_stop_line(stop: _SyncStop) -> str:
+    """The Items line of one step-3 sync stop (B13 round 23 A9): the stop, whose fix it was, and whether a
+    later sync ended 0."""
+    whose = "the agent's chmod" if stop.owner == "agent" else "the person's fix"
+    then = (
+        f"it ended 0 after {whose}"
+        if stop.ended_ok is not None
+        else f"no sync ended 0 after it by this report ({whose})"
+    )
+    return f"- agentsync sync · step 3 · exited 1 on {stop.what}, which this account could not open; {then}"
+
+
 def _attempt_outcome(r: _Run, index: int) -> Outcome:
     """Attempt ``index``'s outcome; the latest attempt's also counts this Mac's doctor FAILs (doctor shows
     the state now, which is the latest attempt's)."""
@@ -9269,6 +9389,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         runs,
         doctor_fails=_doctor_fails(r, runs) if latest else (),
         config_cause=_outcome_cause(r, runs),
+        sync_stops=_step3_stops(r, index),
     )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
@@ -11651,8 +11772,9 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     fr = r.friction
     att = fr.latest if fr is not None else None
     runs = _latest_runs(r)
+    stops = _step3_stops(r, len(fr.attempts) - 1) if fr is not None else []  # B13 round 23 A9
     outcome = compute_outcome(
-        att, runs, doctor_fails=_doctor_fails(r, runs), config_cause=_outcome_cause(r, runs)
+        att, runs, doctor_fails=_doctor_fails(r, runs), config_cause=_outcome_cause(r, runs), sync_stops=stops
     )
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type
@@ -11962,7 +12084,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             f"- install.sh · step {outcome.step} · the install stopped: {'; '.join(outcome.why)} "
             "(not logged: the agent logged no line for this stop)"
         )
-    if att is not None and (items or retried or unread or signed_out or install_stop):
+    if att is not None and (items or retried or unread or signed_out or install_stop or stops):
         if signed_out:
             out.append(signed_out)
         if install_stop:
@@ -11983,6 +12105,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"- install.sh · {_plural(len(retried) - INSTALL_RUNS_SHOWN, 'more such run')} (see "
                 "Installer)"
             )
+        out += [_sync_stop_line(stop) for stop in stops]  # B13 round 23 A9
         out += [_item_line(r, att, e) for e in items]
     else:
         out.append("- none" + ("" if att is not None else " (no friction log)"))
