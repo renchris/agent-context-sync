@@ -11133,11 +11133,12 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
             persons = False
         if elsewhere or fix.startswith("the person runs sudo chown"):
             return " on agentsync's state file, which another account owns", "after the file was given back"
-        # B13 round 22 Z6: doctor's _parent_fix and the folder's _search_fix, each the person's
+        # B13 round 22 Z6: doctor's _parent_fix and the folder's _search_fix, each the person's; "behind", as
+        # "which ... refuses this account a search" left "which" no place (B13 round 23 A4, A16)
         if fix.startswith("the person gives this account search access to "):
             return (
-                " on agentsync's state folder, which a folder above it refuses this account a search: the "
-                "person's to fix",
+                " on agentsync's state folder, behind a folder above it that refuses this account a search: "
+                "the person's to fix",
                 "after the folder above it was opened to this account",
             )
         if fix.startswith("the person gives this account read, write and search access to the folder "):

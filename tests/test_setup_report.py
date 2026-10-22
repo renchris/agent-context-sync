@@ -8812,7 +8812,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             f"the person gives this account search access to ~/'Library/Application Support', a folder above "
             f"{folder} that refuses it one, then run again",
             "agentsync's state folder",
-            "which a folder above it refuses this account a search: the person's to fix",
+            "behind a folder above it that refuses this account a search: the person's to fix",
             "the folder above it was opened to this account",
         ),
         (
@@ -8841,7 +8841,7 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         f"{folder} that refuses it one, then run again"
     )
     for fix, words in (
-        (above, "which a folder above it refuses this account a search: the person's to fix"),
+        (above, "behind a folder above it that refuses this account a search: the person's to fix"),
         (f"chmod 700 {folder}", "which this account could not open, by its mode, not damage"),
     ):
         out.write_text(
