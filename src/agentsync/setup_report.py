@@ -5832,12 +5832,14 @@ def _cut_off_words(r: _Run) -> str:
     every branch: install.sh keys on it), and what a second cut-off when idle means: the check is slow or
     hung, which a busy Mac's advice does not clear.
 
-    B13 round 22 Z18: the hook reads the loop's state before any check group starts, so a cut-off with no
-    check named came in that read: "a check" is no word for it, and when the Status section found the state
-    file held by a sync (:data:`_BUSY_WHY`) the sync is named first and the advice is to write the report
-    again once it ends. A check that was named keeps its words, with the held file only for a group that
-    reads the state folder (``doctor._STATE_FOLDER_GROUPS``). Z33: the lead-in is read from the measured
-    load and core count, never left as an "if", and the advice ends on a step, not a pointer."""
+    B13 round 22 Z18: the hook reads the loop's state before any check group starts, so a cut-off where the
+    hook named no group yet (its None, ``doctor_cut_off_reading``) came in that read; its "" (every check ran)
+    is not that read and keeps the "a check" words (review, da077f3b; B13 round 23 A73). For the read, "a
+    check" is no word, and when the Status section found the state file held by a sync (:data:`_BUSY_WHY`)
+    the sync is named first and the advice is to write the report again once it ends. A check that was
+    named keeps its words, with the held file only for a group that reads the state folder
+    (``doctor._STATE_FOLDER_GROUPS``). Z33: the lead-in is read from the measured load and core count, never
+    left as an "if", and the advice ends on a step, not a pointer."""
     facts: list[str] = []
     at = r.facts.doctor_cut_off_at
     busy = bool(r.facts.evidence_why.get(_BUSY_WHY))

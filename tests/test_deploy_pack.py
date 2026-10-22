@@ -6181,7 +6181,9 @@ def test_the_guides_say_a_git_remotes_host_is_redacted_and_kept() -> None:
     ) in page
     [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<email-N>`, `<guid-N>`")]
     assert (
-        'the host of each git remote\'s URL (`[remote "<name>"] url`, from the same git config files and, '
+        "the host of each git remote's URL (`[remote \"<name>\"] url`, and, since 2026-10-21, git's older"
+        ' dotted `[remote.<name>]` such as `[remote.origin]` or `[remote.contoso "docs"]`, in both reports'
+        " (B13 round 22 Z76, CONTRACTS §16.158 and §16.159); from the same git config files and, "
         "since 2026-10-19, the docs repo's own config, read last; B13 round 16 T88, round 17 U93), and, "
         "since 2026-10-19, that URL's path when a word in it is not only one of those generic words, as a "
         "rewrite's (U15): a `://` URL other than `file://`, or git's `[user@]host:path` form, whose host "
@@ -7945,7 +7947,10 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     upgrade had no word in the guide, whose ordinary retry reads as ruling it out. The label is read from
     the report. B13 round 21 Y41, Y52, Y58, Y74 (one defect): the row gave the first try as the upgrade's
     run and the second as the next, which round 20 X53 made false for a source that run does not read; it
-    quotes the report's bullet now, read from the report."""
+    quotes the report's bullet now, read from the report. B13 round 23 A77: since round 22 Z35 and Z55 the
+    note names per run the files that run converted and those it settled with no try left, and gives the
+    retry words only when a shown run has files left to retry; the row said every such file could show its
+    old error. It names both, read from the report."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -7967,8 +7972,101 @@ def test_the_repeat_conversions_row_names_the_upgrade_retry_note() -> None:
     )
     assert "makes its first try in a later run of its own" in row
     assert "the first in that run" not in row and "that run or the next" not in row
+    # the files that run converted or settled show no old error, and the retry words need a file left
+    tried = inspect.getsource(setup_report._repeat_part)
+    done = re.search(r'\(\(cleared, "(converted)"\), \(settled, "(settled with no try left)"\)\)', tried)
+    assert done is not None and 'f"{n} that run {verb}"' in tried
+    assert "if any(rest for _words, rest in said)" in tried
+    assert (
+        f"the files that run converted (`which that run {done.group(1)}`) and those it settled with no try"
+        f" left (an unreadable stub, a refusal or a removal: `that run {done.group(2)}`); neither can show an"
+        " old error, and the retry words follow only when some shown run still has files left to retry"
+        " (CONTRACTS §16.158, Z35; §16.162, Z55)."
+    ) in row
+    assert row.index("makes its first try in a later run of its own") < row.index(
+        f"`that run {done.group(2)}`"
+    )
     # the note sits beside the other notes, before the Quarantine sentence
     assert row.index(f"`{note.group(1)}:`") < row.index("Quarantine by reason counts")
+
+
+def test_the_guides_step_2_next_quotes_the_folders_same_pass_chmod() -> None:
+    """B13 round 23 A70: since round 22 Z81 step 2's config-step NEXT for `chmod 700` of the state folder has
+    the agent run status and each chmod its [FAIL] lines name for a path in that folder, in the same pass,
+    before the re-run; only `chmod 600` keeps `run <fix> once, then re-run:`. The guide quoted the file's NEXT
+    with `or chmod 700 <folder>` put in, as if the folder's had the same form. It quotes each, read from
+    install.sh's NEXT lines."""
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    nexts = re.findall(
+        r'FAIL_NEXT="[^"]*: the fix is the agent\'s: run \$fix( once, then[^"]*?re-run: )\$SELF', script
+    )
+    [folder] = [n for n in nexts if "in the same pass" in n]
+    assert " once, then re-run: " in nexts and "status" in folder and "[FAIL]" in folder
+    page = " ".join(_feedback_page().split())
+    assert (
+        "`NEXT:`: for a file, `agentsync's state folder or a file in it has a mode this account cannot open"
+        " ...: the fix is the agent's: run chmod 600 <file> once, then re-run: ...` (with the -wal and -shm"
+        " its mode refuses too, as status's `state_dir.files` names them); for the folder, "
+        f"`... run chmod 700 <folder>{folder}...` (round 22 Z81"
+    ) in page
+    assert "or `chmod 700 <folder>`)" not in page
+
+
+def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -> None:
+    """B13 round 23 A72: since round 22 Z21, Z28 the agentsync report registers each of agentsync's own
+    folders that sources.toml moves (`_own_folder_values`) as a `<folder-N>`, after the configured folders
+    elsewhere and before the source ids, and since Z76 both reports read git's older dotted
+    `[remote.<name>]` as a remote; the guide's `<folder-N>` row, its numbering order and its host row named
+    neither. The order and the dotted form are read from the report and the installer; the shell fallback
+    report registers no own folder, so the guide says the agentsync report."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    source = inspect.getsource(setup_report)
+    projects = source.index("for path in project_paths:")
+    own = source.index("_own_folder_values(expand(own_dir), expand(default))")
+    assert projects < own < source.index("cloud_ids = {sid")
+    script = SCRIPTS[0].read_text(encoding="utf-8")
+    assert "_own_folder_values" not in script and "own_dir" not in script
+    [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<library-N>`, `<folder-N>`")]
+    assert (
+        "and, in the agentsync report since 2026-10-21 (B13 round 22 Z21, Z28, CONTRACTS §16.158), each of"
+        " agentsync's own folders (`state_dir`, `docs_repo`, `cache_dir`, `log_dir`) that sources.toml moves"
+        " from its default, as whole words:"
+    ) in row
+    assert "anywhere else, the whole path; one at its default takes none |" in row
+    page = " ".join(_feedback_page().split())
+    assert (
+        "then configured folders elsewhere, then, in the agentsync report, agentsync's own folders that"
+        " sources.toml moves from their defaults, and last a listing that finished after its 3-second bound"
+    ) in page
+    assert 'section.startswith("remote.")' in source and "dotted [remote.<name>] (Z76)" in script
+    [hosts] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<email-N>`, `<guid-N>`")]
+    assert (
+        '(`[remote "<name>"] url`, and, since 2026-10-21, git\'s older dotted `[remote.<name>]` such as'
+        ' `[remote.origin]` or `[remote.contoso "docs"]`, in both reports (B13 round 22 Z76, CONTRACTS'
+        " §16.158 and §16.159);"
+    ) in hosts
+
+
+def test_the_cut_off_words_keep_every_check_ran_apart_from_the_state_read() -> None:
+    """B13 round 23 A73: §16.152 Y22's round 22 dated line and `_cut_off_words`' docstring said a cut-off with
+    no check named came in the hook's read of the loop state; since da077f3b the hook's "" (every check ran)
+    is kept apart from its None as `doctor_cut_off_reading` and keeps the `a check` words. The docstring and a
+    dated line say so."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    doc = " ".join((setup_report._cut_off_words.__doc__ or "").split())
+    assert "so a cut-off with no check named came in that read" not in doc
+    assert (
+        'its None, ``doctor_cut_off_reading``) came in that read; its "" (every check ran) is not that read'
+        ' and keeps the "a check" words'
+    ) in doc
+    assert "r.facts.doctor_cut_off_reading = at is None" in inspect.getsource(setup_report._read_cut_off)
+    y22 = " ".join(_contracts_section("### 16.152 ", "### 16.153 ").split())
+    assert "Amended 2026-10-22, §16.169 A73: not every cut-off with no check named came in that read." in y22
+    assert (
+        "A doctor cut off after every check ran names no check and gets neither the loop-state words" in y22
+    )
 
 
 def test_u78s_line_quotes_the_again_fix_head() -> None:

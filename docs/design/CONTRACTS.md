@@ -26685,6 +26685,12 @@ Amended 2026-10-21, §16.158 Z18, Z33: a cut-off with no check named came in the
 lead-in is read from the figures (`that is above its core count, so the Mac was busy: <_IDLE_AGAIN>`, or `that is
 not above its core count, so <check> is slow or hung, not the Mac busy; ...`), ending `send the report as it is
 (install.sh's own doctor output is in install.out)`. `_IDLE_AGAIN` is whole in every branch.
+Amended 2026-10-22, §16.169 A73: not every cut-off with no check named came in that read. Since da077f3b (the
+review of lane RA's round 22 branch) the hook's None (no group started yet: it was reading the loop state) is kept
+apart from its "" (every check ran) as `doctor_cut_off_reading`. A doctor cut off after every check ran names no
+check and gets neither the loop-state words nor the held-sync words, even when Status found the state file busy:
+its words are a cut-off's with no group read, `a check is slow or hung` in the lead-in and the advice. Test:
+`test_a_doctor_cut_off_in_its_state_read_names_the_sync_that_held_it` (its `""` case).
 
 ### 16.153 Round 21: installer, the shell report's git config and the report header (2026-10-20, wave B13 round 21 lane RB)
 
@@ -27828,7 +27834,27 @@ Reserved for round 23 lane E of B13.
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 
 Lane D's round 23 items (`docs/plans/bring-back-ocr.md`, "B13 round 23"; specs `round23/items/A<n>.md`, the
-verifier's corrected fix built): A74 and A93, one defect, built once. It makes nothing worse.
+verifier's corrected fix built): A70, A72, A73, A74, A77 and A93. A74 and A93 are one defect, built once. None
+makes things worse.
+
+**The guide quotes the folder's same-pass chmod NEXT apart from the file's** (A70; `docs/deploy/setup-feedback.md`).
+Since §16.160 Z81 step 2's config-step NEXT for `chmod 700` of the state folder has the agent run status and each
+chmod its [FAIL] lines name for a path in that folder, in the same pass, before the re-run; only `chmod 600` keeps
+`run <fix> once, then re-run:`. The guide quoted the file's NEXT with `or chmod 700 <folder>` put in; it quotes each
+now. Test: `test_the_guides_step_2_next_quotes_the_folders_same_pass_chmod`, which reads both arms from install.sh.
+
+**The guide's redaction rows name agentsync's own moved folders and the dotted remote** (A72;
+`docs/deploy/setup-feedback.md`). Since §16.158 Z21, Z28 the agentsync report registers each of agentsync's own
+folders that sources.toml moves (`_own_folder_values`) as a `<folder-N>`, after the configured folders elsewhere;
+since §16.158 and §16.159 Z76 both reports read git's older dotted `[remote.<name>]` as a remote. The `<folder-N>`
+row and the numbering order now name the first, for the agentsync report only (install.sh registers no own
+folder), and the host row the second. Test:
+`test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes`, which reads the order from the report.
+
+**§16.152 Y22's dated line and `_cut_off_words` keep "every check ran" apart from the state read** (A73; dated line
+at §16.152 Y22). Both said a cut-off with no check named came in the hook's read of the loop state; since da077f3b
+(the review of lane RA's round 22 branch) the hook's "" (every check ran) keeps the `a check` words, as its test's
+`""` case shows. The docstring says so. Test: `test_the_cut_off_words_keep_every_check_ran_apart_from_the_state_read`.
 
 **CI's time is the time of round 22's jobs** (A74, A93; dated line at §16.157 Y68). Round 22's nine ci jobs
 (fcafd734 to 7a54f938, read with `gh run view --json jobs`, all on attempt 1) took 19:29 to 31:21, one 2 minutes
@@ -27837,3 +27863,10 @@ past the 29 CLAUDE.md gave (a96dfc7b: pytest 1844 s, timing tests skipped at 4 t
 nine beside round 21's, `docs/lanes/COMMON.md` says the same, and ci.yml's note adds a sentence after round
 21's. The limit stays 45, 13 minutes above 32. §16.157 Y68's and §16.163 Z67's lines stay as their rounds' record.
 Test: `test_claude_md_gives_cis_time_and_its_limit`.
+
+**The guide's Repeat conversions row names the files the upgrade's run converted or settled** (A77;
+`docs/deploy/setup-feedback.md`). Since §16.158 Z35 and §16.162 Z55 the `tried again after an upgrade:` note names
+per run the files that run converted and those it settled with no try left, and gives the retry words only when a
+shown run has files left to retry; the row said every such file could show its old error. A sentence after the
+retry clause says so. Test: `test_the_repeat_conversions_row_names_the_upgrade_retry_note`, which reads both words
+from the report.
