@@ -1502,6 +1502,34 @@ retry note, dead retry code and its docstrings), D 7 (guides, CONTRACTS citation
 (round 21's /tmp leftovers, the round 22 harvest's scratch and the v29 sandboxes, 87 names, removed with none
 skipped).
 
+### B13 round 22 landed (2026-10-21)
+
+All six lanes landed; CI green on `be9605d9` (ci `39716390210`, diagrams `39716390215`; prompt v31 in `131ddf6f`).
+Notes `lanes/r22-<lane>.md`, lead notes `round22/lead-notes.md`. All 88 items are built (87 in lanes, Z91 by the
+lead); none carries a not-built reason. Built once for several ids: Z17, Z48 and Z83 are lane P's `537dddd7` (every
+PERSONS_KINDS copy in one commit, in lane B's words, because four files pin them to each other), Z67+Z88 (D), and
+Z76 has a shell half (RB) and a Python half (RA).
+
+| Lane | Landed (lane commits) |
+|---|---|
+| D | `a20ef0c4..547db6c4`, 2 commits |
+| RB | `cb9a7973..fe706a76`, 6 commits |
+| E | `90877dc9..bef0623a`, 4 commits |
+| B | `46963aae..b1d6704a`, 16 commits |
+| RA | `20c13d16..a96dfc7b`, 12 commits (the last fixes the red run below) |
+| P | `5b93ee9a..be9605d9`, 9 commits (v31) |
+
+Learnings: lanes P and B both claimed the PERSONS_KINDS copies; the lead ruled that one lane changes every copy in
+one commit, since a parity test between any two of them goes red between two lands. Trunk went red once (ci
+`39706973640` on `d4540b52`): a word pin in a timing-marked test still read RA's old Z33 words, and the local gate
+skips timing-marked tests above a load of 4 per core (`tests/conftest.py`, unless `AGENTSYNC_TIMING=1`), so CI was
+its first run; RA fixed it in `a96dfc7b` and round 23 checks every such pin. The Mac rebooted at 14:06; every session resumed, but panes were renumbered (the lead
+moved from 10 to 16) and two lands died before they pushed, so the lead resent the lanes' new ids and RA and RB
+re-queued. The capacity gate turned four fires away once (8 sessions mid-turn) and admitted them on the second try.
+
+Round 23: the round 22 workflow with prompt v31 on this section's landed tip, BASE `fcafd734` (ids A<n>, outputs
+`round23/`); scenario C plays the v30 and v29 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
