@@ -12953,10 +12953,23 @@ def test_a_folder_where_the_manifest_belongs_is_not_measured_and_is_the_persons(
     db.symlink_to(db.name)  # a link to itself: no file either, as is_file read it (review)
     try:
         text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        # B13 round 23 A46: doctor prints the state_dir.manifest line the report points at (lane B's half)
+        assert "state_dir.manifest" in {r.name for r in doctor.run_checks(load_config(cfg)) if not r.ok}
     finally:
         db.unlink()
     assert f"- not measured ({setup_report._STATE_NOT_FILE})" in section(text, "Status")
     assert "symbolic links" not in text, [ln for ln in text.splitlines() if "symbolic links" in ln]
+    # B13 round 23 A46: a link to a folder is no file either, and doctor's state_dir.manifest line is there
+    there = db.with_name("elsewhere")
+    there.mkdir()
+    db.symlink_to(there.name)
+    try:
+        text, _red = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())
+        assert "state_dir.manifest" in {r.name for r in doctor.run_checks(load_config(cfg)) if not r.ok}
+    finally:
+        db.unlink()
+        there.rmdir()
+    assert f"- not measured ({setup_report._STATE_NOT_FILE})" in section(text, "Status")
 
 
 def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
