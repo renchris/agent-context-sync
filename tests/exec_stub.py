@@ -13,6 +13,11 @@ session fixture sets it.
 Why a copy per stub and not a symlink to one binary: a test that chmods, rewrites or appends to a stub would
 change the shared binary under every other test, and ``cp`` or ``shutil.copy`` of a symlinked stub copies the
 binary without its body. A copy carries the body's absolute path in its trailer, so a copied stub still runs.
+
+A stub named ``agentsync...`` stays a ``#!`` file too: the harness copies agentsync's stand-in onto
+``~/.local/bin/agentsync`` (``STUB_UV``'s ``cp``, 20 ``shutil.copy`` calls), often onto a copy that already
+ran, and macOS kills a Mach-O overwritten in place after it ran (SIGKILL in 294 of 300 runs, measured); a
+script written over a script or over a Mach-O runs.
 """
 
 from __future__ import annotations
@@ -36,6 +41,8 @@ TRAMPOLINE: bytes | None = None
 """The trampoline's bytes, or ``None``: every stub is then the plain ``#!`` file."""
 
 _SELF_PATH = re.compile(r"\$0|\$\{0|BASH_SOURCE|argv\[0\]|__file__")
+_COPIED = "agentsync"
+"""The name prefix of the stubs tests copy onto a path that may hold one that ran (see above)."""
 
 
 def body_path(stub: Path) -> Path:
@@ -54,7 +61,13 @@ def _plain(path: Path, text: str, mode: int) -> Path:
 def write(path: Path, text: str, mode: int = 0o755) -> Path:
     """Write ``text`` as an executable stub at ``path`` (see the module docstring)."""
     path = Path(path)
-    if TRAMPOLINE is None or not text.startswith("#!") or _SELF_PATH.search(text) or path.is_symlink():
+    if (
+        TRAMPOLINE is None
+        or not text.startswith("#!")
+        or _SELF_PATH.search(text)
+        or path.name.startswith(_COPIED)
+        or path.is_symlink()
+    ):
         return _plain(path, text, mode)
     body = body_path(path)
     try:

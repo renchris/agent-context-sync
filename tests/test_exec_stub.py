@@ -165,10 +165,27 @@ def test_the_harness_helpers_write_mach_o_stubs(
         tmp_path / "bin" / "gh",
         tmp_path / "step1" / "git",
         Path(stubs["AGENTSYNC_LAUNCHCTL"]),
-        Path(stubs["STUB_AGENTSYNC"]),
         Path(stubs["PATH"].split(":")[0]) / "uv",
     ):
         assert stub.read_bytes()[:4] in MACH_O, stub
+    assert Path(stubs["STUB_AGENTSYNC"]).read_text().startswith("#!/bin/bash\n"), "copied: a #! file"
+
+
+def test_agentsyncs_stand_in_copied_onto_one_that_ran_still_runs(trampoline: bytes, tmp_path: Path) -> None:
+    """The harness copies agentsync's stand-in onto ``~/.local/bin/agentsync`` again and again (``STUB_UV``'s
+    ``cp`` at each install, ``shutil.copy`` in test_install_oneshot), and macOS kills a Mach-O copied over a
+    Mach-O that ran (the land gate's SIGKILL in ``agentsync setup-report``, 294 of 300 in a loop), so a stub
+    named ``agentsync...`` stays a ``#!`` file and every copy of it runs."""
+    (tmp_path / "bin").mkdir()
+    stand_in = _write_exe(tmp_path / "agentsync-stub", "#!/bin/bash\necho synced\n")
+    installed = tmp_path / "bin" / "agentsync"
+    for i in range(5):
+        if i % 2:
+            shutil.copy(stand_in, installed)
+        else:
+            subprocess.run(["/bin/cp", str(stand_in), str(installed)], check=True)
+        assert _run(installed) == (0, "synced\n", ""), i
+    assert installed.read_text() == stand_in.read_text() == "#!/bin/bash\necho synced\n"
 
 
 def _sha256_fn(**swap: str) -> str:
