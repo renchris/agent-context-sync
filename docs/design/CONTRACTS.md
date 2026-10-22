@@ -26805,7 +26805,9 @@ volume mounted read-only beside an ACL and a folder above it, and a state path o
 whatever its mode (no chmod writes there). Amended 2026-10-21, §16.160 Z11: a folder where manifest.sqlite belongs no longer gets `fix the error above`: step 1
 logs `state-notfile` with the person's tail, and step 2's config step the person's NEXT. Amended 2026-10-21,
 §16.160 Z81: a folder's `chmod 700` NEXT adds, in the same pass, status and each chmod its [FAIL] lines then name
-for a path in that folder.
+for a path in that folder. Amended 2026-10-22, §16.166 A75: the refused NEXT and the `state-refused` and `state-side-refused` tails say
+`which this account is refused, and a chmod of it does not fix that (..., whatever its mode; not damage)`, not
+`though its mode allows it`, false for a read-only volume, which refuses whatever the mode.
 
 **Step 1's tails name the folder, the owner `state_path_fix` gives, and a side file at status** (Y14, Y57, Y24;
 amends §16.148 X9). `config_errors` named a state folder at 0000 "agentsync's state file", whose fix is a chmod 700 of
@@ -26833,6 +26835,11 @@ two with its chmod 600).
 Amended 2026-10-21, §16.160 Z36: the side tails say `step 2 stops at its status step on the -wal or -shm of
 agentsync's state file while it holds unwritten changes or is in use (an empty one may not stop it), which ...`, and
 `state-side-access` ends `the agent's to run, once, when step 2 stops on it`; that stop's NEXT names the chmod.
+Amended 2026-10-22, §16.166 A37: `state-access` ends `the chmods that fix it are the agent's to run, once each, as step 2's NEXT
+names them` and `state-side-access` `... once each, when step 2 stops on them`: a stop can take two chmods.
+Amended 2026-10-22, §16.166 A78: a -wal or -shm this account cannot read stops init, empty or not: it takes the config step's
+words (`state-access`, `state-owner`, `state-refused`), and step 2's config step names its chmod 600; the side words
+keep only one it can read but not write.
 
 **Setup prompt v30** (Y4, Y24, Y59). Version 30 everywhere the bump list names it (README block, `PROMPT`,
 `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION`, the form's placeholder, the version pins in tests/test_install_oneshot.py and
@@ -27427,6 +27434,9 @@ a -shm in use and a -wal with frames), and
 `test_setup_report.py::test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket` (the
 agent's label, the heartbeat's, an ACL's the person's).
 
+Amended 2026-10-22, §16.166 A26: the status step's chmod NEXT ends `if the re-run names the same chmod again, show the person
+those lines, log it as a step 2 error and go on to the report`.
+
 **A folder where manifest.sqlite belongs is the person's at step 1 and step 2** (Z11, install.sh's part; amends
 §16.154 Y24). In probe NR (manifest.sqlite moved aside, a 0700 folder in its place) step 1 said nothing: the folder
 passes `config_errors`'s stat, owner and access probes and `db.is_file()` is false, so neither the access nor the
@@ -27450,6 +27460,9 @@ lane B's Z51 and Z53 (§16.161). Tests: `test_list_folders_says_step_2_stops_on_
 (NR), `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` (notfile) and, with the real agentsync,
 `test_a_folder_where_the_manifest_belongs_is_the_persons_at_step_1_and_step_2`.
 
+Amended 2026-10-22, §16.166 A46: a symlink where manifest.sqlite belongs counts by what it points to: a link to a folder, or a
+link loop, is no file (`state-notfile`, the person's NEXT); a dangling link is no manifest yet.
+
 **A shut folder holding a shut file takes both chmods in one pass** (Z81, the installer's half; amends §16.154 Y24).
 With the state folder at 0000 holding a manifest at 0000 (probe owner-both000), every reader names the folder's
 `chmod 700` (nothing inside can be read: `state_open_fix` stops at the first path that refuses), and after it the
@@ -27465,6 +27478,9 @@ grant says the same (v31, below). Test, with the real agentsync:
 manifest's chmod 600 alone, both run as written, then a pass), with the folder cases of
 `test_step_2s_next_names_the_chmod_of_this_accounts_own_state` and
 `test_a_manifest_this_account_cannot_open_stops_step_2_where_step_1_says`.
+
+Amended 2026-10-22, §16.166 A26: the config step's chmod NEXTs end `if the re-run names the same chmod again, show the person
+the error, log it as a step 2 error and go on to the report`.
 
 **Setup prompt v31** (Z59, with Z81, Z38, Z65, Z30 and Z71; amends §16.154 Y59). Version 31 everywhere the bump list names it
 (README block, `PROMPT`, `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION` and its docstrings, the form's placeholder, the
@@ -27501,6 +27517,10 @@ Tests: `test_the_prompt_text_changes_only_with_its_version`, `test_readme_step2_
 (`STEP3_STATE_CHMOD_IS_YOURS`), `test_readme_finish_relays_the_local_work_next` (`LOCAL_WORK_TOLD`, keyed on
 install.sh's `$back does not carry the commits of`).
 
+Amended 2026-10-22, §16.166 A36: v32's step 3 adds, after `run it as written, then the sync again.`, `Log the sync that stopped as
+a step 3 error with its exit code and the chmod you ran (unlike step 2's install.sh, no record of a sync is kept for
+the report).`
+
 **The person's kinds name every state refusal no chmod fixes** (Z65, with lane B's Z83, Z17 and Z48 built here once;
 amends §16.148 X26). An ACL on this account's own 0600 manifest gave status a NEXT whose kinds said `a state file that
 is damaged or another account's`, above a fix that is neither; round 21 also made a folder above the state folder
@@ -27517,6 +27537,10 @@ words name a cause no chmod changes). Test: `test_the_persons_kinds_name_every_s
 (`MANIFEST_FIX`, `_search_fix` for a file and a folder, `_parent_fix`, `read_only_fix`: each the person's, its
 NEXT naming the kind), with the equality pins `test_doctors_persons_fix_words_are_install_shs` and
 `test_the_persons_clause_names_every_kind_the_rule_reads`.
+
+Amended 2026-10-22, §16.166 A2: the state kind reads `a state file that is damaged, another account's or not a file,
+a state folder that is not a folder, or a state file or folder that an ACL, a privacy setting, a folder above it or a
+read-only volume refuses`, in every copy in one commit (round 23 ruling 6, lane B's words).
 
 ### 16.161 Round 22: an unsearchable parent, the person's kinds and the state errors in cli and doctor (2026-10-21, wave B13 round 22 lane B)
 
@@ -27821,7 +27845,130 @@ Reserved for round 23 lane RB of B13.
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
-Reserved for round 23 lane P of B13.
+The B13 round 23 items of lane P (specs `round23/items/A<n>.md`, the verifier's corrected fix built unless a
+measurement below says otherwise), under round 21's ownership rule, round 22's rulings 1 to 3 and round 23's: (4)
+anything that is not a folder where the state folder or a folder above it belongs is the person's to move aside,
+never a chmod, and `mode_refuses` hands a chmod only to the kind it fixes; (6) lane P lands every copy of the
+person's kinds in one commit, in lane B's words. A2, A6, A17, A21, A26, A32, A36, A37, A49, A51, A61, A75, A78, A80,
+A83, and install.sh's half of lane RA's A46. A2, A6, A21, A32 and A80 are one defect, built once; so are A17 and
+A83. A dated line this round writes in another section reads `Amended 2026-10-22, §16.166 A<n>`.
+
+**Something that is not a folder where the state folder belongs is the person's at step 1 and step 2** (A2, A6,
+A21, A32, A80; install.sh's half: doctor's, cli's and the report's are lane B's A7, A22, A33, A58 in §16.167 and lane
+RA's A23 in §16.164). A file (or a fifo, a socket, a symlink to one) at `~/Library/Application Support/agentsync`,
+or at a folder above it, passed step 1's access probe as a mode: `state-access`, the agent's chmod; step 2's
+`state_open_fix` printed `chmod 600 <file>` at 0000 and `chmod 700 <file>` at 0644, and once that ran (a data file
+made executable), `refused`, whose NEXT blamed an ACL, a folder above it or a read-only volume; `state_not_a_file`
+crashed on `NotADirectoryError` and said nothing. `config_errors` now judges the state folder first, by `stat`
+(which follows a symlink, so a symlink to a real folder is a folder; a dangling one is no folder yet), and alone:
+`state-notdir`, tail `; step 2 stops at its config step on agentsync's state folder, which is not a folder (a file
+or something else is where it or a folder above it belongs; not damage, not a mode): fixing that is the person's
+(they move it aside, keeping a copy), and ~/.local/bin/agentsync status prints it on its state_dir line`, with no
+access, owner or manifest probe after it. `config_failed`'s new `state_not_a_folder` (`-I`, the same `stat` test,
+`NotADirectoryError` for a file above it) comes first for exit 1, ahead of the owner's chown (a chown fixes no file
+where a folder belongs): `agentsync's state folder is not a folder (a file or something else is where it or a folder
+above it belongs; the error above names it, and ~/.local/bin/agentsync status prints it on its state_dir line):
+fixing it is the person's (they move it aside, keeping a copy), not a step for the agent, ...`. `state_open_fix`
+prints nothing when the state folder is not one, and `mode_refuses` requires `S_ISDIR` for 0o700 and `S_ISREG` for
+0o600 (a symlink's `lstat` mode already failed the bit test); `state_chmods` drops a status NEXT whose chmod 700
+names a file or whose chmod 600 names a folder (defense: doctor's fix for this case is no chmod). The move's words are
+lane B's (`the person moves <path> aside, keeping a copy`, no bracket inside a fix). Only `os` and `stat` are used,
+so an older installed build reads them too. Tests:
+`test_something_not_a_folder_where_the_state_folder_belongs_is_the_persons_at_step_1_and_step_2` (a file at 0000, 0644 and 0700, a fifo, another account's file by a stubbed uid,
+Application Support a file; a symlink to a real folder says nothing; the file's mode is left as it was) and, with the
+real agentsync, `test_a_file_where_the_state_folder_belongs_is_the_persons_with_the_real_agentsync` (the state
+folder and the folder above it; init exits 1; once the folder is back, the same command passes).
+
+**Step 1 names a lock, heartbeat or governance stop** (A17, A83). Step 1 read only the state folder, the manifest,
+its -wal and its -shm, so a lock, heartbeat, governance/, holds.json or purge queue this account cannot open got
+`(none is needed)` over a stop step 2's status then made. When nothing above is said (no word, no `state-notfile`),
+`config_errors` reads exactly the files status checks by name, as `setup_report._refused_files` does (never
+audit.jsonl, which no check reads), by the same owners and the same read-only and mode tests: `state-file-owner`,
+`state-file-access` (`state_path_fix`'s chmod; `chmod` from an older build) or `state-file-refused`, tails `; step 2
+stops at its status step on a file or folder agentsync's status checks in its state folder (the lock, the heartbeat,
+or the governance folder or a file in it), which ...`, ending `on its lock, heartbeat or governance lines`; their cases
+come before the state ones (a later case wins). The word is kept apart, so the manifest's damage probes still run
+beside it. Tests: `test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file` (lock,
+heartbeat, holds.json, governance/, the purge queue, an ACL, a read-only volume; a missing file and a shut
+audit.jsonl say nothing; a shut manifest beside a shut lock keeps the config step's tail) and, with the real
+agentsync, `test_a_lock_or_heartbeat_this_account_cannot_open_names_the_agents_chmod` (step 1's tail, then the
+status step's chmod). A file another account owns while the state folder is this account's is not tested: the
+stubbed uid makes the folder another account's too, which `state-owner` reports first.
+
+**A -wal or -shm this account cannot read stops step 2 at its config step, on the agent's chmod** (A78; amends
+§16.154 Y57). At 0000, empty or not, a side file stops init (measured: SQLite cannot open the manifest past a -shm
+it cannot read, by mode or ACL), while step 1 said status (`an empty one may not stop it`) and step 2's NEXT was
+fail's generic one: `state_open_fix` read only the folder and the manifest, and the prompt grants no chmod named on an
+`error:` line. Step 1 now gives a side file this account cannot read the config step's word (`state-access`,
+`state-owner` or `state-refused`), keeping the side words for one it can read but not write (round 21 Y57's 0400
+cases), and `state_open_fix`, when the folder and the manifest open, prints one `chmod 600` of each side file whose
+mode refuses this account (`refused` for an ACL or a read-only volume), so `config_failed` gives the agent's chmod
+NEXT. Tests: `test_a_side_file_this_account_cannot_read_stops_step_2_at_its_config_step_on_the_agents_chmod` (an
+empty -wal, a -shm, a -wal with frames, both: the chmod as written, then a pass) and the PM-shm-acl case, now
+`state-refused`.
+
+**Step 1's chmods are plural** (A37; amends §16.154 Y14). `state-access` ends `the chmods that fix it are the
+agent's to run, once each, as step 2's NEXT names them`, `state-side-access` `... once each, when step 2 stops on
+them` (a shut folder and its file, or a -wal and a -shm, take two). Test: the `STATE_OPEN_TAIL` pins.
+
+**A refusal no chmod of the path fixes says so** (A75; amends §16.154 Y24). The refused NEXT and the `state-refused` and `state-side-refused` tails say `which this account is
+refused, and a chmod of it does not fix that (an ACL, a folder above it this account cannot search, or a volume
+mounted read-only, whatever its mode; not damage)`: `though its mode allows it` was false for a read-only volume,
+and `no chmod fixes it` would be false for a folder above it, whose fix can be `chmod u+rwx` of that folder (Z14).
+setup-feedback quotes the new words. Tests: the `STATE_OPEN_TAIL` and `STATE_REFUSED_NEXT` pins.
+
+**Every chmod NEXT says to log a repeated chmod** (A26; amends §16.160 Z8 and Z81). The config step's two chmod
+NEXTs end `if the re-run names the same chmod again, show the person the error, log it as a step 2 error and go on
+to the report`, the status step's two `... show the person those lines, log it as a step 2 error and go on to the
+report`: v31's own words for it are `show me, log it`, while its step 2 also says a failed run whose NEXT is followed
+is not logged. Tests: the `STATE_CHMOD_NEXT`, `STATE_CHMOD_FOLDER_NEXT` and `STATE_CHMODS_NEXT` pins.
+
+**A symlink where the manifest belongs counts by what it points to** (A46, install.sh's half for lane RA; amends
+§16.160 Z11). `state_not_a_file` passed any symlink, so a link to a folder failed init on `Is a directory` under
+fail's `fix the error above`. It and `config_errors`' `not_a_file` now `stat` a link: a link to something that is
+not a regular file, or a link loop (`ELOOP`), is no file; a dangling link is no manifest yet. Tests: the NR-link and
+NR-loop cases of `test_list_folders_says_step_2_stops_on_a_state_file_this_account_cannot_open` and the notfile-link
+and notfile-loop cases of `test_step_2s_next_names_the_chmod_of_this_accounts_own_state`. Doctor's half is lane B's.
+
+**A too-open state folder or file has a bucket of its own, the agent's** (A49). doctor FAILs a 0755 state folder
+(`state_dir`, chmod 700) or a state file others can read (`state_dir.files`, chmod 600), install.sh's status-step
+NEXT hands the agent that chmod, and the report's Doctor line filed it as `unexpected` with no owner.
+`_loose_state`, the report's own stat (this account's folder, or a regular file it can read and write, mode &
+0o077, not on a volume mounted read-only), files it under `from a state folder or file others can read`, each FAIL
+`(the agent's; see Doctor)`, after the unreadable, not-a-file, shut and refused buckets and never beside a shut
+file or a folder another account owns; the outcome reads it as a FAIL with a known cause. Measured: the report's
+own open puts the manifest and its -wal back to 0600 before its doctor runs, so a loose manifest never reaches the
+sort; the folder and the token cache's fallback do. Test:
+`test_the_fail_of_a_state_file_this_account_cannot_open_has_its_own_doctor_bucket` (the token cache's fallback at 0644, the folder at 0755).
+
+**Setup prompt v32** (A36; amends §16.160 Z38). Version 32 everywhere the bump list names it (README block,
+`PROMPT`, `SETUP_PROMPT_COMPAT`, `PROMPT_VERSION` and its docstrings, the form's placeholder, the version pins in
+tests/test_install_oneshot.py and tests/test_setup_report.py, setup-feedback's version mentions and its row K56).
+Prompt words from other lanes: lane B's new kind (ruling 6, below); no other lane sent any. Step 3, after `run it
+as written, then the sync again.`: `Log the sync that stopped as a step 3 error with its exit code and the chmod you
+ran (unlike step 2's install.sh, no record of a sync is kept for the report).` A step 3 sync that stopped on a chmod
+the agent then ran left no record, and the report said "fully one command, 0 error" over it (rehearsal F, s3-h2);
+the sentence alone would promise an Items line nothing writes, so `compute_outcome` reads an error of the report step
+as a reason, `step 3 logged 1 error`: worked with help, never failed (`stopping_error` still skips that step; the next
+sync ended 0). Tests: `test_readme_step3_gives_the_agent_the_same_chmod` (`STEP3_STATE_CHMOD_IS_YOURS`),
+`test_the_prompt_text_changes_only_with_its_version` and `test_a_step_3_sync_that_stopped_is_worked_with_help`.
+
+**The person's kinds name a state folder that is not a folder** (A2, A6, A21, A32, A80, ruling 6; amends §16.160
+Z65). `a state file that is damaged, another account's or not a file, a state folder that is not a folder, or a
+state file or folder that an ACL, a privacy setting, a folder above it or a read-only volume refuses`, lane B's
+words, in one commit in `doctor.PERSONS_KINDS`, `setup_report._PERSONS_KINDS_COPY`, install.sh's `PERSONS_FAILS`
+and its header list, the prompt's step 2 list and the test literals (tests/test_cli.py's included), which the
+equality pins hold together.
+
+**Comment and test hygiene** (A61, A51). `state_not_a_file`'s comment quoted `cannot be opened: Is a directory`,
+which init no longer prints since Z51; it quotes `<db> is a folder, not the state file` and keeps the old words as
+history (test: the Z11 real-agentsync test reads the quote from the comment and finds it in init's error). The Z81
+test shut the state folder again before its asserts, so a failing run left a 0000 tree pytest cannot remove; it
+shuts it only inside the try whose finally opens it.
+
+Not built: none. Seam left for lane B (A29, not this lane's): once lane B's lost-manifest refusal lands, init exits 1
+on a missing manifest beside a heartbeat that records passes, and step 2's config step gives fail's generic NEXT
+(no `config_failed` branch reads that case yet).
 
 ### 16.167 Round 23: a state folder that is not a folder, the heartbeat and the purge queue in cli and doctor (2026-10-22, wave B13 round 23 lane B)
 
