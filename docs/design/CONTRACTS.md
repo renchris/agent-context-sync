@@ -27790,6 +27790,9 @@ failed import. Not the other way, cycle's convert imports made lazy: a large cha
 finding. Test: `test_ops_doctor.py::test_doctor_loads_convert_through_cycle_and_its_words_say_so` (with
 `agentsync.convert.ocr`, `media` or `speech` unimportable, `import agentsync.ops.doctor` raises ImportError, and
 no word in doctor says it imports when convert is broken).
+Amended 2026-10-22, §16.168 A66: `test_doctor_loads_convert_through_cycle_and_its_words_say_so` is now
+`test_ops_doctor.py::test_doctor_import_stops_when_a_convert_module_cannot_import`, which keeps the import check;
+the check that no word in doctor says it imports when convert is broken is gone, a re-assertion of the source.
 
 **`ocr._entry`'s exit 1 clause has a verb (Z58; `agentsync.convert.ocr`).** Y55 wrote "``failed (...)``: so
 since each helper's first build, §16.25 for OCR; ...", whose clause after the colon has no verb. It reads
@@ -27797,6 +27800,8 @@ since each helper's first build, §16.25 for OCR; ...", whose clause after the c
 not ready since B13 round 18 V6 and round 19 W38", and the docstring is reflowed with the exit list's bracket
 closing before `78 (EX_CONFIG)`. Not the finder's "it has exited so since ...": its "it" has no clear referent.
 Docstring only. Test: `test_ocr.py::test_the_entry_docstring_says_since_when_a_failed_probe_exits_1`.
+Amended 2026-10-22, §16.168 A66: that test is retired, as it read only the docstring's words; docstring only, no
+test, as for Z52.
 
 **The counting retry_settled_failures is removed (Z50, Z57; `agentsync.manifest`, `agentsync.cycle`,
 `agentsync.model`; dated lines at §16.28 W18, §16.48 V74, §16.132 U3, §16.138 V65, §16.150 X53 and §16.155
@@ -28064,6 +28069,17 @@ and an engine 12. The paragraph keeps its words and has the dated line. Not the 
 is in §16.42. Tests: the line is pinned (`test_deploy_pack.py::_ROUND_23_E_PARAGRAPH_AMENDS`), and
 `test_convert_core.py::test_a_label_rule_keeps_the_image_converter_out_of_the_registry` asserts the no-engine 11
 beside its 12.
+
+**Two tests that read the source's own words are retired (A66; dated lines at §16.162 Z56 and Z58).** Z58's test
+read `ocr._entry`'s docstring for one phrase and a bracket's place, and half of Z56's read doctor's source for one
+phrase and against another: any true rewording turned them red and an untrue sentence in new words passed, the
+reason Z52 took no test. Z58's test is gone (and `test_ocr.py`'s `itertools` import with it); Z56's keeps its
+subprocess check that doctor's import stops when `agentsync.convert.ocr`, `media` or `speech` cannot import, under
+the name of what it still proves. Both old names are in `test_deploy_pack.py::_RETIRED_TEST_NAMES`, and
+`test_deploy_pack.py::test_a_test_the_contract_cites_exists` now reads a citation in the `test_<file>.py::<name>`
+form too (it read only the bare and `tests/...::` forms, so 270 cited names went unread; none was stale but the
+five already retired), so a retired name that is not listed fails it. Not a rewrite of Z56's and Z58's words: they
+are marked, as older text is.
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 

@@ -10,7 +10,6 @@ real Apple Vision helper; it is skipped where there are no macOS developer tools
 from __future__ import annotations
 
 import contextlib
-import itertools
 import json
 import os
 import shlex
@@ -1838,16 +1837,3 @@ def test_tile_pieces_are_joined_into_whole_lines_with_every_word_once(seams: Pat
     got = dict(zip(cases, json.loads(answer.stdout), strict=True))
     for name, (_, text, still_open) in cases.items():
         assert got[name] == [{"open": still_open, "text": text}], name
-
-
-def test_the_entry_docstring_says_since_when_a_failed_probe_exits_1() -> None:
-    """B13 round 22 Z58: Y55's clause read "``failed (...)``: so since each helper's first build, ...", with
-    no verb. It says the exit 1 dates from each helper's first build, and the exit list's bracket still
-    closes before 78."""
-    doc = " ".join((ocr._entry.__doc__ or "").split())
-    assert "that exit 1 dates from each helper's first build, §16.25 for OCR, and install.sh has read" in doc
-    assert ": so since" not in doc
-    start = doc.index("(any other state")
-    depths = itertools.accumulate((c == "(") - (c == ")") for c in doc[start:])
-    at = start + next(n for n, depth in enumerate(depths) if depth == 0)
-    assert doc[at + 1 :].startswith(", 78 (EX_CONFIG) when the config cannot be read"), doc[at - 40 : at + 40]

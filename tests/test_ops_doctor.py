@@ -3565,11 +3565,11 @@ def test_a_speech_build_that_ran_out_of_time_has_a_fix_and_no_other_failure_gets
 
 
 @pytest.mark.parametrize("module", ["ocr", "media", "speech"])
-def test_doctor_loads_convert_through_cycle_and_its_words_say_so(module: str) -> None:
+def test_doctor_import_stops_when_a_convert_module_cannot_import(module: str) -> None:
     """B13 round 22 Z56: ``_RETRY_CLAUSE``'s docstring and the comments on doctor's lazy convert imports said
     doctor imports, and gives its line, even when convert is broken. doctor imports ``agentsync.cycle``, which
-    imports convert, so a convert module that cannot import stops doctor's import; no word in doctor says
-    otherwise."""
+    imports convert, so a convert module that cannot import stops doctor's import. (B13 round 23 A66: the
+    check of doctor's own words is gone, a re-assertion of the source.)"""
     code = (
         f"import sys\nsys.modules['agentsync.convert.{module}'] = None\n"
         "try:\n    import agentsync.ops.doctor\nexcept ImportError:\n    print('stopped')\n"
@@ -3579,9 +3579,6 @@ def test_doctor_loads_convert_through_cycle_and_its_words_say_so(module: str) ->
         [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120
     )
     assert ran.stdout.strip() == "stopped", ran.stdout + ran.stderr
-    words = " ".join(inspect.getsource(doctor).split())
-    assert "convert is broken" not in words
-    assert "through ``cycle``, so this is about one copy, not import safety" in words
 
 
 @pytest.mark.parametrize("helper", ["ocr", "media"])
