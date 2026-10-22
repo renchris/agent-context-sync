@@ -5701,11 +5701,13 @@ on_exit() {
 				# Local-work branches with commits of their own and no patch (only counted when no patch is unread):
 				# only section 3 said how to add them (B13 round 21 Y23). Advice beside the review, never a step
 				# before it, as the cut-off clause below: a branch at an older commit of origin/main counts while
-				# format-patch writes nothing for it, so it comes back on every run. No branch is named.
+				# format-patch writes nothing for it, so it comes back on every run, and the line says so, naming
+				# section 3's command (B13 round 23 A27: "a branch that writes nothing" named none). No branch
+				# is named.
 				if [ "$REPORT_ONLY" -eq 1 ] && [ "$wrote" -eq 1 ] && [ "$BACK_BRANCHES" -gt 0 ]; then
 					up="$BACK_BRANCHES local-work branches"
 					[ "$BACK_BRANCHES" != 1 ] || up="1 local-work branch"
-					NEXT_MSG="$back does not carry the commits of $up (its section 3 says how to add them as patches, then run $LOCAL_WORK_AGAIN again; a branch that writes nothing holds no new commit); either way, review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
+					NEXT_MSG="$back does not carry the commits of $up (its section 3 says how to add them as patches, then run $LOCAL_WORK_AGAIN again; a branch for which section 3's format-patch command writes no patch holds no new commit, and this line then comes back on every run); either way, review $back and copy that one file back privately${link:+, or paste the setup report into the issue the link above opens} (nothing is sent for you)"
 				fi
 				# B13 round 19 W3: a part the report's time limit cut off (its doctor on a busy Mac) asked for the
 				# report again only inside the report. The NEXT the agent relays says so too, as advice beside the

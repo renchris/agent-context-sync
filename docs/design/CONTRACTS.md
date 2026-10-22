@@ -26761,6 +26761,8 @@ never a step before it: a branch at an older commit of origin/main counts while 
 comes back on every run. The unreadable-patch case never overlaps it, and the cut-off clause still wraps it. Test:
 `test_local_work_branches_with_no_patch_are_named_in_the_next_line` (1 and 2 branches, with the link and without,
 and the plain NEXT once every branch is at main's commit).
+Amended 2026-10-22, §16.165 A27: the bracket's last clause reads `a branch for which section 3's format-patch
+command writes no patch holds no new commit, and this line then comes back on every run`.
 
 **A git remote or proxy on its section's header line is read** (Y64). git applies `[remote "origin"] url = ...`
 and `[http] proxy = ...` written on the header line, but `git_remote_entries` skipped every header line and
@@ -28082,6 +28084,17 @@ went on under launchd, twelve of them for a day on two cores. The helper starts 
 session, and `Popen.__exit__` does not wait on one), kills the whole process group, then waits and raises it as
 `subprocess.run` did. Test: `test_a_timed_out_install_run_leaves_none_of_its_processes_running` (a script whose
 backgrounded `sleep 300` outlived the old helper's timeout).
+
+**The local-work NEXT names the command its last clause depends on** (A27; amends §16.153 Y23). The
+`--report-only` NEXT ended its bracket `a branch that writes nothing holds no new commit`, words that make sense
+only in section 3, right after its `git ... format-patch` command; the NEXT names no such command, and a branch
+writes nothing. It now reads `a branch for which section 3's format-patch command writes no patch holds no new
+commit, and this line then comes back on every run`. The clause is kept, not dropped: it is what tells a person
+or agent that a repeat with no patch is expected, so they do not re-run the report for it. The finder's `a branch
+for which that command writes no patch` would point at the report command, the only one the NEXT names. Section
+3's own line is unchanged. The agentsync report's copy is lane RA's (§16.164). Tests:
+`test_local_work_branches_with_no_patch_are_named_in_the_next_line` and
+`test_a_cut_off_report_with_local_work_branches_says_either_way_once`.
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 

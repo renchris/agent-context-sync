@@ -3615,8 +3615,9 @@ def test_local_work_branches_with_no_patch_are_named_in_the_next_line(
     tail = ", or paste the setup report into the issue the link above opens" if link else ""
     assert last_line(cp) == (
         f"NEXT: {back} does not carry the commits of {lbr} (its section 3 says how to add them as patches, "
-        "then run ~/src/agent-context-sync/scripts/install.sh --report-only again; a branch that writes "
-        f"nothing holds no new commit); either way, review {back} and copy that one file back "
+        "then run ~/src/agent-context-sync/scripts/install.sh --report-only again; a branch for which "
+        "section 3's format-patch command writes no patch holds no new commit, and this line then comes back "
+        f"on every run); either way, review {back} and copy that one file back "
         f"privately{tail} (nothing is sent for you) [setup report: {report_path(env)}]"
     ), last_line(cp)
     assert "20261020" not in cp.stdout, "no branch is named"
@@ -3655,8 +3656,9 @@ def test_a_cut_off_report_with_local_work_branches_says_either_way_once(
     assert last_line(cp) == (
         "NEXT: part of the report was cut off or not measured (its Summary says which, and why): if this Mac "
         f"was busy, run {again} once it is idle; also, {back} does not carry the commits of 1 local-work "
-        f"branch (its section 3 says how to add them as patches, then run {again}; a branch that writes "
-        f"nothing holds no new commit); either way, review {back} and copy that one file back privately "
+        f"branch (its section 3 says how to add them as patches, then run {again}; a branch for which "
+        "section 3's format-patch command writes no patch holds no new commit, and this line then comes back "
+        f"on every run); either way, review {back} and copy that one file back privately "
         f"(nothing is sent for you) [setup report: {report_path(env)}]"
     ), last_line(cp)
     assert last_line(cp).count("either way") == 1, last_line(cp)
