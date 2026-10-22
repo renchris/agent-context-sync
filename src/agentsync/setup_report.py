@@ -11100,6 +11100,15 @@ _STATE_OPEN_RE = re.compile(r"error: state: .* cannot be opened\b.*?(?:\(fix: (?
 cannot be opened: <reason> (fix: <fix>)``): never printed, its path holds the home folder."""
 
 
+_FOLDER_ACL_FIX_HEADS = (
+    "the person gives this account read, write and search access to the folder ",
+    "the person gives this account read-attributes, read, write and search access to the folder ",
+)
+"""The openings of doctor's fixes for an ACL or a privacy setting on the state folder itself:
+``_search_fix``'s, and ``_parent_fix``'s when no folder above it refuses a search (B13 round 22 Z72), which
+named the state file until B13 round 23 (A43, A69, A88)."""
+
+
 def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tuple[str, str] | None:
     """What a failed config step met, when the run's own install.out block holds the sync's ``error:
     state: ... cannot be opened`` line (B13 round 21 Y5: Items said only "exited 1 at its config step; the
@@ -11141,11 +11150,18 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "the person's to fix",
                 "after the folder above it was opened to this account",
             )
-        if fix.startswith("the person gives this account read, write and search access to the folder "):
+        if fix.startswith(_FOLDER_ACL_FIX_HEADS):
             return (
                 " on agentsync's state folder, which an ACL or a privacy setting refuses this account: the "
                 "person's to fix",
                 "after the folder was fixed",
+            )
+        # doctor's read_only_fix, which may name the manifest, the folder or one below it (B13 round 23 A88)
+        if fix.startswith("the person makes the volume that holds "):
+            return (
+                " on agentsync's state file or folder, which sits on a volume mounted read-only: the "
+                "person's to fix",
+                "after the volume was made writable",
             )
         if persons:
             return " on agentsync's state file, which this account could not open: the person's to fix", (

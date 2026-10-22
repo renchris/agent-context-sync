@@ -8816,11 +8816,28 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
             "the folder above it was opened to this account",
         ),
         (
-            f"the person gives this account read, write and search access to the folder {folder} (its owner "
-            f"and mode are right, so an ACL or a privacy setting refuses it: ls -led {folder} shows an ACL)",
+            f"the person gives this account read, write and search access to the folder {folder}; its "
+            f"owner and mode are right, so an ACL or a privacy setting refuses it, and ls -led {folder} "
+            "shows the ACL",
             "agentsync's state folder",
             "which an ACL or a privacy setting refuses this account: the person's to fix",
             "the folder was fixed",
+        ),
+        # B13 round 23 A43, A69, A88: doctor's _parent_fix for an ACL on the folder itself (round 22 Z72) and
+        # its read_only_fix read as the state file's
+        (
+            f"the person gives this account read-attributes, read, write and search access to the folder "
+            f"{folder}; every folder above it allows a search, so an ACL or a privacy setting on the folder "
+            f"itself refuses it, and chmod -N {folder} removes its ACL",
+            "agentsync's state folder",
+            "which an ACL or a privacy setting refuses this account: the person's to fix",
+            "the folder was fixed",
+        ),
+        (
+            f"the person makes the volume that holds {folder} writable, as it is mounted read-only",
+            "agentsync's state file or folder",
+            "which sits on a volume mounted read-only: the person's to fix",
+            "the volume was made writable",
         ),
     ):
         out.write_text(
@@ -8843,6 +8860,12 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
     for fix, words in (
         (above, "behind a folder above it that refuses this account a search: the person's to fix"),
         (f"chmod 700 {folder}", "which this account could not open, by its mode, not damage"),
+        (  # B13 round 23 A43, A69, A88: an ACL on the folder itself, doctor's _parent_fix (round 22 Z72)
+            f"the person gives this account read-attributes, read, write and search access to the folder "
+            f"{folder}; every folder above it allows a search, so an ACL or a privacy setting on the folder "
+            f"itself refuses it, and chmod -N {folder} removes its ACL",
+            "which an ACL or a privacy setting refuses this account: the person's to fix",
+        ),
     ):
         out.write_text(
             "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
