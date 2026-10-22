@@ -573,7 +573,7 @@ def stubs(tmp_path: Path) -> dict[str, str]:
         "STUB_LOG": str(tmp_path / "calls.log"),
         "STUB_AGENTSYNC": str(agentsync),
         "AGENTSYNC_LAUNCHCTL": str(launchctl),
-        "AGENTSYNC_WAIT_POLL_SECONDS": "0.05",
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.5",  # its integer part is 0, as at 0.05: B13 round 23 A97
         "LC_ALL": "C",
     }
 

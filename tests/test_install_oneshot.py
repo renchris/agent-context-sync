@@ -315,7 +315,7 @@ def _write_exe(path: Path, text: str) -> Path:
 
 @pytest.fixture
 def env(tmp_path: Path) -> dict[str, str]:
-    """A tmp HOME, stub uv/agentsync on PATH and a stub launchctl; a 0.05 s wait poll."""
+    """A tmp HOME, stub uv/agentsync on PATH and a stub launchctl; a 0.5 s wait poll."""
     home = tmp_path / "home"
     home.mkdir()
     stubbin = tmp_path / "stubbin"
@@ -330,7 +330,7 @@ def env(tmp_path: Path) -> dict[str, str]:
         "AGENTSYNC_LAUNCHCTL": str(_write_exe(tmp_path / "launchctl-stub", STUB_LAUNCHCTL)),
         "STUB_LC_DIR": str(tmp_path / "launchd"),
         "STUB_LC_EXITS": "0",
-        "AGENTSYNC_WAIT_POLL_SECONDS": "0.05",
+        "AGENTSYNC_WAIT_POLL_SECONDS": "0.5",  # its integer part is 0, as at 0.05: B13 round 23 A97
         "STUB_ISSUE_LINK": ISSUE_LINK,
         "LC_ALL": "C",
         **xcrun_db(),
