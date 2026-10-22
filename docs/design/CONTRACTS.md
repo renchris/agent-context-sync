@@ -27357,6 +27357,8 @@ read as before; `fallback_install_source_line` reads `[remote.origin]` in any ca
 are no remote. The proxy readers and `[http.<url>]` are not touched: git refuses a dotted URL subsection as a bad
 config line, and both proxy readers already read every `proxy =` line. Tests: the dotted rows of the two tests
 above and of the install source line test.
+Amended 2026-10-22, §16.165 A48: the redaction test's `python == shell` assert on the dotted rows runs with no
+guard (§16.165).
 
 **A cut-off report with local-work branches says "either way" once** (Z44). The cut-off clause (§16.153 Y66)
 joined round 21 Y23's branch NEXT with `; either way, `, and that NEXT holds its own before the review. It joins
@@ -28064,6 +28066,13 @@ where step 2 left the loop. A list run's lead-in reads `The last install.sh --li
 its own `ended 0` form). No lead-in holds ` (install.out`. Test: `test_install_oneshot.py::
 test_the_shell_report_says_which_run_its_quoted_next_line_came_from` (a run that ended 0; one killed with a failed
 step; an `end rc=1` with none; a list run after a stopped install run; list runs only).
+
+**The two reports' agreement on a dotted remote is asserted on every row** (A48, A76, A89; amends §16.159 Z76).
+`test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_shell_report` asserted `python ==
+shell` only when `setup_report._git_remotes()` read something for a `[remote.` config, a stopgap until lane RA's
+dotted reader landed (79f403c5). Once it had, the guard was false only when that reader regressed, the one case
+its assert exists to catch. The assert is unconditional; with the reader's dotted arm made `False`, the
+`dotted-two-line` and `dotted-one-line` rows fail, and with the guard they passed.
 
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 

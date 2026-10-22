@@ -15253,10 +15253,9 @@ def test_a_git_remote_or_proxy_on_its_sections_header_line_is_redacted_in_the_sh
     assert shell == (
         "fatal: unable to access 'https://<proxy-2>/<proxy-3>/': 403 through http://<proxy-1>:8080"
     ), shell
-    # B13 round 21 Y1, Y36 (lane RA): the Python readers read the header line's key too, so both forms agree;
-    # round 22 Z76's dotted section is lane RA's half in setup_report._git_remotes
-    if "[remote." not in config.lower() or setup_report._git_remotes():
-        assert python == shell, "the numbers the agentsync report gives"
+    # B13 round 21 Y1, Y36 and round 22 Z76 (lane RA, 79f403c5): the Python readers read the header line's key
+    # and the dotted section too, so the two reports agree on every row (round 23 A48: no guard skips a row)
+    assert python == shell, "the numbers the agentsync report gives"
 
 
 def test_the_shell_git_readers_read_a_key_on_its_sections_header_line(tmp_path: Path) -> None:
