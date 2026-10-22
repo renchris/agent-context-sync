@@ -1501,7 +1501,8 @@ def test_the_reports_governance_value_keys_are_governances() -> None:
 
 def test_a_holds_reason_and_owner_are_cut_by_the_fixed_words() -> None:
     """B13 round 23 A8: the three forms a hold prints in (describe(), a refusal joining two, the release log
-    line) keep the scope, origin and time and lose the reason and owner, each cut counted as a <value>."""
+    line) keep the scope, origin and time and lose the reason and owner, each cut counted as a <value>. A
+    refusal joining two names the first only, and no time (A8 review: fail-safe)."""
     red = setup_report.Redactor()
     when = " since 2026-10-22T05:32:56Z"
     held, cut = (
@@ -1515,8 +1516,8 @@ def test_a_holds_reason_and_owner_are_cut_by_the_fixed_words() -> None:
         ),
         "purge suspended by legal/records hold: hold all (config): Northwind review — set by Northwind "
         f"counsel; {held.replace('matter', '; matter')}. Release it first (records owner).": (
-            f"purge suspended by legal/records hold: hold all (config): {cut}; "
-            f"hold alpha (state){when}: {cut}. Release it first (records owner)."
+            "purge suspended by legal/records hold: hold all (config) and 1 more hold: reasons and owners "
+            "not shown. Release it first (records owner)."
         ),
         "WARNING agentsync.governance: governance: hold alpha released by Avery Quill": (
             "WARNING agentsync.governance: governance: hold alpha released (owner not shown)"
@@ -1527,6 +1528,21 @@ def test_a_holds_reason_and_owner_are_cut_by_the_fixed_words() -> None:
     assert red.counts["value"] == 5, red.counts
     kept = "hold all (config): no set-by words here"
     assert red.redact(kept) == kept
+    # A8 review: a stop phrase inside an owner or reason hides more, never less
+    for reason, owner in (
+        ("Fabrikam matter", "Avery Quill. Release it first via Bravo Counsel"),
+        ("Fabrikam matter", "Avery; hold b (state): Quill"),
+        ("X — set by Y (purge and compaction suspended) Fabrikam secret", "Bravo Counsel"),
+    ):
+        tricky = f"hold alpha (state): {reason} — set by {owner}{when}"
+        for line in (
+            f"[ok] governance.hold — {tricky}",
+            f"HOLD: {tricky} (purge and compaction suspended)",
+            f"purge suspended by legal/records hold: {tricky}. Release it first (records owner).",
+        ):
+            shown = red.redact(line)
+            assert not any(w in shown for w in ("Fabrikam", "Avery", "Quill", "Bravo", "secret")), shown
+            assert shown.count("hold alpha (state)") == 1 and "not shown" in shown, shown
 
 
 def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
@@ -1574,6 +1590,55 @@ def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
     assert any("hold all (config): reason and owner not shown" in ln for ln in holds), holds
     assert "governance.hold, governance.hold," in section(report_text, "Doctor")  # both still counted ok
     assert "released (owner not shown)" in section(report_text, "Recent errors")
+
+
+def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(
+    fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 23 A8 review: a config hold's reason and owner keep their inner newlines, so a line of either
+    has no " — set by " to anchor on: each is registered, whole and line by line. A state hold's reason that
+    holds a path was cut at the path by the log-line scrub, which ran first and lost the anchor: holds are cut
+    before it, in Recent errors and the install.out tail."""
+    cfg = fake_mac["config"]
+    text = (
+        '[governance]\nhold = true\nhold_reason = "Fabrikam v. Northwind\\nmatter 2026-114"\n'
+        'hold_owner = "Northwind counsel\\nAvery Quill"\n\n'
+    )
+    cfg.write_text(text + cfg.read_text(encoding="utf-8"), encoding="utf-8")
+    sid = next(src.id for src in load_config(cfg).sources if src.path == fake_mac["one"])
+    hold = ["hold", sid, "--reason", "Wingtip files ~/Legal/2026 review", "--owner", "Bravo Lane"]
+    assert cli.main([*hold, "--config", str(cfg)]) == 0
+    capsys.readouterr()
+    cli.main(["status", "--config", str(cfg)])
+    status = capsys.readouterr().out
+    assert "matter 2026-114" in status and "Avery Quill" in status, status  # the person still reads them
+    [refused] = [ln for ln in status.splitlines() if ln.startswith("HOLD: hold ") and "(state)" in ln]
+    logged = (
+        "2026-09-29 10:05:04,000 ERROR agentsync.cycle: purge suspended by legal/records hold: "
+        f"{refused.removeprefix('HOLD: ').removesuffix(' (purge and compaction suspended)')}. Release it "
+        "first (records owner).\n"
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n" + status + logged,
+        encoding="utf-8",
+    )
+    with (fake_mac["logs"] / "com.agentsync.poll.err.log").open("a", encoding="utf-8") as log:
+        log.write(logged)
+    rc, report_text, _ = report(tmp_path, cfg)
+    assert rc == 0
+    for secret in (
+        "Fabrikam",
+        "2026-114",
+        "matter",
+        "Avery",
+        "Quill",
+        "Northwind",
+        "Wingtip",
+        "Bravo",
+        "Lane",
+    ):
+        assert secret not in report_text, [ln for ln in report_text.splitlines() if secret in ln]
+    assert "(state) since " in section(report_text, "Recent errors"), section(report_text, "Recent errors")
 
 
 @pytest.mark.parametrize(

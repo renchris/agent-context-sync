@@ -532,17 +532,48 @@ _GOVERNANCE_TAIL_RE = re.compile(
 )
 """A [governance] type error's value in one exception message, where it runs to the message's end (V45)."""
 _HOLD_SET_RE = re.compile(
-    r"\bhold (?P<scope>\S+) \((?P<origin>config|state)\): [^\n]*? — set by [^\n]*?"
+    r"\bhold (?P<scope>\S+) \((?P<origin>config|state)\): [^\n]* — set by [^\n]*?"
     r"(?P<when> since \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)?"
-    r"(?=; hold \S+ \((?:config|state)\): |\. Release it first| \(purge and compaction suspended\)|[ \t]*$)",
+    r"(?P<end>\. Release it first \(records owner\)\.| \(purge and compaction suspended\))?[ \t]*$",
     flags=re.M,
 )
 """A hold as ``Hold.describe()`` prints it (``hold <scope> (<origin>): <reason> — set by <owner> since
 <iso>``), anchored on the fixed words: in doctor's governance.hold line, status's ``HOLD:`` line and a
 refusal's ``suspended by legal/records hold: <hold>; <hold>``. Its reason and owner are free text (a matter, a
-person's name), never registered, so the report shows the scope, origin and time alone (B13 round 23 A8)."""
+person's name), so the report shows the scope, origin and time alone (B13 round 23 A8). Fail-safe: the match
+runs from the first hold to the line's end, keeping only a fixed ending the line closes on (``end``), so a
+stop phrase written inside a reason or owner hides more, never less (A8 review)."""
+_HOLD_MORE_RE = re.compile(r"; hold \S+ \((?:config|state)\): ")
+"""A refusal's next hold, inside a :data:`_HOLD_SET_RE` match: such a line names the first one only (A8)."""
 _HOLD_RELEASED_RE = re.compile(r"\bhold (?P<scope>\S+) released by [^\n]*")
 """The log line ``governance: hold <scope> released by <owner>``: its owner is not shown either (A8)."""
+
+
+def _cut_holds(text: str, cut: Callable[[], None]) -> str:
+    """``text`` with each hold's reason and owner (:data:`_HOLD_SET_RE`, :data:`_HOLD_RELEASED_RE`) cut,
+    ``cut()`` called once per hold. A line joining several (a refusal) reads ``hold <scope> (<origin>) and N
+    more holds: reasons and owners not shown``, with no time. Before :func:`_scrub_item_paths` too: a path in
+    a reason would cut the line there, the anchor with it (B13 round 23 A8)."""
+
+    def held(m: re.Match[str]) -> str:
+        more = len(_HOLD_MORE_RE.findall(m.group(0)))
+        for _ in range(more + 1):
+            cut()
+        head = f"hold {m['scope']} ({m['origin']})"
+        end = m["end"] or ""
+        if more:
+            return f"{head} and {_plural(more, 'more hold')}: reasons and owners not shown{end}"
+        return f"{head}{m['when'] or ''}: reason and owner not shown{end}"
+
+    def released(m: re.Match[str]) -> str:
+        cut()
+        return f"hold {m['scope']} released (owner not shown)"
+
+    if "hold " not in text:
+        return text
+    return _HOLD_RELEASED_RE.sub(released, _HOLD_SET_RE.sub(held, text))
+
+
 # The remote URL a governance remote finding quotes: ``remote <name> (<url>) exists but [governance]
 # allow_remote``, ``... is not under a tenant-owned prefix`` (remote_policy_findings: doctor's
 # governance.remote [FAIL], init's ``governance:`` line) and ``refused: remote <name> (<url>) is not
@@ -1554,23 +1585,8 @@ class Redactor:
         """``text`` with every registered value and every email address, GUID and long hex string replaced."""
         if not self.enabled or not text:
             return text
-        if "hold " in text:
-            text = self._holds(text)
+        text = _cut_holds(text, functools.partial(self.note, "value"))  # by pattern, first (B13 round 23 A8)
         return self._compile().sub(self._replace, text)
-
-    def _holds(self, text: str) -> str:
-        """``text`` with each hold's reason and owner (:data:`_HOLD_SET_RE`, :data:`_HOLD_RELEASED_RE`) cut,
-        each cut counted as a ``<value>``; ``agentsync status`` still prints them (B13 round 23 A8)."""
-
-        def held(m: re.Match[str]) -> str:
-            self.note("value")
-            return f"hold {m['scope']} ({m['origin']}){m['when'] or ''}: reason and owner not shown"
-
-        def released(m: re.Match[str]) -> str:
-            self.note("value")
-            return f"hold {m['scope']} released (owner not shown)"
-
-        return _HOLD_RELEASED_RE.sub(released, _HOLD_SET_RE.sub(held, text))
 
     def note(self, kind: str) -> None:
         """Count one replacement of an unnumbered ``kind`` made outside the redaction pass
@@ -4281,7 +4297,34 @@ def _build_redactor(r: _Run) -> Redactor:
     with contextlib.suppress(Exception):
         for sha in _docs_commits(r):
             red.add_commit(sha)
+    for value in _hold_values(r):
+        red.add("value", value, ignore_case=True)
     return red
+
+
+def _hold_values(r: _Run) -> list[str]:
+    """Each hold's reason and owner as the config and holds.json give them, whole and line by line as the
+    report splits its text: a config value keeps its inner newlines, so a line of it carries no `` — set by ``
+    for :data:`_HOLD_SET_RE` to anchor on (B13 round 23 A8). A one-word line the report prints anyway
+    ("legal") is left out: as a value it would cut that word from every line. Each read fails quietly."""
+    from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
+
+    said: list[str] = []
+    with contextlib.suppress(Exception):
+        gov = governance.load_governance(r.config_path)
+        said += [v for v in (gov.hold_reason, gov.hold_owner) if v]
+    if r.config is not None:
+        with contextlib.suppress(Exception):
+            for h in governance.state_holds(expand(r.config.state_paths.root)):
+                said += [h.reason, h.owner]
+    out: list[str] = []
+    for value in said:
+        for line in [value, *value.splitlines()]:
+            form = line.strip()
+            word = len(_tokens(form)) == 1 and (_norm(form) in report_words() or _norm(form) in _OUTPUT_WORDS)
+            if len(form) >= 2 and not word:
+                out.append(form)
+    return list(dict.fromkeys(out))
 
 
 # ---- sections -------------------------------------------------------------------------------------------
@@ -5297,7 +5340,14 @@ def _installer_output(r: _Run) -> list[str]:
         "",
         f"<details><summary>{_the_last(len(shown), 'line')} of {path} ({saw})</summary>",
         "",
-        *_fence(_utc_log_times(_scrub_item_paths(ln) if _own_line(ln) else ln for ln in shown)),
+        *_fence(
+            _utc_log_times(
+                _scrub_item_paths(_cut_holds(ln, functools.partial(r.red.note, "value")))
+                if _own_line(ln)
+                else ln
+                for ln in shown
+            )
+        ),
         "",
         "</details>",
     ]
@@ -8985,7 +9035,8 @@ def _recent_errors(r: _Run) -> list[str]:
         # name are one entry, and two sources' lines stay apart. Scrubbed with the file name in front, as
         # shown, so a path in a line's first segment is covered.
         cut = len(path.name) + 2
-        shown = _utc_log_times(_scrub_item_paths(f"{path.name}: {ln}")[cut:] for ln in own)
+        held = functools.partial(r.red.note, "value")  # a hold before the scrub, which cuts at a path (A8)
+        shown = _utc_log_times(_scrub_item_paths(f"{path.name}: {_cut_holds(ln, held)}")[cut:] for ln in own)
         hits += [f"{path.name}: {ln}{note}" for ln, note in _merge_repeats(shown)]
     merged = (
         f" ({lines} as logged: lines in a row that read the same here are shown once, with their count"
