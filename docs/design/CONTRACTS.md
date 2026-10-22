@@ -28134,6 +28134,10 @@ cleared. Test: `test_install_oneshot.py::
 test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_reports` (the `last-wins` row is now
 `first-wins`; GitHub first; an empty reset; a url in `config.worktree` after one in the config; two urls and a
 rewrite), which reads git's own fetch url and asserts the two reports give the same words on every row.
+The empty reset is git's since a version newer than CI's macos-15 `/usr/bin/git`, which keeps an empty `url =` as a
+key and fetches from the first (CI run 39809607845; this Mac's Apple Git 2.50 clears the list): both reports read
+the list as the newer git does, the field Mac's `/usr/bin/git`, and the two tests check the empty row only where
+the report's own git (`gitops.usr_bin_git`) clears it.
 
 **A URL rewrite base may hold an escaped quote** (A82; corrects §16.159 Z75). `git config --global
 url.'https://git.contoso-eng.invalid/kes"trel/'.insteadOf https://github.com/` writes `[url
