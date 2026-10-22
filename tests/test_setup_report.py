@@ -3981,6 +3981,50 @@ def test_the_installer_output_lines_person_clause_reads_by_its_count_and_its_run
     assert loop == {"NEXT:": 1, setup_report.PERSONS_FIX: 1}, loop
 
 
+def _agents_chmod_next(fix: str) -> str:
+    """install.sh's state-mode FAIL_NEXT with ``fix`` as its ``$fix`` (install.sh's ``state_open_fix``)."""
+    return (
+        "NEXT: agentsync's state folder or a file in it has a mode this account cannot open (a mode, not "
+        f"damage; the error above names it): the fix is the agent's: run {fix} once, then re-run: "
+        "~/x/install.sh; if the re-run names the same chmod again, show the person the error and go on to "
+        "the report"
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "fix"),
+    [
+        (
+            "error: state: ~/'Contoso Data/agentsync' cannot be opened: its folder refuses this account "
+            "(fix: chmod 700 ~/'Contoso Data/agentsync')",
+            "chmod 700 ~/'Contoso Data/agentsync'",
+        ),
+        (
+            "error: state: ~/'Contoso Data/agentsync/manifest.sqlite' cannot be opened (fix: chmod 600 "
+            "~/'Contoso Data/agentsync/manifest.sqlite'; the file itself is not damaged)",
+            "chmod 600 ~/'Contoso Data/agentsync/manifest.sqlite'",
+        ),
+    ],
+)
+def test_a_fix_its_runs_next_gives_the_agent_is_no_other_instruction(error: str, fix: str) -> None:
+    """B13 round 23 A35: step 2's ``error: state: ... (fix: chmod ...)`` counted as "1 other instruction-like
+    line (1 fix:)", a hint the agent may act on, though that run's NEXT gives the same chmod to the agent as
+    its step. It is :data:`_NEXT_FIX` now, never the person's; another chmod, or a run with no NEXT, stays a
+    fix:."""
+    head = "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh"
+    counts = setup_report.instruction_counts([head, error, _agents_chmod_next(fix)])
+    assert counts == {"NEXT:": 1, setup_report._NEXT_FIX: 1}, counts
+    words = setup_report._instruction_text(counts, 3, 1)
+    assert "and 0 other instruction-like lines" not in words  # three clauses: an Oxford-comma list
+    assert words.startswith(
+        "1 NEXT: line in 1 run (exactly one per install.sh run is expected), 0 other instruction-like lines, "
+        "and 1 line whose fix: is the step its run's NEXT: names (not a separate hint) in the last 3 lines"
+    ), words
+    other = setup_report.instruction_counts([head, error, _agents_chmod_next("chmod 700 ~/'Contoso Data'")])
+    assert other == {"NEXT:": 1, "fix:": 1}, other
+    assert setup_report.instruction_counts([head, error]) == {"fix:": 1}
+
+
 _COUNTED_S_RE = re.compile(r"\b\d+ [A-Za-z:. -]{0,30}\((?:s|es|ies)\)")
 """A number before a noun written with ``(s)``: the count is known, so the noun needs none (B13 round 15 S26,
 S30, S31)."""

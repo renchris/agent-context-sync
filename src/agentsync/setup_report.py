@@ -4997,6 +4997,14 @@ is the person's (:data:`_PERSONS_STEP`): the state file's or a config's error li
 writing the report or a killed one: every install.sh exit-65 NEXT gives that stop to the person (round 18
 V87)."""
 
+_NEXT_FIX = "next-fix"
+"""The :func:`instruction_counts` kind of a ``fix:`` whose command is the one its run's NEXT gives the agent
+(``the fix is the agent's: run <it> once,``: the state folder's or file's chmod, :data:`_AGENT_FIX_RE`): the
+step NEXT names, not a separate hint, and never the person's (B13 round 23 A35)."""
+
+_AGENT_FIX_RE = re.compile(r"the fix is the agent's: run (.+?) once,")
+"""The command install.sh's state-mode ``FAIL_NEXT`` gives the agent (A35)."""
+
 _PERSONS_STEP = "not a step for the agent"
 """The words every install.sh NEXT that gives the run's stop to the person carries: ``PERSONS_FAILS``, the
 config's and the state file's ``FAIL_NEXT``, the first sync's refusal and the no-[FAIL] status NEXT."""
@@ -5023,8 +5031,9 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
     step. A run whose NEXT says fixing its error is the person's (:data:`_PERSONS_STEP`) counts a person's
     fix on any of its lines so too, as the state file's error line, which is no [FAIL] line (round 17 U6);
     so does a run with no NEXT yet for the state file's own fix, ``doctor.MANIFEST_FIX`` (round 18 V87).
-    A mixed run's fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on
-    any other line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
+    A fix whose command the run's NEXT gives the agent is :data:`_NEXT_FIX` (B13 round 23 A35). A mixed run's
+    fixes, those of a run whose NEXT says something else (:func:`_persons_run`), and a fix: on any other
+    line, stay ``fix:`` (B13 round 15 S5, round 16 T47)."""
     counts: Counter[str] = Counter()
     run: list[str] = []
 
@@ -5034,6 +5043,9 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
         # a run with no NEXT yet (the one writing this report, or a killed one): the state file's fix is the
         # person's whatever line holds it, as every install.sh exit-65 NEXT says (B13 round 18 V87)
         state = not any(ln.lstrip().startswith("NEXT:") for ln in run)
+        named = {
+            m.group(1) for ln in run if ln.lstrip().startswith("NEXT:") for m in _AGENT_FIX_RE.finditer(ln)
+        }
         for line in run:
             kind = next((k for k, rx in _INSTRUCTION_RES if rx.search(line)), None)
             if (
@@ -5046,6 +5058,8 @@ def instruction_counts(lines: Iterable[str]) -> Counter[str]:
                 )
             ):
                 kind = PERSONS_FIX
+            elif kind == "fix:" and named and (_fix_of(line) or "").split(";", 1)[0].strip() in named:
+                kind = _NEXT_FIX  # the manifest's fix ends "; the file itself is not damaged" (A35)
             if kind is not None:
                 counts[kind] += 1
 
@@ -5152,6 +5166,11 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
     ]
     if persons:
         clauses.append(theirs)
+    if counts[_NEXT_FIX]:  # the chmod its run's NEXT gives the agent (B13 round 23 A35)
+        clauses.append(
+            f"{_plural(counts[_NEXT_FIX], 'line')} whose fix: is the step its run's NEXT: names "
+            "(not a separate hint)"
+        )
     listed = " and ".join(clauses) if len(clauses) == 2 else ", ".join(clauses[:-1]) + ", and " + clauses[-1]
     return listed + f" in {_the_last(read, 'line')} of install.out" + (whole if cut else "")
 
@@ -5272,9 +5291,9 @@ def _installer_output(r: _Run) -> list[str]:
         "than NEXT: is a hint the agent may act on before install.sh's own next step; a fix: on a [FAIL] "
         "line of a run whose stopping [FAIL] lines are all the person's is not (that run's NEXT says so). "
         "Nor is a person's fix: on any line of a run whose NEXT says fixing its error is the person's, as "
-        "the state file's error line. agentsync's own "
-        "WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths and document names "
-        "as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
+        "the state file's error line, nor a fix: that its run's NEXT gives the agent as its step. "
+        "agentsync's own WARNING and ERROR log lines, and a sync's alarm and error lines, show item paths "
+        "and document names as <path>, as in Recent errors, and a log line's local time is shown in UTC.",
         "",
         f"<details><summary>{_the_last(len(shown), 'line')} of {path} ({saw})</summary>",
         "",
