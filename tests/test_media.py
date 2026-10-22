@@ -651,6 +651,7 @@ def made_clip(tmp_path: Path, main: str) -> Path:
     return clip
 
 
+@pytest.mark.timing  # helper runs at a load of 15 per core passed every limit (B13 round 23)
 def test_the_real_media_helper_reads_a_two_second_clip_it_made(tmp_path: Path) -> None:
     clip = made_clip(tmp_path, CLIP_MAIN)
     eng = media._open(media.build(tmp_path / "cache"))
@@ -686,6 +687,7 @@ def test_the_real_media_helper_reads_a_two_second_clip_it_made(tmp_path: Path) -
     assert changed[0] > 2_000 and masked[0] < 100
 
 
+@pytest.mark.timing
 def test_the_real_media_helper_reads_the_pills_and_the_sound_of_a_clip_it_made(tmp_path: Path) -> None:
     clip = made_clip(tmp_path, SOUND_CLIP_MAIN)
     eng = media._open(media.build(tmp_path / "cache"))
