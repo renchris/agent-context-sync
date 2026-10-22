@@ -1042,17 +1042,20 @@ def _search_fix(root: Path, *, folder: bool = True) -> str:
     it access, that still refuses it: an ACL or a privacy setting, the person's, never a chmod of the agent's,
     which would change nothing, so its first words are "the person " (B13 round 21, the ownership rule: an
     ACL deny stays the person's, as install.sh's step 1 tail says; lane P measured a file's). Prose after
-    "; ", no bracket of its own (B13 round 22 Z49)."""
+    "; ", no bracket of its own (B13 round 22 Z49). It names how to take the ACL off as well as how to see it,
+    as :func:`_parent_fix` does (B13 round 23 A15): run by the owner, ``chmod -N`` leaves the mode, which
+    already gives the owner access; where a privacy setting is the cause it changes nothing."""
+    shown = _shell_path(root)
     if not folder:
         return (
-            f"the person gives this account read and write access to the file {_shell_path(root)}; its owner "
-            f"and mode are right, so an ACL or a privacy setting refuses it, and ls -le {_shell_path(root)} "
-            "shows the ACL"
+            f"the person gives this account read and write access to the file {shown}; its owner and mode "
+            f"are right, so an ACL or a privacy setting refuses it; ls -le {shown} shows the ACL, and chmod "
+            f"-N {shown} removes it"
         )
     return (
-        f"the person gives this account read, write and search access to the folder {_shell_path(root)}; its "
-        "owner and mode are right, so an ACL or a privacy setting refuses it, and ls -led "
-        f"{_shell_path(root)} shows the ACL"
+        f"the person gives this account read, write and search access to the folder {shown}; its owner "
+        f"and mode are right, so an ACL or a privacy setting refuses it; ls -led {shown} shows the ACL, and "
+        f"chmod -N {shown} removes it"
     )
 
 

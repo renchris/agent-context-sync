@@ -1400,7 +1400,7 @@ def test_a_state_file_an_acl_refuses_at_mode_0600_is_the_persons(sample_config: 
     files = named["state_dir.files"]
     assert not files.ok and files.detail.endswith(f"by an ACL or a privacy setting: {db.name} (0600)"), files
     assert files.fix == doctor._search_fix(db, folder=False) and doctor.is_persons_fix(files.fix), files.fix
-    assert "chmod" not in files.fix and "state_dir.manifest" not in named
+    assert "chmod" not in files.fix.replace("chmod -N", "") and "state_dir.manifest" not in named
     assert doctor.is_persons_fix(fix) and "chmod 600" not in fix, fix
 
 
@@ -1477,6 +1477,42 @@ def test_the_parent_fix_names_a_chmod_only_for_this_accounts_own_folder_shut_by_
         f"on the folder itself refuses it, and chmod -N {doctor._shell_path(root)} removes its ACL"
     ), itself
     for fix in (own, theirs, acl, itself):
+        assert doctor.is_persons_fix(fix) and "(" not in fix, fix
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or os.geteuid() == 0, reason="macOS ACLs; root ignores them")
+def test_an_acl_on_this_accounts_own_folder_or_file_names_the_chmod_that_takes_it_off(tmp_path: Path) -> None:
+    """B13 round 23 A15, measured: an ACL that denies this account its own 0700 state folder (or 0600 file)
+    got a fix that said how to see the ACL (``ls -led``) but not how to remove it, while the parent fix names
+    ``chmod -N``. Run by the owner it takes the ACL off and the folder lists again; it stays the person's."""
+    user = os.environ.get("USER") or os.getlogin()
+    root = tmp_path / "state"
+    root.mkdir(mode=0o700)
+    db = root / "manifest.sqlite"
+    db.write_bytes(b"")
+    db.chmod(0o600)
+    subprocess.run(["/bin/chmod", "+a", f"user:{user} deny read,write", str(db)], check=True)
+    try:
+        file_fix = doctor.state_path_fix(root, db)
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(db)], check=True)
+    subprocess.run(
+        ["/bin/chmod", "+a", f"user:{user} deny list,search,add_file,delete_child", str(root)], check=True
+    )
+    try:
+        folder_fix = doctor.state_path_fix(root, db)
+        assert subprocess.run(["/bin/chmod", "-N", str(root)], check=False).returncode == 0
+        assert [p.name for p in root.iterdir()] == ["manifest.sqlite"]  # the owner's chmod -N lists it again
+    finally:
+        subprocess.run(["/bin/chmod", "-N", str(root)], check=False)
+    shown_db, shown_root = doctor._shell_path(db), doctor._shell_path(root)
+    assert file_fix.endswith(f"; ls -le {shown_db} shows the ACL, and chmod -N {shown_db} removes it"), (
+        file_fix
+    )
+    assert folder_fix.endswith(
+        f"; ls -led {shown_root} shows the ACL, and chmod -N {shown_root} removes it"
+    ), folder_fix
+    for fix in (file_fix, folder_fix):
         assert doctor.is_persons_fix(fix) and "(" not in fix, fix
 
 
@@ -1584,7 +1620,8 @@ def test_an_own_state_folder_at_0755_an_acl_refuses_is_the_persons_as_install_sh
     finally:
         subprocess.run(["/bin/chmod", "-N", str(root)], check=True)
         root.chmod(0o700)
-    assert doctor.is_persons_fix(fix) and "chmod" not in fix, fix
+    # A15: the owner's chmod -N, the person's, is named; no chmod 600 or 700 of the agent's
+    assert doctor.is_persons_fix(fix) and "chmod" not in fix.replace("chmod -N", ""), fix
     assert [(r.name, r.fix) for r in results] == [
         ("state_dir", f"chmod 700 {doctor._shell_path(root)}"),
         ("state_dir.files", fix),
