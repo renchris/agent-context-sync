@@ -1694,10 +1694,53 @@ config_path_values() {
 			print out v
 		}' "$CONFIG" 2>/dev/null || true
 }
+# The [agentsync] table's state_dir, docs_repo, cache_dir and log_dir as "<key> TAB <value>", the first of each,
+# read as TOML strings: a basic one "..." unescaped as config_path_values unescapes it, a literal one '...' as it
+# stands (B13 round 23 A41: the docs_repo reader took "..." only and undid no escape). A TAB in a value is a
+# space, which the pair format carries.
+agentsync_dir_values() {
+	[ -f "$CONFIG" ] || return 0
+	LC_ALL=C awk '
+		function hex(h,    i, v) {
+			v = 0; h = tolower(h)
+			for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+			return v
+		}
+		function utf8(c) {
+			if (c < 128) return sprintf("%c", c)
+			if (c < 2048) return sprintf("%c%c", 192 + int(c / 64), 128 + c % 64)
+			if (c < 65536) return sprintf("%c%c%c", 224 + int(c / 4096), 128 + int(c / 64) % 64, 128 + c % 64)
+			return sprintf("%c%c%c%c", 240 + int(c / 262144), 128 + int(c / 4096) % 64, 128 + int(c / 64) % 64, 128 + c % 64)
+		}
+		/^[[:space:]]*\[/ { t = ($0 ~ /^[[:space:]]*\[[[:space:]]*agentsync[[:space:]]*\]/); next }
+		t && match($0, /^[[:space:]]*(state_dir|docs_repo|cache_dir|log_dir)[[:space:]]*=[[:space:]]*/) {
+			k = $0; sub(/^[[:space:]]*/, "", k); sub(/[[:space:]=].*$/, "", k)
+			v = substr($0, RLENGTH + 1); q = substr(v, 1, 1); v = substr(v, 2); out = ""; ok = 0
+			if (q == "\047") {
+				if ((i = index(v, "\047")) > 0) { out = substr(v, 1, i - 1); ok = 1 }
+			} else if (q == "\"") {
+				x = "0123456789ABCDEFabcdef"
+				while (v != "") {
+					c = substr(v, 1, 1); v = substr(v, 2)
+					if (c == "\"") { ok = 1; break }
+					if (c != "\\") { out = out c; continue }
+					e = substr(v, 1, 1); v = substr(v, 2)
+					if (e ~ /^[tnrbf]$/) out = out " "
+					else if (e == "u" && match(v, "^[" x "][" x "][" x "][" x "]") ||
+						e == "U" && match(v, "^[" x "][" x "][" x "][" x "][" x "][" x "][" x "][" x "]")) {
+						c = hex(substr(v, 1, RLENGTH)); v = substr(v, RLENGTH + 1)
+						out = out (c == 9 || c == 10 || c == 13 ? " " : utf8(c))
+					} else out = out e
+				}
+			}
+			gsub(/\t/, " ", out)
+			if (ok && out != "" && !(k in seen)) { seen[k] = 1; print k "\t" out }
+		}' "$CONFIG" 2>/dev/null || true
+}
 redaction_pairs() {
 	local cs="$HOME/Library/CloudStorage" n=0 e org f rel part name core tok user mdm line w take u h v pac seen i whole orgs_seen c kept low x links walked lk
 	local port k folders_seen=$'\n' ph b auth sep tail rw keys key m sp top folder_keys=$'\n' FUZZY
-	local tables=0 ids=" " hp beside
+	local tables=0 ids=" " hp beside own_state own_docs own_cache own_logs
 	local -a known=(${FOLDERS[@]+"${FOLDERS[@]}"}) words toks segs loose=() listed=() rooted=() placed=()
 	# --report-only names no folder: the ones earlier runs added are in sources.toml and in install.log's args
 	# (written with printf %q, which read without -r undoes; a $'..' form is unquoted by the loop after it).
@@ -1993,10 +2036,11 @@ redaction_pairs() {
 	# whole path. Never agentsync's own: the inbox and the folder beside the docs repo (unless that folder is a
 	# generic one, or the home itself), as the Python report's "own".
 	hp="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
-	beside=""
-	[ ! -f "$CONFIG" ] || beside="$(LC_ALL=C awk '/^[[:space:]]*\[/ { t = ($0 ~ /^[[:space:]]*\[[[:space:]]*agentsync[[:space:]]*\]/); next }
-		t && /^[[:space:]]*docs_repo[[:space:]]*=[[:space:]]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*$/, "", v); print v; exit }' "$CONFIG" 2>/dev/null || true)"
-	beside="${beside:-$HOME/agent-context/docs}"
+	own_state="" own_docs="" own_cache="" own_logs=""
+	while IFS=$'\t' read -r k v; do
+		case "$k" in state_dir) own_state="$v" ;; docs_repo) own_docs="$v" ;; cache_dir) own_cache="$v" ;; log_dir) own_logs="$v" ;; esac
+	done < <(agentsync_dir_values)
+	beside="${own_docs:-$HOME/agent-context/docs}"
 	case "$beside" in \~) beside="$HOME" ;; \~/*) beside="$HOME/${beside#\~/}" ;; esac
 	beside="${beside%/}"
 	beside="${beside%/*}"
@@ -2064,6 +2108,66 @@ redaction_pairs() {
 			placed+=("$line")
 		done < <(config_path_values)
 	fi
+	# agentsync's own folders where sources.toml moves them, as setup_report._own_folder_values registers them
+	# (B13 round 22 Z21, Z28; round 23 A41: Doctor's chmod fix named a moved state folder in clear here): after
+	# the source folders, so theirs keep their numbers, in the Python report's order (state, docs, cache, log),
+	# each a whole-word literal in any case (folder_value), never through project_values, which would register
+	# agent-context or Application Support alone. Nothing at its default (as given, or as pwd -P gives either);
+	# below the home folder, the path from its first part that names something, and that part alone, after the
+	# leading generic_home_dir, dot, own-container and own-word parts; anywhere else, the whole path.
+	own_word_folder() { # NAME: made only of this report's words, product words, digits and words under 3 letters
+		local w
+		local -a ws=()
+		read -r -a ws < <(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' |
+			LC_ALL=C sed -E 's/([a-z])([0-9])/\1 \2/g; s/([0-9])([a-z])/\1 \2/g; s/[^0-9a-z]+/ /g') || true
+		for w in ${ws[@]+"${ws[@]}"}; do
+			[ "${#w}" -ge 3 ] || continue
+			case "$w" in *[!0-9]*) ;; *) continue ;; esac
+			case "$w" in claude | codex | copilot | cursor | gemini | github) continue ;; esac
+			report_word "$w" || return 1
+		done
+		return 0
+	}
+	own_folder_values() { # PATH DEFAULT
+		local p="$1" d="$2" f g rel first rest low
+		case "$p" in \~) p="$HOME" ;; \~/*) p="$HOME/${p#\~/}" ;; esac
+		while [ "${p%/}" != "$p" ] && [ "$p" != / ]; do p="${p%/}"; done
+		for f in "$p" "$(cd "$p" 2>/dev/null && pwd -P || true)" "${p/#"$HOME"/$hp}"; do
+			for g in "$d" "$(cd "$d" 2>/dev/null && pwd -P || true)" "${d/#"$HOME"/$hp}"; do
+				[ -z "$f" ] || [ "$f" != "$g" ] || return 0
+			done
+		done
+		case "$p" in
+		"$HOME" | "$hp") return 0 ;;
+		"$HOME"/*) rel="${p#"$HOME"/}" ;;
+		"$hp"/*) rel="${p#"$hp"/}" ;;
+		*)
+			folder_value "$p"
+			return 0
+			;;
+		esac
+		while [ -n "$rel" ]; do
+			first="${rel%%/*}"
+			[ "$first" = "$rel" ] && rest="" || rest="${rel#*/}"
+			low="$(recase lower "$first")"
+			case "$low" in
+			library | "application support" | caches | logs | agent-context | .*) rel="$rest" ;;
+			*)
+				if generic_home_dir "$low" || own_word_folder "$first"; then
+					rel="$rest"
+					continue
+				fi
+				folder_value "$rel"
+				[ -z "$rest" ] || folder_value "$first"
+				return 0
+				;;
+			esac
+		done
+	}
+	[ -z "$own_state" ] || own_folder_values "$own_state" "$HOME/Library/Application Support/agentsync"
+	[ -z "$own_docs" ] || own_folder_values "$own_docs" "$HOME/agent-context/docs"
+	[ -z "$own_cache" ] || own_folder_values "$own_cache" "$HOME/Library/Caches/agentsync"
+	[ -z "$own_logs" ] || own_folder_values "$own_logs" "$HOME/Library/Logs/agentsync"
 	# Every configured source id, as <source-N> by its [[source]] table's place (B13 round 5 F6): an id is its
 	# folder's name in slug form ("project-beta---general"), and the empty-folder wait an agent quotes names it.
 	# A whole word, where "-" is no word character, so "exclude-empty <id>" is matched. An id that is one of
@@ -3842,8 +3946,9 @@ fallback_redaction() { # [FILLED: the form fields the link fills, as the Send it
 		folder_item+=" or install.log name"
 	fi
 	# what project_values registers, in words a reader can apply (B13 round 20 X6, X23): the path from its first
-	# folder that is not a common container, that folder alone, the whole path outside home; never a later part
-	[ -z "$proj" ] || folder_item+="; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed source back from: inside the home folder, its path from the first folder that is not a common container (such as Projects, Documents or a dot folder) down, and that folder's name on its own (in ~/Projects/Harborview/notes, both \"Harborview/notes\" and \"Harborview\"); outside the home folder, its whole path; each as a whole word, in any letter case; a later folder's name on its own, such as notes, is not replaced"
+	# folder that is not a common container, that folder alone, the whole path outside home; never a later part.
+	# own_folder_values registers agentsync's own moved folders so too (B13 round 23 A41)
+	[ -z "$proj" ] || folder_item+="; also a folder outside CloudStorage that sources.toml names (a source's, or agentsync's own state, docs, cache or log folder where it moves one), or that doctor's fix adds a removed source back from: inside the home folder, its path from the first folder that is not a common container (such as Projects, Documents or a dot folder) down, and that folder's name on its own (in ~/Projects/Harborview/notes, both \"Harborview/notes\" and \"Harborview\"); outside the home folder, its whole path; each as a whole word, in any letter case; a later folder's name on its own, such as notes, is not replaced"
 	[ -z "$whole" ] || folder_item+="; a name every OneDrive or Google Drive has, such as Documents, only where it stands as a whole word"
 	if [ -n "$whole" ]; then
 		if [ -n "$skip_generic" ] && [ -n "$skip_agent" ]; then

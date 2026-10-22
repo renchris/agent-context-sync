@@ -8056,8 +8056,9 @@ def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -
     folders that sources.toml moves (`_own_folder_values`) as a `<folder-N>`, after the configured folders
     elsewhere and before the source ids, and since Z76 both reports read git's older dotted
     `[remote.<name>]` as a remote; the guide's `<folder-N>` row, its numbering order and its host row named
-    neither. The order and the dotted form are read from the report and the installer; the shell fallback
-    report registers no own folder, so the guide says the agentsync report."""
+    neither. The order and the dotted form are read from the report and the installer. Since round 23 A41 the
+    shell fallback report registers them too, by a twin of `_own_folder_values`, after the configured folders
+    elsewhere and before the source ids, so the guide says both reports."""
     from agentsync import setup_report  # noqa: PLC0415
 
     source = inspect.getsource(setup_report)
@@ -8065,17 +8066,20 @@ def test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes() -
     own = source.index("_own_folder_values(expand(own_dir), expand(default))")
     assert projects < own < source.index("cloud_ids = {sid")
     script = SCRIPTS[0].read_text(encoding="utf-8")
-    assert "_own_folder_values" not in script and "own_dir" not in script
+    shell_projects = script.index('\t\t\tproject_values "$line"\n')
+    shell_own = script.index('own_folder_values "$own_state" "$HOME/Library/Application Support/agentsync"')
+    assert shell_projects < shell_own < script.index('add_pair "$v" "<source-$tables>" w')
     [row] = [ln for ln in _feedback_page().splitlines() if ln.startswith("| `<library-N>`, `<folder-N>`")]
     assert (
-        "and, in the agentsync report since 2026-10-21 (B13 round 22 Z21, Z28, CONTRACTS §16.158), each of"
+        "and, in the agentsync report since 2026-10-21 (B13 round 22 Z21, Z28, CONTRACTS §16.158) and in the"
+        " installer's fallback report since 2026-10-22 (B13 round 23 A41, CONTRACTS §16.165), each of"
         " agentsync's own folders (`state_dir`, `docs_repo`, `cache_dir`, `log_dir`) that sources.toml moves"
         " from its default, as whole words:"
     ) in row
     assert "anywhere else, the whole path; one at its default takes none |" in row
     page = " ".join(_feedback_page().split())
     assert (
-        "then configured folders elsewhere, then, in the agentsync report, agentsync's own folders that"
+        "then configured folders elsewhere, then, in both reports, agentsync's own folders that"
         " sources.toml moves from their defaults, and last a listing that finished after its 3-second bound"
     ) in page
     assert 'section.startswith("remote.")' in source and "dotted [remote.<name>] (Z76)" in script

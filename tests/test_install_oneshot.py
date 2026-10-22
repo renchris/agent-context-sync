@@ -2449,6 +2449,84 @@ def test_the_install_source_line_reads_an_origin_url_on_its_header_line_in_both_
     assert rewrite or "a URL rewrite" not in facts, facts
 
 
+@pytest.mark.parametrize(
+    ("moved", "names"),
+    [
+        (
+            {
+                "state_dir": '"~/Quokka Ventures state"',
+                "log_dir": "'~/Wombat Logs/al'",  # a literal string, which the docs_repo reader did not take
+                "docs_repo": '"~/Numbat Data/agent-context"',
+                "cache_dir": '"~/Library/Caches/Bilby\\u0020Cache"',  # an escape, read as TOML reads it
+            },
+            ("Quokka", "Wombat", "Numbat", "Bilby"),
+        ),
+        # the report's own words, a product word, agentsync's default and a container: nothing is registered
+        (
+            {
+                "state_dir": '"~/state"',
+                "cache_dir": '"~/agentsync2"',
+                "log_dir": '"~/Library/Logs/agentsync"',
+                "docs_repo": '"~/agent-context/docs/"',
+            },
+            (),
+        ),
+    ],
+    ids=["moved", "own-words"],
+)
+def test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted_in_the_shell_report(
+    env: dict[str, str],
+    folder: Path,
+    wheel: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    moved: dict[str, str],
+    names: tuple[str, ...],
+) -> None:
+    """B13 round 23 A41: since round 22 Z21, Z28 the agentsync report registers agentsync's own folders where
+    sources.toml's [agentsync] table moves them (setup_report._own_folder_values), but the shell report read
+    none of those keys, so with agentsync's report failing, Doctor's chmod fix named a moved state folder in
+    clear. A shell twin registers the same values, after the source folders, in the same order: each Doctor
+    line reads as the agentsync report's redactor reads it, and the report's own words stay words."""
+    home = Path(env["HOME"])
+    cfg = home / "agent-context" / "sources.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("[agentsync]\n" + "".join(f"{k} = {v}\n" for k, v in moved.items()), encoding="utf-8")
+    shown = {k: v.strip("\"'").replace("\\u0020", " ") for k, v in moved.items()}
+    for value in shown.values():
+        (home / value.removeprefix("~/")).mkdir(parents=True, exist_ok=True)
+    # doctor's fix, as _shell_path writes it: ~/ outside the quotes
+    quoted = {k: shlex.quote(v).replace("'~/", "~/'") for k, v in shown.items()}
+    fails = [f"[FAIL] {k} — {v} has mode 0755 (fix: chmod 700 {quoted[k]})" for k, v in shown.items()]
+    e = {**env, "STUB_DOCTOR_OUT": "\n".join(fails), "STUB_DOCTOR_RC": "1", "STUB_REPORT_RC": "1"}
+    install_sh(e, str(wheel), "--source-local", str(folder))
+    text = report_path(env).read_text(encoding="utf-8")
+    assert "shell fallback" in text, text
+    doctor = text.split("\n## Doctor\n", 1)[1].split("\n## ", 1)[0]
+    for name in names:
+        for path in (report_path(env), report_path(env).parent / "bring-back.md"):
+            assert name not in path.read_text(encoding="utf-8"), (name, path)
+    # the stub's add-source writes a table agentsync would refuse: the same folder, as agentsync writes it
+    cfg.write_text(
+        "[agentsync]\n"
+        + "".join(f"{k} = {v}\n" for k, v in moved.items())
+        + local_source_table("s0", folder),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", env["HOME"])
+    run = setup_report._Run(cfg, setup_report.ReportHooks(), 12.0)
+    red = setup_report._build_redactor(run)
+    assert run.config is not None
+    for line in fails:
+        python = red.redact(line)
+        assert python in doctor.splitlines(), (python, doctor)
+        assert bool(names) == ("<folder-" in python), python
+    assert "<folder-1>" in text, "the source folder keeps the first number"
+    legend = " ".join(text.split("\n## Redaction\n", 1)[1].split())
+    assert ("agentsync's own state, docs, cache or log folder where it moves one" in legend) == bool(names), (
+        legend
+    )
+
+
 def test_the_shell_report_only_redacts_the_folders_earlier_runs_added(
     env: dict[str, str], folder: Path
 ) -> None:
@@ -14174,7 +14252,7 @@ def test_the_shell_report_redacts_the_mdm_host_as_mdmhost(tmp_path: Path, login:
 
 SHELL_HELPER_FNS = re.compile(
     r"(?ms)^(?:generic_folder|generic_home_dir|agent_words_name|id_key|listed_folder_lines"
-    r"|config_path_values)\(\) \{\n.*?^\}$"
+    r"|config_path_values|agentsync_dir_values)\(\) \{\n.*?^\}$"
 )
 
 
@@ -16231,9 +16309,10 @@ def test_the_folder_legend_names_a_project_folder_only_where_one_is_shown(
     text = report_path(env).read_text()
     item = _folder_item(text)
     clause = (
-        "; also a folder outside CloudStorage that sources.toml names, or that doctor's fix adds a removed "
-        "source back from: inside the home folder, its path from the first folder that is not a common "
-        "container (such as Projects, Documents or a dot folder) down, and that folder's name on its own (in "
+        "; also a folder outside CloudStorage that sources.toml names (a source's, or agentsync's own state, "
+        "docs, cache or log folder where it moves one), or that doctor's fix adds a removed source back "
+        "from: inside the home folder, its path from the first folder that is not a common container (such "
+        "as Projects, Documents or a dot folder) down, and that folder's name on its own (in "
         '~/Projects/Harborview/notes, both "Harborview/notes" and "Harborview"); outside the home folder, '
         "its whole path; each as a whole word, in any letter case; a later folder's name on its own, such as "
         "notes, is not replaced"

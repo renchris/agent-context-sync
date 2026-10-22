@@ -25080,6 +25080,8 @@ Amended 2026-10-20, §16.147 X6, X23: the clause now reads `...: inside the home
 folder that is not a common container (such as Projects, Documents or a dot folder) down, and that folder's name on
 its own (...); outside the home folder, its whole path; each as a whole word, in any letter case; a later folder's
 name on its own, such as notes, is not replaced`.
+Amended 2026-10-22, §16.165 A41: the clause's first words read `a folder outside CloudStorage that sources.toml
+names (a source's, or agentsync's own state, docs, cache or log folder where it moves one)`.
 
 **The shell's install source line says a URL rewrite as the agentsync report does** (W7, W23: one defect from two
 finders). `fallback_install_source_line` printed the configured origin's label alone; `_checkout_facts` adds
@@ -27284,6 +27286,8 @@ and that folder alone, after the generic home folders, dot folders, agentsync's 
 (`_own_word_folder`: `state`, `agentsync2`, `agentsync-x`); elsewhere, the whole path; whole-word, never fuzzy.
 `_project_values` is not reused: it registers `agent-context` or `Application Support` alone. The shell report
 prints none of these paths. Test: `test_report_redaction.py::test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted`.
+Amended 2026-10-22, §16.165 A41: "The shell report prints none of these paths" was false (it relays Doctor's lines,
+which name them); the shell report now registers the same values by a twin of `_own_folder_values` (§16.165).
 
 **An organisation named by a product word stays private after a library of that word** (Z86, a Y7 regression;
 amends §16.153 Y7). `Redactor.add` returned for a known value before marking it, so a site library Copilot,
@@ -28162,6 +28166,29 @@ review measured it printing in clear). `own_folder` stays, for `project_values`.
 a folder beside the docs repo in both spellings, the inbox, `~/agent-context` itself and a configured source beside
 the docs repo, each `~/<path>` in both reports).
 
+**The shell report redacts agentsync's own folders that sources.toml moves** (A41; amends §16.158 Z21, §16.141
+W5 and §16.169 A72). Since Z21, Z28 the agentsync report registers a moved `[agentsync]` `state_dir`, `docs_repo`, `cache_dir` or
+`log_dir`, but `redaction_pairs` read only `docs_repo`, for `beside`, so with agentsync's report failing (or cut off
+at its 120 s), Doctor's `chmod 700 ~/'<folder>'` fix, which the shell report relays verbatim, printed a moved state
+folder in clear: §16.158's "The shell report prints none of these paths" was false. `agentsync_dir_values` reads the
+four keys inside the `[agentsync]` table, the first of each, as a TOML basic string (unescaped as
+`config_path_values` unescapes it) or a literal one (`beside` now reads it too, which took `"..."` only and undid
+no escape). `own_folder_values`, a twin of `_own_folder_values`, registers each one after the source folders and in
+the Python report's order (state, docs, cache, log), so the `<folder-N>` numbers are the agentsync report's:
+nothing at its default (as given, `pwd -P`'s form, or the home's `pwd -P` form); below the home folder, the path
+from its first part that names something, and that part alone, after the leading `generic_home_dir`, dot,
+own-container (`Library`, `Application Support`, `Caches`, `Logs`, `agent-context`) and own-word parts
+(`own_word_folder`: words split as `_WORD_SPLIT_RE` splits, each under 3 letters, digits, a product word or the
+shell's own `report_word`); anywhere else, the whole path. Each goes through `folder_value` (whole word, any case,
+its escaped and `'"'"'` forms), never `project_values`. The legend's project clause names them: `a folder outside
+CloudStorage that sources.toml names (a source's, or agentsync's own state, docs, cache or log folder where it
+moves one)`. Test: `test_install_oneshot.py::
+test_agentsyncs_own_folders_that_sources_toml_moves_are_redacted_in_the_shell_report` (four moved folders, one a
+literal string and one with a `\u0020` escape, each Doctor line as the agentsync report's redactor reads it, and
+none of their names in the report or bring-back.md; and `state`, `agentsync2`, a default and the docs repo at its
+default with a trailing `/`, which register nothing). The guide's `<folder-N>` row and numbering order, which
+§16.169 A72 wrote for the agentsync report only, now say both reports.
+
 ### 16.166 Round 23: setup prompt v32 and a state folder that is not a folder (2026-10-22, wave B13 round 23 lane P)
 
 The B13 round 23 items of lane P (specs `round23/items/A<n>.md`, the verifier's corrected fix built unless a
@@ -28407,6 +28434,8 @@ since §16.158 and §16.159 Z76 both reports read git's older dotted `[remote.<n
 row and the numbering order now name the first, for the agentsync report only (install.sh registers no own
 folder), and the host row the second. Test:
 `test_the_guides_redaction_rows_name_own_moved_folders_and_dotted_remotes`, which reads the order from the report.
+Amended 2026-10-22, §16.165 A41: install.sh registers them too since A41, so the row and the numbering order say
+both reports, and the test reads the shell's order from install.sh.
 
 **§16.152 Y22's dated line and `_cut_off_words` keep "every check ran" apart from the state read** (A73; dated line
 at §16.152 Y22). Both said a cut-off with no check named came in the hook's read of the loop state; since da077f3b
