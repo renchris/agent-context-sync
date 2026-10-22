@@ -23,7 +23,9 @@ name: ci
 # 33:53 (64380e08, pytest's step 33:14, with timing tests skipped at a load of 5 to 8 per core), 6 minutes under
 # the limit of 40, so it is 45: 10 minutes above that job too (B13 round 21 Y68). CLAUDE.md gives the range.
 # Round 21's seven jobs and round 22's first (eaed1034 to fcafd734) took 18:05 to 28:34, all green on attempt 1, so
-# 45 stays 16 minutes above them (B13 round 22 Z67, Z88).
+# 45 stays 16 minutes above them (B13 round 22 Z67, Z88). Round 22's nine jobs (fcafd734 to 7a54f938) took 19:29
+# to 31:21, all on attempt 1 (one red test, fixed by a96dfc7b), so 45 stays 13 minutes above them (B13 round 23
+# A74, A93).
 on:
   workflow_dispatch:
   push:

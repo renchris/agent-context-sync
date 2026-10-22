@@ -27149,6 +27149,9 @@ the limit 10 minutes above 26 and above 34, and `test_the_recording_tests_limit_
 
 Amended 2026-10-21, §16.163 Z67, Z88: the eight jobs after round 20's (eaed1034 to fcafd734) took 18:05 to 28:34, so
 CLAUDE.md and `docs/lanes/COMMON.md` give `about 18 to 29 minutes`, and the limit of 45 stays 16 minutes above them.
+Amended 2026-10-22, §16.169 A74, A93: round 22's nine jobs (fcafd734 to 7a54f938) took 19:29 to 31:21, all on
+attempt 1, so CLAUDE.md and `docs/lanes/COMMON.md` give `about 18 to 32 minutes`, and the limit of 45 stays 13
+minutes above them.
 
 **§9's exit-code list names 65 and a state file this account cannot open** (Y76; dated line under §9's exit-code
 list). The list had no 65, which since §16.125 T12 init, add-source and every command that runs a cycle return at
@@ -27824,4 +27827,13 @@ Reserved for round 23 lane E of B13.
 
 ### 16.169 Round 23: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 23 lane D)
 
-Reserved for round 23 lane D of B13.
+Lane D's round 23 items (`docs/plans/bring-back-ocr.md`, "B13 round 23"; specs `round23/items/A<n>.md`, the
+verifier's corrected fix built): A74 and A93, one defect, built once. It makes nothing worse.
+
+**CI's time is the time of round 22's jobs** (A74, A93; dated line at §16.157 Y68). Round 22's nine ci jobs
+(fcafd734 to 7a54f938, read with `gh run view --json jobs`, all on attempt 1) took 19:29 to 31:21, one 2 minutes
+past the 29 CLAUDE.md gave (a96dfc7b: pytest 1844 s, timing tests skipped at 4 to 5 per core), and one waited about
+17 minutes for a runner; round 23's first (ed901cd3) took 30:27. CLAUDE.md gives `about 18 to 32 minutes` with the
+nine beside round 21's, `docs/lanes/COMMON.md` says the same, and ci.yml's note adds a sentence after round
+21's. The limit stays 45, 13 minutes above 32. §16.157 Y68's and §16.163 Z67's lines stay as their rounds' record.
+Test: `test_claude_md_gives_cis_time_and_its_limit`.
