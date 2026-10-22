@@ -7161,12 +7161,14 @@ def test_a_doctor_cut_off_past_its_grace_names_the_moved_limit(
     monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 6.0)
     monkeypatch.setattr(os, "getloadavg", lambda: (52.34, 40.0, 30.0))
     monkeypatch.setattr(os, "cpu_count", lambda: 10)
+    monkeypatch.setattr(net, "system_proxy", lambda runner=None: net.SystemProxy())  # no scutil (A92 review)
 
     def timed_out(config: object) -> list[str]:
         raise TimeoutError
 
     hooks = setup_report.ReportHooks(doctor=timed_out, doctor_at=lambda: "pandoc")
     r = setup_report._Run(fake_mac["config"], hooks, 4.0)
+    r.deadline = time.monotonic() + 4.0  # the whole 4 s left at the call: __init__'s reads take none of it
     words = (
         "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count "
         f"(a busy Mac): {setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off "
