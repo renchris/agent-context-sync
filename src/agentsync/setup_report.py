@@ -8265,6 +8265,7 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
 
         said = [tried(x) for x in upgraded]
         each = "; ".join(words for words, _rest, _waiting in said)
+        total = sum(x.n("legacy_retried") for x in upgraded)  # the noun by the count (B13 round 23 A30)
         retry = (
             "; this "
             "build tries each again from the same bytes in up to 2 runs of its source from that one on, so "
@@ -8276,7 +8277,8 @@ def _repeat_part(r: _Run, m: _Mirror, labels: _Labels) -> list[str]:
         )
         out += [
             "",
-            f"- tried again after an upgrade: {each}. An older build had given up on these conversions"
+            f"- tried again after an upgrade: {each}. An older build had given up on "
+            + ("that file's conversion" if total == 1 else "these conversions")
             + (retry if any(rest for _words, rest, _waiting in said) else "")
             + (wait if any(waiting for _words, _rest, waiting in said) else ""),
         ]

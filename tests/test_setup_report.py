@@ -10948,9 +10948,9 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         )
         seed.close()
         part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
-        assert (
-            f"- tried again after an upgrade: {want} An older build had given up on these conversions" in part
-        )
+        # B13 round 23 A30: one file's noun is one conversion, not "these conversions"
+        noun = "that file's conversion" if counts["legacy_retried"] == 1 else "these conversions"
+        assert f"- tried again after an upgrade: {want} An older build had given up on {noun}" in part, part
         assert ("an old conversion error can show in those runs" in part) == retry, part
     # B13 round 23 A63: a stub left for its converter, which the first run with one reads again, is neither
     # settled with no try left nor given the retry words
@@ -10973,9 +10973,8 @@ def test_repeat_conversions_names_the_upgrades_retry_of_an_older_builds_failures
         )
         seed.close()
         part = " ".join(status_parts(fake_mac)[1]["Repeat conversions"].split())
-        assert (
-            f"- tried again after an upgrade: {want} An older build had given up on these conversions" in part
-        )
+        noun = "that file's conversion" if counts["legacy_retried"] == 1 else "these conversions"  # A30
+        assert f"- tried again after an upgrade: {want} An older build had given up on {noun}" in part, part
         assert ("an old conversion error can show in those runs" in part) == retry, part
         assert waits in part and "settled with no try left." not in part, part
 
