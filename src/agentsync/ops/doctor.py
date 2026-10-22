@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from agentsync import lints
+from agentsync import gitops, lints
 from agentsync.arm_local import LISTING_TIMEOUT_S as _ARM_LISTING_TIMEOUT_S
 from agentsync.arm_local import CallTimedOutError, call_with_timeout, cloud_provider_root
 from agentsync.config import RETIRE_ADVICE, Config, SourceConfig, canonical_source_root
@@ -283,8 +283,6 @@ def _git_path() -> Path:
     doctor line names the Xcode or Command Line Tools path; for a stub resolver /usr/bin/git, else launchd
     PATH)."""
     try:
-        from agentsync import gitops  # noqa: PLC0415 - lazy: doctor must import even if gitops is broken
-
         return gitops.git_executable()
     except NotImplementedError:
         pass
