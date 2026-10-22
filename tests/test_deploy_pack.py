@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+import exec_stub
 from agentsync.convert import speech
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -2189,9 +2190,8 @@ def _fake_step1_tools(bin_dir: Path, calls: Path) -> None:
         ),
     }
     for name, body in stubs.items():
-        stub = bin_dir / name
-        stub.write_text(f'#!/bin/sh\necho "{name} $*" >> "{calls}"\n{body}\n', encoding="utf-8")
-        stub.chmod(0o755)
+        # a Mach-O run by path, not a #! exec (B13 round 23 A97)
+        exec_stub.write(bin_dir / name, f'#!/bin/sh\necho "{name} $*" >> "{calls}"\n{body}\n')
 
 
 @pytest.mark.parametrize("shell", _SHELLS)

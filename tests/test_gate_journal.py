@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import _gate_journal
+import exec_stub
 
 SUITE = """
 import os
@@ -97,8 +98,7 @@ def _lane_part(tmp_path: Path, rc: int) -> tuple[int, Path]:
     assert found is not None, "gate.sh's run_part"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    (bin_dir / "uv").write_text(FAKE_UV, encoding="utf-8")
-    (bin_dir / "uv").chmod(0o755)
+    exec_stub.write(bin_dir / "uv", FAKE_UV)  # a Mach-O run by path, not a #! exec (B13 round 23 A97)
     (tmp_path / "tmp").mkdir(exist_ok=True)
     harness = (
         "set -euo pipefail\n"

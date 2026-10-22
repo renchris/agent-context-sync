@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+import exec_stub
+
 REPO = Path(__file__).resolve().parents[1]
 SHIP_LAND = REPO / "scripts" / "ship-land.sh"
 
@@ -72,8 +74,7 @@ def _with_gh(tmp_path: Path, env: dict[str, str], body: str) -> dict[str, str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     gh = bin_dir / "gh"
-    gh.write_text(f'#!/bin/bash\necho "$*" >>"{tmp_path / "gh.log"}"\n{body}')
-    gh.chmod(0o755)
+    exec_stub.write(gh, f'#!/bin/bash\necho "$*" >>"{tmp_path / "gh.log"}"\n{body}')  # a Mach-O (B13 r23 A97)
     return {**env, **QUICK, "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}"}
 
 

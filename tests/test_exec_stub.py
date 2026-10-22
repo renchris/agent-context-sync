@@ -15,9 +15,11 @@ from pathlib import Path
 import pytest
 
 import exec_stub
+from test_deploy_pack import _fake_step1_tools
 from test_install_next_line import _exe
 from test_install_oneshot import _write_exe
 from test_launcher import stubs  # noqa: F401  (fixture)
+from test_ship_land import _with_gh
 
 ROOT = Path(__file__).resolve().parents[1]
 MACH_O = (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe")  # 64-bit Mach-O, universal
@@ -150,13 +152,18 @@ def test_the_harness_helpers_write_mach_o_stubs(
     tmp_path: Path,
     stubs: dict[str, str],  # noqa: F811
 ) -> None:
-    """test_install_oneshot's ``_write_exe``, test_install_next_line's ``_exe`` and test_launcher's ``stubs``
-    write their stubs through ``exec_stub.write``: the launchctl stub install.sh polls was 77% of the ``#!``
-    execs of a run of the three files (B13 round 23 A97's count)."""
+    """test_install_oneshot's ``_write_exe``, test_install_next_line's ``_exe``, test_launcher's ``stubs``,
+    test_ship_land's ``_with_gh`` and test_deploy_pack's ``_fake_step1_tools`` write their stubs through
+    ``exec_stub.write``: the launchctl stub (install.sh runs its getenv 18 times and print twice) was 77% of
+    the ``#!`` execs of a run of the three install files (B13 round 23 A97's count)."""
     (tmp_path / "a").mkdir()
+    _with_gh(tmp_path, {"PATH": "/usr/bin:/bin"}, "exit 0\n")
+    _fake_step1_tools(tmp_path / "step1", tmp_path / "calls.log")
     for stub in (
         _write_exe(tmp_path / "a" / "launchctl-stub", "#!/bin/bash\necho print\n"),
         Path(_exe(tmp_path / "a" / "scutil", "#!/bin/bash\nexit 0\n")),
+        tmp_path / "bin" / "gh",
+        tmp_path / "step1" / "git",
         Path(stubs["AGENTSYNC_LAUNCHCTL"]),
         Path(stubs["STUB_AGENTSYNC"]),
         Path(stubs["PATH"].split(":")[0]) / "uv",
