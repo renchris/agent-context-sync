@@ -11095,9 +11095,14 @@ def _status_fail_names(r: _Run, run: InstallRun) -> str:
     return f" ([FAIL] {'; '.join(shown)}{more})"
 
 
-_STATE_OPEN_RE = re.compile(r"error: state: .* cannot be opened\b.*?(?:\(fix: (?P<fix>.*)\))?$")
+_STATE_OPEN_RE = re.compile(
+    r"error: state: (?P<folder>the state folder )?.* cannot be (?P<verb>opened|written)\b.*?"
+    r"(?:\(fix: (?P<fix>.*)\))?$"
+)
 """The sync's one line for a state file or folder this account cannot open (``cli``'s ``error: state: <path>
-cannot be opened: <reason> (fix: <fix>)``): never printed, its path holds the home folder."""
+cannot be opened: <reason> (fix: <fix>)``), or a state folder it cannot write (lane B's ``error: state: the
+state folder <root> cannot be written by this account (fix: <fix>)``, B13 round 23 A59): never printed, its
+path holds the home folder."""
 
 
 _STATE_NOT_FILE_RE = re.compile(r"error: state: .* is (?P<kind>[^,]+), not the state file\b")
@@ -11171,6 +11176,9 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
         if found is None:
             continue
         fix = found.group("fix") or ""
+        # B13 round 23 A59: a state folder this account cannot write is the folder's, whoever's the fix is
+        noun = "folder" if found.group("folder") else "file"
+        verb = "write" if found.group("verb") == "written" else "open"
         try:
             from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
@@ -11178,7 +11186,10 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
         except Exception:
             persons = False
         if elsewhere or fix.startswith("the person runs sudo chown"):
-            return " on agentsync's state file, which another account owns", "after the file was given back"
+            return (
+                f" on agentsync's state {noun}, which another account owns",
+                f"after the {noun} was given back",
+            )
         # B13 round 22 Z6: doctor's _parent_fix and the folder's _search_fix, each the person's; "behind", as
         # "which ... refuses this account a search" left "which" no place (B13 round 23 A4, A16)
         if fix.startswith("the person gives this account search access to "):
@@ -11201,8 +11212,9 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 "after the volume was made writable",
             )
         if persons:
-            return " on agentsync's state file, which this account could not open: the person's to fix", (
-                "after the file was fixed"
+            return (
+                f" on agentsync's state {noun}, which this account could not {verb}: the person's to fix",
+                f"after the {noun} was fixed",
             )
         if fix.startswith("chmod 700 "):  # B13 round 22 Z4, Z45: the folder's mode was fixed, not the file's
             # B13 round 23 A5, A13, A38: install.sh's one pass (Z81) also asks for each chmod status then
@@ -11212,9 +11224,9 @@ def _state_open_words(r: _Run, run: InstallRun, *, bracket: bool = True) -> tupl
                 if any(_FOLDER_PASS_NEXT in ln for ln in block)
                 else "after the folder's mode was fixed"
             )
-            return f" on {_state_folder_named(r, fix)}, which this account could not open{mode}", fixed
-        return f" on agentsync's state file, which this account could not open{mode}", (
-            "after the file's mode was fixed"
+            return f" on {_state_folder_named(r, fix)}, which this account could not {verb}{mode}", fixed
+        return f" on agentsync's state {noun}, which this account could not {verb}{mode}", (
+            f"after the {noun}'s mode was fixed"
         )
     return None
 

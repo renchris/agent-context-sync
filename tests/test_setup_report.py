@@ -8895,13 +8895,20 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         "the same pass, since that folder's mode hid its files' modes, run ~/.local/bin/agentsync status and "
         "each chmod 600 or chmod 700 its [FAIL] lines name for a path in that folder, then re-run: x\n"
     )
-    for next_line, after in (
-        (pass_next, "the folder's mode, and any mode in it that status then named, were fixed"),
-        ("", "the folder's mode was fixed"),  # an older install.sh's NEXT: the folder's chmod alone
+    # B13 round 23 A59: lane B's line for a state folder this account cannot write takes the same words,
+    # "could not write", and the same one pass
+    wrote = (
+        "error: state: the state folder /Users/x/Library/Application Support/agentsync cannot be written by "
+        f"this account (fix: chmod 700 {folder})\n"
+    )
+    for line, next_line, after in (
+        (fold, pass_next, "the folder's mode, and any mode in it that status then named, were fixed"),
+        (fold, "", "the folder's mode was fixed"),  # an older install.sh's NEXT: the folder's chmod alone
+        (wrote, pass_next, "the folder's mode, and any mode in it that status then named, were fixed"),
     ):
         out.write_text(
             "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
-            + fold
+            + line
             + next_line
             + "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
             encoding="utf-8",
@@ -8909,6 +8916,31 @@ def test_a_retried_run_says_how_it_was_run_again_and_which_checks_failed(
         got = items(failed, worked)
         assert got.endswith(f"; the same command was run again after {after} and ended 0"), got
         assert "file's mode" not in got and "files' modes" not in got, got
+        could = "write" if line == wrote else "open"
+        assert (
+            f"on agentsync's state folder, which this account could not {could} (a mode, not damage);" in got
+        )
+    for fix, words, after in (  # A59: the person's fixes of a folder it cannot write name the folder too
+        (
+            f"the person runs sudo chown -R {os.getuid()} {folder}; the agent runs no sudo",
+            "on agentsync's state folder, which another account owns",
+            "the folder was given back",
+        ),
+        (
+            f"the person makes the volume that holds {folder} writable, as it is mounted read-only",
+            "on agentsync's state file or folder, which sits on a volume mounted read-only",
+            "the volume was made writable",
+        ),
+    ):
+        out.write_text(
+            "# run=20260929T100000Z-77 2026-09-29T10:00:00Z install.sh --source-local x\n"
+            "error: state: the state folder /Users/x/agentsync cannot be written by this account "
+            f"(fix: {fix})\n"
+            "# run=20260929T102000Z-77 2026-09-29T10:20:00Z install.sh --source-local x\n",
+            encoding="utf-8",
+        )
+        got = items(failed, worked)
+        assert f"at its config step {words}" in got and got.endswith(f"after {after} and ended 0"), got
     # B13 round 23 A86, A11: something not a file where manifest.sqlite belongs, or not a folder where the
     # state folder belongs (cli._misplaced's line, no "cannot be opened"), names its kind and whose in both
     # the item and the outcome; the kind is the line's own, never "a folder" for a fifo
