@@ -856,6 +856,24 @@ def test_a_crashing_or_hanging_hook_never_takes_the_report_down(
     assert "Cut off: the doctor call did not finish within " in section(text, "Doctor")
 
 
+def test_a_crashing_hook_and_a_cut_off_doctor_say_so_in_their_sections(fake_mac: dict[str, Path]) -> None:
+    """B13 round 23 A92: the words of the timing test above, which a busy Mac or CI runner skips: a doctor
+    that times out (here at once, so no time bound is judged) is cut off, and a crashing hook's section
+    names its error."""
+
+    def crash(config: object) -> list[str]:
+        raise RuntimeError("doctor exploded")
+
+    def timed_out(config: object) -> list[str]:
+        raise TimeoutError
+
+    text, _red = setup_report.build_report(
+        fake_mac["config"], hooks=setup_report.ReportHooks(doctor=timed_out, status=crash), budget_s=60.0
+    )  # a wide budget: a busy Mac must not run it out before Status
+    assert "This section failed: RuntimeError: doctor exploded" in section(text, "Status")
+    assert "Cut off: the doctor call did not finish within " in section(text, "Doctor")
+
+
 def test_missing_config_is_a_finding(tmp_path: Path) -> None:
     """B13 round 12 N11: a missing sources.toml read ``- loads: no: ConfigError: ...: not found; run
     `~/.local/bin/agentsync add-source <folder>` to create it`` and ``NEXT: not read (the config does not
@@ -7045,6 +7063,61 @@ def test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_repor
     assert "NEXT: draft the baseline questions" in _line(section(text, "Summary"), "- Loop: ")
 
 
+def test_a_doctor_the_budget_never_started_says_so_in_each_place(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A92: the words of the timing test
+    ``test_the_summarys_doctor_cut_off_seconds_are_the_limit_the_doctor_section_names``, which a busy Mac
+    skips, on a ``_Run`` whose 0.5 s budget is never timed (no grace: one would start the call)."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 0.0)
+
+    def hung(config: object) -> list[str]:
+        raise AssertionError("never called: the budget is used up")
+
+    r = setup_report._Run(fake_mac["config"], setup_report.ReportHooks(doctor=hung), 0.5)
+    assert setup_report._doctor(r) == [
+        f"Not run: the report's time budget was used up before doctor started; {setup_report._IDLE_AGAIN}."
+    ]
+    r.facts.doctor = None
+    assert setup_report._doctor_line(r, []).startswith(
+        "- doctor: not started: the report's time budget was used up (see Doctor)"
+    )
+    pandoc = setup_report._pandoc_from_doctor(r)
+    assert "before doctor started" in pandoc and "cut off" not in pandoc, pandoc
+
+
+def test_a_doctor_cut_off_past_its_grace_names_the_moved_limit(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A92: the Doctor section and Summary words of
+    ``test_a_slow_doctor_gets_a_bounded_grace_and_a_cut_off_one_asks_for_the_report_again``, which a busy Mac
+    skips, from a doctor hook that times out at once: the 6 s grace moves the 4 s time limit, and the words
+    say so."""
+    monkeypatch.setattr(setup_report, "_DOCTOR_GRACE_S", 6.0)
+    monkeypatch.setattr(os, "getloadavg", lambda: (52.34, 40.0, 30.0))
+    monkeypatch.setattr(os, "cpu_count", lambda: 10)
+
+    def timed_out(config: object) -> list[str]:
+        raise TimeoutError
+
+    hooks = setup_report.ReportHooks(doctor=timed_out, doctor_at=lambda: "pandoc")
+    r = setup_report._Run(fake_mac["config"], hooks, 4.0)
+    words = (
+        "it was in the pandoc check; the 1-minute load was 52.3 on 10 cores; that is above its core count "
+        f"(a busy Mac): {setup_report._IDLE_AGAIN}; if a report written when it is idle is cut off "
+        "again, the pandoc check is slow or hung: send the report as it is (install.sh's own doctor output "
+        "is in install.out)"
+    )
+    assert setup_report._doctor(r) == [
+        "Cut off: the doctor call did not finish within 6.0s, the wait the report gives a slow doctor (it "
+        f"moves its 4s time limit for one; see Run metadata); {words}."
+    ]
+    line = setup_report._doctor_line(r, [])
+    assert line == (
+        f"- doctor: cut off after 6.0s, the wait the report gives a slow doctor (see Doctor) · {words}"
+    ), line
+
+
 def test_a_cut_off_doctor_names_its_check_and_the_load_and_advises_only_if_busy(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -11530,6 +11603,37 @@ def test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_ti
     assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
 
 
+def test_an_exclude_rule_that_times_out_is_not_measured_and_the_rest_is(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A92: the words of
+    ``test_the_exclude_rule_is_asked_of_the_checked_folders_only_and_inside_the_time``, which a busy Mac
+    skips, from an exclude rule that times out at once."""
+    cfg = fake_mac["config"]
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8").replace(
+            'id = "client-alpha"', 'id = "client-alpha"\nexclude = ["Wingtip 5*"]', 1
+        ),
+        encoding="utf-8",
+    )
+    seed = Seed(cfg)
+    seed.m.set_meta("empty_cloud_dirs:" + seed.ids()[0], json.dumps([f"Wingtip {n}" for n in range(60)]))
+    seed.close()
+
+    def timed_out(_source: Any, _dirs: Any) -> list[str]:
+        raise TimeoutError
+
+    monkeypatch.setattr(arm_local, "_unexcluded", timed_out)
+    text, parts = status_parts(fake_mac)
+    part = parts["Empty cloud folders"]
+    assert "60 unknown: 0 dataless, 0 materialised-and-empty" in part and "; 50 of 60 checked;" in part
+    assert (
+        f"; excluded in sources.toml now: {setup_report.NOT_MEASURED}; the mirror holds no file below" in part
+    )
+    assert '- evidence: 1 line at the end of Status says "not measured"' in section(text, "Summary")
+    assert "- no run is recorded" in parts["Repeat conversions"], "the part after it is measured"
+
+
 def test_a_part_with_no_time_left_says_so_and_the_report_is_still_whole(
     fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -11952,6 +12056,32 @@ def test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time(
     ) in parts["OCR"]
     assert "not measured" not in section(text, "Status"), "the probe's time is not the manifest's"
     assert "- images: 8 files: 2 with a page" in parts["OCR"]
+
+
+def test_a_helper_that_does_not_answer_says_so_and_the_manifest_parts_are_measured(
+    fake_mac: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 23 A92: the words of
+    ``test_a_helper_that_hangs_costs_the_manifest_parts_none_of_their_time``, which a busy Mac skips, from
+    probes that time out at once."""
+    seed_ocr(fake_mac)
+
+    def timed_out(_convert: ConvertConfig, _cache_dir: Path) -> tuple[str, str]:
+        raise TimeoutError
+
+    for probed in (ocr, media, speech):
+        monkeypatch.setattr(probed, "probe", timed_out)
+    monkeypatch.setattr(setup_report, "_PROBE_S", 0.3)
+    text, parts = status_parts(fake_mac)
+    assert "- helper: did not answer within 0.3s (a built helper's `--version`;" in parts["OCR"]
+    assert "- media helper: did not answer within 0.3s\n" in parts["OCR"]
+    assert "- speech: did not answer within 0.3s\n" in parts["OCR"]
+    assert (
+        "The helper did not say whether it is ready (its line above; Doctor's ocr line does)." in parts["OCR"]
+    )
+    assert "The helper is not ready" not in parts["OCR"]
+    assert "not measured" not in section(text, "Status")
+    assert "- evidence: the 6 parts at the end of Status were measured\n" in section(text, "Summary")
 
 
 def test_the_ocr_part_has_a_speech_line_of_its_own(
