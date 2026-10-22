@@ -24500,7 +24500,7 @@ checkout), `test_setup_report.py::test_install_source_reads_the_configured_origi
 Amended 2026-10-22, §16.165 A24: the label is the first `url` after the last empty one, the one git fetches from,
 not the last, in both reports.
 
-Amended 2026-10-22, §16.164 A24: with lane RB's land, the agentsync report's label is the first
+Amended 2026-10-22, §16.164 A24: the agentsync report's label is the first
 `remote.origin.url` key after the last empty one (`config --get-all`), the one git fetches from, with ` (N url
 keys, git fetches from the first)` for two or more; a rewrite is claimed only when it changes that URL's label.
 
@@ -28012,9 +28012,9 @@ its later runs as its own. Test:
 **An origin with two url keys is labelled by the one git fetches from** (A24, A50, A90; amends §16.136 V70). The
 install source line's label is the first `remote.origin.url` key after the last empty one (`config --get-all`),
 not `config --get`'s last; ` (N url keys, git fetches from the first)` is said for two or more, and a rewrite is
-claimed only when an insteadOf changes that first URL's label. The commit and its test (an origin with two url
-keys is labelled by the first, and no rewrite is claimed) land in lane RB's land, with RB's install.sh half and the
-`first-wins` row of the shared test, since neither report can change alone (§16.165). See the dated line there.
+claimed only when an insteadOf changes that first URL's label. Landed in lane RB's land (96134549), with RB's
+install.sh half and the `first-wins` row of the shared test, since neither report can change alone (§16.165). See
+the dated line there. Test: `test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_claimed`.
 
 **The `<proxy-N>` legend names a git remote's path** (A25). Built by lane RB in both reports at once
 (`setup_report._LEGEND['proxy']` and install.sh's legend are pinned to each other); the verifier's fix is the
