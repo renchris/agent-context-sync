@@ -3092,34 +3092,49 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
     """B13 round 23 A9 (the lead's ruling): a foreground sync at step 3 that exited 1 on a state file this
     account could not open, then ended 0 after the agent's chmod, left no trace: "fully one command" with
     Items none, while the same chmod at step 2 gives "worked with help". The sync's sync-stops.log line (lane
-    B's writer) inside the attempt, paired with a later sync the manifest records as ok, is an Items line and
-    a reason; one after the attempt's end line, or one no sync ended 0 after, changes no outcome;
-    install.log's runs are unchanged by the file."""
+    B's writer) inside the attempt, paired with a later sync the manifest records as ok, is an Items line, a
+    reason and a count on the agent-friction line. One after the attempt's end line, one no sync ended 0
+    after, a heartbeat stop while the heartbeat is still shut, and one in a v6 attempt change no outcome; with
+    no runs table to read, whether a sync ended 0 is not measured; install.log's runs are unchanged."""
+    cfg = fake_mac["config"]
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
-    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0  # the later sync that ended 0
-    write_install_log(fake_mac)
-    write_friction(fake_mac)
+    assert cli.main(["sync", "--config", str(cfg)]) == 0  # the later sync that ended 0
+    log = v6_install_log(fake_mac)
+    write_friction(fake_mac, V12_HAPPY)
     stops = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
-    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    runs = setup_report.read_install_runs(log)
     stops.write_text(
         "not a stop line\n2026-09-29T10:00:50Z sync-stop file=lock rc=1 owner=agent\n", encoding="utf-8"
     )
-    assert setup_report.read_install_runs(fake_mac["setup"] / "install.log") == runs
+    assert setup_report.read_install_runs(log) == runs
     _text, summary = summary_of(fake_mac)
     assert summary.strip().splitlines()[0] == (
         "- **outcome: worked with help** (computed: install.sh exit 0; 1 sync at step 3 exited 1 on "
-        "agentsync's lock file; it ended 0 after the agent's chmod)"
+        "agentsync's lock file, and it ended 0 after the agent's chmod)"
     ), summary
     items = summary.split("Items that were not one command (attempt 1):", 1)[1]
     assert (
         "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; "
         "it ended 0 after the agent's chmod" in items
     ), items
+    assert "; 1 step-3 sync stop agentsync logged itself (see Items)" in _line(summary, "- agent friction: ")
+    write_friction(fake_mac, V12_HAPPY.replace("Prompt: v12", "Prompt: v6"))
+    assert summary_of(fake_mac)[1].strip().startswith("- **outcome: fully one command**"), "v6: not counted"
+    write_friction(fake_mac, V12_HAPPY)
+    heartbeat = expand(load_config(cfg).state_paths.heartbeat)
+    stops.write_text("2026-09-29T10:00:50Z sync-stop file=heartbeat rc=1 owner=agent\n", encoding="utf-8")
+    heartbeat.chmod(0)
+    try:
+        _text, summary = summary_of(fake_mac)
+    finally:
+        heartbeat.chmod(0o600)
+    assert summary.strip().startswith("- **outcome: fully one command**"), "the heartbeat is still shut"
     stops.write_text("2026-09-29T10:02:00Z sync-stop file=lock rc=1 owner=agent\n", encoding="utf-8")
     assert summary_of(fake_mac)[1].strip().startswith("- **outcome: fully one command**"), (
         "after the end line"
     )
-    conn = sqlite3.connect(expand(load_config(fake_mac["config"]).state_paths.db))
+    db = expand(load_config(cfg).state_paths.db)
+    conn = sqlite3.connect(db)
     try:
         conn.execute("UPDATE runs SET status = 'failed'")
         conn.commit()
@@ -3129,6 +3144,12 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
     _text, summary = summary_of(fake_mac)
     assert summary.strip().startswith("- **outcome: fully one command**"), "no sync ended 0 after it"
     assert "no sync ended 0 after it by this report (the person's fix)" in summary, summary
+    db.chmod(0)
+    try:
+        _text, summary = summary_of(fake_mac)
+    finally:
+        db.chmod(0o600)
+    assert "whether a later sync ended 0: not measured (the state file cannot be read)" in summary, summary
 
 
 def test_an_error_that_stopped_the_run_fails_its_step(fake_mac: dict[str, Path]) -> None:
@@ -12057,25 +12078,29 @@ def test_a_state_folder_on_a_read_only_volume_is_the_state_files_words(
 ) -> None:
     """B13 round 23 A85: on a read-only volume the state folder fails ``os.access(W_OK)``, so the report
     called it the state folder this account cannot open, while doctor's state_dir is [ok] and its three FAILs
-    are the files'. A folder there this account can read and search is no shut folder: the state file's words;
-    one that also refuses a search stays the folder's."""
+    are the files'. This account's own 0700 folder there is no shut folder: the state file's words. One whose
+    mode refuses it (0500), or that refuses a search, stays the folder's (the review)."""
     cfg = fake_mac["config"]
     (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
     assert cli.main(["sync", "--config", str(cfg)]) == 0
     config = load_config(cfg)
     db = expand(config.state_paths.db)
-    db.chmod(0o400)
-    db.parent.chmod(0o500)  # what a read-only volume's folder answers os.access for: no write
+    real = os.access
+
+    def read_only(path: Any, mode: int, **kwargs: Any) -> bool:  # what a read-only volume answers: no write
+        return False if mode & os.W_OK and Path(path) in (db, db.parent) else real(path, mode, **kwargs)
+
+    monkeypatch.setattr(setup_report.os, "access", read_only)
+    assert setup_report._state_folder_shut(db), "a folder that refuses a write is shut on an ordinary volume"
+    monkeypatch.setattr(doctor, "_read_only", lambda path: True)
+    assert not setup_report._state_folder_shut(db)
+    db.parent.chmod(0o500)
     try:
-        assert setup_report._state_folder_shut(db), "an ordinary 0500 folder is shut"
-        monkeypatch.setattr(doctor, "_read_only", lambda path: True)
-        assert not setup_report._state_folder_shut(db)
-        assert setup_report._state_shut(config) == "file"
+        assert setup_report._state_folder_shut(db), "its own mode refuses it: the folder's"
         db.parent.chmod(0o000)
         assert setup_report._state_folder_shut(db), "a read-only folder that refuses a search is the folder's"
     finally:
         db.parent.chmod(0o700)
-        db.chmod(0o600)
 
 
 def test_a_purge_queue_this_account_cannot_open_is_not_called_the_state_file(
@@ -12919,6 +12944,11 @@ def test_a_state_folder_that_is_not_a_folder_is_the_persons_and_named_so(
     line = _line(section(text, "Summary"), "- doctor: ")
     assert "state_dir FAIL (the person's; see Doctor)" in line, line
     assert "state_dir" not in line.rsplit(" · unexpected ", 1)[1], line
+    # the review: only the checks that read the state folder are not checked; the remote's FAIL keeps its own
+    assert setup_report._reads_the_state_folder("governance.hold")
+    assert not any(
+        map(setup_report._reads_the_state_folder, ("governance.remote", "governance.time_machine"))
+    )
 
 
 def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
@@ -12960,6 +12990,18 @@ def test_a_folder_where_the_wal_or_shm_belongs_is_the_persons(
     finally:
         shm.chmod(0o600)
     line = _line(section(text, "Summary"), "- doctor: ")
+    assert "state_dir.files FAIL (the agent's; see Doctor)" in line, line
+    shm.unlink()
+    # the review: a shut manifest beside a folder at -shm keeps the agent's chmod; only the folder's is moved
+    shm.mkdir(mode=0o700)
+    db.chmod(0)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        db.chmod(0o600)
+        shm.rmdir()
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "state_dir.files FAIL (the person's; see Doctor)" in line, line
     assert "state_dir.files FAIL (the agent's; see Doctor)" in line, line
 
 

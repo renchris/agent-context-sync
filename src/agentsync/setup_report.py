@@ -2641,6 +2641,7 @@ class _SyncStop:
     file: str
     owner: str
     ended_ok: datetime | None
+    measured: bool = True  # False when the runs table could not be read: whether one ended 0 is not known
 
     @property
     def what(self) -> str:
@@ -2648,12 +2649,20 @@ class _SyncStop:
 
 
 def _read_sync_stops(
-    log: Path, lo: datetime, hi: datetime | None, ok_starts: Sequence[datetime] = ()
+    log: Path,
+    lo: datetime,
+    hi: datetime | None,
+    ok_starts: Sequence[datetime] | None = (),
+    heartbeat_at: datetime | None = None,
 ) -> list[_SyncStop]:
     """The :data:`_SYNC_STOPS_NAME` lines beside ``log`` (install.log) whose time is at or after ``lo`` (the
     attempt's begin) and before ``hi`` (its end line, or the next attempt's begin), each paired with the first
     of ``ok_starts`` after it (B13 round 23 A9). A line of any other shape, a file that cannot be read and a
-    stop before or after the window are skipped: a daily sync's stop after the setup never changes it."""
+    stop before or after the window are skipped: a daily sync's stop after the setup never changes it.
+    ``ok_starts`` None: the runs table could not be read, so no stop is paired and each says not measured. A
+    heartbeat stop pairs only when ``heartbeat_at``, the time the heartbeat file was last written (when this
+    account can read and write it now), is after the stop: a sync whose heartbeat write is refused still ends
+    its run ``ok`` (round 23 ruling 5; the review of A9)."""
     try:
         text = (log.parent / _SYNC_STOPS_NAME).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -2664,8 +2673,10 @@ def _read_sync_stops(
         at = parse_time(m.group("at")) if m is not None else None
         if m is None or at is None or at < lo or (hi is not None and at >= hi) or m.group("rc") == "0":
             continue
-        ended = min((t for t in ok_starts if t > at), default=None)
-        out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended))
+        ended = min((t for t in ok_starts or () if t > at), default=None)
+        if m.group("file") == "heartbeat" and (heartbeat_at is None or heartbeat_at <= at):
+            ended = None
+        out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended, ok_starts is not None))
     return out
 
 
@@ -2676,9 +2687,10 @@ def _sync_stop_reason(stops: Sequence[_SyncStop]) -> str | None:
     fixed = [s for s in stops if s.ended_ok is not None]
     if not fixed:
         return None
-    whats = ", ".join(dict.fromkeys(s.what for s in fixed))
+    whats = " and ".join(dict.fromkeys(s.what for s in fixed))
     who = "the agent's chmod" if all(s.owner == "agent" for s in fixed) else "a fix"
-    return f"{_plural(len(fixed), 'sync')} at step 3 exited 1 on {whats}; it ended 0 after {who}"
+    each = "it" if len(fixed) == 1 else "each"  # no second "; " inside one reason (B13 round 21 Y32)
+    return f"{_plural(len(fixed), 'sync')} at step 3 exited 1 on {whats}, and {each} ended 0 after {who}"
 
 
 _WAIT_OK_KINDS = ("question", "click", "approval", "prompt")
@@ -6888,7 +6900,13 @@ def _state_folder_shut(db: Path) -> bool:
     # shut folder (doctor's state_dir is [ok]): its files are what cannot be written, the state file's words
     from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
 
-    return not (doctor._read_only(db.parent) and os.access(db.parent, os.R_OK | os.X_OK))
+    # this account's own folder whose mode lets it in: the volume is the only refusal (the review of A85)
+    volume_only = (
+        st.st_uid == os.getuid()
+        and stat.S_IMODE(st.st_mode) & 0o700 == 0o700
+        and doctor._read_only(db.parent)
+    )
+    return not (volume_only and os.access(db.parent, os.R_OK | os.X_OK))
 
 
 def _why_not_read(exc: BaseException) -> str:
@@ -9344,14 +9362,20 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
         return []
     att = fr.attempts[index]
     lo = att.begin
-    if lo is None:
+    if lo is None or att.layout.version < 7:  # retried_runs' guards: the one install command's prompts
         return []
     nxt = fr.attempts[index + 1].begin if index + 1 < len(fr.attempts) else None
-    hi = _attempt_end(att) or nxt
+    # no end line: bounded by the attempt's own last line (the friction log's last write for the latest), so
+    # a hand-run sync's stop days later never changes it (retried_runs' hazard; the review of A9)
+    last = max((e.at for e in att.events if e.at is not None), default=lo)
+    if nxt is None:
+        with contextlib.suppress(OSError):
+            last = max(last, datetime.fromtimestamp(r.friction_path.stat().st_mtime, UTC))
+    hi = _attempt_end(att) or nxt or last + timedelta(seconds=1)
     stops = _read_sync_stops(r.install_log, lo, hi)
     if not stops:
         return []
-    starts: list[datetime] = []
+    starts: list[datetime] | None = None
     with contextlib.suppress(sqlite3.Error, OSError):
         conn = _open_manifest_ro(expand(r.config.state_paths.db), 0.5)
         if conn is not None:
@@ -9362,18 +9386,26 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
             finally:
                 conn.close()
             starts = [t for (raw,) in rows if (t := parse_time(str(raw or ""))) is not None]
-    return _read_sync_stops(r.install_log, lo, hi, starts)
+    beat: datetime | None = None
+    with contextlib.suppress(OSError):
+        hb = expand(r.config.state_paths.heartbeat)
+        if os.access(hb, os.R_OK | os.W_OK):
+            beat = datetime.fromtimestamp(hb.stat().st_mtime, UTC)
+    return _read_sync_stops(r.install_log, lo, hi, starts, beat)
 
 
 def _sync_stop_line(stop: _SyncStop) -> str:
     """The Items line of one step-3 sync stop (B13 round 23 A9): the stop, whose fix it was, and whether a
     later sync ended 0."""
     whose = "the agent's chmod" if stop.owner == "agent" else "the person's fix"
-    then = (
-        f"it ended 0 after {whose}"
-        if stop.ended_ok is not None
-        else f"no sync ended 0 after it by this report ({whose})"
-    )
+    if not stop.measured:
+        then = (
+            f"whether a later sync ended 0: not measured (the state file cannot be read); the fix is {whose}"
+        )
+    elif stop.ended_ok is not None:
+        then = f"it ended 0 after {whose}"
+    else:
+        then = f"no sync ended 0 after it by this report ({whose})"
     return f"- agentsync sync · step 3 · exited 1 on {stop.what}, which this account could not open; {then}"
 
 
@@ -9922,8 +9954,10 @@ def _expected_turns_line(
     return "- expected turns: " + " · ".join(parts)
 
 
-def _agent_friction_line(att: Attempt, stop: FrictionEvent | None) -> str:
-    """The agent-side lines (deviation, prompt, error): counted apart from the outcome."""
+def _agent_friction_line(att: Attempt, stop: FrictionEvent | None, syncs: int = 0) -> str:
+    """The agent-side lines (deviation, prompt, error): counted apart from the outcome; ``syncs``, the step-3
+    sync stops agentsync logged itself (B13 round 23 A9: the prompt asks for no line for one the agent's chmod
+    fixed), said after them, as the Items lines hold them."""
     counts = att.kinds()
     lines = att.of_kind(*PROBLEM_KINDS)
     ids = f" ({', '.join(f'F{e.line}' for e in lines)})" if lines else ""
@@ -9934,6 +9968,8 @@ def _agent_friction_line(att: Attempt, stop: FrictionEvent | None) -> str:
     uncounted = len(att.untyped) + len(att.legacy)
     if uncounted:
         text += f"; {_plural(uncounted, 'line')} without a prompt kind (untyped or v4), shown, not counted"
+    if syncs:
+        text += f"; {_plural(syncs, 'step-3 sync stop')} agentsync logged itself (see Items)"
     if stop is not None:
         return text + f"; F{stop.line} stopped the run (the outcome says so)"
     if not lines and not uncounted:
@@ -10146,20 +10182,26 @@ def _refused_files(c: Config) -> dict[str, str]:
     return out
 
 
-def _sidecar_not_a_file(c: Config) -> bool:
-    """Whether something other than a file (a folder, a socket, a fifo; a symlink counts as one) sits where
-    the manifest's -wal or -shm belongs, by the report's own ``lstat``, doctor's ``_not_a_file`` test: doctor
-    FAILs state_dir.files for it with the person's move aside (B13 round 23 A44: a folder at -shm at 0500
-    read as the agent's chmod, at 0700 as unexpected). A stat that fails says no."""
+def _sidecars_not_files(c: Config) -> list[Path]:
+    """The manifest's -wal and -shm, each where something other than a file sits (a folder, a socket, a fifo,
+    a symlink loop, a symlink to a non-file), by the report's own stat, read through a link as doctor's
+    ``state_file_kind`` reads it: doctor FAILs state_dir.files for each with the person's move aside (B13
+    round 23 A44: a folder at -shm at 0500 read as the agent's chmod, at 0700 as unexpected). A dangling link
+    or nothing there is none; a stat that fails says none."""
     db = expand(c.state_paths.db)
+    out: list[Path] = []
     for p in (db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
         try:
             mode = p.lstat().st_mode
-        except OSError:
+            if stat.S_ISLNK(mode):
+                mode = p.stat().st_mode
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                out.append(p)
             continue
-        if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
-            return True
-    return False
+        if not stat.S_ISREG(mode):
+            out.append(p)
+    return out
 
 
 def _root_foreign(c: Config) -> bool:
@@ -10254,15 +10296,28 @@ def _shut_whose(c: Config, shut: str) -> str:
         return _PERSONS
 
 
-def _reads_the_state_folder(name: str) -> bool:
-    """Whether doctor's check ``name`` reads the state folder: its files, the lock, the heartbeat, the
-    governance files and the vanished-sources record (doctor's ``state_folder_unchecked`` checks; B13 round 23
-    A23)."""
-    return name.startswith(("state_dir.", "heartbeat", "governance.")) or name in (
+_READS_THE_STATE_FOLDER = frozenset(
+    {
         "lock",
-        "governance",
+        "heartbeat",
         "config.vanished_sources",
-    )
+        "governance",  # an older doctor's crash line for the governance checks
+        "governance.hold",
+        "governance.purge_queue",
+        "governance.audit",
+        "governance.suppressed",
+    }
+)
+"""The checks doctor's ``state_folder_unchecked`` says are not checked when the state folder is not a folder
+(lane B's round 23 list), besides state_dir's files and the heartbeat's own; never governance.remote, config
+or compaction, nor time_machine, which read no state file and keep their own FAILs (B13 round 23 A23's
+review)."""
+
+
+def _reads_the_state_folder(name: str) -> bool:
+    """Whether doctor's check ``name`` reads the state folder (:data:`_READS_THE_STATE_FOLDER`; B13 round 23
+    A23)."""
+    return name.startswith(("state_dir.", "heartbeat.")) or name in _READS_THE_STATE_FOLDER
 
 
 def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
@@ -10299,15 +10354,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     from_notfolder: list[str] = []
     unreadable = not notfolder and r.config is not None and _state_unreadable(r.config, read_error)
     notfile = not notfolder and not unreadable and r.config is not None and _state_not_file(r.config)
-    # B13 round 23 A44: a folder (or a fifo) where the -wal or -shm belongs is the person's, as doctor says
-    sidecar = (
-        not (notfolder or unreadable or notfile) and r.config is not None and _sidecar_not_a_file(r.config)
-    )
-    shut = (
-        ""
-        if notfolder or unreadable or notfile or sidecar or r.config is None
-        else _state_shut(r.config, read_error)
-    )
+    # B13 round 23 A44: a folder (or a fifo) where the -wal or -shm belongs is the person's, as doctor says;
+    # only its own FAIL, by the name doctor's line gives it: a shut manifest beside it keeps its own owner
+    sidecars = [] if notfolder or r.config is None else _sidecars_not_files(r.config)
+    shut = "" if notfolder or unreadable or notfile or r.config is None else _state_shut(r.config, read_error)
     shut_words = _STATE_SHUT_FOLDER_WORDS if shut == "folder" else _STATE_SHUT_WORDS
     whose = _shut_whose(r.config, shut) if shut and r.config is not None else _PERSONS
     from_state: list[str] = []
@@ -10356,7 +10406,11 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
             from_state.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_UNREAD_WORDS))
             continue
-        if sidecar and tag == "FAIL" and name == "state_dir.files":  # B13 round 23 A44: doctor's move aside
+        if (
+            tag == "FAIL"
+            and name == "state_dir.files"
+            and any(f"{p.name} is " in detail and ", not the state file" in detail for p in sidecars)
+        ):  # B13 round 23 A44: doctor's move aside
             from_state.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_UNREAD_WORDS))
             continue
@@ -11955,7 +12009,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 f"- note: step {att.layout.folder_question_step}'s folder list could not read which folders "
                 f"sources.toml already syncs ({why_unread}){',' if again is None else ';'} {marked}"
             )
-        out.append(_agent_friction_line(att, stop))
+        out.append(_agent_friction_line(att, stop, len(stops)))
         # only when it says more than the agent-friction line: a kind other than the problem kinds and the
         # closing "end | finished" line, or a legacy line (B13 round 11 M34). The end line alone added only
         # "1 finished", on every attempt that reached a report (B13 round 12 N20): a missing one has its own
