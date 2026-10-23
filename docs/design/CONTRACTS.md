@@ -29648,6 +29648,16 @@ stopped copy that also has an install run inside its attempt (the verifier measu
 Y19's own contradiction there). Tests: `test_no_run_resolves_the_installers_stop_of_a_copy_and_the_reason_says_so`,
 `test_a_failed_run_after_a_stopped_copys_end_line_is_not_its_outcome` (an rc 0 row).
 
+**A run with no end line is in the time, install and installer output lines** (D16). After a stopped copy's end
+line, a stand-alone run that ended and one with no end line (killed) gave `after its end line: install 31s` (only
+the ended run), `the last no end line (...)` with no verb, and `1 NEXT: line in 2 runs` with nothing to explain it.
+The time line keeps such a run as `install: no end line`, in run order; the install line says `the last has no end
+line (...)`, as the outcome says it, wherever the last run has none; and `_instruction_text` takes `open_runs`, the
+counted runs install.log has no end line of (`_open_runs`, the run writing the report left out), and, only when fewer
+NEXT: lines than runs were read, says `the run with no end line prints none if stopped before its NEXT:, so N
+expected here`: an expectation, never a fact of the run, as one whose end line could not be written still prints its
+NEXT:. Test: `test_a_stand_alone_run_with_no_end_line_is_in_the_time_install_and_output_lines`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

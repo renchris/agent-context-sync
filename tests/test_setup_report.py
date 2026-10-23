@@ -13347,7 +13347,7 @@ def test_a_run_with_no_end_line_says_whether_its_process_is_gone(
         "step lines is launcher (skipped), and nothing after it is logged (a step's line is written when "
         "the step ends, so a step under way has none)\n" in inst
     )
-    assert f"- install.sh: 2 install runs; the last no end line ({state}) (uv 0s" in summary
+    assert f"- install.sh: 2 install runs; the last has no end line ({state}) (uv 0s" in summary
     assert f"(computed: install.sh has no end line, {state})" in summary
     assert "reached launcher" not in text and "-4243" not in text
 
@@ -17481,6 +17481,52 @@ def test_a_stopped_copys_time_and_folders_lines_put_a_run_after_its_end_line_apa
             "- folders: no install run during this attempt; the install run after its end line: 1 added to "
             "the 2 already synced · 1 named with --source-local by that run (install.log)"
         ), folders
+
+
+def test_a_stand_alone_run_with_no_end_line_is_in_the_time_install_and_output_lines(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 25 D16: after a stopped copy's end line, a stand-alone run that ended and one with no end
+    line (killed): the time line listed only the ended run, the installer output line counted one NEXT: in two
+    runs with nothing to explain it, and the install line read "the last no end line", with no verb. Each run
+    is in the time line, the install line says "has no end line", as the outcome does, and the output line
+    says the run with no end line prints none if stopped first, so one is expected; when both printed one, no
+    clause claims a missing NEXT:."""
+    stop = (
+        "install.sh --log-start: the pasted setup prompt is v26 and this installer is for setup prompt v28: "
+        "the pasted copy is not the current one; setup stopped (exit 2)"
+    )
+    write_friction(
+        fake_mac,
+        "Attempt: 2026-10-20T10:00:00Z\nPrompt: v26\nAgent: Old Agent (model-0)\n"
+        f"2026-10-20T10:00:00Z | step 1 | error | {stop} | copy the prompt again\n"
+        "2026-10-20T10:00:00Z | end | finished\n",
+    )
+    first, second = "2026-10-20T10:05:00Z", "2026-10-20T10:10:00Z"
+    (fake_mac["setup"] / "install.log").write_text(
+        install_run(first, 0) + install_run(second, None), encoding="utf-8"
+    )
+    out = fake_mac["setup"] / "install.out"
+
+    def block(start: str, next_line: bool) -> list[str]:
+        head = f"# run={re.sub('[-:]', '', start)}-77 {start} install.sh --source-local x"
+        return [head, "output", *(["NEXT: done"] if next_line else [])]
+
+    out.write_text("\n".join([*block(first, True), *block(second, False)]) + "\n", encoding="utf-8")
+    _text, summary = summary_of(fake_mac)
+    time = _line(summary, "- time: ")
+    assert time.endswith("after its end line: install 19s · install: no end line"), time
+    assert "; the last has no end line (" in _line(summary, "- install.sh: "), summary
+    output = _line(summary, "- installer output: ")
+    assert output.startswith(
+        "- installer output: no run of this attempt; the 2 runs after its end line: 1 NEXT: line in 2 runs "
+        "(exactly one per install.sh run is expected; the run with no end line prints none if stopped "
+        "before its NEXT:, so 1 expected here)"
+    ), output
+    # its end line could not be written, and it printed its NEXT: no clause claims one is missing
+    out.write_text("\n".join([*block(first, True), *block(second, True)]) + "\n", encoding="utf-8")
+    output = _line(summary_of(fake_mac)[1], "- installer output: ")
+    assert "2 NEXT: lines in 2 runs (exactly one per install.sh run is expected)" in output, output
 
 
 def test_a_stopped_copys_installer_output_sync_and_excerpt_put_a_run_after_its_end_line_apart(

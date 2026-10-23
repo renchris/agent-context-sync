@@ -5579,11 +5579,16 @@ def _persons_kinds() -> str:
     return str(getattr(doctor, "PERSONS_KINDS", _PERSONS_KINDS_COPY))
 
 
-def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, pending: bool = False) -> str:
+def _instruction_text(
+    counts: Counter[str], read: int, runs: int, cut: int = 0, pending: bool = False, *, open_runs: int = 0
+) -> str:
     """The counts of ``read`` lines of install.out, which hold ``runs`` run headers. ``cut``: the lines read
     before the first header, which are the end of a run whose start was not read and are not counted.
     ``pending``: the last run counted is the install.sh run writing this report, whose ``NEXT:`` line comes
-    after the report, so one fewer is expected."""
+    after the report, so one fewer is expected. ``open_runs``: the other runs counted that install.log has no
+    end line of (B13 round 25 D16): one stopped before its end line prints no NEXT: (install.sh logs the end
+    line first), so when fewer NEXT: lines than runs were read, the clause says so, as an expectation, never
+    as a fact of the run (one whose end line could not be written still prints its NEXT:)."""
     others = [f"{counts[k]} {k}" for k in INSTRUCTION_KINDS[1:] if counts[k]]
     other_total = sum(counts[k] for k in INSTRUCTION_KINDS[1:])
     persons = counts[PERSONS_FIX]
@@ -5601,9 +5606,18 @@ def _instruction_text(counts: Counter[str], read: int, runs: int, cut: int = 0, 
         f"{'is' if cut == 1 else 'are'} not counted)"
     )
     due = f"; the run writing this report prints its NEXT: after the report, so {runs - 1} expected here"
+    expected = runs - (1 if pending else 0)
+    unended = ""
+    if open_runs and counts["NEXT:"] < expected:
+        which = "the run" if open_runs == 1 else f"the {open_runs} runs"
+        unended = (
+            f"; {which} with no end line {'prints' if open_runs == 1 else 'print'} none if stopped before "
+            f"{'its' if open_runs == 1 else 'their'} NEXT:, so {expected - open_runs} expected here"
+        )
     clauses = [
         f"{_plural(counts['NEXT:'], 'NEXT: line')}{in_runs} (exactly one per install.sh run is expected"
-        + (due if pending else "")
+        + (due if pending and not unended else "")
+        + unended
         + ")",
         f"{_plural(other_total, 'other instruction-like line')}"
         + (f" ({', '.join(others)})" if others else ""),
@@ -5660,7 +5674,9 @@ def _installer_output_line(
     if start is None and isinstance(after, int):
         theirs = lines[after:]
         k = sum(1 for ln in theirs if _OUT_RUN_RE.match(ln))
-        text = _instruction_text(instruction_counts(theirs), len(theirs), k, pending=pending)
+        unended = _open_runs(r, theirs, pending)
+        counted = instruction_counts(theirs)
+        text = _instruction_text(counted, len(theirs), k, pending=pending, open_runs=unended)
         which = "the run" if k == 1 else f"the {k} runs"
         earlier = (
             f" (the Installer section also counts the {_plural(total - k, 'earlier run')} in the lines read)"
@@ -5677,7 +5693,9 @@ def _installer_output_line(
         return whole
     mine = lines[start:]
     k = sum(1 for ln in mine if _OUT_RUN_RE.match(ln))
-    text = _instruction_text(instruction_counts(mine), len(mine), k, pending=pending)
+    text = _instruction_text(
+        instruction_counts(mine), len(mine), k, pending=pending, open_runs=_open_runs(r, mine, pending)
+    )
     if isinstance(after, int):
         n = sum(1 for ln in lines[after:] if _OUT_RUN_RE.match(ln))
         own = f"this attempt's runs and {'the run' if n == 1 else f'the {n} runs'} after its end line"
@@ -5689,6 +5707,16 @@ def _installer_output_line(
         f"- installer output: {text} (this attempt's runs only; the Installer section also counts the "
         f"{_plural(total - k, 'earlier run')} in the lines read)"
     )
+
+
+def _open_runs(r: _Run, lines: Sequence[str], pending: bool) -> int:
+    """How many of the runs whose headers ``lines`` hold install.log has no end line of, the run writing this
+    report (``pending``, the last header) left out (B13 round 25 D16)."""
+    ids = [m.group(1) for ln in lines if (m := _OUT_RUN_RE.match(ln)) is not None]
+    if pending and ids:
+        ids = ids[:-1]
+    unended = {run.run_id for run in r.install_runs if run.rc is None}
+    return sum(1 for i in ids if i in unended)
 
 
 def _installer_output(r: _Run) -> list[str]:
@@ -12004,7 +12032,10 @@ def _install_line(
     if not installs:
         return f"- install.sh: {where}"
     last = installs[-1]
-    status = _exit_text(last, r.install_runs) if last.rc is not None else f"no end line ({_open_state(last)})"
+    # "has no end line", as the outcome says it, never "the last no end line" (B13 round 25 D16)
+    status = (
+        _exit_text(last, r.install_runs) if last.rc is not None else f"has no end line ({_open_state(last)})"
+    )
     # The agentsync step's note says what its seconds held: a wait for a background sync's lock, a wait that
     # ran out, or a lock not taken (B13 round 3 R34). Other steps' notes are other lines' facts. After a
     # comma: the step list is already in a bracket, and one inside it nested (B13 round 12 N33)
@@ -12964,10 +12995,12 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
             timed = _installer_step_times([run for run in runs if run not in late], att.layout)
             if timed:
                 timing.append("install.sh (install.log): " + " · ".join(timed))
+            # a run with no end line too, so the count matches the install line's (B13 round 25 D16)
             later = [
                 f"{'--list-folders' if run.list_only else 'install'} {_secs(run.seconds)}"
-                for run in late
                 if run.seconds is not None
+                else f"{'--list-folders' if run.list_only else 'install'}: no end line"
+                for run in late
             ]
             if later:
                 timing.append("after its end line: " + " · ".join(later))
