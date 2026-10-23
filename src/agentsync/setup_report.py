@@ -2612,11 +2612,13 @@ def retried_runs(attempt: Attempt | None, runs: Sequence[InstallRun]) -> list[In
 
 _SYNC_STOPS_NAME = "sync-stops.log"
 """The file beside install.log where a foreground ``agentsync sync`` (no ``--mode``, NEXT hints on) appends
-one line when it exits 1 on a state file this account cannot open (``cli.SYNC_STOPS_LOG``, lane B's half of
-B13 round 23 A9): ``<UTC time> sync-stop file=<role> rc=1 owner=<agent|person>``, with no path in it. No
-``run=`` word, so no install.log reader of any build takes it for an install run."""
+one line when it exits 1 on a state path (``cli.SYNC_STOPS_LOG``, lane B's half of B13 round 23 A9): ``<UTC
+time> sync-stop file=<role> rc=1 owner=<agent|person> kind=<refused|misplaced|lost>``, with no path in it; a
+line with no ``kind=`` (written before B13 round 24 B82) is a refusal. No ``run=`` word, so no install.log
+reader of any build takes it for an install run."""
 _SYNC_STOP_RE = re.compile(
-    r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)$"
+    r"^(?P<at>\S+) sync-stop file=(?P<file>[a-z]+(?:-[a-z]+)*) rc=(?P<rc>\d+) owner=(?P<owner>agent|person)"
+    r"(?: kind=(?P<kind>refused|misplaced|lost))?$"
 )
 _SYNC_STOP_FILES = {
     "manifest": "agentsync's state file",
@@ -2643,6 +2645,7 @@ class _SyncStop:
     owner: str
     ended_ok: datetime | None
     measured: bool = True  # False when the runs table could not be read: whether one ended 0 is not known
+    kind: str = "refused"  # why it stopped: refused, misplaced or lost (B13 round 24 B82; ruling 7)
 
     @property
     def what(self) -> str:
@@ -2677,7 +2680,8 @@ def _read_sync_stops(
         ended = min((t for t in ok_starts or () if t > at), default=None)
         if m.group("file") == "heartbeat" and (heartbeat_at is None or heartbeat_at <= at):
             ended = None
-        out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended, ok_starts is not None))
+        kind = m.group("kind") or "refused"
+        out.append(_SyncStop(at, m.group("file"), m.group("owner"), ended, ok_starts is not None, kind))
     return out
 
 

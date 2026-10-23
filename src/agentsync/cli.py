@@ -3039,41 +3039,61 @@ be (:func:`_misplaced`): a folder where the manifest belongs, a file where the s
 
 
 def _state_next(
-    args: argparse.Namespace, step: str = STATE_REFUSED_STEP, *, said: str = "", path: object = None
+    args: argparse.Namespace,
+    step: str = STATE_REFUSED_STEP,
+    *,
+    said: str = "",
+    path: object = None,
+    kind: str | None = None,
 ) -> None:
     """Print ``step`` (:data:`STATE_REFUSED_STEP`) as a NEXT line for a ``sync`` with no ``--mode`` (an
     agent's or a person's, never the LaunchAgent's), unless :data:`NO_NEXT_HINT_ENV` is 1 (install.sh names
     its own), and record the stop beside the setup log (:func:`_record_sync_stop`: ``said``, the error line,
-    and ``path``, the state path it names)."""
+    ``path``, the state path it names, and ``kind``, by default ``misplaced`` for
+    :data:`STATE_MISPLACED_STEP` and ``refused`` for any other step)."""
     if getattr(args, "command", None) != "sync" or getattr(args, "mode", None):
         return
     if os.environ.get(NO_NEXT_HINT_ENV, "").strip() == "1":
         return
     _out(loop.NEXT_PREFIX + step)
-    _record_sync_stop(args, said, path)
+    _record_sync_stop(args, said, path, kind or ("misplaced" if step == STATE_MISPLACED_STEP else "refused"))
 
 
-SYNC_STOPS_LOG = "sync-stops.log"
+SYNC_STOPS_LOG = setup_report._SYNC_STOPS_NAME
 """The file beside the setup log (``setup_report.default_setup_log``) where a foreground sync that stopped on
-a state file records it, one line each: ``<UTC> sync-stop file=<role> rc=1 owner=<agent|person>``, no path.
-install.sh's own runs are in install.log, so only a sync no install.sh runs (the setup loop's) writes it, and
-never one that does not start ``<at> run=``, which the install.log reader would take for an install run (B13
-round 23 A9: a step-3 stop the agent's chmod fixed left no trace for the report; lane RA reads it)."""
+a state file records it, one line each: ``<UTC> sync-stop file=<role> rc=1 owner=<agent|person>
+kind=<refused|misplaced|lost>``, no path. install.sh's own runs are in install.log, so only a sync that no
+install.sh runs (the setup loop's) writes it, and never a line that starts ``<at> run=``, which the
+install.log reader would take for an install run (B13 round 23 A9: a step-3 stop the agent's chmod fixed
+left no trace for the report; lane RA reads it). The kind says why it stopped: a state file or folder this
+account cannot open (``refused``), one not where or what it should be (``misplaced``), or a manifest missing
+after earlier syncs (``lost``, ``manifest.manifest_lost``): a lost manifest's stop was recorded as
+``file=state-folder`` and read as a refusal (B13 round 24 B27, B62, B82, B100; ruling 7)."""
 
 
-def _record_sync_stop(args: argparse.Namespace, said: str, path: object) -> None:
+def _record_sync_stop(args: argparse.Namespace, said: str, path: object, kind: str = "refused") -> None:
     """Append the stop's line to :data:`SYNC_STOPS_LOG`, only when the setup folder is already there; never
-    raises, so a stop is never a second error."""
+    raises, so a stop is never a second error. A refusal :func:`_folder_refuses` says was its folder's, not
+    the file's, is the folder's role: a deny-ACL'd state folder wrote ``file=manifest`` (B13 round 24 B16,
+    lane RA's reader)."""
     try:
         folder = setup_report.default_setup_log().parent
         if not folder.is_dir():
             return
         config = _config(args)
-        role = _stop_role(config, path)
+        head = said.rpartition(" (fix: ")[0]
+        if head.endswith(": a folder above it refuses this account a search"):
+            role = "state-folder"
+        elif head.endswith(": its folder refuses this account") and isinstance(
+            path, str | bytes | os.PathLike
+        ):
+            role = _stop_role(config, Path(os.fsdecode(path)).parent)
+        else:
+            role = _stop_role(config, path)
         fix = said.rpartition(" (fix: ")[2]
         owner = "agent" if fix.startswith("chmod ") else "person"
         at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        line = f"{at} sync-stop file={role} rc=1 owner={owner}\n".encode()
+        line = f"{at} sync-stop file={role} rc=1 owner={owner} kind={kind}\n".encode()
         fd = os.open(folder / SYNC_STOPS_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
             os.write(fd, line)
@@ -3372,7 +3392,12 @@ def _main(argv: Sequence[str] | None) -> int:
         _log.debug("state: %s", exc, exc_info=True)
         _err(said)
         where = exc.filename if exc.filename is not None else getattr(exc.__cause__, "filename", None)
-        _state_next(args, STATE_MISPLACED_STEP, said=said, path=where)
+        lost = isinstance(exc, ManifestLostError)
+        if (
+            lost
+        ):  # no filename by design (errors.py): the stop is the manifest's, as _misplaced_check names it
+            where = _state_db(args)
+        _state_next(args, STATE_MISPLACED_STEP, said=said, path=where, kind="lost" if lost else None)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read

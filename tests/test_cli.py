@@ -6382,9 +6382,9 @@ def test_a_heartbeat_this_account_cannot_open_is_said_once_and_an_interactive_sy
     (failed,) = [ln for ln in out if ln.startswith("[FAIL] heartbeat ")]
     assert status_rc == cli.EXIT_FAILED and failed.endswith(fix), failed
     (stop,) = (setup / cli.SYNC_STOPS_LOG).read_text(encoding="utf-8").splitlines()
-    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ sync-stop file=heartbeat rc=1 owner=agent", stop), (
-        stop
-    )
+    assert re.fullmatch(
+        r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ sync-stop file=heartbeat rc=1 owner=agent kind=refused", stop
+    ), stop
     for run_rc, got in ((polled, background), (installed, under_install)):
         assert run_rc == cli.EXIT_OK and "NEXT: " not in got.out, got
         warned = [ln for ln in got.err.splitlines() if "heartbeat" in ln]
@@ -6422,9 +6422,61 @@ def test_a_foreground_sync_that_stops_on_a_state_file_records_its_role_beside_th
         lock.chmod(0o600)
     capsys.readouterr()
     (line,) = stops.read_text(encoding="utf-8").splitlines()
-    assert line.endswith(" sync-stop file=lock rc=1 owner=agent") and str(lock) not in line, line
+    assert line.endswith(" sync-stop file=lock rc=1 owner=agent kind=refused") and str(lock) not in line, line
     assert setup_report._INSTALL_LINE_RE.match(line) is None
     assert stat.S_IMODE(stops.stat().st_mode) == 0o600
+    # B13 round 24 B66: the writer's line through the report's own reader, so a renamed file, a timestamp the
+    # reader does not parse or a role or owner word it does not take turns this red, not the report silent
+    assert cli.SYNC_STOPS_LOG == setup_report._SYNC_STOPS_NAME
+    since = datetime(2000, 1, 1, tzinfo=UTC)
+    (read,) = setup_report._read_sync_stops(stops.parent / "install.log", since, None)
+    assert (read.file, read.owner, read.kind, read.ended_ok) == ("lock", "agent", "refused", None)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root searches a mode-600 folder")
+def test_a_sync_stop_its_folder_refused_is_recorded_on_the_folder_not_the_file(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 24 B16 (lane RA's reader, cli's writer): a sync refused by its state folder, not by a file in
+    it, wrote the file's role (``file=manifest`` or ``file=lock``) though its line says the folder refuses and
+    its fix is the folder's chmod 700. The line names the folder."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    capsys.readouterr()
+    root.chmod(0o600)
+    try:
+        assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    finally:
+        root.chmod(0o700)
+    said = capsys.readouterr()
+    assert ": its folder refuses this account (fix: chmod 700 " in said.err, said.err
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=state-folder rc=1 owner=agent kind=refused", line), line
+
+
+def test_a_sync_stop_on_a_state_folder_that_is_a_file_is_recorded_as_misplaced_not_refused(
+    initialised: Config, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B13 round 24 B82: a sync stopped by a file where the state folder belongs wrote ``file=state-folder
+    rc=1 owner=person``, which the report read as "which this account could not open": nothing was refused.
+    The line carries its kind, ``misplaced``, which the report's reader takes (its words for it: lane RA)."""
+    cfg = _synced(initialised)
+    root = expand(initialised.state_paths.root)
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    root.rename(root.with_name(root.name + ".kept"))
+    root.write_text("not a folder\n", encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    said = capsys.readouterr()
+    assert "is a file, not a folder" in said.err and f"NEXT: {cli.STATE_MISPLACED_STEP}" in said.out, said
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=state-folder rc=1 owner=person kind=misplaced", line), line
+    since = datetime(2000, 1, 1, tzinfo=UTC)
+    (read,) = setup_report._read_sync_stops(stops.parent / "install.log", since, None)
+    assert (read.file, read.owner, read.kind) == ("state-folder", "person", "misplaced")
 
 
 def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_starts_over(
@@ -6472,6 +6524,18 @@ def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_s
         f"NEXT: {cli.STATE_MISPLACED_STEP}"
     ]
     assert not db.exists()
+    # B13 round 24 B27, B62, B82, B100 (ruling 7): its stop is the manifest's, of its own kind, not
+    # file=state-folder read as a refusal; recorded once the setup folder is there
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    capsys.readouterr()
+    (stop,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=manifest rc=1 owner=person kind=lost", stop), stop
+    since = datetime(2000, 1, 1, tzinfo=UTC)
+    (read,) = setup_report._read_sync_stops(stops.parent / "install.log", since, None)
+    assert (read.file, read.owner, read.kind) == ("manifest", "person", "lost")
+    assert read.what == "agentsync's state file"
     hb.rename(hb.with_name("heartbeat.json.kept"))  # the person's confirmation of a new start
     rc, out = _status(cfg, capsys)
     assert "manifest: none yet (no sync has run)" in out and not any("state_dir.manifest" in ln for ln in out)
