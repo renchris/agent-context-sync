@@ -29658,6 +29658,14 @@ NEXT: lines than runs were read, says `the run with no end line prints none if s
 expected here`: an expectation, never a fact of the run, as one whose end line could not be written still prints its
 NEXT:. Test: `test_a_stand_alone_run_with_no_end_line_is_in_the_time_install_and_output_lines`.
 
+**An empty insteadOf rewrites every url, as git does** (D32). B101's `_rewritten_url` skipped an empty
+`url.<base>.insteadOf`, while git applies it to every url (`alias_url` takes a match of length 0), so a checkout git
+fetches from a mirror read `origin: github.com/<slug>` with no note, a regression from before B101, and the shell
+report (which keeps an empty value) disagreed. The match now needs only the key's separator under `-z` (a key with
+no value, which git refuses and the shell's awk skips, is still none), with the strict `>` keeping git's first
+longest. `_git_keeps_empty_url` compares the probe's url after the checkout's own rewrites, so an insteadOf cannot
+make an older git read as a newer one. Test: `test_an_empty_insteadof_rewrites_every_url_as_git_does`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

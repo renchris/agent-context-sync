@@ -4812,7 +4812,9 @@ def _git_keeps_empty_url(r: _Run, directory: Path) -> bool:
     """Whether the report's git keeps an empty ``url =`` as a key, as one older than the reset does, and so
     fetches from the first non-empty key: ``ls-remote --get-url`` of a remote given on the command line as
     ``probe-a``, an empty url and ``probe-b`` prints ``probe-a`` there and ``probe-b`` on a git that clears
-    the list (B13 round 24 B101). Needs no repository; False when git cannot say."""
+    the list (B13 round 24 B101). Needs no repository; False when git cannot say. Compared after the
+    checkout's own rewrites (B13 round 25 D32): an insteadOf, an empty one above all, rewrites the probe's url
+    too, and an older git then read as a newer one."""
     rc, out = _git_ro(
         r,
         directory,
@@ -4826,20 +4828,25 @@ def _git_keeps_empty_url(r: _Run, directory: Path) -> bool:
         "--get-url",
         "zprobe",
     )
-    return rc == 0 and out.decode("utf-8", "replace").strip() == "probe-a:x"
+    return rc == 0 and out.decode("utf-8", "replace").strip() == (
+        _rewritten_url(r, directory, "probe-a:x") or "probe-a:x"
+    )
 
 
 def _rewritten_url(r: _Run, directory: Path, url: str) -> str | None:
     """``url`` as git's URL rewrites send it (``url.<base>.insteadOf``, the longest value that prefixes it, as
-    git picks), None when none does or git's config cannot be read (B13 round 24 B101)."""
+    git picks), None when none does or git's config cannot be read (B13 round 24 B101). An empty value
+    prefixes every url, as git's ``alias_url`` takes a match of length 0 when nothing longer matches (B13
+    round 25 D32: B101 skipped it, and the shell report did not); a key with no value (no newline after it
+    under ``-z``), a config git refuses, is no rewrite, as the shell's awk skips it."""
     rc, out = _git_ro(r, directory, "config", "-z", "--get-regexp", r"^url\..*\.insteadof$")
     if rc != 0:
         return None
     best: tuple[str, str] | None = None
     for entry in out.decode("utf-8", "replace").split("\0"):
-        key, _, value = entry.partition("\n")  # -z: a base may hold a space
+        key, sep, value = entry.partition("\n")  # -z: a base may hold a space; no newline: a valueless key
         base = key[len("url.") : -len(".insteadof")] if key.lower().endswith(".insteadof") else ""
-        if base and value and url.startswith(value) and (best is None or len(value) > len(best[1])):
+        if base and sep and url.startswith(value) and (best is None or len(value) > len(best[1])):
             best = (base, value)
     return None if best is None else best[0] + url[len(best[1]) :]
 

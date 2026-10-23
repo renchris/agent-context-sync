@@ -10251,6 +10251,47 @@ def test_an_origin_with_two_url_keys_is_labelled_by_the_first_and_no_rewrite_is_
         assert "contoso" not in facts
 
 
+def test_an_empty_insteadof_rewrites_every_url_as_git_does(tmp_path: Path) -> None:
+    """B13 round 25 D32: B101 skipped an empty ``url.<base>.insteadOf``, while git applies it to every url
+    (a match of length 0), so a checkout git fetches from a mirror read "origin: github.com/<slug>" with no
+    note, unlike the shell report; and it rewrote the empty-url probe too, so an older git read as a newer
+    one. The empty value is a rewrite; a key with no value, which git refuses, is none; the probe is read
+    after the checkout's own rewrites."""
+    run = setup_report._Run(tmp_path / "none.toml", setup_report.ReportHooks(), 12.0)
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (repo / "a.txt").write_text("one\n", encoding="utf-8")
+    git("add", "a.txt")
+    git("commit", "-q", "-m", "one")
+    github = "https://github.com/renchris/agent-context-sync.git"
+    git("remote", "add", "origin", github)
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    plain = setup_report._git_keeps_empty_url(run, repo)
+    git("config", "url.https://mirror.contoso.example/.insteadOf", "")
+    assert setup_report._rewritten_url(run, repo, github) == f"https://mirror.contoso.example/{github}"
+    facts = setup_report._checkout_facts(run, repo)
+    assert " · origin: github.com/renchris/agent-context-sync (a URL rewrite sends it elsewhere) · " in facts
+    assert "contoso" not in facts, facts
+    assert setup_report._git_keeps_empty_url(run, repo) is plain, "the probe reads as with no rewrite"
+    # a valueless key (a bare insteadOf line), which git refuses: no rewrite
+    git("config", "--unset", "url.https://mirror.contoso.example/.insteadOf")
+    config = repo / ".git" / "config"
+    config.write_text(
+        config.read_text(encoding="utf-8") + '[url "https://nul.contoso.example/"]\n\tinsteadOf\n',
+        encoding="utf-8",
+    )
+    assert setup_report._rewritten_url(run, repo, github) is None
+
+
 def test_an_older_git_that_keeps_an_empty_url_key_is_read_as_it_fetches_and_claims_no_rewrite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
