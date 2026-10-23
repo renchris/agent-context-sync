@@ -176,6 +176,7 @@ from agentsync.ops.lock import Stage as LockStage
 from agentsync.paths import expand
 from agentsync.policy import PolicyConfig
 from agentsync.publish import (
+    _CHANGELOG_HEADING,
     ARCHIVE_DIR,
     DELETED_UPSTREAM,
     STUB_RENDER,
@@ -900,6 +901,32 @@ def _head_run_id(repo: Path) -> int | None:
         return None
     m = _RUN_TRAILER.search(message)
     return int(m.group(1)) if m else None
+
+
+def _highest_recorded_run(config: Config) -> int:
+    """The highest run number the docs repo records: any commit's ``Agentsync-Run`` trailer (a curated commit
+    at HEAD has none, and a new start before this fix restarted the numbers, so every commit is read, not
+    HEAD's) and any ``## <date> · run N ·`` heading in CHANGELOG/*.md; 0 when it records none. A manifest that
+    starts with no runs over these continues after it (B13 round 26 E9)."""
+    repo = config.docs_repo
+    high = 0
+    try:
+        if gitops.head_sha(repo) is not None:
+            out = gitops.run_git(repo, "log", "--format=%(trailers:key=Agentsync-Run,valueonly)").stdout
+            high = max((int(v) for v in out.split() if v.isdigit()), default=0)
+    except AgentSyncError:
+        pass
+    folder = config.layout.changelog_dir
+    for month in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            text = month.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            m = _CHANGELOG_HEADING.match(line)
+            if m:
+                high = max(high, int(m.group(2)))
+    return high
 
 
 def _pages_intact(repo: Path, outputs: Sequence[OutputRow]) -> bool:
@@ -1853,6 +1880,7 @@ class _Cycle:
         self.findings: list[LintFinding] = []
         self.heartbeat_refused: PermissionError | None = None  # said once, by the CLI (A1, A34, A84)
         self.new_manifest_pages = 0  # the mirror pages a new manifest started over (B13 round 24 B37)
+        self._orphans_gone: list[str] | None = None  # of those, the ones this run did not write back (E10)
         self._fresh_orphans: list[
             str
         ] = []  # those pages, each said at DEBUG: any not written back is a WARNING
@@ -1924,6 +1952,8 @@ class _Cycle:
         self.new_manifest_pages = len(orphaned) if fresh else 0
         self._fresh_orphans = orphaned if fresh else []
         self._refuse_vanished_sources()
+        if not last:  # a new manifest over a repo that names runs continues their numbers (E9)
+            self.manifest.seed_run_sequence(_highest_recorded_run(self.config))
         self.run_id = self.manifest.begin_run(self.mode, host=socket.gethostname(), pid=os.getpid())
         if crashed is not None:
             self._carry_crashed_changes(crashed)
@@ -1977,6 +2007,7 @@ class _Cycle:
             self._quarantine_secrets()
             if rescan:
                 self.manifest.set_meta(_SECRET_RESCAN_META, "")
+            self._count_orphans_removed()
             self.changes = _one_change_per_page(self.changes)
             self._flush_changes(rewrite=True)
             self.lock.beat(LockStage.CURATE)
@@ -2043,7 +2074,11 @@ class _Cycle:
         self._after(report, status, ok_cycle=not blocked)
         self._say_orphans_not_written_back()
         if self.new_manifest_pages:
-            report = dataclasses.replace(report, new_manifest_pages=self.new_manifest_pages)
+            report = dataclasses.replace(
+                report,
+                new_manifest_pages=self.new_manifest_pages,
+                new_manifest_removed=len(self._orphans_gone or []),
+            )
         if self.heartbeat_refused is not None:
             return dataclasses.replace(report, heartbeat_refused=self.heartbeat_refused)
         return report
@@ -2054,9 +2089,26 @@ class _Cycle:
         blocked first, or a page whose path changed. B37's quiet reset assumed every one came back, so a
         deleted page was committed with no line above DEBUG (B13 round 25 D40). No cause is named: the same
         state has each of those."""
-        for rel in self._fresh_orphans:
-            if not (self.repo / rel).is_file():
-                log.warning("repair: removed orphan mirror page %s (not written back by this run)", rel)
+        gone = self._orphans_gone
+        for rel in gone if gone is not None else self._not_written_back():
+            log.warning("repair: removed orphan mirror page %s (not written back by this run)", rel)
+
+    def _not_written_back(self) -> list[str]:
+        """The pages a new manifest's reset removed that this run has not written back."""
+        return [rel for rel in self._fresh_orphans if not (self.repo / rel).is_file()]
+
+    def _count_orphans_removed(self) -> None:
+        """Count each page a new manifest's reset removed and this run did not write back as a deletion of
+        its source, once publishing is done: the commit said 0d and the CHANGELOG nothing while the commit
+        deleted it (B13 round 26 E10). One list (``_orphans_gone``) feeds the counts, the WARNING and the
+        CLI's note, so they never disagree; the pages written back are no change."""
+        gone = self._not_written_back()
+        self._orphans_gone = gone
+        ids = {s.id for s in self.config.sources}
+        for rel in gone:
+            parts = rel.split("/")
+            sid = parts[1] if len(parts) > 2 and parts[1] in ids else "mirror"
+            self.changes.append(MirrorChange(ChangeOp.DELETED, rel, sid, ""))
 
     def _session_topic_pages(self) -> tuple[str | None, set[str]]:
         """KISS K06: the pre-run HEAD and the topic pages a session left dirty (uncommitted or untracked),
@@ -3244,7 +3296,8 @@ class _Cycle:
     # ---- dry run ------------------------------------------------------------------------------------------
     def _run_dry(self) -> CycleReport:
         runs = self.manifest.last_runs(1)
-        self.run_id = (runs[0][0] if runs else 0) + 1
+        # the number the real run takes: a new manifest continues the repo's (E9)
+        self.run_id = (runs[0][0] if runs else _highest_recorded_run(self.config)) + 1
         arms = build_arms(self.config, self.manifest, self.client, persist_page_links=False)
         for src in self.selected:
             acc = self._acc(src)

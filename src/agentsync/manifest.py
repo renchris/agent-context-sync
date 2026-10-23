@@ -1385,6 +1385,21 @@ class Manifest:
         ).fetchall()
         return [(int(r[0]), str(r[1]), str(r[2]), r[3]) for r in rows]
 
+    def seed_run_sequence(self, after: int) -> None:
+        """Make the next :meth:`begin_run` return at least ``after + 1``: a new manifest over a docs repo
+        whose commits and CHANGELOG already name runs continues their numbering, never restarting at run 1,
+        whose CHANGELOG section the marker check then skipped as already written, and whose
+        ``Agentsync-Run`` trailer recovery read as the new run's (B13 round 26 E9). Never lowers the
+        sequence."""
+        if after <= 0:
+            return
+        row = self._db.execute("SELECT seq FROM sqlite_sequence WHERE name = 'runs'").fetchone()
+        if row is not None and int(row[0]) >= after:
+            return
+        with self.transaction():
+            self._db.execute("DELETE FROM sqlite_sequence WHERE name = 'runs'")
+            self._db.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('runs', ?)", (after,))
+
     def last_run_started(self) -> str | None:
         """``started_at`` of the newest run, whatever its mode or status; None when no run is recorded."""
         row = self._db.execute("SELECT started_at FROM runs ORDER BY run_id DESC LIMIT 1").fetchone()

@@ -523,6 +523,9 @@ class CycleReport:
     # heartbeat.json is moved aside); the ones the run writes back go unnamed, and each it did not is a
     # WARNING (B13 round 25 D40)
     new_manifest_pages: int = 0
+    # of those, the ones this run did not write back: each a deletion in the commit and the CHANGELOG, and
+    # the count on the CLI's note (B13 round 26 E10)
+    new_manifest_removed: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

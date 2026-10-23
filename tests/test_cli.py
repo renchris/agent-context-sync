@@ -7218,6 +7218,88 @@ def test_a_new_manifest_names_each_page_it_removed_and_did_not_write_back(
         ), warned
 
 
+@pytest.mark.parametrize("lose_one", [True, False], ids=["one-file-gone", "every-file-back"])
+def test_a_new_start_counts_each_page_it_removed_and_continues_the_run_numbers(
+    initialised: Config, local_source_dir: Path, capsys: pytest.CaptureFixture[str], lose_one: bool
+) -> None:
+    """B13 round 26 E9, E10 (ruling 14): the person's new start (manifest gone, heartbeat.json aside) removed
+    the page of a file that had gone, and its commit said "0d", its CHANGELOG nothing and the note "every
+    file is converted again"; and the new manifest numbered its run 1 again, so append_changelog found the
+    old "run 1" heading of the same day and skipped the section, and the commit's Agentsync-Run trailer
+    repeated the old one. The new start continues the run numbers, its commit and CHANGELOG count each page
+    removed as a deletion, and the note says how many came back; with every file back it says 0d, as
+    before."""
+    cfg = _synced(initialised)
+    repo = initialised.docs_repo
+    sp = initialised.state_paths
+    month = initialised.layout.changelog_dir / f"{datetime.now(UTC):%Y-%m}.md"
+    heading = re.compile(r"^## \d{4}-\d{2}-\d{2} · run (\d+) · ", re.MULTILINE)
+    (old_run,) = [int(n) for n in heading.findall(month.read_text(encoding="utf-8"))]
+    old_trailer = subprocess.run(
+        ["git", "-C", str(repo), "log", "-1", "--format=%(trailers:key=Agentsync-Run,valueonly)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    pages = sorted(
+        p.relative_to(repo).as_posix()
+        for p in initialised.layout.mirror.rglob("*.md")
+        if p.name != "CLAUDE.md"
+    )
+    files = sorted(p for p in local_source_dir.rglob("*") if p.is_file() and not p.name.startswith("."))
+    if lose_one:
+        files[0].unlink()
+    (local_source_dir / "contoso-notes.txt").write_text("Contoso planning notes\n", encoding="utf-8")
+    db = expand(sp.db)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    expand(sp.heartbeat).rename(expand(sp.heartbeat).with_name("heartbeat.kept.json"))
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    out = capsys.readouterr().out
+    after = {
+        p.relative_to(repo).as_posix()
+        for p in initialised.layout.mirror.rglob("*.md")
+        if p.name != "CLAUDE.md"
+    }
+    removed = sorted(set(pages) - after)
+    assert len(removed) == (1 if lose_one else 0), (pages, after)
+    (note,) = [ln for ln in out.splitlines() if ln.startswith("note: a new manifest was started over ")]
+    over = plural(len(pages), "existing mirror page")
+    if lose_one:
+        assert note == (
+            f"note: a new manifest was started over {over}; {len(pages) - 1} written back, 1 removed "
+            "(its file is gone or was not converted)"
+        ), note
+    else:
+        assert note == f"note: a new manifest was started over {over}; every file is converted again", note
+    show = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "show",
+            "--stat",
+            "--format=%s%n%(trailers:key=Agentsync-Run,valueonly)",
+            "HEAD",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    subject, trailer = show.splitlines()[:2]
+    assert f" {len(removed)}d " in f"{subject} ", subject
+    assert trailer.strip() and trailer.strip() != old_trailer, (trailer, old_trailer)
+    assert f"CHANGELOG/{month.name}" in show, show
+    text = month.read_text(encoding="utf-8")
+    runs = [int(n) for n in heading.findall(text)]
+    assert len(runs) == 2 and runs[0] == old_run and runs[1] > old_run, runs
+    assert f"run {runs[1]} · mode " in out and int(trailer) == runs[1], out
+    section = text[text.rindex("\n## ") :]
+    for rel in removed:
+        assert f"- D `{rel}`" in section, section
+
+
 def test_curate_over_a_lost_manifest_says_syncs_line_and_never_to_sync_again(
     initialised: Config, capsys: pytest.CaptureFixture[str]
 ) -> None:

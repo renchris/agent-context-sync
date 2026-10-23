@@ -494,7 +494,16 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
     if report.new_manifest_pages:
         pages = plural(report.new_manifest_pages, "existing mirror page")
-        _out(f"note: a new manifest was started over {pages}; every file is converted again")
+        if report.new_manifest_removed:  # not every one came back: say how many went (B13 round 26 E10)
+            gone = report.new_manifest_removed
+            back = report.new_manifest_pages - gone
+            whose = "its" if gone == 1 else "their"
+            _out(
+                f"note: a new manifest was started over {pages}; {back} written back, {gone} removed "
+                f"({whose} file is gone or was not converted)"
+            )
+        else:
+            _out(f"note: a new manifest was started over {pages}; every file is converted again")
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
         counts = ", ".join(
