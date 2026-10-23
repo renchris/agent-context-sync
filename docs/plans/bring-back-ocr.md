@@ -1704,6 +1704,32 @@ timing pin), D 9 (guides, CONTRACTS records, CLAUDE.md's CI time). No lane P or 
 Lead: D14, D17, D30 (the rehearsal kit's chmod order and docs/_eval timing, the scenario C wording; fixed in
 `round25/round25-workflow.js`).
 
+### B13 round 25 landed (2026-10-23)
+
+All five lanes landed; CI green on `a34d3aaf` (ci `40017991870`, diagrams `40017991908`); the prompt is still v33.
+Notes `lanes/r25-<lane>.md`, lead notes `round25/lead-notes.md`. All 81 items are built, each with a test that fails
+without it, and none carries a not-built reason: D81 needed no lane B change (round 24's B17 reason holds) and its
+residual landed in lane RA's `7d68f56e`; lane RA built lane B's D26 report half, and lane RB the install.sh seam of
+lane B's D45 and a test that the shell and agentsync reports pair step 3 stops alike.
+
+| Lane | Landed (lane commits) |
+|---|---|
+| E | `8db0fb22..5e4ac8ea`, 5 commits |
+| D | `d6f846bd..e5d0f03f`, 7 commits (ci.yml's job limit is 50 minutes now) |
+| RA | `7d68f56e..ca0d3dd9`, 13 commits |
+| B | `9d187497..3081d7cf`, 9 commits |
+| RB | `41794734..a34d3aaf`, 10 commits |
+
+Learnings: ruling 11 as first written (only a chmod-naming line pairs) could never pair a person's stop, since v33's
+person's-FAIL path runs no chmod; lane RA caught it at its first read, and the lead refined it mid-round (an agent's
+stop claims a chmod line, a person's stop a line naming the sync's non-zero exit). Lane D's new test pins every
+round's dated lines to its heading's date, so the lead forwarded the rule to the lanes still to land. Trunk stayed
+green; five lanes kept the capacity gate quiet. The lead's self-recycle was held a second time (the typed `/exit`
+could not be read back from its input box), so it led this round in the same context.
+
+Round 26: the round 25 workflow with prompt v33 on this section's landed tip, BASE `b4c61127` (ids E<n>, unused in
+§16 lines; outputs `round26/`); the prompt did not change, so scenario C still plays the v32 and v31 blocks.
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 

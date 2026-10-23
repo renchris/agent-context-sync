@@ -66,8 +66,9 @@ words and that its fix is the person's. A stop whose record could not be measure
 bucket at report time to count; agent-owned stops and step 3 errors with no stop record stay "worked with help"
 (D3, D19, D27; lane RA). This reverses round 22's A36 "never failed" for this one case only.
 (11) Pairing covers every recorded stop, not only one a later sync ended 0 after: each stop claims one step 3 error,
-one to one in time order; only an error line that names a chmod can be claimed (a "skipped: lock held" line never
-is, and stays a reason); stop k may claim up to the stop after next, since v33 logs the line after the re-sync; an
+one to one in time order; an agent-owned stop claims only an error line that names a chmod, a person-owned stop
+claims only one that names the sync's non-zero exit and no chmod (refined mid-round with lane RA: v33's person's-FAIL
+path runs no chmod), and a "skipped: lock held" line is never claimed and stays a reason; stop k may claim up to the stop after next, since v33 logs the line after the re-sync; an
 error in the same second as a stop is at or after it. A paired error of a stop no later sync fixed still counts
 among the outcome's reasons (D1, D7, D18, D24, D28, D35, D57, D58, D69, D75; lane RA; the shell report reads the
 same pairing, lane RB).
