@@ -6565,4 +6565,19 @@ def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_s
     hb.rename(hb.with_name("heartbeat.json.kept"))  # the person's confirmation of a new start
     rc, out = _status(cfg, capsys)
     assert "manifest: none yet (no sync has run)" in out and not any("state_dir.manifest" in ln for ln in out)
+    pages = sorted(p for p in initialised.layout.mirror.rglob("*.md") if p.name != "CLAUDE.md")
+    assert pages
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK and db.exists()
+    # B13 round 24 B37: the rebuild said one WARNING per page it removed as an orphan and wrote back, and no
+    # plain line; it says one note of its own, before the summary line, and no WARNING
+    rebuilt = capsys.readouterr()
+    assert " WARNING agentsync." not in rebuilt.err, rebuilt.err
+    noted = [ln for ln in rebuilt.out.splitlines() if ln.startswith("note: a new manifest")]
+    assert noted == [
+        f"note: a new manifest was started over {plural(len(pages), 'existing mirror page')}; every file is "
+        "converted again"
+    ], rebuilt.out
+    lines = rebuilt.out.splitlines()
+    assert lines[lines.index(noted[0]) + 1].startswith("run "), rebuilt.out
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK
+    assert "note: a new manifest" not in capsys.readouterr().out

@@ -518,6 +518,10 @@ class CycleReport:
     # after the first source and logs nothing above DEBUG; the CLI says it once, an interactive sync as an
     # ``error: state:`` line, a NEXT to status and exit 1 (B13 round 23 A1, A34, A84; round 23 ruling 5)
     heartbeat_refused: PermissionError | None = None
+    # the existing mirror pages a new manifest (no runs, no tree) started over, each removed as an orphan and
+    # written back by the same run: the CLI says it in one plain note, not one WARNING per page (B13 round 24
+    # B37: the person's new start, after heartbeat.json is moved aside)
+    new_manifest_pages: int = 0
 
 
 TEAMS_MONTH_SCHEMA = "agentsync.teams-month/1"

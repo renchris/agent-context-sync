@@ -486,6 +486,11 @@ def _print_report(report: CycleReport, *, run_budget: int | None = None) -> None
     counted = plural(len(report.changes), "change")  # a known count needs no "(s)" (B13 round 16 T32, T36)
     if report.commit_sha and not report.changes:
         counted += " (no source changed a mirror page; the commit holds other docs-repo files)"
+    if (
+        report.new_manifest_pages
+    ):  # its own line, never on the summary install.sh's awk sums (B13 round 24 B37)
+        pages = plural(report.new_manifest_pages, "existing mirror page")
+        _out(f"note: a new manifest was started over {pages}; every file is converted again")
     _out(f"run {report.run_id} · mode {report.mode.value} · commit {commit} · {counted}")
     for s in report.sources:
         counts = ", ".join(

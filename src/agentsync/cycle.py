@@ -1401,11 +1401,15 @@ def _republish_from_cache(
     return publisher.write_pages(item, pages, run_id)
 
 
-def _repair_outputs(config: Config, manifest: Manifest, run_id: int) -> list[MirrorChange]:
+def _repair_outputs(
+    config: Config, manifest: Manifest, run_id: int, *, orphaned: list[str] | None = None, quiet: bool = False
+) -> list[MirrorChange]:
     """Make ``docs/mirror`` match the manifest: re-publish damaged/missing pages, drop orphan files.
 
     Used after a crash or when HEAD moved under the manifest.  Items the cache cannot re-render are marked
-    MAYBE_CHANGED so the next work queue fetches and re-publishes them (``_pages_intact`` forces it).
+    MAYBE_CHANGED so the next work queue fetches and re-publishes them (``_pages_intact`` forces it). Each
+    orphan page removed is appended to ``orphaned``; ``quiet`` logs each at DEBUG, for a new manifest over
+    existing pages, whose one plain note the CLI prints (B13 round 24 B37).
     """
     repo = config.docs_repo
     publisher = Publisher(config, manifest)
@@ -1469,7 +1473,10 @@ def _repair_outputs(config: Config, manifest: Manifest, run_id: int) -> list[Mir
             rel = page.relative_to(repo).as_posix()
             if rel == "mirror/CLAUDE.md" or ".files/" in rel or rel in owned:
                 continue
-            log.warning("repair: removing orphan mirror page %s", rel)
+            level = logging.DEBUG if quiet else logging.WARNING
+            log.log(level, "repair: removing orphan mirror page %s", rel)
+            if orphaned is not None:
+                orphaned.append(rel)
             page.unlink()
             sidecars = page.with_suffix(".files")
             if sidecars.is_dir() and not sidecars.is_symlink():
@@ -1477,7 +1484,7 @@ def _repair_outputs(config: Config, manifest: Manifest, run_id: int) -> list[Mir
     return changes
 
 
-def recover(config: Config, manifest: Manifest) -> RecoveryAction:
+def recover(config: Config, manifest: Manifest, *, orphaned: list[str] | None = None) -> RecoveryAction:
     """Compare manifest tree_sha / pending cursors with git HEAD and repair (design 4.7 recovery).
 
     - HEAD's tree differs from ``tree_sha`` and HEAD carries the ``Agentsync-Run`` trailer of the run that
@@ -1486,6 +1493,12 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
       the generated paths to HEAD and re-publish every page the manifest owns -> RESET_GENERATED.
     - Otherwise pending cursors left by a dead run are discarded -> DISCARD_PENDING; after a crash (a runs
       row still 'running') the mirror is verified against the manifest either way.
+
+    A new manifest (no runs, no tree) over a HEAD with a tree is the person's new start, once
+    heartbeat.json is aside (``doctor.LOST_MANIFEST_FIX``): its reset says each line at DEBUG, and the orphan
+    pages it removes (every existing one, each written back by the same run) go in ``orphaned`` for the CLI's
+    one plain note; an existing manifest whose tree disagrees with HEAD keeps its WARNINGs (B13 round 24 B37:
+    28 WARNING lines, 24 of them pages the same run wrote back, and no plain line).
     """
     repo = config.docs_repo
     runs = manifest.last_runs(1)
@@ -1498,6 +1511,8 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
     pending_runs = sorted({c.pending_run_id for c in pending if c.pending_run_id is not None})
     head_tree = gitops.head_tree_sha(repo)
     stored = manifest.tree_sha()
+    new_manifest = not runs and stored is None and head_tree is not None
+    said = logging.DEBUG if new_manifest else logging.WARNING
     now_iso = _iso(datetime.now(UTC))
     action = RecoveryAction.NONE
     repair = crashed is not None
@@ -1520,8 +1535,8 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
             log.warning("recover: commit of crashed run %d landed; recording its tree", head_run)
             action = RecoveryAction.ADOPT_PENDING
         else:
-            log.warning("recover: HEAD tree differs from the manifest's; resetting generated paths")
-            gitops.restore_generated(repo)
+            log.log(said, "recover: HEAD tree differs from the manifest's; resetting generated paths")
+            gitops.restore_generated(repo, quiet=new_manifest)
             action = RecoveryAction.RESET_GENERATED
             repair = True
         manifest.set_tree_sha(head_tree)
@@ -1535,8 +1550,8 @@ def recover(config: Config, manifest: Manifest) -> RecoveryAction:
         manifest.finish_run(crashed, status="aborted", commit_sha=landed, counts={})
     if repair:
         run_for_repair = crashed if crashed is not None else (runs[0][0] if runs else 0)
-        changes = _repair_outputs(config, manifest, run_for_repair)
-        log.warning("recover: verified mirror against the manifest (%d page change(s))", len(changes))
+        changes = _repair_outputs(config, manifest, run_for_repair, orphaned=orphaned, quiet=new_manifest)
+        log.log(said, "recover: verified mirror against the manifest (%d page change(s))", len(changes))
     return action
 
 
@@ -1822,6 +1837,7 @@ class _Cycle:
         self._archive_ids: dict[str, tuple[str, str]] = {}  # archive/ page -> its frontmatter's ids
         self.findings: list[LintFinding] = []
         self.heartbeat_refused: PermissionError | None = None  # said once, by the CLI (A1, A34, A84)
+        self.new_manifest_pages = 0  # the mirror pages a new manifest started over (B13 round 24 B37)
         self.accs: dict[str, _SourceAcc] = {}
         self.shard_sources: set[str] = set()  # sources whose committed shard changed this cycle
         self.retention_lines: list[str] = []  # STATE.md "## Retention" (compaction ran / held / failed)
@@ -1882,9 +1898,12 @@ class _Cycle:
         gitops.ensure_repo(self.repo)
         last = self.manifest.last_runs(1)
         crashed = last[0][0] if last and last[0][2] == "running" else None
-        recovery = recover(self.config, self.manifest)
+        fresh = not last and self.manifest.tree_sha() is None  # a new manifest: a quiet reset (B37)
+        orphaned: list[str] = []
+        recovery = recover(self.config, self.manifest, orphaned=orphaned)
         if recovery is not RecoveryAction.NONE:
-            log.warning("recovery: %s", recovery.value)
+            log.log(logging.DEBUG if fresh else logging.WARNING, "recovery: %s", recovery.value)
+        self.new_manifest_pages = len(orphaned) if fresh else 0
         self._refuse_vanished_sources()
         self.run_id = self.manifest.begin_run(self.mode, host=socket.gethostname(), pid=os.getpid())
         if crashed is not None:
@@ -2003,6 +2022,8 @@ class _Cycle:
             status = "partial"
         report = self._report(commit_sha, promoted=not blocked)
         self._after(report, status, ok_cycle=not blocked)
+        if self.new_manifest_pages:
+            report = dataclasses.replace(report, new_manifest_pages=self.new_manifest_pages)
         if self.heartbeat_refused is not None:
             return dataclasses.replace(report, heartbeat_refused=self.heartbeat_refused)
         return report

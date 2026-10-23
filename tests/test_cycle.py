@@ -243,15 +243,20 @@ def test_blocking_lint_commits_nothing_and_promotes_no_cursor(drive_env: Any) ->
     assert current is not None
 
 
-def test_head_moved_by_hand_resets_generated_paths_and_republishes(sample_config: Config) -> None:
+def test_head_moved_by_hand_resets_generated_paths_and_republishes(
+    sample_config: Config, caplog: pytest.LogCaptureFixture
+) -> None:
     repo = sample_config.docs_repo
     run(sample_config)
     victim = f"mirror/{SID}/projects/sample.docx.md"
     git(repo, "rm", "-q", victim)
     git(repo, "commit", "-q", "-m", "manual: someone deleted a generated page")
     assert not (repo / victim).exists()
-    with Manifest(sample_config.state_paths.db) as m:
-        assert recover(sample_config, m) is RecoveryAction.RESET_GENERATED
+    with Manifest(sample_config.state_paths.db) as m, caplog.at_level(logging.WARNING, logger="agentsync"):
+        orphaned: list[str] = []
+        assert recover(sample_config, m, orphaned=orphaned) is RecoveryAction.RESET_GENERATED
+    # an existing manifest whose tree HEAD disagrees with keeps its WARNING (B13 round 24 B37's control)
+    assert any("resetting generated paths" in r.getMessage() for r in caplog.records), caplog.records
     assert (repo / victim).is_file()  # re-published from the converter cache
     report = run(sample_config)
     assert report.exit_code == 0 and report.commit_sha is not None

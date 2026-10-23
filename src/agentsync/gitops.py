@@ -480,8 +480,9 @@ def commit_cycle(
     return sha
 
 
-def restore_generated(repo: Path) -> None:
-    """Recovery: ``git checkout HEAD -- <generated>`` + ``git clean -fd -- <generated>`` (never topics/)."""
+def restore_generated(repo: Path, *, quiet: bool = False) -> None:
+    """Recovery: ``git checkout HEAD -- <generated>`` + ``git clean -fd -- <generated>`` (never topics/).
+    ``quiet``: the person's new manifest, whose one plain note the CLI prints (B13 round 24 B37)."""
     literal = _literal(GENERATED_PATHSPECS)
     if head_sha(repo) is None:
         run_git(repo, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", *literal)
@@ -493,7 +494,7 @@ def restore_generated(repo: Path) -> None:
         if matched:
             run_git(repo, "checkout", "-q", "HEAD", "--", *_literal(matched))
     run_git(repo, "clean", "-f", "-d", "-q", "--", *literal)
-    log.warning("restored generated paths of %s to HEAD", repo)
+    log.log(logging.DEBUG if quiet else logging.WARNING, "restored generated paths of %s to HEAD", repo)
 
 
 def tag_published(repo: Path, sha: str) -> None:
