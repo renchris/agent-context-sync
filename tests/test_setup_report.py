@@ -5411,6 +5411,39 @@ def test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason
 
 
 @pytest.mark.usefixtures("clean_doctor")
+def test_a_stop_logged_after_the_end_line_is_one_line_apart_and_changes_no_outcome(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 25 D5: the stop window ends at the attempt's end line, while the attempt keeps the agent's
+    lines after it, so a lost-manifest stop logged after the end line had no Items line and the agent's line
+    for it sat under Agent friction alone. A display window from the end line to the attempt's own last line
+    shows such a stop, with the agent's line it claims, in a block of its own; no outcome reads it, and a
+    stop after the attempt's last line is never in it."""
+    lost = "2026-09-29T10:01:30Z sync-stop file=manifest rc=1 owner=person kind=lost\n"
+    late = "2026-09-29T10:01:40Z | step 3 | error | agentsync sync exited 1: its state file is missing | -\n"
+    before = _two_records(fake_mac, "", "")
+    write_friction(fake_mac, V12_HAPPY + late)
+    stops = fake_mac["setup"] / setup_report._SYNC_STOPS_NAME
+    stops.write_text(lost, encoding="utf-8")
+    summary = summary_of(fake_mac)[1]
+    assert summary.strip().splitlines()[0] == before.strip().splitlines()[0], summary  # the outcome
+    block = summary.split(
+        "Step-3 sync stops agentsync logged after attempt 1's end line (they do not change the outcome):", 1
+    )[1].split(setup_report.RUN_METADATA_HEADING, 1)[0]
+    lines = [ln for ln in block.splitlines() if ln.startswith("- ")]
+    assert len(lines) == 1 and lines[0].startswith(
+        "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
+        "syncs;"
+    ), block
+    assert lines[0].endswith("(F5: the agent's account of it)"), block
+    assert "Agent friction (" not in summary, summary
+    # a stop after the attempt's own last line is no part of it
+    stops.write_text(lost.replace("10:01:30", "10:02:00"), encoding="utf-8")
+    summary = summary_of(fake_mac)[1]
+    assert "after attempt 1's end line" not in summary and "- F5 · step 3 · error" in summary, summary
+
+
+@pytest.mark.usefixtures("clean_doctor")
 def test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step(
     fake_mac: dict[str, Path], tmp_path: Path
 ) -> None:

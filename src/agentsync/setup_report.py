@@ -2813,6 +2813,13 @@ def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_Syn
         for e in _run_events(attempt)
         if e.kind == "error" and e.step == attempt.layout.report_step and e.at is not None
     ]
+    return _pair_stops(stops, errors)
+
+
+def _pair_stops(
+    stops: Sequence[_SyncStop], errors: Sequence[FrictionEvent]
+) -> list[tuple[_SyncStop, FrictionEvent]]:
+    """:func:`_stop_pairs`' order rule over ``errors`` (timed report-step errors, in log order)."""
     ordered = sorted(stops, key=lambda s: s.at)
     claimed: set[int] = set()
     pairs: list[tuple[_SyncStop, FrictionEvent]] = []
@@ -9873,6 +9880,12 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
         with contextlib.suppress(OSError):
             last = max(last, datetime.fromtimestamp(r.friction_path.stat().st_mtime, UTC))
     hi = _attempt_end(att) or nxt or last + timedelta(seconds=1)
+    return _measured_stops(r, lo, hi)
+
+
+def _measured_stops(r: _Run, lo: datetime, hi: datetime) -> list[_SyncStop]:
+    """The sync-stops.log lines from ``lo`` to before ``hi``, each paired with the first later sync the
+    runs table records as ended ok (:func:`_step3_stops`' reads)."""
     stops = _read_sync_stops(r.install_log, lo, hi)
     if not stops:
         return []
@@ -9900,6 +9913,31 @@ def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
             if not os.path.lexists(expand(r.config.state_paths.db)):
                 stops = [dataclasses.replace(s, unread="the state file is missing") for s in stops]
     return stops
+
+
+def _late_stops(r: _Run, index: int) -> list[tuple[_SyncStop, FrictionEvent | None]]:
+    """B13 round 25 D5: attempt ``index``'s step-3 sync stops logged after its end line and up to its own last
+    timed line (never to the next attempt's begin or the friction log's last write: a hand-run sync days later
+    never enters), each with the agent's report-step error after the end line that claims it (the order rule
+    of :func:`_stop_pairs`). For display only: a line logged after the finish cannot have stopped the run, so
+    no outcome reads them (:func:`_run_events`), and an end line that cut the stop off while the agent's line
+    for it stayed in the attempt showed the line alone. Empty with no end line."""
+    fr = r.friction
+    if fr is None or not 0 <= index < len(fr.attempts):
+        return []
+    att = fr.attempts[index]
+    end = _attempt_end(att)
+    if end is None or att.layout.version < 7:
+        return []
+    events = list(att.events)
+    after = events[next((i for i, e in enumerate(events) if e.kind == "finished"), len(events)) + 1 :]
+    last = max((e.at for e in after if e.at is not None), default=None)
+    if last is None or last <= end:
+        return []
+    stops = _measured_stops(r, end, last + timedelta(seconds=1))
+    errors = [e for e in after if e.kind == "error" and e.step == att.layout.report_step and e.at is not None]
+    account = {id(s): e for s, e in _pair_stops(stops, errors)}
+    return [(s, account.get(id(s))) for s in stops]
 
 
 def _sync_stop_line(stop: _SyncStop, account: FrictionEvent | None = None) -> str:
@@ -13129,8 +13167,18 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
         out += [_item_line(r, att, e) for e in (*told, *items)]
     else:
         out.append("- none" + ("" if att is not None else " (no friction log)"))
+    # B13 round 25 D5: a stop logged after the end line, with the agent's line for it, in a block of its own
+    late_stops = _late_stops(r, len(fr.attempts) - 1) if fr is not None and att is not None else []
+    if att is not None and late_stops:
+        out += [
+            "",
+            f"Step-3 sync stops agentsync logged after attempt {att.number}'s end line (they do not change "
+            "the outcome):",
+            "",
+            *(_sync_stop_line(s, e) for s, e in late_stops),
+        ]
     # what feeds the outcome is in Items, so this list's heading is true (B13 round 24 ruling 9)
-    shown = {e.line for e in (*account.values(), *told)}
+    shown = {e.line for e in (*account.values(), *told, *(e for _s, e in late_stops if e is not None))}
     agent_side = (
         [e for e in att.of_kind(*PROBLEM_KINDS) if e is not stop and e.line not in shown]
         if att is not None

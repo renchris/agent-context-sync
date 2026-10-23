@@ -29678,6 +29678,18 @@ or owner is also a word this report prints, so where <value> stands in the repor
 hold value shares the unnumbered `<value>`, so a multi-word one shown must not make it private. The legend's
 `<value>` words are lane RB's (D31). Test: `test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private`.
 
+**A stop logged after the end line is shown apart, with the agent's line for it** (D5). The stop window ends at the
+attempt's end line (`_step3_stops`), while the attempt keeps the agent's lines after it, so a stop logged after the
+end line had no Items line and the agent's line for it stood alone under Agent friction. The verifier measured that
+widening the outcome's window, or closing the attempt's events at the end line, makes things worse (a later sync
+changes a finished outcome; wall time and human turns move), so `_late_stops` reads a display-only window from the
+end line to the attempt's own last timed line (never to the next attempt's begin or the friction log's last write),
+pairs its stops with the report-step errors after the end line by the same order rule (`_pair_stops`, shared with
+`_stop_pairs`; `_measured_stops`, shared with `_step3_stops`), and the Summary lists them under `Step-3 sync stops
+agentsync logged after attempt N's end line (they do not change the outcome):`, each paired line ending `(F<n>: the
+agent's account of it)` and out of Agent friction. No outcome reads them. Test:
+`test_a_stop_logged_after_the_end_line_is_one_line_apart_and_changes_no_outcome`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.
