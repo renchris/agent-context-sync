@@ -29484,3 +29484,23 @@ test_deploy_pack, `scripts/ship-land.sh` 28 and its `gate.sh` 13 in test_ship_la
 (`agentsync-<kind>-<hash>`, 71: its body would sit in the build folder production removes), `launcher/build.sh`'s own
 `shasum` (14: §16.170), the doctor and pandoc stand-ins §16.170 keeps, and one-offs under 10 each (test_gate_journal's
 uv, test_deploy_pack's tool Python, gitleaks, git's fsmonitor hook).
+
+### 16.178 Round 25: setup report: a step 3 stop on the person's FAIL, pairing every stop, the manifest's side files (2026-10-23, wave B13 round 25 lane RA)
+
+Reserved for round 25 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 25").
+
+### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
+
+Reserved for round 25 lane RB of B13.
+
+### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
+
+Reserved for round 25 lane B of B13.
+
+### 16.181 Round 25: the speech and OCR reasons and the timing pin (2026-10-23, wave B13 round 25 lane E)
+
+Reserved for round 25 lane E of B13.
+
+### 16.182 Round 25: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-23, wave B13 round 25 lane D)
+
+Reserved for round 25 lane D of B13.

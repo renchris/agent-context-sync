@@ -1,16 +1,16 @@
-## Common brief for every B13 round 24 lane (agent-context-sync)
+## Common brief for every B13 round 25 lane (agent-context-sync)
 
 Read `~/.cache/agentsync-bring-back/b13/lanes/COMMON.md` first: its rules (including the ones on `git stash`
 and the words check-names flags), method, land and finish steps all apply unchanged. This file states only what
-differs in round 24.
+differs in round 25.
 
-Context: plan `docs/plans/bring-back-ocr.md`, sections "B13 round 23 landed" and "B13 round 24" (the v32 rehearsal,
+Context: plan `docs/plans/bring-back-ocr.md`, sections "B13 round 24 landed" and "B13 round 25" (the v33 rehearsal,
 cross-lane review and harvest whose confirmed findings you build). Main is at or after the commit that reserved
-CONTRACTS §16.171 to §16.177.
+CONTRACTS §16.178 to §16.182.
 
-Specs: each item is `~/.cache/agentsync-bring-back/b13/round24/items/<id>.md`. It holds the finder's evidence and
+Specs: each item is `~/.cache/agentsync-bring-back/b13/round25/items/<id>.md`. It holds the finder's evidence and
 fix, then an adversarial verifier's evidence and corrected fix. Build the verifier's corrected fix. The finder's
-full report is the file named under "Source" (`~/.cache/agentsync-bring-back/b13/round24/*.md`): read the part
+full report is the file named under "Source" (`~/.cache/agentsync-bring-back/b13/round25/*.md`): read the part
 about your item. Items that describe one defect from several finders are built once; say so. Round 23's:
 
 THE OWNERSHIP RULE (lead ruling, round 21; every lane builds to it): a state file or folder THIS account owns but
@@ -33,7 +33,7 @@ account cannot write is reported once, and an interactive sync exits 1 with its 
 lands every person's-kinds copy (doctor.PERSONS_KINDS, setup_report._PERSONS_KINDS_COPY, install.sh PERSONS_FAILS
 and its header, the prompt's list, the test literals) in ONE commit, in lane B's words.
 
-ROUND 24 RULINGS (lead; every lane builds to them):
+ROUND 24 RULINGS (lead; still binding):
 (7) A LOST manifest (manifest.sqlite missing while heartbeat.json beside it records an earlier pass; lane B's round
 23 A29 refusal, `agentsync.manifest.manifest_lost`) is the PERSON's: "they restore the file from a copy they trust,
 or move heartbeat.json aside, keeping a copy, so the next sync starts a new manifest". Every reader says so in the
@@ -59,45 +59,58 @@ before the next recorded stop; a paired stop is one Items line ("F<n>: the agent
 counts only unpaired errors, and "none of these changes the outcome by itself" is said only when no listed line
 feeds the outcome (B2, B23, B78, B97: lane RA). The shell report reads sync-stops.log too (B95: lane RB).
 
-Clusters: install.sh's other state tails and status-step NEXT (B5, B10, B12, B13, B15, B52, B54, B59, B81, B105;
-lane P); the report's other words (B16, B20, B53, B55, B56, B74, B101, B102; lane RA); status, doctor, cycle and
-governance seams after round 23 (B11, B17, B28, B43, B58, B61, B63, B64, B65, B66, B67, B70, B71, B88, B89, B90;
-lane B); convert and the timing marker (B39, B42, B72, B73, B75; lane E); the remaining #! execs (B91, B92, B93,
-B103; lane K); the guides, CONTRACTS and CLAUDE.md (B76, B77, B80, B84, B98; lane D). Earlier rounds are in
-COMMON5.md to COMMON22.md.
+ROUND 25 RULINGS (lead; every lane builds to them; all code-only, so the prompt stays v33):
+(10) A step 3 that ENDS on the person's FAIL (v33: the agent stops and goes to the report; no later sync ended 0)
+is not "worked with help": compute_outcome returns failed at the report step, naming the last such stop in its kind
+words and that its fix is the person's. A stop whose record could not be measured needs a doctor FAIL in a person's
+bucket at report time to count; agent-owned stops and step 3 errors with no stop record stay "worked with help"
+(D3, D19, D27; lane RA). This reverses round 22's A36 "never failed" for this one case only.
+(11) Pairing covers every recorded stop, not only one a later sync ended 0 after: each stop claims one step 3 error,
+one to one in time order; only an error line that names a chmod can be claimed (a "skipped: lock held" line never
+is, and stays a reason); stop k may claim up to the stop after next, since v33 logs the line after the re-sync; an
+error in the same second as a stop is at or after it. A paired error of a stop no later sync fixed still counts
+among the outcome's reasons (D1, D7, D18, D24, D28, D35, D57, D58, D69, D75; lane RA; the shell report reads the
+same pairing, lane RB).
+(12) Anything that is not a file where manifest.sqlite-wal or -shm belongs, and a 0000 folder or a dangling link
+at the manifest, is the PERSON's, as install.sh already says (round 24 B52): sync, curate and init catch the sqlite
+open error, print status's own state_dir.files result as `error: state: <detail> (fix: <fix>)`, record
+file=manifest-wal or manifest-shm with owner person, give the misplaced-state NEXT (none under --mode or with NEXT
+hints off) and exit 1; doctor prints one state_dir.files line per side, not a FAIL and an ok; every fix keeps
+"keeping a copy" and the same words as install.sh's (D2, D6, D8, D10, D21, D22, D70, D71, D72, D73; lane B; the
+report's buckets for it, D4, D9, D20, D23, D78, lane RA).
+
+Clusters: the report's other words (D5, D15, D16, D32, D34, D36, D39, D74, D80; lane RA); status, curate, governance
+and lock seams after round 24 (D11, D12, D25, D26, D29, D40, D41, D43, D44, D45, D46, D47, D48, D49, D77, D81; lane
+B); install.sh this round (D31, D33, D38, D42, D66, D76, D79; lane RB owns the whole file, lane P's functions
+included, since lane P has no items); the speech and OCR reasons and the timing pin (D50, D51, D53, D54, D55, D56,
+D65, D84, D85; lane E); the guides, CONTRACTS and CLAUDE.md (D59 to D64, D67, D68, D83; lane D). Earlier rounds are
+in COMMON5.md to COMMON23.md.
 
 Some sit in two lanes: the lane that owns the primary file builds it, and the other cites the sha. In
 `ops/doctor.py`, lane E owns the pandoc functions, the convert retry clause, the convert imports and the speech
-build's check (B42), lane B the rest, including `state_path_fix`, `cannot_open`, `MANIFEST_FIX`, `PERSONS_KINDS`
-(whose copies lane P lands, ruling 6), the heartbeat, governance and time_machine checks. In `scripts/install.sh`,
-lane P owns config_failed, config_errors, mode_refuses, state_open_fix, step 1's --list-folders and state tails, the
-status-step NEXT and PERSONS_FAILS, lane RB the rest (the fallback body and fallback_next_line, its redaction, the
-git readers, the --report-only NEXT), and lane K the hashing lines and how tests run launcher/build.sh (B103). In
-`cycle.py`, lane E owns the upgrade's retry note, legacy counts and `_stub_settled` (B73, B75), lane B the rest. In
-`tests/test_install_oneshot.py`, lane P owns the state-tail tests it changes, lane K the stub helpers, lane RB the
-rest.
+build's check and fix (D53, D55, D65, D85), lane B the rest. In `scripts/install.sh`, lane RB owns the whole file
+this round. In `cycle.py`, lane E owns the upgrade's retry note, legacy counts and `_stub_settled`, lane B the rest.
+In `tests/test_install_oneshot.py`, lane RB owns everything this round.
 
 Where the item says "a fix makes things worse? True": first look for a fix that does not (the verifier's
 corrected fix often is one). Build it if you find one. Otherwise record the measured reason in your note, and
 that item is done as not-built. "Cosmetic" or "small" is not a reason.
 
 Scope (frozen): every item id your lane lists is built (a test that fails without it) or carries a measured
-reason a build makes things worse; CONTRACTS text in your lane's reserved section (§16.171 to §16.177); gate green;
+reason a build makes things worse; CONTRACTS text in your lane's reserved section (§16.178 to §16.182); gate green;
 landed through `scripts/ship-land.sh`; CI read back green.
 
-Prompt text: only lane P edits the README setup prompt block. It bumps the prompt to v33 once (README block,
-PROMPT digest pin, SETUP_PROMPT_COMPAT, the version pins in tests/test_setup_report.py and every "v32" the installer
-prints; round 18's lane P missed the test_setup_report.py pins once). Eight items need prompt words, one build (ruling 9, lane P's), and ruling 7's new kind joins the
-prompt's list in lane P's one commit if it joins PERSONS_KINDS. A lane whose fix changes words the prompt quotes sends them to lane P with cc-notify (lane P's session
-id is in its fire message) and records that in its note.
+Prompt text: no item needs prompt words this round, and v33 stays: rulings 10 to 12 are code-only so the
+operator still pastes v33. No lane edits the README setup prompt block. If a fix seems to need new prompt words,
+message the lead before you build it.
 
 Bare commands: every runnable command the code prints names `~/.local/bin/agentsync`, never a bare `agentsync`
 (round 4's Q49).
 
-Dated lines: a dated line in any section other than your item's own (§16.171 to §16.177) begins "Amended
-<date>, §16.NN B<n>". A line that records another round's change reads "Amended <date>, §16.NN B<n> (by §16.NN
-<item>)"; never stamp another round's item id as if it were yours (round 5 F85). Round 23's ids are A<n>; round 24's
-are B<n>. The dated-line scans read a line of any date since round 19's W71.
+Dated lines: a dated line in any section other than your item's own (§16.178 to §16.182) begins "Amended
+<date>, §16.NN D<n>". A line that records another round's change reads "Amended <date>, §16.NN D<n> (by §16.NN
+<item>)"; never stamp another round's item id as if it were yours (round 5 F85). Round 24's ids are B<n>; round 25's
+are D<n> (C has §16.11 C15). The dated-line scans read a line of any date since round 19's W71.
 
 Field compatibility: install.sh runs Python through the INSTALLED agentsync, which on a field Mac is older than
 the checkout (round 7 H7: a new import broke step 1 on every Mac set up before round 6). A new name that install.sh's
@@ -105,14 +118,14 @@ Python snippets import must fall back cleanly when the installed build lacks it;
 Every install.sh probe of doctor (state_path_fix, PERSONS_KINDS, the parent fix) runs under the installed
 agentsync: it must fall back when that build lacks the name.
 
-Dated-line test: since round 9 K80 the gate reads every "(B<n>; amends §A X)" heading in §16.68 onward,
+Dated-line test: since round 9 K80 the gate reads every "(D<n>; amends §A X)" heading in §16.68 onward,
 including possessive "§A's X" targets, and fails unless the target paragraph has the dated line.
 
 Dated-line completeness (round 12 lane D): every dated line from §16.92 on must be claimed in its section or
 pinned by a test; after a rebase, claim or pin each one you added. The pin tables in tests/test_deploy_pack.py take
-round 24's rows the same way.
+round 25's rows the same way.
 
-Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round24/
+Scratch (round 16 U111): write logs, scratch files and probes under `~/.cache/agentsync-bring-back/b13/round25/
 scratch-<lane>/`, not in /tmp. Only the land lock stays in /tmp. To damage a manifest for a test or probe, write the
 junk with `python3 -I`, not `dd` (`Bash(dd:*)` is denied).
 
@@ -126,11 +139,11 @@ is the full set, resumed where a killed run of the same tree stopped). Before ev
 `scripts/gate.sh`: the full CLAUDE.md list, the full test set (the whole-tree scanners first), and it ends
 `GATE GREEN at <sha>`.
 
-Landing (round 24): land with `scripts/ship-land.sh --lock /tmp/b13-r24-land.lock`, typed exactly so (no env prefix,
+Landing (round 25): land with `scripts/ship-land.sh --lock /tmp/b13-r25-land.lock`, typed exactly so (no env prefix,
 no `bash` in front, its own command). It takes the one lock, fetches, rebases onto origin/main, runs `scripts/gate.sh`,
 waits out and checks trunk's CI, pushes `HEAD:main` with no permission prompt (never forced; a refused push is rebased
 and gated again), then reads the push's CI back; exit codes are in its header. Never run a bare `git push`: it stops at
-the operator's ask rule. Every other full test run also takes the same lock: `lockf /tmp/b13-r24-land.lock
+the operator's ask rule. Every other full test run also takes the same lock: `lockf /tmp/b13-r25-land.lock
 scripts/gate.sh --lane`; `--affected` runs need no lock. If ship-land exits 5 with workers lost ("cannot send", exit
 137), that is memory, not your diff: wait for the 1-minute load to fall under about 400 and run it again. Exit 9 is
 CI it could not read: `nothing pushed` before the push (retry), `LANDED` after it (read the runs back by hand).
@@ -140,20 +153,21 @@ edit failing tests outside your lane's files: message the lead and the lane that
 tests (`gh run view <id> --log-failed`), then wait for the owner's fix. The lane that landed a test that is red on CI
 owns its fix until main is green, even after other lanes land on top. CI takes 18 to 33 minutes a run (one ran 34 on a loaded runner), and a run can wait up to about 48 minutes for a macOS runner first; its limit is 45 (W80, round 21 Y68, round 22 Z67, round 23 A74, round 24 B98).
 
-Makes things worse: 13 lane items of round 24 carry "a fix makes things worse? True" (B12, B17, B22, B28, B36,
-B40, B60, B67, B72, B75, B92, B93, B101). For each, the verifier's corrected fix is one that does not: read its
-"Verifier" part before you build.
+Makes things worse: 15 round 25 items carry "a fix makes things worse? True" (D1, D5, D6, D7, D10, D15, D18,
+D22, D28, D32, D50, D57, D64, D79, D84). For each, the verifier's corrected fix is one that does not: read its
+"Verifier" part before you build. D57's verifier also offers a v34 prompt change: do not build it (ruling 11 is the
+code-only half).
 
-Regressions: round 24 found 2 turns and 31 wrongs. Both turns and most wrongs sit on round 23's A29 lost-manifest
-refusal, which landed in cli and doctor with no installer or report half (rulings 7 and 8), and on the step 3 stop
-round 23's A9 began recording while v32 still says no record is kept (ruling 9). Before you land a new stop, exit
-code, wait or person-owned fix, follow its words on a Mac in the state it is meant for (does doing what it says
-lead to a clean run, or to the next stop?) AND test it on one where it must not fire, and grep the other readers of
-its words (install.sh, both reports, status, doctor, the guides). A test marked timing is skipped above a load of 4
-per core: run any one you change with AGENTSYNC_TIMING=1 before you land. The load ran 15 to 25 per core for all of
-round 23: a land gate takes about 40 minutes, so pre-gate with --affected and land once.
+Regressions: round 25 found no turn and 19 wrongs. Most sit on v33's new step 3 path for a person's FAIL (the
+report pairs and counts it wrong, rulings 10 and 11) and on side files of the manifest that are not files (ruling
+12); the rest are seams on round 24's own fixes (B37, B39, B51, B63, B64, B101). Before you land a new stop, exit
+code, wait or person-owned fix, follow its words on a Mac in the state it is meant for (does doing what it says lead
+to a clean run, or to the next stop?) AND test it on one where it must not fire, and grep the other readers of its
+words (install.sh, both reports, status, doctor, the guides). A test marked timing is skipped above a load of 4 per
+core: run any one you change with AGENTSYNC_TIMING=1 before you land. A land gate takes about 40 minutes at this
+load, so pre-gate with --affected and land once.
 
-Lane peers (round 20 Y80): once all seven lanes are live, the lead messages every lane the seven session ids. Send a
+Lane peers (round 20 Y80): once all five lanes are live, the lead messages every lane the five session ids. Send a
 seam note straight to the lane that owns the file, and copy the lead only when it changes another lane's scope.
 
-Result note: `~/.cache/agentsync-bring-back/b13/lanes/r24-<lane>.md`.
+Result note: `~/.cache/agentsync-bring-back/b13/lanes/r25-<lane>.md`.

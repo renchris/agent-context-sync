@@ -1672,6 +1672,38 @@ redacted (B55 hit it); round 25's harvest measures it.
 Round 25: the round 24 workflow with prompt v33 on this section's landed tip, BASE `c93fcd96` (ids D<n>, since C has
 `§16.11 C15`; outputs `round25/`); scenario C plays the v32 and v31 blocks.
 
+### B13 round 25: v33 rehearsal, cross-lane review, harvest (2026-10-23)
+
+Run `wf_fa07ce82-7fc` on `3ec66a92` (96 agents, 0 errors, 43 minutes). All six scenarios pass their EXPECTED: the
+new Mac and the field Mac are "fully one command", every v32 and v31 copy is refused in step 1 with exit 2, and the
+git stop, the reinstall during a sync, the converters and the empty-folder alarm run as the prompt says; no name
+leaks; following round 24's folder-at-the-manifest words leads to no second stop (B21 holds). 85 findings, 81
+confirmed (0 turns, 19 wrong, 62 small), 4 refused (D13, D37, D52, D82). None needs prompt text, so v33 stays the
+prompt to paste.
+Most wrongs sit on two edges round 24 opened: v33's new step 3 path for a person's FAIL, which the report calls
+"worked with help" and counts twice (its pairing claimed only stops a later sync fixed), and side files of the
+manifest that are not files (a folder at -wal or -shm gives sync a raw sqlite error with no fix). The rest are seams
+on round 24's own fixes (B37's silent mirror deletion, B39's URL cut after an apostrophe, B101's lost empty
+insteadOf, B63's fifo-only guard). Lead rulings for round 25 (in `lanes/COMMON24.md`), all code-only so the prompt
+stays v33: (10) a step 3 that ends on the person's unfixed FAIL is "failed" at the report step, reversing A36's
+"never failed" for that case only; (11) every recorded stop pairs one to one with a chmod-naming step 3 error, up to
+the stop after next, and an unfixed stop's paired error still counts as a reason (the verifier's v34 prompt change is
+not built); (12) anything not a file at manifest.sqlite-wal or -shm, a 0000 folder or a dangling link at the
+manifest, is the person's in sync, curate and init too, in status's own words.
+
+Convergence: confirmed 127, 85, 99, 79, 77, 79, 80, 74, 87, 76, 74, 84, 68, 90, 107, 91, 76, 84, 77, 88, 93, 102, 81
+over rounds 2 and 4 to 25; turns 0 for seven rounds, then 1, 2, 0, 0, 2, 0; wrongs 23, 15, 20, 15, 15, 12, 10, 11, 17,
+14, 20, 17, 10, 22, 25, 24, 8, 21, 15, 29, 25, 31, 19.
+
+Lanes (`--account auto`, CONTRACTS §16.178 to §16.182, brief `lanes/COMMON24.md` mirrored in `docs/lanes/COMMON.md`;
+every lane lands with `scripts/ship-land.sh --lock /tmp/b13-r25-land.lock`; scratch under `round25/`; back-channel
+pane 134): RA 27 (rulings 10 and 11, the side files' report words, the report's other words), B 26 (ruling 12 in
+cli and doctor, round 24's status, curate, governance and lock seams), RB 7 (all of install.sh this round: the
+shell report's legend and stop reader, manifest_lost's inlined copies), E 9 (the speech and OCR reasons, the
+timing pin), D 9 (guides, CONTRACTS records, CLAUDE.md's CI time). No lane P or K: no prompt text and no #! item.
+Lead: D14, D17, D30 (the rehearsal kit's chmod order and docs/_eval timing, the scenario C wording; fixed in
+`round25/round25-workflow.js`).
+
 
 ## Outlook and the stop rule for prompt versions (2026-10-09; operator ruled 2026-10-10: build everything, see B13)
 
