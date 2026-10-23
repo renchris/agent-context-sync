@@ -1674,6 +1674,13 @@ def _unread_words(
             return f"{said}; the state_dir lines say why"
         # no access matter: the line that FAILs the path, by its errno, none for a full disk (Z51)
         check = _misplaced_check(config, exc) if config is not None else None
+        if (
+            check is not None
+            and check.name == "state_dir.manifest"
+            and "whose folder does not exist" in check.detail
+        ):
+            # a link to nothing at the manifest is no "not a file" (B13 round 25 D43)
+            return "the state file's link points into a missing folder; the state_dir.manifest line says why"
         if check is not None and check.name == "state_dir.manifest":
             # a folder where the manifest belongs (EISDIR on it), as a file where the state folder belongs
             # is worded: "a file cannot be opened: Is a directory" was the system's (B13 round 24 B11)
@@ -1864,6 +1871,11 @@ def _build_status(config: Config, *, brief: bool = False) -> _Status:
     if not hint_off:
         if step is not None and not fixes and step.rule < 9:
             next_lines = step.lines()
+        elif fixes and any(r.name == "state_dir.manifest" and not r.ok for r in checks):
+            # the person's FAIL first, as when the loop cannot read the state: a link to nothing or a loop at
+            # the manifest let the loop read past it, so its "run sync" NEXT sent them to the sync that stops
+            # on it (B13 round 25 D43); the docs repo's waits follow
+            next_lines = [loop.NEXT_PREFIX + fixes[0], *_docs_waits(config)]
         else:
             next_lines = _guarded("NEXT", lambda: _next_or_fix(config, fixes), config=config)
             if next_lines and next_lines[0].startswith("NEXT: cannot read the state"):
@@ -3153,6 +3165,12 @@ STATE_MISPLACED_STEP = (
 be (:func:`_misplaced`): a folder where the manifest belongs, a file where the state folder belongs. Not
 :data:`STATE_REFUSED_STEP`'s "cannot open", the access framing round 20's X49 took off such a path (B13 round
 22 Z51)."""
+STATE_MISPLACED_COMMAND_STEP = (
+    "a state file or folder is not where or what it should be, so this command did not run: run "
+    f"`{loop.BIN} status` and do what its NEXT says; its [FAIL] line names the fix"
+)
+"""The same NEXT after any other command's ``error: state:`` line (curate, hold, accept-deletions, init): "so
+this sync did not run" was false after a curate or a hold, which ran no sync (B13 round 25 D44)."""
 
 
 def _state_next(
@@ -3267,22 +3285,31 @@ def _misplaced_check(config: Config, exc: OSError) -> doctor.CheckResult | None:
         name = "state_dir.manifest"
     elif isinstance(exc, ManifestLostError):
         name = "state_dir.manifest"  # lost from a Mac that has synced: no new one started (B13 round 23 A29)
-    elif exc.errno == errno.ENOENT and doctor.dangling_target(expand(sp.db)) is not None:
-        # a link to nothing at the manifest whose folder is missing: realpath resolves through the link, so
-        # judged by the link itself; "error: <db> cannot be opened: No such file or directory" had no fix and
-        # no NEXT once heartbeat.json was moved aside (B13 round 25 D71); any other ENOENT keeps its line
+    elif exc.errno in (errno.ENOENT, errno.ELOOP) and path == db:
+        # a link to nothing at the manifest whose folder is missing, or a symlink loop there (realpath goes
+        # through the link either way): "error: <db> cannot be opened: No such file or directory" (or "Too
+        # many levels of symbolic links") had no fix, no NEXT and no stop record while status FAILed it (B13
+        # round 25 D43, D71); only status's own FAIL, so any other ENOENT keeps its line, and a loop above
+        # the manifest is state_dir's below
         name = "state_dir.manifest"
-    elif exc.errno in (errno.ENOTDIR, errno.EEXIST, errno.ELOOP) and (
-        path == root or root.is_relative_to(path) or path.is_relative_to(root)
+    else:
+        name = None
+    if (
+        name is None
+        and exc.errno in (errno.ENOTDIR, errno.EEXIST, errno.ELOOP)
+        and (path == root or root.is_relative_to(path) or path.is_relative_to(root))
     ):  # the folder, a folder above it, or a path under a folder that is a file (B13 round 23 A58)
         name = "state_dir"
-    else:
+    if name is None:
         return None
     try:
         results = doctor._check_state_dir(config)
     except Exception as err:  # a file above the folder: its stat raises; status's backstop line, the same
         results = [doctor.stopped(config, "state_dir", err)]
-    return next((r for r in results if r.name == name and not r.ok), None)
+    found = next((r for r in results if r.name == name and not r.ok), None)
+    if found is None and name == "state_dir.manifest" and exc.errno == errno.ELOOP:
+        found = next((r for r in results if r.name == "state_dir" and not r.ok), None)  # a loop above it
+    return found
 
 
 def _non_folder_said(args: argparse.Namespace, exc: BaseException) -> str | None:
@@ -3315,16 +3342,18 @@ def _side_said(args: argparse.Namespace) -> tuple[str, Path] | None:
     return f"error: state: {result.detail}{fix}", side
 
 
-def _misplaced_next(args: argparse.Namespace, said: str, path: Path | None = None) -> None:
-    """The NEXT a sync prints after :func:`_misplaced`'s line (:data:`STATE_MISPLACED_STEP`), for any
-    command: a sync's also records the stop (:func:`_state_next`) for ``path``, by default the state folder
-    (a side file's own path records ``file=manifest-wal`` or ``-shm``: B13 round 25 D2); curate and the
-    governance commands printed none, so curate's "(see NEXT)" pointed at nothing (B13 round 24 B89). None
-    under install.sh, which names its own."""
+def _misplaced_next(
+    args: argparse.Namespace, said: str, path: object = None, kind: str | None = None
+) -> None:
+    """The NEXT after :func:`_misplaced`'s line, for any command: a sync's (:data:`STATE_MISPLACED_STEP`)
+    also records the stop (:func:`_state_next`, ``kind``) for ``path``, by default the state folder (a side
+    file's own path records ``file=manifest-wal`` or ``-shm``: B13 round 25 D2); any other command's is
+    :data:`STATE_MISPLACED_COMMAND_STEP` (D44). Curate and the governance commands printed none, so curate's
+    "(see NEXT)" pointed at nothing (B13 round 24 B89). None under install.sh, which names its own."""
     if getattr(args, "command", None) == "sync":
-        _state_next(args, STATE_MISPLACED_STEP, said=said, path=path or _state_root(args))
+        _state_next(args, STATE_MISPLACED_STEP, said=said, path=path or _state_root(args), kind=kind)
     elif os.environ.get(NO_NEXT_HINT_ENV, "").strip() != "1":
-        _out(loop.NEXT_PREFIX + STATE_MISPLACED_STEP)
+        _out(loop.NEXT_PREFIX + STATE_MISPLACED_COMMAND_STEP)  # no sync ran (D44)
 
 
 def _misplaced(args: argparse.Namespace, exc: OSError) -> str | None:
@@ -3566,7 +3595,9 @@ def _main(argv: Sequence[str] | None) -> int:
         # no filename by design (errors.py): the stop is the manifest's, as _misplaced_check names it
         if lost:
             where = _state_db(args)
-        _state_next(args, STATE_MISPLACED_STEP, said=said, path=where, kind="lost" if lost else None)
+        # every command's NEXT, not only a sync's: curate and hold over a folder at the manifest printed
+        # none, while over a file at the state folder they did (B13 round 25 D44)
+        _misplaced_next(args, said, where, kind="lost" if lost else None)
         return EXIT_FAILED
     except PermissionError as exc:
         # a state folder this account cannot look inside: the lock's open, the manifest's lstat, a hold's read

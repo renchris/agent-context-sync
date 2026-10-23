@@ -4341,7 +4341,9 @@ def test_a_state_path_that_is_not_where_or_what_it_should_be_names_its_line_fix_
         want = f"error: state: {db} is a folder, not the state file (fix: {doctor.MANIFEST_FIX})"
         assert line == want and "cannot be opened" not in line, line
         nexts = [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")]
-        assert nexts == ([f"NEXT: {cli.STATE_MISPLACED_STEP}"] if argv == ["sync"] else []), (argv, nexts)
+        # B13 round 25 D44: curate gets the command's NEXT as well (it printed none); a poll none
+        want_next = {"sync": cli.STATE_MISPLACED_STEP, "curate": cli.STATE_MISPLACED_COMMAND_STEP}
+        assert nexts == ([f"NEXT: {want_next[argv[0]]}"] if argv != ["sync", "--mode", "poll"] else []), nexts
         assert "cannot open" not in cli.STATE_MISPLACED_STEP
     # a full disk: no line FAILs it, so no pointer, no fix and no NEXT
     full = ManifestPathError(
@@ -6738,7 +6740,7 @@ def test_curate_and_the_governance_commands_over_a_state_folder_that_is_a_file_s
     file = root if where == "the state folder" else root.parent
     file.rename(file.with_name(file.name + ".kept"))
     file.write_text("not a folder\n", encoding="utf-8")
-    for argv in (["curate"], ["hold", "--list"]):
+    for argv in (["curate"], ["hold", "--list"], ["accept-deletions", _local_id(initialised)]):
         capsys.readouterr()
         rc = cli.main([*argv, "--config", cfg])
         said = capsys.readouterr()
@@ -6748,8 +6750,9 @@ def test_curate_and_the_governance_commands_over_a_state_folder_that_is_a_file_s
         assert line.startswith("error: state: ") and "is a file, not a folder" in line, line
         assert "(fix: the person moves " in line, line
         assert [ln for ln in said.out.splitlines() if ln.startswith("NEXT: ")] == [
-            f"NEXT: {cli.STATE_MISPLACED_STEP}"
+            f"NEXT: {cli.STATE_MISPLACED_COMMAND_STEP}"  # no sync ran: not "this sync" (B13 round 25 D44)
         ], (argv, said.out)
+        assert "this sync" not in cli.STATE_MISPLACED_COMMAND_STEP
         assert "fix or remove it by hand" not in text and "(see NEXT)" not in text, (argv, text)
         assert "holds.json" not in text and "Errno" not in text, (argv, text)
 
@@ -6953,7 +6956,7 @@ def test_a_side_file_that_is_a_folder_stops_every_command_on_statuss_line_and_th
                 assert (side, mode) == ("-shm", 0o700), (command, side, mode)
                 continue
             assert rc == cli.EXIT_FAILED and said in out.err.splitlines(), (command, out)
-            assert f"NEXT: {cli.STATE_MISPLACED_STEP}" in out.out.splitlines(), (command, out)
+            assert f"NEXT: {cli.STATE_MISPLACED_COMMAND_STEP}" in out.out.splitlines(), (command, out)
             assert "OperationalError" not in out.err + out.out, (command, out)
         assert cli.main(["status", "--config", cfg]) == cli.EXIT_FAILED
         status = capsys.readouterr().out
@@ -7028,6 +7031,48 @@ def test_an_incomplete_listing_beside_a_state_file_that_is_not_a_file_says_so(
     note = doctor.LISTING_STATE_NOT_FILE_NOTE if where == "manifest" else doctor.LISTING_STATE_SIDE_NOTE
     assert out.note == note and out.fix is None, out
     assert "cannot be read" not in note and "cannot open" not in note
+
+
+@pytest.mark.parametrize("link", ["into a missing folder", "a loop"])
+def test_a_manifest_link_status_fails_stops_the_sync_on_its_line_and_status_names_it_first(
+    initialised: Config, capsys: pytest.CaptureFixture[str], link: str
+) -> None:
+    """B13 round 25 D43: status FAILed a manifest link into a missing folder (B64) or a loop there, while the
+    sync printed only "error: <db> cannot be opened: No such file or directory" (or "Too many levels of
+    symbolic links"), no fix, no NEXT and no stop record; and status's own NEXT was the loop's "run sync",
+    which led back to that stop. The sync gives status's line, the misplaced NEXT and a stop record; status
+    leads with the FAIL's fix."""
+    cfg = _synced(initialised)
+    sp = initialised.state_paths
+    db = expand(sp.db)
+    expand(sp.heartbeat).rename(expand(sp.heartbeat).with_name("heartbeat.kept.json"))
+    stops = setup_report.default_setup_log().parent / cli.SYNC_STOPS_LOG
+    stops.parent.mkdir(parents=True, exist_ok=True)
+    for name in ("", "-wal", "-shm"):
+        db.with_name(db.name + name).unlink(missing_ok=True)
+    db.symlink_to(db if link == "a loop" else db.parent / "gone" / "manifest.sqlite")
+    (fail,) = [r for r in doctor._check_state_dir(initialised) if r.name == "state_dir.manifest" and not r.ok]
+    capsys.readouterr()
+    assert cli.main(["sync", "--config", cfg]) == cli.EXIT_FAILED
+    out = capsys.readouterr()
+    assert out.err.splitlines() == [f"error: state: {fail.detail} (fix: {fail.fix})"], out.err
+    assert [ln for ln in out.out.splitlines() if ln.startswith("NEXT")] == [
+        f"NEXT: {cli.STATE_MISPLACED_STEP}"
+    ]
+    (line,) = stops.read_text(encoding="utf-8").splitlines()
+    assert re.fullmatch(r"\S+ sync-stop file=manifest rc=1 owner=person kind=misplaced", line), line
+    rc, lines = _status(cfg, capsys)
+    assert rc == cli.EXIT_FAILED and lines[0].startswith("NEXT: the state_dir.manifest check failed"), lines
+    exc = ManifestPathError(f"{db} cannot be opened", errno.ELOOP if link == "a loop" else errno.ENOENT)
+    exc.filename = str(db)
+    words = cli._unread_words(exc, config=initialised)  # a link to nothing is no "not a file"
+    if link == "a loop":
+        assert words == "the state file is not a file; the state_dir.manifest line says why", words
+    else:
+        assert (
+            words
+            == "the state file's link points into a missing folder; the state_dir.manifest line says why"
+        )
 
 
 def test_an_incomplete_listing_beside_a_lost_manifest_says_the_state_file_is_missing(
