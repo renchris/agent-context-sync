@@ -327,6 +327,43 @@ def test_no_apostrophe_in_a_comment_inside_a_substitution(script: Path) -> None:
     )
 
 
+def single_quoted_python_snippets(text: str) -> list[tuple[int, str]]:
+    """(the line number of the ``-c '`` line, the body) of each multi-line single-quoted ``python -c``
+    snippet: from a line ending in ``-c '`` to the first line whose first non-blank character is ``'``."""
+    lines = text.splitlines()
+    out: list[tuple[int, str]] = []
+    for i, line in enumerate(lines):
+        if re.search(r"-c '$", line):
+            j = next(k for k in range(i + 1, len(lines)) if lines[k].lstrip().startswith("'"))
+            out.append((i + 1, "\n".join(lines[i + 1 : j])))
+    return out
+
+
+def test_the_snippet_lint_finds_the_plural_possessive_shape() -> None:
+    """The shape no other check sees: two apostrophes of a plural possessive in one comment. /bin/bash -n
+    passes it and shellcheck exits 0, and python receives only the code up to the first apostrophe."""
+    text = (
+        "n=\"$(with_timeout 10 \"$TOOL_PY\" -I -c '\nimport sys\n# the users' list and the owners' rows\n"
+        'print(len(sys.argv))\n\' "$cfg")"\n'
+    )
+    [(start, body)] = single_quoted_python_snippets(text)
+    assert start == 1 and "'" in body
+
+
+@pytest.mark.parametrize("script", SHELL_SCRIPTS, ids=lambda p: p.name)
+def test_no_apostrophe_inside_a_single_quoted_python_snippet(script: Path) -> None:
+    """A straight apostrophe inside a single-quoted ``python -c '...'`` body ends the shell quote (B13 round
+    24 B104, lane P's measured trap). bash -n catches an odd count and shellcheck's SC1011 a contraction; an
+    even count it does not flag (a plural possessive, a quoted word) passes both, and python silently runs
+    only the code before it. So none is allowed, and each body must compile."""
+    snippets = single_quoted_python_snippets(script.read_text(encoding="utf-8"))
+    if script.name == "install.sh":
+        assert len(snippets) >= 11, snippets  # the extractor finds install.sh's snippets
+    for start, body in snippets:
+        assert "'" not in body, f'{script.name}:{start}: an apostrophe ends the shell quote; use " or drop it'
+        compile(body, f"{script.name}:{start}", "exec")
+
+
 @pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
 def test_scripts_pass_shellcheck(script: Path) -> None:
