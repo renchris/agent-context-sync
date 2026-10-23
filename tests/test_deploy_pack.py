@@ -6120,6 +6120,39 @@ def test_a_dated_line_from_round_21_lane_d_on_takes_its_homes_heading_date() -> 
     assert b97 < b80 and k10.endswith("words: B97's line above).")
 
 
+def test_the_reports_lost_manifest_line_is_status_with_its_pointer_turned() -> None:
+    """B13 round 25 D67: §16.171 and `_LOST_MANIFEST_LINE`'s docstring called the report's line status's
+    own, while it ends `see Doctor's state_dir.manifest line` where status says `see state_dir.manifest`: the
+    report points at its own Doctor section on purpose. Both say the pointer is turned, the one difference."""
+    from agentsync import setup_report  # noqa: PLC0415
+
+    cli = (ROOT / "src" / "agentsync" / "cli.py").read_text(encoding="utf-8")
+    [status] = re.findall(r'out\.append\("(manifest: missing \(earlier syncs recorded;[^"]*)"\)', cli)
+    turned = status.replace("see state_dir.manifest)", "see Doctor's state_dir.manifest line)")
+    assert turned != status and f"- {turned}" == setup_report._LOST_MANIFEST_LINE
+    source = (ROOT / "src" / "agentsync" / "setup_report.py").read_text(encoding="utf-8")
+    doc = " ".join(source.split("\n_LOST_MANIFEST_LINE = (", 1)[1].split('"""')[1].split())
+    assert "status's own words" not in doc
+    assert "its pointer turned to Doctor's state_dir.manifest line" in doc
+    lost = " ".join(_contracts_section("### 16.171 Round 24: setup report", "### 16.172 ").split())
+    assert "status's own line (`_LOST_MANIFEST_LINE`)" not in lost
+    assert (
+        "keep status's line (`_LOST_MANIFEST_LINE`), its pointer turned to Doctor's state_dir.manifest line"
+    ) in lost
+
+
+def test_the_exec_census_gives_install_shs_execs_to_both_test_files() -> None:
+    """B13 round 25 D68: §16.177 put all 52 install.sh execs left in lane K's census in test_deploy_pack;
+    the census (round24/scratch-K/census-after/bykind.txt) gave it 48 and left 4 with no test file, and the
+    four's exec traces carry test_install_oneshot's basetemp paths. The record names both, and they sum."""
+    k = " ".join(_contracts_section("### 16.177 Round 24: the test suite's remaining", "### 16.178 ").split())
+    [(whole, deploy, oneshot)] = re.findall(
+        r"install\.sh (\d+): (\d+) in test_deploy_pack and (\d+) in test_install_oneshot", k
+    )
+    assert (int(whole), int(deploy), int(oneshot)) == (52, 48, 4)
+    assert "install.sh 52 in test_deploy_pack" not in k
+
+
 def test_b52s_record_quotes_the_side_notfile_tail_install_sh_prints() -> None:
     """B13 round 25 D62: §16.173's B52 paragraph quoted `state-side-notfile`'s first tail ("at its config step
     when this account cannot read it and at its status step when it can"), which the lane's review changed

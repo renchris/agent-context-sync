@@ -28873,8 +28873,8 @@ never on doctor's words: the Doctor line has a bucket `from the state file that 
 records earlier passes (N checks): state_dir.manifest FAIL (the person's; see Doctor)` (`_STATE_LOST_WORDS`, not
 "cannot be read": the file is missing, not damaged), with a heartbeat listing warn beside it `(not judged: the
 state file is missing)`, and the outcome reads `1 doctor FAIL with a known cause, from the state file that is
-missing ...`. The evidence parts keep status's own line (`_LOST_MANIFEST_LINE`), counted apart
-(`facts.evidence_lost`), and the evidence line says `N lines at the end of Status say "manifest: missing": not
+missing ...`. The evidence parts keep status's line (`_LOST_MANIFEST_LINE`), its pointer turned to Doctor's
+state_dir.manifest line, counted apart (`facts.evidence_lost`), and the evidence line says `N lines at the end of Status say "manifest: missing": not
 measured, as the state file is missing though heartbeat.json records earlier passes: a report written after the
 person restores it, or moves heartbeat.json aside so the next sync starts a new manifest, measures them (see
 Doctor's state_dir.manifest line)`, with no advice to write the report again when idle. The OCR part's two
@@ -29508,8 +29508,8 @@ runs. build.sh is unchanged, so its source hash is the same (`ALLOWED_PROGRAM=/u
 again. Test: `test_install_sh_runs_build_sh_through_bin_bash` (a stand-in build.sh whose `#!` names no interpreter
 runs only through `/bin/bash`).
 
-What still runs as `#!`, on purpose: pytest's entry point (76), the commands as they are typed (install.sh 52 in
-test_deploy_pack, `scripts/ship-land.sh` 28 and its `gate.sh` 13 in test_ship_land), the fake compilers' output
+What still runs as `#!`, on purpose: pytest's entry point (76), the commands as they are typed (install.sh 52: 48
+in test_deploy_pack and 4 in test_install_oneshot, `scripts/ship-land.sh` 28 and its `gate.sh` 13 in test_ship_land), the fake compilers' output
 (`agentsync-<kind>-<hash>`, 71: its body would sit in the build folder production removes), `launcher/build.sh`'s own
 `shasum` (14: §16.170), the doctor and pandoc stand-ins §16.170 keeps, and one-offs under 10 each (test_gate_journal's
 uv, test_deploy_pack's tool Python, gitleaks, git's fsmonitor hook).
@@ -29661,3 +29661,16 @@ which each round rewrites); it cites that file at c93fcd96, its "ROUND 24 RULING
 number, 6600, was stale when written (6631 in a37be5dd, the commit that added `state-lost`; 6917 at 3ec66a92); it
 is step 1's config-error allowlist, the `cerr=` grep that lists `state-lost`, named with no line number. Test:
 `test_the_contract_cites_no_cached_brief_and_no_install_sh_line_number`.
+
+**The report's lost-manifest line is status's with its pointer turned** (D67; `agentsync.setup_report`). §16.171
+and `_LOST_MANIFEST_LINE`'s docstring called it status's own line; it ends `see Doctor's state_dir.manifest line`
+where status's (cli.py's `manifest: missing` line) ends `see state_dir.manifest`, so the report points at its own
+Doctor section, as its evidence line does. Both say the pointer is turned; the constant stays, since a bare `see
+state_dir.manifest` inside the report would not say where that line is. Test:
+`test_the_reports_lost_manifest_line_is_status_with_its_pointer_turned`.
+
+**§16.177's install.sh execs are in two test files** (D68). §16.177 put all 52 install.sh execs the suite still
+runs as `#!` in test_deploy_pack; lane K's census gave it 48 and left 4 with no test file, and each of those four
+traces (python3.11 runs /bin/bash, which runs install.sh) is followed by test_install_oneshot's basetemp paths
+alone. The record reads `install.sh 52: 48 in test_deploy_pack and 4 in test_install_oneshot`. Test:
+`test_the_exec_census_gives_install_shs_execs_to_both_test_files`.

@@ -7204,8 +7204,9 @@ def _os_why(exc: BaseException) -> str:
 _LOST_MANIFEST_LINE = (
     "- manifest: missing (earlier syncs recorded; the person decides: see Doctor's state_dir.manifest line)"
 )
-"""An evidence part's line for a lost manifest (B13 round 23 A29): status's own words for it (lane B's), not
-measured (:func:`_evidence_line` counts it as such, B13 round 24 ruling 7)."""
+"""An evidence part's line for a lost manifest (B13 round 23 A29): status's words for it (lane B's, cli.py's
+``manifest: missing`` line), its pointer turned to Doctor's state_dir.manifest line, not measured
+(:func:`_evidence_line` counts it as such, B13 round 24 ruling 7)."""
 _NO_MANIFEST_LINE = "- no manifest yet (no sync has run)"
 
 
