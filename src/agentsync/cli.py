@@ -86,6 +86,7 @@ from agentsync.cycle import (
     quiet_lock_wait,
     run_cycle,
     source_statuses,
+    unowned_mirror_pages,
 )
 from agentsync.errors import (
     AgentSyncError,
@@ -1447,7 +1448,18 @@ def _status_lines(config: Config) -> list[str]:
         out.append("manifest: missing (earlier syncs recorded; the person decides: see state_dir.manifest)")
         return out
     if not db.exists():
-        out.append("manifest: none yet (no sync has run)")
+        # over the pages earlier syncs wrote (the person's new start, heartbeat.json aside), "no sync has run"
+        # was false; the sync's own note counts the same pages (B13 round 25 D26). "manifest: none yet" stays
+        # first: the setup report reads it as no run recorded, which is still true
+        try:
+            pages = len(unowned_mirror_pages(config))
+        except OSError:
+            pages = 0
+        if pages:
+            over = f"the next sync starts a new one over {plural(pages, 'existing mirror page')}"
+            out.append(f"manifest: none yet ({over}; every file is converted again)")
+        else:
+            out.append("manifest: none yet (no sync has run)")
         return out
     with Manifest(db) as manifest:
         runs = manifest.last_runs(5)

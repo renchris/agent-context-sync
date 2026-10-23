@@ -1401,6 +1401,24 @@ def _republish_from_cache(
     return publisher.write_pages(item, pages, run_id)
 
 
+def unowned_mirror_pages(config: Config, owned: frozenset[str] = frozenset()) -> list[str]:
+    """The mirror pages (``*.md`` under ``docs/mirror``, repo-relative) no manifest row in ``owned`` holds:
+    every one but ``mirror/CLAUDE.md`` and what sits under a ``.files/`` folder. Read-only: the repair removes
+    them, and status counts them over a manifest a new start will begin, with one count, so its line and the
+    sync's "a new manifest was started over N existing mirror pages" never disagree (B13 round 25 D26)."""
+    repo = config.docs_repo
+    mirror = config.layout.mirror
+    if not mirror.is_dir():
+        return []
+    out: list[str] = []
+    for page in sorted(mirror.rglob("*.md")):
+        rel = page.relative_to(repo).as_posix()
+        if rel == "mirror/CLAUDE.md" or ".files/" in rel or rel in owned:
+            continue
+        out.append(rel)
+    return out
+
+
 def _repair_outputs(
     config: Config, manifest: Manifest, run_id: int, *, orphaned: list[str] | None = None, quiet: bool = False
 ) -> list[MirrorChange]:
@@ -1466,13 +1484,9 @@ def _repair_outputs(
                 log.warning("repair %s/%s: pages damaged; queued for re-fetch", src.id, stable_id)
             else:
                 changes += redone
-    mirror = config.layout.mirror
-    if mirror.is_dir():
-        owned = {o.output_path for o in manifest.iter_outputs()}
-        for page in sorted(mirror.rglob("*.md")):
-            rel = page.relative_to(repo).as_posix()
-            if rel == "mirror/CLAUDE.md" or ".files/" in rel or rel in owned:
-                continue
+    if config.layout.mirror.is_dir():
+        for rel in unowned_mirror_pages(config, frozenset(o.output_path for o in manifest.iter_outputs())):
+            page = repo / rel
             level = logging.DEBUG if quiet else logging.WARNING
             log.log(level, "repair: removing orphan mirror page %s", rel)
             if orphaned is not None:

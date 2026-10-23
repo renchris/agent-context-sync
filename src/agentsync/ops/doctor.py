@@ -40,6 +40,7 @@ from agentsync.cycle import (
     VANISHED_FIX,
     _holds_home,
     _sync_leaves,
+    unowned_mirror_pages,
     vanished_add_back_tail,
     vanished_add_backs,
     vanished_detail,
@@ -1580,6 +1581,20 @@ def side_not_a_file(config: Config) -> tuple[Path, CheckResult] | None:
     return None if result is None else (side, result)
 
 
+def _no_manifest_yet(config: Config) -> str:
+    """state_dir.files' ok line with no manifest: "the first sync" only over a mirror with no page; after the
+    person's new start (heartbeat.json aside, LOST_MANIFEST_FIX) the pages earlier syncs wrote are there, and
+    the next sync starts a new manifest over them (B13 round 25 D26: "created 0600 by the first sync" over 24
+    mirror pages). One count, the repair's (``cycle.unowned_mirror_pages``)."""
+    try:
+        pages = len(unowned_mirror_pages(config))
+    except OSError:
+        pages = 0
+    if not pages:
+        return "no manifest yet (created 0600 by the first sync)"
+    return f"no manifest yet (the next sync starts one, 0600, over {plural(pages, 'existing mirror page')})"
+
+
 def _check_state_dir(config: Config) -> list[CheckResult]:
     """state_dir exists with mode 0700 (owned by this user); the db and token fallback are 0600."""
     sp = config.state_paths
@@ -1759,7 +1774,7 @@ def _check_state_dir(config: Config) -> list[CheckResult]:
     elif present:  # "are 0600" only when they are: 0700 is not (W64)
         out.append(_ok("state_dir.files", f"{', '.join(modes)}: this account's alone"))
     elif not nonfile and not manifest_lost(expand(sp.db)):
-        out.append(_ok("state_dir.files", "no manifest yet (created 0600 by the first sync)"))
+        out.append(_ok("state_dir.files", _no_manifest_yet(config)))
     if manifest_lost(expand(sp.db)) and not lost_link:  # whatever else is there: a stale -wal (A29)
         out.append(_bad("state_dir.manifest", f"{expand(sp.db)} {LOST_MANIFEST}", fix=LOST_MANIFEST_FIX))
     # B13 round 20 X78: not over a manifest this account cannot write, which already FAILs: a read-only open

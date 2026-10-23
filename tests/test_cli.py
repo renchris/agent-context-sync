@@ -7115,9 +7115,21 @@ def test_a_manifest_lost_from_a_mac_that_has_synced_is_the_persons_and_no_sync_s
     assert read.what == "agentsync's state file"
     hb.rename(hb.with_name("heartbeat.json.kept"))  # the person's confirmation of a new start
     rc, out = _status(cfg, capsys)
-    assert "manifest: none yet (no sync has run)" in out and not any("state_dir.manifest" in ln for ln in out)
     pages = sorted(p for p in initialised.layout.mirror.rglob("*.md") if p.name != "CLAUDE.md")
     assert pages
+    # B13 round 25 D26: not "no sync has run" over the pages earlier syncs wrote; the same count as the
+    # sync's note below, and doctor's ok line says the next sync starts one over them
+    over = plural(len(pages), "existing mirror page")
+    assert (
+        f"manifest: none yet (the next sync starts a new one over {over}; every file is converted again)"
+        in out
+    )
+    assert "manifest: none yet (no sync has run)" not in out and not any(
+        "state_dir.manifest" in ln for ln in out
+    )
+    assert any(ln.endswith(f"no manifest yet (the next sync starts one, 0600, over {over})") for ln in out), (
+        out
+    )
     assert cli.main(["sync", "--config", cfg]) == cli.EXIT_OK and db.exists()
     # B13 round 24 B37: the rebuild said one WARNING per page it removed as an orphan and wrote back, and no
     # plain line; it says one note of its own, before the summary line, and no WARNING
