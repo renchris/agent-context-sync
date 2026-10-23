@@ -29615,6 +29615,16 @@ state folder this account cannot use as its check needs`, true of a 0400 lock, a
 governance/ and a 0400 audit trail alike, as install.sh's step 1 tail says of its step. Test:
 `test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket` (a 0500 governance/ case).
 
+**A state file that is a link into a missing folder is the person's** (D34). Round 24's B64 FAILs the manifest
+(state_dir.manifest) or its -wal or -shm (state_dir.files) when it is a symlink to nothing whose folder is missing
+or refuses a write, with the person's fix; the report read neither (a stat through the link fails), so it was
+`unexpected`. `_dangling_state` reads the three paths through `doctor.dangling_target` and the same folder test
+(not a folder this account can write and search), and the Doctor line files the FAIL as `from a state file that is
+a link into a folder that is missing or refuses a write (1 check): <check> FAIL (the person's; see Doctor)`
+(`_DANGLING_WORDS`), the -wal's or -shm's matched by its name in doctor's line; the lost manifest's FAIL, over
+earlier passes, comes first, and a link into a writable folder FAILs nothing. Test:
+`test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

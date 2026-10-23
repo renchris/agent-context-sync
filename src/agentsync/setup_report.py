@@ -10626,6 +10626,11 @@ _SIDE_NOT_FILE_WORDS = "from a side file of the state file that is not a file"
 B13 round 25 ruling 12, D4, D9, D20, D78), in lane B's words for it ("a side file of the state file is not a
 file"): the person's move aside, keeping a copy, never "the state file that cannot be read" (the manifest
 reads, or fails only on its -wal) nor "this account cannot open" (no access fails)."""
+_DANGLING_WORDS = "from a state file that is a link into a folder that is missing or refuses a write"
+"""The Doctor line's bucket for doctor's B13 round 24 B64 FAIL: the manifest, its -wal or its -shm is a
+symlink to nothing whose folder is missing or refuses a write, the person's to point at an existing file or
+remove (B13 round 25 D34: no bucket read it, so it was "unexpected"), keyed on the report's own read
+(:func:`_dangling_state`)."""
 _STATE_LOST_WORDS = "from the state file that is missing though heartbeat.json records earlier passes"
 """The Doctor line's bucket for a lost manifest (B13 round 24 ruling 7; B4, B9, B25, B32, B44, B49, B99):
 manifest.sqlite missing while heartbeat.json beside it records an earlier pass (lane B's round 23 A29 FAIL,
@@ -10670,6 +10675,7 @@ class _DoctorSort:
     from_lost: list[str] = dataclasses.field(default_factory=list)  # B13 round 24 ruling 7
     from_notfile: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D23, D78)
     from_side: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 ruling 12 (D4, D9, D20)
+    from_dangling: list[str] = dataclasses.field(default_factory=list)  # B13 round 25 D34
 
 
 def _state_shut(c: Config, read_error: BaseException | None = None) -> str:
@@ -10807,6 +10813,28 @@ def _sides_not_files_at(db: Path) -> list[Path]:
             continue
         if not stat.S_ISREG(mode):
             out.append(p)
+    return out
+
+
+def _dangling_state(c: Config) -> list[Path]:
+    """The manifest, its -wal and its -shm, each a symlink to nothing (``doctor.dangling_target``) whose
+    folder is not a folder this account can write and search: doctor's B13 round 24 B64 FAIL, the person's to
+    point at an existing file or remove (B13 round 25 D34). A link into a writable folder is none: the first
+    sync creates the file it points at. A test that fails says none of that path."""
+    from agentsync.ops import doctor  # noqa: PLC0415 - lazy, as the doctor reads are
+
+    db = expand(c.state_paths.db)
+    out: list[Path] = []
+    for p in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        try:
+            target = doctor.dangling_target(p)
+            if target is None:
+                continue
+            folder = target.parent
+            if not (folder.is_dir() and os.access(folder, os.W_OK | os.X_OK)):
+                out.append(p)
+        except Exception:
+            continue
     return out
 
 
@@ -10973,6 +11001,10 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
     )
     from_notfile: list[str] = []
     from_side: list[str] = []
+    # B13 round 25 D34: a state file that is a link into a missing or unwritable folder (round 24 B64)
+    dangling = [] if notfolder or unreadable or r.config is None else _dangling_state(r.config)
+    db_name = expand(r.config.state_paths.db).name if r.config is not None else ""
+    from_dangling: list[str] = []
     # B13 round 24 ruling 7: missing though heartbeat.json records earlier passes, the person's (A29)
     lost = (
         not notfolder
@@ -11043,6 +11075,18 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         if lost and tag == "FAIL" and name == "state_dir.manifest":  # B13 round 24 ruling 7
             from_lost.append(f"{name} FAIL{_PERSONS}")
             fails.append((name, _STATE_LOST_WORDS))
+            continue
+        # B13 round 25 D34: doctor's B64 FAIL, by the report's own read and the file's name in its line (the
+        # lost manifest's FAIL above comes first)
+        if tag == "FAIL" and (
+            (name == "state_dir.manifest" and any(p.name == db_name for p in dangling))
+            or (
+                name == "state_dir.files"
+                and any(f"{p.name} is a symlink to " in detail for p in dangling if p.name != db_name)
+            )
+        ):
+            from_dangling.append(f"{name} FAIL{_PERSONS}")
+            fails.append((name, _DANGLING_WORDS))
             continue
         # B13 round 23 A44: doctor's move aside; B13 round 25 ruling 12 (D4, D9, D78): in the side file's
         # own bucket, matched on the report's own stat and the file's name in doctor's line, in either build's
@@ -11161,6 +11205,7 @@ def _sort_doctor(r: _Run, runs: Sequence[InstallRun]) -> _DoctorSort:
         from_lost,
         from_notfile,
         from_side,
+        from_dangling,
     )
     r.doctor_sorted = (key, sort)
     return sort
@@ -11240,6 +11285,11 @@ def _doctor_line(r: _Run, runs: Sequence[InstallRun]) -> str:
         parts.append(
             f"{_STATE_NOT_FILE_WORDS} ({_plural(len(sort.from_notfile), 'check')}): "
             + ", ".join(sort.from_notfile)
+        )
+    if sort.from_dangling:  # B13 round 25 D34
+        parts.append(
+            f"{_DANGLING_WORDS} ({_plural(len(sort.from_dangling), 'check')}): "
+            + ", ".join(sort.from_dangling)
         )
     if sort.from_side:  # B13 round 25 ruling 12 (D4, D9, D20, D78)
         parts.append(

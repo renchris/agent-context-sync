@@ -13800,6 +13800,62 @@ def test_a_wal_that_is_not_a_file_is_the_persons_move_aside_never_access(
     )
 
 
+def test_a_state_file_that_is_a_link_into_a_missing_folder_is_the_persons(
+    fake_mac: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 25 D34: doctor's round 24 B64 FAIL (the manifest, its -wal or its -shm a symlink into a
+    folder that is missing or refuses a write, with no earlier passes) fell into no bucket of the report's, so
+    it was "unexpected". A person's bucket of its own, by the report's own read; a link into a writable
+    folder FAILs nothing, and a dangling manifest over earlier passes stays the lost manifest's."""
+    real = cli._status_checks
+
+    def these(config: Config, *, offline: bool = False) -> list[doctor.CheckResult]:
+        return [c for c in real(config, offline=offline) if c.ok or c.name.startswith("state_dir")]
+
+    monkeypatch.setattr(cli, "_status_checks", these)
+    cfg = fake_mac["config"]
+    (fake_mac["one"] / "notes.txt").write_text("notes\n", encoding="utf-8")
+    assert cli.main(["sync", "--config", str(cfg)]) == 0
+    paths = load_config(cfg).state_paths
+    db, heartbeat = expand(paths.db), expand(paths.heartbeat)
+    for side in db.parent.glob(db.name + "-*"):
+        side.unlink()
+    db.rename(db.with_name("kept.sqlite"))
+    gone = db.parent / "gone"
+    bucket = "from a state file that is a link into a folder that is missing or refuses a write (1 check): "
+    for link, name in ((db, "state_dir.manifest"), (db.with_name(db.name + "-wal"), "state_dir.files")):
+        if link != db:
+            db.with_name("kept.sqlite").rename(db)
+        else:
+            heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))  # no earlier passes: not lost
+        link.symlink_to(gone / link.name)
+        try:
+            _rc, text, _ = report(tmp_path, cfg)
+        finally:
+            link.unlink()
+            if link == db:
+                heartbeat.with_name("heartbeat.json.kept").rename(heartbeat)
+        line = _line(section(text, "Summary"), "- doctor: ")
+        assert f"{bucket}{name} FAIL (the person's; see Doctor) · " in line, (name, line)
+        assert line.endswith(" · unexpected 0"), (name, line)
+    # a link into a writable folder: the first sync creates its file, nothing FAILs, no bucket
+    db.rename(db.with_name("kept.sqlite"))
+    heartbeat.rename(heartbeat.with_name("heartbeat.json.kept"))
+    gone.mkdir(mode=0o700)
+    db.symlink_to(gone / db.name)
+    _rc, text, _ = report(tmp_path, cfg)
+    assert "link into a folder" not in _line(section(text, "Summary"), "- doctor: ")
+    db.unlink()
+    gone.rmdir()
+    # over earlier passes it is the lost manifest's FAIL, counted once
+    heartbeat.with_name("heartbeat.json.kept").rename(heartbeat)
+    db.symlink_to(gone / db.name)
+    _rc, text, _ = report(tmp_path, cfg)
+    db.unlink()
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert "link into a folder" not in line and "state_dir.manifest FAIL (the person's" in line, line
+
+
 @pytest.mark.usefixtures("clean_doctor")
 def test_a_stop_not_measured_because_the_manifest_is_gone_says_so(fake_mac: dict[str, Path]) -> None:
     """B13 round 25 D4: with the manifest gone, a heartbeat stop's line said "not measured (the state file
