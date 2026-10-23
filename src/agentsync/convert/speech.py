@@ -62,6 +62,10 @@ NEMO_URL = (
 """The one remote binaryTarget (NemoTextProcessing) FluidAudio's Package.swift and Package@swift-6.2.swift
 name at :data:`FLUIDAUDIO_PIN`.  SwiftPM downloads it itself, ignoring the proxy variables, so behind a proxy
 set only in the environment the build fetches it with curl first (:func:`_seed`)."""
+FETCH_HOSTS = ("github.com", "release-assets.githubusercontent.com")
+"""The hosts ``swift package resolve`` reaches: FluidAudio's git repository (unless a SwiftPM mirror routes
+it) and the one GitHub serves :data:`NEMO_URL` from; doctor's fix for a failed fetch names both, as the
+reason's URL is ``<url>`` (B13 round 25 D53, D65)."""
 NEMO_SHA256 = "5fa8c10d4ec26c1bb2413125f351a7222a4c68a23b74476680fbada7e26fc6aa"
 """The checksum those manifests pin for :data:`NEMO_URL` (SwiftPM's checksum is the zip's SHA-256)."""
 THRESHOLD = 0.6
@@ -120,6 +124,16 @@ RESOLVE_FAILED = f"{_RESOLVE}{_FAILED}"
 """How the reason of a build whose ``swift package resolve`` (the FluidAudio fetch) exited non-zero starts, in
 ``<helper>.failed`` and so in doctor's ``speech`` warn: doctor gives that warn the re-run as its fix by these
 words (B13 round 24 B42), which :func:`_step` writes."""
+_UNCLONED_RE = re.compile(
+    rb"config --get remote\.origin\.url' failed: fatal: cannot change to '[^\n]*': No such file or directory"
+)
+"""SwiftPM 6.2's whole stderr when the FluidAudio clone never happened (an unreachable host or a refused
+port): git asked about a cache folder no clone made.  Read raw, as :func:`ocr._plain` makes the command
+``<command>``, after which a resolve failure past the clone (a too-new tools version) reads the same; never
+keyed on the absent checkout, which such a failure leaves too (B13 round 25 D50)."""
+_UNCLONED = "FluidAudio could not be fetched (the clone did not complete)"
+""":func:`_step`'s cause for :data:`_UNCLONED_RE`, after :data:`RESOLVE_FAILED`; no host, as a SwiftPM mirror
+may route the clone (:func:`_shared_config`), and doctor's fix names where to look (D50)."""
 _clock = time.monotonic
 
 
@@ -588,7 +602,9 @@ def _step(
     if cp.returncode < 0:  # a signal; only a crash's own stderr says why (stdout is progress)
         raise SpeechError(ocr._signal_reason(f"{what} was ", cp.returncode, cp.stderr))
     if cp.returncode != 0:
-        raise SpeechError(f"{what}{_FAILED}{cp.returncode}): {ocr._plain(cp.stderr or cp.stdout)}")
+        uncloned = what == _RESOLVE and _UNCLONED_RE.search(cp.stderr or b"")
+        cause = _UNCLONED if uncloned else ocr._plain(cp.stderr or cp.stdout)
+        raise SpeechError(f"{what}{_FAILED}{cp.returncode}): {cause}")
     return cp.stdout.decode("utf-8", errors="replace").strip()
 
 
@@ -755,15 +771,16 @@ def _compile(helper: Path, kind: ocr.Helper = SPEECH) -> None:
         )
         if not _COMMIT_RE.fullmatch(resolved):
             raise SpeechError("the resolved FluidAudio checkout names no commit")
+        merge_base = "git merge-base"  # one name, so the check reads the head _step writes (B13 round 25 D54)
         try:
             _step(
                 [git, "-C", str(checkout), "merge-base", "--is-ancestor", FLUIDAUDIO_FLOOR, resolved],
                 cwd=tree,
                 deadline=deadline,
-                what="git merge-base",
+                what=merge_base,
             )
         except SpeechError as exc:
-            if not str(exc).startswith("git merge-base failed (exit "):  # only the check's own answer refuses
+            if not str(exc).startswith(f"{merge_base}{_FAILED}"):  # only the check's own answer refuses
                 raise
             raise SpeechError(
                 f"FluidAudio {resolved[:7]} does not descend from the build floor 04e363c; "

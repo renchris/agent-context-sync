@@ -201,6 +201,60 @@ def test_a_build_that_fails_leaves_its_reason_and_names_no_path(tools: Path, tmp
         speech.build(cache)
 
 
+def test_a_clone_that_never_happened_says_the_fetch_failed(tools: Path, tmp_path: Path) -> None:
+    """B13 round 25 D50: SwiftPM 6.2.4's only stderr for an unreachable host (measured: a host whose DNS
+    fails, a refused port) is git asked about a cache folder no clone made, which read as a missing folder.
+    Keyed on that raw line, not on the absent checkout: a tools-version failure past the clone leaves none
+    either, and keeps its own words."""
+    cache = tmp_path / "cache"
+    repo = f"{tmp_path}/swiftpm-cache/repositories/FluidAudio-5e1f0a2b"
+    shape = (
+        f"echo \"error: Git command 'git -C {repo} config --get remote.origin.url' failed: fatal: cannot "
+        f"change to '{repo}': No such file or directory\" >&2\nexit 1"
+    )
+    script(tools / "swift", f'echo "Fetching https://contoso.invalid/Contoso/FluidAudio.git"\n{shape}')
+    reason = (
+        "swift package resolve failed (exit 1): FluidAudio could not be fetched (the clone did not complete)"
+    )
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == reason
+    assert speech.probe(CFG, cache) == ("failed", reason)
+
+    tools_version = (
+        f"error: package 'fluidaudio' @ {FAKE_PIN} is using Swift tools version 99.0.0 but the installed "
+        "version is 6.2.4 in https://github.com/Contoso/FluidAudio.git"
+    )
+    script(tools / "swift", f'echo "{tools_version}" >&2\nexit 1')
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == f"swift package resolve failed (exit 1): {ocr._plain(tools_version)}"
+    assert "is using Swift tools version 99.0.0" in str(error.value)
+
+    script(tools / "swift", 'case "$1" in package) exit 0 ;; esac')  # the same line from a step but resolve
+    script(tools / "git", f"{shape.replace('exit 1', 'exit 128')}")
+    with pytest.raises(SpeechError) as error:
+        speech.build(cache)
+    assert str(error.value) == (
+        "git failed (exit 128): error: Git command '<command>' failed: fatal: cannot change to '<path>': "
+        "No such file or directory"
+    )
+
+
+def test_the_floor_check_reads_the_head_its_step_writes(
+    tools: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B13 round 25 D54: the floor check matched a literal copy of ``_step``'s head, so a reworded ``_FAILED``
+    would turn the floor refusal into the raw step error; it builds the head from the same constant."""
+    monkeypatch.setattr(speech, "_FAILED", " exited (code ")
+    git_answering(tools, resolved="1" * 40, ancestor=1)
+    with pytest.raises(SpeechError) as error:
+        speech.build(tmp_path / "cache")
+    assert str(error.value) == (
+        "FluidAudio 1111111 does not descend from the build floor 04e363c; the speech helper is not built"
+    )
+
+
 def test_a_crashed_build_steps_long_line_leaves_the_retry_clause_whole(tools: Path, tmp_path: Path) -> None:
     """B13 round 19 W50: the crash line went ahead of the retry clause, so a line over about 70 characters cut
     it from the 200 that ``ocr._failure`` reads back; the line is shortened instead."""
