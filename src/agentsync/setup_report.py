@@ -10238,9 +10238,13 @@ def _refused_files(c: Config) -> dict[str, str]:
         ("governance.audit", governance.audit_path(root), os.W_OK),
         ("governance.suppressed", governance._suppress_file(root), os.R_OK),
     ):
+        # the lock and the heartbeat by the open a sync makes alone: another account's 0644 heartbeat is read
+        # and replaced through the folder, so no status line FAILs it (lane P's B105, B13 round 24)
+        owned = name not in ("lock", "heartbeat")
         try:
             try:
-                refused = path.exists() and (path.stat().st_uid != os.getuid() or not os.access(path, access))
+                theirs = owned and path.stat().st_uid != os.getuid()
+                refused = path.exists() and (theirs or not os.access(path, access))
                 if path == governance.governance_dir(root) and not path.is_dir():
                     refused = False  # not a folder: no mode fixes the wrong kind, and status FAILs none
             except PermissionError:  # a folder on its way refuses a search (governance/ at 0000)

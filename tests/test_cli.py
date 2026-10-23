@@ -4927,6 +4927,11 @@ def test_a_lock_this_account_can_read_but_not_write_fails_status_with_the_fix_sy
         me = os.getuid()
         other.setattr(doctor.os, "getuid", lambda me=me: me + 1)
         assert {r.name: r for r in doctor._check_lock(initialised)}["lock"].ok
+        # nor does the report list it, or another account's heartbeat a sync reads and replaces (lane P's
+        # B105): by the open a sync makes, never the owner alone
+        expand(initialised.state_paths.heartbeat).chmod(0o644)
+        listed = setup_report._refused_files(initialised)
+        assert "lock" not in listed and "heartbeat" not in listed, listed
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root opens a mode-000 file")
