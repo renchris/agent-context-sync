@@ -2715,7 +2715,9 @@ def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tm
     """B13 round 24 B51: redact_stream and setup_report's Redactor give the same lines for a config hold of
     several lines (TOML's multi-line and literal forms) and a hand-edited holds.json reason with a newline
     and a JSON escape in it, each read by hold_values as _hold_values reads it: the values whole and line by
-    line, in any case, never a one-word value the report prints ("Legal")."""
+    line, in any case, and a one-word value too ("Legal" cuts "legal" from every line, as both readers do
+    since B13 round 25 D80; round 26 E36: this said the old rule, "never a one-word value the report
+    prints")."""
     hold = {"owner": "Legal", "reason": "Fabrikam \u00e9 review\nper Quinn Avery", "scope": "alpha"}
     hold["set_at"] = "2026-10-21T09:00:00Z"  # written as \n and \u00e9: JSON escapes
     state = tmp_path / "home" / "Library" / "Application Support" / "agentsync"
@@ -2740,6 +2742,7 @@ def test_the_shell_report_cuts_a_multi_line_hold_as_the_agentsync_report_does(tm
     assert shown == [red.redact(ln) for ln in lines], shown
     for word in ("Matter", "Jane", "Pat", "Fabrikam", "Quinn"):
         assert word not in "\n".join(shown), shown
+    assert shown[-1].startswith("the <value> team keeps "), shown  # the one-word value, cut (E36)
 
 
 @pytest.mark.parametrize("owner", ["Early", "Mark", "Page"])
