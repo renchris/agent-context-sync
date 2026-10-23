@@ -29822,6 +29822,19 @@ hand-written stamp of that kind pairs there only. Test:
 chmod after the re-sync, the same second, a person's exit line, the wrong owner's line, a mode its file does not
 take, a skipped or earlier or step 2 line, the stop after next, one to one).
 
+**Step 1 judges governance/ by what a hold does** (lane B's D45, install.sh's half). Lane B's D45 keys status's
+governance.hold on what a hold does: it FAILs governance/ only when this account cannot read, write and search it,
+or when the folder (followed) is sticky and another account's and holds.json, the purge queue or suppressed.json
+is another account's too (no rename replaces it: `governance.sticky_blocker`; the owner of a sticky folder may
+rename any file in it); another account's governance/ this account can use passes. Step 1's
+probe judged governance/ by its owner first (§16.173's review: B61 then FAILed it), so it would have predicted a
+status stop that no longer happens. It judges by access now, whoever owns the folder, and inlines the sticky case
+(an older installed build has no `sticky_blocker`): such a file is `state-file-owner`, the person's chown, named by
+its role (`holds`, `queue`, `suppressed`). Test: the `foreign-holds` (another account's readable holds.json) and
+`foreign-holds-sticky` (the same in a sticky governance/ this account owns) cases of
+`test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governance_file`, where nothing is said; a
+test cannot make a folder another account owns, so the halves that need one are read from the code. The guide's B105 sentence follows (lane D's D59).
+
 ### 16.180 Round 25: a manifest side file that is not a file, and round 24's status, curate and governance seams (2026-10-23, wave B13 round 25 lane B)
 
 Lane B's items, each built to its verifier's corrected fix with a test that fails without it, but D81, whose one

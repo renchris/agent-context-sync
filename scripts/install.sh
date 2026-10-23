@@ -6820,7 +6820,10 @@ if access is None and dirwrite:
 # (the sync opens it so, and status FAILs one it cannot: B58, lane B), the heartbeat, holds.json, the purge
 # queue and suppressed.json read alone (each writer replaces its file through the folder: a 0400 one stopped
 # nothing, while step 1 said step 2 stops on it), governance/ read, write and search (status FAILs a hold it
-# cannot write there, B61), and audit.jsonl write alone (status opens it to append, round 23 A79: it was left
+# cannot write there, B61; whoever owns it, since round 25 D45: lane B keys status on what a hold does, so a
+# folder of another account that this one can use passes), holds.json, the purge queue and suppressed.json also
+# when another account owns them in a sticky governance/ another account owns, where no rename replaces them
+# (governance.sticky_blocker of D45, inlined for an older installed build), and audit.jsonl write alone (status opens it to append, round 23 A79: it was left
 # out as read by no check). Access is judged before the owner: a file of another account that this one can
 # use as it needs stops nothing (B105). want: the bits of the owner a chmod would give, so a mode of its own
 # that already has them is an ACL or a volume mounted read-only, for the person. role: which one, in fixed
@@ -6830,6 +6833,11 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
     sp = config.state_paths
     gov = db.parent / "governance"
     rw, r = os.R_OK | os.W_OK, os.R_OK
+    try:  # followed; the owner of a sticky folder may rename any file in it, so only one of another account blocks
+        gst = gov.stat()
+        sticky = bool(gst.st_mode & stat.S_ISVTX) and gst.st_uid != os.getuid()
+    except OSError:
+        sticky = False
     for p, need, want, name in (
         (expand(sp.lock), rw, 0o600, "lock"),
         (expand(sp.heartbeat), r, 0o400, "heartbeat"),
@@ -6848,8 +6856,11 @@ if not (notdir or notfile) and (access is None or access.startswith("state-side-
             continue
         if not (stat.S_ISDIR if want == 0o700 else stat.S_ISREG)(st.st_mode):  # no mode fixes the wrong kind
             continue
-        # governance/ is judged by its owner first: status FAILs one of another account even when usable (B61)
-        if os.access(p, need) and (name != "governance" or st.st_uid == os.getuid()):
+        try:
+            theirs = sticky and name in ("holds", "queue", "suppressed") and p.lstat().st_uid != os.getuid()
+        except OSError:
+            theirs = False
+        if os.access(p, need) and not theirs:
             continue
         role = name
         if st.st_uid != os.getuid():

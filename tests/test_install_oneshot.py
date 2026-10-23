@@ -10239,6 +10239,8 @@ def test_a_file_where_the_state_folder_belongs_is_the_persons_with_the_real_agen
         "two-shut",
         "foreign-heartbeat",
         "foreign-lock",
+        "foreign-holds",
+        "foreign-holds-sticky",
         "dir-write-acl",
     ],
 )
@@ -10264,7 +10266,14 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     0600 heartbeat there is read, never written in place. B105: another account's file this one can use as
     its step needs stops nothing (foreign-heartbeat, a root-owned 0644 file); one it cannot (foreign-lock) is
     the person's chown. B13: the tail names the file the probe stopped on, the first of them (two-shut), and
-    says status prints any other."""
+    says status prints any other.
+
+    Round 25 D45 (lane B): status keys governance.hold on what a hold does, so another account's holds.json
+    this one can read stops nothing (foreign-holds), nor in a sticky governance/ this account owns, whose
+    owner may rename any file in it (foreign-holds-sticky); in a sticky one another account owns no rename
+    replaces it, and status FAILs it (governance.sticky_blocker). Another account's usable governance/ itself
+    passes too now (B61's owner-first rule is gone). A test cannot make a folder another account owns, so
+    those two halves are read from the code."""
     _config_step_2_stops_on(env, "clean-real")
     db = _state_db(env)
     root = db.parent
@@ -10287,7 +10296,9 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
             path.write_bytes(data)
             path.chmod(0o600)
     if case.startswith("foreign-"):  # a root-owned 0644 file, linked in on the same volume (B105)
-        target = root / ("heartbeat.json" if case == "foreign-heartbeat" else "agentsync.lock")
+        target = {"foreign-heartbeat": root / "heartbeat.json", "foreign-lock": root / "agentsync.lock"}.get(
+            case, gov / "holds.json"
+        )
         target.unlink()
         try:
             os.link("/private/etc/hosts", target)
@@ -10309,6 +10320,7 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
     modes = {
         "lock-0400": {root / "agentsync.lock": 0o400},
         "governance-0500": {gov: 0o500},
+        "foreign-holds-sticky": {gov: 0o1700},  # D45: a sticky governance/
         "read-alone": {
             root / "heartbeat.json": 0o400,
             gov / "holds.json": 0o400,
@@ -10353,7 +10365,14 @@ def test_list_folders_says_step_2_stops_at_status_on_a_lock_heartbeat_or_governa
                 path.chmod(0o600)
     assert cp.returncode == 0, cp.stdout + cp.stderr
     logged = install_log(env)[-2]
-    if case in ("missing", "gov-file", "read-alone", "foreign-heartbeat"):
+    if case in (
+        "missing",
+        "gov-file",
+        "read-alone",
+        "foreign-heartbeat",
+        "foreign-holds",
+        "foreign-holds-sticky",
+    ):
         assert last_line(cp).endswith("(none is needed)"), last_line(cp)
         assert "config_err" not in logged, logged
         return
