@@ -3124,24 +3124,42 @@ install_run_label() {
 # session's, and at a step 1 error dated more than NEW_SESSION_GAP after an end line. Nothing when there is no
 # friction log or no time.
 friction_attempt_begin() {
+	local w
+	w="$(friction_attempt_bounds)"
+	w="${w%% *}"
+	[ "$w" = - ] || printf '%s\n' "$w"
+}
+# "<begin> <end> <last>" of the friction log's latest attempt, "-" for one it has not: its begin (above), the
+# time of its latest end line (setup_report._attempt_end) and of its latest timed line, the unbroken run of step
+# 1 lines an opening line takes from the attempt before counted in it (B13 round 24 B95). Nothing when there is
+# no friction log.
+friction_attempt_bounds() {
 	local f
 	f="$(friction_file)"
 	[ -f "$f" ] || return 0
 	LC_ALL=C awk -v gap="$NEW_SESSION_GAP" -v s1="$STEP1_ERROR_RE" "$FRICTION_AWK"'
 		BEGIN { stamp = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z" }
+		function mx(a, c) { return a > c ? a : c }
+		# a new attempt: its last line so far is the latest of the step 1 run it takes, else none
+		function open() { hi = (late != "" && ended != "") ? lhi : ""; ended = ""; late = ""; fin = "" }
 		{ q = track($0) }
-		NH { NH = 0; b = ""; ended = ""; late = ""; next }
-		/^Attempt:/ { b = substr($0, 10, 20); if (b !~ (stamp "$")) b = ""; ended = ""; late = ""; next }
-		q { b = (late != "" && ended != "") ? late : substr($0, 1, 20); ended = ""; late = ""; next }
-		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = late != "" ? late : substr($0, 1, 20); ended = ""; late = ""; restate($0); next }
+		NH { NH = 0; b = ""; ended = ""; late = ""; fin = ""; hi = ""; next }
+		/^Attempt:/ { b = substr($0, 10, 20); if (b !~ (stamp "$")) b = ""; open(); next }
+		q { b = (late != "" && ended != "") ? late : substr($0, 1, 20); open(); hi = mx(hi, substr($0, 1, 20)); next }
+		ended != "" && $0 ~ s1 && secs($0) - secs(ended) > gap { b = late != "" ? late : substr($0, 1, 20); open(); hi = mx(hi, substr($0, 1, 20)); restate($0); next }
 		$0 !~ (stamp " [|]") { next }
 		b == "" { b = substr($0, 1, 20) }
+		{ hi = mx(hi, substr($0, 1, 20)) }
 		# the unbroken run of step 1 lines at or after the end line, whatever the gap, which an opening step 1
 		# error takes with it (parse_friction, B13 round 10 L26; round 12 N23: the finished session runs
 		# nothing after its report, so a line 71 s after its end line is the next one)
-		ended != "" { if ($0 ~ (stamp " [|] step 1 [|]") && secs($0) >= secs(ended)) { if (late == "") late = substr($0, 1, 20) } else late = "" }
-		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); late = "" }
-		END { print b }' "$f" 2>/dev/null || true
+		ended != "" {
+			if ($0 ~ (stamp " [|] step 1 [|]") && secs($0) >= secs(ended)) {
+				if (late == "") { late = substr($0, 1, 20); lhi = late } else lhi = mx(lhi, substr($0, 1, 20))
+			} else late = ""
+		}
+		/\| end \| finished[[:space:]]*$/ { ended = substr($0, 1, 20); late = ""; fin = mx(fin, ended) }
+		END { print (b != "" ? b : "-") " " (fin != "" ? fin : "-") " " (hi != "" ? hi : "-") }' "$f" 2>/dev/null || true
 }
 # The one outcome the shell report computes (B13 round 7 H24): "<N><TAB><agent as written>" when every timed
 # line of the friction log's latest attempt (friction_attempt_begin's) but its end line is a step 1 line, the
@@ -3261,6 +3279,75 @@ attempt_ran_no_install() {
 	begin="$(utc_stamp "$(friction_attempt_begin)")"
 	[ -n "$begin" ] && [ -n "$(utc_stamp "$at")" ] && [[ "$at" < "$begin" ]]
 }
+# The step-3 sync stops agentsync logged in sync-stops.log beside install.log (cli.SYNC_STOPS_LOG, B13 round 23
+# A9) inside the friction log's latest attempt, windowed as setup_report._step3_stops windows them (B13 round 24
+# B95): at or after the attempt's begin, and before its end line, else before its last timed line or the friction
+# log's last write, whichever is later, plus 1 s. Never open-ended: a sync run by hand days after the setup must
+# not change it. None when the attempt has no begin time or its Prompt: names a version before v7, whose steps
+# differ (retried_runs' guards). Only the file's last 200 lines, as _read_sync_stops reads them. One
+# "<rc> <file> <owner> <kind>" line each, in the file's order; a line with no
+# kind= (a build before round 24) is a refused one. This shell cannot read the manifest, so it pairs none with a
+# later sync that ended 0.
+fallback_sync_stops() {
+	local f s w v mt
+	f="$(friction_file)"
+	s="${SETUP_LOG%/*}/sync-stops.log"
+	[ -f "$f" ] && [ -f "$s" ] || return 0
+	w="$(friction_attempt_bounds)"
+	case "$w" in [0-9]*) ;; *) return 0 ;; esac
+	# Attempt.version: the first "v?N" of up to three digits that stands as a word in its Prompt: value
+	v="$(friction_latest_said <"$f" | LC_ALL=C cut -f 1 | LC_ALL=C awk '{
+		s = " " $0 " "
+		if (match(s, /[^A-Za-z0-9_]v?[0-9][0-9]?[0-9]?[^A-Za-z0-9_]/)) {
+			n = substr(s, RSTART + 1, RLENGTH - 2); sub(/^v/, "", n); print n + 0; exit
+		}
+	}' 2>/dev/null || true)"
+	[ -z "$v" ] || [ "$v" -ge 7 ] || return 0
+	# the last write rounded up to its next whole second: a stop stamped at or before it is before Python's
+	# fractional mtime + 1 s
+	mt="$(/usr/bin/stat -f %Fm "$f" 2>/dev/null | LC_ALL=C awk '/^[0-9]+(\.[0-9]*)?$/ { s = int($1); if ($1 + 0 > s) s++; print s }' || true)"
+	[ -z "$mt" ] || mt="$(utc_stamp "$(date -u -r "$mt" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)")"
+	LC_ALL=C awk -v w="$w" -v mt="$mt" "$FRICTION_AWK"'
+		BEGIN {
+			split(w, a, " "); lo = a[1]; last = a[3] != "-" && a[3] > lo ? a[3] : lo
+			if (mt != "" && mt > last) last = mt
+			hi = a[2]; edge = hi == "-"
+			if (edge) hi = last
+		}
+		{ sub(/\r$/, ""); sub(/^[ \t]+/, ""); sub(/[ \t]+$/, "") }
+		!match($0, /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z sync-stop file=[a-z]+(-[a-z]+)* rc=[0-9]+ owner=(agent|person)( kind=[a-z]+)?$/) { next }
+		{ at = substr($0, 1, 20) }
+		at < lo || (edge ? secs(at) > secs(hi) : at >= hi) { next }
+		{
+			file = $3; rc = $4; owner = $5; kind = NF > 5 ? $6 : "kind=refused"
+			sub(/^file=/, "", file); sub(/^rc=/, "", rc); sub(/^owner=/, "", owner); sub(/^kind=/, "", kind)
+			if (rc + 0 != 0) print rc + 0, file, owner, kind
+		}' < <(tail -n 200 "$s" 2>/dev/null) 2>/dev/null || true
+}
+# The words of one of those stops, as setup_report._sync_stop_line gives a stop it could not pair: the file by
+# its role (_SYNC_STOP_FILES; an unknown one is a state file), what met it by its kind, then that whether a
+# later sync ended 0 is not read here, and whose fix it is.
+fallback_sync_stop_line() { # RC FILE OWNER KIND
+	local what why whose="the person's"
+	case "$2" in
+	manifest) what="agentsync's state file" ;;
+	manifest-wal) what="the state file's -wal" ;;
+	manifest-shm) what="the state file's -shm" ;;
+	lock) what="agentsync's lock file" ;;
+	heartbeat) what="agentsync's heartbeat file" ;;
+	holds) what="agentsync's holds file" ;;
+	governance) what="a governance file in the state folder" ;;
+	state-folder) what="agentsync's state folder" ;;
+	*) what="a state file" ;;
+	esac
+	case "$4" in
+	misplaced) why="which was not where or what it should be" ;;
+	lost) why="which was missing after earlier syncs" ;;
+	*) why="which this account could not open" ;;
+	esac
+	[ "$3" != agent ] || whose="the agent's chmod"
+	say "- agentsync sync · step 3 · exited $1 on $what, $why; whether a later sync ended 0: not read by this shell fallback; the fix is $whose"
+}
 # The Summary's outcome line. Computed in the one case above, in the agentsync report's words; in every other
 # case the line says that it is not, so "copy the five values from the Summary" (setup-feedback.md) finds a
 # reason and not a gap. OUTCOME_LINE_HEAD is how write_fallback_report finds the computed line again, after
@@ -3331,7 +3418,7 @@ run_type_why() {
 # friction log does not hold (B13 round 9 K8); the link fills that run type, and the latest attempt's Prompt
 # version and Agent where it states them, as _issue_link does with or without an outcome (B13 round 10 L2).
 fallback_outcome_line() {
-	local stated="" n note="" agent hdr=0 choose why bracket
+	local stated="" n note="" agent hdr=0 choose why bracket stops k
 	! attempt_ran_no_install || stated="$(friction_step1_stated)"
 	if [ -n "$stated" ]; then
 		n="${stated%%$'\t'*}"
@@ -3370,12 +3457,27 @@ fallback_outcome_line() {
 	else
 		# where the Outcome is read from: the attempt's step lines, the install runs of the attempt when it has
 		# no step line, or neither (B13 round 11 M15: it named step lines an attempt did not have)
+		# and the step-3 sync stops agentsync logged itself, which install.log does not hold: an install run's exit
+		# 0 alone read as "fully one command" where the agentsync report says "worked with help" (B13 round 24
+		# B95); a step 3 error line the agent logged may be its own account of one of them (round 24 ruling 9)
+		k="$(fallback_sync_stops | LC_ALL=C awk 'END { print NR }')"
+		stops=""
+		case "${k:-0}" in
+		0) ;;
+		1) stops="agentsync logged 1 step-3 sync stop in sync-stops.log beside install.log (the Installer section lists it)" ;;
+		*) stops="agentsync logged $k step-3 sync stops in sync-stops.log beside install.log (the Installer section lists them)" ;;
+		esac
 		if friction_latest_has_step; then
 			choose="; the Outcome is yours to choose from the friction log's step lines"
+			[ -z "$stops" ] || choose="$choose; $stops; a step 3 error line there may be the agent's account of the same stop"
 		elif ! attempt_ran_no_install; then
-			choose=", and the friction log has no step line for it; the Outcome is yours to choose from the Installer section, which has this attempt's install runs"
+			if [ -n "$stops" ]; then
+				choose=", and the friction log has no step line for it; $stops, so an install run's exit 0 alone is not the Outcome"
+			else
+				choose=", and the friction log has no step line for it; the Outcome is yours to choose from the Installer section, which has this attempt's install runs"
+			fi
 		else
-			choose=", and the friction log has no step line for it; the Outcome is yours to choose"
+			choose=", and the friction log has no step line for it; the Outcome is yours to choose${stops:+; $stops}"
 		fi
 		say "- outcome: not computed (this shell fallback computes none for this attempt$choose; the link fills Run type, and Prompt version and Agent where the latest attempt states them)"
 		say "- run: $(run_type_label) (computed: $(run_type_why))"
@@ -3795,6 +3897,17 @@ fallback_body() {
 		fi
 	else
 		say "No install log at $SETUP_LOG."
+	fi
+	# the step-3 sync stops agentsync logged itself in this attempt, which install.log does not hold (B13 round 24
+	# B95), one line each as the agentsync report's Items has them
+	k="$(fallback_sync_stops)"
+	if [ -n "$k" ]; then
+		say ""
+		say "Step-3 sync stops agentsync logged in sync-stops.log beside install.log during this attempt:"
+		say ""
+		while read -r n p v o; do
+			fallback_sync_stop_line "$n" "$p" "$v" "$o"
+		done <<<"$k"
 	fi
 	say ""
 	say "## Configuration"

@@ -5179,6 +5179,124 @@ def test_an_uncomputed_outcome_names_step_lines_only_when_the_attempt_has_them(
     assert outcome == NO_STEP_LINE.format(where), outcome
 
 
+_STOP_LOCK = (
+    "- agentsync sync · step 3 · exited 1 on agentsync's lock file, which this account could not open; "
+    "whether a later sync ended 0: not read by this shell fallback; the fix is the agent's chmod"
+)
+
+
+@pytest.mark.parametrize(
+    ("stops", "counted"),
+    [
+        ("2026-10-14T10:03:00Z sync-stop file=lock rc=1 owner=agent\n", 1),  # round 24's a9-nolog
+        # after the end line (a sync run by hand after the setup), and before the begin: not the attempt's
+        ("2026-10-14T10:05:00Z sync-stop file=lock rc=1 owner=agent\n", 0),
+        ("2026-10-14T09:59:59Z sync-stop file=lock rc=1 owner=agent\n", 0),
+        (None, 0),  # no sync-stops.log: the line is as before
+        # only the file's last 200 lines, as _read_sync_stops reads it: 200 later stops hide the attempt's
+        (
+            "2026-10-14T10:03:00Z sync-stop file=lock rc=1 owner=agent\n" + "2026-10-15T08:00:00Z sync-stop "
+            "file=lock rc=1 owner=agent\n" * 200,
+            0,
+        ),
+        (
+            "2026-10-14T10:03:00Z sync-stop file=lock rc=1 owner=agent\nnot a stop line\n"
+            "2026-10-14T10:04:00Z sync-stop file=manifest rc=1 owner=person kind=lost\n",
+            2,
+        ),
+    ],
+    ids=["inside", "after-end", "before-begin", "no-file", "past-200-lines", "two-kinds"],
+)
+def test_the_shell_report_names_the_step_3_sync_stops_agentsync_logged(
+    env: dict[str, str], stops: str | None, counted: int
+) -> None:
+    """B13 round 24 B95: the shell fallback never read sync-stops.log (round 23 A9), so an attempt whose one
+    install run ended 0 and whose step 3 sync stopped on the lock said to choose the Outcome "from the
+    Installer section", where exit 0 reads as "fully one command"; the agentsync report says "worked with
+    help". The stops inside the attempt (its begin to its end line, as setup_report._step3_stops) are counted
+    on the outcome line and listed in the Installer section, unpaired: the shell cannot read the manifest."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    friction_path(env).write_text(
+        "Attempt: 2026-10-14T10:00:00Z\nPrompt: v32\nAgent: Contoso Agent\n"
+        "2026-10-14T10:05:00Z | end | finished\n"
+    )
+    (setup / "install.log").write_text(
+        "2026-10-14T10:01:00Z run=20261014T100100Z-1 start install.sh compat=32 commit=- kind=- source=- "
+        "args=\n"
+        "2026-10-14T10:01:09Z run=20261014T100100Z-1 end rc=0\n"
+    )
+    if stops is not None:
+        (setup / "sync-stops.log").write_text(stops)
+    assert install_sh(env, "--report-only").returncode == 0
+    text = report_path(env).read_text()
+    outcome = _summary(text)[2]
+    if not counted:
+        assert outcome == NO_STEP_LINE.format(
+            " from the Installer section, which has this attempt's install runs"
+        )
+        assert "sync-stops.log" not in text, text
+        return
+    said = "1 step-3 sync stop" if counted == 1 else f"{counted} step-3 sync stops"
+    assert outcome == NO_STEP_LINE.format("").replace(
+        "the Outcome is yours to choose",
+        f"agentsync logged {said} in sync-stops.log beside install.log (the Installer section lists "
+        f"{'it' if counted == 1 else 'them'}), so an install run's exit 0 alone is not the Outcome",
+    ), outcome
+    installer = text.split("\n## Installer\n", 1)[1].split("\n## ", 1)[0]
+    listed = [ln for ln in installer.splitlines() if ln.startswith("- agentsync sync · step 3 · ")]
+    assert listed[0] == _STOP_LOCK, installer
+    if counted == 2:  # lane B's round 24 kind= token, the person's fix
+        assert listed[1] == (
+            "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
+            "syncs; whether a later sync ended 0: not read by this shell fallback; the fix is the person's"
+        ), installer
+    assert len(listed) == counted, installer
+    assert "ended 0 after" not in text and "Agent friction log (the Installer" not in text
+
+
+def test_a_step_3_sync_stop_with_no_end_line_is_bounded_by_the_attempts_last_write(
+    env: dict[str, str],
+) -> None:
+    """B13 round 24 B95: an attempt with no end line (a header-less one --report-only does not close) counts
+    the stops up to its last line or the friction log's last write, whichever is later, plus 1 s, as
+    setup_report._step3_stops does: never open-ended, so a sync run by hand later does not count. A prompt
+    before v7, whose steps differ, counts none."""
+    setup = friction_path(env).parent
+    setup.mkdir(parents=True)
+    stopped = "2026-10-14T10:00:00Z | step 1 | error | prompt v32, Contoso Agent: the list failed | -\n"
+    late = "2026-10-14T10:06:00Z | step 3 | error | the sync exited 1 | -\n"
+    (setup / "sync-stops.log").write_text(
+        "2026-10-14T10:06:00Z sync-stop file=heartbeat rc=1 owner=agent\n"
+        "2026-10-14T10:06:01Z sync-stop file=lock rc=1 owner=agent\n"
+    )
+    # B13 round 24 B95 review: Python's bound is the mtime with its fraction, plus 1 s, so a write at
+    # 10:06:00.5 keeps the stop at 10:06:01 too
+    for log, frac, want in (
+        (stopped + late, 0.0, 1),
+        (stopped + late, 0.5, 2),
+        (stopped.replace("v32", "v6") + late, 0.0, 0),
+    ):
+        friction_path(env).write_text(log)
+        os.utime(friction_path(env), (calendar.timegm((2026, 10, 14, 10, 6, 0)) + frac,) * 2)
+        assert install_sh(env, "--report-only").returncode == 0
+        text = report_path(env).read_text()
+        outcome = _summary(text)[2]
+        assert outcome.startswith(NOT_COMPUTED.split("; the link fills", maxsplit=1)[0]), outcome
+        if want == 2:
+            assert "; agentsync logged 2 step-3 sync stops in sync-stops.log beside install.log" in outcome
+            assert "agentsync's heartbeat file" in text and "agentsync's lock file" in text, text
+        elif want:
+            assert (
+                "; agentsync logged 1 step-3 sync stop in sync-stops.log beside install.log (the Installer "
+                "section lists it); a step 3 error line there may be the agent's account of the same stop; "
+            ) in outcome, outcome
+            assert "exited 1 on agentsync's heartbeat file" in text, text
+            assert "agentsync's lock file" not in text, text
+        else:
+            assert outcome == NOT_COMPUTED and "sync-stops.log" not in text, outcome
+
+
 def test_a_step_1_line_before_a_new_attempts_header_is_that_attempts_in_the_shell_report(
     env: dict[str, str],
 ) -> None:
