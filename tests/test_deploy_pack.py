@@ -8224,7 +8224,7 @@ def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error
     assert "and such a line is the reason `step 3 logged 1 error` (A36)" in flat
     # round 24 ruling 9: one stop and the error the agent logged for it are one Items line, counted once
     assert "(F{account.line}: the agent's account of it)" in source
-    assert "the pair is one Items line ending `(F<n>: the agent's account of it)`" in flat
+    assert "The pair is one Items line ending `(F<n>: the agent's account of it)`" in flat
     assert "`step 3 logged N errors` counts only the errors no stop claims" in flat
     # the friction line's words, which say which lines feed the outcome
     for words in ("is one of the outcome's reasons", "the others do not change it by themselves"):
@@ -8234,8 +8234,19 @@ def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error
     assert "of the report step that no recorded sync stop claims makes it 'worked with help'" in flat
     assert (
         "`[FAIL]`; no `error` logged at the report step, and no step 3 sync stop in `sync-stops.log` that a"
-        " later sync ended ok after (v7 and later prompts; below);"
+        " later sync ended ok after or that claims the agent's error line for it (v7 and later prompts;"
+        " below);"
     ) in flat
+    # B13 round 25 ruling 11: every stop pairs with a line of its own kind, up to the stop after next, and a
+    # paired stop no later sync ended ok after is a reason in the code's words; ruling 10: a step 3 that ended
+    # on the person's unfixed stop failed there, in the code's words
+    open_stop = setup_report._SyncStop(at, "lock", "agent", None)
+    [open_reason] = setup_report._open_stop_reasons([open_stop], {id(open_stop)})
+    assert f"A paired stop that no later sync ended ok after is a reason of its own: `{open_reason}`" in flat
+    assert "and before the stop after next" in flat and "no stop claims a `skipped: lock held` line" in flat
+    lost = setup_report._SyncStop(at, "manifest", "person", None, True, "lost")
+    persons = setup_report._persons_stop_reason(lost, ())
+    assert f"`failed at step 3 (computed: install.sh exit 0; {persons})`" in flat, persons
     kinds = page.split("### Friction kinds", 1)[1].split("\n### ", 1)[0]
     [error_row] = [ln for ln in kinds.splitlines() if ln.startswith("| `error` |")]
     assert (

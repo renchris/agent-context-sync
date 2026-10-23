@@ -3153,7 +3153,12 @@ def test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_he
         conn.close()
     stops.write_text("2026-09-29T10:00:50Z sync-stop file=manifest rc=1 owner=person\n", encoding="utf-8")
     _text, summary = summary_of(fake_mac)
-    assert summary.strip().startswith("- **outcome: fully one command**"), "no sync ended 0 after it"
+    # B13 round 25 ruling 10: step 3 ended on the person's stop no later sync ended 0 after: failed there
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: failed at step 3** (computed: install.sh exit 0; a sync at step 3 exited 1 on "
+        "agentsync's state file, which this account could not open, and no later sync ended 0: the "
+        "person's to fix)"
+    ), summary
     assert "no sync ended 0 after it by this report (the person's fix)" in summary, summary
     db.chmod(0)
     try:
@@ -5184,12 +5189,17 @@ def test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason(fake_mac: di
     assert summary.strip().splitlines()[0].endswith("the agent's chmod; step 3 logged 1 error)"), summary
     assert _LOCK_STOP_ITEM + "\n" in summary and "agent's account of it" not in summary, summary
 
-    # each of two stops claims the first error after it and before the next stop: one each
+    # each of two stops claims the first error after it that names its chmod: one each; a "skipped: lock
+    # held" line is no stop's account (B13 round 25 ruling 11), so the second stop claims none of it
     second = "2026-09-29T10:00:56Z sync-stop file=heartbeat rc=1 owner=agent\n"
-    summary = _two_records(fake_mac, _CHMOD_ERROR + _LOCK_SKIP, _LOCK_STOP + second)
+    beat = _step3_error("58", "agentsync sync exited 1 on the heartbeat; ran chmod 600")
+    summary = _two_records(fake_mac, _CHMOD_ERROR + beat, _LOCK_STOP + second)
     assert "step 3 logged" not in summary.strip().splitlines()[0], summary
     assert summary.count("the agent's account of it)") == 2, summary
     assert "(see Items; F4 and F5 are the agent's accounts of them)" in summary, summary
+    summary = _two_records(fake_mac, _CHMOD_ERROR + _LOCK_SKIP, _LOCK_STOP + second)
+    assert summary.strip().splitlines()[0].endswith("; step 3 logged 1 error)"), summary
+    assert summary.count(": the agent's account of it)") == 1, summary
 
     # an install that failed: the stop is no outcome reason, its line still carries the agent's account, and
     # nothing listed feeds the outcome
@@ -5200,6 +5210,209 @@ def test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason(fake_mac: di
         "logged itself (see Items; F4 is the agent's account of it); none of these changes the outcome by "
         "itself"
     ), summary
+
+
+def _step3_error(at: str, what: str) -> str:
+    """A step 3 error line of the agent's at ``10:00:<at>``."""
+    return f"2026-09-29T10:00:{at}Z | step 3 | error | {what} | -\n"
+
+
+def _stop_line(at: str, file: str, owner: str = "agent", kind: str = "") -> str:
+    """A sync-stops.log line at ``10:00:<at>``."""
+    return (
+        f"2026-09-29T10:00:{at}Z sync-stop file={file} rc=1 owner={owner}{f' kind={kind}' if kind else ''}\n"
+    )
+
+
+def _items_of(summary: str) -> list[str]:
+    """The Summary's Items lines."""
+    items = summary.split("Items that were not one command (attempt 1):", 1)[1]
+    items = items.split("Agent friction (", 1)[0].split(setup_report.RUN_METADATA_HEADING, 1)[0]
+    return [ln for ln in items.splitlines() if ln.startswith("- ")]
+
+
+def _no_ok_run(fake_mac: dict[str, Path]) -> None:
+    """No sync the manifest records ended ok."""
+    conn = sqlite3.connect(expand(load_config(fake_mac["config"]).state_paths.db))
+    try:
+        conn.execute("UPDATE runs SET status = 'failed'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_FOLDER_LINE = "agentsync sync exited 1 on the state folder; ran chmod 700 its [FAIL] line named"
+_LOCK_LINE = "agentsync sync exited 1 on the lock file; ran chmod 600 its [FAIL] line named"
+_LOST_LINE = "agentsync sync exited 1: its state file is missing; status says the fix is the person's"
+_FOLDER_ITEM = (
+    "- agentsync sync · step 3 · exited 1 on agentsync's state folder, which this account could not open; it "
+    "ended 0 after the agent's chmod"
+)
+_LOCK_ITEM_54 = _LOCK_STOP_ITEM
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_every_step_3_stop_claims_the_agents_line_that_names_its_fix(fake_mac: dict[str, Path]) -> None:
+    """B13 round 25 ruling 11 (D57, D75; the lead's refinement): v33 has the agent log a stopped sync after
+    its chmod and the re-sync, so a stop's line can come after the next stop, and the pairing bound at the
+    next stop paired the second stop with the first one's line and left its own line a second reason. A stop
+    claims a line up to the stop after next, the same second counts, an agent-owned stop only a line naming a
+    chmod (and its file's mode), and a "skipped: lock held" line never."""
+    two = (
+        "2 syncs at step 3 exited 1 on agentsync's state folder and agentsync's lock file, and each ended 0 "
+    )
+    stops = _stop_line("50", "state-folder") + _stop_line("54", "lock")
+    for folder_at, lock_at in (("55", "58"), ("58", "59"), ("52", "56")):  # D57's A (v33's order), B, C
+        errors = _step3_error(folder_at, _FOLDER_LINE) + _step3_error(lock_at, _LOCK_LINE)
+        summary = _two_records(fake_mac, errors, stops)
+        assert summary.strip().splitlines()[0] == (
+            f"- **outcome: worked with help** (computed: install.sh exit 0; {two}after the agent's chmod)"
+        ), (folder_at, summary)
+        assert _items_of(summary) == [
+            _FOLDER_ITEM + " (F4: the agent's account of it)",
+            _LOCK_ITEM_54 + " (F5: the agent's account of it)",
+        ], (folder_at, summary)
+    # D57's R: the folder stop was not logged; the lock's chmod line is the lock's (its mode is no folder's),
+    # and the "skipped: lock held" line is no stop's account: it stays a reason of its own
+    summary = _two_records(fake_mac, _step3_error("55", _LOCK_LINE) + _LOCK_SKIP, stops)
+    assert summary.strip().splitlines()[0].endswith("; step 3 logged 1 error)"), summary
+    assert _items_of(summary)[:2] == [_FOLDER_ITEM, _LOCK_ITEM_54 + " (F4: the agent's account of it)"], (
+        summary
+    )
+    # D75: a line in the second the next stop was recorded in, or seconds after it, is the earlier stop's
+    for first, second in (("41", "43"), ("45", "50")):
+        errors = _step3_error(first, _LOCK_LINE) + _step3_error(second, _LOCK_LINE)
+        summary = _two_records(fake_mac, errors, _stop_line("39", "lock") + _stop_line("41", "lock"))
+        assert "step 3 logged" not in summary.strip().splitlines()[0], summary
+        assert summary.count("the agent's account of it)") == 2, (first, summary)
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 25 ruling 11 (D1, D7, D18, D24, D28, D35, D58, D69): only a stop a later sync ended 0 after
+    claimed the agent's line, so the stop v33 sends to the report with no later sync (the person's fix), an
+    agent's stop that recurred after its chmod and every unmeasured stop were two Items lines and two counts.
+    Every stop pairs, and a paired stop no later sync ended 0 after is a reason of its own, so pairing never
+    turns a stop that did not recover into "fully one command"."""
+    lost = _stop_line("50", "manifest", "person", "lost")
+    summary = _two_records(fake_mac, _step3_error("55", _LOST_LINE), lost)  # a later sync ended 0: as before
+    assert _items_of(summary) == [
+        "- agentsync sync · step 3 · exited 1 on agentsync's state file, which was missing after earlier "
+        "syncs; it ended 0 after the person's fix (F4: the agent's account of it)"
+    ], summary
+    # an agent's lock stop that came back after its chmod, with no later sync that ended 0: two stops, two
+    # lines, one reason that names them, never "fully one command"
+    _two_records(fake_mac, "", "")
+    errors = _step3_error("55", _LOCK_LINE) + _step3_error(
+        "58", "agentsync sync exited 1 again on the lock file after the chmod 600 I already ran"
+    )
+    _no_ok_run(fake_mac)
+    write_friction(fake_mac, _insert_before("2026-09-29T10:01:10Z | end", errors, V12_HAPPY))
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(
+        _stop_line("50", "lock") + _stop_line("56", "lock"), encoding="utf-8"
+    )
+    summary = summary_of(fake_mac)[1]
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; 2 syncs at step 3 exited 1 on "
+        "agentsync's lock file, and no sync ended 0 after them by this report: the fix is the agent's chmod)"
+    ), summary
+    assert [ln.rsplit(" (F", 1)[1] for ln in _items_of(summary)] == [
+        "4: the agent's account of it)",
+        "5: the agent's account of it)",
+    ], summary
+    assert _line(summary, "- agent friction: ").endswith(
+        "2 step-3 sync stops agentsync logged itself, among the outcome's reasons (see Items; F4 and F5 are "
+        "the agent's accounts of them)"
+    ), summary
+    assert "Agent friction (" not in summary, summary
+    # a failed install: the stop is no reason, its line still the agent's account, nothing under friction
+    summary = _two_records(fake_mac, _step3_error("55", _LOST_LINE), lost, rc=1)
+    assert summary.strip().startswith("- **outcome: failed at step 2**"), summary
+    assert _items_of(summary)[-1].endswith("(F4: the agent's account of it)"), summary
+    assert "Agent friction (" not in summary, summary
+    v6_install_log(fake_mac)
+    # an unmeasured stop (the manifest is gone) claims its line too, and stays a reason
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", _LOST_LINE), V12_HAPPY)
+    )
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(lost, encoding="utf-8")
+    db = expand(load_config(fake_mac["config"]).state_paths.db)
+    for side in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+        side.unlink(missing_ok=True)
+    summary = summary_of(fake_mac)[1]
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: worked with help** (computed: install.sh exit 0; 1 sync at step 3 exited 1 on "
+        "agentsync's state file, and whether a sync ended 0 after it was not measured: the fix is the "
+        "person's)"
+    ), summary
+    [item] = _items_of(summary)
+    assert item.endswith("; the fix is the person's (F4: the agent's account of it)"), summary
+
+
+@pytest.mark.usefixtures("clean_doctor")
+def test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step(
+    fake_mac: dict[str, Path], tmp_path: Path
+) -> None:
+    """B13 round 25 ruling 10 (D3, D19, D27): v33 has the agent log a sync that stopped on a [FAIL] whose fix
+    is the person's, show it and go to the report, so no sync runs after it; the report said "worked with
+    help" (round 23 A36's "never failed", made for the agent's chmod), while the same state at step 2 says
+    "failed at step 2". Failed at the report step, naming the stop in its kind's words and that the fix is
+    the person's; a stop a later sync ended 0 after, and an agent-owned stop, stay "worked with help"; one
+    whose record was not measured counts only while a doctor FAIL in a person's bucket stands."""
+    misplaced = _stop_line("50", "state-folder", "person", "misplaced")
+    line = "agentsync sync exited 1: the state folder is a file; status says the fix is the person's"
+    assert cli.main(["sync", "--config", str(fake_mac["config"])]) == 0
+    v6_install_log(fake_mac)
+    _no_ok_run(fake_mac)
+    write_friction(
+        fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", line), V12_HAPPY)
+    )
+    (fake_mac["setup"] / setup_report._SYNC_STOPS_NAME).write_text(misplaced, encoding="utf-8")
+    rc, text, _ = report(tmp_path, fake_mac["config"])
+    assert rc == 0
+    summary = section(text, "Summary")
+    assert summary.strip().splitlines()[0] == (
+        "- **outcome: failed at step 3** (computed: install.sh exit 0; a sync at step 3 exited 1 on "
+        "agentsync's state folder, which was not where or what it should be, and no later sync ended 0: the "
+        "person's to fix)"
+    ), summary
+    assert _items_of(summary) == [
+        "- agentsync sync · step 3 · exited 1 on agentsync's state folder, which was not where or what it "
+        "should be; no sync ended 0 after it by this report (the person's fix) (F4: the agent's account of "
+        "it)"
+    ], summary
+    assert _line(summary, "- agent friction: ").endswith(
+        "1 step-3 sync stop agentsync logged itself, one of the outcome's reasons (see Items; F4 is the "
+        "agent's account of it)"
+    ), summary
+    link = parse_qs(urlsplit(text.rstrip("\n").splitlines()[-1]).query)
+    assert link["outcome"] == ["Failed at step 3 (sync loop and report)"], link
+    # a later sync that ended 0: worked with help, as before
+    summary = _two_records(fake_mac, _step3_error("55", line), misplaced)
+    assert summary.strip().startswith("- **outcome: worked with help**"), summary
+    # an agent-owned stop no sync ended 0 after: worked with help
+    att = setup_report.read_friction(
+        write_friction(
+            fake_mac, _insert_before("2026-09-29T10:01:10Z | end", _step3_error("55", line), V12_HAPPY)
+        )
+    ).latest
+    runs = setup_report.read_install_runs(fake_mac["setup"] / "install.log")
+    at = datetime(2026, 9, 29, 10, 0, 50, tzinfo=UTC)
+    agents = setup_report._SyncStop(at, "lock", "agent", None, True)
+    assert setup_report.compute_outcome(att, runs, sync_stops=[agents]).kind == "worked with help"
+    # not measured: the person's only while a doctor FAIL in a person's bucket stands
+    unread = setup_report._SyncStop(at, "manifest", "person", None, False, "lost")
+    assert setup_report.compute_outcome(att, runs, sync_stops=[unread]).kind == "worked with help"
+    failed = setup_report.compute_outcome(
+        att, runs, sync_stops=[unread], persons_fails=["state_dir.manifest"]
+    )
+    assert failed.text == "failed at step 3", failed
+    assert failed.why[1] == (
+        "a sync at step 3 exited 1 on agentsync's state file, which was missing after earlier syncs, and "
+        "doctor's state_dir.manifest FAIL still stands: the person's to fix"
+    ), failed
 
 
 @pytest.mark.usefixtures("clean_doctor")

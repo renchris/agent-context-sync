@@ -2701,14 +2701,102 @@ def _sync_stop_reason(stops: Sequence[_SyncStop]) -> str | None:
     return f"{_plural(len(fixed), 'sync')} at step 3 exited 1 on {whats}, and {each} ended 0 after {who}"
 
 
+def _open_stop_reasons(stops: Sequence[_SyncStop], paired: Collection[int]) -> list[str]:
+    """B13 round 25 ruling 11 (D1, D7, D18, D24, D28, D35, D58, D69): the outcome's reasons for the step-3
+    sync stops no later sync ended 0 after that claim the agent's error line (``paired``, their ``id``s,
+    :func:`_stop_pairs`), one for the measured ones and one for those not measured: the claimed line is no
+    reason of its own any more, so the stop is, or a stop that never recovered read "fully one command". A
+    stop with neither a later sync that ended 0 nor a claimed line is an Items line and no reason."""
+    out: list[str] = []
+    for measured in (True, False):
+        open_ = [s for s in stops if s.ended_ok is None and id(s) in paired and s.measured is measured]
+        if not open_:
+            continue
+        whats = " and ".join(dict.fromkeys(s.what for s in open_))
+        it = "it" if len(open_) == 1 else "them"
+        then = (
+            f"no sync ended 0 after {it} by this report"
+            if measured
+            else f"whether a sync ended 0 after {it} was not measured"
+        )
+        whose = (
+            "the agent's chmod"
+            if all(s.owner == "agent" for s in open_)
+            else "the person's"
+            if all(s.owner == "person" for s in open_)
+            else "the agent's chmod or the person's"
+        )
+        out.append(
+            f"{_plural(len(open_), 'sync')} at step 3 exited 1 on {whats}, and {then}: the fix is {whose}"
+        )
+    return out
+
+
+def _open_persons_stop(stops: Sequence[_SyncStop], persons_fails: Sequence[str] = ()) -> _SyncStop | None:
+    """B13 round 25 ruling 10 (D3, D19, D27): the last step-3 sync stop whose fix is the person's that no
+    later sync ended 0 after, when the step ended on it: v33 has the agent log it, show the [FAIL] line and go
+    to the report, so no sync can run after it, and the attempt "failed" at the report step, as the same
+    state at step 2 does (round 23 A36's "never failed" held for the agent's chmod, which a re-sync follows).
+    One whose record could not be measured (the runs table not read) counts only while a doctor FAIL in a
+    person's bucket (``persons_fails``, their names) still stands. None otherwise: an agent-owned stop and a
+    step 3 error with no stop record keep "worked with help"."""
+    open_ = [
+        s for s in stops if s.owner == "person" and s.ended_ok is None and (s.measured or bool(persons_fails))
+    ]
+    return max(open_, key=lambda s: s.at) if open_ else None
+
+
+def _persons_stop_reason(stop: _SyncStop, persons_fails: Sequence[str]) -> str:
+    """The outcome's reason for :func:`_open_persons_stop`'s stop: what stopped it in its kind's words and
+    that its fix is the person's, with no bracket or second "; " inside (B13 round 21 Y32)."""
+    which = _SYNC_STOP_KINDS.get(stop.kind, _SYNC_STOP_KINDS["refused"])
+    if stop.measured:
+        then = "no later sync ended 0"
+    else:
+        names = ", ".join(dict.fromkeys(persons_fails))
+        then = f"doctor's {names} FAIL still stands"
+    return f"a sync at step 3 exited 1 on {stop.what}, {which}, and {then}: the person's to fix"
+
+
+_SKIPPED_RE = re.compile(r"\bskipped: lock held\b", re.IGNORECASE)
+_CHMOD_RE = re.compile(r"\bchmod\b", re.IGNORECASE)
+_CHMOD_MODE_RE = re.compile(r"\bchmod\s+(?:-[A-Za-z]+\s+)*0?([0-7]{3})\b", re.IGNORECASE)
+_EXIT_RE = re.compile(r"\b(?:exited|exit(?: code| status)?|rc)\s*[=:]?\s*([1-9]\d*)\b", re.IGNORECASE)
+
+
+def _claims(stop: _SyncStop, error: FrictionEvent) -> bool:
+    """Whether the agent's report-step ``error`` can be its account of ``stop`` (B13 round 25 ruling 11, as
+    the lead refined it): v33 has the agent log a stop it fixed "with its exit code and the chmod you ran",
+    and one whose fix is the person's "with its exit code", where no chmod runs. So an agent-owned stop claims
+    only a line that names a chmod (one that names a mode names its file's: 700 for the state folder, 600 for
+    a file, either for a governance one: D57), a person-owned stop only a line that names the sync's non-zero
+    exit and no chmod, and a "skipped: lock held" line, which writes no sync-stops.log line, neither."""
+    text = f"{error.what} {error.fix}"
+    if _SKIPPED_RE.search(text):
+        return False
+    if stop.owner != "agent":
+        return _EXIT_RE.search(text) is not None and _CHMOD_RE.search(text) is None
+    if _CHMOD_RE.search(text) is None:
+        return False
+    modes = set(_CHMOD_MODE_RE.findall(text))
+    fits = (
+        {"700"} if stop.file == "state-folder" else {"600", "700"} if stop.file == "governance" else {"600"}
+    )
+    return not modes or bool(modes & fits)
+
+
 def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_SyncStop, FrictionEvent]]:
-    """Each step-3 sync stop :func:`_sync_stop_reason` counts, paired with the agent's error line for it (B13
-    round 24 ruling 9; B2, B23, B78, B97). The prompt has the agent log a sync that stopped as an error of the
-    report step, and agentsync records the same stop in sync-stops.log, so one stop has two records. One to
-    one, by order, never by a time window: in time order, each recorded stop whose later sync ended 0 claims
-    the first unclaimed report-step error at or after it and before the next recorded stop (any stop, counted
-    or not). An error left unclaimed (a second "skipped: lock held", which writes no sync-stops.log line, or
-    one logged before the stop) stays the agent's own line, as does an error with no time."""
+    """Each recorded step-3 sync stop paired with the agent's error line for it (B13 round 24 ruling 9; B2,
+    B23, B78, B97). The prompt has the agent log a sync that stopped as an error of the report step, and
+    agentsync records the same stop in sync-stops.log, so one stop has two records. One to one, by order: in
+    time order, each recorded stop claims the first unclaimed report-step error at or after it (one in the
+    same second is) that :func:`_claims` accepts, before the stop after next: v33 logs a fixed stop's line
+    after its re-sync, which can stop again first (D57, D75).
+    B13 round 25 ruling 11 (D1, D7, D18, D24, D28, D35, D58, D69): every recorded stop pairs, not only one a
+    later sync ended 0 after (v33 sends a person's fix to the report with no later sync; an unmeasured stop
+    is not known to have one), and :func:`_open_stop_reasons` keeps each paired stop a reason. An error left
+    unclaimed (a "skipped: lock held" line, one logged before the stop, one with no time) stays the agent's
+    own line."""
     errors = [
         e
         for e in _run_events(attempt)
@@ -2718,9 +2806,7 @@ def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_Syn
     claimed: set[int] = set()
     pairs: list[tuple[_SyncStop, FrictionEvent]] = []
     for i, stop in enumerate(ordered):
-        if stop.ended_ok is None:
-            continue
-        nxt = ordered[i + 1].at if i + 1 < len(ordered) else None
+        bound = ordered[i + 2].at if i + 2 < len(ordered) else None
         error = next(
             (
                 e
@@ -2728,7 +2814,8 @@ def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_Syn
                 if e.line not in claimed
                 and e.at is not None
                 and e.at >= stop.at
-                and (nxt is None or e.at < nxt)
+                and (bound is None or e.at < bound)
+                and _claims(stop, e)
             ),
             None,
         )
@@ -2740,7 +2827,8 @@ def _stop_pairs(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[tuple[_Syn
 
 def _unpaired_errors(attempt: Attempt, stops: Sequence[_SyncStop]) -> list[FrictionEvent]:
     """The attempt's report-step errors no sync-stops.log line claims (:func:`_stop_pairs`): each is a turn
-    of its own, an outcome reason when the last install run ended 0 (B13 round 23 A36)."""
+    of its own, an outcome reason when the last install run ended 0 (B13 round 23 A36). A claimed one is its
+    stop's record, and the stop is the reason (B13 round 25 ruling 11)."""
     paired = {e.line for _stop, e in _stop_pairs(attempt, stops)}
     return [
         e
@@ -2762,6 +2850,7 @@ def compute_outcome(
     doctor_fails: Sequence[str | tuple[str, str | None]] = (),
     config_cause: str | None = None,
     sync_stops: Sequence[_SyncStop] = (),
+    persons_fails: Sequence[str] = (),
 ) -> Outcome:
     """Computed from what the person saw and did, never from the agent's own friction lines. Judged on the
     attempt's install runs (``--list-folders`` runs are not install runs):
@@ -2775,7 +2864,8 @@ def compute_outcome(
     - worked with help: the last install run ended rc 0 otherwise (also with no friction log, or an attempt
       with no v5 event line, whose human turns are unknown);
     - failed at step <n>: at the installer's step (3) when the last install run did not end rc 0; at the
-      stopping error's step when install.sh ended rc 0; with no install run, at the step of the last error
+      stopping error's step when install.sh ended rc 0, or at the report step when step 3 ended on a sync
+      stop the person must fix (B13 round 25 ruling 10); with no install run, at the step of the last error
       with no later end of that step (then the last error, then the last step logged);
     - stopped at step 1: no install run, no error and no end line, at least one step 1 deviation, and every
       other event a step 1 event of a kind in :data:`_WAIT_OK_KINDS` (B13 round 7 H40): the session stopped
@@ -2791,7 +2881,10 @@ def compute_outcome(
     the caller
     (:func:`_outcome_cause`, no bracket in it), so a stop on the state folder says it and whose it is (B13
     round 22 Z6). ``sync_stops``: the attempt's step-3 sync stops (:func:`_read_sync_stops`); one a later sync
-    ended 0 after makes it "worked with help" (B13 round 23 A9, the lead's ruling)."""
+    ended 0 after makes it "worked with help" (B13 round 23 A9, the lead's ruling), as does one that claims
+    the agent's error line (B13 round 25 ruling 11); one whose fix is the person's that no later sync ended 0
+    after makes it "failed" at the report step (ruling 10: :func:`_open_persons_stop`, with
+    ``persons_fails``, the doctor FAILs in a person's bucket now, for one whose record was not measured)."""
     installs = install_runs_only(runs)
     last = installs[-1] if installs else None
     layout = attempt.layout if attempt is not None else prompt_layout(None)
@@ -2862,6 +2955,16 @@ def compute_outcome(
                     ),
                     version,
                 )
+            # B13 round 25 ruling 10 (D3, D19, D27): a step 3 that ended on the person's unfixed FAIL failed
+            # at the report step, as the same state at step 2 does
+            persons_stop = _open_persons_stop(sync_stops, persons_fails)
+            if persons_stop is not None:
+                return Outcome(
+                    "failed",
+                    layout.report_step,
+                    ("install.sh exit 0", _persons_stop_reason(persons_stop, persons_fails)),
+                    version,
+                )
             retried = retried_runs(attempt, runs)
             if retried:
                 exits = ", ".join(dict.fromkeys(str(run.rc) for run in retried))
@@ -2869,6 +2972,8 @@ def compute_outcome(
             stopped_sync = _sync_stop_reason(sync_stops)
             if stopped_sync is not None:  # B13 round 23 A9
                 why.append(stopped_sync)
+            # B13 round 25 ruling 11: a stop that claims the agent's line is a reason, fixed or not
+            why += _open_stop_reasons(sync_stops, {id(s) for s, _e in _stop_pairs(attempt, sync_stops)})
             if layout.logs_steps and not any(
                 e.kind in (*FRICTION_KINDS, *STEP_KINDS) for e in attempt.events
             ):
@@ -2894,10 +2999,11 @@ def compute_outcome(
                 )
             # B13 round 23 A36: the prompt has the agent log a sync of the report step that stopped as an
             # error of that step; stopping_error never reads that step, so it was "fully one command" beside
-            # an Items line naming the error. It is a turn: worked with help, never failed. A stop on a state
-            # file this account could not open also leaves a sync-stops.log line (A9), already a reason above:
-            # its error is paired with it and counted once; a second "skipped: lock held" leaves no line, and
-            # its error counts here (B13 round 24 ruling 9)
+            # an Items line naming the error. It is a turn: worked with help, never failed (except a stop the
+            # person must fix that the step ended on, above: B13 round 25 ruling 10). A stop on a state file
+            # this account could not open also leaves a sync-stops.log line (A9), already a reason above: its
+            # error is paired with it and counted once; a second "skipped: lock held" leaves no line, and its
+            # error counts here (B13 round 24 ruling 9; round 25 ruling 11)
             reported = _unpaired_errors(attempt, sync_stops)
             if reported:
                 why.append(f"step {layout.report_step} logged {_plural(len(reported), 'error')}")
@@ -9629,6 +9735,22 @@ def _doctor_fails(r: _Run, runs: Sequence[InstallRun]) -> list[tuple[str, str | 
     return _sort_doctor(r, runs).fails
 
 
+def _persons_fails(r: _Run, runs: Sequence[InstallRun]) -> list[str]:
+    """The doctor FAILs the Doctor line files in a person's bucket now (each ``<check> FAIL (the person's;
+    see Doctor)``): what keeps a step-3 stop whose record was not measured the person's unfixed stop (B13
+    round 25 ruling 10). Empty when doctor did not run."""
+    if r.facts.doctor is None:
+        return []
+    sort = _sort_doctor(r, runs)
+    tail = f" FAIL{_PERSONS}"
+    out: list[str] = []
+    for field in dataclasses.fields(sort):
+        value = getattr(sort, field.name)
+        if isinstance(value, list):
+            out += [x[: -len(tail)] for x in value if isinstance(x, str) and x.endswith(tail)]
+    return out
+
+
 def _step3_stops(r: _Run, index: int) -> list[_SyncStop]:
     """Attempt ``index``'s step-3 sync stops (:func:`_read_sync_stops`): from its begin to its end line, else
     to the next attempt's begin, each paired with the first later sync the manifest's ``runs`` table records
@@ -9729,6 +9851,7 @@ def _attempt_outcome(r: _Run, index: int) -> Outcome:
         doctor_fails=_doctor_fails(r, runs) if latest else (),
         config_cause=_outcome_cause(r, runs),
         sync_stops=_step3_stops(r, index),
+        persons_fails=_persons_fails(r, runs) if latest else (),
     )
     rerun = _rerun_note(fr, index)
     if rerun is not None and (outcome.kind, outcome.step) == ("failed", 1):
@@ -12345,8 +12468,14 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     att = fr.latest if fr is not None else None
     runs = _latest_runs(r)
     stops = _step3_stops(r, len(fr.attempts) - 1) if fr is not None else []  # B13 round 23 A9
+    persons_fails = _persons_fails(r, runs)
     outcome = compute_outcome(
-        att, runs, doctor_fails=_doctor_fails(r, runs), config_cause=_outcome_cause(r, runs), sync_stops=stops
+        att,
+        runs,
+        doctor_fails=_doctor_fails(r, runs),
+        config_cause=_outcome_cause(r, runs),
+        sync_stops=stops,
+        persons_fails=persons_fails,
     )
     run_type = compute_run_type(runs, home_path())
     r.outcome, r.run_type = outcome, run_type
@@ -12445,6 +12574,19 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
     account = {id(s): e for s, e in pairs}
     helped = outcome.kind == "worked with help"
     told = _unpaired_errors(att, stops) if att is not None and helped else []
+    # the stops the outcome counts: when it worked with help, each a later sync ended 0 after or that claims
+    # the agent's line (B13 round 25 ruling 11); when step 3 ended on the person's unfixed stop, that one
+    # (ruling 10)
+    persons_stop = _open_persons_stop(stops, persons_fails)
+    if helped:
+        reason_stops = sum(s.ended_ok is not None or id(s) in account for s in stops)
+    elif persons_stop is not None and outcome.why == (
+        "install.sh exit 0",
+        _persons_stop_reason(persons_stop, persons_fails),
+    ):
+        reason_stops = 1
+    else:
+        reason_stops = 0
     if att is not None:
         synced = synced_before(runs)
         unstarted = fr is not None and _headerless(fr, len(fr.attempts) - 1) and not runs
@@ -12539,7 +12681,7 @@ def _summary(r: _Run, *, header: list[str]) -> list[str]:
                 stop,
                 len(stops),
                 paired=[e for _s, e in pairs],
-                fixed=sum(s.ended_ok is not None for s in stops) if helped else 0,
+                fixed=reason_stops,
                 counted=told,
             )
         )

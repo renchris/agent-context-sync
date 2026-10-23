@@ -28405,6 +28405,8 @@ sync ended 0). Tests: `test_readme_step3_gives_the_agent_the_same_chmod` (`STEP3
 Amended 2026-10-22, §16.173 B1, B8, B22, B40, B50, B60, B79, B96: v33 keeps the sentence and corrects its reason: `(agentsync
 records a sync that stopped on its state file, but not the chmod you ran or every stop; the report pairs your line
 with its record)`, since round 23's A9 keeps sync-stops.log.
+Amended 2026-10-23, §16.178 D3, D19, D27: a step 3 sync stop whose fix is the person's that no later sync ended 0
+after is "failed" at the report step (round 25 ruling 10); every other report-step error stays worked with help.
 
 **The person's kinds name a state folder that is not a folder** (A2, A6, A21, A32, A80, ruling 6; amends §16.160
 Z65). `a state file that is damaged, another account's or not a file, a state folder that is not a folder, or a
@@ -28861,6 +28863,9 @@ feeds it (a failed run, where no such reason is added, keeps it). An error logge
 `test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason` and
 `test_a_step_3_sync_that_stopped_is_worked_with_help` (its Items slice now ends at Run metadata, so the F-line is
 checked where it is, not under Agent friction).
+Amended 2026-10-23, §16.178 D1, D7, D18, D24, D28, D35, D57, D58, D69, D75: every recorded stop pairs, fixed or not,
+up to the stop after next and with a line of its own kind (a chmod line for the agent's, a non-zero exit with no chmod
+for the person's, never a skip line); a paired stop no later sync ended 0 after is a reason of its own (ruling 11).
 
 **A lost manifest is the person's in the report** (B4, B9, B14, B18, B25, B26, B32, B34, B35, B44, B49, B99;
 ruling 7, in lane B's round 23 A29 words). With manifest.sqlite missing while heartbeat.json beside it records an
@@ -29521,7 +29526,45 @@ uv, test_deploy_pack's tool Python, gitleaks, git's fsmonitor hook).
 
 ### 16.178 Round 25: setup report: a step 3 stop on the person's FAIL, pairing every stop, the manifest's side files (2026-10-23, wave B13 round 25 lane RA)
 
-Reserved for round 25 lane RA of B13 (`docs/plans/bring-back-ocr.md`, "B13 round 25").
+Lane RA's 27 items (`src/agentsync/setup_report.py`; specs `round25/items/<id>.md`, each built as its verifier
+corrected it). Rulings 10, 11 and 12 of `docs/lanes/COMMON.md` (round 25) govern the first groups.
+
+**A step 3 that ends on the person's stop failed there** (D3, D19, D27, ruling 10; amends §16.166 A36). v33 has the
+agent log a sync that stopped on a `[FAIL]` whose fix is the person's, show that line and go to the report, with no
+sync after it, and the report said "worked with help" (A36's "never failed", made for the agent's chmod, which a
+re-sync follows), or "fully one command" with no agent line, while the same state at step 2 says "failed at step 2".
+`_open_persons_stop` finds the last recorded stop with `owner=person` that no later sync ended 0 after, and
+`compute_outcome` (last install run at rc 0, after `stopping_error`) returns `failed at step 3 (computed: install.sh
+exit 0; a sync at step 3 exited 1 on <what>, <its kind's words>, and no later sync ended 0: the person's to fix)`
+(`_persons_stop_reason`); the issue form gets `Failed at step 3 (sync loop and report)`. A stop whose runs table
+could not be read counts only while a doctor FAIL in a person's bucket stands (`_persons_fails`, the Doctor line's
+`<check> FAIL (the person's; see Doctor)` entries, the latest attempt's only), and then says `..., and doctor's
+<check> FAIL still stands: the person's to fix`: a fixed state is never called failed. An agent-owned stop, a stop
+a later sync ended 0 after and a step 3 error with no stop record keep "worked with help". The friction line counts
+the stop as the outcome's reason. Tests: `test_a_step_3_that_ends_on_the_persons_stop_failed_at_the_report_step`,
+`test_a_step_3_sync_stop_the_agents_chmod_fixed_is_an_item_and_worked_with_help` (its no-later-sync case now fails
+at step 3).
+
+**Every recorded stop pairs with a line of its own kind** (D1, D7, D18, D24, D28, D35, D57, D58, D69, D75, ruling
+11; amends §16.171 B2). Round 24's `_stop_pairs` paired only a stop a later sync ended 0 after, so the stop v33
+sends to the report (the person's fix), an agent's stop that came back after its chmod and every unmeasured stop
+were two Items lines and two counts; and its bound at the next stop gave the second of two stops the first one's
+line, since v33 logs a fixed stop's line after the re-sync, which can stop again first (D57), or in the same second
+(D75). Now in time order each recorded stop claims the first unclaimed report-step error with a time at or after it
+(the same second counts) and before the stop after next, of its own kind only (`_claims`, the lead's refinement of
+the ruling): an `owner=agent` stop a line naming a chmod (one that names a mode names its file's: 700 for the state
+folder, 600 or 700 for a governance file, 600 for any other: D57's case R, an unlogged folder stop, leaves the
+lock's `chmod 600` line to the lock), an `owner=person` stop a line naming the sync's non-zero exit and no chmod
+(v33: "with its exit code"), and no stop a `skipped: lock held` line, which writes no sync-stops.log line and stays
+a reason of its own. A paired stop no later sync ended 0 after is a reason (`_open_stop_reasons`): `N sync(s) at step
+3 exited 1 on <whats>, and no sync ended 0 after it|them by this report: the fix is <the agent's chmod | the
+person's>`, or `..., and whether a sync ended 0 after it was not measured: ...`; so pairing never turns a stop that
+did not recover into "fully one command", and `step 3 logged N errors` counts only unclaimed errors. The friction
+line's count of stops among the outcome's reasons takes these in. Shell twin: lane RB (§16.179). Tests:
+`test_every_step_3_stop_claims_the_agents_line_that_names_its_fix` (D57's A, B, C and R, D75's two),
+`test_a_stop_no_later_sync_ended_0_after_is_one_items_line_and_still_a_reason`,
+`test_a_step_3_stop_both_records_hold_is_one_item_and_one_reason` (two stops now claim two chmod lines; a skip line
+stays a reason), and the guide's `test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error`.
 
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 

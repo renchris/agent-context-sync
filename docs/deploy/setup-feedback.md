@@ -306,7 +306,7 @@ install.log (a `--list-folders` run is not an install run):
   and v7 neither that question nor the one Allow click it announces in step 1, so every logged one is beyond
   them), no `approval` line, no error that stopped the run, and doctor shows no
   `[FAIL]`; no `error` logged at the report step, and no step 3 sync stop in `sync-stops.log` that a later
-  sync ended ok after (v7 and later prompts; below); and step 1's list did not log `synced=unreadable`
+  sync ended ok after or that claims the agent's error line for it (v7 and later prompts; below); and step 1's list did not log `synced=unreadable`
   before an install run that kept folders (section "A Mac that is already set up"). An attempt with no event line at all is the expected case.
 
   Since prompt v7 the install command must also have worked the first time. An install run that failed before
@@ -334,17 +334,24 @@ install.log (a `--list-folders` run is not an install run):
   sync ended ok after (the agent's chmod or the person's fix in between; for the heartbeat, only once the
   heartbeat file was written again) is the reason `1 sync at step 3 exited 1 on agentsync's state file,
   and it ended 0 after the agent's chmod` (`each` for several, `a fix` when the person's; B13 round 23
-  A9). When the manifest's runs table cannot be read, whether a sync ended ok is not measured, and the
-  stop is no reason. The prompt has the agent log the stop as an `error` of the report step (step 3 since
-  v6), and such a line is the reason `step 3 logged 1 error` (A36): no error of that step stops the run,
-  so with the last install run at exit 0 it is never "failed". One stop is counted once: in time order,
-  each recorded stop that a later sync ended ok after claims the first unclaimed step 3 error with a time
-  at or after it and before the next recorded stop, and the pair is one Items line ending `(F<n>: the
-  agent's account of it)`; `step 3 logged N errors` counts only the errors no stop claims (a second
-  `skipped: lock held`, which writes no `sync-stops.log` line, or one logged before its stop), and each
-  of those is an Items line too. Neither kind is then in the Agent friction list, which holds what does
-  not change the outcome. A recorded stop that no later sync ended ok after is an Items line and no reason
-  of its own; the agent's error line for it still is.
+  A9). When the manifest's runs table cannot be read, whether a sync ended ok is not measured. The prompt
+  has the agent log the stop as an `error` of the report step (step 3 since v6), and such a line is the
+  reason `step 3 logged 1 error` (A36): no error of that step stops the run by itself, so with the last
+  install run at exit 0 it is "worked with help" (a stop whose fix is the person's that step 3 ended on is
+  the one "failed" case, below). One stop is counted once: in time order, each recorded stop claims the
+  first unclaimed step 3 error with a time at or after it (the same second counts) and before the stop
+  after next (v33 logs a fixed stop's line after the sync that follows its chmod, which can stop again
+  first), of its own kind only: a stop the agent fixes claims a line that names a chmod (a line that names
+  a mode names its file's: 700 for the state folder, 600 for a file), a stop whose fix is the person's a
+  line that names the sync's non-zero exit and no chmod, and no stop claims a `skipped: lock held` line,
+  which writes no `sync-stops.log` line (B13 round 25 ruling 11). The pair is one Items line ending
+  `(F<n>: the agent's account of it)`; `step 3 logged N errors` counts only the errors no stop claims (a
+  `skipped: lock held`, or one logged before its stop), and each of those is an Items line too. A paired
+  stop that no later sync ended ok after is a reason of its own: `1 sync at step 3 exited 1 on agentsync's
+  lock file, and no sync ended 0 after it by this report: the fix is the agent's chmod` (`whether a sync
+  ended 0 after it was not measured` when the runs table cannot be read). Neither kind is then in the
+  Agent friction list, which holds what does not change the outcome. A recorded stop with neither a later
+  sync that ended ok nor a claimed line is an Items line and no reason of its own.
 - **Failed at step N**: the last install run did not exit 0 or has no end line (killed, or still running); then N
   is 2, the step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an
   error logged in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a
@@ -358,7 +365,12 @@ install.log (a `--list-folders` run is not an install run):
   written after install.sh exited 0 is agent friction. If no install run happened, N is the step of the last
   `error` line, failing that the last step logged (unless the attempt only stopped at step 1, below), and failing
   that 1 when only `--list-folders` ran (for an earlier attempt whose last list worked, see the U35 exception
-  below).
+  below). When the last install run exited 0 and step 3 ended on a recorded sync stop whose fix is the person's
+  that no later sync ended ok after (v33 has the agent log it, show the `[FAIL]` line and go to the report), N is
+  the report step: `failed at step 3 (computed: install.sh exit 0; a sync at step 3 exited 1 on agentsync's state
+  file, which was missing after earlier syncs, and no later sync ended 0: the person's to fix)`, as the same state
+  at step 2 is `failed at step 2`. A stop whose runs table cannot be read counts only while doctor shows a
+  `[FAIL]` in a person's bucket (B13 round 25 ruling 10).
 - **Stopped at step 1**: no install run, no `error` line and no `end | finished` line; at least one step 1
   `deviation`; and every other line the attempt logged is a step 1 `question`, `click`, `approval` or `prompt`
   line (since round 7: step 1 may log an approval or a go-ahead before it stops). The session stopped where step 1
