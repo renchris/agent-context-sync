@@ -10594,17 +10594,21 @@ X28): apart from :data:`_STATE_UNREAD_WORDS`, a damaged one, whose fix differs."
 _STATE_SHUT_FOLDER_WORDS = "from the state folder this account cannot open"
 """The same bucket when :func:`_state_shut` finds the folder shut, or a folder above it that refuses a search:
 the words name what failed (B13 round 22 Z31, Z15; round 22 ruling 3), on the Doctor line and the outcome."""
-_REFUSED_WORDS = "from a file in the state folder this account cannot open"
+_REFUSED_WORDS = "from a file or folder in the state folder this account cannot use as its check needs"
 """The Doctor line's bucket for the lock, heartbeat, holds.json or purge-queue FAIL of a file
-:func:`_refused_files` finds this account cannot open (B13 round 21 Y45, Y43): not the manifest, which
-:data:`_STATE_SHUT_WORDS` names. Each FAIL carries its owner as the state file's bucket does (B13 round 22
-Z32, Z43): "the person's" when doctor's own fix for it is the person's, else "the agent's", this account's
-chmod (the round 21 ownership rule)."""
+:func:`_refused_files` finds this account cannot open (B13 round 21 Y45, Y43), the governance/ folder that
+refuses it a write (round 24 B61) and the audit trail it cannot append to (A79): "a file or folder ...
+cannot use as its check needs", as a 0500 governance/ opens and a 0400 audit trail reads (B13 round 25 D36;
+install.sh's step 1 tail says the same of its step). Not the manifest, which :data:`_STATE_SHUT_WORDS`
+names. Each FAIL carries its owner as the state file's bucket does (B13 round 22 Z32, Z43): "the person's"
+when doctor's own fix for it is the person's, else "the agent's", this account's chmod (the round 21
+ownership rule)."""
 _STATE_LOOSE_WORDS = "from a state folder or file others can read"
 """The Doctor line's bucket for a state_dir or state_dir.files FAIL of a state folder or file this account
 owns and opens whose mode lets others read it (B13 round 23 A49): doctor's fix is this account's chmod 700 or
 chmod 600, the agent's, as install.sh's status-step NEXT names it, while the report filed it as unexpected
-with no owner. Not the words of the buckets above, which say "this account cannot open"."""
+with no owner. Not the words of the buckets above, which say "this account cannot open" or "cannot use as
+its check needs"."""
 _NOT_FOLDER_WORDS = "from the state folder that is not a folder"
 """The Doctor line's bucket when the state folder, or a folder above it, is not a folder (B13 round 23 A23,
 round 23 ruling 4): state_dir's FAIL, the person's move aside, and each other check that reads the state

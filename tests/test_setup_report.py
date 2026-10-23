@@ -16435,8 +16435,8 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
         line = _line(summary, "- doctor: ")
         # B13 round 22 Z32, Z43: this account's own chmod is named the agent's, as the state file's bucket
         bucket = (
-            " · from a file in the state folder this account cannot open (1 check): "
-            f"{check} FAIL (the agent's; see Doctor) · "
+            " · from a file or folder in the state folder this account cannot use as its check needs (1 "
+            f"check): {check} FAIL (the agent's; see Doctor) · "
         )
         assert bucket in line and line.endswith(" · unexpected 0"), line
         assert "the person's" not in line, line
@@ -16445,6 +16445,15 @@ def test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_b
         outcome = _line(summary, "- **outcome: ")
         assert "unexpected doctor FAIL" not in outcome, outcome
     assert "holds.json cannot be opened: Permission denied" not in text  # the last report is the lock's
+    # B13 round 25 D36: a governance/ folder at 0500 opens and refuses a write: never "a file ... cannot open"
+    holds.parent.chmod(0o500)
+    try:
+        _rc, text, _ = report(tmp_path, cfg)
+    finally:
+        holds.parent.chmod(0o700)
+    line = _line(section(text, "Summary"), "- doctor: ")
+    assert " · from a file or folder in the state folder this account cannot use as its check needs (" in line
+    assert "governance.hold FAIL (the agent's; see Doctor)" in line and "cannot open" not in line, line
     # whose, by the fix doctor's FAIL gives: a governance/ folder at 0000 is the agent's chmod 700, and
     # another account's file the person's chown (lane B's reviewer: the owner alone missed an ACL)
     config = load_config(cfg)

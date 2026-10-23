@@ -29608,6 +29608,13 @@ beside install.log whatever the config, and with none each is not measured, `(th
 (`_SyncStop.unread`), as the config is needed only for the runs table and the heartbeat; an unpaired unmeasured
 stop is still no reason. Test: `test_a_step_3_stop_is_listed_when_the_config_does_not_load`.
 
+**The refused-files bucket says "cannot use as its check needs"** (D36). Round 24's B61 files a governance/ folder
+that refuses a write in `_REFUSED_WORDS`, which said `from a file in the state folder this account cannot open`: a
+0500 folder opens, and a 0400 audit trail (A79, tested for a write) reads. It now says `from a file or folder in the
+state folder this account cannot use as its check needs`, true of a 0400 lock, a 0000 holds.json, a 0500
+governance/ and a 0400 audit trail alike, as install.sh's step 1 tail says of its step. Test:
+`test_a_lock_or_governance_file_this_account_cannot_open_has_its_own_doctor_bucket` (a 0500 governance/ case).
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.
