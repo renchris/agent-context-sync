@@ -1596,6 +1596,47 @@ def test_a_holds_reason_and_owner_are_in_no_part_of_the_report(
     assert "<value>" not in report_text, section(report_text, "Redaction")
 
 
+def test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private(
+    fake_mac: dict[str, Path],
+) -> None:
+    """B13 round 25 D80: a one-word hold owner or reason that is a word the report prints ("Early",
+    "Gateway") was left out of the values, so a line quoting it printed it in clear, while the shell report,
+    whose word list differs, cut it (and the reverse for a word only the shell prints). It is a value now,
+    cut wherever it stands, and once it is, the report is for a private copy only, as a one-word folder name
+    is (F92); a hold of several words does not do that."""
+    assert {"early", "gateway"} <= setup_report.report_words()
+    cfg = fake_mac["config"]
+    plain = cfg.read_text(encoding="utf-8")
+    cfg.write_text(
+        '[governance]\nhold = true\nhold_reason = "Gateway"\nhold_owner = "Early"\n\n' + plain,
+        encoding="utf-8",
+    )
+    (fake_mac["setup"] / "install.out").write_text(
+        "# run=20260929T100000Z-4242 2026-09-29T10:00:00Z install.sh --source-local x\n"
+        "note: Early said the Gateway hold stays on\n",
+        encoding="utf-8",
+    )
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    assert "Early said" not in text and "the Gateway hold" not in text, [
+        ln for ln in text.splitlines() if "said the" in ln
+    ]
+    assert "<value> said the <value> hold stays on" in text
+    redaction = text.split("\n## Redaction\n", 1)[1]
+    assert (
+        "Private only: a hold's reason or owner is also a word this report prints, so where <value> stands "
+        "in the report's own text it can be read back.\n" in redaction
+    ), redaction
+    assert "never as a public issue: it would show that name." in redaction, redaction
+    assert setup_report.issue_link(text) is None
+    # a hold of several words is cut as before, and no word of the report's is at stake
+    cfg.write_text(
+        '[governance]\nhold = true\nhold_reason = "Fabrikam review"\nhold_owner = "Avery Quill"\n\n' + plain,
+        encoding="utf-8",
+    )
+    text = setup_report.build_report(cfg, hooks=setup_report.ReportHooks())[0]
+    assert "Private only:" not in text and setup_report.issue_link(text) is not None
+
+
 def test_a_multi_line_or_path_holding_hold_is_in_no_part_of_the_report(
     fake_mac: dict[str, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -29666,6 +29666,18 @@ no value, which git refuses and the shell's awk skips, is still none), with the 
 longest. `_git_keeps_empty_url` compares the probe's url after the checkout's own rewrites, so an insteadOf cannot
 make an older git read as a newer one. Test: `test_an_empty_insteadof_rewrites_every_url_as_git_does`.
 
+**A one-word hold value the report prints is cut, and the report is private** (D80; lane RB builds the shell
+reader's half, §16.179). `_hold_values` left out a one-word reason or owner that is a word of `report_words()` or
+`_OUTPUT_WORDS`, so a line quoting it (an Items or install.out line, not a ` — set by ` line, which both readers cut
+by pattern) printed it in clear, while the shell report, whose word list differs, cut it (and the reverse for a word
+only the shell prints). Such a value is now registered as a `<value>` too, each reader against its own word list
+(the lists are not merged), and, the F92 rule for a folder name, `Redactor.value_word_shown` is set once one of them
+replaces text in a line, which makes `private_only` true: the Redaction section says `Private only: a hold's reason
+or owner is also a word this report prints, so where <value> stands in the report's own text it can be read back.`,
+`Send it` says `it would show that name`, and no issue link ends the report. Its own set, not `_word_named`: every
+hold value shares the unnumbered `<value>`, so a multi-word one shown must not make it private. The legend's
+`<value>` words are lane RB's (D31). Test: `test_a_one_word_hold_value_the_report_prints_is_cut_and_the_report_is_private`.
+
 ### 16.179 Round 25: the installer and the shell report (2026-10-23, wave B13 round 25 lane RB)
 
 Reserved for round 25 lane RB of B13.

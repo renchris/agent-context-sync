@@ -1224,6 +1224,11 @@ class Redactor:
         # placeholders of one-word folder, library or organisation values matched anywhere that are report
         # words: one shown means the report's own text may give the value back (B13 round 5 F92)
         self._word_named: set[str] = set()
+        # B13 round 25 D80: a one-word hold reason or owner that is a word the report prints, by its folded
+        # form: every hold value shares ``<value>``, so the value itself, matched, makes the report private
+        # only
+        self._value_words: set[str] = set()
+        self.value_word_shown = False
         # _bare(value).lower() -> placeholder of a host matched only where a URL names it, after // or @ or
         # before :<port> (``add(url=True)``): apart,
         # so a later value spelled the same ("Gateway" of "Doe, Jane (Gateway)") is still registered bare
@@ -1298,10 +1303,11 @@ class Redactor:
 
     @property
     def private_only(self) -> bool:
-        """Whether the report is for a private copy only: :attr:`word_named_shown`, or a CloudStorage
-        listing for redaction that did not finish with no list of step 1 in its place
+        """Whether the report is for a private copy only: :attr:`word_named_shown`, a one-word hold reason or
+        owner that is a report word replaced in a line (:attr:`value_word_shown`, B13 round 25 D80), or a
+        CloudStorage listing for redaction that did not finish with no list of step 1 in its place
         (:attr:`listing_unread`). Such a report ends with no public issue link (B13 round 7 H75)."""
-        return self.word_named_shown or self.listing_unread
+        return self.word_named_shown or self.value_word_shown or self.listing_unread
 
     def _placeholder(self, kind: str) -> str:
         if kind == "home":
@@ -1361,6 +1367,8 @@ class Redactor:
         # and nor does a product's name ("Copilot"), as install.sh's fallback_redaction reads both (Y7, Y72)
         generic = kind in ("folder", "library") and (value in _GENERIC_FOLDERS or _agent_words(value))
         named = printed and kind in ("folder", "library", "org") and not context and not generic
+        if printed and kind == "value":  # B13 round 25 D80: the F92 rule for a hold's one-word value
+            self._value_words.add(_bare(value).lower())
         # An accented spelling of a known value ("Société" after "Societe") keeps that placeholder, but is
         # matched as written too: the unaccented value's pattern has no accented letters.
         if known is not None and (
@@ -1580,6 +1588,8 @@ class Redactor:
         if placeholder != text and self._counting:
             self.counts[self._kind_of.get(placeholder, "other")] += 1
             self._used.add(placeholder)
+            if placeholder == "<value>" and _bare(text).lower() in self._value_words:  # B13 round 25 D80
+                self.value_word_shown = True
         plain = _bare(text.replace("\\", "")).lower()  # a shell- or JSON-escaped form too (B13 round 9 K10)
         if placeholder != text and self._lead_kept and plain in self._lead_kept:
             return text[: text.index(plain[0]) + 1] + placeholder  # the separator, with any escape before it
@@ -4605,7 +4615,10 @@ def _hold_values(r: _Run) -> list[str]:
     """Each hold's reason and owner as the config and holds.json give them, whole and line by line as the
     report splits its text: a config value keeps its inner newlines, so a line of it carries no `` — set by ``
     for :data:`_HOLD_SET_RE` to anchor on (B13 round 23 A8). A one-word line the report prints anyway
-    ("legal") is left out: as a value it would cut that word from every line. Each read fails quietly."""
+    ("page") is kept too (B13 round 25 D80: left out, it printed in clear where a line quoted it, and the
+    shell report, whose word list differs, cut it): as a value it cuts that word from every line, and once it
+    does, the report is for a private copy only (:attr:`Redactor.value_word_shown`), as a one-word folder name
+    is (F92). Each read fails quietly."""
     from agentsync import governance  # noqa: PLC0415 - lazy: the report must import even if it is broken
 
     said: list[str] = []
@@ -4620,8 +4633,7 @@ def _hold_values(r: _Run) -> list[str]:
     for value in said:
         for line in [value, *value.splitlines()]:
             form = line.strip()
-            word = len(_tokens(form)) == 1 and (_norm(form) in report_words() or _norm(form) in _OUTPUT_WORDS)
-            if len(form) >= 2 and not word:
+            if len(form) >= 2:
                 out.append(form)
     return list(dict.fromkeys(out))
 
@@ -13279,13 +13291,22 @@ def _redaction_section(
             "Private only: one of your folder, library or organization names is also a word this report "
             "prints, so where its placeholder stands in the report's own text it can be read back."
         ]
+    if red.value_word_shown:  # B13 round 25 D80: a hold's one-word value, the same rule
+        word.append(
+            "Private only: a hold's reason or owner is also a word this report prints, so where <value> "
+            "stands in the report's own text it can be read back."
+        )
     if red.listing_unread:  # B13 round 8 J69
         word.append(
             "Private only: the listing of ~/Library/CloudStorage for redaction did not finish and "
             "install.out holds no folder list of step 1, so a folder name may show in clear."
         )
     if red.private_only:
-        why = "it would show that name" if red.word_named_shown else "a name may be in clear"
+        why = (
+            "it would show that name"
+            if red.word_named_shown or red.value_word_shown
+            else "a name may be in clear"
+        )
         send = (  # and no link ends the report (B13 round 7 H75), as the shell report has none
             "Send it: privately (docs/deploy/setup-feedback.md in the agentsync repository), never as a "
             f"public issue: {why}. Nothing is sent automatically."
