@@ -7,13 +7,14 @@ by the person who ran the setup, sent, and triaged into fixes.
 
 ## 1. How a report is produced
 
-Three sources feed one file, `~/agent-context/setup-report.md`:
+Four sources feed one file, `~/agent-context/setup-report.md`:
 
 | Source | Written by | What it knows |
 |---|---|---|
 | `~/agent-context/setup/install.log` | [`scripts/install.sh`](../../scripts/install.sh), on every real run (never `--report-only`) | per run: the setup-prompt-compat number, install.sh commit, arguments; per step (uv, agentsync, launcher, helpers, config, status, first-sync, agent, wait, report; list-folders for a `--list-folders` run): UTC start, seconds, exit status, done / skipped / failed; the run's exit status and total. Since 2026-10-07 two lines end with counts: `list-folders` with `synced=N`, the folders the config already syncs, when it read the config, or, when a config is there and could not be read (since 2026-10-13), `synced=unreadable marks=<why>`, the why one fixed word (`no-tool`, `timeout`, `older:<name>`, `failed` or `failed:<ErrorClass>`), and the list's other fields (`gone=`, `missing=`, `apps=`, `vanished=`, `config_err=`) are in [A Mac that is already set up](#a-mac-that-is-already-set-up); `config` with `kept=N added=M`, the folders synced before the step and the ones it added |
 | the machine sections | `agentsync setup-report --out ~/agent-context/setup-report.md`, which `install.sh --report-only` runs (step 3 of the prompt; `install.sh` also writes the report at every exit) | macOS and MDM enrollment, Command Line Tools, shell and terminal, uv, Python, pandoc, OneDrive and Company Portal versions, proxy mode, whether git's config sets a proxy and how many URL rewrites it has (a count, never a host), whether this terminal can list `~/Library/CloudStorage`, `~/.local/bin` on `PATH`; the installer runs; the configuration (counts only); doctor's lines that are not ok and the names of the ok checks; status; the LaunchAgents' runs and last exit codes and the launcher's `TCC_*` lines; the last 40 WARNING/ERROR log entries (repeats in a row shown once), read from the last 64 KiB of each log file |
 | `~/agent-context/setup/friction.md` | `install.sh --log-start` and `--log`, which the coding agent runs as it goes, and `--report-only`, which closes the attempt (the attempt starts in step 1's command, so the log survives a session that dies; always appended to, 0600 in a 0700 folder, so a second attempt keeps the first) | per attempt, three header lines from `--log-start 'prompt v33, <agent>'` (`Attempt: <UTC time>`, `Prompt: v33`, `Agent: <tool and model id>`; the version is the one the pasted prompt gave, section 4), then one line per event from `--log '<step>' '<kind>' '<what happened>' '<fix>'`: `<time> \| step <n> \| <kind> \| what happened \| what would have avoided it`, with `<kind>` one of the six in section 4 (a failed command's line gives its exit code; a `prompt` line gives better wording). The steps themselves are not logged: install.log times them. `--log` with other than four values, or a kind not in the list, still logs the event as an `error` line and exits 2. The last line is `<time> \| end \| finished`, which `--report-only` in step 3's command appends just before the report when the attempt has none (until 2026-10-05 a separate end-line command). Every time in these lines is the UTC second of the `install.sh` call that wrote the line, not the moment of the event: lines an agent logs one after another, or that one call writes together, share one time (three lines at one second are not a fault), and the file's order is the order they were logged. Section 4's rules read those times: the session time is first to last, a step 1 `error` starts another session when it is dated more than 10 minutes after the closing line, or when it states `prompt vN, <agent>:` and the open attempt has a header (a `Prompt:`, `Agent:`, `Outcome:` or `Run:` line; the last two appear only in a v4 log), at any gap (the prefix is written only before `--log-start`), or the attempt has no header but stated words of its own and the line is in the strict `<time> \| step 1 \| error \|` form, at any gap (since round 14, Q28), end line or not, and an install.sh run resolves a step 1 `error` only when it started at or after the line's time |
+| `~/agent-context/setup/sync-stops.log` | `agentsync sync` in the foreground with its `NEXT:` hints on (the setup loop's sync, which no install.sh run makes; `cli.SYNC_STOPS_LOG`), only when the setup folder is already there; appended to, 0600 | one line for each such sync that exited 1 on agentsync's own state (B13 round 23 A9; the report reads it for v7 and later prompts): `<UTC> sync-stop file=<role> rc=1 owner=<agent|person> kind=<refused|misplaced|lost>`, the state file or folder by its role (`manifest`, `lock`, `heartbeat`, `state-folder`, ...), whose fix doctor gave (`agent`: this account's chmod) and why it stopped: this account cannot open it, it is not where or what it should be, or the manifest is lost (`kind=` since B13 round 24, CONTRACTS §16.174). It holds no path and no `run=` word, so no install.log reader takes a line for an install run. The report reads the lines inside the attempt and, from the manifest's runs table, the first later sync that ended ok; section 4's outcome rules count them |
 
 `--log-start` and `--log` also keep `proxy-hosts` beside friction.md (0600, one host a line, in lower case and, where
 it differs, as written: the proxy, git proxy and URL rewrite hosts, and the host of each git remote's URL (since
@@ -285,7 +286,7 @@ them), not the folder question and not the Allow clicks it announces. The `Attem
 | `click` | the person clicked something other than an Allow or (since v21) the sign-in the prompt announced | yes (v6 never logs the announced Allow clicks, section 5, and v21 not the sign-in step 1 waits for on a Mac that already syncs folders; in a v5 log, the first click in its steps 2 and 3 are those) | installer automation, or unavoidable OS step |
 | `approval` | the agent's tool asked the person to approve a command (only when the agent can see it) | yes: the README's pre-allow rules avoid it | prompt wording (a pre-allow list) |
 | `deviation` | the agent did something the prompt did not say, worked around a problem, or stopped at step 1 to wait for the folder answer | no: agent friction, counted on its own Summary line | prompt wording or installer automation |
-| `error` | a command failed; the line gives its exit code | only when it stopped the run (below); otherwise agent friction | installer automation or agentsync code |
+| `error` | a command failed; the line gives its exit code | when it stopped the run (below); when it is an error of the report step (step 3 since v6) that no `sync-stops.log` stop claims and the last install run exited 0, as worked with help, never failed (below); otherwise agent friction | installer automation or agentsync code |
 | `prompt` | the prompt was wrong or unclear; the line gives better wording | no: agent friction | prompt wording |
 
 A tool approval the agent cannot see is not in the log. When none is logged, the report prints approvals as "not
@@ -304,8 +305,9 @@ install.log (a `--list-folders` run is not an install run):
   line (prompt v6 logs neither the folder question in step 1 nor the Allow clicks it announces in steps 1 and 2,
   and v7 neither that question nor the one Allow click it announces in step 1, so every logged one is beyond
   them), no `approval` line, no error that stopped the run, and doctor shows no
-  `[FAIL]`; and step 1's list did not log `synced=unreadable` before an install run that kept folders (section
-  "A Mac that is already set up"). An attempt with no event line at all is the expected case.
+  `[FAIL]`; no `error` logged at the report step, and no step 3 sync stop in `sync-stops.log` that a later
+  sync ended ok after (v7 and later prompts; below); and step 1's list did not log `synced=unreadable`
+  before an install run that kept folders (section "A Mac that is already set up"). An attempt with no event line at all is the expected case.
 
   Since prompt v7 the install command must also have worked the first time. An install run that failed before
   the attempt's first install run that exited 0 is a retry, so the outcome is "worked with help" and the
@@ -326,6 +328,23 @@ install.log (a `--list-folders` run is not an install run):
   syncs`).
   Without a friction log, or without the attempt's `Attempt:` line (from `install.sh --log-start`), the human
   turns are unknown, so the outcome is at best this one.
+
+  A sync at the report step that stopped is a turn too. Two records can tell of it. From prompt v7 on,
+  agentsync's `sync-stops.log` line (section 1) records a stop on its own state, and a stop that a later
+  sync ended ok after (the agent's chmod or the person's fix in between; for the heartbeat, only once the
+  heartbeat file was written again) is the reason `1 sync at step 3 exited 1 on agentsync's state file,
+  and it ended 0 after the agent's chmod` (`each` for several, `a fix` when the person's; B13 round 23
+  A9). When the manifest's runs table cannot be read, whether a sync ended ok is not measured, and the
+  stop is no reason. The prompt has the agent log the stop as an `error` of the report step (step 3 since
+  v6), and such a line is the reason `step 3 logged 1 error` (A36): no error of that step stops the run,
+  so with the last install run at exit 0 it is never "failed". One stop is counted once: in time order,
+  each recorded stop that a later sync ended ok after claims the first unclaimed step 3 error with a time
+  at or after it and before the next recorded stop, and the pair is one Items line ending `(F<n>: the
+  agent's account of it)`; `step 3 logged N errors` counts only the errors no stop claims (a second
+  `skipped: lock held`, which writes no `sync-stops.log` line, or one logged before its stop), and each
+  of those is an Items line too. Neither kind is then in the Agent friction list, which holds what does
+  not change the outcome. A recorded stop that no later sync ended ok after is an Items line and no reason
+  of its own; the agent's error line for it still is.
 - **Failed at step N**: the last install run did not exit 0 or has no end line (killed, or still running); then N
   is 2, the step that runs it. When it exited 0 but an `error` line stopped the run, N is that line's step: an
   error logged in step 1 or 2 that no later install.sh run ending 0 resolved (for step 1 any run, a
@@ -408,9 +427,14 @@ is not logged there), says so in a note: a session whose step 1 stopped before `
 not in it, and the person who ran it says which stop it was.
 
 `deviation` and `prompt` lines, and `error` lines that did not stop the run, are agent friction: the Summary counts
-them on their own "agent friction" line with their F-ids, and they do not change the outcome, except that an
-attempt that only stopped at step 1 (above) reads 'stopped' rather than 'failed'. They are still
-triaged like every other line (below).
+them on their own "agent friction" line with their F-ids, and by themselves they do not change the outcome, except
+that an attempt that only stopped at step 1 (above) reads 'stopped' rather than 'failed', and an
+`error` of the report step that no recorded sync stop claims makes it 'worked with help' (above). The same
+line counts the step 3 sync stops agentsync recorded, which come from `sync-stops.log`, not friction.md, and
+names the lines that feed the outcome (`F5 is one of the outcome's reasons`, `F4 is the agent's account of
+it`): it says `none of these changes the outcome by itself` only when no line it lists does, and `the
+others do not change it by themselves` beside those that do. They are still triaged like every other line
+(below).
 - **Failed at step 4 (finish)** is never computed. Only the person sees whether the closing lines came, so
   they pick it by hand. With no friction log and no install.sh run, the outcome is "unknown", and the person picks
   the option too.

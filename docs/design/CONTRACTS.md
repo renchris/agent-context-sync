@@ -5276,6 +5276,14 @@ Amended 2026-10-23, §16.171 B97: a report-step error no step-3 sync stop claims
 so it is an Items line, and the friction line says `F<n> is one of the outcome's reasons (see Items)`, with
 `the others do not change it by themselves` when other lines remain; "none of these changes the outcome by
 itself" only when no listed line feeds the outcome, so the Agent friction heading is true of its list.
+Amended 2026-10-22, §16.176 B80 (by §16.164 A9): a step-3 sync stop `sync-stops.log` records, when a later sync
+ended ok, is a "worked with help" reason (`N sync(s) at step 3 exited 1 on <file>, and it|each ended 0 after
+<the agent's chmod | a fix>`); one with no later ok sync is an Items line only.
+Amended 2026-10-22, §16.176 B80 (by §16.166 A36): an error line of the report step is a "worked with help" reason
+(`step N logged K error(s)`), and `stopping_error` never reads that step, so with the last install run at rc 0 it
+is never "failed"; since round 24 an error a recorded stop claims is counted once, with its stop (§16.171), and that
+pair and each unclaimed error that is a reason are Items lines, out of the "Agent friction" list (the friction line's
+words: B97's line above).
 
 v6 revision (2026-09-30, setup prompt v6 and judge findings L3, L6-L10 and the validators' V-items; supersedes
 the v5 paragraphs where they differ). **Friction log from install.sh.** The agent no longer writes friction.md:
@@ -29368,7 +29376,7 @@ engine reads the image).
 ### 16.176 Round 24: deploy docs, CONTRACTS records and CLAUDE.md's CI time (2026-10-22, wave B13 round 24 lane D)
 
 Lane D's round 24 items (`docs/plans/bring-back-ocr.md`, "B13 round 24"; specs `round24/items/B<n>.md`, the
-verifier's corrected fix built): B76, B77, B84 and B98. None makes things worse.
+verifier's corrected fix built): B76, B77, B80, B84 and B98. None makes things worse.
 
 **The guide's waiting stub was never read** (B76; `docs/deploy/setup-feedback.md`). The Repeat conversions row
 called a `no converter` stub "an image that run read with no OCR engine", and the first run with a converter one
@@ -29384,6 +29392,19 @@ engine as "the ten, pandoc-gfm a second time and msg-mime", and §16.42 never sa
 dated line after A65's names them and how 11, 12 and 13 follow. Test:
 `test_convert_core.py::test_the_ten_converters_every_default_registry_holds_are_named_in_the_contract`, which reads
 the ten from the registry under no rule, each label rule, and with and without an engine.
+
+**The guide's outcome rules and sources follow A9 and A36** (B80; `docs/deploy/setup-feedback.md`; dated lines at
+§16.14). Since §16.164 A9 a step 3 sync that stopped on agentsync's own state writes a `sync-stops.log` line, and one
+a later sync ended ok after is a "worked with help" reason; since §16.166 A36 an `error` the agent logs at the report
+step is one too, never "failed". The guide said three sources feed the report, counted an `error` only when it
+stopped the run, and said friction lines never change the outcome; §16.14's K10 paragraph said so too, with no dated
+line. Section 1 names the fourth source with the line the report reads (lane B's `kind=`, §16.174); the `error` row,
+the fully-one-command conditions and the worked-with-help bullet give both reasons in the code's words and round 24
+ruling 9's pairing as lane RA built it (§16.171: one stop and the agent's error for it are one Items line, counted
+once; `step 3 logged N errors` counts only the errors no stop claims); the friction paragraph names its second
+exception and the friction line's words for the lines that feed the outcome. Two dated lines at K10 record A9 and
+A36. Test: `test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error`, which fills the guide's
+line template and matches it with the report's reader, and computes the A9 reason with `_sync_stop_reason`.
 
 **The `<value>` row names both reports that cut a hold** (B84; `docs/deploy/setup-feedback.md`). Since §16.165 A8
 install.sh's `hold_cut` cuts a hold's reason and owner in the fallback report in the agentsync report's words; the

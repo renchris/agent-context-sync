@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -5922,10 +5923,15 @@ _ROUND_24_E_PARAGRAPH_AMENDS = (("16.28", "| `legacy_waiting` |", "§16.175 B73"
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: B73's in §16.28's `legacy_waiting` row (a recording only a download would
 read is settled too)."""
 
-_ROUND_24_D_PARAGRAPH_AMENDS = (("16.42", "(the route set and the counts: 11 converters,", "§16.176 B77"),)
+_ROUND_24_D_PARAGRAPH_AMENDS = (
+    ("16.42", "(the route set and the counts: 11 converters,", "§16.176 B77"),
+    ("16.14", "**Summary lines (K10).**", "§16.176 B80 (by §16.164 A9)"),
+    ("16.14", "**Summary lines (K10).**", "§16.176 B80 (by §16.166 A36)"),
+)
 """Round 24 lane D's dated lines at sections its claims name with no item, as
 :data:`_ROUND_12_PARAGRAPH_AMENDS`: B77's at §16.42's diagram Tests paragraph, naming the ten converters A65's
-line counts."""
+line counts, and B80's two at §16.14's K10 paragraph, whose agent friction "never change[s] the outcome by
+themselves" since A9 and A36 no longer holds."""
 
 _ROUND_23_B_PARAGRAPH_AMENDS = (
     ("16.29", "Every one is a path a sync makes owner-only", "§16.167 A94"),
@@ -6031,7 +6037,7 @@ def test_round_11s_and_12s_lines_at_unlettered_paragraphs_are_there() -> None:
     assert len(_pinned_dated_lines(_ROUND_21_B_PARAGRAPH_AMENDS)) == len(_ROUND_21_B_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_23_K_PARAGRAPH_AMENDS)) == len(_ROUND_23_K_PARAGRAPH_AMENDS) == 2
     assert len(_pinned_dated_lines(_ROUND_24_E_PARAGRAPH_AMENDS)) == len(_ROUND_24_E_PARAGRAPH_AMENDS) == 1
-    assert len(_pinned_dated_lines(_ROUND_24_D_PARAGRAPH_AMENDS)) == len(_ROUND_24_D_PARAGRAPH_AMENDS) == 1
+    assert len(_pinned_dated_lines(_ROUND_24_D_PARAGRAPH_AMENDS)) == len(_ROUND_24_D_PARAGRAPH_AMENDS) == 3
     assert len(_pinned_dated_lines(_ROUND_24_RA_PARAGRAPH_AMENDS)) == len(_ROUND_24_RA_PARAGRAPH_AMENDS) == 1
 
 
@@ -7580,7 +7586,9 @@ def test_the_guide_names_every_source_of_a_proxy_number() -> None:
         "host of each git remote's URL (since 2026-10-18), in force at that call). It is never embedded; "
         "both reports use it only to redact."
     ) in page
-    assert "Three sources feed one file" in page
+    assert (
+        "Four sources feed one file" in page and "Three sources feed one file" not in page
+    )  # B13 round 24 B80
 
 
 def test_the_guide_quotes_round_11s_installer_bracket_and_list_rule() -> None:
@@ -8039,6 +8047,64 @@ def test_the_value_row_names_both_reports_that_cut_a_holds_reason() -> None:
     # B13 round 24 B55: neither report's cut counts a `<value>` (setup_report._cut_holds counts nothing)
     assert "count" not in cut and "neither report counts such a cut as a `<value>`" in row
     assert "each counted as a `<value>`" not in row
+
+
+def test_the_guides_outcome_rules_name_sync_stops_log_and_the_report_steps_error() -> None:
+    """B13 round 24 B80: since round 23 A9 a step 3 sync that stopped on agentsync's own state leaves a
+    `sync-stops.log` line, and one a later sync ended ok after is a "worked with help" reason; since A36 an
+    error the agent logs at the report step is one too, never "failed". The guide said three sources feed the
+    report, counted an error only when it stopped the run, and said friction lines never change the outcome.
+    It names the fourth source with the line the report reads, both reasons in the code's words, and round 24
+    ruling 9's pairing (one stop and the agent's error for it count once), read from the report."""
+    from agentsync import cli, setup_report  # noqa: PLC0415
+
+    page = _feedback_page()
+    assert cli.SYNC_STOPS_LOG == setup_report._SYNC_STOPS_NAME == "sync-stops.log"
+    [row] = [ln for ln in page.splitlines() if ln.startswith("| `~/agent-context/setup/sync-stops.log` |")]
+    [template] = re.findall(r"`(<UTC> sync-stop [^`]+)`", row)
+    sample = (
+        template.replace("<UTC>", "2026-10-23T10:00:00Z")
+        .replace("<role>", "manifest")
+        .replace("<agent|person>", "agent")
+        .replace("<refused|misplaced|lost>", "refused")
+    )
+    assert setup_report._SYNC_STOP_RE.match(sample), sample
+    assert "`cli.SYNC_STOPS_LOG`" in row and "0600" in row and "no `run=` word" in row
+    # both reasons, in the words compute_outcome gives them
+    at = datetime(2026, 10, 23, 10, tzinfo=UTC)
+    stop = setup_report._SyncStop(at, "manifest", "agent", at)
+    reason = setup_report._sync_stop_reason([stop])
+    assert (
+        reason
+        == "1 sync at step 3 exited 1 on agentsync's state file, and it ended 0 after the agent's chmod"
+    )
+    flat = " ".join(page.split())
+    assert f"is the reason `{reason}` (`each` for several, `a fix` when the person's; B13 round 23" in flat
+    assert 'each = "it" if len(fixed) == 1 else "each"' in inspect.getsource(setup_report._sync_stop_reason)
+    source = inspect.getsource(setup_report)
+    assert "f\"step {layout.report_step} logged {_plural(len(reported), 'error')}\"" in source
+    assert "and such a line is the reason `step 3 logged 1 error` (A36)" in flat
+    # round 24 ruling 9: one stop and the error the agent logged for it are one Items line, counted once
+    assert "(F{account.line}: the agent's account of it)" in source
+    assert "the pair is one Items line ending `(F<n>: the agent's account of it)`" in flat
+    assert "`step 3 logged N errors` counts only the errors no stop claims" in flat
+    # the friction line's words, which say which lines feed the outcome
+    for words in ("is one of the outcome's reasons", "the others do not change it by themselves"):
+        assert words in source and words in flat
+    assert "and they do not change the outcome, except that an attempt" not in flat
+    assert "by themselves they do not change the outcome, except that an attempt that only stopped" in flat
+    assert "of the report step that no recorded sync stop claims makes it 'worked with help'" in flat
+    assert (
+        "`[FAIL]`; no `error` logged at the report step, and no step 3 sync stop in `sync-stops.log` that a"
+        " later sync ended ok after (v7 and later prompts; below);"
+    ) in flat
+    kinds = page.split("### Friction kinds", 1)[1].split("\n### ", 1)[0]
+    [error_row] = [ln for ln in kinds.splitlines() if ln.startswith("| `error` |")]
+    assert (
+        "that no `sync-stops.log` stop claims and the last install run exited 0, as worked with help, never"
+        " failed (below)"
+    ) in error_row
+    assert "only when it stopped the run" not in error_row
 
 
 def test_the_agent_named_folders_row_says_the_agents_name_keeps_it() -> None:
